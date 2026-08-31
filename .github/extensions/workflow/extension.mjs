@@ -99,6 +99,7 @@ import { createWorkflowStatePoller, runWorkflowStatePoll } from './lib/workflow-
 import {
   addRequest,
   approvalPatch,
+  editRequestItem,
   emptyQueue,
   mergeChangedItem,
   metadataDonePatch,
@@ -534,6 +535,8 @@ function composeState(entry, stat, view) {
     workflow: entry.workflow?.state ?? emptyQueue(),
     workflowLastRefreshAt: entry.workflow?.lastRefreshAt ?? null,
     workflowError: entry.workflow?.error ?? null,
+    assetContext: entry.assetContext?.value ?? null,
+    assetContextError: entry.assetContext?.error ?? null,
     sidecarStartup: entry.sidecarStartup,
     stale: view.stale === true,
     error: view.error ?? null,
@@ -549,6 +552,15 @@ async function hydrateWorkflow(entry, { force = false, invalidate = true } = {})
     invalidate,
   });
   return entry.workflow.state;
+}
+
+async function hydrateAssetContext(entry, { force = false } = {}) {
+  if (entry.assetContext.loaded && !force) return entry.assetContext.value;
+  const value = await entry.client.getWorkflowAssetContext();
+  entry.assetContext.value = value;
+  entry.assetContext.loaded = true;
+  entry.assetContext.error = null;
+  return value;
 }
 
 /** Adopt a freshly-read/written queue as this instance's local view. */
@@ -579,7 +591,9 @@ async function saveWorkflowItem(entry, localState, itemId, changedFields = null,
     if (
       (options.requireRemoteStage && remoteItem?.stage !== options.requireRemoteStage) ||
       (options.requireRemoteGenerationRequestedAt &&
-        remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt)
+        remoteItem?.generationRequestedAt !== options.requireRemoteGenerationRequestedAt) ||
+      (options.requireRemoteGenerationNonce &&
+        remoteItem?.generationNonce !== options.requireRemoteGenerationNonce)
     ) {
       return adoptWorkflowState(entry, recoverQueue(remoteState), remote.etag, {
         invalidate: options.invalidate,
@@ -670,6 +684,7 @@ async function refreshQueuedWorkflowItems(
       run: toQueueRun(matched.briefId, matched.runId, normalizeCandidates(summary)),
       generationRequestedAt: null,
       generationStartedAt: null,
+      generationNonce: null,
       lastError: null,
     };
     state = await saveWorkflowItem(
@@ -680,6 +695,7 @@ async function refreshQueuedWorkflowItems(
       {
         requireRemoteStage: 'generating',
         requireRemoteGenerationRequestedAt: item.generationRequestedAt,
+        ...(item.generationNonce ? { requireRemoteGenerationNonce: item.generationNonce } : {}),
         initialRemote: remote,
         invalidate,
         retryOnConflict,
@@ -802,6 +818,12 @@ async function buildState(instanceId, { explicitSheet = null } = {}) {
     entry.workflow.error = error?.message ?? String(error);
     log(`workflow state unavailable: ${error?.message ?? error}`, 'warn');
   }
+  try {
+    await hydrateAssetContext(entry);
+  } catch (error) {
+    entry.assetContext.error = error?.message ?? String(error);
+    log(`asset request context unavailable: ${error?.message ?? error}`, 'warn');
+  }
   const stat = await getStatic(entry);
 
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
@@ -903,6 +925,12 @@ async function forceLiveState(instanceId) {
   entry.selectionVersion += 1;
   const versionAtCall = entry.selectionVersion;
   entry.cache = null;
+  try {
+    await hydrateAssetContext(entry, { force: true });
+  } catch (error) {
+    entry.assetContext.error = error?.message ?? String(error);
+    log(`asset request context unavailable: ${error?.message ?? error}`, 'warn');
+  }
   const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
   const priorSelectedSnapshot = entry.selected;
   const targetKey = runViewKey(
@@ -1848,6 +1876,34 @@ const jsonRoutes = [
     },
   },
   {
+    method: 'GET',
+    path: '/api/workflow/reference-preview',
+    handler: async ({ url, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const name = url.searchParams.get('name')?.trim();
+      const type = url.searchParams.get('type')?.trim();
+      if (!name || !type || type === 'auto') {
+        return { status: 400, json: { error: 'name and a concrete sprite type are required' } };
+      }
+      try {
+        return { json: await entry.client.getWorkflowReferencePreview(name, type) };
+      } catch (error) {
+        const status =
+          Number.isInteger(error?.status) && error.status >= 400 && error.status < 500
+            ? error.status
+            : 502;
+        return {
+          status,
+          json: {
+            error: error?.code ?? 'reference-preview-failed',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+    },
+  },
+  {
     method: 'POST',
     path: '/api/workflow/refresh',
     handler: (context) =>
@@ -1890,6 +1946,24 @@ const jsonRoutes = [
   },
   {
     method: 'POST',
+    path: '/api/workflow/edit',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string' || !body.patch || typeof body.patch !== 'object') {
+          throw new CanvasError('bad-request', 'itemId and patch are required.');
+        }
+        await replaceWorkflowItem(entry, body.itemId, (item) => {
+          try {
+            return editRequestItem(item, body.patch);
+          } catch (error) {
+            throw new CanvasError('bad-request', error?.message ?? String(error));
+          }
+        });
+        return { workflow: entry.workflow.state, item: selectedItem(entry.workflow.state) };
+      }),
+  },
+  {
+    method: 'POST',
     path: '/api/workflow/synthesize',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
@@ -1904,7 +1978,15 @@ const jsonRoutes = [
             type: item.requestedType === 'auto' ? undefined : item.requestedType,
             sizeVariant: item.sizeVariant,
             candidates: body.candidates,
-            floor: body.floor,
+            ...(item.floor ? { floor: item.floor } : {}),
+            ...(item.floorId ? { floorId: item.floorId } : {}),
+            ...(item.familyId ? { familyId: item.familyId } : {}),
+            ...(item.mobRole ? { mobRole: item.mobRole } : {}),
+            ...(Object.keys(item.injectionOverrides ?? {}).length > 0
+              ? { injectionOverrides: item.injectionOverrides }
+              : {}),
+            priority: item.priority,
+            ...(item.requester ? { requester: item.requester } : {}),
           });
           const candidates = Array.isArray(result?.written) ? result.written : [];
           await replaceWorkflowItem(entry, body.itemId, {
@@ -1912,6 +1994,10 @@ const jsonRoutes = [
             resolvedType: typeof result?.type === 'string' ? result.type : item.resolvedType,
             candidates,
             chosenCandidatePath: candidates[0]?.yamlPath ?? null,
+            assetRequestContext:
+              result?.assetRequestContext && typeof result.assetRequestContext === 'object'
+                ? result.assetRequestContext
+                : item.assetRequestContext,
             lastError: null,
           });
         } catch (error) {
@@ -1962,6 +2048,32 @@ const jsonRoutes = [
   },
   {
     method: 'POST',
+    path: '/api/workflow/generation-preview',
+    handler: (context) =>
+      workflowMutationRoute(context, async (entry, body) => {
+        if (typeof body.itemId !== 'string')
+          throw new CanvasError('bad-request', 'itemId is required.');
+        await hydrateWorkflow(entry, { force: true });
+        const item = entry.workflow.state.items.find((candidate) => candidate.id === body.itemId);
+        if (!item) throw new CanvasError('item-not-found', 'Workflow item no longer exists.');
+        const sourceBriefPath =
+          typeof body.yamlPath === 'string'
+            ? body.yamlPath
+            : (item.chosenCandidatePath ?? item.candidates[0]?.yamlPath);
+        if (!sourceBriefPath)
+          throw new CanvasError('missing-brief', 'Choose a synthesized brief before previewing.');
+        return entry.client.previewWorkflowGeneration({
+          sourceBriefPath,
+          ...(typeof body.previewToken === 'string' ? { previewToken: body.previewToken } : {}),
+          ...(typeof body.prompt === 'string' ? { prompt: body.prompt } : {}),
+          ...(Array.isArray(body.referenceAssetPaths)
+            ? { referenceAssetPaths: body.referenceAssetPaths }
+            : {}),
+        });
+      }),
+  },
+  {
+    method: 'POST',
     path: '/api/workflow/generate',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
@@ -1976,6 +2088,12 @@ const jsonRoutes = [
             : (item.chosenCandidatePath ?? item.candidates[0]?.yamlPath);
         if (!selectedPath)
           throw new CanvasError('missing-brief', 'Choose a synthesized brief before generation.');
+        if (typeof body.previewToken !== 'string' || body.previewToken.trim() === '') {
+          throw new CanvasError(
+            'missing-preview',
+            'Review the exact Azure request before generating.',
+          );
+        }
         let briefPath = item.briefPath;
         if (!briefPath) {
           const promoted = await entry.client.promoteWorkflowBrief(
@@ -1985,20 +2103,44 @@ const jsonRoutes = [
           );
           briefPath = promoted.briefPath;
         }
-        const result = await entry.client.generateWorkflow(briefPath);
+        const generationRequestedAt = new Date().toISOString();
+        const generationNonce = randomBytes(16).toString('hex');
+        const generatingPatch = {
+          briefPath,
+          chosenCandidatePath: selectedPath,
+          stage: 'generating',
+          generationRequestedAt,
+          generationStartedAt: generationRequestedAt,
+          generationNonce,
+          lastError: null,
+        };
+        await replaceWorkflowItem(entry, body.itemId, generatingPatch);
+        const result = await entry.client.generateWorkflow(briefPath, body.previewToken);
         const patch = {
           briefPath,
           chosenCandidatePath: selectedPath,
-          stage: result.status === 'queued' ? 'generating' : 'sheet',
-          generationRequestedAt: result.requestedAt ?? null,
-          generationStartedAt: result.status === 'queued' ? (result.requestedAt ?? null) : null,
+          stage: 'sheet',
+          generationRequestedAt: null,
+          generationStartedAt: null,
+          generationNonce: null,
           run:
             result.status === 'completed' && result.briefId && result.runId
               ? toQueueRun(result.briefId, result.runId, normalizeCandidates(result.summary))
               : item.run,
           lastError: null,
         };
-        await replaceWorkflowItem(entry, body.itemId, patch);
+        const currentState = entry.workflow.state;
+        await saveWorkflowItem(
+          entry,
+          updateItem(currentState, body.itemId, patch),
+          body.itemId,
+          patch,
+          {
+            requireRemoteStage: 'generating',
+            requireRemoteGenerationRequestedAt: generationRequestedAt,
+            requireRemoteGenerationNonce: generationNonce,
+          },
+        );
         if (patch.run) {
           entry.requested = { briefId: patch.run.briefId, runId: patch.run.runId };
           entry.selected = { briefId: patch.run.briefId, runId: patch.run.runId, sheet: null };
@@ -2211,6 +2353,11 @@ async function startServerForInstance(ctx) {
       etag: null,
       loaded: false,
       lastRefreshAt: null,
+      error: null,
+    },
+    assetContext: {
+      value: null,
+      loaded: false,
       error: null,
     },
     stopWorkflowPoll: null,

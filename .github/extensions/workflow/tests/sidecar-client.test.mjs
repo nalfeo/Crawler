@@ -24,9 +24,12 @@ import {
   deleteManifestUrl,
   runPostprocessUrl,
   workflowStateUrl,
+  workflowAssetContextUrl,
+  workflowReferencePreviewUrl,
   workflowSynthesizeUrl,
   workflowBriefUrl,
   workflowPromoteUrl,
+  workflowGenerationPreviewUrl,
   workflowGenerateUrl,
   workflowMetadataUrl,
   workflowLatestRunUrl,
@@ -84,6 +87,34 @@ test('runsUrl omits the query by default and only adds a promoted filter when na
   assert.equal(runsUrl(BASE, { promoted: 'promoted' }), `${BASE}/api/runs?promoted=promoted`);
 });
 
+test('workflow asset-context URL targets the shared game-data capability route', () => {
+  assert.equal(workflowAssetContextUrl(BASE), `${BASE}/api/workflow/asset-context`);
+});
+
+test('workflow reference-preview URL encodes its deterministic selector inputs', () => {
+  assert.equal(
+    workflowReferencePreviewUrl(BASE, 'main player', 'character'),
+    `${BASE}/api/workflow/reference-preview?name=main%20player&type=character`,
+  );
+});
+
+test('workflow client fetches game-derived authoring capabilities without caching', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      return jsonResponse({ capabilities: [{ floorId: 'floor2', families: [] }] });
+    },
+  });
+
+  assert.deepEqual(await client.getWorkflowAssetContext(), {
+    capabilities: [{ floorId: 'floor2', families: [] }],
+  });
+  assert.equal(calls[0].url, `${BASE}/api/workflow/asset-context`);
+  assert.equal(calls[0].options.cache, 'no-store');
+});
+
 test('run/sheet/slice-map url builders encode their path + query segments', () => {
   assert.equal(runSummaryUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1`);
   assert.equal(sheetUrl(BASE, 'b', 'r', 's 1.png'), `${BASE}/api/runs/b/r/sheet/s%201.png`);
@@ -134,6 +165,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(workflowSynthesizeUrl(BASE), `${BASE}/api/workflow/synthesize`);
   assert.equal(workflowBriefUrl(BASE), `${BASE}/api/workflow/brief`);
   assert.equal(workflowPromoteUrl(BASE), `${BASE}/api/workflow/promote-brief`);
+  assert.equal(workflowGenerationPreviewUrl(BASE), `${BASE}/api/workflow/generation-preview`);
   assert.equal(workflowGenerateUrl(BASE), `${BASE}/api/workflow/generate`);
   assert.equal(workflowMetadataUrl(BASE), `${BASE}/api/workflow/metadata`);
   assert.equal(
@@ -147,9 +179,12 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   await client.synthesizeWorkflow({ name: 'rusty-anvil', brief: detailedRequest });
   await client.saveWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'name: rusty-anvil');
   await client.promoteWorkflowBrief('briefs/draft/rusty-anvil.yaml', 'prop', 'rusty-anvil');
-  await client.generateWorkflow('briefs/draft/rusty-anvil.yaml');
+  await client.generateWorkflow('briefs/draft/rusty-anvil.yaml', 'preview-token');
   await client.generateWorkflowMetadata(['rusty-anvil']);
   await client.approveWorkflowVariant('rusty-anvil', 'run-1', 0);
+  await client.previewWorkflowGeneration({
+    sourceBriefPath: 'generated/brief-candidates/rusty-anvil/v1.yaml',
+  });
   assert.deepEqual(await client.latestWorkflowRun('rusty-anvil', '2026-08-21T00:00:00.000Z'), {
     briefId: 'rusty-anvil',
     runId: 'run-1',
@@ -163,6 +198,7 @@ test('workflow authoring client uses the sidecar workflow contracts and ETags', 
   assert.equal(calls[3].options.method, 'PUT');
   assert.equal(calls[4].options.method, 'POST');
   assert.equal(calls[5].options.method, 'POST');
+  assert.match(calls[5].options.body, /preview-token/);
   assert.equal(calls[6].options.method, 'POST');
   assert.match(calls[6].options.body, /"minScore":70/);
   assert.match(calls[7].url, /\/api\/runs\/rusty-anvil\/run-1\/approve$/);
@@ -346,7 +382,7 @@ test('probeHealth reports up for the current managed sidecar version', async () 
   assert.equal(health.version, EXPECTED_VERSION);
 });
 
-test('probeHealth: down when azure queue controllers are not ready', async () => {
+test('probeHealth: up when optional azure queue controllers are idle', async () => {
   const client = createSidecarClient({
     baseUrl: BASE,
     workspaceRoot: '/repo/a',
@@ -364,7 +400,7 @@ test('probeHealth: down when azure queue controllers are not ready', async () =>
     }),
   });
   const health = await client.probeHealth();
-  assert.equal(health.state, 'down');
+  assert.equal(health.state, 'up');
 });
 
 test('probeHealth: wrong-repo when the sidecar serves a different checkout', async () => {

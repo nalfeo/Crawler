@@ -57,9 +57,9 @@ modules:
       maxOpaqueNeighbors: 8
       dropEdgeOrphans: true
 
-  palette-quantize:
-    description: Quantize to strict palette (if brief.postprocessing.paletteMode is 'strict').
-    type: palette-quantize
+  pixel-grid:
+    description: Recover the source pixel mesh without palette quantization (if strict).
+    type: pixel-grid
     enabled: true
     params: {}
 
@@ -81,9 +81,9 @@ pipeline:
   - background-removal
   - enclosed-regions
   - transparent-trim
+  - pixel-grid
   - resize
   - background-rekey
   - speckle-cleanup
-  - palette-quantize
   - alpha-threshold
   - trim-and-fit

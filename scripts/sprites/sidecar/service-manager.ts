@@ -251,9 +251,10 @@ function isReady(health: SidecarHealth, repoRoot: string): boolean {
   ) {
     return false;
   }
-  if (health.queueBackend === 'azure-queue') {
-    return health.worker?.running === true && health.issueIngester?.running === true;
-  }
+  // The server exposes run inspection without consuming queue work. Requiring
+  // the optional Azure worker and ingester here makes every read-only canvas
+  // unavailable, even though cli.ts intentionally leaves both stopped to avoid
+  // racing CI for production queue messages.
   return true;
 }
 

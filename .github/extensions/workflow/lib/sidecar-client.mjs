@@ -143,6 +143,14 @@ export function workflowStateUrl(baseUrl) {
   return `${baseUrl}/api/workflow/state`;
 }
 
+export function workflowAssetContextUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/asset-context`;
+}
+
+export function workflowReferencePreviewUrl(baseUrl, name, type) {
+  return `${baseUrl}/api/workflow/reference-preview?name=${enc(name)}&type=${enc(type)}`;
+}
+
 export function workflowSynthesizeUrl(baseUrl) {
   return `${baseUrl}/api/workflow/synthesize`;
 }
@@ -157,6 +165,10 @@ export function workflowPromoteUrl(baseUrl) {
 
 export function workflowGenerateUrl(baseUrl) {
   return `${baseUrl}/api/workflow/generate`;
+}
+
+export function workflowGenerationPreviewUrl(baseUrl) {
+  return `${baseUrl}/api/workflow/generation-preview`;
 }
 
 export function workflowMetadataUrl(baseUrl) {
@@ -468,14 +480,8 @@ async function readResponse(response, fallback) {
   throw error;
 }
 
-function isSidecarStrictReady(payload) {
-  if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
-    return false;
-  }
-  if (payload.queueBackend === 'azure-queue') {
-    return payload.worker?.running === true && payload.issueIngester?.running === true;
-  }
-  return true;
+function isSidecarReadable(payload) {
+  return payload && payload.status === 'ok' && payload.version === EXPECTED_SIDECAR_VERSION;
 }
 
 /**
@@ -614,6 +620,18 @@ export function createSidecarClient(options) {
     };
   }
 
+  async function getWorkflowAssetContext() {
+    const response = await fetchImpl(workflowAssetContextUrl(baseUrl), { cache: 'no-store' });
+    return readResponse(response, 'Failed to load asset request context');
+  }
+
+  async function getWorkflowReferencePreview(name, type) {
+    const response = await fetchImpl(workflowReferencePreviewUrl(baseUrl, name, type), {
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to load reference preview');
+  }
+
   async function putWorkflowState(state, etag = null) {
     const headers = { 'Content-Type': 'application/json' };
     // With no ETag the state has never been read as existing, so this write is
@@ -662,11 +680,21 @@ export function createSidecarClient(options) {
     return readResponse(response, 'Failed to promote brief');
   }
 
-  async function generateWorkflow(briefPath) {
+  async function previewWorkflowGeneration(payload) {
+    const response = await fetchImpl(workflowGenerationPreviewUrl(baseUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+    return readResponse(response, 'Failed to prepare generation request');
+  }
+
+  async function generateWorkflow(briefPath, previewToken) {
     const response = await fetchImpl(workflowGenerateUrl(baseUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ briefPath }),
+      body: JSON.stringify({ briefPath, ...(previewToken ? { previewToken } : {}) }),
       cache: 'no-store',
     });
     return readResponse(response, 'Failed to generate sheet');
@@ -757,7 +785,7 @@ export function createSidecarClient(options) {
         return { ...health, state: 'wrong-repo' };
       }
     }
-    if (!isSidecarStrictReady(payload)) {
+    if (!isSidecarReadable(payload)) {
       return { ...health, state: 'down' };
     }
     return health;
@@ -773,10 +801,13 @@ export function createSidecarClient(options) {
     approveWorkflowVariant,
     unapproveVariant,
     getWorkflowState,
+    getWorkflowAssetContext,
+    getWorkflowReferencePreview,
     putWorkflowState,
     synthesizeWorkflow,
     saveWorkflowBrief,
     promoteWorkflowBrief,
+    previewWorkflowGeneration,
     generateWorkflow,
     generateWorkflowMetadata,
     postprocessRun,
@@ -797,6 +828,7 @@ export function createSidecarClient(options) {
       runPostprocess: (b, r) => runPostprocessUrl(baseUrl, b, r),
       runJudge: (b, r) => runJudgeUrl(baseUrl, b, r),
       workflowState: () => workflowStateUrl(baseUrl),
+      workflowAssetContext: () => workflowAssetContextUrl(baseUrl),
       workflowSynthesize: () => workflowSynthesizeUrl(baseUrl),
       workflowBrief: () => workflowBriefUrl(baseUrl),
       workflowPromote: () => workflowPromoteUrl(baseUrl),

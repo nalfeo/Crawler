@@ -80,7 +80,7 @@ if ! kill -0 "$worker_pid" 2>/dev/null; then
   exit "$worker_status"
 fi
 
-# pollOnce returns only after every queue enqueue and ingest-state save has
+# The ingester exits only after every queue enqueue and ingest-state save has
 # completed. File creation is the durable handoff: all earlier empty polls are
 # ignored, and the worker confirms emptiness with a dequeue begun after this
 # marker before exiting. Requests submitted after this producer boundary belong

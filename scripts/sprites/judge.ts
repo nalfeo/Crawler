@@ -46,6 +46,7 @@ import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
 import { contentDirectionBlock } from './content-direction.js';
+import { spriteCategoryDesignLanguageBlock } from './sprite-category-design-language.js';
 import { designLanguageAddendaBlock } from './content-direction.js';
 import {
   resolveDesignLanguageAddenda,
@@ -62,7 +63,7 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v10';
+const PROMPT_TEMPLATE_VERSION = 'v11';
 
 export const JUDGE_HARD_BLOCK_PHRASE = 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME';
 
@@ -658,6 +659,8 @@ function buildSystemInstructions(
     '',
     contentDirectionBlock(floor, addenda),
     '',
+    spriteCategoryDesignLanguageBlock(brief.type, brief.assetRequestContext?.injections.category),
+    '',
     `Score the candidate on ${axisCount === 4 ? 'four' : axisCount} independent 1-5 ordinal axes:`,
     '',
     '  1. design_language — Does the concept feel specifically like Crawler: one readable',
@@ -672,6 +675,10 @@ function buildSystemInstructions(
     '  3. brief_match  — Does the candidate depict the subject described in the brief',
     '                    (provided in the user prompt)? 5 = unambiguously the requested',
     '                    subject. Accidental faces or limbs on an inanimate item score <= 2.',
+    '                    When the brief requires a readable face or names specific facial',
+    '                    features, each required feature must be visibly distinct at 1x game',
+    '                    scale. A missing or indistinguishable required eye, nose, or mouth',
+    '                    is an off-brief defect and scores <= 2.',
     '',
     '  4. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',

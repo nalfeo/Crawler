@@ -14,7 +14,6 @@ import {
   removeEnclosedBackgroundRegions,
   removeReintroducedBackground,
   removeIsolatedNearWhiteSpeckles,
-  quantizeToPalette,
   hardThresholdAlpha,
   trimTransparentEdges,
   fitWithinNearest,
@@ -27,6 +26,7 @@ import {
   BACKGROUND_B_COLOR_TOLERANCE_SQ,
   BACKGROUND_B_FRINGE_TOLERANCE_SQ,
 } from './postprocess-constants.js';
+import { recoverPixelArtMesh } from './proper-pixel-art.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -228,14 +228,21 @@ export const postprocessModules: Record<string, ModuleHandler> = {
     return result;
   },
 
-  'palette-quantize': (image, _params, ctx) => {
+  'pixel-grid': (image, _params, ctx) => {
     if (ctx.brief.postprocessing?.paletteMode !== 'strict') {
-      ctx.pushStep('palette-quantize-skipped', 'Palette quantize (skipped)', image);
+      ctx.pushStep('pixel-grid-skipped', 'Pixel-art mesh recovery (skipped)', image);
       return image;
     }
 
-    const result = quantizeToPalette(image, ctx.palette);
-    ctx.pushStep('palette-quantize', 'Palette quantize (strict)', result);
+    const explicitPixelWidth = ctx.brief.postprocessing?.pixelWidth;
+    const result = recoverPixelArtMesh(image, explicitPixelWidth);
+    const mode =
+      explicitPixelWidth === undefined ? 'auto-detected mesh' : `${explicitPixelWidth}px mesh`;
+    ctx.pushStep(
+      'pixel-grid',
+      `Pixel-art mesh recovery (${mode}; preserved ${result.width}x${result.height} canvas)`,
+      result,
+    );
     return result;
   },
 

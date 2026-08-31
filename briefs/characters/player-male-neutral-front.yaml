@@ -1,0 +1,55 @@
+type: character
+name: player-male-neutral-front
+description: |
+  ONE SINGLE PLAYER CHARACTER SPRITE, not an animation sheet and not multiple
+  poses. A male dungeon-crawling contestant viewed directly from the front,
+  standing in a perfectly neutral rest position: feet planted symmetrically,
+  arms relaxed evenly at the sides, head upright and centered, eyes level, and
+  no stride, turn, lean, run, attack, or gesture.
+
+  This is the canonical rig reference for every future walking direction. Lock
+  these attributes: a large rounded bobblehead (about one third of total
+  height), short chunky body, cropped simple hair, slight square jawline, muted
+  green/brown belted tunic, leather satchel strap, dark trousers, sturdy boots,
+  warm tan skin, empty hands, flat cel shading, and one clean dark outline.
+  It must read as the same scrappy televised-dungeon underdog at 40px tall.
+
+  Pixel art only: EarthBound / Chrono Trigger / Undertale readability, two or
+  three flat tones per material, no gradients, no painterly texture, no
+  dithering, no realism. Center the body on a strict vertical symmetry axis,
+  put both boot soles on one shared floor line, and leave clear transparent
+  margins around the entire figure.
+
+  Do not draw a weapon, shield, helmet, cape, armor, facial hair, cast shadow,
+  floor, background panel, text, border, or any second pose/character.
+size:
+  width: 256
+  height: 256
+anchor:
+  x: 128
+  y: 252
+palette:
+  id: kenney-roguelike
+generation:
+  sheet:
+    rows: 1
+    cols: 1
+    emptyCells: []
+    nativeCanvas: 1024
+postprocessing:
+  trimAndFit: false
+  paletteMode: strict
+sensors:
+  anchor:
+    mode: center-of-mass
+judge:
+  enabled: true
+  maxVariants: 1
+minVariations: 0
+tags:
+  - player
+  - contestant
+  - male
+  - neutral
+  - front
+  - rig-reference

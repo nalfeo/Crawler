@@ -1,0 +1,72 @@
+type: character
+name: player-male-south-east-gait
+description: |
+  Draw exactly four ORDERED in-place walking frames of the same male televised-
+  dungeon contestant in the supplied south-east neutral rig. The first seed is
+  the accepted south-east direction rig: preserve its exact face, bobblehead
+  scale, cropped hair, square jaw, muted green/brown belted tunic, satchel
+  strap, dark trousers, sturdy boots, warm tan skin, palette, outline, and
+  three-quarter SOUTH-EAST camera orientation. Do not redesign, mirror, turn,
+  or change clothing between cells.
+
+  The second seed is the authoritative 2×2 south-east gait skeleton. Its cells
+  are read row-major: frame 0 contact with the near/right foot forward; frame 1
+  passing with that foot lifted; frame 2 opposite contact with the far/left foot
+  forward; frame 3 opposite passing with that foot lifted. Follow its head,
+  shoulders, hips, legs, and opposite arm swing. All four frames share the same
+  torso/head center and the same invisible floor line; the planted boot sole
+  stays on it in every frame. Keep the stride compact enough that each full
+  figure has transparent margin inside its own cell and never bleeds into a
+  neighbor.
+
+  Pixel art only: flat cel shading, clean one-pixel dark outline, 2–3 tones per
+  material, no gradients, painterly texture, dithering, cast shadow, text,
+  border, floor, background, second character, weapon, shield, armor, cape,
+  helmet, facial hair, or transparent holes. These are four gait frames, not
+  four character variants.
+size:
+  width: 256
+  height: 256
+anchor:
+  x: 128
+  y: 252
+palette:
+  id: kenney-roguelike
+seedFrames:
+  - path: briefs/characters/seeds/player-male-south-east-neutral.png
+    note: Accepted south-east neutral rig; copy this exact character identity, three-quarter view, proportions, palette, and outline.
+    role: identity
+  - path: briefs/characters/seeds/player-male-south-east-gait-skeleton.png
+    note: Four-frame south-east gait skeleton, row-major. Follow pose timing and bone placement, not its colors.
+    role: pose-guide
+generation:
+  sheet:
+    rows: 2
+    cols: 2
+    emptyCells: []
+    nativeCanvas: 1024
+frameSequence:
+  enabled: true
+  frameCount: 4
+  frameRate: 8
+  loop: true
+postprocessing:
+  trimAndFit: false
+  paletteMode: strict
+sensors:
+  anchor:
+    mode: center-of-mass
+  interiorHoles:
+    maxPixels: 64
+judge:
+  enabled: true
+  maxVariants: 4
+minVariations: 0
+tags:
+  - player
+  - contestant
+  - male
+  - south-east
+  - gait
+  - walk-cycle
+  - frame-sequence

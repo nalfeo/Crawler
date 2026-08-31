@@ -89,6 +89,32 @@ test('authoring mutations reuse token, origin, and JSON guards without a queue-c
   assert.doesNotMatch(source, /workflow\/worker\/start/);
 });
 
+test('reference-preview proxy preserves sidecar client errors and forwards 4xx statuses', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const routeStart = source.indexOf("path: '/api/workflow/reference-preview'");
+  const nextRouteStart = source.indexOf("path: '/api/workflow/refresh'", routeStart);
+  assert.ok(routeStart >= 0 && nextRouteStart > routeStart);
+  const handlerSource = source.slice(routeStart, nextRouteStart);
+  assert.match(handlerSource, /error\.status >= 400 && error\.status < 500/);
+  assert.match(handlerSource, /error: error\?\.code \?\? 'reference-preview-failed'/);
+});
+
+test('reviewed generation persists an attempt before local execution and advances directly to sheet', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const previewStart = source.indexOf("path: '/api/workflow/generation-preview'");
+  const generateStart = source.indexOf("path: '/api/workflow/generate'", previewStart);
+  const nextRoute = source.indexOf("path: '/api/workflow/postprocess'", generateStart);
+  assert.ok(previewStart >= 0 && generateStart > previewStart && nextRoute > generateStart);
+  const generation = source.slice(generateStart, nextRoute);
+  assert.match(generation, /missing-preview/);
+  assert.match(generation, /stage: 'generating'/);
+  assert.match(generation, /generationNonce/);
+  assert.match(generation, /generateWorkflow\(briefPath, body\.previewToken\)/);
+  assert.match(generation, /stage: 'sheet'/);
+  assert.doesNotMatch(generation, /status === 'queued'/);
+  assert.doesNotMatch(generation, /workflow_dispatch|asset-request\.yml/);
+});
+
 test('invalid Author request input returns the established bad-request error type', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf("path: '/api/workflow/request'");
@@ -96,6 +122,19 @@ test('invalid Author request input returns the established bad-request error typ
   assert.ok(start >= 0 && end > start);
   const route = source.slice(start, end);
   assert.match(route, /added = addRequest\(entry\.workflow\.state, body\)/);
+  assert.match(
+    route,
+    /catch \(error\) \{\s*throw new CanvasError\('bad-request', error\?\.message \?\? String\(error\)\);/,
+  );
+});
+
+test('invalid request edits return the established bad-request error type', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const start = source.indexOf("path: '/api/workflow/edit'");
+  const end = source.indexOf("path: '/api/workflow/synthesize'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /return editRequestItem\(item, body\.patch\)/);
   assert.match(
     route,
     /catch \(error\) \{\s*throw new CanvasError\('bad-request', error\?\.message \?\? String\(error\)\);/,

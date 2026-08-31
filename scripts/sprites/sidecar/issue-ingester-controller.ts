@@ -530,11 +530,17 @@ export function createIssueIngesterController(
             ? { floor: payload.floor }
             : {}),
           ...(payload.sizeVariant ? { sizeVariant: payload.sizeVariant } : {}),
+          ...(payload.assetRequestContext
+            ? { assetRequestContext: payload.assetRequestContext }
+            : {}),
+          ...((issue.authorLogin ?? payload.requester)
+            ? { requester: issue.authorLogin ?? payload.requester }
+            : {}),
           fingerprint,
           claimedAt,
           requestedBy: options.requestedBy,
           requestedAt: claimedAt,
-          priority: 'normal',
+          priority: payload.priority ?? 'normal',
         };
         await options.queue.enqueue(message);
         state.claims[key] = {

@@ -1,7 +1,7 @@
 # Generation timing review recovery
 
-**Date:** 2026-08-27  
-**Persona:** Graphics Designer  
+**Date:** 2026-08-27
+**Persona:** Graphics Designer
 **Apples:** 2🍎 estimated / 2🍎 actual
 
 ## Systems touched

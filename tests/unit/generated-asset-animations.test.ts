@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
+  walkDirectionFromVelocity,
 } from '../../src/engine/generatedAssets/animations.js';
 import {
   buildGeneratedSpriteRegistry,
@@ -49,6 +50,22 @@ function makeAnimsStub() {
 describe('walkAnimationKey', () => {
   it('derives a deterministic key from the texture key', () => {
     expect(walkAnimationKey('player-walk-v1-var-0')).toBe('player-walk-v1-var-0:walk');
+    expect(walkAnimationKey('player-walk-v1-var-0', 'south')).toBe(
+      'player-walk-v1-var-0:walk:south',
+    );
+  });
+
+  it.each([
+    [0, -1, 'north'],
+    [1, -1, 'northEast'],
+    [1, 0, 'east'],
+    [1, 1, 'southEast'],
+    [0, 1, 'south'],
+    [-1, 1, 'southWest'],
+    [-1, 0, 'west'],
+    [-1, -1, 'northWest'],
+  ] as const)('quantizes (%s, %s) to %s', (vx, vy, expected) => {
+    expect(walkDirectionFromVelocity(vx, vy)).toBe(expected);
   });
 });
 
@@ -114,9 +131,43 @@ describe('registerGeneratedSpriteAnimations', () => {
         }),
       },
     });
+
     registerGeneratedSpriteAnimations({ anims }, registry);
     const config = created.get('one-shot-var-0:walk') as { repeat: number };
     expect(config.repeat).toBe(0);
+  });
+
+  it('registers eight directional clips from one atlas', () => {
+    const { anims, created } = makeAnimsStub();
+    const registry = buildGeneratedSpriteRegistry({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'player-walk-8way': makeEntry('player-walk-8way', {
+          frameWidth: 64,
+          frameHeight: 64,
+          frameCount: 32,
+          frameRate: 8,
+          loop: true,
+          directions: {
+            north: { start: 0, end: 3 },
+            northEast: { start: 4, end: 7 },
+            east: { start: 8, end: 11 },
+            southEast: { start: 12, end: 15 },
+            south: { start: 16, end: 19 },
+            southWest: { start: 20, end: 23 },
+            west: { start: 24, end: 27 },
+            northWest: { start: 28, end: 31 },
+          },
+        }),
+      },
+    });
+    const keys = registerGeneratedSpriteAnimations({ anims }, registry);
+    expect(keys).toHaveLength(8);
+    expect(created.has('player-walk-8way:walk:south')).toBe(true);
+    expect(anims.generateFrameNumbers).toHaveBeenCalledWith('player-walk-8way', {
+      start: 16,
+      end: 19,
+    });
   });
 
   it('is idempotent — does not re-create an already-registered animation key', () => {

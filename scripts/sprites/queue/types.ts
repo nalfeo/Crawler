@@ -12,6 +12,7 @@
 
 import { SPRITE_TYPES } from '../brief-schema.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
+import { MOB_ROLES, type AssetRequestContext } from '../asset-request-context.js';
 
 export interface AssetRequestBase {
   /** `brief.name` slug (e.g. `'iron-sword'`). */
@@ -46,6 +47,10 @@ export interface IssueAssetRequest extends AssetRequestBase {
   readonly floor?: number;
   /** Effective size variant. Missing legacy entries are resolved by the issue pipeline. */
   readonly sizeVariant?: SizeVariant;
+  /** Immutable game-source selection and resolved direction snapshot. */
+  readonly assetRequestContext?: AssetRequestContext;
+  /** Identity of the human/service requesting this issue-originated asset. */
+  readonly requester?: string;
   /** Stable hash of normalized issue payload, explicit size, and non-baseline floor. */
   readonly fingerprint: string;
   /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
@@ -97,6 +102,8 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
         `Invalid persisted asset-request size '${String(v.sizeVariant)}'. Expected one of ${SIZE_VARIANTS.join(', ')}.`,
       );
     }
+    if ('assetRequestContext' in v && !isAssetRequestContext(v.assetRequestContext)) return null;
+    if ('requester' in v && v.requester !== undefined && !isRequester(v.requester)) return null;
     return {
       kind: 'issue-request',
       issueNumber: v.issueNumber,
@@ -111,12 +118,47 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
         ? { floor: v.floor }
         : {}),
       ...(isSizeVariant(v.sizeVariant) ? { sizeVariant: v.sizeVariant } : {}),
+      ...(isAssetRequestContext(v.assetRequestContext)
+        ? { assetRequestContext: v.assetRequestContext }
+        : {}),
+      ...(isRequester(v.requester) ? { requester: v.requester.trim() } : {}),
       fingerprint: v.fingerprint,
       claimedAt: v.claimedAt,
       requestedBy: v.requestedBy,
       requestedAt: v.requestedAt,
       priority,
     };
+  }
+
+  function isRequester(value: unknown): value is string {
+    return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.@:/-]{0,127}$/.test(value.trim());
+  }
+
+  function isAssetRequestContext(value: unknown): value is AssetRequestContext {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const context = value as Record<string, unknown>;
+    if (
+      !context.sourceIds ||
+      typeof context.sourceIds !== 'object' ||
+      Array.isArray(context.sourceIds)
+    ) {
+      return false;
+    }
+    if (
+      !context.injections ||
+      typeof context.injections !== 'object' ||
+      Array.isArray(context.injections)
+    ) {
+      return false;
+    }
+    if (
+      context.mobRole !== undefined &&
+      (typeof context.mobRole !== 'string' ||
+        !MOB_ROLES.includes(context.mobRole as (typeof MOB_ROLES)[number]))
+    ) {
+      return false;
+    }
+    return true;
   }
   // Legacy or explicit brief-path message.
   if (typeof v.briefId !== 'string' || typeof v.briefPath !== 'string') {

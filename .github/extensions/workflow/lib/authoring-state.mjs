@@ -32,8 +32,11 @@ const SPRITE_TYPES = new Set([
   'tile',
   'vfx',
   'character',
+  'icon',
 ]);
 const SIZE_VARIANTS = new Set(['default', 'wide', 'tall', 'large']);
+const MOB_ROLES = new Set(['normal', 'elite', 'boss']);
+const REQUEST_PRIORITIES = new Set(['normal', 'high']);
 const STAGES = new Set(WORKFLOW_STAGES);
 
 export function emptyQueue() {
@@ -55,6 +58,29 @@ function asString(value, fallback = '') {
 
 function asNullableString(value) {
   return typeof value === 'string' ? value : null;
+}
+
+function optionalTrimmedString(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function normalizeInjectionOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const floor = optionalTrimmedString(value.floor);
+  const family = optionalTrimmedString(value.family);
+  const category = optionalTrimmedString(value.category);
+  return {
+    ...(floor ? { floor } : {}),
+    ...(family ? { family } : {}),
+    ...(category ? { category } : {}),
+  };
+}
+
+function normalizeFloor(value) {
+  if (!Number.isInteger(value) || value < 1 || value > 20) return null;
+  return value;
 }
 
 function normalizeCandidate(value) {
@@ -112,6 +138,17 @@ export function normalizeItem(value) {
     brief,
     requestedType,
     sizeVariant: SIZE_VARIANTS.has(value.sizeVariant) ? value.sizeVariant : 'default',
+    floor: normalizeFloor(value.floor),
+    floorId: optionalTrimmedString(value.floorId),
+    familyId: optionalTrimmedString(value.familyId),
+    mobRole: MOB_ROLES.has(value.mobRole) ? value.mobRole : null,
+    injectionOverrides: normalizeInjectionOverrides(value.injectionOverrides),
+    priority: REQUEST_PRIORITIES.has(value.priority) ? value.priority : 'normal',
+    requester: optionalTrimmedString(value.requester),
+    assetRequestContext:
+      value.assetRequestContext && typeof value.assetRequestContext === 'object'
+        ? value.assetRequestContext
+        : null,
     resolvedType: SPRITE_TYPES.has(value.resolvedType) ? value.resolvedType : null,
     kebabName: asString(value.kebabName, slugify(name)),
     stage: STAGES.has(value.stage) ? value.stage : 'draft',
@@ -124,6 +161,7 @@ export function normalizeItem(value) {
     run: normalizeRun(value.run),
     generationRequestedAt: asNullableString(value.generationRequestedAt),
     generationStartedAt: asNullableString(value.generationStartedAt),
+    generationNonce: asNullableString(value.generationNonce),
     approvedAssetPath: asNullableString(value.approvedAssetPath),
     approvalSummary: asNullableString(value.approvalSummary),
     checkinBranch: asNullableString(value.checkinBranch),
@@ -208,6 +246,8 @@ export function createRequestItem(state, input) {
   if (!slugify(name)) throw new Error('A short asset name must contain letters or numbers.');
   const seq = state.nextSeq;
   const requestedType = SPRITE_TYPES.has(input.type) ? input.type : 'auto';
+  const injectionOverrides = normalizeInjectionOverrides(input.injectionOverrides);
+  if (requestedType === 'auto') delete injectionOverrides.category;
   return {
     id: `item-${seq}`,
     seq,
@@ -215,6 +255,14 @@ export function createRequestItem(state, input) {
     brief: String(input.brief ?? '').trim(),
     requestedType,
     sizeVariant: SIZE_VARIANTS.has(input.sizeVariant) ? input.sizeVariant : 'default',
+    floor: normalizeFloor(input.floor),
+    floorId: optionalTrimmedString(input.floorId),
+    familyId: optionalTrimmedString(input.familyId),
+    mobRole: MOB_ROLES.has(input.mobRole) ? input.mobRole : null,
+    injectionOverrides,
+    priority: REQUEST_PRIORITIES.has(input.priority) ? input.priority : 'normal',
+    requester: optionalTrimmedString(input.requester),
+    assetRequestContext: null,
     resolvedType: requestedType === 'auto' ? null : requestedType,
     kebabName: slugify(name),
     stage: 'draft',
@@ -225,6 +273,7 @@ export function createRequestItem(state, input) {
     run: null,
     generationRequestedAt: null,
     generationStartedAt: null,
+    generationNonce: null,
     approvedAssetPath: null,
     approvalSummary: null,
     checkinBranch: null,
@@ -255,6 +304,116 @@ export function updateItem(state, itemId, patch) {
   return {
     ...state,
     items: state.items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+  };
+}
+
+const REQUEST_EDIT_FIELDS = new Set([
+  'name',
+  'brief',
+  'requestedType',
+  'sizeVariant',
+  'floor',
+  'floorId',
+  'familyId',
+  'mobRole',
+  'injectionOverrides',
+  'priority',
+  'requester',
+]);
+
+const PROMPT_AFFECTING_FIELDS = new Set([
+  'name',
+  'brief',
+  'requestedType',
+  'sizeVariant',
+  'floor',
+  'floorId',
+  'familyId',
+  'mobRole',
+  'injectionOverrides',
+]);
+
+export function editRequestItem(item, patch) {
+  const edited = Object.fromEntries(
+    Object.entries(patch).filter(([key]) => REQUEST_EDIT_FIELDS.has(key)),
+  );
+  if ('name' in edited && typeof edited.name !== 'string') {
+    throw new Error('name must be a string.');
+  }
+  if (typeof edited.name === 'string') {
+    edited.name = edited.name.trim();
+    if (!slugify(edited.name)) throw new Error('name must contain letters or numbers.');
+    edited.kebabName = slugify(edited.name);
+  }
+  if ('brief' in edited && typeof edited.brief !== 'string') {
+    throw new Error('brief must be a string.');
+  }
+  if (typeof edited.brief === 'string') edited.brief = edited.brief.trim();
+  if ('requester' in edited && edited.requester !== null && typeof edited.requester !== 'string') {
+    throw new Error('requester must be a string or null.');
+  }
+  if (typeof edited.requester === 'string') edited.requester = edited.requester.trim() || null;
+  if (
+    'requestedType' in edited &&
+    edited.requestedType !== 'auto' &&
+    !SPRITE_TYPES.has(edited.requestedType)
+  ) {
+    throw new Error('requestedType must be a known sprite type.');
+  }
+  if ('sizeVariant' in edited && !SIZE_VARIANTS.has(edited.sizeVariant)) {
+    throw new Error('sizeVariant must be a known sprite footprint.');
+  }
+  if ('mobRole' in edited && edited.mobRole !== null && !MOB_ROLES.has(edited.mobRole)) {
+    throw new Error('mobRole must be normal, elite, boss, or null.');
+  }
+  if ('priority' in edited && !REQUEST_PRIORITIES.has(edited.priority)) {
+    throw new Error('priority must be normal or high.');
+  }
+  if ('floor' in edited) {
+    if (edited.floor === null) {
+      edited.floor = null;
+    } else {
+      const floor = normalizeFloor(edited.floor);
+      if (floor === null) throw new Error('floor must be an integer from 1 through 20, or null.');
+      edited.floor = floor;
+    }
+  }
+  if ('floorId' in edited) edited.floorId = optionalTrimmedString(edited.floorId);
+  if ('familyId' in edited) edited.familyId = optionalTrimmedString(edited.familyId);
+  if (
+    'injectionOverrides' in edited &&
+    (!edited.injectionOverrides ||
+      typeof edited.injectionOverrides !== 'object' ||
+      Array.isArray(edited.injectionOverrides))
+  ) {
+    throw new Error('injectionOverrides must be an object.');
+  }
+  if (typeof edited.injectionOverrides === 'object' && edited.injectionOverrides !== null) {
+    edited.injectionOverrides = normalizeInjectionOverrides(edited.injectionOverrides);
+  }
+  const nextRequestedType = edited.requestedType ?? item.requestedType;
+  if (nextRequestedType === 'auto') {
+    edited.injectionOverrides = normalizeInjectionOverrides(
+      edited.injectionOverrides ?? item.injectionOverrides,
+    );
+    delete edited.injectionOverrides.category;
+  }
+  const promptChanged = Object.keys(edited).some((key) => {
+    if (!PROMPT_AFFECTING_FIELDS.has(key)) return false;
+    if (key === 'injectionOverrides') {
+      return JSON.stringify(edited[key]) !== JSON.stringify(normalizeInjectionOverrides(item[key]));
+    }
+    return !Object.is(edited[key], item[key]);
+  });
+  const next = { ...item, ...edited };
+  if (!promptChanged) return next;
+  return {
+    ...resetDownstreamForBriefChange(next, null),
+    stage: 'draft',
+    candidates: [],
+    chosenCandidatePath: null,
+    resolvedType: next.requestedType === 'auto' ? null : next.requestedType,
+    assetRequestContext: null,
   };
 }
 
@@ -313,6 +472,7 @@ export function rewindItem(item, target) {
       run: null,
       generationRequestedAt: null,
       generationStartedAt: null,
+      generationNonce: null,
       ...clearApproval(),
     };
   }
@@ -327,6 +487,7 @@ export function rewindItem(item, target) {
       stage,
       generationRequestedAt: null,
       generationStartedAt: null,
+      generationNonce: null,
       ...clearApproval(),
     };
   }
@@ -351,6 +512,7 @@ export function resetDownstreamForBriefChange(item, chosenCandidatePath) {
     run: null,
     generationRequestedAt: null,
     generationStartedAt: null,
+    generationNonce: null,
     ...clearApproval(),
   };
 }
@@ -404,6 +566,7 @@ export function approvalPatch(result, variantIndex) {
     checkinIssueBody: null,
     checkinSummary: null,
     generationRequestedAt: null,
+    generationNonce: null,
     queueDurability,
     lastError: null,
   };

@@ -47,7 +47,7 @@ export const CANONICAL_POSTPROCESS_MODULE_IDS = Object.freeze([
   'resize',
   'background-rekey',
   'speckle-cleanup',
-  'palette-quantize',
+  'pixel-grid',
   'alpha-threshold',
   'trim-and-fit',
 ]);

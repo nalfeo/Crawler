@@ -49,6 +49,14 @@ describe('SpritePipelineTimingCollector', () => {
     expect(snapshot.invalidSamples).toBeGreaterThan(0);
   });
 
+  it('returns the same finalized snapshot when read more than once', () => {
+    const samples = [0, 5, 10, 15];
+    const timing = new SpritePipelineTimingCollector(() => samples.shift() ?? Number.NaN);
+    timing.finish('provider', timing.start());
+
+    expect(timing.snapshot()).toEqual(timing.snapshot());
+  });
+
   it('rejects timing documents whose total does not reconcile with their stages', () => {
     const timing = new SpritePipelineTimingCollector(() => 0).snapshot();
     expect(

@@ -18,8 +18,8 @@ import path from 'node:path';
 
 /**
  * Resolve the node_modules directory that holds the project's third-party
- * packages, handling both regular checkouts (node_modules in the repo root)
- * and git worktrees (node_modules in the main checkout).
+ * packages, handling regular checkouts and git worktrees. A populated
+ * worktree-local directory takes precedence over the main checkout.
  *
  * @param {string} repoRoot  absolute path of the current working tree root
  * @returns {string | null}  absolute path to the node_modules dir, or null
@@ -68,8 +68,8 @@ export function createRepoRequire(repoRoot, fallbackUrl) {
       '[node-modules-resolver] WARNING: could not locate node_modules — third-party requires may fail\n',
     );
   }
-  // Anchor require at the main checkout's package.json so node_modules resolution
-  // starts at the correct root on the first lookup — no directory traversal needed.
+  // Anchor require at the selected checkout's package.json so node_modules
+  // resolution starts at the correct root on the first lookup.
   const anchor = nodeModules ? path.join(nodeModules, '..', 'package.json') : fallbackUrl;
   return createRequire(anchor);
 }

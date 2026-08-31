@@ -9,8 +9,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { renderHtml } from '../renderer.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 test('renderHtml returns a complete standalone document', () => {
   const html = renderHtml('workflow-1');
@@ -44,26 +49,55 @@ test('the client script wires busy state, load/reload, and refresh', () => {
   assert.match(html, /Refreshing…/);
 });
 
-test('the client script wires the tab bar and all three read surfaces', () => {
+test('the client script wires the tab bar and unified Briefs/Sprites surfaces', () => {
   const html = renderHtml('x');
   assert.match(html, /function renderTabs\(/);
   assert.match(html, /function renderBacklog\(/);
   assert.match(html, /function renderFiles\(/);
   assert.match(html, /function renderRuns\(/);
+  assert.match(html, /function renderBriefs\(/);
+  assert.match(html, /id: 'briefs', label: 'Briefs'/);
+  assert.match(html, /id: 'sprites', label: 'Sprites'/);
+  assert.doesNotMatch(html, /id: 'files'/);
+  assert.doesNotMatch(html, /id: 'author'/);
   // B1 is the READ surface only — Queue + Requests tabs are the B2 follow-up.
   assert.doesNotMatch(html, /function renderQueue\(/);
   assert.doesNotMatch(html, /function renderRequests\(/);
 });
 
-test('the Author tab exposes the complete Azure workflow controls and visible refresh', () => {
+test('Backlog is the first tab AND the default active tab', () => {
   const html = renderHtml('x');
-  assert.match(html, /id: 'author', label: 'Author'/);
+  const tabsMatch = html.match(/var TABS = \[([\s\S]*?)\];/);
+  assert.ok(tabsMatch, 'TABS literal present');
+  const ids = [...tabsMatch[1].matchAll(/id: '([a-z]+)'/g)].map((m) => m[1]);
+  assert.deepEqual(ids, ['backlog', 'briefs', 'sprites'], 'Backlog must be first in tab order');
+  assert.match(html, /var activeTab = 'backlog'/, 'Backlog must be the default active tab');
+});
+
+test('the header subtitle is tab-contextual, not a Sprites-specific sentence shown on every tab', () => {
+  const html = renderHtml('x');
+  assert.match(html, /var TAB_SUBTITLES = \{/);
+  assert.match(html, /backlog: '[^']+'/);
+  assert.match(html, /briefs: '[^']+'/);
+  assert.match(html, /sprites: '[^']+'/);
+  assert.match(html, /TAB_SUBTITLES\[activeTab\] \|\| TAB_SUBTITLES\.briefs/);
+});
+
+test('the Briefs page exposes the complete Azure workflow controls and compact refresh', () => {
+  const html = renderHtml('x');
   assert.match(html, /function renderAuthor\(/);
-  assert.match(html, /Refresh Azure workflow/);
+  assert.match(html, /Refresh Azure/);
+  assert.match(html, /class: 'refresh-mini'/);
+  assert.doesNotMatch(html, /Refresh Azure workflow/);
   assert.match(html, /\/api\/workflow\/request/);
+  assert.match(html, /\/api\/workflow\/edit/);
+  assert.match(html, /Edit request/);
   assert.match(html, /\/api\/workflow\/synthesize/);
   assert.match(html, /\/api\/workflow\/brief/);
   assert.match(html, /\/api\/workflow\/generate/);
+  assert.match(html, /Generate sprite/);
+  assert.match(html, /activeTab = 'sprites'/);
+  assert.match(html, /Back to Briefs/);
   assert.match(html, /\/api\/workflow\/postprocess/);
   assert.match(html, /\/api\/workflow\/judge/);
   assert.match(html, /\/api\/workflow\/approve/);
@@ -75,7 +109,206 @@ test('the Author tab exposes the complete Azure workflow controls and visible re
   assert.doesNotMatch(html, /worker\/start/);
 });
 
-test('Author workflow mutations serialize duplicate clicks until the state refresh settles', () => {
+test('Briefs exposes the same request context and operations as the GitHub asset-request form', () => {
+  const html = renderHtml('x');
+  assert.match(html, /Floor context/);
+  assert.match(html, /Floor intensity/);
+  assert.match(html, /Enemy family context/);
+  assert.match(html, /Mob role context/);
+  assert.match(html, /Request priority/);
+  assert.match(html, /Requester identity/);
+  assert.match(html, /Floor injection override/);
+  assert.match(html, /Family injection override/);
+  assert.match(html, /Sprite category injection override/);
+  assert.match(html, /state\.assetContext\.capabilities/);
+  assert.match(html, /state\.assetContext\?\.categoryDesignLanguage/);
+  assert.match(html, /canonicalFloorInjection/);
+  assert.match(html, /canonicalFamilyInjection/);
+  assert.match(html, /injectionOverrides:/);
+});
+
+test('Briefs provides a multiline direction editor, full request template preview, and bottom create action', () => {
+  const html = renderHtml('x');
+  assert.match(html, /'aria-label': 'Art direction brief'/);
+  assert.match(html, /text: 'View full template'/);
+  assert.match(html, /function fullRequestTemplate\(/);
+  assert.match(html, /FULL SYNTHESIS REQUEST/);
+  assert.match(html, /Crawler design-language injection \(always applied\)/);
+  assert.match(
+    html,
+    /Crawler uses a classic RPG 3\/4 orthographic perspective to present a dark-fantasy/,
+  );
+  const canonicalSource = readFileSync(
+    path.resolve(HERE, '../../../../scripts/sprites/content-direction.ts'),
+    'utf8',
+  );
+  const canonicalBlock = canonicalSource
+    .split('export const CRAWLER_DESIGN_LANGUAGE = [')[1]
+    .split("].join('\\n');")[0];
+  const canonicalDesignLanguage = [...canonicalBlock.matchAll(/'([^']*)'/g)]
+    .map((match) => match[1])
+    .join('\n');
+  const rendererSource = readFileSync(path.resolve(HERE, '../renderer.mjs'), 'utf8');
+  const rendererBlock = rendererSource
+    .split('var CRAWLER_DESIGN_LANGUAGE = [')[1]
+    .split("].join('\\n');")[0];
+  const rendererDesignLanguage = [...rendererBlock.matchAll(/'([^']*)'/g)]
+    .map((match) => match[1])
+    .join('\n');
+  assert.equal(rendererDesignLanguage, canonicalDesignLanguage);
+  assert.match(html, /Sprite category design-language injection/);
+  assert.match(html, /Reference examples/);
+  assert.match(html, /\/api\/workflow\/reference-preview/);
+  assert.match(html, /Current deterministic preview/);
+  assert.match(html, /Enter an asset name to resolve its deterministic reference examples/);
+  assert.doesNotMatch(html, /previewName \|\| '\[not-entered\]'/);
+  assert.match(html, /categoryDraftByType\[selected\.requestedType\]/);
+  assert.match(html, /text: selected\.injectionOverrides\?\.category \|\| ''/);
+  assert.match(html, /normalizeCategoryOverride\(\s+editCategoryInjection\.value/);
+  assert.match(html, /normalizeCategoryOverride\(\s+categoryInjection\.value/);
+  assert.match(html, /var parseRequestTemplate = function parseRequestTemplate/);
+  assert.match(html, /categoryDraftByType\[previousCategoryType\] = categoryInjection\.value/);
+  assert.match(html, /categoryDraftByType: Object\.assign\(\{\}, categoryDraftByType\)/);
+  assert.match(html, /function captureRequestComposerDraft\(/);
+  assert.match(html, /function restoreRequestComposerDraft\(/);
+  assert.match(html, /requestComposerDraft = null;\s+if \(lastState\) render\(lastState\)/);
+  assert.match(html, /if \(editRequestModalOpen\) \{\s+lastState = state;\s+return;/);
+  assert.match(html, /editError\.textContent = lastState\?\.error \|\| 'Workflow action failed\.'/);
+  assert.match(
+    html,
+    /requestTemplateModal = null;\s+referencePreview = null;\s+backdrop\.remove\(\)/,
+  );
+  assert.match(html, /'aria-label': 'Editable full synthesis request template'/);
+  assert.match(html, /text: 'Apply template edits'/);
+  assert.match(html, /function applyTemplateEdits\(/);
+  const applyTemplateSource = html.slice(
+    html.indexOf('function applyTemplateEdits('),
+    html.indexOf("var viewTemplate = h('button'"),
+  );
+  assert.ok(
+    applyTemplateSource.indexOf("floorNumber.value = edited.floorNumber === '[none]' ? ''") >
+      applyTemplateSource.indexOf('updateRoleOptions()'),
+  );
+  assert.match(html, /template-actions/);
+  assert.match(html, /class: 'request-actions'/);
+  assert.ok(html.indexOf("class: 'template-actions'") < html.indexOf("class: 'request-actions'"));
+  assert.match(html, /title: 'Stable consumer-facing asset identifier'/);
+  assert.match(html, /title: 'Choose the generated sprite category'/);
+  assert.match(html, /title: 'Save this request and queue it for Azure synthesis'/);
+});
+
+test('the create-request action is labeled "Generate Brief" everywhere, not "Create request"', () => {
+  const html = renderHtml('x');
+  assert.match(html, /text: 'Generate Brief'/);
+  assert.match(html, /Generating brief…/);
+  assert.match(html, /after Generate Brief/);
+  assert.match(html, /Generate a brief to begin synthesis\./);
+  assert.doesNotMatch(html, /Create request/);
+  assert.doesNotMatch(html, /Creating request/);
+});
+
+test('the Briefs request list is a searchable, stage-filterable picker (mirrors the Sprites run picker)', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function renderRequestPicker\(/);
+  assert.match(html, /function filteredRequests\(/);
+  assert.match(
+    html,
+    /filterRequests\(workflow\.items \|\| \[\], requestStageFilter, requestSearch\)/,
+  );
+  assert.match(html, /var requestStageFilter = 'all'/);
+  assert.match(html, /var requestSearch = ''/);
+  // Stage <select> covers the full canonical WORKFLOW_STAGES list (13 stages),
+  // not just the transitions a first read of the request might assume.
+  assert.match(html, /var REQUEST_STAGE_FILTERS = \[/);
+  [
+    'draft',
+    'synthesizing',
+    'candidates',
+    'generating',
+    'sheet',
+    'postprocessing',
+    'postprocessed',
+    'judging',
+    'variants',
+    'approved',
+    'checked-in',
+    'tagging',
+    'done',
+  ].forEach((stage) => {
+    assert.ok(html.includes(`'${stage}'`), `REQUEST_STAGE_FILTERS must include '${stage}'`);
+  });
+  assert.match(html, /title: 'Filter requests by workflow stage'/);
+  assert.match(html, /'aria-label': 'Filter requests by name or requester'/);
+  assert.match(html, /renderRequestPicker\(workflow\)/);
+  // The list renders name + stage as separate elements (a stage pill), not one
+  // opaque concatenated button label, while still exposing the old combined
+  // string as a hover tooltip.
+  assert.match(html, /class: 'stage-pill', text: item\.stage/);
+  assert.match(html, /title: item\.name \+ ' · ' \+ item\.stage/);
+  assert.match(html, /No requests match the current stage\/search filter\./);
+  // The predicate itself is the spliced pure lib module, not a re-implementation.
+  assert.match(html, /function filterRequests\(/);
+  assert.doesNotMatch(html, /__REQUEST_FILTER_FNS__/);
+});
+
+test('the "Edit request" modal has a floor-intensity input that is distinct from the floor-context capability, and its .field layout is styled', () => {
+  const html = renderHtml('x');
+  // REGRESSION: the edit-request save patch used to silently corrupt the
+  // user's free-typed floor intensity by substituting the unrelated
+  // floor-context capability's canonical depth (editCapability()?.floor).
+  assert.doesNotMatch(html, /floor: editCapability\(\)\?\.floor \|\| null/);
+  assert.match(html, /var editFloorNumber = field\('Floor intensity', h\('input', \{/);
+  assert.match(html, /title: 'Optional numeric floor intensity used by synthesis'/);
+  assert.match(
+    html,
+    /floor: editFloorNumber\.value === '' \? null : Number\(editFloorNumber\.value\)/,
+  );
+  assert.match(html, /\.field \{ display:\s*block;/);
+});
+
+test('the Generate sprite button never dereferences selected.candidates without a null guard', () => {
+  const html = renderHtml('x');
+  // REGRESSION: a request in the 'candidates' or 'draft' stage whose
+  // `candidates` array has not yet been populated by the sidecar (undefined,
+  // not []) crashed the whole Briefs detail panel with
+  // "Cannot read properties of undefined (reading 'length')" because the
+  // `selected.candidates.length` fallback was unguarded.
+  assert.doesNotMatch(html, /selected\.chosenCandidatePath \|\| selected\.candidates\.length\)/);
+  assert.match(
+    html,
+    /selected\.chosenCandidatePath \|\| \(selected\.candidates && selected\.candidates\.length\)\)/,
+  );
+});
+
+test('a chosen synthesized brief has persistent summary, card, badge, and button states', () => {
+  const html = renderHtml('x');
+  assert.match(html, /class: 'panel chosen-brief-summary'/);
+  assert.match(html, /text: '✓ Chosen brief: ' \+ chosenCandidate\.id/);
+  assert.match(html, /class: 'card brief-candidate' \+ \(isChosen \? ' chosen' : ''\)/);
+  assert.match(html, /class: 'chosen-brief-pill', text: '✓ Chosen'/);
+  assert.match(html, /text: isChosen \? '✓ Chosen brief' : 'Choose this brief'/);
+  assert.match(html, /chooseBrief\.disabled = isChosen/);
+  assert.match(html, /\.brief-candidate\.chosen \{/);
+  assert.match(html, /\.chosen-brief-summary \{/);
+});
+
+test('Generate sprite opens an exact editable local-generation request instead of queueing', () => {
+  const html = renderHtml('workflow-generation-request');
+  assert.match(html, /k === 'disabled'/);
+  assert.match(html, /Review exact Azure request/);
+  assert.match(html, /Exact Azure image generation prompt/);
+  assert.match(html, /Ordered provider images/);
+  assert.match(html, /Add approved reference/);
+  assert.match(html, /Review prompt edits/);
+  assert.match(html, /Generate sprite locally/);
+  assert.match(html, /\/api\/workflow\/generation-preview/);
+  assert.match(html, /previewToken/);
+  assert.match(html, /Generating locally/);
+  assert.doesNotMatch(html, /Queueing Azure generation/);
+  assert.doesNotMatch(html, /Waiting for Azure queue output/);
+});
+
+test('Briefs workflow mutations serialize duplicate clicks until the state refresh settles', () => {
   const html = renderHtml('x');
   assert.match(html, /var workflowMutationInFlight = false/);
   assert.match(html, /if \(workflowMutationInFlight\) return Promise\.resolve\(false\)/);
@@ -101,6 +334,11 @@ test('unsaved brief YAML survives a polled re-render until the save succeeds', (
   // The focused editor and caret are restored after the re-render.
   assert.match(html, /data-yaml-draft-key/);
   assert.match(html, /setSelectionRange\(activeYaml\.start, activeYaml\.end\)/);
+});
+
+test('the embedded Postprocess Debugger is visible only on the Sprites tab', () => {
+  const html = renderHtml('x');
+  assert.match(html, /postprocessHost\.hidden = activeTab !== 'sprites'/);
 });
 
 test('the client script wires SSE + run selection', () => {
@@ -275,11 +513,13 @@ test('the client script splices the serialized pure lib helpers (no placeholders
   assert.doesNotMatch(html, /__FEEDBACK_SUMMARY_FNS__/);
   assert.doesNotMatch(html, /__POSTPROCESS_HANDOFF_FNS__/);
   assert.doesNotMatch(html, /__BRIEF_LOOKUP_FNS__/);
+  assert.doesNotMatch(html, /__REQUEST_FILTER_FNS__/);
   assert.match(html, /function filterRuns\(/);
   assert.match(html, /function computeSheetDisplaySize\(/);
   assert.match(html, /function summarizeJudge\(/);
   assert.match(html, /function summarizeSensors\(/);
   assert.match(html, /function resolveBriefEntry\(/);
+  assert.match(html, /function filterRequests\(/);
 });
 
 test('runs support type-to-filter search alongside the existing native promotion select', () => {
@@ -443,7 +683,7 @@ test('opening the embedded Post-process Debugger reveals the persistent host, la
   assert.match(html, /window\.__postprocessReadyMetric/);
 });
 
-test('the persistent #postprocess-host sits outside #app and only displays on Runs', () => {
+test('the persistent #postprocess-host sits outside #app and only displays on Sprites', () => {
   const html = renderHtml('x');
   const appAt = html.indexOf('id="app"');
   const hostAt = html.indexOf('id="postprocess-host"');
@@ -456,11 +696,11 @@ test('the persistent #postprocess-host sits outside #app and only displays on Ru
   assert.match(html, /<div id="postprocess-host" hidden>/);
   assert.doesNotMatch(html, /<iframe/); // no iframe in the initial server-rendered shell
   // render() only toggles the sibling's visibility; it must not recreate the
-  // iframe while a Runs operator is editing postprocess settings.
+  // iframe while a Sprites operator is editing postprocess settings.
   const renderBody = html.slice(
     html.indexOf('function render(state) {'),
     html.indexOf('var selecting = false;'),
   );
-  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'runs'/);
+  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'sprites'/);
   assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

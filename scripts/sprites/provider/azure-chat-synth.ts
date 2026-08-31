@@ -30,6 +30,8 @@ import type {
 import { SynthProviderError } from './synth-types.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
 import { contentDirectionBlock } from '../content-direction.js';
+import { spriteCategoryDesignLanguageBlock } from '../sprite-category-design-language.js';
+import { directionAddendaFromContext } from '../asset-request-context.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -195,7 +197,21 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const lines: string[] = [
     "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
-    contentDirectionBlock(request.floor),
+    contentDirectionBlock(
+      request.floor,
+      request.assetRequestContext
+        ? directionAddendaFromContext(request.assetRequestContext)
+        : undefined,
+    ),
+    ...(request.type
+      ? [
+          '',
+          spriteCategoryDesignLanguageBlock(
+            request.type,
+            request.assetRequestContext?.injections.category,
+          ),
+        ]
+      : []),
     ...(request.theme
       ? [
           '',
@@ -207,7 +223,7 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
     '',
     'A strong brief names the pose, silhouette, orientation, proportions, materials, dominant colors by name, and one memorable contradiction. Use specific nouns and verbs instead of generic adjectives. Do not prescribe hex colors.',
     '',
-    'Keep taxonomy literal unless the request says otherwise. Items are inanimate by default; do not add faces, eyes, mouths, limbs, expressions, or creature anatomy. Mobs face left by default. Weapons are vertical by default with the grip at the bottom. Tiles fill their frame and have no facing.',
+    'Keep taxonomy literal unless the request says otherwise. Items are inanimate by default; do not add faces, eyes, mouths, limbs, expressions, or creature anatomy. Mobs default to a screen-right three-quarter orthographic turn unless the request gives an explicit facing. Weapons are vertical by default with the grip at the bottom. Tiles fill their frame and have no facing.',
     '',
     'Produce visibly different candidates, not palette swaps. Vary silhouette, proportion, pose, construction, social role, and one on-theme contradiction while keeping the core subject and gameplay role intact.',
     '',
@@ -252,6 +268,16 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
   return [
     `Subject name: ${request.name}.`,
     ...(request.theme ? [`Theme set: ${request.theme.displayName} (${request.theme.setId}).`] : []),
+    ...(request.assetRequestContext
+      ? [
+          `Game sources: ${Object.entries(request.assetRequestContext.sourceIds)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(', ')}.`,
+          ...(request.assetRequestContext.mobRole
+            ? [`Mob role: ${request.assetRequestContext.mobRole}.`]
+            : []),
+        ]
+      : []),
     ...(hint ? [`Additional direction: ${hint}`] : []),
     typeLine,
     `Floor: ${request.floor} of 20.`,

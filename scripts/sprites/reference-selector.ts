@@ -68,6 +68,18 @@ export interface ReferenceSelection {
   readonly sameTypeCount: number;
 }
 
+export function listEligibleReferences(
+  candidates: readonly ManifestEntry[],
+  briefName: string,
+  dislikedSpriteNames: ReadonlySet<string> = new Set<string>(),
+): ManifestEntry[] {
+  return candidates
+    .map((candidate) => toEligible(candidate, briefName, dislikedSpriteNames))
+    .filter((candidate): candidate is EligibleEntry => candidate !== null)
+    .sort(compareEligible)
+    .map((candidate) => candidate.entry);
+}
+
 /**
  * Derive the stable numeric seed for a brief. Namespaced + versioned so the
  * stream is stable per brief yet changes if the algorithm version bumps.

@@ -57,7 +57,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
@@ -85,7 +85,11 @@ import {
 import { createDefaultCheckinDeps } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { briefDirectoryForType } from '../brief-paths.js';
-import { generateOne } from '../generate-one.js';
+import {
+  generateOne,
+  prepareGenerationRequest,
+  type PreparedGenerationRequest,
+} from '../generate-one.js';
 import {
   DEFAULT_CATALOG_PATH,
   mergeChangedCatalogEntries,
@@ -99,6 +103,8 @@ import {
   createTextProvider,
   createVisionProvider,
 } from '../provider/factory.js';
+import type { ImageProvider } from '../provider/types.js';
+import type { TextProvider } from '../provider/text-types.js';
 import { NoopAssetQueue } from '../queue/noop-queue.js';
 import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
@@ -121,8 +127,27 @@ import {
   RerunError,
   type RerunErrorKind,
 } from '../rerun.js';
-import { synthesizeBrief } from '../synthesize-brief.js';
+import { normaliseName, synthesizeBrief, SynthesizeBriefError } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
+import {
+  AssetRequestContextError,
+  getAssetRequestContextCapabilities,
+  MOB_ROLES,
+  resolveAssetRequestContext,
+  type DirectionInjectionOverrides,
+  type MobRole,
+  type AssetRequestContext,
+} from '../asset-request-context.js';
+import {
+  parseOptionalPriority,
+  parseOptionalRequester,
+  type AssetRequestPriority,
+} from '../asset-request.js';
+import { SPRITE_CATEGORY_DESIGN_LANGUAGE } from '../sprite-category-design-language.js';
+import { resolveReferenceSelection } from '../resolve-reference-selection.js';
+import { SELECTOR_VERSION } from '../reference-selector.js';
+import { resolveGeneratedAssetPath } from '../generated-asset-path.js';
+import { isSpriteType } from '../../../src/shared/sprite-types.js';
 import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
@@ -302,6 +327,9 @@ export interface SidecarDeps {
    * so local sidecar usage keeps the prior synchronous generate behavior.
    */
   readonly queue?: AssetQueue;
+  /** Provider injections keep exact-request integration tests network-free. */
+  readonly imageProvider?: ImageProvider;
+  readonly textProvider?: TextProvider | null;
   /**
    * In-process queue worker. Defaults to a controller wired to `queue`/`store`.
    * `buildServer` never starts it — the `azure-queue` backend disables the
@@ -362,6 +390,12 @@ interface WorkflowSynthesizeBody {
   readonly candidates?: unknown;
   readonly sizeVariant?: unknown;
   readonly floor?: unknown;
+  readonly floorId?: unknown;
+  readonly familyId?: unknown;
+  readonly mobRole?: unknown;
+  readonly injectionOverrides?: unknown;
+  readonly priority?: unknown;
+  readonly requester?: unknown;
 }
 
 interface WorkflowPromoteBody {
@@ -373,6 +407,14 @@ interface WorkflowPromoteBody {
 
 interface WorkflowGenerateBody {
   readonly briefPath?: unknown;
+  readonly previewToken?: unknown;
+}
+
+interface WorkflowGenerationPreviewBody {
+  readonly sourceBriefPath?: unknown;
+  readonly previewToken?: unknown;
+  readonly prompt?: unknown;
+  readonly referenceAssetPaths?: unknown;
 }
 
 interface WorkflowBriefSaveBody {
@@ -666,6 +708,40 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
   };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
+  const preparedRequests = new Map<
+    string,
+    {
+      prepared: PreparedGenerationRequest;
+      sourcePath: string;
+      sourceHash: string;
+      expiresAt: number;
+      inFlight: boolean;
+    }
+  >();
+  const resolveWorkflowBriefPath = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const absolutePath = resolveRepoPath(deps.repoRoot, value);
+    if (!absolutePath) return null;
+    const relativePath = toRepoRelativePath(deps.repoRoot, absolutePath);
+    return relativePath.endsWith('.yaml') &&
+      (relativePath.startsWith('briefs/') || relativePath.startsWith('generated/brief-candidates/'))
+      ? absolutePath
+      : null;
+  };
+  const imageProvider = () =>
+    deps.imageProvider ?? createImageProvider({ env: deps.env ?? process.env });
+  const textProvider = () =>
+    deps.textProvider === undefined
+      ? createTextProvider({ env: deps.env ?? process.env })
+      : deps.textProvider;
+  const readPreparedRequest = (token: string) => {
+    const record = preparedRequests.get(token);
+    if (!record || record.expiresAt <= Date.now()) {
+      preparedRequests.delete(token);
+      return null;
+    }
+    return record;
+  };
   // The sidecar owns an in-process worker so a queue consumer always exists
   // wherever the sidecar runs. It is NOT started here — see worker-controller.ts.
   const worker: WorkerController =
@@ -2411,6 +2487,65 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     },
   );
 
+  app.get('/api/workflow/asset-context', async () => ({
+    capabilities: getAssetRequestContextCapabilities(),
+    categoryDesignLanguage: SPRITE_CATEGORY_DESIGN_LANGUAGE,
+  }));
+
+  app.get<{ Querystring: { name?: string; type?: string } }>(
+    '/api/workflow/reference-preview',
+    async (req, reply) => {
+      const name = req.query.name?.trim();
+      const type = req.query.type?.trim();
+      if (!name || !type || !isSpriteType(type)) {
+        reply.code(400);
+        return { error: 'bad-request', message: 'name and a concrete sprite type are required' };
+      }
+      let normalizedName: string;
+      try {
+        normalizedName = normaliseName(name);
+      } catch (error) {
+        if (!(error instanceof SynthesizeBriefError)) throw error;
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
+      const resolved = resolveReferenceSelection({
+        repoRoot: deps.repoRoot,
+        briefName: normalizedName,
+        briefType: type,
+      });
+      return {
+        selectorVersion: SELECTOR_VERSION,
+        seed: resolved.selection.seed,
+        currentPreview: true,
+        references: resolved.selection.selected.flatMap((entry) => {
+          const absolutePath = resolveGeneratedAssetPath(
+            entry.assetPath,
+            resolved.publicAssetsRoot,
+            'reference-preview',
+          );
+          try {
+            return [
+              {
+                briefId: entry.briefId,
+                spriteName: entry.spriteName,
+                type: entry.type,
+                assetPath: entry.assetPath,
+                sensorScore: entry.sensorScore,
+                judgeScore: entry.judgeScore,
+                imageDataUrl: `data:image/png;base64,${readFileSync(absolutePath).toString('base64')}`,
+              },
+            ];
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            req.log.warn(`reference-preview skipped unreadable ${entry.assetPath}: ${message}`);
+            return [];
+          }
+        }),
+      };
+    },
+  );
+
   app.post<{ Body: WorkflowSynthesizeBody }>('/api/workflow/synthesize', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowSynthesizeBody;
     if (typeof body.name !== 'string' || body.name.trim() === '') {
@@ -2455,7 +2590,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       candidates = body.candidates;
     }
-    let floor = 1;
+    let floor: number | undefined;
     if (body.floor !== undefined) {
       if (
         typeof body.floor !== 'number' ||
@@ -2482,6 +2617,106 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       sizeVariant = body.sizeVariant;
     }
+    let floorId: string | undefined;
+    if (body.floorId !== undefined) {
+      if (typeof body.floorId !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.floorId must be a string when provided' };
+      }
+      floorId = body.floorId.trim() || undefined;
+    }
+    let familyId: string | undefined;
+    if (body.familyId !== undefined) {
+      if (typeof body.familyId !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.familyId must be a string when provided' };
+      }
+      familyId = body.familyId.trim() || undefined;
+    }
+    let mobRole: MobRole | undefined;
+    if (body.mobRole !== undefined && body.mobRole !== null) {
+      if (typeof body.mobRole !== 'string' || !MOB_ROLES.includes(body.mobRole as MobRole)) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: `body.mobRole must be one of ${MOB_ROLES.join(', ')}`,
+        };
+      }
+      mobRole = body.mobRole as MobRole;
+    }
+    let injectionOverrides: DirectionInjectionOverrides | undefined;
+    if (body.injectionOverrides !== undefined && body.injectionOverrides !== null) {
+      if (
+        !body.injectionOverrides ||
+        typeof body.injectionOverrides !== 'object' ||
+        Array.isArray(body.injectionOverrides)
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message:
+            'body.injectionOverrides must be an object with optional floor, family, and category strings',
+        };
+      }
+      const values = body.injectionOverrides as Record<string, unknown>;
+      if (
+        Object.keys(values).some(
+          (key) => key !== 'floor' && key !== 'family' && key !== 'category',
+        ) ||
+        Object.values(values).some((value) => typeof value !== 'string')
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.injectionOverrides accepts only floor, family, and category string values',
+        };
+      }
+      injectionOverrides = {
+        ...(typeof values.floor === 'string' && values.floor.trim() ? { floor: values.floor } : {}),
+        ...(typeof values.family === 'string' && values.family.trim()
+          ? { family: values.family }
+          : {}),
+        ...(typeof values.category === 'string' && values.category.trim()
+          ? { category: values.category }
+          : {}),
+      };
+    }
+    let priority: AssetRequestPriority;
+    let requester: string | undefined;
+    try {
+      priority = parseOptionalPriority(body.priority, 'body.priority') ?? 'normal';
+      requester = parseOptionalRequester(body.requester, 'body.requester');
+    } catch (error) {
+      if (error instanceof Error) {
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
+      throw error;
+    }
+    let assetRequestContext: AssetRequestContext | undefined;
+    try {
+      assetRequestContext =
+        floorId || familyId || mobRole || injectionOverrides || floor !== undefined
+          ? resolveAssetRequestContext({
+              floor,
+              ...(floorId ? { floorId } : {}),
+              ...(familyId ? { familyId } : {}),
+              ...(mobRole ? { mobRole } : {}),
+              ...(injectionOverrides ? { injectionOverrides } : {}),
+            })
+          : undefined;
+    } catch (error) {
+      if (error instanceof AssetRequestContextError) {
+        reply.code(400);
+        return { error: 'bad-request', message: error.message };
+      }
+      throw error;
+    }
+    const effectiveFloor =
+      floor ??
+      (assetRequestContext?.sourceIds.floorId
+        ? Number(assetRequestContext.sourceIds.floorId.replace(/^floor/, ''))
+        : 1);
 
     try {
       const env = deps.env ?? process.env;
@@ -2491,8 +2726,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(briefHint ? { briefHint } : {}),
         ...(type ? { type } : {}),
         ...(sizeVariant ? { sizeVariant } : {}),
+        ...(assetRequestContext ? { assetRequestContext } : {}),
+        requestMetadata: {
+          priority,
+          ...(requester ? { requester } : {}),
+        },
+        ...(assetRequestContext?.mobRole ? { mobRole: assetRequestContext.mobRole } : {}),
         candidates,
-        floor,
+        floor: effectiveFloor,
         partial: true,
         provider,
         repoRoot: deps.repoRoot,
@@ -2508,6 +2749,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         name: result.name,
         type: result.type,
         sizeVariant: result.sizeVariant,
+        requestMetadata: {
+          priority,
+          ...(requester ? { requester } : {}),
+        },
+        ...(assetRequestContext ? { assetRequestContext } : {}),
         written: result.written.map((candidate) => ({
           id: candidate.id,
           yamlPath: toRepoRelativePath(deps.repoRoot, candidate.yamlPath),
@@ -2604,12 +2850,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: 'yamlPath must be a repo-relative path inside the repo',
       };
     }
-    // Restrict edits to brief YAML files so this endpoint can never overwrite
-    // arbitrary repo files.
+    // Restrict edits to authored briefs and synthesized candidates so this
+    // endpoint can never overwrite arbitrary repo files. The synthesized
+    // candidate namespace is durable workflow state and is intentionally
+    // outside briefs/ until the operator promotes a candidate.
     const relPosix = toRepoRelativePath(deps.repoRoot, abs);
-    if (!relPosix.startsWith('briefs/') || !relPosix.endsWith('.yaml')) {
+    const editableYaml =
+      relPosix.endsWith('.yaml') &&
+      (relPosix.startsWith('briefs/') || relPosix.startsWith('generated/brief-candidates/'));
+    if (!editableYaml) {
       reply.code(400);
-      return { error: 'bad-request', message: 'yamlPath must be a briefs/**/*.yaml file' };
+      return {
+        error: 'bad-request',
+        message: 'yamlPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+      };
     }
     // Validate BEFORE persisting durably: write the candidate text, then run it
     // through the full brief loader (YAML parse + per-type defaults merge + Zod
@@ -2644,7 +2898,127 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     return { yamlPath: relPosix, description, yaml: body.yaml };
   });
 
+  app.post<{ Body: WorkflowGenerationPreviewBody }>(
+    '/api/workflow/generation-preview',
+    async (req, reply) => {
+      const origin = req.headers.origin;
+      if (typeof origin === 'string') {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'Direct browser requests are not allowed on this route.',
+        };
+      }
+      const body = (req.body ?? {}) as WorkflowGenerationPreviewBody;
+      const previous =
+        typeof body.previewToken === 'string' ? readPreparedRequest(body.previewToken) : null;
+      if (previous?.inFlight) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-in-use',
+          message: 'This reviewed generation request is already being generated.',
+        };
+      }
+      const sourcePath =
+        resolveWorkflowBriefPath(body.sourceBriefPath) ?? previous?.sourcePath ?? null;
+      if (!sourcePath || !existsSync(sourcePath)) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message:
+            'sourceBriefPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+        };
+      }
+      if (body.prompt !== undefined && typeof body.prompt !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'prompt must be a string' };
+      }
+      if (
+        body.referenceAssetPaths !== undefined &&
+        (!Array.isArray(body.referenceAssetPaths) ||
+          !body.referenceAssetPaths.every((value) => typeof value === 'string'))
+      ) {
+        reply.code(400);
+        return { error: 'bad-request', message: 'referenceAssetPaths must be a string array' };
+      }
+      try {
+        const currentSourceHash = createHash('sha256')
+          .update(readFileSync(sourcePath))
+          .digest('hex');
+        if (previous && previous.sourceHash !== currentSourceHash) {
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message: 'The chosen brief changed after this request was previewed. Preview it again.',
+          };
+        }
+        const prepared = await prepareGenerationRequest({
+          briefPath: sourcePath,
+          provider: imageProvider(),
+          textProvider: previous ? null : textProvider(),
+          repoRoot: deps.repoRoot,
+          ...(previous
+            ? {
+                preloaded: {
+                  ...previous.prepared.loaded,
+                  brief: previous.prepared.effectiveBrief,
+                },
+              }
+            : {}),
+          ...(typeof body.prompt === 'string' ? { promptOverride: body.prompt } : {}),
+          ...(Array.isArray(body.referenceAssetPaths)
+            ? { referenceAssetPaths: body.referenceAssetPaths as string[] }
+            : {}),
+        });
+        const token = randomUUID();
+        const expiresAt = Date.now() + 30 * 60_000;
+        if (typeof body.previewToken === 'string') {
+          preparedRequests.delete(body.previewToken);
+        }
+        preparedRequests.set(token, {
+          prepared,
+          sourcePath,
+          sourceHash: currentSourceHash,
+          expiresAt,
+          inFlight: false,
+        });
+        return {
+          previewToken: token,
+          prompt: prepared.prompt,
+          promptHash: prepared.promptSha256,
+          references: prepared.referenceInputs.map((input, index) => ({
+            index,
+            kind: input.kind,
+            assetPath: input.assetPath,
+            contentHash: input.contentHash,
+            sprite: input.sprite ?? null,
+            imageDataUrl: `data:image/png;base64,${input.png.toString('base64')}`,
+          })),
+          selectedAssetPaths: prepared.referenceInputs
+            .filter((input) => input.kind === 'approved')
+            .map((input) => input.assetPath),
+          referenceCatalog: prepared.eligibleReferenceSprites,
+          expiresAt: new Date(expiresAt).toISOString(),
+        };
+      } catch (error) {
+        reply.code(400);
+        return {
+          error: 'generation-preview-failed',
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+
   app.post<{ Body: WorkflowGenerateBody }>('/api/workflow/generate', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string') {
+      reply.code(403);
+      return {
+        error: 'forbidden-origin',
+        message: 'Direct browser requests are not allowed on this route.',
+      };
+    }
     const body = (req.body ?? {}) as WorkflowGenerateBody;
     if (typeof body.briefPath !== 'string' || body.briefPath.trim() === '') {
       reply.code(400);
@@ -2666,9 +3040,28 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // (keyed by repo-relative path), idempotent, covering BOTH the queue and the
     // inline branches below.
     await mirrorBriefToStore(store, deps.repoRoot, briefPath);
+    let preparedRecord: ReturnType<typeof readPreparedRequest> = null;
+    let validatingPreparedRequest = false;
     try {
       const env = deps.env ?? process.env;
-      if (queue.backend !== 'noop') {
+      preparedRecord =
+        typeof body.previewToken === 'string' ? readPreparedRequest(body.previewToken) : null;
+      if (typeof body.previewToken === 'string' && !preparedRecord) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-expired',
+          message: 'The reviewed generation request expired. Preview it again before generating.',
+        };
+      }
+      if (preparedRecord?.inFlight) {
+        reply.code(409);
+        return {
+          error: 'generation-preview-in-use',
+          message: 'This reviewed generation request is already being generated.',
+        };
+      }
+      if (preparedRecord) preparedRecord.inFlight = true;
+      if (!preparedRecord && queue.backend !== 'noop') {
         const briefId = resolveQueuedBriefId(briefPath);
         const requestedAt = new Date().toISOString();
         await queue.enqueue({
@@ -2688,16 +3081,65 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           queueBackend: queue.backend,
         };
       }
+      if (preparedRecord) {
+        validatingPreparedRequest = true;
+        const currentSourceHash = createHash('sha256')
+          .update(readFileSync(preparedRecord.sourcePath))
+          .digest('hex');
+        if (currentSourceHash !== preparedRecord.sourceHash) {
+          preparedRequests.delete(body.previewToken as string);
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message: 'The chosen brief changed after preview. Preview it again before generating.',
+          };
+        }
+        const approvedPaths = preparedRecord.prepared.referenceInputs
+          .filter((input) => input.kind === 'approved')
+          .map((input) => input.assetPath);
+        const current = await prepareGenerationRequest({
+          briefPath: preparedRecord.sourcePath,
+          provider: imageProvider(),
+          textProvider: null,
+          repoRoot: deps.repoRoot,
+          preloaded: {
+            ...preparedRecord.prepared.loaded,
+            brief: preparedRecord.prepared.effectiveBrief,
+          },
+          promptOverride: preparedRecord.prepared.prompt,
+          referenceAssetPaths: approvedPaths,
+        });
+        const expectedHashes = preparedRecord.prepared.referenceInputs.map(
+          (input) => input.contentHash,
+        );
+        const currentHashes = current.referenceInputs.map((input) => input.contentHash);
+        if (
+          current.promptSha256 !== preparedRecord.prepared.promptSha256 ||
+          expectedHashes.length !== currentHashes.length ||
+          expectedHashes.some((hash, index) => hash !== currentHashes[index])
+        ) {
+          preparedRequests.delete(body.previewToken as string);
+          reply.code(409);
+          return {
+            error: 'generation-request-drifted',
+            message:
+              'The prompt or ordered reference images changed after preview. Preview again before generating.',
+          };
+        }
+        validatingPreparedRequest = false;
+      }
       // Generate stores the raw sheet ONLY (Option B, ADR 0024). PostProcess
       // and Judge are explicit operator-driven steps (POST /api/runs/:briefId/
       // :runId/postprocess and /judge); they are NOT run inline here.
       const result = await generateOne({
         briefPath,
-        provider: createImageProvider({ env }),
-        textProvider: createTextProvider({ env }),
+        provider: imageProvider(),
+        textProvider: preparedRecord ? null : textProvider(),
         repoRoot: deps.repoRoot,
         store,
+        ...(preparedRecord ? { prepared: preparedRecord.prepared } : {}),
       });
+      if (preparedRecord) preparedRequests.delete(body.previewToken as string);
       return {
         status: 'completed' as const,
         briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
@@ -2707,9 +3149,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         summary: result.summary,
       };
     } catch (err) {
-      reply.code(500);
+      if (preparedRecord) preparedRecord.inFlight = false;
+      const requestDrifted = typeof body.previewToken === 'string' && validatingPreparedRequest;
+      reply.code(requestDrifted ? 409 : 500);
       return {
-        error: 'generate-failed',
+        error: requestDrifted ? 'generation-request-drifted' : 'generate-failed',
         message: err instanceof Error ? err.message : String(err),
       };
     }

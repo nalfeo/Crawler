@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v2",
   "date": "2026-08-21",
   "session_slug": "azure-sprite-workflow",
-  "task_title": "Complete Azure Sprite Generation Workflow canvas",
+  "task_title": "Unify sprite brief authoring context and reference previews",
   "estimated_apples": 3,
   "apples_rescored_from": 4,
   "rescore_reason": "The implementation is tooling-only: a thin canvas adapter over existing sidecar lifecycle contracts, which is capped at 3 apples by AGENTS.md.",
@@ -31,12 +31,13 @@
         },
         {
           "round": 2,
-          "models": ["gpt-5.3-codex"],
-          "concerns_count": 3,
-          "resolved_count": 3,
+          "models": ["gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
           "clean": true
         }
-      ]
+      ],
+      "notes": "The final category/reference review fixed custom-category overwrite, blank-name reference selection, stale synthesized candidates after prompt edits, preview/generation name normalization drift, composer state loss across rerenders, and contradictory Azure enemy-facing guidance. Live validation then found and fixed an iframe helper scoping bug and new-request category draft loss."
     },
     "multi_model_review": {
       "clean": true,
@@ -54,20 +55,20 @@
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "gemini-3.1-pro-preview",
-      "implementer_model": "gpt-5.6-terra",
-      "head_sha": "8a349794dbcb7586aa288b97c74842e3b75c8927",
+      "grader_model": "claude-opus-4.7",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "213c6b928ce62392b8f9450024708f1e48001d6d",
       "findings": [],
       "criteria": {
         "correctness": 5,
-        "scope_discipline": 5,
+        "scope_discipline": 4,
         "test_coverage": 5,
         "policy_compliance": 5,
         "maintainability": 5
       },
       "verdict": "pass",
       "findings_count": 0,
-      "notes": "The final Azure Workflow Author integration is focused, deterministic, fully covered by the workflow extension suite, and preserves canonical sidecar lifecycle contracts."
+      "notes": "The diff coherently unifies sprite-category design-language injection via a single new source of truth (scripts/sprites/sprite-category-design-language.ts) wired through build-prompt.ts, judge.ts, and azure-chat-synth.ts, and adds a deterministic GET /api/workflow/reference-preview endpoint that reuses the same seeded selectReferences path as generate-one.ts via the extracted resolveReferenceSelection module. Correctness is high: the route rejects missing name/type and requestedType='auto' with 400, normalizes name via normaliseName (translating SynthesizeBriefError to 400), enforces path safety twice (isSafeGeneratedAssetPath during selection plus resolveGeneratedAssetPath post-resolve containment), fails safe on unreadable PNGs by logging and skipping the entry, and never treats the user-supplied name as a filesystem path. editRequestItem in authoring-state.mjs validates every durable field at the state boundary (name, brief, requester, requestedType, sizeVariant, mobRole, priority, floor, floorId, familyId, injectionOverrides), strips injectionOverrides.category when the resolved requestedType is 'auto', and only resets downstream state (candidates, chosenCandidatePath, resolvedType, assetRequestContext, and via resetDownstreamForBriefChange the run/approvedAssetPath) when a prompt-affecting field actually changes - the JSON.stringify comparison for injectionOverrides is safe because normalizeInjectionOverrides produces stable key ordering. Making AssetRequestContextCapability.enemyPackId optional with floor3/floor4 additions is defensively handled and covered by the capability test. Coverage is excellent: sidecar-server tests exercise happy/skip/reject paths on /reference-preview, category injection precedence, and request-local overrides; authoring-state tests cover editRequestItem metadata-only edits, no-op edits, auto-typed category stripping, icon type acceptance, and validation errors; new pure modules request-filter.mjs and request-template.mjs have round-trip and edge-case coverage; and the renderer test enforces CRAWLER_DESIGN_LANGUAGE equality between content-direction.ts and renderer.mjs, preventing drift of the duplicated constant. Determinism holds (no Math.random/Date.now; seeded referenceSelectorSeed(briefName)), all touched paths are tooling/scripts/extensions/docs so no layer-boundary or sim-wiring rules apply, and the change stays within the 3-apple tooling cap. Scope is moderately broad - the edit/filter/template authoring surface lands alongside the category + preview unification and the Backlog/Briefs/Sprites tab reorganization - but every piece serves the stated Briefs authoring-context unification with no unrelated rewrites, hence scope_discipline 4 rather than 5. All 133 workflow node:test cases and 213 vitest sprite unit tests pass at HEAD 213c6b928."
     }
   }
 }

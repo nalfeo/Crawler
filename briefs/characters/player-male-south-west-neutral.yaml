@@ -1,0 +1,48 @@
+type: character
+name: player-male-south-west-neutral
+description: |
+  ONE SINGLE PLAYER CHARACTER SPRITE in a neutral standing rest pose. This is
+  the same exact contestant defined by the supplied player-male-neutral-front
+  reference: identical face, bobblehead scale, hair, tunic, satchel strap,
+  belt, trousers, boots, palette, outline, and proportions. Do not redesign him.
+
+  Rotate the reference character precisely 45 degrees toward SOUTH-WEST: he
+  looks down-left from the camera, with the near left side of the body slightly
+  visible. Follow the supplied south-west skeleton guide for the head, spine,
+  shoulders, arm placement, hip, and legs. Keep a neutral planted stance with no
+  stride, lean, action, weapon, or gesture. Both soles must share one stable
+  floor line and the whole figure must fit with transparent margins.
+
+  Pixel art only: flat cel shading, clean dark outline, 2–3 tones per material,
+  no gradients, painterly texture, dithering, cast shadow, text, border, floor,
+  background, second character, or second pose.
+size:
+  width: 256
+  height: 256
+anchor:
+  x: 128
+  y: 252
+palette:
+  id: kenney-roguelike
+seedFrames:
+  - path: briefs/characters/seeds/player-male-neutral-front.png
+    note: Exact character identity, proportions, palette, outline, and clothing reference.
+  - path: briefs/characters/seeds/player-male-south-west-skeleton.png
+    note: South-west neutral pose skeleton. Match this view and bone placement, not its colors.
+generation:
+  sheet:
+    rows: 1
+    cols: 1
+    emptyCells: []
+    nativeCanvas: 1024
+postprocessing:
+  trimAndFit: false
+  paletteMode: strict
+sensors:
+  anchor:
+    mode: center-of-mass
+judge:
+  enabled: true
+  maxVariants: 1
+minVariations: 0
+tags: [player, contestant, male, neutral, south-west, rig-reference]

@@ -9,6 +9,7 @@
  */
 
 import { SPRITE_TYPES, type BriefTheme } from '../brief-schema.js';
+import type { AssetRequestContext } from '../asset-request-context.js';
 
 export interface SynthesizeBriefRequest {
   /** Human-supplied subject name, e.g. "devils-yoyo", "scythe". */
@@ -21,6 +22,8 @@ export interface SynthesizeBriefRequest {
   readonly briefHint?: string;
   /** Stable themed-set context shared by synthesis, generation, and judging. */
   readonly theme?: BriefTheme;
+  /** Immutable game-context snapshot and request-local direction overrides. */
+  readonly assetRequestContext?: AssetRequestContext;
   /** Caller-supplied type, or null when the model must classify. */
   readonly type: (typeof SPRITE_TYPES)[number] | null;
   /** Dungeon floor intensity, 1..20. */

@@ -1,0 +1,53 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "local-sprite-generation",
+  "task_title": "Local sprite generation request editor",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Revised plan: preview accepts a chosen candidate source path before promotion and freezes one server-side prepared request; final generation consumes that opaque token rather than rebuilding. The token captures effective brief, exact UTF-8 prompt, ordered seed/reference buffers and full SHA-256 digests, intended promoted target path, and source fingerprints. Generation fails closed if candidate bytes, manifest eligibility, pending dislike state, on-disk PNG bytes, or hashes drift; unreadable inputs are errors. Extension persists generating plus a unique generation nonce before the long inline call and applies/reconciles completion only for the same nonce and chosen source hash, recovering completed durable runs after a dropped request. Tests include seed-first order, exact provider parity, no queue enqueue, mutation/hash/dislike drift, stale completion, and local Sheet transition. Catalog returns lightweight metadata and lazy thumbnail URLs rather than all images inline."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "5e099402f99c158696693e3a77e57fbd084da285",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change successfully implements a robust local generation request editor. It cleanly separates request preparation from execution, uses short-lived tokens and nonces to ensure idempotency and prevent drift, blocks concurrent requests, and handles provider failures safely. The UI is integrated smoothly within the extension renderer. Test coverage is excellent, explicitly covering edge cases such as drift, expired tokens, concurrent execution attempts, and cross-origin protection. The code is well-scoped and adheres to all relevant policies."
+    }
+  }
+}

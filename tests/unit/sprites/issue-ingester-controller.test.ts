@@ -97,11 +97,43 @@ describe('issue ingester controller', () => {
       pollIntervalMs: 5,
       now: () => new Date('2026-06-28T00:00:00.000Z'),
     });
+
     controller.start();
     await new Promise((resolve) => setTimeout(resolve, 20));
     await controller.stop();
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0]).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
+  });
+
+  it('persists validated priority and authenticated requester identity from GitHub issues', async () => {
+    const enqueued: AssetRequest[] = [];
+    const queue = {
+      backend: 'azure-queue' as const,
+      enqueue: async (request: AssetRequest) => void enqueued.push(request),
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+    const body = `<!-- ${ASSET_REQUEST_MARKER}
+{"version":1,"name":"bone-dagger","briefSentence":"A chipped bone dagger with twine-wrapped handle.","priority":"high","requester":"spoofed-form-value"}
+-->`;
+    const controller = createIssueIngesterController({
+      queue,
+      store: memStore(),
+      issues: issuesMock({
+        list: async () => [{ number: 45, body, authorLogin: 'github-author' }],
+      }),
+      requestedBy: 'ingest-worker',
+      now: () => new Date('2026-08-21T00:00:00.000Z'),
+    });
+
+    await controller.pollOnce();
+
+    expect(enqueued[0]).toMatchObject({
+      kind: 'issue-request',
+      priority: 'high',
+      requester: 'github-author',
+      requestedBy: 'ingest-worker',
+    });
   });
 
   it('persists effective size in the queue message and claim state across controller reloads', async () => {

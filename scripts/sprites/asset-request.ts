@@ -1,6 +1,14 @@
 import { createHash } from 'node:crypto';
 import { SPRITE_TYPES } from './brief-schema.js';
 import {
+  AssetRequestContextError,
+  MOB_ROLES,
+  resolveAssetRequestContext,
+  type AssetRequestContext,
+  type DirectionInjectionOverrides,
+  type MobRole,
+} from './asset-request-context.js';
+import {
   DEFAULT_SIZE_VARIANT,
   isSizeVariant,
   SIZE_VARIANTS,
@@ -9,6 +17,8 @@ import {
 
 export const ASSET_REQUEST_LABEL = 'asset-request';
 export const ASSET_REQUEST_MARKER = 'asset-request:v1';
+export const ASSET_REQUEST_PRIORITIES = ['normal', 'high'] as const;
+export type AssetRequestPriority = (typeof ASSET_REQUEST_PRIORITIES)[number];
 
 /**
  * Brief-text validation bounds.
@@ -53,6 +63,12 @@ export interface AssetRequestPayload {
   readonly type?: string;
   readonly floor?: number;
   readonly sizeVariant?: string;
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: MobRole;
+  readonly injectionOverrides?: DirectionInjectionOverrides;
+  readonly priority?: AssetRequestPriority;
+  readonly requester?: string;
 }
 
 export interface ParsedAssetRequestIssue {
@@ -62,6 +78,12 @@ export interface ParsedAssetRequestIssue {
   readonly floor?: number;
   /** Effective requested size. Omitted for ordinary default-sized requests. */
   readonly sizeVariant?: SizeVariant;
+  /** Immutable game-source selection plus resolved direction snapshot. */
+  readonly assetRequestContext?: AssetRequestContext;
+  /** Requested queue priority; omitted legacy requests resolve to normal. */
+  readonly priority?: AssetRequestPriority;
+  /** Requester identity supplied by the issue contract, when present. */
+  readonly requester?: string;
   readonly fingerprint: string;
   /** Pre-type-aware identity retained only for legacy claim/rejection lookups. */
   readonly legacyFingerprint?: string;
@@ -104,12 +126,24 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           parsed.floor,
           explicitSizeVariant,
         );
+        const assetRequestContext = resolveRequestContext({
+          floor: parsed.floor,
+          floorId: parsed.floorId,
+          familyId: parsed.familyId,
+          mobRole: parsed.mobRole,
+          injectionOverrides: parsed.injectionOverrides,
+        });
+        if (assetRequestContext === null) return null;
+        const priority = parseOptionalPriority(parsed.priority, 'asset-request marker');
+        const requester = parseOptionalRequester(parsed.requester, 'asset-request marker');
+        const effectiveFloor = parsed.floor ?? floorFromContext(assetRequestContext);
         const fingerprint = fingerprintParsedAssetRequest({
           name: parsed.name,
           briefSentence: parsed.briefSentence,
           type: parsed.type,
-          floor: parsed.floor,
+          floor: effectiveFloor,
           explicitSizeVariant,
+          contextFingerprint: contextFingerprintInput({ ...parsed, priority, requester }),
         });
         // Machine-authored marker payload: preserve `briefSentence` verbatim so
         // the machine contract stays byte-stable for the downstream prompt. The
@@ -119,8 +153,11 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           name: parsed.name,
           briefSentence: parsed.briefSentence,
           type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
-          floor: parsed.floor,
+          ...(effectiveFloor !== undefined ? { floor: effectiveFloor } : {}),
           ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
+          ...(assetRequestContext ? { assetRequestContext } : {}),
+          ...(priority ? { priority } : {}),
+          ...(requester ? { requester } : {}),
           fingerprint,
           ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
         };
@@ -131,6 +168,20 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
   const fallback = parseIssueFormBody(normalizedBody);
   if (!fallback) return null;
   const { explicitSizeVariant, ...request } = fallback;
+  const assetRequestContext = resolveRequestContext({
+    floor: request.floor,
+    floorId: request.floorId,
+    familyId: request.familyId,
+    mobRole: request.mobRole,
+    injectionOverrides: request.injectionOverrides,
+  });
+  if (assetRequestContext === null) return null;
+  const priority = parseOptionalPriority(request.priority, 'asset-request issue field "Priority"');
+  const requester = parseOptionalRequester(
+    request.requester,
+    'asset-request issue field "Requester"',
+  );
+  const effectiveFloor = request.floor ?? floorFromContext(assetRequestContext);
   const legacyFingerprint = fingerprintAssetRequest(
     fallback.name,
     fallback.briefSentence,
@@ -141,11 +192,16 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
     name: fallback.name,
     briefSentence: fallback.briefSentence,
     type: fallback.type,
-    floor: fallback.floor,
+    floor: effectiveFloor,
     explicitSizeVariant,
+    contextFingerprint: contextFingerprintInput({ ...request, priority, requester }),
   });
   return {
     ...request,
+    ...(effectiveFloor !== undefined ? { floor: effectiveFloor } : {}),
+    ...(assetRequestContext ? { assetRequestContext } : {}),
+    ...(priority ? { priority } : {}),
+    ...(requester ? { requester } : {}),
     fingerprint,
     ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
   };
@@ -176,6 +232,7 @@ function fingerprintParsedAssetRequest(input: {
   readonly type?: string;
   readonly floor?: number;
   readonly explicitSizeVariant?: SizeVariant;
+  readonly contextFingerprint?: string;
 }): string {
   const legacyFingerprint = fingerprintAssetRequest(
     input.name,
@@ -183,14 +240,30 @@ function fingerprintParsedAssetRequest(input: {
     input.floor,
     input.explicitSizeVariant,
   );
-  if (input.explicitSizeVariant !== undefined) return legacyFingerprint;
+  let fingerprint = legacyFingerprint;
+  if (input.explicitSizeVariant !== undefined) {
+    return input.contextFingerprint
+      ? createHash('sha256')
+          .update(`${fingerprint}\ncontext:${input.contextFingerprint}`)
+          .digest('hex')
+      : fingerprint;
+  }
   const normalizedType = input.type?.trim().toLowerCase();
-  if (!normalizedType) return legacyFingerprint;
-  const typeChangesBossInference =
-    isBossAssetRequest(input.name, input.briefSentence, normalizedType) !==
-    isBossAssetRequest(input.name, input.briefSentence);
-  if (!typeChangesBossInference) return legacyFingerprint;
-  return createHash('sha256').update(`${legacyFingerprint}\ntype:${normalizedType}`).digest('hex');
+  if (normalizedType) {
+    const typeChangesBossInference =
+      isBossAssetRequest(input.name, input.briefSentence, normalizedType) !==
+      isBossAssetRequest(input.name, input.briefSentence);
+    if (typeChangesBossInference) {
+      fingerprint = createHash('sha256')
+        .update(`${legacyFingerprint}\ntype:${normalizedType}`)
+        .digest('hex');
+    }
+  }
+  return input.contextFingerprint
+    ? createHash('sha256')
+        .update(`${fingerprint}\ncontext:${input.contextFingerprint}`)
+        .digest('hex')
+    : fingerprint;
 }
 
 /**
@@ -276,6 +349,26 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
   ) {
     return false;
   }
+  if (!isOptionalContextField(v.floorId) || !isOptionalContextField(v.familyId)) return false;
+  if (
+    v.mobRole !== undefined &&
+    (typeof v.mobRole !== 'string' || !MOB_ROLES.includes(v.mobRole as MobRole))
+  ) {
+    return false;
+  }
+  if (!isOptionalInjectionOverrides(v.injectionOverrides)) return false;
+  if (
+    v.priority !== undefined &&
+    (typeof v.priority !== 'string' ||
+      (v.priority.trim() !== '' &&
+        v.priority.trim() !== '_No response_' &&
+        !ASSET_REQUEST_PRIORITIES.includes(
+          v.priority.trim().toLowerCase() as AssetRequestPriority,
+        )))
+  ) {
+    return false;
+  }
+  if (v.requester !== undefined && typeof v.requester !== 'string') return false;
   return true;
 }
 
@@ -303,8 +396,38 @@ function parseOptionalSizeVariant(value: unknown, source: string): SizeVariant |
     if (containsUnrenderedTemplate(value)) return undefined;
     if (isSizeVariant(normalized)) return normalized;
   }
+
   throw new AssetRequestValidationError(
     `Invalid size '${String(value)}' in ${source}. Expected one of ${SIZE_VARIANTS.join(', ')}.`,
+  );
+}
+
+export function parseOptionalPriority(
+  value: unknown,
+  source: string,
+): AssetRequestPriority | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === '' || normalized === '_no response_') return undefined;
+    if (ASSET_REQUEST_PRIORITIES.includes(normalized as AssetRequestPriority)) {
+      return normalized as AssetRequestPriority;
+    }
+  }
+  throw new AssetRequestValidationError(
+    `Invalid priority '${String(value)}' in ${source}. Expected one of ${ASSET_REQUEST_PRIORITIES.join(', ')}.`,
+  );
+}
+
+export function parseOptionalRequester(value: unknown, source: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    if (normalized === '' || normalized === '_No response_') return undefined;
+    if (/^[A-Za-z0-9][A-Za-z0-9_.@:/-]{0,127}$/.test(normalized)) return normalized;
+  }
+  throw new AssetRequestValidationError(
+    `Invalid requester '${String(value)}' in ${source}. Use a 1-128 character identity without whitespace.`,
   );
 }
 
@@ -324,6 +447,84 @@ function normalizeBriefText(value: string): string {
  */
 function containsUnrenderedTemplate(value: unknown): boolean {
   return typeof value === 'string' && value.includes('${{');
+}
+
+function isOptionalContextField(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isOptionalInjectionOverrides(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Object.keys(candidate).every((key) => key === 'floor' || key === 'family') &&
+    Object.values(candidate).every((entry) => typeof entry === 'string')
+  );
+}
+
+function resolveRequestContext(input: {
+  readonly floor?: number;
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: MobRole;
+  readonly injectionOverrides?: DirectionInjectionOverrides;
+}): AssetRequestContext | undefined | null {
+  if (
+    input.floor === undefined &&
+    input.floorId === undefined &&
+    input.familyId === undefined &&
+    input.mobRole === undefined &&
+    input.injectionOverrides === undefined
+  ) {
+    return undefined;
+  }
+  try {
+    return resolveAssetRequestContext(input);
+  } catch (error) {
+    if (error instanceof AssetRequestContextError) return null;
+    throw error;
+  }
+}
+
+function floorFromContext(context: AssetRequestContext | undefined): number | undefined {
+  const floorId = context?.sourceIds.floorId;
+  const match = floorId ? /^floor([1-9]\d*)$/.exec(floorId) : null;
+  return match ? Number(match[1]) : undefined;
+}
+
+function contextFingerprintInput(input: {
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: MobRole;
+  readonly injectionOverrides?: DirectionInjectionOverrides;
+  readonly priority?: AssetRequestPriority;
+  readonly requester?: string;
+}): string | undefined {
+  if (
+    input.floorId === undefined &&
+    input.familyId === undefined &&
+    input.mobRole === undefined &&
+    input.injectionOverrides === undefined &&
+    (input.priority === undefined || input.priority === 'normal') &&
+    input.requester === undefined
+  ) {
+    return undefined;
+  }
+
+  return JSON.stringify({
+    ...(input.floorId ? { floorId: input.floorId.trim().toLowerCase() } : {}),
+    ...(input.familyId ? { familyId: input.familyId.trim().toLowerCase() } : {}),
+    ...(input.mobRole ? { mobRole: input.mobRole } : {}),
+    ...(input.injectionOverrides?.floor
+      ? { floorInjection: input.injectionOverrides.floor.trim() }
+      : {}),
+    ...(input.injectionOverrides?.family
+      ? { familyInjection: input.injectionOverrides.family.trim() }
+      : {}),
+    ...(input.priority && input.priority !== 'normal' ? { priority: input.priority } : {}),
+    ...(input.requester ? { requester: input.requester } : {}),
+  });
 }
 
 /**
@@ -347,6 +548,12 @@ function parseIssueFormBody(body: string): {
   readonly briefSentence: string;
   readonly type?: string;
   readonly floor?: number;
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: MobRole;
+  readonly injectionOverrides?: DirectionInjectionOverrides;
+  readonly priority?: AssetRequestPriority;
+  readonly requester?: string;
   readonly sizeVariant?: SizeVariant;
   readonly explicitSizeVariant?: SizeVariant;
 } | null {
@@ -382,6 +589,14 @@ function parseIssueFormBody(body: string): {
     floor = Number(floorMatch[1]!.trim());
     if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
   }
+  const floorId = optionalFormText(body, 'Floor ID');
+  const familyId = optionalFormText(body, 'Family ID');
+  const role = optionalFormText(body, 'Mob Role');
+  if (role !== undefined && !MOB_ROLES.includes(role as MobRole)) return null;
+  const floorInjection = optionalFormSection(body, 'Floor Injection Override');
+  const familyInjection = optionalFormSection(body, 'Family Injection Override');
+  const priority = optionalFormText(body, 'Priority');
+  const requester = optionalFormText(body, 'Requester');
   const sizeMatch = body.match(
     /(?:^|\n)###\s+Size(?:\s+variant)?(?:\s+\(optional\))?\s*\n+([^\n]+)/i,
   );
@@ -396,7 +611,41 @@ function parseIssueFormBody(body: string): {
     briefSentence,
     type,
     floor,
+    ...(floorId ? { floorId } : {}),
+    ...(familyId ? { familyId } : {}),
+    ...(role ? { mobRole: role as MobRole } : {}),
+    ...(floorInjection || familyInjection
+      ? {
+          injectionOverrides: {
+            ...(floorInjection ? { floor: floorInjection } : {}),
+            ...(familyInjection ? { family: familyInjection } : {}),
+          },
+        }
+      : {}),
+    ...(priority ? { priority: priority as AssetRequestPriority } : {}),
+    ...(requester ? { requester } : {}),
     ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
     ...(explicitSizeVariant ? { explicitSizeVariant } : {}),
   };
+}
+
+function optionalFormText(body: string, label: string): string | undefined {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = body.match(
+    new RegExp(`(?:^|\\n)###\\s+${escaped}(?:\\s+\\(optional\\))?\\s*\\n+([^\\n]+)`, 'i'),
+  );
+  const value = match?.[1]?.trim();
+  return value && value !== '_No response_' ? value : undefined;
+}
+
+function optionalFormSection(body: string, label: string): string | undefined {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = body.match(
+    new RegExp(
+      `(?:^|\\n)###\\s+${escaped}(?:\\s+\\(optional\\))?\\s*\\n+([\\s\\S]*?)(?=\\n###\\s|\\n<!--|$)`,
+      'i',
+    ),
+  );
+  const value = match?.[1]?.trim();
+  return value && value !== '_No response_' ? value : undefined;
 }

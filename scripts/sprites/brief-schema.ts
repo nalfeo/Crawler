@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DEFAULT_FLOOR, MAX_FLOOR } from './content-direction.js';
 import { SIZE_VARIANTS } from './size-variants.js';
+import { MOB_ROLES } from './asset-request-context.js';
 
 /**
  * Sprite brief schema.
@@ -214,6 +215,45 @@ export const briefThemeSchema = z
   })
   .strict();
 
+const assetRequestContextSchema = z
+  .object({
+    sourceIds: z
+      .object({
+        floorId: z.string().min(1).optional(),
+        enemyPackId: z.string().min(1).optional(),
+        familyId: z.string().min(1).optional(),
+        archetypeId: z.string().min(1).optional(),
+      })
+      .strict(),
+    mobRole: z.enum(MOB_ROLES).optional(),
+    injections: z
+      .object({
+        floor: z.string().min(1).optional(),
+        family: z.string().min(1).optional(),
+        category: z.string().min(1).optional(),
+      })
+      .strict(),
+    injectionOverrides: z
+      .object({
+        floor: z.string().min(1).optional(),
+        family: z.string().min(1).optional(),
+        category: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const requestMetadataSchema = z
+  .object({
+    priority: z.enum(['normal', 'high']),
+    requester: z
+      .string()
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_.@:/-]{0,127}$/, 'requester must be a stable identity')
+      .optional(),
+  })
+  .strict();
+
 export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
@@ -223,6 +263,14 @@ export const briefSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
     theme: briefThemeSchema.optional(),
+    /**
+     * Immutable provenance captured from a GitHub asset request or local author
+     * request. It records game-source IDs plus the exact direction strings sent
+     * to synthesis; overrides are request-local and never mutate canonical data.
+     */
+    assetRequestContext: assetRequestContextSchema.optional(),
+    /** Durable queue/request provenance, independent of synthesized art direction. */
+    requestMetadata: requestMetadataSchema.optional(),
     size: sizeSchema,
     palette: paletteSchema,
     anchor: anchorSchema,
@@ -265,6 +313,12 @@ export const briefSchema = z
               .string()
               .optional()
               .describe("Optional description of this frame's role in the cycle"),
+            role: z
+              .enum(['identity', 'pose-guide'])
+              .default('identity')
+              .describe(
+                'identity locks the character design; pose-guide supplies only ordered pose geometry.',
+              ),
           })
           .strict(),
       )
@@ -340,7 +394,7 @@ export const briefSchema = z
      * Optional post-processing overrides beyond the standard pipeline.
      *
      * `trimAndFit`: when enabled, after the normal postprocess steps
-     * (bg removal → resample to brief size → quantize → alpha threshold), the
+     * (bg removal → pixel-art mesh recovery → resample to brief size → alpha threshold), the
      * pipeline trims fully-transparent edge rows/columns and then
      * scales the result up (nearest-neighbor) so the smallest
      * dimension reaches `minDimension` pixels. This maximises pixel
@@ -353,7 +407,12 @@ export const briefSchema = z
       .object({
         trimAndFit: z.boolean().default(false),
         minDimension: z.number().int().min(8).max(256).default(256),
+        // `strict` is retained as a durable brief contract, but now means
+        // upstream pixel-art mesh recovery rather than palette quantization.
         paletteMode: z.enum(['none', 'strict']).default('none'),
+        // Omit for upstream mesh auto-detection. This is only a human override
+        // when source art has a known pixel width and detection is unreliable.
+        pixelWidth: z.number().int().min(1).max(64).optional(),
       })
       .strict()
       .default({ trimAndFit: false, minDimension: 256, paletteMode: 'none' }),

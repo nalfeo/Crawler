@@ -33,6 +33,8 @@ import * as runFilterFns from './lib/run-filter.mjs';
 import * as sheetDisplayFns from './lib/sheet-display.mjs';
 import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
 import * as briefLookupFns from './lib/brief-lookup.mjs';
+import * as requestFilterFns from './lib/request-filter.mjs';
+import * as requestTemplateFns from './lib/request-template.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -41,7 +43,6 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
-
 /**
  * Serialize a module's exported pure functions into browser source (`var name
  * = function name(...) {...};` declarations), the same way
@@ -74,6 +75,8 @@ const STYLES = `
   .muted { color: var(--text-color-muted, #94a3b8); font-size: 12px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .between { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .header-status { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .refresh-mini { padding: 3px 8px; font-size: 11px; border-radius: 999px; }
   header { margin-bottom: 12px; }
   select, button, input, textarea {
     background: #0f172a; color: #e2e8f0;
@@ -106,6 +109,13 @@ const STYLES = `
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .card { border: 1px solid rgba(148,163,184,0.25); border-radius: 8px; padding: 10px; background: #0b1220;
     display: flex; flex-direction: column; gap: 6px; }
+  .brief-candidate.chosen { border-color: rgba(134,239,172,0.75); background: rgba(22,101,52,0.16);
+    box-shadow: 0 0 0 1px rgba(134,239,172,0.18); }
+  .chosen-brief-summary { margin-top: 10px; border-color: rgba(134,239,172,0.55);
+    background: rgba(22,101,52,0.2); color: #dcfce7; }
+  .chosen-brief-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #86efac; border: 1px solid rgba(134,239,172,0.5); background: rgba(22,101,52,0.3);
+    border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
   .card .thumb { width: 96px; height: 96px; image-rendering: pixelated; align-self: center;
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -169,9 +179,16 @@ const STYLES = `
   .filelist { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto;
     border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 6px; }
   .filelist button { text-align: left; background: transparent; border: 1px solid transparent; padding: 4px 8px;
-    border-radius: 6px; font-size: 12px; color: #cbd5e1; width: 100%; }
+    border-radius: 6px; font-size: 12px; color: #cbd5e1; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .filelist button:hover { background: rgba(148,163,184,0.08); }
   .filelist button.active { background: rgba(56,189,248,0.12); border-color: rgba(56,189,248,0.4); color: #e2e8f0; }
+  .stage-pill { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: #94a3b8; border: 1px solid rgba(148,163,184,0.35); border-radius: 999px; padding: 1px 7px;
+    flex: 0 0 auto; white-space: nowrap; }
+  .field { display: block; margin-top: 8px; }
+  .field span { display: block; margin-bottom: 3px; color: #94a3b8; font-size: 11px; }
+  .field input, .field select, .field textarea { width: 100%; }
   .split { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 12px; align-items: start; }
   .draft-tag { font-size: 9px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4); border-radius: 4px;
     padding: 0 4px; margin-left: 6px; }
@@ -204,6 +221,8 @@ const STYLES = `
   .concise-summary.pass { color: #86efac; }
   .concise-summary.fail { color: #fca5a5; }
   .concise-summary.unjudged, .concise-summary.none { color: #94a3b8; }
+  .request-brief { min-height: 120px; font-family: inherit; font-size: 13px; }
+  .request-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   .sheet-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
   .modal-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,0.75); display: flex;
     align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
@@ -234,6 +253,8 @@ const CLIENT_SCRIPT = String.raw`
   /*__SHEET_DISPLAY_FNS__*/
   /*__FEEDBACK_SUMMARY_FNS__*/
   /*__BRIEF_LOOKUP_FNS__*/
+  /*__REQUEST_FILTER_FNS__*/
+  /*__REQUEST_TEMPLATE_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
@@ -267,21 +288,55 @@ const CLIENT_SCRIPT = String.raw`
     { key: 'presentation', label: 'Presentation' },
     { key: 'themeAdherence', label: 'Theme adherence' }
   ];
+  // Keep this human-readable copy aligned with scripts/sprites/content-direction.ts.
+  var CRAWLER_DESIGN_LANGUAGE = [
+    'Crawler uses a classic RPG 3/4 orthographic perspective to present a dark-fantasy',
+    'dungeon rebuilt as deranged reality-show spectacle.',
+    'Its design language combines expressive, offbeat RPG characters; retro-futurist salvage',
+    'and corporate decay; and brutal improvised machinery, vehicles, armor, and contraptions.',
+    '',
+    'Build concepts from specific collisions between familiar things: panda mafia dons,',
+    'goblin motorcycle gangs, plate-armored crabs wearing baseball caps, or ceremonial',
+    'monsters carrying junk-built technology. Give each concept one instantly readable',
+    'identity and one unforgettable contradiction: cute and threatening, mundane and',
+    'monstrous, ceremonial and improvised, or bureaucratic and feral.',
+    '',
+    'The weirdness must feel authored. Avoid random ingredient soup, generic grim fantasy,',
+    'and undirected gore. Preserve dark humor, a strong silhouette, and an obvious gameplay',
+    'role. Deeper floors become stranger, more shocking, grotesque, frightening, and',
+    'wonderful without becoming less readable.'
+  ].join('\n');
   var TABS = [
-    { id: 'author', label: 'Author' },
     { id: 'backlog', label: 'Backlog' },
-    { id: 'files', label: 'Plans & Briefs' },
-    { id: 'runs', label: 'Runs' }
+    { id: 'briefs', label: 'Briefs' },
+    { id: 'sprites', label: 'Sprites' }
+  ];
+  // Keep this literal aligned with WORKFLOW_STAGES in lib/authoring-state.mjs
+  // (the durable source of truth for every reachable item.stage). This is the
+  // FULL canonical list, including the transient 'postprocessing'/'judging'
+  // stages, per that module's own invariant that a canvas writer must never
+  // truncate stages or fields it does not currently render.
+  var REQUEST_STAGE_FILTERS = [
+    'draft', 'synthesizing', 'candidates', 'generating', 'sheet', 'postprocessing',
+    'postprocessed', 'judging', 'variants', 'approved', 'checked-in', 'tagging', 'done'
   ];
   var app = document.getElementById('app');
   var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
-  var activeTab = 'author';
+  var activeTab = 'backlog';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
   var runSearch = ''; // type-to-filter text over briefId/runId
+  var requestStageFilter = 'all'; // all | one of WORKFLOW_STAGES
+  var requestSearch = ''; // type-to-filter text over name/kebabName/requester
   var sheetViewMode = 'constrained'; // 'constrained' (<=512x512) | 'full'
   var briefModal = null; // { relPath, name, content, error, triggerEl } | null
+  var requestTemplateModal = null;
+  var referencePreview = null; // { key, status, data, error } | null
+  var generationRequestModal = null;
+  var generationPreviewRequestSeq = 0;
+  var requestComposerDraft = null;
+  var editRequestModalOpen = false;
 
   // ── Embedded Postprocess Debugger host (persistent sibling of #app) ─────
   // #postprocess-host lives OUTSIDE #app in the static shell below (see
@@ -411,7 +466,7 @@ const CLIENT_SCRIPT = String.raw`
     lastState.stale = false;
     var staleBadge = document.querySelector('.stale-badge');
     if (staleBadge) staleBadge.remove();
-    if (activeTab !== 'runs') return;
+    if (activeTab !== 'sprites') return;
     // Re-render the full candidates section: a variant-scoped reprocess also
     // rebuilds every sibling's summary entry (clearing judge maps), so all
     // cards need refreshing, not just the target card.
@@ -439,6 +494,7 @@ const CLIENT_SCRIPT = String.raw`
         else if (k === 'text') { elem.textContent = props[k]; }
         else if (k === 'class') { elem.className = props[k]; }
         else if (k === 'onclick') { elem.addEventListener('click', props[k]); }
+        else if (k === 'disabled') { elem.disabled = props[k] === true; }
         else { elem.setAttribute(k, props[k]); }
       }
     }
@@ -471,6 +527,18 @@ const CLIENT_SCRIPT = String.raw`
       + '&runId=' + encodeURIComponent(runId) + '&file=' + encodeURIComponent(file);
   }
 
+  // Keyed by TABS id. The <h1> stays the fixed app/canvas brand title (matches
+  // the canvas's registered title in extension.mjs); only the descriptive
+  // subtitle beneath it should change with the active tab, since a
+  // Sprites-specific sentence was previously shown unconditionally on every
+  // tab (including Backlog and Briefs, where it does not describe what the
+  // user is looking at).
+  var TAB_SUBTITLES = {
+    backlog: 'Review which consumer-facing assets are still placeholders vs. approved sprites.',
+    briefs: 'Author asset requests, generate briefs, and browse plan/brief sources.',
+    sprites: 'Inspect generated runs and accept a variant into the durable asset queue.'
+  };
+
   function renderHealth(state) {
     var health = state.health || { state: 'down' };
     var badge = h('span', { class: 'badge ' + health.state, text: health.state });
@@ -483,12 +551,26 @@ const CLIENT_SCRIPT = String.raw`
       badges.push(h('span', { class: 'stale-badge', title: 'Showing a cached view while a background refresh checks for updates.' },
         [h('span', { class: 'spinner' }), 'revalidating…']));
     }
+    var refresh = h('button', {
+      class: 'refresh-mini',
+      text: 'Refresh Azure',
+      title: 'Fetch externally completed Azure workflow work now'
+    });
+    refresh.addEventListener('click', function () {
+      workflowPost('/api/workflow/refresh', {}, 'Refreshing Azure workflow…');
+    });
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Generation Workflow' }),
-        h('div', { class: 'muted', text: 'Inspect generated runs and accept a variant into the durable asset queue.' })
+        h('div', { class: 'muted', text: TAB_SUBTITLES[activeTab] || TAB_SUBTITLES.briefs })
       ]),
-      h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })]))
+      h('div', { class: 'header-status' }, [
+        h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })])),
+        h('div', { class: 'row' }, [
+          refresh,
+          h('span', { class: 'muted', text: 'Azure ' + (state.workflowLastRefreshAt || 'not loaded') })
+        ])
+      ])
     ]);
   }
 
@@ -616,7 +698,7 @@ const CLIENT_SCRIPT = String.raw`
     return parts[parts.length - 1] || sourceRun;
   }
 
-  // ---- Plans & Briefs tab ------------------------------------------------
+  // ---- Brief source files ------------------------------------------------
   function renderFiles(state) {
     var files = state.files || {};
     var wrap = h('div', null, []);
@@ -673,7 +755,7 @@ const CLIENT_SCRIPT = String.raw`
     });
   }
 
-  // ---- Runs tab (reuses the sprite-review generation-output inspection) --
+  // ---- Sprites tab (reuses the sprite-review generation-output inspection) --
   function renderRunPicker(state) {
     var runs = filteredRuns(state);
     var sel = state.selected;
@@ -748,6 +830,12 @@ const CLIENT_SCRIPT = String.raw`
     }
 
     var toolbar = h('div', { class: 'sheet-toolbar' }, []);
+    var backToBriefs = h('button', { type: 'button', text: 'Back to Briefs', title: 'Return to request and brief editing' });
+    backToBriefs.addEventListener('click', function () {
+      activeTab = 'briefs';
+      if (lastState) render(lastState);
+    });
+    toolbar.appendChild(backToBriefs);
     var viewBriefBtn = h('button', { id: 'view-brief-btn', type: 'button', text: 'View Brief' });
     viewBriefBtn.addEventListener('click', function (ev) { openBriefModal(state, ev.currentTarget); });
     toolbar.appendChild(viewBriefBtn);
@@ -1496,7 +1584,7 @@ const CLIENT_SCRIPT = String.raw`
     return wrap;
   }
 
-  // ---- Author tab: durable Azure workflow state machine -------------------
+  // ---- Briefs tab: durable Azure workflow state machine -------------------
   var workflowMutationInFlight = false;
   // Unsaved brief YAML, keyed by itemId::yamlPath. A polled state push replaces
   // #app wholesale, so without this cache an in-progress edit would be silently
@@ -1528,10 +1616,333 @@ const CLIENT_SCRIPT = String.raw`
         lastState.error = 'Workflow action failed: ' + error.message;
         render(lastState);
       }
+
       return false;
     }).finally(function () {
       workflowMutationInFlight = false;
     });
+  }
+
+  function refreshGenerationPreview(overrides) {
+    if (!generationRequestModal) return;
+    var requestId = ++generationPreviewRequestSeq;
+    var current = generationRequestModal;
+    current.status = 'loading';
+    current.error = null;
+    render(lastState);
+    var body = { itemId: current.itemId, yamlPath: current.yamlPath };
+    if (current.previewToken) body.previewToken = current.previewToken;
+    if (overrides && typeof overrides.prompt === 'string') body.prompt = overrides.prompt;
+    if (overrides && Array.isArray(overrides.referenceAssetPaths)) {
+      body.referenceAssetPaths = overrides.referenceAssetPaths;
+    }
+    fetch('/api/workflow/generation-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Workflow-Mutation-Token': mutationToken },
+      body: JSON.stringify(body)
+    }).then(function (response) {
+      return response.json().then(function (payload) {
+        if (!response.ok || payload.error) {
+          throw new Error(payload.message || payload.error || 'Generation preview failed');
+        }
+        return payload;
+      });
+    }).then(function (payload) {
+      if (!generationRequestModal || generationRequestModal.itemId !== current.itemId ||
+          requestId !== generationPreviewRequestSeq) return;
+      generationRequestModal.status = 'ready';
+      generationRequestModal.data = payload;
+      generationRequestModal.previewToken = payload.previewToken;
+      generationRequestModal.prompt = payload.prompt;
+      generationRequestModal.referenceAssetPaths = payload.selectedAssetPaths || [];
+      generationRequestModal.dirty = false;
+      generationRequestModal.error = null;
+      render(lastState);
+    }).catch(function (error) {
+      if (!generationRequestModal || requestId !== generationPreviewRequestSeq) return;
+      generationRequestModal.status = 'error';
+      generationRequestModal.error = error.message;
+      render(lastState);
+    });
+  }
+
+  function openGenerationRequestModal(item) {
+    var selectedPath = item.chosenCandidatePath || (item.candidates && item.candidates[0]?.yamlPath);
+    generationRequestModal = {
+      itemId: item.id,
+      yamlPath: selectedPath,
+      status: 'loading',
+      data: null,
+      previewToken: null,
+      prompt: '',
+      referenceAssetPaths: [],
+      dirty: false,
+      error: null
+    };
+    refreshGenerationPreview();
+  }
+
+  function renderGenerationRequestModal() {
+    if (!generationRequestModal) return null;
+    var state = generationRequestModal;
+    var backdrop = h('div', { class: 'modal-backdrop' });
+    var modal = h('div', {
+      class: 'modal',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'generation-request-title',
+      style: { maxWidth: 'min(960px, 94vw)' }
+    });
+    modal.appendChild(h('button', {
+      class: 'modal-close',
+      type: 'button',
+      text: '\u2715 Close',
+      title: 'Return to the chosen brief without generating',
+      onclick: function () {
+        generationRequestModal = null;
+        generationPreviewRequestSeq += 1;
+        render(lastState);
+      }
+    }));
+    modal.appendChild(h('h2', {
+      id: 'generation-request-title',
+      text: 'Review exact Azure request'
+    }));
+    modal.appendChild(h('p', {
+      class: 'muted',
+      text: 'This exact prompt and ordered image list will be sent by the local generator. Seed frames stay first and cannot be removed.'
+    }));
+    if (state.status === 'loading') {
+      modal.appendChild(h('div', { class: 'busy' }, [
+        h('span', { class: 'spinner' }),
+        'Preparing exact request\u2026'
+      ]));
+    }
+    if (state.error) modal.appendChild(h('div', { class: 'panel error', text: state.error }));
+    if (state.data) {
+      var promptEditor = h('textarea', {
+        class: 'yaml',
+        'aria-label': 'Exact Azure image generation prompt',
+        style: { minHeight: '260px' }
+      });
+      promptEditor.value = state.prompt;
+      promptEditor.addEventListener('input', function () {
+        if (!generationRequestModal) return;
+        generationRequestModal.prompt = promptEditor.value;
+        generationRequestModal.dirty = promptEditor.value !== generationRequestModal.data.prompt;
+        promptHashStatus.textContent = 'SHA-256: ' + generationRequestModal.data.promptHash +
+          (generationRequestModal.dirty ? ' \u00b7 edits need review' : ' \u00b7 reviewed');
+        apply.disabled = !generationRequestModal.dirty ||
+          generationRequestModal.status === 'loading';
+        generate.disabled = generationRequestModal.dirty ||
+          generationRequestModal.status !== 'ready';
+        generate.title = generationRequestModal.dirty
+          ? 'Review prompt edits before generation'
+          : 'Run the reviewed request locally and save it to durable Azure storage';
+      });
+      modal.appendChild(h('label', { class: 'field' }, [
+        h('span', { text: 'Final provider prompt' }),
+        promptEditor
+      ]));
+      var promptHashStatus = h('div', {
+        class: 'muted',
+        text: 'SHA-256: ' + state.data.promptHash +
+          (state.dirty ? ' \u00b7 edits need review' : ' \u00b7 reviewed')
+      });
+      modal.appendChild(promptHashStatus);
+      modal.appendChild(h('h3', { text: 'Ordered provider images' }));
+      var referenceList = h('div', {
+        class: 'row',
+        style: { alignItems: 'stretch', flexWrap: 'wrap' }
+      });
+      (state.data.references || []).forEach(function (reference) {
+        var isSeed = reference.kind === 'seed';
+        var approvedIndex = state.referenceAssetPaths.indexOf(reference.assetPath);
+        var actions = [];
+        if (!isSeed) {
+          actions.push(h('button', {
+            type: 'button',
+            text: '\u2190',
+            title: 'Move this reference earlier',
+            disabled: approvedIndex <= 0,
+            onclick: function () {
+              var next = state.referenceAssetPaths.slice();
+              var value = next.splice(approvedIndex, 1)[0];
+              next.splice(approvedIndex - 1, 0, value);
+              refreshGenerationPreview({ prompt: state.prompt, referenceAssetPaths: next });
+            }
+          }));
+          actions.push(h('button', {
+            type: 'button',
+            text: '\u2192',
+            title: 'Move this reference later',
+            disabled: approvedIndex < 0 || approvedIndex >= state.referenceAssetPaths.length - 1,
+            onclick: function () {
+              var next = state.referenceAssetPaths.slice();
+              var value = next.splice(approvedIndex, 1)[0];
+              next.splice(approvedIndex + 1, 0, value);
+              refreshGenerationPreview({ prompt: state.prompt, referenceAssetPaths: next });
+            }
+          }));
+          actions.push(h('button', {
+            type: 'button',
+            class: 'unapprove-button',
+            text: 'Remove',
+            onclick: function () {
+              refreshGenerationPreview({
+                prompt: state.prompt,
+                referenceAssetPaths: state.referenceAssetPaths.filter(function (assetPath) {
+                  return assetPath !== reference.assetPath;
+                })
+              });
+            }
+          }));
+        }
+        referenceList.appendChild(h('figure', {
+          class: 'panel',
+          style: { margin: '0', width: '180px' }
+        }, [
+          h('div', {
+            class: 'muted',
+            text: '#' + (reference.index + 1) + ' \u00b7 ' +
+              (isSeed ? 'seed frame' : 'approved reference')
+          }),
+          h('img', {
+            src: reference.imageDataUrl,
+            alt: reference.sprite?.spriteName || reference.assetPath,
+            style: {
+              width: '100%',
+              height: '128px',
+              objectFit: 'contain',
+              imageRendering: 'pixelated'
+            }
+          }),
+          h('figcaption', { text: reference.sprite?.spriteName || reference.assetPath }),
+          h('div', { class: 'muted', text: reference.contentHash.slice(0, 12) }),
+          h('div', { class: 'row' }, actions)
+        ]));
+      });
+      var addPanel = h('div', { class: 'panel', style: { width: '220px' } }, [
+        h('strong', { text: 'Add approved reference' })
+      ]);
+      var available = (state.data.referenceCatalog || []).filter(function (entry) {
+        return state.referenceAssetPaths.indexOf(entry.assetPath) < 0;
+      });
+      var referenceSelect = h('select', {
+        'aria-label': 'Approved reference to add',
+        style: { width: '100%' }
+      });
+      available.forEach(function (entry) {
+        referenceSelect.appendChild(h('option', {
+          value: entry.assetPath,
+          text: entry.spriteName + ' \u00b7 ' + entry.type
+        }));
+      });
+      addPanel.appendChild(referenceSelect);
+      addPanel.appendChild(h('button', {
+        type: 'button',
+        text: 'Add reference',
+        disabled: available.length === 0,
+        onclick: function () {
+          if (!referenceSelect.value) return;
+          refreshGenerationPreview({
+            prompt: state.prompt,
+            referenceAssetPaths: state.referenceAssetPaths.concat([referenceSelect.value])
+          });
+        }
+      }));
+      referenceList.appendChild(addPanel);
+      modal.appendChild(referenceList);
+      var apply = h('button', {
+        type: 'button',
+        text: 'Review prompt edits',
+        disabled: !state.dirty || state.status === 'loading',
+        onclick: function () {
+          refreshGenerationPreview({
+            prompt: state.prompt,
+            referenceAssetPaths: state.referenceAssetPaths
+          });
+        }
+      });
+      var generate = h('button', {
+        type: 'button',
+        class: 'accept-button',
+        text: state.status === 'generating' ? 'Generating locally\u2026' : 'Generate sprite locally',
+        disabled: state.dirty || state.status !== 'ready',
+        title: state.dirty
+          ? 'Review prompt edits before generation'
+          : 'Run the reviewed request locally and save it to durable Azure storage',
+        onclick: function () {
+          if (!generationRequestModal || generationRequestModal.dirty) return;
+          generationRequestModal.status = 'generating';
+          render(lastState);
+          workflowPost('/api/workflow/generate', {
+            itemId: state.itemId,
+            yamlPath: state.yamlPath,
+            previewToken: state.previewToken
+          }, 'Generating sprite locally\u2026').then(function (ok) {
+            if (!ok) {
+              if (generationRequestModal) generationRequestModal.status = 'ready';
+              return;
+            }
+            generationRequestModal = null;
+            activeTab = 'sprites';
+            if (lastState) render(lastState);
+          });
+        }
+      });
+      modal.appendChild(h('div', {
+        class: 'row',
+        style: { justifyContent: 'flex-end', marginTop: '12px' }
+      }, [apply, generate]));
+    }
+    backdrop.appendChild(modal);
+    return backdrop;
+  }
+
+  function filteredRequests(workflow) {
+    return filterRequests(workflow.items || [], requestStageFilter, requestSearch);
+  }
+
+  // Mirrors renderRunPicker's stage/promotion <select> + search <input>
+  // composition (see lib/run-filter.mjs) so the Briefs request list and the
+  // Sprites run list share one picker pattern. Filtering never clears
+  // workflow.selectedId — a filtered-out selection stays selected in state
+  // even if it is not visible in this list.
+  function renderRequestPicker(workflow) {
+    var visible = filteredRequests(workflow);
+    var stageSel = h('select', { title: 'Filter requests by workflow stage' });
+    var stageOpts = [['all', 'All stages']].concat(
+      REQUEST_STAGE_FILTERS.map(function (stage) { return [stage, stage]; })
+    );
+    for (var f = 0; f < stageOpts.length; f++) {
+      var o = document.createElement('option');
+      o.value = stageOpts[f][0]; o.textContent = stageOpts[f][1];
+      if (stageOpts[f][0] === requestStageFilter) o.selected = true;
+      stageSel.appendChild(o);
+    }
+    stageSel.addEventListener('change', function () {
+      requestStageFilter = stageSel.value;
+      if (lastState) render(lastState);
+    });
+
+    var searchInput = h('input', {
+      type: 'search',
+      class: 'run-search',
+      placeholder: 'Filter by name or requester…',
+      'aria-label': 'Filter requests by name or requester',
+      value: requestSearch
+    });
+    searchInput.addEventListener('input', function () {
+      requestSearch = searchInput.value;
+      if (lastState) render(lastState);
+    });
+
+    return h('div', { class: 'row', style: { marginTop: '8px', marginBottom: '4px' } }, [
+      h('span', { class: 'muted', text: 'Stage:' }), stageSel,
+      searchInput,
+      h('span', { class: 'muted', text: visible.length + ' of ' + (workflow.items || []).length + ' shown' })
+    ]);
   }
 
   function renderAuthor(state) {
@@ -1541,25 +1952,6 @@ const CLIENT_SCRIPT = String.raw`
       if (workflow.items[i].id === workflow.selectedId) selected = workflow.items[i];
     }
     var wrap = h('div', null, []);
-    var refresh = h('button', {
-      class: 'accept-button',
-      text: 'Refresh Azure workflow',
-      title: 'Fetch externally completed Azure work now'
-    });
-    refresh.addEventListener('click', function () {
-      workflowPost('/api/workflow/refresh', {}, 'Refreshing Azure workflow…');
-    });
-    wrap.appendChild(h('div', { class: 'panel info', style: { marginBottom: '12px' } }, [
-      h('div', { class: 'between' }, [
-        h('div', null, [
-          h('strong', { text: 'Azure-backed authoring workflow' }),
-          h('div', { class: 'muted', text: 'Generation is queued to Azure; this canvas never starts queue consumers.' })
-        ]),
-        refresh
-      ]),
-      h('div', { class: 'muted', style: { marginTop: '6px' },
-        text: 'Last Azure refresh: ' + (state.workflowLastRefreshAt || 'not yet loaded') })
-    ]));
     if (state.workflowError) {
       wrap.appendChild(h('div', { class: 'panel warn', style: { marginBottom: '12px' },
         text: 'Azure workflow state is unavailable: ' + state.workflowError }));
@@ -1568,36 +1960,422 @@ const CLIENT_SCRIPT = String.raw`
     var composer = h('div', { class: 'panel', style: { marginBottom: '12px' } }, [
       h('div', { class: 'section-title', text: 'New art request' })
     ]);
-    var name = h('input', { type: 'text', placeholder: 'Bare consumer id, e.g. rusty-anvil', 'aria-label': 'Asset name' });
-    var brief = h('input', { type: 'text', placeholder: 'One-line art request', 'aria-label': 'One-line art request' });
-    var type = h('select', { 'aria-label': 'Sprite type' });
-    ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character'].forEach(function (value) {
+    var name = h('input', {
+      type: 'text',
+      placeholder: 'Bare consumer id, e.g. rusty-anvil',
+      title: 'Stable consumer-facing asset identifier',
+      'aria-label': 'Asset name'
+    });
+    var brief = h('textarea', {
+      class: 'request-brief',
+      placeholder: 'Describe the art direction. This text is sent to Synthesize as additional direction.',
+      title: 'Freeform art direction sent to Synthesize',
+      'aria-label': 'Art direction brief'
+    });
+    var type = h('select', { title: 'Choose the generated sprite category', 'aria-label': 'Sprite type' });
+    ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character', 'icon'].forEach(function (value) {
       type.appendChild(h('option', { value: value, text: value }));
     });
-    var size = h('select', { 'aria-label': 'Sprite footprint' });
+    var size = h('select', { title: 'Choose the intended sprite footprint', 'aria-label': 'Sprite footprint' });
     ['default', 'wide', 'tall', 'large'].forEach(function (value) {
       size.appendChild(h('option', { value: value, text: value }));
     });
-    var create = h('button', { class: 'accept-button', text: 'Create request' });
-    create.addEventListener('click', function () {
-      workflowPost('/api/workflow/request', {
-        name: name.value, brief: brief.value, type: type.value, sizeVariant: size.value
-      }, 'Creating request…');
+    var contextCapabilities = state.assetContext && Array.isArray(state.assetContext.capabilities)
+      ? state.assetContext.capabilities : [];
+    var categoryDesignLanguage = state.assetContext?.categoryDesignLanguage || {};
+    var floorNumber = h('input', {
+      type: 'number',
+      min: '1',
+      max: '20',
+      placeholder: 'Floor 1-20',
+      title: 'Optional numeric floor intensity used by synthesis',
+      'aria-label': 'Floor intensity'
     });
-    composer.appendChild(h('div', { class: 'row' }, [name, brief, type, size, create]));
+    var floor = h('select', { title: 'Select a floor from the live game manifests', 'aria-label': 'Floor context' });
+    floor.appendChild(h('option', { value: '', text: 'No floor context' }));
+    contextCapabilities.forEach(function (capability) {
+      floor.appendChild(h('option', {
+        value: capability.floorId,
+        text: 'Floor ' + capability.floor + ' · ' + capability.name
+      }));
+    });
+    var family = h('select', { title: 'Select a family available on the chosen floor', 'aria-label': 'Enemy family context' });
+    var role = h('select', { title: 'Select a role available for the chosen family', 'aria-label': 'Mob role context' });
+    var priority = h('select', { title: 'Choose queue priority for this request', 'aria-label': 'Request priority' });
+    ['normal', 'high'].forEach(function (value) {
+      priority.appendChild(h('option', { value: value, text: value + ' priority' }));
+    });
+    var requester = h('input', {
+      type: 'text',
+      placeholder: 'Requester identity (optional)',
+      title: 'Optional name recorded with the request',
+      'aria-label': 'Requester identity'
+    });
+    var floorInjection = h('textarea', {
+      placeholder: 'Canonical floor design language appears after selecting a floor. Edits apply only to this request.',
+      title: 'Override floor design language for this request only',
+      'aria-label': 'Floor injection override',
+      style: { minHeight: '74px' }
+    });
+    var familyInjection = h('textarea', {
+      placeholder: 'Canonical family design language appears after selecting a family. Edits apply only to this request.',
+      title: 'Override family or theme design language for this request only',
+      'aria-label': 'Family injection override',
+      style: { minHeight: '74px' }
+    });
+    var categoryInjection = h('textarea', {
+      placeholder: 'Choose a sprite type to load its canonical category design language. Edits apply only to this request.',
+      title: 'Override sprite-category design language for this request only',
+      'aria-label': 'Sprite category design-language override',
+      style: { minHeight: '92px' }
+    });
+    var categoryDraftByType = requestComposerDraft?.categoryDraftByType
+      ? Object.assign({}, requestComposerDraft.categoryDraftByType)
+      : {};
+    var previousCategoryType = type.value;
+    function updateCategoryInjection() {
+      categoryDraftByType[previousCategoryType] = categoryInjection.value;
+      categoryInjection.value = Object.hasOwn(categoryDraftByType, type.value)
+        ? categoryDraftByType[type.value]
+        : type.value === 'auto'
+          ? ''
+          : (categoryDesignLanguage[type.value] || '');
+      previousCategoryType = type.value;
+    }
+    function captureRequestComposerDraft() {
+      categoryDraftByType[type.value] = categoryInjection.value;
+      requestComposerDraft = {
+        name: name.value,
+        brief: brief.value,
+        type: type.value,
+        size: size.value,
+        floorNumber: floorNumber.value,
+        floor: floor.value,
+        family: family.value,
+        role: role.value,
+        priority: priority.value,
+        requester: requester.value,
+        floorInjection: floorInjection.value,
+        familyInjection: familyInjection.value,
+        categoryInjection: categoryInjection.value,
+        categoryDraftByType: Object.assign({}, categoryDraftByType)
+      };
+    }
+    function restoreRequestComposerDraft() {
+      updateFamilyOptions();
+      if (!requestComposerDraft) {
+        updateCategoryInjection();
+        return;
+      }
+      name.value = requestComposerDraft.name;
+      brief.value = requestComposerDraft.brief;
+      type.value = requestComposerDraft.type;
+      size.value = requestComposerDraft.size;
+      floor.value = requestComposerDraft.floor;
+      updateFamilyOptions();
+      family.value = requestComposerDraft.family;
+      updateRoleOptions();
+      role.value = requestComposerDraft.role;
+      floorNumber.value = requestComposerDraft.floorNumber;
+      priority.value = requestComposerDraft.priority;
+      requester.value = requestComposerDraft.requester;
+      floorInjection.value = requestComposerDraft.floorInjection;
+      familyInjection.value = requestComposerDraft.familyInjection;
+      categoryInjection.value = requestComposerDraft.categoryInjection;
+      categoryDraftByType[type.value] = categoryInjection.value;
+      previousCategoryType = type.value;
+    }
+    function selectedFloorCapability() {
+      for (var ci = 0; ci < contextCapabilities.length; ci++) {
+        if (contextCapabilities[ci].floorId === floor.value) return contextCapabilities[ci];
+      }
+      return null;
+    }
+    function clearOptions(select, emptyLabel) {
+      select.replaceChildren(h('option', { value: '', text: emptyLabel }));
+    }
+    function updateRoleOptions() {
+      clearOptions(role, 'No mob role');
+      var selectedFloor = selectedFloorCapability();
+      var families = selectedFloor && Array.isArray(selectedFloor.families) ? selectedFloor.families : [];
+      var selectedFamily = null;
+      for (var fi = 0; fi < families.length; fi++) {
+        if (families[fi].id === family.value) selectedFamily = families[fi];
+      }
+      if (selectedFamily && Array.isArray(selectedFamily.roles)) {
+        selectedFamily.roles.forEach(function (value) {
+          role.appendChild(h('option', { value: value, text: value }));
+        });
+      }
+      role.disabled = !selectedFamily;
+      familyInjection.value = selectedFamily && selectedFamily.canonicalFamilyInjection
+        ? selectedFamily.canonicalFamilyInjection : '';
+    }
+    function updateFamilyOptions() {
+      clearOptions(family, 'No enemy family');
+      var selectedFloor = selectedFloorCapability();
+      var families = selectedFloor && Array.isArray(selectedFloor.families) ? selectedFloor.families : [];
+      families.forEach(function (entry) {
+        family.appendChild(h('option', { value: entry.id, text: entry.id }));
+      });
+      family.disabled = !selectedFloor;
+      if (selectedFloor) floorNumber.value = String(selectedFloor.floor);
+      floorInjection.value = selectedFloor && selectedFloor.canonicalFloorInjection
+        ? selectedFloor.canonicalFloorInjection : '';
+      updateRoleOptions();
+    }
+    floor.addEventListener('change', updateFamilyOptions);
+    family.addEventListener('change', updateRoleOptions);
+    type.addEventListener('change', updateCategoryInjection);
+    restoreRequestComposerDraft();
+    var create = h('button', {
+      class: 'accept-button',
+      text: 'Generate Brief',
+      title: 'Save this request and queue it for Azure synthesis'
+    });
+    function fullRequestTemplate() {
+      var selectedFloor = selectedFloorCapability();
+      var selectedFamily = null;
+      if (selectedFloor && Array.isArray(selectedFloor.families)) {
+        for (var ti = 0; ti < selectedFloor.families.length; ti++) {
+          if (selectedFloor.families[ti].id === family.value) selectedFamily = selectedFloor.families[ti];
+        }
+      }
+      return renderRequestTemplate({
+        name: name.value.trim(),
+        brief: brief.value.trim(),
+        type: type.value,
+        size: size.value,
+        floorNumber: floorNumber.value,
+        floorContext: selectedFloor ? selectedFloor.floorId + ' · ' + selectedFloor.name : '',
+        familyContext: selectedFamily ? selectedFamily.id : '',
+        role: role.value,
+        priority: priority.value,
+        requester: requester.value.trim(),
+        crawlerDesignLanguage: CRAWLER_DESIGN_LANGUAGE,
+        categoryInjection: categoryInjection.value.trim(),
+        floorInjection: floorInjection.value.trim() ||
+          (selectedFloor && selectedFloor.canonicalFloorInjection) || '',
+        familyInjection: familyInjection.value.trim() ||
+          (selectedFamily && selectedFamily.canonicalFamilyInjection) || ''
+      });
+    }
+    function closeTemplateModal() {
+      requestTemplateModal = null;
+      referencePreview = null;
+      render(lastState);
+    }
+    function optionExists(select, value) {
+      for (var oi = 0; oi < select.options.length; oi++) {
+        if (select.options[oi].value === value) return true;
+      }
+      return false;
+    }
+    function applyTemplateEdits(templateText) {
+      var edited = parseRequestTemplate(templateText);
+      name.value = edited.name === '[not entered]' ? '' : edited.name;
+      brief.value = edited.brief === '[none]' ? '' : edited.brief;
+      if (optionExists(type, edited.type)) type.value = edited.type;
+      if (optionExists(size, edited.size)) size.value = edited.size;
+      var editedFloor = edited.floorContext.split(' · ')[0];
+      floor.value = editedFloor === 'none' ? '' : editedFloor;
+      updateFamilyOptions();
+      family.value = edited.familyContext === 'none' ? '' : edited.familyContext;
+      updateRoleOptions();
+      role.value = edited.role === 'none' ? '' : edited.role;
+      floorNumber.value = edited.floorNumber === '[none]' ? '' : edited.floorNumber;
+      if (optionExists(priority, edited.priority)) priority.value = edited.priority;
+      requester.value = edited.requester === 'none' ? '' : edited.requester;
+      categoryInjection.value = edited.categoryInjection === '[resolved after automatic type classification]'
+        ? '' : edited.categoryInjection;
+      floorInjection.value = edited.floorInjection === '[none]' ? '' : edited.floorInjection;
+      familyInjection.value = edited.familyInjection === '[none]' ? '' : edited.familyInjection;
+    }
+    var viewTemplate = h('button', {
+      text: 'View full template',
+      type: 'button',
+      title: 'Review and edit the complete request before creating it'
+    });
+    viewTemplate.addEventListener('click', function () {
+      captureRequestComposerDraft();
+      requestTemplateModal = fullRequestTemplate();
+      var previewName = name.value.trim();
+      var previewType = type.value;
+      var previewKey = previewName + '|' + previewType;
+      referencePreview = !previewName || previewType === 'auto'
+        ? {
+            key: previewKey,
+            status: 'empty',
+            data: null,
+            error: null,
+            reason: !previewName ? 'name' : 'type'
+          }
+        : { key: previewKey, status: 'loading', data: null, error: null };
+      render(lastState);
+      if (previewName && previewType !== 'auto') {
+        fetch('/api/workflow/reference-preview?name=' + encodeURIComponent(previewName) +
+          '&type=' + encodeURIComponent(previewType))
+          .then(function (response) {
+            return response.json().then(function (payload) {
+              if (!response.ok) throw new Error(payload.message || payload.error || 'Reference preview failed');
+              return payload;
+            });
+          })
+          .then(function (payload) {
+            if (!referencePreview || referencePreview.key !== previewKey) return;
+            referencePreview = { key: previewKey, status: 'ready', data: payload, error: null };
+            render(lastState);
+          })
+          .catch(function (error) {
+            if (!referencePreview || referencePreview.key !== previewKey) return;
+            referencePreview = { key: previewKey, status: 'error', data: null, error: error.message };
+            render(lastState);
+          });
+      }
+    });
+    create.addEventListener('click', function () {
+      var categoryOverride = normalizeCategoryOverride(
+        categoryInjection.value,
+        type.value,
+        categoryDesignLanguage
+      );
+      workflowPost('/api/workflow/request', {
+        name: name.value,
+        brief: brief.value,
+        type: type.value,
+        sizeVariant: size.value,
+        floor: floorNumber.value === '' ? undefined : Number(floorNumber.value),
+        floorId: floor.value || undefined,
+        familyId: family.value || undefined,
+        mobRole: role.value || undefined,
+        injectionOverrides: {
+          floor: floorInjection.value,
+          family: familyInjection.value,
+          category: categoryOverride
+        },
+        priority: priority.value,
+        requester: requester.value
+      }, 'Generating brief…').then(function (ok) {
+        if (!ok) return;
+        requestComposerDraft = null;
+        if (lastState) render(lastState);
+      });
+    });
+    composer.appendChild(h('label', { text: 'Asset name', style: { display: 'block', marginTop: '8px' } }, [name]));
+    composer.appendChild(h('label', { text: 'Art direction brief', style: { display: 'block', marginTop: '8px' } }, [brief]));
+    composer.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, [type, size]));
+    composer.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } }, [
+      floorNumber, floor, family, role, priority, requester
+    ]));
+    composer.appendChild(h('div', { class: 'muted', style: { marginTop: '8px' },
+      text: contextCapabilities.length
+        ? 'Floor, family, and role choices are derived from the current game manifests. Injection edits are request-local overrides.'
+        : 'Game-derived request context is unavailable until the sprite sidecar responds.' }));
+    composer.appendChild(h('label', { text: 'Floor design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [floorInjection]));
+    composer.appendChild(h('label', { text: 'Family/theme design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [familyInjection]));
+    composer.appendChild(h('label', { text: 'Sprite category design-language injection (request-local override)', style: { display: 'block', marginTop: '8px' } }, [categoryInjection]));
+    composer.appendChild(h('div', { class: 'template-actions', style: { marginTop: '12px' } }, [viewTemplate]));
+    composer.appendChild(h('div', { class: 'request-actions' }, [create]));
+    composer.addEventListener('input', captureRequestComposerDraft);
+    composer.addEventListener('change', captureRequestComposerDraft);
     wrap.appendChild(composer);
+    if (requestTemplateModal !== null) {
+      var backdrop = h('div', { class: 'modal-backdrop' });
+      var modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'request-template-title' });
+      modal.appendChild(h('button', {
+        class: 'modal-close',
+        type: 'button',
+        text: '✕ Close',
+        title: 'Close without applying template edits',
+        onclick: closeTemplateModal
+      }));
+      modal.appendChild(h('h2', { id: 'request-template-title', text: 'Full synthesis request template' }));
+      modal.appendChild(h('div', { class: 'muted', text: 'Review the exact name, direction, game context, and injection values that will be sent after you generate the brief.' }));
+      var templateEditor = h('textarea', {
+        class: 'yaml',
+        title: 'Edit request fields, then apply them to the authoring form',
+        'aria-label': 'Editable full synthesis request template'
+      });
+      templateEditor.value = requestTemplateModal;
+      templateEditor.addEventListener('input', function () {
+        requestTemplateModal = templateEditor.value;
+      });
+      modal.appendChild(templateEditor);
+      modal.appendChild(h('h3', { text: 'Reference examples', style: { marginBottom: '4px' } }));
+      modal.appendChild(h('div', {
+        class: 'muted',
+        text: 'Current deterministic preview of the approved sprites that generation would attach now. The set is re-evaluated if the approved pool or dislike annotations change before generation.'
+      }));
+      if (!referencePreview || referencePreview.status === 'loading') {
+        modal.appendChild(h('div', { class: 'panel', text: 'Loading reference examples…', style: { marginTop: '8px' } }));
+      } else if (referencePreview.status === 'error') {
+        modal.appendChild(h('div', { class: 'panel warn', text: 'Reference preview unavailable: ' + referencePreview.error, style: { marginTop: '8px' } }));
+      } else if (referencePreview.status === 'empty' ||
+        !Array.isArray(referencePreview.data?.references) ||
+        referencePreview.data.references.length === 0) {
+        modal.appendChild(h('div', { class: 'panel', text: referencePreview.reason === 'name'
+          ? 'Enter an asset name to resolve its deterministic reference examples.'
+          : type.value === 'auto'
+            ? 'Reference examples resolve after automatic sprite-type classification.'
+          : 'No eligible approved reference examples are currently available.', style: { marginTop: '8px' } }));
+      } else {
+        var referenceGallery = h('div', { class: 'row', style: { marginTop: '8px', alignItems: 'stretch' } });
+        referencePreview.data.references.forEach(function (reference) {
+          referenceGallery.appendChild(h('figure', {
+            class: 'panel',
+            title: reference.assetPath,
+            style: { margin: '0', width: '150px' }
+          }, [
+            h('img', {
+              src: reference.imageDataUrl,
+              alt: reference.spriteName + ' approved reference sprite',
+              style: { width: '128px', height: '128px', objectFit: 'contain', imageRendering: 'pixelated' }
+            }),
+            h('figcaption', { text: reference.spriteName, style: { overflowWrap: 'anywhere' } }),
+            h('div', { class: 'muted', text: reference.type + ' · sensors ' + reference.sensorScore +
+              (reference.judgeScore == null ? '' : ' · judge ' + reference.judgeScore) })
+          ]));
+        });
+        modal.appendChild(referenceGallery);
+      }
+      var applyTemplate = h('button', {
+        class: 'accept-button',
+        text: 'Apply template edits',
+        title: 'Apply editable template values to the request form'
+      });
+      applyTemplate.addEventListener('click', function () {
+        applyTemplateEdits(templateEditor.value);
+          captureRequestComposerDraft();
+        requestTemplateModal = null;
+        referencePreview = null;
+        backdrop.remove();
+        name.focus();
+      });
+      modal.appendChild(h('div', { class: 'request-actions' }, [applyTemplate]));
+      backdrop.appendChild(modal);
+      wrap.appendChild(backdrop);
+    }
 
     if (workflow.items.length === 0) {
-      wrap.appendChild(h('div', { class: 'muted', text: 'Create a request to begin synthesis.' }));
+      wrap.appendChild(h('div', { class: 'muted', text: 'Generate a brief to begin synthesis.' }));
       return wrap;
     }
+    wrap.appendChild(renderRequestPicker(workflow));
+    var visibleItems = filteredRequests(workflow);
     var list = h('div', { class: 'filelist' }, []);
-    workflow.items.forEach(function (item) {
+    if (visibleItems.length === 0) {
+      list.appendChild(h('div', { class: 'muted', style: { padding: '4px 8px' },
+        text: 'No requests match the current stage/search filter.' }));
+    }
+    visibleItems.forEach(function (item) {
       list.appendChild(h('button', {
         class: item.id === workflow.selectedId ? 'active' : '',
-        text: item.name + ' · ' + item.stage,
+        title: item.name + ' · ' + item.stage,
         onclick: function () { workflowPost('/api/workflow/select', { itemId: item.id }, 'Selecting request…'); }
-      }));
+      }, [
+        h('span', { text: item.name }),
+        h('span', { class: 'stage-pill', text: item.stage })
+      ]));
     });
     var detail = h('div', { class: 'panel' }, []);
     if (!selected) {
@@ -1611,15 +2389,214 @@ const CLIENT_SCRIPT = String.raw`
         h('code', { text: selected.kebabName })
       ]));
       if (selected.brief) detail.appendChild(h('p', { class: 'muted', text: selected.brief }));
+      if (selected.floorId || selected.familyId || selected.mobRole) {
+        detail.appendChild(h('div', { class: 'muted', text:
+          'Context: ' + [
+            selected.floor ? 'floor ' + selected.floor : null,
+            selected.floorId,
+            selected.familyId,
+            selected.mobRole
+          ].filter(Boolean).join(' · ') + ' · ' + (selected.priority || 'normal') + ' priority' +
+          (selected.requester ? ' · requester: ' + selected.requester : '')
+        }));
+      }
+      if (selected.assetRequestContext && selected.assetRequestContext.injections) {
+        var injectionLines = [];
+        if (selected.assetRequestContext.injections.floor) injectionLines.push('Floor: ' + selected.assetRequestContext.injections.floor);
+        if (selected.assetRequestContext.injections.family) injectionLines.push('Family/theme: ' + selected.assetRequestContext.injections.family);
+        if (injectionLines.length) detail.appendChild(h('pre', { class: 'muted', text: injectionLines.join('\n') }));
+      }
+      var editRequest = h('button', {
+        text: 'Edit request',
+        title: 'Edit the original request fields. Prompt changes invalidate downstream synthesis results.'
+      });
+      editRequest.addEventListener('click', function () {
+        editRequestModalOpen = true;
+        var backdrop = h('div', { class: 'modal-backdrop' });
+        var modal = h('div', { class: 'modal panel' }, [
+        h('div', { class: 'between' }, [
+          h('strong', { text: 'Edit request' }),
+          h('button', { text: 'Close', title: 'Close without saving', onclick: function () {
+            editRequestModalOpen = false;
+            backdrop.remove();
+            if (lastState) render(lastState);
+          } })
+        ]),
+        h('p', { class: 'muted', text: 'Changing prompt or game context clears promoted briefs and generated runs; durable Azure artifacts are retained.' })
+        ]);
+        function field(label, control) {
+        modal.appendChild(h('label', { class: 'field' }, [h('span', { text: label }), control]));
+        return control;
+        }
+        var editName = field('Asset name', h('input', { type: 'text', value: selected.name }));
+        var editBrief = field('Art direction brief', h('textarea', { class: 'request-brief', text: selected.brief || '' }));
+        var editType = field('Sprite type', h('select'));
+        ['auto', 'weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character', 'icon'].forEach(function (value) {
+        editType.appendChild(h('option', { value: value, text: value }));
+        });
+        editType.value = selected.requestedType;
+        var editSize = field('Sprite footprint', h('select'));
+        ['default', 'wide', 'tall', 'large'].forEach(function (value) {
+        editSize.appendChild(h('option', { value: value, text: value }));
+        });
+        editSize.value = selected.sizeVariant;
+        var editFloorNumber = field('Floor intensity', h('input', {
+        type: 'number',
+        min: '1',
+        max: '20',
+        placeholder: 'Floor 1-20',
+        title: 'Optional numeric floor intensity used by synthesis',
+        'aria-label': 'Floor intensity',
+        value: selected.floor != null ? String(selected.floor) : ''
+        }));
+        var editFloor = field('Floor context', h('select'));
+        editFloor.appendChild(h('option', { value: '', text: 'No floor context' }));
+        contextCapabilities.forEach(function (capability) {
+        editFloor.appendChild(h('option', { value: capability.floorId, text: 'Floor ' + capability.floor + ' · ' + capability.name }));
+        });
+        editFloor.value = selected.floorId || '';
+        var editFamily = field('Enemy family context', h('select'));
+        var editRole = field('Mob role context', h('select'));
+        var editPriority = field('Priority', h('select'));
+        ['normal', 'high'].forEach(function (value) {
+        editPriority.appendChild(h('option', { value: value, text: value + ' priority' }));
+        });
+        editPriority.value = selected.priority || 'normal';
+        var editRequester = field('Requester identity', h('input', { type: 'text', value: selected.requester || '' }));
+        var editFloorInjection = field('Floor injection override', h('textarea', { text: selected.injectionOverrides?.floor || '' }));
+        var editFamilyInjection = field('Family/theme injection override', h('textarea', { text: selected.injectionOverrides?.family || '' }));
+        var editCategoryInjection = field('Sprite category injection override', h('textarea', {
+        text: selected.injectionOverrides?.category || '',
+        placeholder: selected.requestedType !== 'auto'
+          ? categoryDesignLanguage[selected.requestedType] || ''
+          : 'Choose a concrete sprite type to see its canonical category design language.'
+        }));
+        var categoryDraftByType = {};
+        categoryDraftByType[selected.requestedType] = editCategoryInjection.value;
+        var previousEditType = editType.value;
+        editType.addEventListener('change', function () {
+        categoryDraftByType[previousEditType] = editCategoryInjection.value;
+        editCategoryInjection.value = Object.hasOwn(categoryDraftByType, editType.value)
+          ? categoryDraftByType[editType.value]
+          : editType.value === 'auto'
+            ? ''
+            : (categoryDesignLanguage[editType.value] || '');
+        previousEditType = editType.value;
+        });
+        function editCapability() {
+        for (var ei = 0; ei < contextCapabilities.length; ei++) {
+          if (contextCapabilities[ei].floorId === editFloor.value) return contextCapabilities[ei];
+        }
+        return null;
+        }
+        function editFamilies() {
+        var capability = editCapability();
+        editFamily.replaceChildren(h('option', { value: '', text: 'No enemy family' }));
+        (capability?.families || []).forEach(function (entry) {
+          editFamily.appendChild(h('option', { value: entry.id, text: entry.id }));
+        });
+        editFamily.value = selected.familyId || '';
+        editFamily.disabled = !capability;
+        editRoles();
+        }
+        function editRoles() {
+        var capability = editCapability();
+        var familyEntry = (capability?.families || []).find(function (entry) { return entry.id === editFamily.value; });
+        editRole.replaceChildren(h('option', { value: '', text: 'No mob role' }));
+        (familyEntry?.roles || []).forEach(function (value) {
+          editRole.appendChild(h('option', { value: value, text: value }));
+        });
+        editRole.value = selected.mobRole || '';
+        editRole.disabled = !familyEntry;
+        }
+        editFloor.addEventListener('change', editFamilies);
+        editFamily.addEventListener('change', editRoles);
+        editFamilies();
+        var saveEdit = h('button', {
+        class: 'accept-button',
+        text: 'Save request',
+        title: 'Persist these request fields to the shared Azure-backed workflow'
+        });
+        var editError = h('div', {
+        class: 'panel error',
+        hidden: true,
+        style: { marginTop: '10px' }
+        });
+        saveEdit.addEventListener('click', function () {
+        var categoryOverride = normalizeCategoryOverride(
+          editCategoryInjection.value,
+          editType.value,
+          categoryDesignLanguage
+        );
+        workflowPost('/api/workflow/edit', {
+          itemId: selected.id,
+          patch: {
+            name: editName.value,
+            brief: editBrief.value,
+            requestedType: editType.value,
+            sizeVariant: editSize.value,
+            floorId: editFloor.value || null,
+            floor: editFloorNumber.value === '' ? null : Number(editFloorNumber.value),
+            familyId: editFamily.value || null,
+            mobRole: editRole.value || null,
+            priority: editPriority.value,
+            requester: editRequester.value,
+            injectionOverrides: {
+              floor: editFloorInjection.value,
+              family: editFamilyInjection.value,
+              category: categoryOverride
+            }
+          }
+        }, 'Saving request…').then(function (ok) {
+          if (!ok) {
+            editError.hidden = false;
+            editError.textContent = lastState?.error || 'Workflow action failed.';
+            return;
+          }
+          editRequestModalOpen = false;
+          backdrop.remove();
+          if (lastState) render(lastState);
+        });
+        });
+        modal.appendChild(editError);
+        modal.appendChild(h('div', { class: 'request-actions' }, [saveEdit]));
+        backdrop.appendChild(modal);
+        wrap.appendChild(backdrop);
+      });
       var controls = h('div', { class: 'row' }, []);
+      controls.appendChild(editRequest);
       if (selected.stage === 'draft') {
         controls.appendChild(h('button', { class: 'accept-button', text: 'Synthesize draft briefs',
           onclick: function () { workflowPost('/api/workflow/synthesize', { itemId: selected.id, candidates: 3 }, 'Synthesizing briefs…'); } }));
       }
       if (selected.candidates && selected.candidates.length) {
+        var chosenCandidate = selected.candidates.find(function (candidate) {
+          return candidate.yamlPath === selected.chosenCandidatePath;
+        });
+        if (chosenCandidate) {
+          detail.appendChild(h('div', {
+            class: 'panel chosen-brief-summary',
+            title: 'This brief will be promoted when Generate sprite is clicked'
+          }, [
+            h('strong', { text: '✓ Chosen brief: ' + chosenCandidate.id }),
+            h('div', {
+              class: 'muted',
+              text: 'This brief will be promoted when you generate the sprite.'
+            })
+          ]));
+        }
         selected.candidates.forEach(function (candidate) {
-          var candidatePanel = h('div', { class: 'card', style: { marginTop: '10px' } }, [
-            h('div', { class: 'between' }, [h('strong', { text: candidate.id }), h('code', { text: candidate.yamlPath })]),
+          var isChosen = selected.chosenCandidatePath === candidate.yamlPath;
+          var candidatePanel = h('div', {
+            class: 'card brief-candidate' + (isChosen ? ' chosen' : ''),
+            style: { marginTop: '10px' },
+            title: isChosen ? 'Chosen brief; this candidate will be promoted' : 'Synthesized brief candidate'
+          }, [
+            h('div', { class: 'between' }, [
+              h('strong', { text: candidate.id }),
+              isChosen ? h('span', { class: 'chosen-brief-pill', text: '✓ Chosen' }) : null
+            ]),
+            h('code', { text: candidate.yamlPath }),
             h('div', { class: 'muted', text: candidate.description || '' })
           ]);
           var draftKey = yamlDraftKey(selected.id, candidate.yamlPath);
@@ -1639,23 +2616,40 @@ const CLIENT_SCRIPT = String.raw`
             });
           };
           candidatePanel.appendChild(yaml);
+          var chooseBrief = h('button', {
+            class: 'accept-button',
+            text: isChosen ? '✓ Chosen brief' : 'Choose this brief',
+            title: isChosen ? 'This brief is selected for sprite generation' : 'Select this brief for sprite generation',
+            onclick: function () { saveBrief(true, 'Choosing brief…'); }
+          });
+          chooseBrief.disabled = isChosen;
           candidatePanel.appendChild(h('div', { class: 'row' }, [
-            h('button', { text: 'Save YAML', onclick: function () { saveBrief(false, 'Saving brief…'); } }),
-            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () { saveBrief(true, 'Choosing brief…'); } })
+            h('button', {
+              text: 'Save YAML',
+              title: 'Save edits to this synthesized brief',
+              onclick: function () { saveBrief(false, 'Saving brief…'); }
+            }),
+            chooseBrief
           ]));
           detail.appendChild(candidatePanel);
         });
       }
-      if ((selected.stage === 'candidates' || selected.stage === 'draft') && (selected.chosenCandidatePath || selected.candidates.length)) {
-        controls.appendChild(h('button', { class: 'accept-button', text: 'Promote & queue Azure generation',
-          onclick: function () { workflowPost('/api/workflow/generate', { itemId: selected.id }, 'Queueing Azure generation…'); } }));
+      if ((selected.stage === 'candidates' || selected.stage === 'draft') && (selected.chosenCandidatePath || (selected.candidates && selected.candidates.length))) {
+        controls.appendChild(h('button', {
+          class: 'accept-button',
+          text: 'Generate sprite',
+          title: 'Review the exact Azure request before local generation',
+          onclick: function () {
+            openGenerationRequestModal(selected);
+          }
+        }));
       }
       if (selected.stage === 'generating') {
-        controls.appendChild(h('span', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Waiting for Azure queue output…']));
+        controls.appendChild(h('span', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Generating locally\u2026']));
       }
       if (selected.run) {
         controls.appendChild(h('button', { text: 'View generated sheet', onclick: function () {
-          activeTab = 'runs'; select(selected.run.briefId, selected.run.runId, null);
+          activeTab = 'sprites'; select(selected.run.briefId, selected.run.runId, null);
         } }));
       }
       if (selected.stage === 'sheet') {
@@ -1690,6 +2684,15 @@ const CLIENT_SCRIPT = String.raw`
       detail.appendChild(controls);
     }
     wrap.appendChild(h('div', { class: 'split' }, [list, detail]));
+    var generationModal = renderGenerationRequestModal();
+    if (generationModal) wrap.appendChild(generationModal);
+    return wrap;
+  }
+
+  function renderBriefs(state) {
+    var wrap = h('div', null, []);
+    wrap.appendChild(renderAuthor(state));
+    wrap.appendChild(h('div', { style: { marginTop: '12px' } }, [renderFiles(state)]));
     return wrap;
   }
 
@@ -1698,10 +2701,10 @@ const CLIENT_SCRIPT = String.raw`
   function renderTabs(state) {
     var bar = h('div', { class: 'tabs' }, []);
     var counts = {
-      author: (state.workflow && state.workflow.items) ? state.workflow.items.length : 0,
+      briefs: ((state.workflow && state.workflow.items) ? state.workflow.items.length : 0) +
+        (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
       backlog: (state.backlog && state.backlog.reports) ? state.backlog.reports.length : 0,
-      files: (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
-      runs: (state.runs || []).length
+      sprites: (state.runs || []).length
     };
     for (var i = 0; i < TABS.length; i++) {
       (function (tab) {
@@ -1717,14 +2720,17 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function renderActiveTab(state) {
-    if (activeTab === 'author') return renderAuthor(state);
-    if (activeTab === 'files') return renderFiles(state);
-    if (activeTab === 'runs') return renderRuns(state);
+    if (activeTab === 'briefs') return renderBriefs(state);
+    if (activeTab === 'sprites') return renderRuns(state);
     return renderBacklog(state);
   }
 
   function render(state) {
     if (!state) return;
+    if (editRequestModalOpen) {
+      lastState = state;
+      return;
+    }
     var restoreModalFocus = !!(
       briefModal &&
       document.activeElement &&
@@ -1738,8 +2744,9 @@ const CLIENT_SCRIPT = String.raw`
       ? { key: focused.getAttribute('data-yaml-draft-key'), start: focused.selectionStart, end: focused.selectionEnd }
       : null;
     lastState = state;
-    // The debugger's iframe survives tab changes, but is only exposed from Runs.
-    if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
+    // The debugger is a Run-specific inspection tool. Its iframe stays mounted
+    // across Sprites-tab refreshes, but must not leak into backlog or brief views.
+    if (postprocessHost) postprocessHost.hidden = activeTab !== 'sprites';
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
     if (state.error) {
@@ -1848,7 +2855,9 @@ export function renderHtml(instanceId, mutationToken = '') {
     .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
     .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
     .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
-    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));
+    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns))
+    .replace('/*__REQUEST_FILTER_FNS__*/', () => serializePureModule(requestFilterFns))
+    .replace('/*__REQUEST_TEMPLATE_FNS__*/', () => serializePureModule(requestTemplateFns));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
@@ -1857,7 +2866,7 @@ export function renderHtml(instanceId, mutationToken = '') {
     '<style>' + STYLES + '</style>',
     '</head><body>',
     '<div class="toolbar">',
-    '<button id="refresh-btn" type="button" title="Reload backlog and runs">↻ Refresh</button>',
+    '<button id="refresh-btn" type="button" title="Reload backlog and sprites">↻ Refresh</button>',
     '<span id="busy" class="busy" hidden><span class="spinner"></span><span id="busy-label">Loading…</span></span>',
     '</div>',
     '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',
