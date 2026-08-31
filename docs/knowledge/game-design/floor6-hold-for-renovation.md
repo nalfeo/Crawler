@@ -1,7 +1,9 @@
 # Floor 6 — "Hold for Renovation" Content Bible
 
-> **Status:** Proposed. The title, protected-objective noun, authored-site model, active-Crawler
-> rule, and run-scoped upgrade model are `HUMAN_GATE` proposals, not canon, until approved.
+> **Status:** Proposed overall; the title, protected-objective noun, authored-site model,
+> active-Crawler rule, and run-scoped upgrade model (`HUMAN_GATE-1` through `HUMAN_GATE-5`) are
+> **approved** — see [#3963](https://github.com/nalfeo/Crawler/issues/3963), closed completed by
+> the human owner. All numeric tuning remains deferred to S9.
 >
 > **Season episode:** _"Hold for Renovation."_ The network has sold a live restoration special
 > before confirming that the condemned broadcast set can survive its own ratings plan. The
@@ -23,7 +25,7 @@ The spec, not this bible, owns phase behavior, goal IDs, state schemas, and acce
 | Director/sponsor voice and season-quirk treatment                                  | [Lore Bible](lore-bible.md) §§The Director, Season Quirks, Sponsor Companies             |
 | Floor 4 is a timed survival arena with a continuous act clock                      | [GDD](game-design-document.md), [Floor 4 bible](floor4-arena.md)                         |
 | Floor 5 is a siege with opposing lanes, a Command Post, breach, and throne capture | [GDD](game-design-document.md), [Floor 5 bible](floor5-hostile-takeover.md)              |
-| Floor 6 proposed requirements, implementation ownership, and approval gate         | [Floor 6 epic](../epics/floor-6-hero-tower-defense/floor-6-hero-tower-defense.epic.json) |
+| Floor 6 requirements, implementation ownership, and slice acceptance mapping       | [Floor 6 epic](../epics/floor-6-hero-tower-defense/floor-6-hero-tower-defense.epic.json) |
 
 No source conflict was found. This proposal creates no lore about the Gradient, dungeon origin, or
 timeline. Any later conflict is an unresolved record in
@@ -43,8 +45,9 @@ floor-scoped build currency, and chooses among authored maintenance plinths; a p
 most one defense and never changes route geometry.
 
 The Relay is the floor's single protected objective and its destruction ends the run. The exact
-title and Relay noun remain approval-gated; the structural fantasy—protect one original,
-in-fiction broadcast-critical object from scheduled pressure—is what this document proposes.
+title and Relay noun are approved (`HUMAN_GATE-1`, `HUMAN_GATE-2`; see §6); the structural
+fantasy—protect one original, in-fiction broadcast-critical object from scheduled pressure—is
+what this document defines.
 
 > Director, proposed cold open: _"Good news: this set is scheduled for a modest renovation.
 > Bad news: the contractor has interpreted ‘modest’ as ‘all at once.’"_
@@ -99,15 +102,19 @@ protected expression.
 
 ## 6. HUMAN_GATE register
 
-| ID             | Proposed non-numeric decision                           | Owner / approval evidence           |
-| -------------- | ------------------------------------------------------- | ----------------------------------- |
-| `HUMAN_GATE-1` | Episode title and renovation-production identity        | Human + Content Designer            |
-| `HUMAN_GATE-2` | Defend-the-Relay objective noun/framing                 | Human + Content Designer            |
-| `HUMAN_GATE-3` | Authored, non-blocking tower-site-only construction     | Human + Systems Engineer            |
-| `HUMAN_GATE-4` | Crawler remains an active combatant, not a build cursor | Human + Game Designer / UX Designer |
-| `HUMAN_GATE-5` | Run-scoped upgrades reset at terminal cleanup           | Human + Game Designer               |
+All five non-numeric decisions below are **approved** — [#3963](https://github.com/nalfeo/Crawler/issues/3963)
+was closed as completed by the human owner, and that issue's done condition is defined as
+approval of exactly these five choices.
+
+| ID             | Approved non-numeric decision                           | Owner / approval evidence                                |
+| -------------- | ------------------------------------------------------- | -------------------------------------------------------- |
+| `HUMAN_GATE-1` | Episode title and renovation-production identity        | Human + Content Designer — approved via #3963            |
+| `HUMAN_GATE-2` | Defend-the-Relay objective noun/framing                 | Human + Content Designer — approved via #3963            |
+| `HUMAN_GATE-3` | Authored, non-blocking tower-site-only construction     | Human + Systems Engineer — approved via #3963            |
+| `HUMAN_GATE-4` | Crawler remains an active combatant, not a build cursor | Human + Game Designer / UX Designer — approved via #3963 |
+| `HUMAN_GATE-5` | Run-scoped upgrades reset at terminal cleanup           | Human + Game Designer — approved via #3963               |
 
 All numeric values—wave cadence/caps, costs, yields, upgrade effects, break duration, finale
-pressure, duration/rate targets, and performance budgets—remain `HUMAN_GATE` decisions for S9
-after representative evidence. Content Design neither selects them nor substitutes prose for the
-owning persona's decision.
+pressure, duration/rate targets, and performance budgets—remain `HUMAN_GATE` decisions deferred to
+S9 after representative evidence. Content Design neither selects them nor substitutes prose for
+the owning persona's decision.

@@ -8,8 +8,9 @@
 ## Context
 
 Floor 6 is an original compact, one-sided defense production set. It is neither Floor 4's
-clock-survival arena nor Floor 5's opposing-lane siege. Proposed names are human-gated; all
-numeric tuning is deferred to S9 and must be supported by representative sweep evidence.
+clock-survival arena nor Floor 5's opposing-lane siege. Names/framing are approved via
+[#3963](https://github.com/nalfeo/Crawler/issues/3963); all numeric tuning is deferred to S9 and
+must be supported by representative sweep evidence.
 
 ## Requirements
 

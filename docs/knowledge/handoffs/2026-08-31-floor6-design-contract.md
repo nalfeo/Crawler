@@ -27,8 +27,9 @@ discoverable and auditable.
 - Defined proposed Relay defense, phase/terminal precedence, authored non-blocking sites, immutable
   manifests, floor-scoped lifecycle, breaks, Deadline finale, schemas, isolated RNG streams,
   telemetry, ownership, later-slice acceptance mapping, and human decision register.
-- Kept all named non-numeric decisions explicitly proposed under `HUMAN_GATE`; all numeric tuning
-  is deferred to S9's owner-backed representative evidence.
+- Kept all five named non-numeric decisions under `HUMAN_GATE-1` through `HUMAN_GATE-5`; all are
+  now approved via [#3963](https://github.com/nalfeo/Crawler/issues/3963), closed completed by the
+  human owner. All numeric tuning remains deferred to S9's owner-backed representative evidence.
 
 ## Verification
 
@@ -37,8 +38,11 @@ discoverable and auditable.
 - `npx tsx scripts/agent/docs/check-lore-canon.ts` — passed.
 - `npx tsx scripts/agent/docs/check-adr-consistency.ts` — completed with one existing,
   non-blocking warning for `2026-08-18-ten-slot-equipment-contract.md`.
-- `npm run docs:check` remains blocked before changed-doc checks by an existing stale path in the
-  protected `.github/agents/ux-designer.agent.md`, which this session cannot access.
+- `npm run docs:check` remains blocked before changed-doc checks by a pre-existing stale path in
+  `.github/agents/ux-designer.agent.md` (last touched by PR #3957, unrelated to Floor 6). The
+  `.github/agents/` directory is off-limits to this agent by environment policy, so fixing it
+  requires human access; the individual Floor 6 doc checks (`check-adr-consistency`,
+  `check-lore-canon`) pass on their own.
 - `npm run review:ledger -- validate ...floor6-design-contract.review-ledger.json` — passed.
 
 ## Review
@@ -56,5 +60,6 @@ observe both real ScenarioDefinition pipelines and S8 to provide deterministic r
 
 ## Next steps
 
-Human approval is required for `HUMAN_GATE-1` through `HUMAN_GATE-5` before S2 implementation.
-S9 must separately approve all numeric values after representative GitHub-backed sweep evidence.
+`HUMAN_GATE-1` through `HUMAN_GATE-5` are approved via [#3963](https://github.com/nalfeo/Crawler/issues/3963);
+S2 implementation may proceed on those five decisions. S9 must separately approve all numeric
+values after representative GitHub-backed sweep evidence.

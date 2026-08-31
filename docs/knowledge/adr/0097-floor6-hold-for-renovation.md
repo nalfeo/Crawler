@@ -54,11 +54,12 @@ Player death, Relay loss, and a bounded backstop resolve before same-tick phase/
 The Deadline encounter is a fixed, bounded final manifest; its defeat enables an idempotent
 payout/exit transaction rather than inferring success from entity absence.
 
-### D6 — Human choices and tuning stay deferred
+### D6 — Human choices approved; numeric tuning stays deferred
 
 The title, objective framing, site-only model, active-Crawler rule, and run-scoped upgrade model
-are `HUMAN_GATE` proposals. All numeric values remain Game Designer/Playtester evidence decisions
-in S9; Content Design does not decide them.
+(`HUMAN_GATE-1` through `HUMAN_GATE-5`) are **approved** — [#3963](https://github.com/nalfeo/Crawler/issues/3963)
+was closed as completed by the human owner. All numeric values remain Game Designer/Playtester
+evidence decisions in S9; Content Design does not decide them.
 
 ## Consequences
 
