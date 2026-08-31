@@ -1,5 +1,39 @@
 [
   {
+    "commit": "26df582d99a660af0fa1e42a4761e6781b6f557f",
+    "commitDate": "2026-08-31T07:41:50Z",
+    "commitSubject": "Define Floor 6 hero tower-defense epic (#3960)",
+    "capturedAt": "2026-08-31T08:31:01.422Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33369584468",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/26df582d99a660af0fa1e42a4761e6781b6f557f.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9266666666666666,
+        "totalWins": 139,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.96,
+        "totalWins": 144,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.27,
+      "gatePass": false,
+      "path": "by-sha/26df582d99a660af0fa1e42a4761e6781b6f557f.fun-report.json"
+    }
+  },
+  {
     "commit": "e9f153af7fe027e43c9b3d7a73d190df848acca3",
     "commitDate": "2026-08-30T06:02:28Z",
     "commitSubject": "Design Floor 5 Hostile Takeover castle siege epic (#3906)",
