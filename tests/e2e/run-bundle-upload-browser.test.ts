@@ -57,7 +57,11 @@ describe('run bundle upload browser configuration', () => {
   });
 
   it('injects the dev ingest endpoint into browser run, survey, and issue uploads', async () => {
-    const requests: { url: string; mode: string | undefined }[] = [];
+    const requests: {
+      url: string;
+      mode: string | undefined;
+      fileIssue: boolean | undefined;
+    }[] = [];
     await page.route(INGEST_URL, async (route) => {
       const request = route.request();
       if (request.method() === 'OPTIONS') {
@@ -73,6 +77,7 @@ describe('run bundle upload browser configuration', () => {
       requests.push({
         url: request.url(),
         mode: request.headers()['x-run-upload-mode'],
+        fileIssue: (JSON.parse(request.postData() ?? '{}') as { file_issue?: boolean }).file_issue,
       });
       await route.fulfill({
         status: 202,
@@ -132,9 +137,9 @@ describe('run bundle upload browser configuration', () => {
       { runId: 'browser-run' },
     ]);
     expect(requests).toEqual([
-      { url: INGEST_URL, mode: 'silent' },
-      { url: INGEST_URL, mode: 'survey' },
-      { url: INGEST_URL, mode: undefined },
+      { url: INGEST_URL, mode: 'silent', fileIssue: undefined },
+      { url: INGEST_URL, mode: 'survey', fileIssue: undefined },
+      { url: INGEST_URL, mode: undefined, fileIssue: true },
     ]);
   });
 });
