@@ -16,13 +16,45 @@
       "notes": "Approved with changes. Alt A barrier-sealed seam adopted because the generator already carves the ingress and BarrierRegistry.version drives renderer invalidation; sealed-generator tile mutation was rejected because it duplicates terrain redraw/collision state; a monolithic scenario-objective implementation was rejected in favor of a dedicated siegeRamSystem for runtime movement with director/objective-tick authority for phase and post-damage resolution. Resolutions: create a poly wall barrier at init and drop it atomically with wall/ram/marker retirement; fold barriers.version into cached AI navigation signatures instead of inventing a parallel revision; derive route waypoints and a traversable attack anchor from semantic layout landmarks; remove outer-wall from minion targets and reject non-ram wall damage; order damage, HP sync, base defeat, wall-vs-ram resolution (wall lethal wins after base precedence), breach commit, rebuild scheduling, then goals/trace; test reachability through findTilePath, not raw tile flags."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 0,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gemini-3.6-flash"],
+          "concerns_count": 2,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,
