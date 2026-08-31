@@ -1,0 +1,69 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-31",
+  "session_slug": "floor6-design-contract",
+  "task_title": "Floor 6 design contract",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: neutral packet then canon docs after approval — rejected because the requested proposed bible/spec/ADR must supply the human decision record; every gated noun will instead be explicitly provisional. Alt B: spec+ADR first, defer bible — rejected because the issue explicitly requires all three before runtime and the bible will only narratively project spec-owned behavior. Alt C: exactly three docs — rejected; required GDD, Lore Bible source-register, spec catalog, and ADR index updates are in scope. Adopted: proposed-status core documents plus discoverability updates; add explicit break entry/exit cleanup/action/pickup semantics, append-only stable-ID candidate requirements, reusable-contract trace, and hero-gated acceptance cases."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 4,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
