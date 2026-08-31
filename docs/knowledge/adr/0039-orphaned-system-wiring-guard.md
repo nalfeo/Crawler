@@ -32,8 +32,8 @@ preventing under-validated features from shipping is itself validated at the
 maximum tier its complexity warrants. The base guard shipped in PR #667 (ledger
 `2026-07-02-guard-orphaned-systems.review-ledger.json`, 3-apple, merged before the
 harness was fully escalated); the 4-apple harness and the dangerous-direction
-hardening it surfaced landed as a follow-up. The historical review-ledger files
-were later retired with that review mechanism.
+hardening it surfaced landed as a follow-up (ledger
+`docs/knowledge/review-ledgers/2026-07-02-guard-orphaned-systems-hardening.review-ledger.json`).
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR 0051: Replace Dual-Plan Synthesis with an Adversarial Plan Review (+ `plan_divergence` instrumentation)
 
 **Date:** 2026-07-08  
-**Affected Systems:** retired review-ledger harness and guard, review-harness skill + policy docs, complexity policy, persona docs
+**Affected Systems:** review harness (`scripts/agent/review/ledger.mjs`, `scripts/agent/review/cli.mjs`), `pr-review-ledger` guard, review-harness skill + policy docs, complexity policy, persona docs
 
 ## Status
 
@@ -34,8 +34,8 @@ final plan — **3 pre-code agent invocations**. The thesis was that a second
 independent author explores the design space and catches wrong architectures a
 single planner would commit to.
 
-An empirical audit of **all 124 review ledgers** in the now-retired ledger
-collection tested that thesis:
+An empirical audit of **all 124 review ledgers** under
+`docs/knowledge/review-ledgers/` tested that thesis:
 
 - `dual_plan_synthesis` fired on **17/124** changes (all 4–5🍎).
 - Classifying the 17 synthesis notes by how much the two independent plans

@@ -63,8 +63,8 @@ target, Enemy)` triggered player-stat scaling and a crit roll for ANY hit
 The maintainer supplied an exact, fully-specified contract (rates, caps,
 formulas, removal list) and this ADR records the architecture chosen to
 implement it, following a completed adversarial plan review (6 alternatives
-considered, 19 concerns resolved; the historical review-ledger artifact was
-later retired).
+considered, 19 concerns resolved — see
+`docs/knowledge/review-ledgers/2026-07-16-overhaul-primary-stats.review-ledger.json`).
 
 ## Decision
 

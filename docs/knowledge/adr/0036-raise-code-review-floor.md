@@ -1,7 +1,7 @@
 # ADR 0036: Raise the Review-Harness Code-Review Floor to 3🍎
 
 **Date:** 2026-07-02  
-**Affected Systems:** retired review-ledger harness and guard, review-harness skill + policy docs, persona docs
+**Affected Systems:** review harness (`scripts/agent/review/ledger.mjs`), `pr-review-ledger` guard, review-harness skill + policy docs, persona docs
 
 ## Status
 
@@ -19,10 +19,11 @@ wide but mechanical doc/persona sync; no gameplay or runtime logic.
 
 ## Context
 
-The apple-scaled review harness originally recorded which review stages a change
-went through in a committed **review ledger**, which the deterministic
-`pr-review-ledger` guard validated at the `create_pull_request` boundary. The
-retired harness selected the required stages from the declared apple estimate.
+The apple-scaled review harness records which review stages a change went through
+in a committed **review ledger**, which the deterministic `pr-review-ledger` guard
+validates at the `create_pull_request` boundary. The required stages are chosen by
+`requiredStagesForApples()` in `scripts/agent/review/ledger.mjs` (the single source
+of truth) from the declared apple estimate.
 
 Until now the **code-review loop** stage was required at _every_ tier (1🍎+). In
 practice, the local code-review loop costs ~5–6 minutes per round and adds little

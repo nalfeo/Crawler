@@ -123,16 +123,17 @@ squash auto-merge:
 In addition to the per-PR `ci.yml` gate stack, the repository runs these
 deterministic automation workflows:
 
-| Workflow                                | Cadence                | Purpose                                                               |
-| --------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
-| `.github/workflows/docs-update.yml`     | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync                   |
-| `.github/workflows/security-review.yml` | Every PR               | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection |
+| Workflow                                 | Cadence                | Purpose                                                               |
+| ---------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
+| `.github/workflows/docs-update.yml`      | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync                   |
+| `.github/workflows/nightly-mutation.yml` | Nightly (02:00 UTC)    | Mutation testing, baseline scoring, and regression reporting          |
+| `.github/workflows/security-review.yml`  | Every PR               | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection |
 
 Rules for this automation:
 
 - Every check is a script with an exit code under `scripts/agent/{docs,security,health}/`.
-- Side-effects (handoff archive, metrics file updates) ship as auto-PRs, never
-  as direct pushes to `main`.
+- Handoff archive and metrics updates ship as auto-PRs, never as direct pushes
+  to `main`; nightly mutation findings use the workflow's issue reports.
 - `security-review.yml` is a **required check on PRs** (hard fail).
 - The retired security-review and test-health scheduled loops do not file
   tracking issues. Their underlying scripts remain available through
