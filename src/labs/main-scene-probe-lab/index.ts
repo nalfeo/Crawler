@@ -246,8 +246,18 @@ interface MainSceneInternals {
   };
   achievementsUI?: {
     isOpen(): boolean;
+    toggle(world: GameWorld): void;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    setFilterForProbe(filter: 'all' | 'global' | `floor:${number}`): void;
+    setExpandedForProbe(achievementId: string, expanded: boolean): void;
+    setScrollIndexForProbe(index: number): void;
+    getLayoutRegions(): {
+      id: string;
+      box: { x: number; y: number; width: number; height: number };
+      kind: string;
+      parentId?: string;
+    }[];
     getScrollIndex(): number;
   };
   shopPanelUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
@@ -862,6 +872,24 @@ export interface MainSceneProbeApi {
   setSafeContext(enabled: boolean): void;
   /** Unlock inventory/equipment/abilities and seed one achievement for testing. */
   unlockSafeRoomSurfaces(): void;
+  /** Open the real Awards pane through the scene-owned UI toggle. */
+  openAchievements(): void;
+  /**
+   * Rendered Awards-pane geometry in design space, for visual-review setup
+   * files that need measured regions (and a real crop) instead of a
+   * hand-written panel rectangle.
+   */
+  getAchievementsLayoutRegions(): {
+    id: string;
+    box: { x: number; y: number; width: number; height: number };
+    kind: string;
+    parentId?: string;
+  }[];
+  /** Select an Awards scope filter through the scene-owned UI. */
+  setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
+  /** Expand or collapse an achievement through the scene-owned UI. */
+  setAchievementExpanded(achievementId: string, expanded: boolean): void;
+  setAchievementsScrollIndex(index: number): void;
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -2703,6 +2731,26 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) return;
       unlockAchievement(world, achievementId);
       scene?.achievementsUI?.refresh(world);
+    },
+
+    openAchievements: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world || scene?.achievementsUI?.isOpen()) return;
+      scene.achievementsUI?.toggle(world);
+    },
+
+    getAchievementsLayoutRegions: () => getScene()?.achievementsUI?.getLayoutRegions() ?? [],
+
+    setAchievementsFilter: (filter: 'all' | 'global' | `floor:${number}`) => {
+      getScene()?.achievementsUI?.setFilterForProbe(filter);
+    },
+
+    setAchievementExpanded: (achievementId: string, expanded: boolean) => {
+      getScene()?.achievementsUI?.setExpandedForProbe(achievementId, expanded);
+    },
+    setAchievementsScrollIndex: (index: number) => {
+      getScene()?.achievementsUI?.setScrollIndexForProbe(index);
     },
 
     claimAchievementReward: (achievementId: string) => {

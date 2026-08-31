@@ -1403,7 +1403,17 @@ function formatRegions(surface: string | null, regions: VisualReviewRegion[]): s
   return lines.join('\n');
 }
 
-const ALLOWED_REGION_KINDS = new Set(['slot', 'icon', 'panel', 'tooltip', 'text', 'other']);
+const ALLOWED_REGION_KINDS = new Set([
+  'slot',
+  'icon',
+  'panel',
+  'tooltip',
+  'text',
+  'row',
+  'button',
+  'label',
+  'other',
+]);
 
 /** Coerce the raw harvested regions into valid `VisualReviewRegion`s (drops invalid boxes). */
 function normalizeHarvestedRegions(raw: unknown): VisualReviewRegion[] {

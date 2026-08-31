@@ -10,7 +10,16 @@ export interface VisualReviewBox {
   height: number;
 }
 
-export type VisualReviewRegionKind = 'slot' | 'icon' | 'panel' | 'tooltip' | 'text' | 'other';
+export type VisualReviewRegionKind =
+  | 'slot'
+  | 'icon'
+  | 'panel'
+  | 'tooltip'
+  | 'text'
+  | 'row'
+  | 'button'
+  | 'label'
+  | 'other';
 
 export interface VisualReviewRegion {
   id: string;
