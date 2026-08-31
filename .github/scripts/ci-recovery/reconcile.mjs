@@ -1555,10 +1555,15 @@ function commentTimestampMs(comment) {
   return timestampMs(comment?.created_at ?? comment?.createdAt);
 }
 
+function newestFiniteTimestampMs(values) {
+  const finiteValues = Array.from(values).filter(Number.isFinite);
+  return finiteValues.length > 0 ? Math.max(...finiteValues) : null;
+}
+
 function latestOwnerDispositionCommandAfter(candidateComments, afterMs) {
   // Fail closed: if the escalation timestamp is unavailable, no existing KEEP
   // can be proven to belong to the current escalation episode.
-  if (!Number.isFinite(afterMs)) return null;
+  if (afterMs === null || !Number.isFinite(afterMs) || afterMs <= 0) return null;
   for (let index = candidateComments.length - 1; index >= 0; index -= 1) {
     const comment = candidateComments[index];
     if (
@@ -3402,15 +3407,10 @@ if (scopeMismatchBlocker) {
 // human-decision quarantine the other terminal blockers use. An explicit owner
 // `KEEP` overrides the escalation and lets automated repair resume.
 const hasHumanEscalationDeclarations = humanEscalationByThread.size > 0;
-const humanEscalationDeclaredAtMsValues = Array.from(humanEscalationByThread.values()).filter(
-  Number.isFinite,
-);
 const newestHumanEscalationDeclaredAtMs = hasHumanEscalationDeclarations
   ? // If every escalation lacks createdAt, pass null so
     // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
-    humanEscalationDeclaredAtMsValues.length > 0
-    ? Math.max(...humanEscalationDeclaredAtMsValues)
-    : null
+    newestFiniteTimestampMs(humanEscalationByThread.values())
   : null;
 if (
   hasHumanEscalationDeclarations &&
