@@ -124,15 +124,18 @@ jobs:
             done
           fi
           if [ -z "${ISSUE_NUMBER}" ]; then
+            # Apply eligibility filters and creation-order sort server-side
+            # (GitHub search qualifiers) rather than paging `gh issue list`
+            # and sorting locally: the REST issue-list endpoint truncates to
+            # 100 most-recently-updated issues before any local `--jq`
+            # filtering, which can both miss an older eligible issue and
+            # falsely report "no work" when those 100 are all
+            # assigned/in-review.
             ISSUE_NUMBER="$(
-              gh issue list --repo "${GITHUB_REPOSITORY}" \
-                --state open --label 'goobers:approved' --limit 100 \
-                --json number,assignees,labels \
-                --jq '[
-                  .[]
-                  | select((.assignees | length) == 0)
-                  | select(([.labels[].name] | index("goobers/status:in-review")) == null)
-                ] | sort_by(.number) | .[0].number // empty'
+              gh search issues \
+                "repo:${GITHUB_REPOSITORY} is:issue is:open label:\"goobers:approved\" -label:\"goobers/status:in-review\" no:assignee" \
+                --sort created --order asc --limit 1 \
+                --json number --jq '.[0].number // empty'
             )"
             if [ -z "${ISSUE_NUMBER}" ]; then
               echo "No eligible goobers:approved issue found; skipping this run."
@@ -194,6 +197,7 @@ jobs:
           echo "Resuming open Goobers PR #${pr_number} on branch '${branch}'."
 
       - name: Require Goobers auth token
+        if: steps.recovery.outputs.should_run != 'false'
         # crawler-feature-pr's implement/push-branch stages declare
         # repo:push; the built-in github.token only has contents: read on
         # this job (see permissions:, above), so it can neither push a
@@ -210,6 +214,7 @@ jobs:
           GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
 
       - name: Resolve pinned archive checksum
+        if: steps.recovery.outputs.should_run != 'false'
         # Independent pin: this digest is reviewed and committed here, not
         # fetched from the same mutable release as the archive. It must be
         # updated (with a diff review of the new digest) whenever
@@ -234,6 +239,7 @@ jobs:
 
       - name: Cache pinned Goobers archive
         id: cache-goobers
+        if: steps.recovery.outputs.should_run != 'false'
         uses: actions/cache@v4
         with:
           path: dl/goobers.tar.gz
@@ -241,6 +247,7 @@ jobs:
 
       - name: Download pinned private Goobers draft
         if: >-
+          steps.recovery.outputs.should_run != 'false' &&
           steps.cache-goobers.outputs.cache-hit != 'true' &&
           env.GOOBERS_VERSION == 'goobers-dev-6d33b160'
         env:
@@ -255,6 +262,7 @@ jobs:
 
       - name: Download pinned public Goobers release
         if: >-
+          steps.recovery.outputs.should_run != 'false' &&
           steps.cache-goobers.outputs.cache-hit != 'true' &&
           env.GOOBERS_VERSION != 'goobers-dev-6d33b160'
         run: |
@@ -264,6 +272,7 @@ jobs:
             "https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}/${GOOBERS_ASSET}"
 
       - name: Verify archive against pinned checksum
+        if: steps.recovery.outputs.should_run != 'false'
         # Always re-hash, including on a cache hit, so a poisoned/corrupted
         # cache entry can't smuggle an unverified binary past this gate.
         run: |
@@ -271,6 +280,7 @@ jobs:
           echo "${GOOBERS_SHA256}  dl/goobers.tar.gz" | sha256sum --check --strict -
 
       - name: Extract binary
+        if: steps.recovery.outputs.should_run != 'false'
         run: |
           set -euo pipefail
           mkdir -p bin
@@ -278,20 +288,24 @@ jobs:
           chmod +x bin/goobers
 
       - name: Verify binary version
+        if: steps.recovery.outputs.should_run != 'false'
         run: |
           set -euo pipefail
           ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
           echo "$PWD/bin" >> "$GITHUB_PATH"
 
       - name: Set up Node.js
+        if: steps.recovery.outputs.should_run != 'false'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install project dependencies
+        if: steps.recovery.outputs.should_run != 'false'
         run: npm ci
 
       - name: Install Copilot CLI
+        if: steps.recovery.outputs.should_run != 'false'
         # Pinned npm package install instead of piping the mutable
         # https://gh.io/copilot-install script to bash: npm resolves this
         # exact version+integrity hash from the registry metadata and
@@ -311,15 +325,18 @@ jobs:
           npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
 
       - name: Validate .goobers source tree
+        if: steps.recovery.outputs.should_run != 'false'
         run: goobers validate --source-tree "$GOOBERS_SOURCE"
 
       - name: Scaffold throwaway instance root
+        if: steps.recovery.outputs.should_run != 'false'
         run: |
           set -euo pipefail
           rm -rf "$GOOBERS_INSTANCE"
           mkdir -p "$GOOBERS_INSTANCE/config"
 
       - name: Materialize checked-in source into the instance
+        if: steps.recovery.outputs.should_run != 'false'
         # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
         # populated config/ tree. workflowSource records the checked-in source;
         # `config materialize` applies .goobers/instance.yaml.example and

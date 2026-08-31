@@ -215,11 +215,56 @@ describe('Goobers automatic dispatch and recovery', () => {
       'workflows',
       'goobers-run.yml',
     ).jobs.run?.steps?.find((step) => step.name === 'Resolve Goobers recovery target');
-    expect(recoveryStep?.run).toContain("--state open --label 'goobers:approved'");
-    expect(recoveryStep?.run).toContain('select((.assignees | length) == 0)');
-    expect(recoveryStep?.run).toContain('index("goobers/status:in-review")');
+    // Eligibility filters and the oldest-first ordering must be applied by
+    // GitHub's server-side search qualifiers, not a local sort after `gh
+    // issue list`'s 100-issue page: a local sort/filter can both miss an
+    // older eligible issue and falsely report "no work" when the fetched
+    // page happens to be all assigned/in-review.
+    expect(recoveryStep?.run).toContain('gh search issues');
+    expect(recoveryStep?.run).toContain('is:issue is:open label:\\"goobers:approved\\"');
+    expect(recoveryStep?.run).toContain('-label:\\"goobers/status:in-review\\"');
+    expect(recoveryStep?.run).toContain('no:assignee');
+    expect(recoveryStep?.run).toContain('--sort created --order asc');
     expect(recoveryStep?.run).toContain('should_run=false');
     expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
+    // An empty backlog sweep must skip every costly setup step (binary
+    // download/verify, npm ci, Copilot CLI install, instance materialization),
+    // not just the final `goobers run` invocation, so hourly no-work sweeps
+    // stay cheap.
+    const goobersRunSteps = loadYaml<GoobersActionsWorkflow>(
+      '.github',
+      'workflows',
+      'goobers-run.yml',
+    ).jobs.run?.steps;
+    const gatedStepNames = [
+      'Require Goobers auth token',
+      'Resolve pinned archive checksum',
+      'Cache pinned Goobers archive',
+      'Verify archive against pinned checksum',
+      'Extract binary',
+      'Verify binary version',
+      'Set up Node.js',
+      'Install project dependencies',
+      'Install Copilot CLI',
+      'Validate .goobers source tree',
+      'Scaffold throwaway instance root',
+      'Materialize checked-in source into the instance',
+    ];
+    for (const stepName of gatedStepNames) {
+      const step = goobersRunSteps?.find((candidate) => candidate.name === stepName);
+      expect(step?.if, `expected "${stepName}" to be gated on should_run`).toBe(
+        "steps.recovery.outputs.should_run != 'false'",
+      );
+    }
+    for (const stepName of [
+      'Download pinned private Goobers draft',
+      'Download pinned public Goobers release',
+    ]) {
+      const step = goobersRunSteps?.find((candidate) => candidate.name === stepName);
+      expect(step?.if, `expected "${stepName}" to be gated on should_run`).toContain(
+        "steps.recovery.outputs.should_run != 'false'",
+      );
+    }
     expect(hydrate?.inputsFrom).toEqual({
       issueNumber: 'query-backlog.id',
       issueTitle: 'query-backlog.title',
