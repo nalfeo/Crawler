@@ -63,11 +63,15 @@ not have detected it.
 - Independent grade — pass, five criteria scored 5/5
 - Changed-file secret scans — clean
 
-## Review finding addressed
+## Review findings addressed
 
 Round 1 found that the stable-thread denial set could survive a newer top-level
 non-denial reply. The map/set updates now share latest-wins add/delete behavior,
 and the existing top-level prior-reply integration test models that sequence.
+
+Round 2 restricted denials to `.github/agents/**` blocker paths and to a single
+clause naming both the blocked repair and capability limit. Location-less legacy
+task entries remain non-protected so their normal reply tracking continues.
 
 ## Remaining action for PR #3939
 
