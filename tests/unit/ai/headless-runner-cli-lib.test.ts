@@ -8,9 +8,9 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  defaultCLIArgs,
   helpText,
   parseArgs,
+  resolveHeadlessRunnerOptions,
 } from '../../../src/game/ai/headless-runner-cli-lib.js';
 import { DEFAULT_CONFIG } from '../../../src/game/ai/bt-ai-tuning.js';
 import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from '../../../src/game/ai/floor-run-budget.js';
@@ -28,11 +28,10 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
     expect(args.decisionMode).toBe(AIDecisionMode.LEGACY);
     expect(args.maxFrames).toBe(FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES);
-    expect(args).toEqual(defaultCLIArgs({}));
   });
 
   it('prints the current default pathing mode in help text', () => {
-    expect(helpText()).toContain(`(default: ${defaultCLIArgs({}).pathingMode})`);
+    expect(helpText()).toContain(`(default: ${cli().pathingMode})`);
   });
 
   it('parses a valid --decision-mode', () => {
@@ -62,10 +61,36 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(args.pathingMode).toBe(AIPathingMode.RISK_REWARD_FUSED);
   });
 
-  it('defaults weapon personas on and supports an explicit legacy control', () => {
-    expect(cli().weaponPersonas).toBe(true);
+  it('parses repeatable forced abilities in first-seen order and deduplicates IDs', () => {
+    expect(
+      cli(
+        '--force-ability',
+        'fireball',
+        '--force-ability',
+        'veteran-instinct',
+        '--force-ability',
+        'fireball',
+      ).forceAbilityIds,
+    ).toEqual(['fireball', 'veteran-instinct']);
+    expect(helpText()).toContain('--force-ability <id>');
+  });
+
+  it('rejects missing and blank forced ability values', () => {
+    expect(() => cli('--force-ability')).toThrow(/--force-ability requires a non-blank ability id/);
+    expect(() => cli('--force-ability', '   ')).toThrow(
+      /--force-ability requires a non-blank ability id/,
+    );
+    expect(() => cli('--force-ability', '--seed', '42')).toThrow(
+      /--force-ability requires a non-blank ability id/,
+    );
+  });
+
+  it('leaves weapon personas unset unless explicitly controlled, so the registry default applies', () => {
+    expect(cli().weaponPersonas).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli()).weaponPersonas).toBeUndefined();
     expect(cli('--weapon-personas').weaponPersonas).toBe(true);
     expect(cli('--no-weapon-personas').weaponPersonas).toBe(false);
+    expect(resolveHeadlessRunnerOptions(cli('--no-weapon-personas')).weaponPersonas).toBe(false);
   });
 
   it('defaults to the experienced evaluator persona and parses named personas', () => {
@@ -121,8 +146,9 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(() => cli('--pathing-mode', 'bogus')).toThrow(/Invalid --pathing-mode/);
   });
 
-  it('defaults optionalPurchases on and supports explicit CLI and environment controls', () => {
-    expect(cli().optionalPurchases).toBe(true);
+  it('leaves optionalPurchases unset by default and supports explicit CLI and environment controls', () => {
+    expect(cli().optionalPurchases).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli()).optionalPurchases).toBeUndefined();
     expect(cli('--optional-purchases').optionalPurchases).toBe(true);
     expect(cli('--no-optional-purchases').optionalPurchases).toBe(false);
     // New canonical env var
@@ -148,9 +174,32 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
-  it('keeps settlement return routing off by default and enables it by flag or environment', () => {
-    expect(cli().settlementReturnRouting).toBe(false);
-    expect(cli('--settlement-return-routing').settlementReturnRouting).toBe(true);
+  it('resolves Floor 2 routing while preserving explicit overrides and other-floor defaults', () => {
+    expect(cli().settlementReturnRouting).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor2'))).toEqual({
+      settlementReturnRouting: true,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--settlement-return-routing')),
+    ).toEqual({
+      settlementReturnRouting: true,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--no-settlement-return-routing')),
+    ).toEqual({
+      settlementReturnRouting: false,
+    });
+    expect(
+      resolveHeadlessRunnerOptions(
+        parseArgs(['node', 'headless-runner-cli.js', '--floor', 'floor2'], {
+          AI_SETTLEMENT_RETURN_ROUTING: 'false',
+        }),
+      ),
+    ).toEqual({
+      settlementReturnRouting: false,
+    });
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor1'))).toEqual({});
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor3'))).toEqual({});
     expect(
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: '1' })
         .settlementReturnRouting,
@@ -163,13 +212,13 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
       parseArgs(['node', 'headless-runner-cli.js'], { AI_SETTLEMENT_RETURN_ROUTING: 'false' })
         .settlementReturnRouting,
     ).toBe(false);
+    expect(helpText()).toContain('--no-settlement-return-routing');
   });
 });
 
 describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
   it('defaults to 250ms (production/headless default)', () => {
     expect(cli().enemyTelegraphMs).toBe(250);
-    expect(defaultCLIArgs({}).enemyTelegraphMs).toBe(250);
   });
 
   it('parses an explicit --enemy-telegraph-ms override', () => {

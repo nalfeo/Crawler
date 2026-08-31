@@ -6,6 +6,7 @@ import {
   type ScenarioDefinition,
 } from '../../src/game/scenarioDefinitions.js';
 import {
+  selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
   type ScenarioCompletionVariant,
   type ScenarioRunOutcome,
@@ -34,6 +35,7 @@ describe('scenario definitions', () => {
     expect(typeof scenario.configureWorld).toBe('function');
     expect(typeof scenario.selectLoadoutOption).toBe('function');
     expect(scenario.director.intro.length).toBeGreaterThan(0);
+    expect(scenario.director.introVariants?.length ?? 0).toBeGreaterThanOrEqual(20);
   });
 
   it('returns floor2 scenario with director copy', () => {
@@ -52,18 +54,19 @@ describe('scenario definitions', () => {
     expect(floor2.nextFloorId).toBe('floor3');
     expect(floor2.isTerminalRunVictory).toBe(false);
     expect(floor2.stairConfirmation?.confirmDescription).toContain('Floor 3');
-    // Floor 3 is the last authored floor, so it must not advertise a next one.
+    // Floor 3 remains terminal until Floor 4/5 are promoted into the progression chain.
     expect(getScenarioDefinition('floor3').nextFloorId).toBeUndefined();
   });
 
   it('marks every registered floor playable, and only winnable floors implemented', () => {
-    for (const floorId of ['floor1', 'floor2', 'floor3'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
       expect(isFloorPlayable(floorId)).toBe(true);
     }
     expect(isFloorPlayable('floor-does-not-exist')).toBe(false);
     // Floor 3 is playable but has no attainable victory yet, so it must stay
     // OUT of the implemented (sweepable/winnable) set.
     expect(isFloorImplemented('floor3')).toBe(false);
+    expect(isFloorImplemented('floor5')).toBe(false);
   });
 
   it('returns floor3 scenario with the biome-overworld director copy', () => {
@@ -75,6 +78,49 @@ describe('scenario definitions', () => {
     expect(scenario.director.intro).toContain('wilds');
     expect(scenario.director.victory).toContain('Final Four');
     expect(scenario.isTerminalRunVictory).toBe(true);
+  });
+
+  it('authors at least twenty intro variants for every registered floor', () => {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
+      const scenario = getScenarioDefinition(floorId);
+      const variants = scenario.director.introVariants ?? [];
+      expect(variants.length).toBeGreaterThanOrEqual(20);
+      expect(new Set(variants).size).toBe(variants.length);
+      for (const variant of variants) {
+        expect(variant.length).toBeGreaterThan(0);
+        expect(variant).toContain('First objective:');
+      }
+    }
+    for (const variant of getScenarioDefinition('floor1').director.introVariants ?? []) {
+      expect(variant).toContain('{playerName}');
+      expect(variant).toContain('quest');
+      expect(variant).toContain('stairs');
+    }
+    for (const variant of getScenarioDefinition('floor5').director.introVariants ?? []) {
+      expect(variant).toContain('Command Post');
+      expect(variant).not.toMatch(/control point|capture node|capture exchange/i);
+    }
+  });
+
+  it('chooses intro variants deterministically per seed and floor', () => {
+    const floor2 = getScenarioDefinition('floor2');
+    const variants = floor2.director.introVariants ?? [];
+    expect(variants.length).toBeGreaterThan(0);
+    const sameA = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
+    const sameB = selectScenarioDirectorIntro(floor2.director, 101, 'floor2');
+    expect(sameA).toBe(sameB);
+    expect(variants).toContain(sameA);
+
+    let floorIdAffectsSelection = false;
+    for (let seed = 1; seed <= 256; seed += 1) {
+      const floor2Pick = selectScenarioDirectorIntro(floor2.director, seed, 'floor2');
+      const otherFloorPick = selectScenarioDirectorIntro(floor2.director, seed, 'floor3');
+      if (floor2Pick !== otherFloorPick) {
+        floorIdAffectsSelection = true;
+        break;
+      }
+    }
+    expect(floorIdAffectsSelection).toBe(true);
   });
 
   it('throws when a manifest exists but no scenario is registered', () => {
@@ -437,7 +483,33 @@ describe('scenario definitions', () => {
       expect(contract.getCompletionCopy).toBe(scenario.getCompletionCopy);
       expect(contract.getStairMarkerState).toBe(scenario.getStairMarkerState);
       expect(contract.stairConfirmation).toBe(scenario.stairConfirmation);
+      expect(contract.starterLoadout).toBe(scenario.starterLoadout);
       expect(contract.nextFloorId).toBe(scenario.nextFloorId);
     });
+
+    // The generic starter-loadout picker in `MainGameScene` renders this copy
+    // verbatim, so the "Floor 1 is paused…" line is scenario config rather than
+    // a floor literal in the renderer.
+    it('carries Floor 1 starter-loadout copy the renderer used to hardcode', () => {
+      expect(
+        getScenarioPresentationContract(getScenarioDefinition('floor1')).starterLoadout,
+      ).toEqual({
+        title: 'Choose your opening loadout',
+        pausedNotice: 'Floor 1 is paused until you confirm a starter weapon.',
+        prompt: 'Pick the weapon you want to begin with.',
+        optionDescriptionPrefix: 'Starter weapon',
+      });
+    });
+
+    // Floor 3 presents its own loadout surface; omitting the copy is what keeps
+    // the generic picker from opening for it.
+    it.each(['floor2', 'floor3', 'floor4'])(
+      'omits starter-loadout copy for %s, which does not use the generic picker',
+      (floorId) => {
+        expect(
+          getScenarioPresentationContract(getScenarioDefinition(floorId)).starterLoadout,
+        ).toBeUndefined();
+      },
+    );
   });
 });

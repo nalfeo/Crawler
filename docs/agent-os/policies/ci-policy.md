@@ -150,6 +150,22 @@ Agents must fix every test, lint, typecheck, or build failure they encounter —
 - If a failure is genuinely caused by an in-progress external change (e.g. a dependency that hasn't landed yet), pause and flag it to the user; do not silently bypass it.
 - The only acceptable state for a PR to merge is: all CI gates green on real passing code.
 
+### CI recovery investigation order
+
+Before adding a new repair path, quarantine class, retry loop, or exception:
+
+1. Identify the last-known-good behavior and when the failure first appeared.
+2. Diff the workflow, token, permissions, configuration, and relevant code changes
+   across that boundary.
+3. Read the failing job logs and verify the concrete failure mechanism.
+4. Fix the regression or shared systemic cause when one exists.
+5. Add compensating repair machinery only when evidence shows the constraint is
+   inherent and the systemic fix is insufficient.
+
+Do not treat a repeated symptom as proof of a new permanent branch, actor, or
+failure class. Prefer restoring the previously working contract over automating
+around its regression.
+
 ## Incremental Change Discipline
 
 When changing **behavior** in a system covered by the headless gate — AI, combat,
@@ -218,9 +234,9 @@ produces workflows that "run green" but do nothing.
   or inconsistent state fails closed.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
-- Recovery treats missing policy artifacts as ordinary fix work. If a review
-  thread or guard output says a PR is missing an ADR, review ledger, apple record,
-  handoff, or ledger evidence, the assigned agent should create or repair that
+- Recovery treats missing policy artifacts as ordinary fix work. Review threads
+  and guard output may identify a missing ADR, apple record, or handoff. The
+  assigned agent should create or repair that
   artifact from PR/review context and validate it. It should escalate to a human
   only when the artifact requires a decision that is not inferable from the PR.
 - Shepherd leases are acquired, heartbeated, and released through the same
@@ -291,6 +307,56 @@ concurrency:
 ```
 
 <!-- Source handoff: 2026-06-25-pr-guard-concurrency.md, 2026-07-19-ci-pr-cancel-policy.md -->
+
+## Stacked-PR Label Policy
+
+### `stacked-pr` label — intent and process
+
+A PR whose `base` branch is not `main` is normally treated as an accident or a
+transient stacking artefact. CI Recovery's stale-base scanner retargets such
+PRs automatically once their parent PR lands or disappears. The `stacked-pr`
+label is the **single, canonical way** to declare that a PR is intentionally
+part of a stack and should not be retargeted while its parent is open.
+
+**Who may add the label**: Copilot may apply `stacked-pr` **only when a human
+explicitly asks** (e.g. "mark this PR as stacked on #NNN"). Copilot must never
+add it speculatively, as a side-effect of other work, or during automated
+reconciliation. Humans may always add or remove it directly.
+
+**Behavior summary**:
+
+| Scenario                                      | Label present? | Parent open? | Outcome                |
+| --------------------------------------------- | -------------- | ------------ | ---------------------- |
+| Intentional child, parent still open          | ✅             | ✅           | Skip — remains stacked |
+| Unlabeled PR, parent open, within 5 min grace | ❌             | ✅           | Skip — grace window    |
+| Unlabeled PR, parent open, past 5 min grace   | ❌             | ✅           | **Retarget to `main`** |
+| Any child, parent merged/disappeared          | any            | ❌           | **Retarget to `main`** |
+| PR already targeting `main`                   | any            | n/a          | Unchanged              |
+
+**Key invariants**:
+
+1. **Label does not preserve stacking after parent lands.** The moment the
+   parent PR merges or its base branch disappears, the child is normalised to
+   `main` regardless of the label. A closed, unmerged parent whose branch still
+   exists is left intact because its commits may still be a real dependency.
+
+2. **Grace window is non-renewable.** The 5-minute grace for unlabeled PRs
+   starts at PR creation (`created_at`) and is evaluated by the stale-base
+   scanner. Adding the label after the grace window has expired is the only
+   way to prevent retargeting.
+
+3. **No LLM in the decision path.** The `stacked-pr` label is a deterministic
+   boolean signal — the scanner reads labels and timestamps only.
+
+**Implementation**: `classifyStaleBase()` in
+`.github/scripts/ci-recovery/router.mjs`; `STACKED_PR_LABEL` and the structural
+five-minute grace constant are the single source of truth. If GitHub's native stack
+association blocks a base change, CI Recovery uses the stacks API to unstack
+the open PRs, verifies that the target PR was actually removed, and retries the
+retarget. Existing base refs are preserved during unstacking, so explicitly
+labeled children remain logically stacked while accidental children normalize.
+
+<!-- Source handoff: 2026-08-28-explicit-stacked-pr-intent.md -->
 
 ## Non-Negotiable
 

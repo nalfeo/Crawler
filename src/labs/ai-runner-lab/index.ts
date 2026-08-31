@@ -20,8 +20,11 @@ import {
   BehaviorTreeAI,
   PLAYER_PERSONAS,
   RISK_REWARD_FIELD_CONSTANTS,
+  getAiFeatureFlagControls,
   getPersonaConfig,
+  resolveAiFeatureFlags,
   type AIDecisionModeValue,
+  type AiFeatureFlags,
   type AIPathingModeValue,
   type FusedHeadingDebug,
   type PlayerPersona,
@@ -45,7 +48,6 @@ import {
   isSpellBrokerPurchaseActive,
   markSpellBrokerPurchased,
 } from '../../game/ai/spell-broker-intent.js';
-import { resolveOptionalPurchases } from '../../game/ai/optional-purchases.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import {
   acceptQuest,
@@ -533,15 +535,19 @@ interface AiRunnerLabState {
   seed?: number;
   floorId?: string;
   scenarioPresetId?: AiRunnerScenarioPresetId;
+  featureFlags?: Partial<AiFeatureFlags>;
   aiConfig: {
     visualRiskRewardFields: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
-    weaponPersonas?: boolean;
     /** Player-persona preset driving the AI's tuning knobs. */
     playerPersona?: PlayerPersona;
-    /** Single shared flag for both optional AI purchases. Replaces the former independent fields. */
+    /** @deprecated Retained for reading old persisted state only. */
+    weaponPersonas?: boolean;
+    /** @deprecated Retained for reading old persisted state only. */
     optionalPurchases?: boolean;
+    /** @deprecated Retained for reading old persisted state only. */
+    settlementReturnRouting?: boolean;
     /**
      * @deprecated Retained for reading old persisted state only.
      */
@@ -726,22 +732,24 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualRiskRewardFields: boolean;
     threatPreviewFrames: number;
     autoPauseOnDamage: boolean;
-    weaponPersonas: boolean;
     /** Player-persona preset (cohort tuning) applied to every AI brain the lab builds. */
     playerPersona: PlayerPersona;
-    /** Single shared flag for both optional AI purchases. Default true. */
-    optionalPurchases: boolean;
   } = {
     pathingMode: persisted?.pathingMode ?? DEFAULT_CONFIG.pathingMode,
     decisionMode: persisted?.decisionMode ?? DEFAULT_CONFIG.decisionMode,
     visualRiskRewardFields: persisted?.aiConfig?.visualRiskRewardFields ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
-    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
     playerPersona:
       urlPersona ?? (isPlayerPersona(persistedPersona) ? persistedPersona : DEFAULT_PLAYER_PERSONA),
-    optionalPurchases: resolveOptionalPurchases(persisted?.aiConfig ?? {}),
   };
+  const featureFlags = resolveAiFeatureFlags(
+    {
+      ...persisted?.aiConfig,
+      ...persisted?.featureFlags,
+    },
+    { surface: 'lab', floorId: persisted?.floorId ?? 'floor1' },
+  );
 
   /**
    * Single construction point for the AI brain. Every knob comes from the
@@ -793,13 +801,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       seed: currentSeed,
       floorId: currentFloor,
       scenarioPresetId: selectedScenarioPresetId,
+      featureFlags: { ...featureFlags },
       aiConfig: {
         visualRiskRewardFields: aiConfig.visualRiskRewardFields,
         threatPreviewFrames: aiConfig.threatPreviewFrames,
         autoPauseOnDamage: aiConfig.autoPauseOnDamage,
-        weaponPersonas: aiConfig.weaponPersonas,
         playerPersona: aiConfig.playerPersona,
-        optionalPurchases: aiConfig.optionalPurchases,
       },
     });
   };
@@ -852,7 +859,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
-        syncAiRunnerSettlementReturnRouting(world, !manualControl);
+        syncAiRunnerSettlementReturnRouting(
+          world,
+          !manualControl,
+          featureFlags.settlementReturnRouting,
+        );
         if (manualControl) {
           // Human has taken over: read real keyboard/mouse/touch instead of the
           // AI brain. The AI is intentionally NOT polled so its navigation state
@@ -909,9 +920,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    configureMerchantWeaponPurchase(world, aiConfig.optionalPurchases);
-    configureSpellBrokerPurchase(world, aiConfig.optionalPurchases);
-    autoFloor1ProgressionSystem(world, playerEid, ai, aiConfig.weaponPersonas);
+    configureMerchantWeaponPurchase(world, featureFlags.optionalPurchases);
+    configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
+    autoFloor1ProgressionSystem(world, playerEid, ai, featureFlags.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
@@ -945,7 +956,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoLevelUpAllocator: (world: GameWorld, playerEid: number, available: number) =>
       manualControl
         ? null
-        : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
+        : computeAiStatAllocation(world, playerEid, available, featureFlags.weaponPersonas),
     // Manual control hands the run back to a human, so surfaces that wait for
     // input (the boss-intro sheet) must NOT auto-advance in that mode.
     isAutoDriven: () => !manualControl,
@@ -1327,13 +1338,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     .onChange(() => {
       persistLabState();
     });
-  aiFolder
-    .add(aiConfig, 'optionalPurchases')
-    .name('Optional purchases (merchant + broker)')
-    .onChange(() => {
-      persistLabState();
-    });
   aiFolder.close();
+
+  const featureFlagsFolder = gui.addFolder('Feature Flags');
+  for (const control of getAiFeatureFlagControls()) {
+    featureFlagsFolder
+      .add(featureFlags, control.key)
+      .name(control.label)
+      .onChange(() => {
+        persistLabState();
+        renderControls();
+      });
+  }
+  featureFlagsFolder.close();
 
   // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
   // toggle takes effect immediately without restarting the scene/floor.
@@ -1355,12 +1372,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       rebuildAiBrain();
       persistLabState();
       renderControls();
-    });
-  aiModesFolder
-    .add(aiConfig, 'weaponPersonas')
-    .name('Weapon personas')
-    .onChange(() => {
-      persistLabState();
     });
   aiModesFolder
     .add(aiConfig, 'pathingMode', [AIPathingMode.RISK_REWARD_FUSED])
@@ -2464,7 +2475,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const personaElem = document.getElementById('ai-persona');
     if (personaElem) {
       const world = getScene()?.world;
-      personaElem.textContent = aiConfig.weaponPersonas
+      personaElem.textContent = featureFlags.weaponPersonas
         ? world
           ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')
           : 'Pending loadout'
@@ -2866,7 +2877,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     const personaElem = document.getElementById('ai-persona');
     if (personaElem) {
-      personaElem.textContent = !aiConfig.weaponPersonas
+      personaElem.textContent = !featureFlags.weaponPersonas
         ? 'Off'
         : world
           ? (getWeaponPersonaForWorld(world)?.name ?? 'Unmapped weapon')

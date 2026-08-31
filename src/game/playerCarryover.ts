@@ -16,7 +16,9 @@ import { getEquipmentDefForItem, RETIRED_EQUIPMENT_ITEM_IDS } from '../shared/eq
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+  ACTIVE_ABILITY_SLOT_LIMIT,
   equipmentAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
   type AbilityGrantSource,
   type AbilityGrantSourceId,
   type AbilityStateLike,
@@ -376,7 +378,45 @@ function restoreAbilityState(
   normalized.equippedActiveAbilityIds = [...snapshot.equippedActiveAbilityIds];
   normalized.activeAbilityGrantSources = legacyState.activeAbilityGrantSources;
   normalized.passiveAbilityGrantSources = legacyState.passiveAbilityGrantSources;
+  migrateRetiredArcaneSkillAbilities(normalized);
   return normalized;
+}
+
+/**
+ * Converts Arcane's former L5/L15 passive milestones into their active
+ * successors while retaining the milestone's ownership source for upgrades.
+ */
+function migrateRetiredArcaneSkillAbilities(state: ReturnType<typeof normalizeAbilityState>): void {
+  const replacements = [
+    ['arcane-mastery-base', 'arcane-nova', 5],
+    ['arcane-mastery-evolved', 'arcane-nova-evolved', 15],
+  ] as const;
+
+  for (const [retiredId, activeId, milestoneLevel] of replacements) {
+    const sources = state.grantOwnership.passiveSourcesByAbilityId.get(retiredId);
+    if (sources === undefined) continue;
+
+    state.grantOwnership.passiveSourcesByAbilityId.delete(retiredId);
+    const activeSources = state.grantOwnership.activeSourcesByAbilityId.get(activeId) ?? new Set();
+    // The retired ability was exclusively its milestone's passive grant; recreate
+    // that canonical source because legacy:passive sources cannot own an active.
+    activeSources.add(skillAbilityGrantSourceId('arcane', milestoneLevel));
+    state.grantOwnership.activeSourcesByAbilityId.set(activeId, activeSources);
+    state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== retiredId);
+    if (
+      !state.equippedActiveAbilityIds.includes(activeId) &&
+      state.equippedActiveAbilityIds.length < ACTIVE_ABILITY_SLOT_LIMIT
+    ) {
+      state.equippedActiveAbilityIds.push(activeId);
+    }
+  }
+  const ownedActiveAbilityIds = state.ownedActiveAbilityIds ?? [];
+  state.ownedActiveAbilityIds = [
+    ...ownedActiveAbilityIds.filter((id) => state.grantOwnership.activeSourcesByAbilityId.has(id)),
+    ...[...state.grantOwnership.activeSourcesByAbilityId.keys()].filter(
+      (id) => !ownedActiveAbilityIds.includes(id),
+    ),
+  ];
 }
 
 function assertArray(value: unknown, path: string): asserts value is readonly unknown[] {
@@ -2050,8 +2090,8 @@ function remapModifierHolder(
  * persisted {@link KeptCompanionContract}, or `undefined` when there is
  * nothing to carry (no Floor 3 state, no pick made yet, or the picked entity
  * is no longer a live Companion / has an unresolvable species token —
- * defensive, should never happen given `latchFloor3Victory`'s auto-default
- * and `selectFloor3KeptCompanion`'s validation, but must never throw here).
+ * defensive, should never happen after either real selection or the headless
+ * deterministic selection path, but must never throw here).
  */
 function resolveFloor3KeptCompanionContract(world: GameWorld): KeptCompanionContract | undefined {
   const keptEid = world.floorExtendedState?.floor3Studios?.keptCompanionEid;

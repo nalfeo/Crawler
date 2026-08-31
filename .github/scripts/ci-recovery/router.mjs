@@ -39,6 +39,35 @@ const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 //   VALIDATION_RUNNER_WEIGHT = estimated concurrent jobs per active Validation
 //                             run (used to measure live validation headroom).
 export const RUNNER_CEILING = 20;
+
+// ---------------------------------------------------------------------------
+// Explicit stacked-PR intent
+// ---------------------------------------------------------------------------
+
+/**
+ * Label that explicitly declares a PR as an intentional child in a
+ * stacked-PR chain. Humans may add or remove this label at any time.
+ * Copilot automation may add it only when explicitly asked by a human
+ * (process policy:
+ * docs/agent-os/policies/ci-policy.md#stacked-pr-label-policy).
+ *
+ * Presence of the label tells the stale-base classifier to leave the
+ * PR alone while its parent PR remains open.  Once the parent lands or
+ * disappears the label is ignored — the child is always normalised to
+ * `main` at that point regardless of the label.
+ */
+export const STACKED_PR_LABEL = 'stacked-pr';
+const STACKED_PR_LABEL_COLOR = '6f42c1';
+const STACKED_PR_LABEL_DESCRIPTION =
+  'Intentional stacked PR; retain non-main base while parent PR remains open.';
+
+/**
+ * Grace window for newly-created unlabeled PRs whose base is a non-main
+ * branch.  During this window the stale-base classifier skips retargeting
+ * so an author has a chance to add the `stacked-pr` label or retarget
+ * manually before automation intervenes.
+ */
+const STACKED_PR_GRACE_MS = 5 * 60 * 1_000; // 5 minutes
 // Reserved runner slots for Merge Train Validation when the queue is non-empty.
 // Keeps validation throughput protected from CI Recovery bursts.
 export const VALIDATION_RESERVED_TRAIN_BUSY = 9;
@@ -159,6 +188,40 @@ function parseClampedPositiveInt(raw, fallback, max) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function ensureLabel({
+  token,
+  owner,
+  repo,
+  name,
+  color,
+  description,
+  requestFn = request,
+}) {
+  try {
+    await requestFn(token, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: { name, color, description },
+    });
+  } catch (error) {
+    const alreadyExists = (error?.data?.errors || []).some(
+      (entry) => String(entry?.code || '') === 'already_exists',
+    );
+    if (!(error?.status === 422 && alreadyExists)) throw error;
+  }
+}
+
+export async function ensureRecoveryLabels({ token, owner, repo, requestFn = request }) {
+  await ensureLabel({
+    token,
+    owner,
+    repo,
+    name: STACKED_PR_LABEL,
+    color: STACKED_PR_LABEL_COLOR,
+    description: STACKED_PR_LABEL_DESCRIPTION,
+    requestFn,
+  });
 }
 
 function rotateList(values, rotation) {
@@ -664,13 +727,39 @@ export function isStaleBaseRecoveryCandidate(pullRequest, repository) {
   );
 }
 
-export function classifyStaleBase({ pullRequest, basePulls, baseBranch, comparison }) {
+export function classifyStaleBase({
+  pullRequest,
+  basePulls,
+  baseBranch,
+  comparison,
+  nowMs = Date.now(),
+}) {
   const baseRef = String(pullRequest.base?.ref || '');
   if (!baseRef || baseRef === 'main') return { action: 'skip', reason: 'main-base' };
 
   const matchingBasePulls = (basePulls || []).filter((basePull) => basePull?.head?.ref === baseRef);
   if (matchingBasePulls.some((basePull) => basePull.state === 'open')) {
-    return { action: 'skip', reason: 'base-pr-open' };
+    // Explicit stacked-PR intent: the `stacked-pr` label means the author
+    // has deliberately targeted this PR at its parent.  Leave it alone as
+    // long as the parent is open.  Once the parent lands or disappears the
+    // label is ignored and the PR is normalised to `main` (handled by the
+    // code below once matchingBasePulls contains no open PR).
+    const labelNames = (pullRequest.labels || []).map((l) => String(l.name || ''));
+    if (labelNames.includes(STACKED_PR_LABEL)) {
+      return { action: 'skip', reason: 'labeled-stacked-pr-open' };
+    }
+
+    // Unlabeled PRs targeting a non-main branch: apply a short grace window
+    // so the author has a chance to add `stacked-pr` or retarget manually
+    // before automation intervenes.
+    const createdAtMs = Date.parse(String(pullRequest.created_at || ''));
+    const ageMs = nowMs - createdAtMs;
+    if (Number.isFinite(ageMs) && ageMs < STACKED_PR_GRACE_MS) {
+      return { action: 'skip', reason: 'unlabeled-grace-period' };
+    }
+
+    // Past the grace window and not labeled intentional: auto-retarget to main.
+    return { action: 'retarget', reason: 'unlabeled-stacked-pr-expired' };
   }
 
   if (!baseBranch) {
@@ -714,49 +803,47 @@ export function isStackedRetargetRefusal(error) {
   return messages.some((message) => /part of a stack/i.test(String(message || '')));
 }
 
-// Merge main forward into the PR's head branch. Unlike base retargeting and
-// update-branch, the merges API is not stack-gated, so this is the one path that
-// can clear a stacked PR's BEHIND state automatically. A 409 means the merge
-// conflicts, which is a real reconciliation the conflict coordinator owns.
-export async function mergeMainForward({
+// GitHub's ordinary pull-request PATCH cannot change the base of a PR while it
+// belongs to a native stack. Dissolve that native stack first; base refs are
+// preserved by the unstack operation, so explicitly labeled children remain
+// logically stacked while accidental children can then be retargeted to main.
+export async function unstackPullRequest({
   owner,
   repo,
   pullRequest,
   mutationToken,
   requestFn = request,
 }) {
-  const headRef = String(pullRequest.head?.ref || '');
+  const apiHeaders = { 'X-GitHub-Api-Version': '2026-03-10' };
   try {
-    const response = await requestFn(mutationToken, `/repos/${owner}/${repo}/merges`, {
-      method: 'POST',
-      body: {
-        base: headRef,
-        head: 'main',
-        commit_message: `chore(ci-recovery): merge main into ${headRef} (stacked PR cannot be retargeted)`,
+    const response = await requestFn(
+      mutationToken,
+      `/repos/${owner}/${repo}/stacks?pull_request=${pullRequest.number}`,
+      { headers: apiHeaders },
+    );
+    const stack = (response.data || []).find((candidate) =>
+      (candidate.pull_requests || []).some((entry) => entry.number === pullRequest.number),
+    );
+    if (!stack?.number) {
+      return { ok: false, reason: 'stack-not-found' };
+    }
+    const unstacked = await requestFn(
+      mutationToken,
+      `/repos/${owner}/${repo}/stacks/${stack.number}/unstack`,
+      {
+        method: 'POST',
+        headers: apiHeaders,
       },
-    });
-    if (response.status === 204) {
-      return {
-        result: 'already-current',
-        message: 'The branch is already up to date with `main`.',
-      };
+    );
+    if (
+      unstacked.status === 200 &&
+      (unstacked.data?.pull_requests || []).some((entry) => entry.number === pullRequest.number)
+    ) {
+      return { ok: false, reason: 'pull-request-remained-stacked' };
     }
-    return {
-      result: 'merged',
-      message: 'Merged `main` forward into the head branch instead, which clears the stale base.',
-    };
+    return { ok: true, stackNumber: stack.number };
   } catch (error) {
-    if (error?.status === 409) {
-      return {
-        result: 'conflict',
-        message:
-          'Merging `main` forward conflicts, so this PR needs a manual unstack or conflict resolution.',
-      };
-    }
-    return {
-      result: 'failed',
-      message: `Merging \`main\` forward failed (${error.message}), so this PR needs manual attention.`,
-    };
+    return { ok: false, reason: `unstack-failed:${error?.status ?? 'network'}` };
   }
 }
 
@@ -770,6 +857,12 @@ export async function retargetStaleBasePulls({
   writeLog = (line) => process.stdout.write(`${line}\n`),
 }) {
   const [owner, repo] = repository.split('/');
+  await ensureRecoveryLabels({
+    token: mutationToken || token,
+    owner,
+    repo,
+    requestFn,
+  });
   const candidates = scheduledPulls.filter((pullRequest) =>
     isStaleBaseRecoveryCandidate(pullRequest, repository),
   );
@@ -845,32 +938,35 @@ export async function retargetStaleBasePulls({
         );
         continue;
       }
-      // GitHub's stacked-PR feature refuses both `PATCH base` (422) and
-      // `PUT /update-branch` (403), so neither normal remediation can run. Merge
-      // main forward into the head branch instead: the merges API is not
-      // stack-gated, and it clears the BEHIND state that blocks the PR while
-      // leaving the stack intact for a human to unstack deliberately.
-      const merged = await mergeMainForward({
+      const unstacked = await unstackPullRequest({
         owner,
         repo,
         pullRequest,
         mutationToken,
         requestFn,
       });
+      if (!unstacked.ok) {
+        writeLog(
+          `stale-base-stacked pr=#${pullRequest.number} base=${baseRef} action=unstack result=${unstacked.reason}`,
+        );
+        continue;
+      }
       writeLog(
-        `stale-base-stacked pr=#${pullRequest.number} base=${baseRef} action=merge-forward result=${merged.result}`,
+        `stale-base-stacked pr=#${pullRequest.number} base=${baseRef} action=unstack result=success stack=${unstacked.stackNumber}`,
       );
-      await requestFn(
-        mutationToken,
-        `/repos/${owner}/${repo}/issues/${pullRequest.number}/comments`,
-        {
-          body: {
-            body: `${STALE_BASE_RETARGET_MARKER} base=${baseRef} reason=${decision.reason} outcome=merge-forward-${merged.result} -->\nCI Recovery could not retarget this PR to \`main\` because GitHub's stacked-pull-request feature refuses base changes and \`update-branch\` on a stacked PR. ${merged.message}`,
-          },
-          method: 'POST',
-        },
-      );
-      continue;
+      try {
+        retargeted = (
+          await requestFn(mutationToken, `/repos/${owner}/${repo}/pulls/${pullRequest.number}`, {
+            method: 'PATCH',
+            body: { base: 'main' },
+          })
+        ).data;
+      } catch (retryError) {
+        writeLog(
+          `stale-base pr=#${pullRequest.number} base=${baseRef} action=skip reason=retarget-after-unstack-failed error=${retryError.message}`,
+        );
+        continue;
+      }
     }
     await requestFn(
       mutationToken,
@@ -1158,6 +1254,42 @@ export function recoveryTriggerForPr({
   return trainEnabled && !directlyTriggeredPrs.has(prNumber)
     ? `${eventName}:sweep`
     : dispatchTrigger;
+}
+
+// Pure builders for the CI Recovery workflow_dispatch request body. Extracted
+// so the real dispatch payload shape (not a hand-authored fixture) can be
+// validated against the invocationV1 contract schema in
+// validate-goobers-contracts.mjs -- both dispatch call sites below import and
+// call these directly, so there is exactly one place that can drift from the
+// contract.
+export function buildReaperDispatchBody(reaperPrNumber, reaperTrigger, payload) {
+  return {
+    ref: payload.repository?.default_branch || 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: String(reaperPrNumber),
+      trigger: reaperTrigger,
+      lease_id: '',
+    },
+  };
+}
+
+export function buildRouterDispatchBody(prNumber, prTrigger, payload, expectedMetadata) {
+  return {
+    ref: payload.repository?.default_branch || 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: String(prNumber),
+      trigger: prTrigger,
+      ...(expectedMetadata
+        ? {
+            expected_head_sha: expectedMetadata.expectedHeadSha,
+            expected_base_ref: expectedMetadata.expectedBaseRef,
+          }
+        : {}),
+      lease_id: '',
+    },
+  };
 }
 
 export function isManagedCommentEvent(payload, eventName) {
@@ -1717,15 +1849,7 @@ export async function runFromEnv(env = process.env) {
       // would create duplicate runs.
       await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
         method: 'POST',
-        body: {
-          ref: payload.repository?.default_branch || 'main',
-          inputs: {
-            operation: 'reconcile',
-            pr_number: String(reaperPrNumber),
-            trigger: reaperTrigger,
-            lease_id: '',
-          },
-        },
+        body: buildReaperDispatchBody(reaperPrNumber, reaperTrigger, payload),
       });
       reaperDispatchedSet.add(reaperPrNumber);
       process.stdout.write(`reaper-dispatch pr=#${reaperPrNumber} trigger=${reaperTrigger}\n`);
@@ -1846,21 +1970,7 @@ export async function runFromEnv(env = process.env) {
     // 10-minute scheduled sweep retries failed dispatches instead.
     await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
       method: 'POST',
-      body: {
-        ref: payload.repository?.default_branch || 'main',
-        inputs: {
-          operation: 'reconcile',
-          pr_number: String(prNumber),
-          trigger: prTrigger,
-          ...(expectedMetadata
-            ? {
-                expected_head_sha: expectedMetadata.expectedHeadSha,
-                expected_base_ref: expectedMetadata.expectedBaseRef,
-              }
-            : {}),
-          lease_id: '',
-        },
-      },
+      body: buildRouterDispatchBody(prNumber, prTrigger, payload, expectedMetadata),
     });
     process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }

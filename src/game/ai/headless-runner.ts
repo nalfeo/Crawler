@@ -18,6 +18,7 @@ import {
   Spawner,
   type FamilyId,
   type GameWorld,
+  statSystem,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
 import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
@@ -29,6 +30,7 @@ import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weap
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
+import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -63,6 +65,7 @@ import {
 } from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
@@ -89,7 +92,7 @@ import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
 import { configureSpellBrokerPurchase } from './spell-broker-intent.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
-import { DEFAULT_OPTIONAL_PURCHASES, resolveOptionalPurchases } from './optional-purchases.js';
+import { resolveAiFeatureFlags, type AiFeatureFlags } from './feature-flags.js';
 import {
   configureSettlementReturnRouting,
   getSettlementReturnIntent,
@@ -101,6 +104,14 @@ import {
   collectEquipmentPlayabilityMetrics,
   collectEquipmentPlayabilityViolations,
 } from './headless-runner-invariants.js';
+import { getAbilityDefinition } from '../abilities/registry.js';
+import {
+  getOrCreateAbilityState,
+  grantAbilitySources,
+  synchronizeAbilityPassives,
+  weaponPrerequisiteMet,
+} from '../systems/abilitySystem.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, learnedAbilityGrantSourceId } from '../../shared/abilities.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -118,6 +129,40 @@ function readRunState(world: GameWorld): GameWorld['state'] {
   return world.state;
 }
 
+function buildLoadoutControlEvent(
+  world: GameWorld,
+  playerEid: number,
+  frame: number,
+  kills: number,
+  note: string,
+): SimEvent {
+  const px = world.stores.position.x[playerEid] ?? 0;
+  const py = world.stores.position.y[playerEid] ?? 0;
+  return {
+    type: 'control',
+    frame,
+    gameMs: Math.round(world.elapsedMs),
+    px: Math.round(px),
+    py: Math.round(py),
+    state: readRunState(world),
+    reason: 'loadout auto-selected through scenario.selectLoadoutOption',
+    targetEid: null,
+    targetDist: null,
+    enemyCount: query(world.ecs, [Enemy]).length,
+    nearestEnemyDist: null,
+    level: world.playerLevel?.level ?? 0,
+    xp: world.playerLevel?.xp ?? 0,
+    kills,
+    health: Math.round(world.stores.health.current[playerEid] ?? 0),
+    stuckFrames: 0,
+    pathLen: 0,
+    netDisp: 0,
+    pathTravel: 0,
+    inSafe: world.playerInSafeRoom === true,
+    note,
+  };
+}
+
 function hasFloor2ExitCompleted(world: GameWorld): boolean {
   return (
     world.goalFlags.get(FLOOR2_STAIRS_DISCOVERED_GOAL_ID) === true ||
@@ -130,6 +175,16 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
   const floor4Arena = world.floorExtendedState?.floor4Arena;
   if (floor4Arena) {
     return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
+  }
+  const floor5Siege = world.floorExtendedState?.floor5Siege;
+  if (floor5Siege) {
+    return (
+      floor5Siege.laneTelemetry.spawned.allied +
+      floor5Siege.laneTelemetry.spawned.enemy +
+      floor5Siege.laneTelemetry.legalDamageEvents +
+      floor5Siege.laneTelemetry.checkpointContests +
+      floor5Siege.laneTelemetry.waveCyclesCompleted
+    );
   }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
@@ -251,6 +306,11 @@ export interface HeadlessRunnerConfig {
    * present in the pool the run throws immediately.
    */
   forceWeaponId?: string;
+  /**
+   * Ability IDs granted with learned provenance before frame 0. Active abilities
+   * and spells take the first slots in this order; duplicates are ignored.
+   */
+  forceAbilityIds?: readonly string[];
   /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
   enemyDamageMultiplier?: number;
   /**
@@ -394,6 +454,7 @@ const DEFAULT_CONFIG: Required<
     | 'simulationOptions'
     | 'recordEvent'
     | 'forceWeaponId'
+    | 'forceAbilityIds'
     | 'onFinish'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
@@ -401,6 +462,9 @@ const DEFAULT_CONFIG: Required<
     | 'planningMaxFrames'
     | 'playerCarryover'
     | 'onPlayerCarryoverCaptured'
+    | keyof AiFeatureFlags
+    | 'merchantWeaponPurchase'
+    | 'spellBrokerPurchase'
   >
 > = {
   seed: 12345,
@@ -415,13 +479,91 @@ const DEFAULT_CONFIG: Required<
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
-  weaponPersonas: true,
-  optionalPurchases: DEFAULT_OPTIONAL_PURCHASES,
-  merchantWeaponPurchase: false,
-  spellBrokerPurchase: false,
-  settlementReturnRouting: false,
   enforcePlayabilityInvariants: true,
 };
+
+function uniqueInFirstSeenOrder(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
+function applyForcedAbilities(
+  world: GameWorld,
+  playerEid: number,
+  requestedIds: readonly string[],
+  startingWeapon: string,
+): readonly string[] {
+  const forcedAbilityIds = uniqueInFirstSeenOrder(requestedIds);
+  if (forcedAbilityIds.length === 0) return forcedAbilityIds;
+  const definitions = forcedAbilityIds.map((abilityId) => {
+    const definition = getAbilityDefinition(abilityId);
+    if (definition === undefined) {
+      throw new Error(`Unknown forced ability id "${abilityId}"`);
+    }
+    return definition;
+  });
+  const forcedActiveIds = definitions
+    .filter((definition) => definition.kind !== 'passive')
+    .map((definition) => definition.id);
+  if (forcedActiveIds.length > ACTIVE_ABILITY_SLOT_LIMIT) {
+    throw new Error(
+      `Forced active/spell ability count ${forcedActiveIds.length} exceeds active ability slot limit ${ACTIVE_ABILITY_SLOT_LIMIT}`,
+    );
+  }
+  for (const definition of definitions) {
+    if (
+      definition.weaponPrerequisite !== undefined &&
+      !weaponPrerequisiteMet(world, playerEid, definition.id)
+    ) {
+      throw new Error(
+        `Forced ability "${definition.id}" requires weapon skill "${definition.weaponPrerequisite}", incompatible with selected weapon "${startingWeapon}"`,
+      );
+    }
+  }
+
+  const existingEquipped =
+    world.abilityStatesByEntity.get(playerEid)?.equippedActiveAbilityIds ?? [];
+  grantAbilitySources(
+    world,
+    playerEid,
+    definitions.map((definition) => ({
+      kind: definition.kind === 'passive' ? ('passive' as const) : ('active' as const),
+      abilityId: definition.id,
+      sourceId: learnedAbilityGrantSourceId(definition.id),
+    })),
+  );
+  const state = getOrCreateAbilityState(world, playerEid);
+  const forcedActiveSet = new Set(forcedActiveIds);
+  state.equippedActiveAbilityIds = [
+    ...forcedActiveIds,
+    ...existingEquipped.filter((abilityId) => !forcedActiveSet.has(abilityId)),
+  ].slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
+  if (definitions.some((definition) => definition.kind === 'spell')) {
+    world.featureUnlocks.spells = true;
+  }
+  synchronizeAbilityPassives(world, playerEid, { suppressActivationVfx: true });
+  statSystem(world);
+  return forcedAbilityIds;
+}
+
+function buildAbilityTelemetry(
+  world: GameWorld,
+  forcedAbilityIds: readonly string[],
+): NonNullable<RunStats['abilityTelemetry']> {
+  const activationsByAbilityId = Object.fromEntries(
+    forcedAbilityIds.map((abilityId) => [abilityId, 0]),
+  );
+  let totalActivations = 0;
+  for (const activation of world.runEvents?.itemActivations ?? []) {
+    for (const abilityId of forcedAbilityIds) {
+      // recordAbilityRunEvent uses this learned-ability source for both `active`
+      // and `spell` definitions; the prefix is historical, not a kind filter.
+      if (!activation.itemSources.includes(`spell:${abilityId}`)) continue;
+      activationsByAbilityId[abilityId] = (activationsByAbilityId[abilityId] ?? 0) + 1;
+      totalActivations += 1;
+    }
+  }
+  return { forcedAbilityIds, totalActivations, activationsByAbilityId };
+}
 
 function applyConfiguredHostileDamageMultiplier(
   world: GameWorld,
@@ -624,9 +766,11 @@ export async function runHeadless(
   config: HeadlessRunnerConfig,
 ): Promise<RunStats> {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-  if (config.settlementReturnRouting === undefined && mergedConfig.floorId === 'floor1') {
-    mergedConfig.settlementReturnRouting = true;
-  }
+  const recordEvent = config.recordEvent;
+  const featureFlags = resolveAiFeatureFlags(config, {
+    surface: 'headless',
+    floorId: mergedConfig.floorId,
+  });
   aiProvider.configurePlanningDeadlineMs?.(
     planningDeadlineMsFromFrameBudget(
       config.planningMaxFrames ??
@@ -636,7 +780,7 @@ export async function runHeadless(
   const startTime = Date.now();
 
   if (mergedConfig.debug) {
-    logger.info('Starting headless run', mergedConfig);
+    logger.info('Starting headless run', { ...mergedConfig, ...featureFlags });
   }
 
   // Create world and spawn player
@@ -652,14 +796,9 @@ export async function runHeadless(
     Object.assign(world.floor2EquipmentFlags, mergedConfig.floor2EquipmentFlags);
   }
   world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
-  // `optionalPurchases` is the canonical single flag.  When supplied it
-  // overrides the individual deprecated fields; when absent the individual
-  // fields are used for backward compat with existing callers/tests. A caller
-  // that supplies no purchase flag inherits the canonical default.
-  const purchasesEnabled = resolveOptionalPurchases(config);
-  configureMerchantWeaponPurchase(world, purchasesEnabled);
-  configureSpellBrokerPurchase(world, purchasesEnabled);
-  configureSettlementReturnRouting(world, mergedConfig.settlementReturnRouting);
+  configureMerchantWeaponPurchase(world, featureFlags.optionalPurchases);
+  configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
+  configureSettlementReturnRouting(world, featureFlags.settlementReturnRouting);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
@@ -707,6 +846,15 @@ export async function runHeadless(
       }
     }
     scenario.selectLoadoutOption(world, starterWeaponIndex);
+    recordEvent?.(
+      buildLoadoutControlEvent(
+        world,
+        playerEid,
+        0,
+        0,
+        `${mergedConfig.floorId} initial loadout auto-selected option ${starterWeaponIndex}`,
+      ),
+    );
   } else if (forceWeaponId !== undefined) {
     equipStarterOrFallback(world, forceWeaponId, forceWeaponDef!);
   }
@@ -716,6 +864,10 @@ export async function runHeadless(
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
     'unknown';
+  const forcedAbilityIds =
+    config.forceAbilityIds === undefined
+      ? undefined
+      : applyForcedAbilities(world, playerEid, config.forceAbilityIds, startingWeapon);
   const runData = createHeadlessRunData(
     forceWeaponId !== undefined
       ? [startingWeapon]
@@ -827,7 +979,6 @@ export async function runHeadless(
   let lastHealthPercent = 1.0;
 
   // Event-log / telemetry state
-  const recordEvent = config.recordEvent;
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
   const denSampleInterval = Math.max(1, sampleInterval * 4);
   // `RunStats.movementQuality` must read the same regardless of the caller's
@@ -1114,6 +1265,15 @@ export async function runHeadless(
       // for the rest of the run.
       if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
         scenario.selectLoadoutOption(world, 0);
+        recordEvent?.(
+          buildLoadoutControlEvent(
+            world,
+            playerEid,
+            frameCount,
+            totalKills,
+            `${mergedConfig.floorId} pending loadout auto-selected option 0`,
+          ),
+        );
       }
 
       // FR8.5: Floor 4's arena COUNTDOWN is official safe-room time even though
@@ -1158,7 +1318,7 @@ export async function runHeadless(
       captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
-      autoFloor1ProgressionSystem(world, playerEid, aiProvider, config.weaponPersonas);
+      autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1178,7 +1338,7 @@ export async function runHeadless(
       // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
       const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
       void _settlementResult;
-      autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
+      autoAllocateStatPoints(world, playerEid, featureFlags.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
       captureHeadlessRunDataFrame(
         runData,
@@ -1189,7 +1349,9 @@ export async function runHeadless(
       );
 
       // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
-      const enemyEids = query(world.ecs, [Enemy]);
+      const enemyEids = query(world.ecs, [Enemy]).filter((eid) =>
+        isEnemyCombatEligible(world, eid),
+      );
 
       // Shared den-boss diagnostic contract — the SAME tracker the player /
       // AI Runner session recorder uses, so all three surfaces emit identical
@@ -1246,7 +1408,7 @@ export async function runHeadless(
       }
 
       const currentEnemyCount = enemyEids.length;
-      if (mergedConfig.settlementReturnRouting) {
+      if (featureFlags.settlementReturnRouting) {
         const settlementReturnIntent = getSettlementReturnIntent(world);
         if (settlementReturnIntent.status !== lastSettlementReturnStatus) {
           lastSettlementReturnStatus = settlementReturnIntent.status;
@@ -1507,6 +1669,24 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      // Non-interactive runs must still satisfy Floor 3's required keep-one
+      // reward before their carryover snapshot is captured, and Floor 3 only
+      // reports `cleared_floor` once the descend is confirmed. Unlike Floors
+      // 1-2 (`autoFloor1/2ProgressionSystem`) this deliberately does NOT gate
+      // on stair proximity: the BT AI has no Floor 3 exit navigation yet
+      // (`isFloorClearedAwaitingSweep` covers Floors 1-2 only), so a proximity
+      // gate here would stall every headless Floor 3 run at the win instead of
+      // completing it. Replace this with a proximity-gated
+      // `autoFloor3ProgressionSystem` once the AI can path to the Floor 3
+      // exit. Headless-only: real play still walks to the stairs.
+      if (scenario.autoSelectKeptCompanion) {
+        // Note the sequencing: `autoSelectKeptCompanion` returns false when
+        // there is nothing left to pick (a post-victory party wipe, which the
+        // descend gate explicitly allows), so the descend attempt must not be
+        // conditional on it or those runs would stall instead of completing.
+        scenario.autoSelectKeptCompanion(world);
+        scenario.onStairDescend?.(world, playerEid);
+      }
       const scenarioOutcome = scenario.getRunOutcome(world);
       if (
         scenarioOutcome === 'cleared_floor' ||
@@ -1607,7 +1787,7 @@ export async function runHeadless(
     );
     const playabilityViolations =
       world.floorId === 'floor2' &&
-      mergedConfig.settlementReturnRouting &&
+      featureFlags.settlementReturnRouting &&
       mergedConfig.enforcePlayabilityInvariants
         ? collectEquipmentPlayabilityViolations(equipmentPlayability)
         : [];
@@ -1684,6 +1864,7 @@ export async function runHeadless(
         buildFloor2HuntMetrics(),
       ),
       floor4Arena: getFloor4ArenaRunStats(world),
+      floor5Siege: getFloor5SiegeRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -1697,6 +1878,9 @@ export async function runHeadless(
       skills: collectSkillMetrics(),
       ...(world.weaponTelemetry
         ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+        : {}),
+      ...(forcedAbilityIds
+        ? { abilityTelemetry: buildAbilityTelemetry(world, forcedAbilityIds) }
         : {}),
       xpOnGroundAtEnd: computeXpOnGroundAtEnd(world),
       lootEfficiency: computeLootEfficiency(world),
@@ -1792,6 +1976,7 @@ export async function runHeadless(
       buildFloor2HuntMetrics(),
     ),
     floor4Arena: getFloor4ArenaRunStats(world),
+    floor5Siege: getFloor5SiegeRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
@@ -1805,6 +1990,9 @@ export async function runHeadless(
     skills: collectSkillMetrics(),
     ...(world.weaponTelemetry
       ? { weaponTelemetry: summarizeWeaponTelemetry(world.weaponTelemetry) }
+      : {}),
+    ...(forcedAbilityIds
+      ? { abilityTelemetry: buildAbilityTelemetry(world, forcedAbilityIds) }
       : {}),
     xpOnGroundAtEnd,
     lootEfficiency: computeLootEfficiency(world),

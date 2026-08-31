@@ -1,5 +1,6 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, Homing, Position, Velocity } from '../components.js';
+import { isEnemyHostileToPlayer } from '../enemy-targeting.js';
 import type { GameWorld } from '../world.js';
 
 const TWO_PI = Math.PI * 2;
@@ -16,7 +17,7 @@ function normalizeAngleDelta(deltaRad: number): number {
 function isLivingEnemy(world: GameWorld, eid: number): boolean {
   return (
     entityExists(world.ecs, eid) &&
-    hasComponent(world.ecs, eid, Enemy) &&
+    isEnemyHostileToPlayer(world, eid) &&
     hasComponent(world.ecs, eid, Health) &&
     (world.stores.health.current[eid] ?? 0) > 0
   );

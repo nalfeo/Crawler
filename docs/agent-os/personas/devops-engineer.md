@@ -29,7 +29,7 @@ measuring and removing agent-delivery bottlenecks.
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Order CI gates for fast failure and minimal wasted runtime.
 - Maintain scripts, GitHub workflows, and harness checks with clear exit conditions.
 - Prefer portable, scripted verification paths that can run locally and in CI.

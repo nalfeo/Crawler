@@ -107,11 +107,12 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   ...LABEL_STYLE,
   color: '#64748b',
 };
+const ENTRY_TEXT_INDENT = 26;
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
   fontSize: '13px',
   color: '#cbd5e1',
-  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - 24 },
+  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - ENTRY_TEXT_INDENT },
 };
 const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
@@ -153,7 +154,14 @@ export function createModalPickerUI(
     const safe = getSafeAreaInsets(scene);
     return PANEL_SCREEN_MARGIN + Math.max(safe.top, safe.right, safe.bottom, safe.left);
   };
-  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
+  /**
+   * Current panel height. Starts at the authored {@link PANEL_HEIGHT} and grows
+   * to fit measured content (rows wrap to two lines once an option carries both
+   * prose and a numeric stat line), so a taller picker never spills its rows
+   * past the panel edge.
+   */
+  let panelHeight = PANEL_HEIGHT;
+  let uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
   let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
@@ -243,7 +251,7 @@ export function createModalPickerUI(
 
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());
-    panel.setSize(PANEL_WIDTH, PANEL_HEIGHT);
+    panel.setSize(PANEL_WIDTH, panelHeight);
     // Centre inside the safe rect rather than the raw canvas. The overlay is
     // laid out in virtual space (design ÷ uiScale), so the design-space insets
     // are converted to the same space before use.
@@ -257,11 +265,11 @@ export function createModalPickerUI(
     const safeWidth = viewWidth() - inset.left - inset.right;
     const safeHeight = viewHeight() - inset.top - inset.bottom;
     panel.x = Math.round(Math.max(inset.left, inset.left + (safeWidth - PANEL_WIDTH) / 2));
-    panel.y = Math.round(Math.max(inset.top, inset.top + (safeHeight - PANEL_HEIGHT) / 2));
+    panel.y = Math.round(Math.max(inset.top, inset.top + (safeHeight - panelHeight) / 2));
     bevelTop.setPosition(panel.x, panel.y).setSize(PANEL_WIDTH, 2);
-    bevelLeft.setPosition(panel.x, panel.y).setSize(2, PANEL_HEIGHT);
-    bevelBottom.setPosition(panel.x, panel.y + PANEL_HEIGHT - 2).setSize(PANEL_WIDTH, 2);
-    bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, PANEL_HEIGHT);
+    bevelLeft.setPosition(panel.x, panel.y).setSize(2, panelHeight);
+    bevelBottom.setPosition(panel.x, panel.y + panelHeight - 2).setSize(PANEL_WIDTH, 2);
+    bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, panelHeight);
     titleStrip.setPosition(panel.x + 2, panel.y + 2).setSize(PANEL_WIDTH - 4, 38);
     titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
   };
@@ -275,6 +283,39 @@ export function createModalPickerUI(
     backdrop.removeAllListeners('pointerdown');
     if (backdrop.scene) {
       backdrop.disableInteractive();
+    }
+  };
+
+  /**
+   * Grow the panel to the measured content and re-centre it, moving the already
+   * laid-out content with it. Text heights are only known after the objects
+   * exist, so the panel is sized in a second pass instead of trusting the
+   * authored {@link PANEL_HEIGHT} — otherwise long option copy (prose plus a
+   * numeric stat line) renders outside the panel.
+   */
+  const fitContent = (footer: Phaser.GameObjects.Text): void => {
+    const required = Math.ceil(footer.y + footer.height + PANEL_PADDING - panel.y);
+    if (required <= panelHeight) {
+      return;
+    }
+    const previousX = panel.x;
+    const previousY = panel.y;
+    panelHeight = required;
+    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
+    effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+    overlay.setScale(uiScale);
+    layoutPanel();
+    const dx = panel.x - previousX;
+    const dy = panel.y - previousY;
+    for (const node of textNodes) {
+      node.setPosition(snap(node.x + dx), snap(node.y + dy)).setResolution(effectiveResolution);
+    }
+    for (const entry of entries) {
+      entry.row.setPosition(snap(entry.row.x + dx), snap(entry.row.y + dy));
+      entry.label.setPosition(snap(entry.label.x + dx), snap(entry.label.y + dy));
+      entry.description.setPosition(snap(entry.description.x + dx), snap(entry.description.y + dy));
+      entry.label.setResolution(effectiveResolution);
+      entry.description.setResolution(effectiveResolution);
     }
   };
 
@@ -292,7 +333,10 @@ export function createModalPickerUI(
     backdrop.removeAllListeners('pointerdown');
 
     // Refresh responsive scale before laying out (handles resize/rotation).
-    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT, safeMargin());
+    // Content height is only known after the text objects are measured below,
+    // so start from the authored height and grow the panel in `fitContent()`.
+    panelHeight = PANEL_HEIGHT;
+    uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
     effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
     overlay.setScale(uiScale);
 
@@ -364,7 +408,7 @@ export function createModalPickerUI(
         isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
       );
       const description = crispText(
-        panelX + PANEL_PADDING + 26,
+        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT,
         rowY + DESCRIPTION_TOP,
         option.description ?? (isDisabled ? 'Unavailable' : ''),
         DESCRIPTION_STYLE,
@@ -441,6 +485,8 @@ export function createModalPickerUI(
     footerNode = footer;
     textNodes.push(footer);
     overlay.add(footer);
+
+    fitContent(footer);
 
     overlay.setVisible(true);
   };

@@ -44,6 +44,7 @@ import {
   getItemById,
 } from '../shared/items.js';
 import type { GeneratedEquipmentInventoryEntry } from '../shared/inventory.js';
+import type { GeneratedEquipmentInstanceV1 } from '../shared/generated-equipment-types.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -105,6 +106,41 @@ export interface InventoryUIConfig {
 
 /** Max ms between two clicks on the same cell to count as an equip double-click. */
 const DOUBLE_CLICK_MS = 220;
+
+const GENERATED_EQUIPMENT_FALLBACK_DESCRIPTION =
+  'A dungeon-forged reward with terms the producers refuse to print.';
+
+/**
+ * Generated equipment has no authored flavor copy of its own. Reuse the base
+ * item's description when the generated base maps to a catalog item, and fall
+ * back to neutral flavor otherwise — never mechanical metadata, which belongs
+ * in the tooltip stat rows.
+ */
+function generatedEquipmentTooltipDescription(
+  instance: Pick<GeneratedEquipmentInstanceV1, 'baseId'>,
+): string {
+  const baseDescription = getItemById(instance.baseId)?.description.trim();
+  return baseDescription && baseDescription.length > 0
+    ? baseDescription
+    : GENERATED_EQUIPMENT_FALLBACK_DESCRIPTION;
+}
+
+/**
+ * Slot and carry weight are the mechanical details evicted from the flavor
+ * slot, so the tooltip has to keep showing them as stat metadata. They share a
+ * single row on purpose: `renderItemTooltip` only draws the first five stat
+ * lines, and spending two of that budget here would push a real stat bonus off
+ * a generated weapon that already leads with DPS.
+ */
+function generatedEquipmentMetadataStatLine(
+  instance: Pick<GeneratedEquipmentInstanceV1, 'frozen'>,
+): string | undefined {
+  const parts = [
+    instance.frozen.slots.map(getSlotLabel).join(' / '),
+    `${instance.frozen.weightLb} lb`,
+  ].filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
 
 export function createInventoryUI(
   scene: Phaser.Scene,
@@ -332,18 +368,9 @@ export function createInventoryUI(
     if (!currentWorld) return undefined;
     const instance = getGeneratedEquipmentInstance(currentWorld, entry.instanceKey);
     if (!instance) return undefined;
-    const stats = Object.entries(instance.frozen.statBonuses)
-      .filter(([, value]) => value !== 0)
-      .map(([stat, value]) => `${value! >= 0 ? '+' : ''}${value} ${stat.toUpperCase()}`);
     return {
       name: instance.frozen.displayName,
-      description: [
-        instance.frozen.slots.map(getSlotLabel).join(' / '),
-        stats.join(', '),
-        `${instance.frozen.weightLb} lb`,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      description: generatedEquipmentTooltipDescription(instance),
       tags: instance.frozen.tags.map(normalizeGeneratedInventoryTag),
       rarity: generatedRarityToItemRarity[instance.rarity] ?? ItemRarity.Common,
       slots: instance.frozen.slots,
@@ -1061,8 +1088,17 @@ export function createInventoryUI(
       );
     // DPS leads the stat list (not a footer statLine) so it lines up with the
     // rich-content sizing branch used whenever a generated weapon also has
-    // bonus rows.
-    const statLines = dpsLine !== undefined ? [dpsLine, ...bonusStatLines] : bonusStatLines;
+    // bonus rows. Generated slot/weight metadata follows DPS and precedes the
+    // bonus rows so it survives the renderer's five-line stat cap.
+    const metadataStatLine =
+      generatedInstance !== undefined
+        ? generatedEquipmentMetadataStatLine(generatedInstance)
+        : undefined;
+    const statLines = [
+      ...(dpsLine !== undefined ? [dpsLine] : []),
+      ...(metadataStatLine !== undefined ? [metadataStatLine] : []),
+      ...bonusStatLines,
+    ];
     const iconTextureKey =
       generatedInstance?.frozen.artKey && scene.textures?.exists(generatedInstance.frozen.artKey)
         ? generatedInstance.frozen.artKey

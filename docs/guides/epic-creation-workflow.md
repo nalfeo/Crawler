@@ -78,10 +78,21 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
    dependency, so the dependency graph is visible directly on GitHub.
    (`Blocked by` is plain text, not a native GitHub blocking relationship —
    GitHub's issue API has no such feature.)
-6. Re-running is always safe: every managed issue carries an HTML-comment
+6. Every issue it creates is **assigned to** and **@-mentions** the maintainer
+   (`ISSUE_OWNER`, default `nalfeo`), and the pull request that carried the
+   `*.epic.json` file gets a summary comment listing the resulting issue
+   numbers. The GitHub mobile app has no repo-wide "view all issues" browser,
+   so assignment ("Assigned to me"), the mention ("Mentions"), and the PR
+   comment are the only ways these issues are reachable from a phone. The PR
+   is resolved from the epic file's own commit history (not `GITHUB_SHA`,
+   which is unrelated on `issues`/`schedule`/`workflow_dispatch` runs), and
+   the comment marker embeds the epic id, content hash, and issue-number set —
+   so the review-only phase and the later materialized-nodes phase each post
+   exactly one comment and repeated runs post none.
+7. Re-running is always safe: every managed issue carries an HTML-comment
    marker in its body, so the script only ever creates issues that do not
    already exist. It never edits or duplicates one that does.
-7. [`Epic Reprocess`](../../.github/workflows/epic-reprocess.yml) runs after a
+8. [`Epic Reprocess`](../../.github/workflows/epic-reprocess.yml) runs after a
    successful `Epic Create` run and hourly. It activates open managed node issues
    through the normal Issue Copilot Intake path, after their textual blockers
    close. This is necessary because issues created with `GITHUB_TOKEN` do not

@@ -9,6 +9,17 @@ export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 export const AUTOMATION_STALE_MINUTES = 30;
+// Hard ceiling on how long a still-running agent session may defer the
+// automation-stale ceiling. Past this age the session check is treated as hung
+// and the normal retry/release ladder resumes, so a wedged session can never
+// hold the ownership lock forever.
+export const AGENT_SESSION_MAX_MINUTES = 120;
+// GitHub publishes the Copilot coding-agent session as a check run on the PR
+// head SHA (see the `ci-failure` / id `copilot` fingerprint exclusion below).
+// Its status is the only first-party signal that a dispatched recovery session
+// is still executing.
+const AGENT_SESSION_CHECK_NAMES = new Set(['copilot', 'copilot-swe-agent']);
+const AGENT_SESSION_RUNNING_STATUSES = new Set(['queued', 'in_progress', 'pending', 'waiting']);
 
 // A check-run named "merge-train" is only real promotion provenance when it
 // was published by the trusted repository App and its external_id is a
@@ -335,6 +346,10 @@ export function normalizeBlockers(blockers) {
         : {}),
       ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
       ...(blocker.scopeMismatchTrusted === true ? { scopeMismatchTrusted: true } : {}),
+      ...(blocker.protectedPathCapabilityDenied === true
+        ? { protectedPathCapabilityDenied: true }
+        : {}),
+      ...(blocker.humanEscalationDeclared === true ? { humanEscalationDeclared: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
@@ -661,12 +676,45 @@ export function isDuplicateDispatch(state, fingerprint) {
   );
 }
 
+/**
+ * True when the dispatched agent session for the current head is demonstrably
+ * still executing: GitHub publishes the Copilot coding-agent session as a
+ * `copilot` check run on the head SHA, and that check stays `queued` /
+ * `in_progress` for the lifetime of the session.
+ *
+ * Bounded by `maxMinutes` on purpose. Without a cap a wedged session check
+ * would hold CI recovery's ownership lock forever; with it, the normal
+ * retry/release ladder resumes once the session exceeds the cap.
+ *
+ * @param {Array<{name?: string, status?: string, started_at?: string, completed_at?: string|null}>} checkRuns
+ * @param {{now?: Date, maxMinutes?: number}} [options]
+ * @returns {boolean}
+ */
+export function isAgentSessionRunning(
+  checkRuns,
+  { now = new Date(), maxMinutes = AGENT_SESSION_MAX_MINUTES } = {},
+) {
+  if (!Array.isArray(checkRuns)) return false;
+  return checkRuns.some((check) => {
+    const name = compact(check?.name).toLowerCase();
+    if (!AGENT_SESSION_CHECK_NAMES.has(name)) return false;
+    const status = compact(check?.status).toLowerCase();
+    if (!AGENT_SESSION_RUNNING_STATUSES.has(status)) return false;
+    const startedAt = Date.parse(check?.started_at ?? '');
+    // An unparseable start time cannot be bounded, so it must not be trusted to
+    // defer the ceiling.
+    if (!Number.isFinite(startedAt)) return false;
+    return now.getTime() - startedAt < maxMinutes * 60 * 1000;
+  });
+}
+
 export function automationStallAction({
   state,
   headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
+  agentSessionRunning = false,
 }) {
   if (
     !state ||
@@ -689,6 +737,20 @@ export function automationStallAction({
 
   const progressAt = Date.parse(state.progressAt || state.updatedAt);
   if (now.getTime() - progressAt < staleMinutes * 60 * 1000) {
+    return 'wait';
+  }
+  // The head SHA and the blocker fingerprint are the only progress signals
+  // above, and review-thread churn is deliberately excluded from the
+  // fingerprint (see blockerFingerprint). A dispatched agent session that is
+  // still investigating therefore looks identical to a dead one, so a task that
+  // legitimately outlives `staleMinutes` could never converge: every window
+  // released and re-dispatched a fresh session until the attempt ceiling filed
+  // a loop incident. Observed in production on PR #3778 / incident #3796, where
+  // R34 fired four minutes before the live session pushed its repair commit.
+  // Keep waiting while the session check proves the agent is still running
+  // (bounded by AGENT_SESSION_MAX_MINUTES); the ceiling is deferred, never
+  // suppressed.
+  if (agentSessionRunning) {
     return 'wait';
   }
   // Legacy v1 automation comments pre-date `progressKey` and used `attempt`
@@ -877,6 +939,20 @@ const scopeMismatchUnsupportedPattern =
   /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
   /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+const implementationMissingPattern =
+  /\b(?:did(?:\s+not|n't)\s+(?:actually\s+)?implement|do(?:es)?(?:\s+not|n't)\s+(?:actually\s+)?implement|not\s+actually\s+implement(?:ed|ing)?|not\s+implement(?:ed|ing)?|no\s+(?:implementation|runtime\s+or\s+test\s+changes)|none\s+of\s+the\s+[^.!?\n]{0,120}\s+(?:changes|work|implementation)[^.!?\n]{0,80}\s+(?:are|is)\s+present|only\s+(?:adds?|changes?)\s+[^.!?\n]{0,100}\b(?:ledger|plan|planning|docs?|documentation|metadata)\b|empty\s+pr|empty\s+diff)\b/i;
+
+/**
+ * Detect a trusted review finding that says the PR does not actually implement
+ * the requested feature. Unlike scope mismatch, this is still an implementation
+ * task when the requested behavior is knowable from the issue/PR context, so it
+ * should make the repair prompt more direct rather than immediately quarantine.
+ */
+export function isImplementationMissingReviewBlocker(blocker) {
+  if (blocker?.kind !== 'review-thread') return false;
+  if (blocker.scopeMismatchTrusted !== true) return false;
+  return implementationMissingPattern.test(compact(blocker.summary));
+}
 
 // The inverse direction of the same finding: the diff carries substantial work
 // the PR never declared (scope creep) rather than promising work the diff lacks.
@@ -922,11 +998,92 @@ export function isScopeMismatchReviewBlocker(blocker) {
   if (scopeMismatchUnsupportedPattern.test(text) && (namesClosingReference || namesScopePromise)) {
     return true;
   }
+
   const namesScopeCreepReference = scopeCreepScopeReferencePattern.test(text);
   return (
     scopeCreepUndeclaredPattern.test(text) &&
     scopeCreepRemedyPattern.test(text) &&
     namesScopeCreepReference
+  );
+}
+
+export function isProtectedPathCapabilityDenial(body) {
+  const text = compact(body);
+  return text.split(/(?:[;!?\n]+|\.(?=\s|$))/).some((clause) => {
+    if (!/(?:^|[^a-z0-9_.-])\.github[\\/]agents(?:[\\/]|\b)/i.test(clause)) return false;
+    const namesCapabilityLimit =
+      /\b(?:environment|session|permissions?|policy|instructions?)\b.{0,120}\b(?:disallow(?:s|ed)?|forbid(?:s|den)?|prevent(?:s|ed)?|cannot|can't|unable|not\s+permitted|no\s+access)\b/i.test(
+        clause,
+      );
+    const namesBlockedRepair =
+      /\b(?:cannot|can't|unable\s+to)\s+(?:complete|address|fix|update|read|edit|access|modify)\b/i.test(
+        clause,
+      );
+    return namesCapabilityLimit && namesBlockedRepair;
+  });
+}
+
+// A recovery/validator agent declares a human escalation by stating BOTH that it
+// is handing the finding to a human AND that it is deliberately leaving the
+// thread unresolved. Requiring the conjunction keeps a passing mention ("escalate
+// to a human if this recurs") from parking a PR that inline repair could still
+// fix, mirroring the two-condition style of isProtectedPathCapabilityDenial.
+const humanEscalationHandoffPattern =
+  /\b(?:escalat(?:e|es|ed|ing|ion)\b[^.!?\n]{0,60}?\b(?:to\s+)?(?:a\s+|the\s+)?(?:human|maintainer|owner)|(?:human|maintainer|owner)\s+escalation)\b/i;
+const humanEscalationUnresolvedPattern =
+  /\b(?:leav(?:e|es|ing)|left|leaving|keep(?:ing)?|remain(?:s|ing)?|stays?)\b[^.!?\n]{0,80}?\bunresolved\b/i;
+const humanEscalationConditionalPattern =
+  /\b(?:if|when|should|would|could|might|may|maybe|later|future|next\s+time|recurs?)\b/i;
+
+/**
+ * Detect a trusted recovery agent's explicit declaration that it is escalating a
+ * review thread to a human and deliberately leaving it unresolved.
+ *
+ * This is the CI review-validator's designed terminal outcome for a finding it
+ * confirms as VALID but cannot fix within its scope. Without recognising it the
+ * reconciler re-dispatches the identical task until attempts exhaust and files a
+ * loop incident (PR #3958 / loop incident #3969), so the declaration must instead
+ * route the PR to a human-decision quarantine.
+ */
+export function isHumanEscalationDeclaration(body) {
+  // A recovery reply may quote an earlier task or reviewer comment; a quoted
+  // escalation must not be read as this author's own declaration.
+  const text = compact(
+    String(body ?? '')
+      .split(/\r?\n/)
+      .filter((line) => !line.trimStart().startsWith('>'))
+      .join('\n'),
+  );
+  if (!text) return false;
+  return text.split(/(?:[;!?\n]+|\.(?=\s|$))/).some((clause) => {
+    if (humanEscalationConditionalPattern.test(clause)) return false;
+    return (
+      humanEscalationHandoffPattern.test(clause) && humanEscalationUnresolvedPattern.test(clause)
+    );
+  });
+}
+
+/**
+ * Quarantine only when EVERY remaining blocker is a review thread a trusted
+ * recovery agent has escalated to a human. Any other blocker (a CI failure, a
+ * repairable thread) is still actionable by automated recovery.
+ */
+export function shouldQuarantineHumanEscalatedBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) => blocker.kind === 'review-thread' && blocker.humanEscalationDeclared === true,
+    )
+  );
+}
+
+export function shouldQuarantineProtectedPathBlockers(blockers) {
+  return (
+    blockers.length > 0 &&
+    blockers.every(
+      (blocker) =>
+        blocker.kind === 'review-thread' && blocker.protectedPathCapabilityDenied === true,
+    )
   );
 }
 

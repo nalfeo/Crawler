@@ -13,7 +13,8 @@ import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { getPersonaConfig, personaConfigDivergence } from './personas.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
-import { helpText, parseArgs } from './headless-runner-cli-lib.js';
+import { getAiFeatureFlagControls, resolveAiFeatureFlags } from './feature-flags.js';
+import { helpText, parseArgs, resolveHeadlessRunnerOptions } from './headless-runner-cli-lib.js';
 
 function printHelp(): void {
   console.log(helpText());
@@ -21,6 +22,7 @@ function printHelp(): void {
 
 async function main(): Promise<void> {
   const args = parseArgs();
+  const runnerOptions = resolveHeadlessRunnerOptions(args);
 
   if (args.help) {
     printHelp();
@@ -34,6 +36,9 @@ async function main(): Promise<void> {
   if (args.weapon !== null) {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
+  if (args.forceAbilityIds.length > 0) {
+    console.log(`Forced abilities: ${args.forceAbilityIds.join(', ')}`);
+  }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
   console.log(`Enemy telegraph: ${args.enemyTelegraphMs}ms`);
   console.log(`Floor: ${args.floorId}`);
@@ -42,11 +47,16 @@ async function main(): Promise<void> {
   }
   console.log(`Pathing mode:  ${args.pathingMode}`);
   console.log(`Decision mode: ${args.decisionMode}`);
-  console.log(`Optional purchases: ${args.optionalPurchases ? 'enabled' : 'disabled'}`);
   console.log(`Persona: ${args.persona}`);
-  console.log(
-    `Settlement return routing: ${args.settlementReturnRouting ? 'enabled' : 'disabled'}`,
-  );
+  // Log the flags the runner will actually use: the registry — not the CLI —
+  // owns every default, so this stays truthful when a default changes.
+  const featureFlags = resolveAiFeatureFlags(runnerOptions, {
+    surface: 'headless',
+    floorId: args.floorId,
+  });
+  for (const control of getAiFeatureFlagControls()) {
+    console.log(`${control.label}: ${featureFlags[control.key] ? 'enabled' : 'disabled'}`);
+  }
   console.log('');
 
   // A persona label is only truthful while the run actually uses the preset.
@@ -84,15 +94,14 @@ async function main(): Promise<void> {
     debug: args.debug,
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
+    ...(args.forceAbilityIds.length > 0 ? { forceAbilityIds: args.forceAbilityIds } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
     enemyTelegraphMs: args.enemyTelegraphMs,
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
-    weaponPersonas: args.weaponPersonas,
-    optionalPurchases: args.optionalPurchases,
     ...(personaDivergence.length === 0 ? { playerPersona: args.persona } : {}),
-    settlementReturnRouting: args.settlementReturnRouting,
+    ...runnerOptions,
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
@@ -157,6 +166,16 @@ async function main(): Promise<void> {
     console.log(
       `  Enemies Hit:  ${wt.totalEnemyHits} (${wt.avgEnemiesPerConnectingSwing.toFixed(2)}/connecting swing)`,
     );
+  }
+  if (stats.abilityTelemetry) {
+    console.log('');
+    console.log('✨ Forced Ability Activations');
+    console.log(`  Total:        ${stats.abilityTelemetry.totalActivations}`);
+    for (const abilityId of stats.abilityTelemetry.forcedAbilityIds) {
+      console.log(
+        `  ${abilityId}: ${stats.abilityTelemetry.activationsByAbilityId[abilityId] ?? 0}`,
+      );
+    }
   }
   if (stats.goldEconomy) {
     const ge = stats.goldEconomy;

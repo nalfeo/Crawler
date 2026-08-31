@@ -4,6 +4,8 @@ import { BiomeType, RoomRole, TerrainType } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system';
 import { getGenerator } from '../../src/core/map/generators/registry';
+import { isPointInSafeSpace } from '../../src/core/safe-space';
+import { createTestWorld } from '../helpers/world-factory';
 
 /** Small config for fast tests. */
 function smallConfig(seed: number, widthTiles = 80, heightTiles = 60): MapConfig {
@@ -152,6 +154,7 @@ describe('CaveSystemGenerator', () => {
     expect(left.playerSpawn).toEqual(right.playerSpawn);
     expect(left.territoryZones).toEqual(right.territoryZones);
     expect(left.territoryZones).toHaveLength(7);
+    expect(left.settlementHallwayTileIndices.size).toBe(0);
 
     const rooms = left.roomGraph.getAll();
     expect(rooms.filter((room) => room.role === RoomRole.SPAWN)).toHaveLength(1);
@@ -673,6 +676,7 @@ describe('CaveSystemGenerator', () => {
 
     const barRoom = bar!;
     const annexRooms = settlements.filter((room) => room.id !== barRoom.id);
+    const expectedHallwayIndices = new Set<number>();
     for (const annex of annexRooms) {
       const annexDoorX =
         annex.bounds.x < barRoom.bounds.x
@@ -691,6 +695,8 @@ describe('CaveSystemGenerator', () => {
       const endX = Math.max(annexDoor!.x, barDoor!.x);
       for (let x = startX; x <= endX; x++) {
         const idx = y * floor.width + x;
+        expectedHallwayIndices.add(idx);
+        expect(floor.settlementHallwayTileIndices.has(idx)).toBe(true);
         expect(floor.tileMap.isPassable(x, y), `hallway floor blocked at (${x},${y})`).toBe(true);
         if (floor.terrain[idx] !== TerrainType.DOOR) {
           expect(floor.terrain[idx]).toBe(TerrainType.STONE_FLOOR);
@@ -705,6 +711,15 @@ describe('CaveSystemGenerator', () => {
           expect(floor.tileMap.isPassable(x, sideY)).toBe(false);
         }
       }
+    }
+    expect(floor.settlementHallwayTileIndices).toEqual(expectedHallwayIndices);
+
+    const world = createTestWorld({ seed: 77, floor: 2 });
+    world.floorMap = floor;
+    for (const idx of floor.settlementHallwayTileIndices) {
+      const tile = { x: idx % floor.width, y: Math.floor(idx / floor.width) };
+      const point = floor.tileToWorld(tile.x, tile.y);
+      expect(isPointInSafeSpace(world, point.x, point.y)).toBe(false);
     }
   });
 

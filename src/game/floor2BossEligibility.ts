@@ -1,8 +1,13 @@
 import { hasComponent } from 'bitecs';
 import { FamilyMembership } from '../core/components.js';
+import { isEnemyHostileToPlayer } from '../core/enemy-targeting.js';
 import type { GameWorld } from '../core/world.js';
 
 export function isEnemyCombatEligible(world: GameWorld, enemyEid: number): boolean {
+  if (!isEnemyHostileToPlayer(world, enemyEid)) {
+    return false;
+  }
+
   if (
     world.floor !== 2 ||
     !hasComponent(world.ecs, enemyEid, FamilyMembership) ||

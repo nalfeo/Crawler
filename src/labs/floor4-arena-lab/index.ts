@@ -1,10 +1,22 @@
 import GUI from 'lil-gui';
-import { createGameWorld, spawnPlayer } from '../../core/index.js';
+import { query } from 'bitecs';
+import { Companion, createGameWorld, Enemy, spawnPlayer, Team } from '../../core/index.js';
 import {
   arenaDirectorSystem,
   getFloor4LiveWaveEnemyCount,
   initializeFloor4Scenario,
 } from '../../game/floor4Scenario.js';
+import {
+  capturePlayerCarryover,
+  type PlayerCarryoverSnapshot,
+} from '../../game/playerCarryover.js';
+import { TeamId } from '../../shared/constants.js';
+import { buildKeptCompanionContract } from '../../shared/data/floor3/kept-companion-contract.js';
+import {
+  getPetSpecies,
+  loadPetSpecies,
+  speciesForToken,
+} from '../../shared/data/floor3/species.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
   buildFloor4ActWaveManifests,
@@ -61,6 +73,8 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     liveCap: waves.concurrency.liveCap,
     debtCap: waves.concurrency.debtCap,
     telegraphLeadMs: waves.gates.telegraphLeadMs,
+    includeKeptCompanion: false,
+    keptCompanionSpeciesId: 'ember-charger',
   };
 
   const panel = document.createElement('pre');
@@ -86,8 +100,27 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
   function setup(): void {
     world = createGameWorld({ seed: state.seed });
     const player = spawnPlayer(world, 0, 0);
-    initializeFloor4Scenario(world, player);
+    initializeFloor4Scenario(world, player, buildLabCarryover(player));
     render();
+  }
+
+  function buildLabCarryover(
+    player: number,
+  ): { playerCarryover: PlayerCarryoverSnapshot } | undefined {
+    if (!state.includeKeptCompanion) {
+      return undefined;
+    }
+    const base = capturePlayerCarryover(world, player);
+    const species = getPetSpecies(state.keptCompanionSpeciesId);
+    if (!species) {
+      throw new Error(`Unknown Floor 3 species: ${state.keptCompanionSpeciesId}`);
+    }
+    return {
+      playerCarryover: {
+        ...base,
+        keptCompanion: buildKeptCompanionContract(species),
+      },
+    };
   }
 
   function step(): void {
@@ -123,11 +156,18 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const arena = world.floorExtendedState?.floor4Arena;
     const window = arena?.waves;
     const telemetry = arena?.waveTelemetry;
+    const coStars = [...query(world.ecs, [Enemy, Companion, Team])].filter(
+      (eid) => world.stores.team.id[eid] === TeamId.PLAYER,
+    );
+    const coStarSpecies = coStars
+      .map((eid) => speciesForToken(world.stores.companion.speciesToken[eid] ?? 0)?.speciesId)
+      .filter((speciesId): speciesId is string => speciesId !== undefined);
     const lines = [
       `seed=${state.seed} floor=${world.floorId || '(not initialized)'}`,
       `worldElapsedMs=${world.elapsedMs}`,
       `phase=${arena ? JSON.stringify(arena.phase) : '(none)'}`,
       `arenaElapsedMs=${arena?.arenaElapsedMs ?? 0} phaseElapsedMs=${arena?.phaseElapsedMs ?? 0}`,
+      `keptCompanion=${state.includeKeptCompanion ? state.keptCompanionSpeciesId : '(none)'} liveCoStars=${coStars.length}${coStarSpecies.length > 0 ? ` [${coStarSpecies.join(', ')}]` : ''}`,
       '',
       'live wave window:',
       `  waves=${window ? window.releaseCursor : 0}/${window?.manifests.length ?? 0}` +
@@ -188,6 +228,17 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     .add(state, 'telegraphLeadMs', 0, 5_000, 50)
     .name('Gate telegraph ms')
     .onFinishChange(applyTunables);
+
+  const coStarFolder = gui.addFolder('Kept companion co-star');
+  coStarFolder.add(state, 'includeKeptCompanion').name('Include co-star').onChange(setup);
+  coStarFolder
+    .add(
+      state,
+      'keptCompanionSpeciesId',
+      loadPetSpecies().map((species) => species.speciesId),
+    )
+    .name('Species')
+    .onChange(setup);
 
   gui.add({ reset: setup }, 'reset').name('Reset');
 

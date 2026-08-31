@@ -381,17 +381,17 @@ describe('deriveFindings', () => {
   it('includes guard-specific remediation for known denial guards', () => {
     const findings = deriveFindings(
       report({
-        guardFriction: [{ guard: 'pr-review-ledger', allow: 50, deny: 8 }],
+        guardFriction: [{ guard: 'pr-preflight', allow: 50, deny: 8 }],
       }),
     );
     const text = findings.join('\n');
-    expect(text).toMatch(/pr-review-ledger/);
+    expect(text).toMatch(/pr-preflight/);
     expect(text).toMatch(/8/);
     // Estimated overhead: 8 denials × 2 retries minimum = 16 avoidable tool calls
     expect(text).toMatch(/16\+/);
     // Should include the specific remediation from GUARD_REMEDIATION
     expect(text).toMatch(/verify:pr-prereqs/);
-    expect(text).toContain(GUARD_REMEDIATION['pr-review-ledger']);
+    expect(text).toContain(GUARD_REMEDIATION['pr-preflight']);
   });
 
   it('uses generic fallback message for unknown denial guards', () => {
@@ -415,7 +415,7 @@ describe('deriveFindings', () => {
       report({
         guardFriction: [
           { guard: 'pr-preflight', allow: 40, deny: 6 },
-          { guard: 'pr-review-ledger', allow: 50, deny: 8 },
+          { guard: 'unknown-custom-guard', allow: 50, deny: 8 },
         ],
       }),
     );

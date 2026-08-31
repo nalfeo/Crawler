@@ -424,10 +424,13 @@ jobs:
           npm_config_registry: https://registry.npmjs.org/
         run: npm run security:lock-integrity
 
-      # copilot-guards + review-ledger validator tests (node:test). These run
-      # nowhere else in CI; this is their merge-gate home.
-      - name: Guard + review-ledger tests
+      # copilot-guards and agent-tooling tests (node:test). These run nowhere
+      # else in CI; this is their merge-gate home.
+      - name: Guard and agent-tooling tests
         if: env.DOCS_ONLY != 'true'
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npm run test:guards
 
       # Run typecheck:src and lint in parallel, but FAIL the step if either fails.

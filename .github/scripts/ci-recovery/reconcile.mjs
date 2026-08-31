@@ -7,7 +7,11 @@ import {
   blockerFingerprint,
   checkRunWorkflowRunId,
   collapseCheckRunsByName,
+  isAgentSessionRunning,
   isDuplicateDispatch,
+  isHumanEscalationDeclaration,
+  isImplementationMissingReviewBlocker,
+  isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
@@ -20,6 +24,8 @@ import {
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   shouldMutateRecoveryState,
+  shouldQuarantineHumanEscalatedBlockers,
+  shouldQuarantineProtectedPathBlockers,
   shouldDispatchMergeTrainFill,
   ownerLabel,
   parseDispositionCommand,
@@ -247,7 +253,8 @@ const TASK_COMMENT_MARKER_PATTERN = new RegExp(
   `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
   'i',
 );
-const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
+const TASK_REVIEW_THREAD_BLOCKER_PATTERN =
+  /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`(?:\s+at\s+`([^`:]+)(?::\d+)?`)?/gi;
 const REVIEW_THREAD_BLOCKER_ID_PATTERN = /^review-thread:([^:]+):/;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
   'copilot',
@@ -309,11 +316,17 @@ function extractTaskFingerprint(body) {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+function requiresProtectedPath(path) {
+  return String(path ?? '')
+    .replace(/\\/g, '/')
+    .startsWith('.github/agents/');
+}
+
 function extractTaskReviewThreadBlockerIds(body) {
-  return Array.from(
-    String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN),
-    (match) => match[1],
-  );
+  return Array.from(String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN), (match) => ({
+    id: match[1],
+    requiresProtectedPath: requiresProtectedPath(match[2] ?? ''),
+  }));
 }
 
 function extractStableReviewThreadId(blockerId) {
@@ -1528,6 +1541,40 @@ function latestOwnerDispositionCommand() {
   return null;
 }
 
+function timestampMs(value) {
+  const ms = Date.parse(String(value ?? ''));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function commentTimestampMs(comment) {
+  return timestampMs(comment?.created_at ?? comment?.createdAt);
+}
+
+function newestFiniteTimestampMs(values) {
+  const finiteValues = Array.from(values).filter(Number.isFinite);
+  return finiteValues.length > 0 ? Math.max(...finiteValues) : null;
+}
+
+function latestOwnerDispositionCommandAfter(candidateComments, afterMs) {
+  // Fail closed: if the escalation timestamp is unavailable, no existing KEEP
+  // can be proven to belong to the current escalation episode.
+  if (afterMs === null || !Number.isFinite(afterMs) || afterMs <= 0) return null;
+  for (let index = candidateComments.length - 1; index >= 0; index -= 1) {
+    const comment = candidateComments[index];
+    if (
+      String(comment?.author_association ?? comment?.authorAssociation ?? '').toUpperCase() !==
+      'OWNER'
+    ) {
+      continue;
+    }
+    const createdMs = commentTimestampMs(comment);
+    if (!Number.isFinite(createdMs) || createdMs < afterMs) continue;
+    const command = parseDispositionCommand(comment?.body);
+    if (command) return command;
+  }
+  return null;
+}
+
 async function handleQuarantineDispositionIfAny() {
   if (currentLifecycleRecord()?.phase !== PHASE.QUARANTINED) return false;
   const command = latestOwnerDispositionCommand();
@@ -2511,9 +2558,9 @@ for (const comment of comments) {
   if (!isTrustedComment(comment)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
   if (!taskFingerprint) continue;
-  const blockerIds = extractTaskReviewThreadBlockerIds(comment?.body);
-  if (blockerIds.length > 0) {
-    taskReviewThreadBlockersByFingerprint.set(taskFingerprint, blockerIds);
+  const taskBlockers = extractTaskReviewThreadBlockerIds(comment?.body);
+  if (taskBlockers.length > 0) {
+    taskReviewThreadBlockersByFingerprint.set(taskFingerprint, taskBlockers);
   }
 }
 
@@ -2522,6 +2569,8 @@ const priorTopLevelReplyByBlockerId = new Map();
 // reviewer follow-up that changes the comment digest between the prior task
 // dispatch and the current run does not lose the top-level-reply hint.
 const priorTopLevelReplyByStableThreadId = new Map();
+const protectedPathDenialByBlockerId = new Set();
+const protectedPathDenialByStableThreadId = new Set();
 for (const comment of comments) {
   const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
   if (!KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) continue;
@@ -2543,30 +2592,50 @@ for (const comment of comments) {
     // stale "Blocked" context would keep surfacing in the next task body even
     // though a subsequent reply already resolved it — mirroring the
     // trusted-marker boundary the in-thread backward scan already applies.
-    const resolvedBlockerIds = taskFingerprint
+    const resolvedTaskBlockers = taskFingerprint
       ? taskReviewThreadBlockersByFingerprint.get(taskFingerprint)
       : null;
-    if (resolvedBlockerIds?.length) {
-      for (const blockerId of resolvedBlockerIds) {
+    if (resolvedTaskBlockers?.length) {
+      for (const { id: blockerId } of resolvedTaskBlockers) {
         priorTopLevelReplyByBlockerId.delete(blockerId);
+        protectedPathDenialByBlockerId.delete(blockerId);
         const stableThreadId = extractStableReviewThreadId(blockerId);
-        if (stableThreadId) priorTopLevelReplyByStableThreadId.delete(stableThreadId);
+        if (stableThreadId) {
+          priorTopLevelReplyByStableThreadId.delete(stableThreadId);
+          protectedPathDenialByStableThreadId.delete(stableThreadId);
+        }
       }
     }
     continue;
   }
   if (!taskFingerprint) continue;
-  const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
-  if (!blockerIds?.length) continue;
+  const taskBlockers = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
+  if (!taskBlockers?.length) continue;
   const priorReply = summarizePriorRecoveryIssueComment(comment?.body);
   if (!priorReply) continue;
+  const protectedPathDenied = isProtectedPathCapabilityDenial(unquotedBody);
   // Keep the newest top-level recovery reply for a blocker ID: later dispatches
   // supersede older task attempts, so the most recent prior-attempt context is
   // the least misleading hint for the next recovery run.
-  for (const blockerId of blockerIds) {
+  for (const {
+    id: blockerId,
+    requiresProtectedPath: blockerRequiresProtectedPath,
+  } of taskBlockers) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
+    if (protectedPathDenied && blockerRequiresProtectedPath) {
+      protectedPathDenialByBlockerId.add(blockerId);
+    } else {
+      protectedPathDenialByBlockerId.delete(blockerId);
+    }
     const stableThreadId = extractStableReviewThreadId(blockerId);
-    if (stableThreadId) priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
+    if (stableThreadId) {
+      priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
+      if (protectedPathDenied) {
+        protectedPathDenialByStableThreadId.add(stableThreadId);
+      } else {
+        protectedPathDenialByStableThreadId.delete(stableThreadId);
+      }
+    }
   }
 }
 
@@ -2584,6 +2653,11 @@ for (const comment of comments) {
 // (those have their own targeted hint) and contain a known recovery reply after
 // the most recent ✅ Addressed marker.
 const priorUnresolvedReplyByThread = new Map();
+const protectedPathDenialByThread = new Set();
+// Threads whose newest trusted recovery reply explicitly escalates the finding to
+// a human and leaves the thread unresolved. This is the review-validator's
+// designed terminal outcome; re-dispatching it can never converge.
+const humanEscalationByThread = new Map();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
@@ -2595,6 +2669,9 @@ for (const thread of unresolvedThreads) {
     (blockerId ? priorTopLevelReplyByBlockerId.get(blockerId) : null) ??
     priorTopLevelReplyByStableThreadId.get(thread.id) ??
     null;
+  const topLevelProtectedPathDenied =
+    (blockerId ? protectedPathDenialByBlockerId.has(blockerId) : false) ||
+    protectedPathDenialByStableThreadId.has(thread.id);
   if (comments.length >= 2) {
     const last = comments[comments.length - 1];
     // Skip if the last comment already has a trusted marker (handled by stale
@@ -2624,7 +2701,14 @@ for (const thread of unresolvedThreads) {
         break;
       }
       if (KNOWN_RECOVERY_REPLY_LOGINS.has(login)) {
-        priorUnresolvedReplyByThread.set(thread.id, String(c?.body ?? '').slice(0, 300));
+        const replyBody = String(c?.body ?? '');
+        priorUnresolvedReplyByThread.set(thread.id, replyBody.slice(0, 300));
+        if (requiresProtectedPath(thread.path) && isProtectedPathCapabilityDenial(replyBody)) {
+          protectedPathDenialByThread.add(thread.id);
+        }
+        if (isHumanEscalationDeclaration(replyBody)) {
+          humanEscalationByThread.set(thread.id, timestampMs(c?.createdAt));
+        }
         break;
       }
     }
@@ -2632,6 +2716,7 @@ for (const thread of unresolvedThreads) {
   }
   if (topLevelPriorReply) {
     priorUnresolvedReplyByThread.set(thread.id, topLevelPriorReply);
+    if (topLevelProtectedPathDenied) protectedPathDenialByThread.add(thread.id);
   }
 }
 
@@ -2960,10 +3045,8 @@ for (const run of runs) {
 const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
-const needsChangedFiles =
-  retriggerableRuns.length > 0 || String(pr.head?.ref || '').trim() === 'assets/promote';
 let changedFiles = [];
-if (needsChangedFiles) {
+if (Number(pr.changed_files || 0) > 0) {
   try {
     changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
   } catch (error) {
@@ -3058,6 +3141,8 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     summary,
     isOutdated: thread.isOutdated === true,
     scopeMismatchTrusted: isTrustedComment(root),
+    protectedPathCapabilityDenied: protectedPathDenialByThread.has(thread.id),
+    humanEscalationDeclared: humanEscalationByThread.has(thread.id),
     url: root?.url,
   });
 }
@@ -3187,6 +3272,55 @@ if (live && retroactivePlanIssueNumbers.size > 0) {
   }
 }
 
+if (shouldQuarantineProtectedPathBlockers(normalized)) {
+  const reason = 'protected-path-capability-denied';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted recovery agent reported that every remaining review blocker requires changes under `.github/agents/**`, a protected path that its session cannot read or edit. Re-dispatching the same task cannot make progress, and CI Recovery will not resolve the review thread without a valid marker.',
+    nextActions: [
+      'Use a maintainer or other authorized session to complete the `.github/agents/**` changes and post a valid `✅ Addressed in <sha>: <note>` reply on each blocked review thread.',
+      'After the protected-path review threads are resolved, post the exact standalone owner comment `KEEP` to resume this PR.',
+      'Abandon/close this PR by posting the exact standalone owner comment `ABANDON`.',
+    ],
+    keepOutcome:
+      'resume this PR after its protected-path review threads have been addressed by an authorized session',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('protected-path-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post protected-path quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'protected-path-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(await release('protected-path-quarantined', quarantinedState));
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(`quarantined protected-path pr=#${prNumber}\n`);
+  process.exit(0);
+}
+
 const scopeMismatchBlocker =
   latestOwnerDispositionCommand() === 'KEEP' ? null : normalized.find(isScopeMismatchReviewBlocker);
 if (scopeMismatchBlocker) {
@@ -3236,6 +3370,74 @@ if (scopeMismatchBlocker) {
   process.stdout.write(
     `quarantined scope-mismatch pr=#${prNumber} blocker=${scopeMismatchBlocker.id}\n`,
   );
+  process.exit(0);
+}
+
+// A trusted recovery agent (the review validator) confirmed a finding as VALID,
+// declared it outside its repair scope, and deliberately left the thread
+// unresolved for a human. Re-dispatching the identical task cannot converge, so
+// recovery previously burned every attempt and filed a loop incident instead of
+// reaching a stable state (PR #3958 / loop incident #3969). Route it to the same
+// human-decision quarantine the other terminal blockers use. An explicit owner
+// `KEEP` overrides the escalation and lets automated repair resume.
+const hasHumanEscalationDeclarations = humanEscalationByThread.size > 0;
+const newestHumanEscalationDeclaredAtMs = hasHumanEscalationDeclarations
+  ? // If every escalation lacks createdAt, pass null so
+    // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
+    newestFiniteTimestampMs(humanEscalationByThread.values())
+  : null;
+if (
+  hasHumanEscalationDeclarations &&
+  latestOwnerDispositionCommandAfter(comments, newestHumanEscalationDeclaredAtMs) !== 'KEEP' &&
+  shouldQuarantineHumanEscalatedBlockers(normalized)
+) {
+  const reason = 'human-escalation-requested';
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined because a trusted recovery agent confirmed every remaining review finding as valid, declared the required fix outside its repair scope, and explicitly escalated the thread to a human while leaving it unresolved. Re-dispatching the same task cannot make progress, and CI Recovery will not resolve the review thread without a valid marker.',
+    nextActions: [
+      'Read the escalated review thread(s) and land the requested work from an owner session, then post a valid `✅ Addressed in <sha>: <note>` reply on each thread.',
+      'After the escalated review threads are resolved, post the exact standalone owner comment `KEEP` to resume this PR.',
+      'Abandon/close this PR (and restart the linked issue) by posting the exact standalone owner comment `ABANDON`.',
+    ],
+    keepOutcome:
+      'resume this PR after its escalated review threads have been addressed (the escalation itself is not re-checked)',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('human-escalation-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(`dry-run would-post human-escalation quarantine pr=#${prNumber}\n`);
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'human-escalation-quarantined',
+    blockers: normalized,
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(
+      await release('human-escalation-quarantined', quarantinedState),
+    );
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(`quarantined human-escalation pr=#${prNumber}\n`);
   process.exit(0);
 }
 
@@ -3325,6 +3527,12 @@ function getOrDeriveProgressKey(recoveryState) {
 }
 let dispatchAttemptBase = 0;
 let dispatchProgressAt = now.toISOString();
+// Liveness for the currently dispatched agent session, read from the check
+// runs already fetched for this head (no extra API call, no extra permission).
+const agentSessionRunning = isAgentSessionRunning(checkRuns, { now });
+if (agentSessionRunning) {
+  process.stdout.write(`agent-session-running pr=#${prNumber} head=${pr.head.sha}\n`);
+}
 
 // Bounded to 2 passes (plan review, 2026-07-27): pass 1 evaluates the
 // as-loaded state; if R33 (RELEASE_STALE_AUTOMATION_RETRY, non-terminal)
@@ -3377,7 +3585,13 @@ for (let pass = 0; pass < MAX_TERMINAL_PASSES; pass++) {
     stateProgressKey,
     currentProgressKey,
     isDuplicateDispatch: labelExists && isDuplicateDispatch(state, fingerprint),
-    stallAction: automationStallAction({ state, headSha: pr.head.sha, fingerprint, now }),
+    stallAction: automationStallAction({
+      state,
+      headSha: pr.head.sha,
+      fingerprint,
+      now,
+      agentSessionRunning,
+    }),
     automationProgressRecent:
       labelExists &&
       state?.owner === 'automation' &&
@@ -3820,12 +4034,8 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   const hasPriorRecoveryHint = commentBlockers.some((blocker) =>
     blocker.summary.startsWith('[Prior recovery reply (no marker posted'),
   );
-  const hasReviewLedgerThreadBlocker = commentBlockers.some(
-    (blocker) =>
-      blocker.kind === 'review-thread' &&
-      /^docs\/knowledge\/review-ledgers\/.+\.review-ledger\.json$/i.test(
-        String(blocker.path ?? ''),
-      ),
+  const hasImplementationMissingReviewBlocker = commentBlockers.some(
+    isImplementationMissingReviewBlocker,
   );
   const hasCiOnlyBlockers =
     commentBlockers.length > 0 &&
@@ -3877,9 +4087,9 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           '',
           `**Review-thread protocol:** Validate every listed thread with a different model and fix applicable findings. Use \`✅ Not applicable: [one-line reason]\` only for deterministic non-applicability; leave substantive disagreements unresolved for escalation.`,
           '',
-          ...(hasReviewLedgerThreadBlocker
+          ...(hasImplementationMissingReviewBlocker
             ? [
-                'If a listed thread targets `docs/knowledge/review-ledgers/*.review-ledger.json`, run `npm run review:ledger -- validate` on the current head to gather schema/validator evidence. That validation by itself does not settle policy findings the validator does not enforce (for example review-round cap concerns). Only reply in-thread with `✅ Not applicable: [one-line reason]` when validation output or the current diff deterministically proves the exact finding inapplicable; otherwise fix the finding or leave substantive policy disagreements unresolved for human escalation.',
+                '**Implementation-missing protocol:** A trusted reviewer says this PR does not actually implement the requested feature. Treat that as the primary repair task: read the linked issue/PR scope, implement the missing production and test changes, and push a real repair commit. Do not stop at “I do not know what to do”, do not only edit documentation/ledger/planning files, and do not reply with a blocker unless the exact missing behavior is impossible to determine after reading the linked context.',
                 '',
               ]
             : []),

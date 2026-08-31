@@ -29,7 +29,6 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 // Placeholder SHAs used in evidence entries – the working-tree git reader ignores
 // the commit parameter and reads from disk, so these only need to be valid SHA-40s.
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
-const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
 
 function sha256OfFile(repoRoot: string, repoRelPath: string): string {
@@ -143,21 +142,12 @@ function validateA0(state: EpicState): void {
     merged_at: '2026-07-17T17:50:00.000Z',
   };
   const HANDOFF_PATH = 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md';
-  const LEDGER_PATH =
-    'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json';
   a0.evidence = [
     {
       kind: 'handoff',
       path_or_check: HANDOFF_PATH,
       sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
       commit: HANDOFF_COMMIT,
-      recorded_at: '2026-07-17T17:55:00.000Z',
-    },
-    {
-      kind: 'review-ledger',
-      path_or_check: LEDGER_PATH,
-      sha256: sha256OfFile(REPO_ROOT, LEDGER_PATH),
-      commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
@@ -1423,7 +1413,7 @@ describe('Floor 2 equipment epic status', () => {
     );
   });
 
-  it('requires immutable handoff, review, PR, and merge evidence', () => {
+  it('requires immutable handoff, PR, and merge evidence', () => {
     const state = cloneState();
     const a0 = state.nodes[0]!;
     a0.status = 'merged';
@@ -1436,7 +1426,6 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('github.pr-open-refs');
     expect(codes).toContain('merge.missing-facts');
     expect(codes).toContain('evidence.missing-handoff');
-    expect(codes).toContain('evidence.missing-review-ledger');
   });
 
   it('rejects content-hash drift in commit-addressed evidence', () => {
@@ -1521,11 +1510,11 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects unverifiable required evidence paths for validated nodes', () => {
     const state = cloneState();
     validateA0(state);
-    state.nodes[0]!.evidence[2] = {
+    state.nodes[0]!.evidence[1] = {
       kind: 'offline-validator-and-focused-tests',
       path_or_check: 'tests/unit/agent/does-not-exist.test.ts',
       sha256: CURRENT_TEST_FILE_HASH,
-      commit: LEDGER_COMMIT,
+      commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     };
 
@@ -1823,7 +1812,7 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).not.toContain('ownership.stale-heartbeat');
   });
 
-  it('rejects non-canonical evidence paths for handoff and review-ledger', () => {
+  it('rejects non-canonical evidence paths for handoffs', () => {
     const state = cloneState();
     validateA0(state);
     // Replace handoff with a non-canonical path (not in docs/knowledge/handoffs/)
@@ -1837,7 +1826,7 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects path-traversal evidence paths', () => {
     const state = cloneState();
     validateA0(state);
-    state.nodes[0]!.evidence[2]!.path_or_check = '../outside-repo.txt';
+    state.nodes[0]!.evidence[1]!.path_or_check = '../outside-repo.txt';
 
     const codes = validate(state).errors.map((error) => error.code);
 
@@ -1847,9 +1836,9 @@ describe('Floor 2 equipment epic status', () => {
   it('accepts valid check:run/<id> evidence references', () => {
     const state = cloneState();
     validateA0(state);
-    // Replace the offline-validator evidence (index 2) with a check: reference
-    state.nodes[0]!.evidence[2] = {
-      ...state.nodes[0]!.evidence[2]!,
+    // Replace the offline-validator evidence (index 1) with a check: reference
+    state.nodes[0]!.evidence[1] = {
+      ...state.nodes[0]!.evidence[1]!,
       path_or_check: 'check:run/12345678',
     };
 
@@ -1862,8 +1851,8 @@ describe('Floor 2 equipment epic status', () => {
   it('accepts valid check:job/<id> evidence references', () => {
     const state = cloneState();
     validateA0(state);
-    state.nodes[0]!.evidence[2] = {
-      ...state.nodes[0]!.evidence[2]!,
+    state.nodes[0]!.evidence[1] = {
+      ...state.nodes[0]!.evidence[1]!,
       path_or_check: 'check:job/99999999',
     };
 
@@ -1876,8 +1865,8 @@ describe('Floor 2 equipment epic status', () => {
     const state = cloneState();
     validateA0(state);
     // A non-check: scheme must be rejected even if syntactically URI-like
-    state.nodes[0]!.evidence[2] = {
-      ...state.nodes[0]!.evidence[2]!,
+    state.nodes[0]!.evidence[1] = {
+      ...state.nodes[0]!.evidence[1]!,
       path_or_check: 'fake:anything',
     };
 
@@ -1890,8 +1879,8 @@ describe('Floor 2 equipment epic status', () => {
     const state = cloneState();
     validateA0(state);
     // check:workflow/<id> is not an allowlisted resource type
-    state.nodes[0]!.evidence[2] = {
-      ...state.nodes[0]!.evidence[2]!,
+    state.nodes[0]!.evidence[1] = {
+      ...state.nodes[0]!.evidence[1]!,
       path_or_check: 'check:workflow/12345678',
     };
 
@@ -1903,8 +1892,8 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects javascript: URI scheme as evidence reference', () => {
     const state = cloneState();
     validateA0(state);
-    state.nodes[0]!.evidence[2] = {
-      ...state.nodes[0]!.evidence[2]!,
+    state.nodes[0]!.evidence[1] = {
+      ...state.nodes[0]!.evidence[1]!,
       path_or_check: 'javascript:alert(1)',
     };
 
@@ -2795,7 +2784,7 @@ describe('validateEvidenceRequirements', () => {
     });
 
     // Use a reader that only recognises the known commits, not the fabricated one.
-    const knownCommits = new Set([HANDOFF_COMMIT, LEDGER_COMMIT]);
+    const knownCommits = new Set([HANDOFF_COMMIT]);
     const strictReader: GitReader = {
       commitStatus(sha) {
         return knownCommits.has(sha) ? 'commit' : 'missing';

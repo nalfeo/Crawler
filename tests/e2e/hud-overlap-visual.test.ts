@@ -238,7 +238,7 @@ describe('hud ability bar visual regression guard (mobile scale)', () => {
     browser = await chromium.launch({ headless: true });
     // 800×450 is 16:9 like the design canvas (1280×720), so Phaser FIT fills the
     // viewport exactly. The resulting ui-scale is max(1280/800, 720/450) = 1.6,
-    // which exceeds ABILITY_BAR_MAX_SCALE (1.2) and exercises the scale cap.
+    // which exceeds ABILITY_BAR_MAX_SCALE (1.0) and exercises the scale cap.
     context = await browser.newContext({ viewport: { width: 800, height: 450 } });
     page = await context.newPage();
   });
@@ -270,10 +270,10 @@ describe('hud ability bar visual regression guard (mobile scale)', () => {
       };
     };
 
-    // At ABILITY_BAR_MAX_SCALE=1.2 the bottomCenter container sits at
-    // y = GAME_H*(1-1.2) = -144. The ability bar title+slots (design y 550–636)
-    // render at scene y ≈ 516–619.
-    const abilityBandRatio = nonBackgroundRatio(png, band(510, 625));
+    // ABILITY_BAR_MAX_SCALE caps the bottomCenter container at scale 1, so it
+    // sits at y = 0 and the ability bar renders at its authored design Y. The
+    // panel is bottom-anchored (design y 612–708): title at 620, slots 642–700.
+    const abilityBandRatio = nonBackgroundRatio(png, band(605, 705));
     // The region between the top HUD and the ability bar should be mostly empty.
     const midGapRatio = nonBackgroundRatio(png, band(430, 490));
 

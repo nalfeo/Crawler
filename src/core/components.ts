@@ -21,6 +21,8 @@ export const Damage = {};
 export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
+/** Marks an enemy as belonging to the periodic attack-wave population. */
+export const AttackWaveRat = {};
 /**
  * Marks an immobile enemy structure that periodically spawns other mobs.
  * Driven by `spawnerSystem`; configuration lives in the SPAWNER_ARCHETYPES
@@ -62,6 +64,16 @@ export const DamageMeta = {};
 export const Owner = {};
 /** Assigns a team to prevent friendly fire. */
 export const Team = {};
+/** Floor 5 lane-war minion marker. */
+export const SiegeMinion = {};
+/** Floor 5 damageable objective/structure marker. */
+export const SiegeStructure = {};
+/**
+ * Floor 5 field-Hero marker — the single boss-strength named defender holding
+ * the active Hero slot (spec `R6`). Distinct from `SiegeMinion` so lane-war
+ * wave logic, caps, and telemetry never count a Hero as a minion.
+ */
+export const SiegeHero = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -339,6 +351,31 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     team: {
       id: new Uint8Array(maxEntities),
+    },
+    siegeMinion: {
+      team: new Uint8Array(maxEntities),
+      manifestIndex: new Uint16Array(maxEntities),
+      targetEid: new Uint32Array(maxEntities),
+      lastX: new Float32Array(maxEntities),
+      lastY: new Float32Array(maxEntities),
+      stillFrames: new Uint16Array(maxEntities),
+    },
+    siegeStructure: {
+      team: new Uint8Array(maxEntities),
+      kind: new Uint8Array(maxEntities),
+    },
+    siegeHero: {
+      /** Siege-marker team code (1 = allied, 2 = enemy). Heroes are always 2. */
+      team: new Uint8Array(maxEntities),
+      /** Stable 1-based roster ordinal of the Hero occupying this entity. */
+      rosterOrder: new Uint8Array(maxEntities),
+      /** Encoded {@link Floor5FieldHeroRole} (1..5); see FLOOR5_HERO_ROLE_CODE. */
+      role: new Uint8Array(maxEntities),
+      /** Target committed by `siegeHeroSystem` this tick; `0` when holding. */
+      targetEid: new Uint32Array(maxEntities),
+      /** World-space role anchor the Hero leashes to. */
+      anchorX: new Float32Array(maxEntities),
+      anchorY: new Float32Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),

@@ -11,6 +11,7 @@ import { CaveGenerator } from './CaveGenerator';
 import { ArenaGenerator } from './ArenaGenerator';
 import { CaveSystemGenerator } from './cave-system';
 import { ShowcaseArenaGenerator } from './ShowcaseArenaGenerator';
+import { SiegeCastleGenerator } from './SiegeCastleGenerator';
 
 const registry = new Map<BiomeType, MapGenerator>();
 
@@ -80,3 +81,6 @@ registerGenerator(
 // Consumes no RNG: the geometry is authored, and only the manifest's
 // `showcaseArena` block moves it.
 registerGenerator(BiomeType.SHOWCASE_ARENA, new ShowcaseArenaGenerator());
+
+// Floor 5 — authored Command Post-to-throne siege battlefield.
+registerGenerator(BiomeType.SIEGE_CASTLE, new SiegeCastleGenerator());

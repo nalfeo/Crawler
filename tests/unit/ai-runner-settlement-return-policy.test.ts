@@ -8,21 +8,30 @@ describe('AI runner settlement-return policy', () => {
     const world = createTestWorld({ seed: 42 });
     world.floorId = 'floor2';
 
-    syncAiRunnerSettlementReturnRouting(world, true);
+    syncAiRunnerSettlementReturnRouting(world, true, true);
     expect(isSettlementReturnRoutingEnabled(world)).toBe(true);
 
-    syncAiRunnerSettlementReturnRouting(world, false);
+    syncAiRunnerSettlementReturnRouting(world, false, true);
     expect(isSettlementReturnRoutingEnabled(world)).toBe(false);
 
-    syncAiRunnerSettlementReturnRouting(world, true);
+    syncAiRunnerSettlementReturnRouting(world, true, true);
     expect(isSettlementReturnRoutingEnabled(world)).toBe(true);
+  });
+
+  it('respects the feature flag toggle and disables routing when the flag is off', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.floorId = 'floor2';
+
+    syncAiRunnerSettlementReturnRouting(world, true, false);
+
+    expect(isSettlementReturnRoutingEnabled(world)).toBe(false);
   });
 
   it('leaves unsupported floors disabled', () => {
     const world = createTestWorld({ seed: 42 });
     world.floorId = 'floor3';
 
-    syncAiRunnerSettlementReturnRouting(world, true);
+    syncAiRunnerSettlementReturnRouting(world, true, true);
 
     expect(isSettlementReturnRoutingEnabled(world)).toBe(false);
   });

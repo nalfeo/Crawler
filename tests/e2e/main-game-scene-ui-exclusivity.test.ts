@@ -50,6 +50,24 @@ async function withHeldTouch(
   }
 }
 
+/**
+ * Poll until the bottom-center interaction hint ("Talk") is visible again and
+ * return its current screen-space bounds.
+ */
+async function waitForInteractionHintBounds(
+  page: Page,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const deadline = Date.now() + 8_000;
+  for (;;) {
+    const bounds = await mainSceneProbe.getInteractionHintBounds(page);
+    if (bounds) return bounds;
+    if (Date.now() > deadline) {
+      throw new Error('Timed out waiting for the interaction hint to become visible');
+    }
+    await page.waitForTimeout(100);
+  }
+}
+
 function overlaps(
   a: { x: number; y: number; width: number; height: number },
   b: { x: number; y: number; width: number; height: number },
@@ -359,10 +377,10 @@ describe('MainGameScene UI exclusivity', () => {
       async () => !(await mainSceneProbe.getState(page)).conversationOpen,
       { label: 'NPC dialogue to close before Talk click' },
     );
-    const restoredTalkBounds = await mainSceneProbe.getInteractionHintBounds(page);
-    if (!restoredTalkBounds) {
-      throw new Error('Talk button should be visible after dialogue closes');
-    }
+    // The hint is hidden for the duration of a conversation and only restored on
+    // the next scene update; reading its bounds in the same tick can still come
+    // back null, so poll until the button is back before tapping it.
+    const restoredTalkBounds = await waitForInteractionHintBounds(page);
 
     await clickDesignPoint({
       x: restoredTalkBounds.x + restoredTalkBounds.width / 2,
@@ -584,6 +602,71 @@ describe('MainGameScene UI exclusivity', () => {
       'Skills should open from the post-floor safe_room state even without playerInSafeRoom',
     ).toBe(true);
   });
+
+  for (const viewport of [
+    { width: 1280, height: 720 },
+    { width: 960, height: 540 },
+  ] as const) {
+    it(`keeps spell stats separated from abilities descriptions at ${viewport.width}x${viewport.height}`, async () => {
+      const abilityContext = await browser.newContext({ viewport });
+      const abilityPage = await abilityContext.newPage();
+      try {
+        await bootPlayingSafeScene(abilityPage);
+
+        await mainSceneProbe.queueAbilitiesToggle(abilityPage);
+        const state = await waitForState(
+          abilityPage,
+          (s) =>
+            s.abilityLoadoutOpen &&
+            s.abilityLoadoutVisibleEntries.some((entry) => entry.id === 'fireball') &&
+            s.abilityLoadoutRowLayouts.some((layout) => layout.id === 'fireball'),
+          {
+            label: `abilities loadout opened with fireball at ${viewport.width}x${viewport.height}`,
+          },
+        );
+
+        const fireball = state.abilityLoadoutVisibleEntries.find(
+          (entry) => entry.id === 'fireball',
+        );
+        expect(fireball?.details).not.toContain('Damage 15');
+        expect(fireball?.description).toContain('Damage 15');
+        expect(fireball?.description).toContain('Target & blast radius 12 ft');
+
+        const layout = state.abilityLoadoutRowLayouts.find((layout) => layout.id === 'fireball');
+        expect(layout, 'fireball row layout should be measured').toBeDefined();
+        expect(
+          overlaps(layout!.details, layout!.description),
+          `fireball details must not overlap description at ${viewport.width}x${viewport.height}`,
+        ).toBe(false);
+
+        // The stat line pushes the description down, so a row sized to a fixed
+        // height renders its description past the row edge and over the row
+        // below. Assert containment on every visible row, not just fireball.
+        for (const rowLayout of state.abilityLoadoutRowLayouts) {
+          const rowBottom = rowLayout.row.y + rowLayout.row.height;
+          expect(
+            rowLayout.details.y + rowLayout.details.height,
+            `${rowLayout.id} stat line overflows its row at ${viewport.width}x${viewport.height}`,
+          ).toBeLessThanOrEqual(rowBottom);
+          expect(
+            rowLayout.description.y + rowLayout.description.height,
+            `${rowLayout.id} description overflows its row at ${viewport.width}x${viewport.height}`,
+          ).toBeLessThanOrEqual(rowBottom);
+        }
+
+        // Growing a row must push later rows down rather than draw over them.
+        const rows = state.abilityLoadoutRowLayouts;
+        for (let i = 1; i < rows.length; i += 1) {
+          expect(
+            overlaps(rows[i - 1]!.row, rows[i]!.row),
+            `${rows[i - 1]!.id} and ${rows[i]!.id} rows must not overlap at ${viewport.width}x${viewport.height}`,
+          ).toBe(false);
+        }
+      } finally {
+        await abilityContext.close();
+      }
+    });
+  }
 
   it('renders level-5 passive abilities in the loadout projection with active/inactive status', async () => {
     await bootPlayingSafeScene();

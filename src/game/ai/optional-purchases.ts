@@ -4,7 +4,7 @@ export interface OptionalPurchasesConfig {
   spellBrokerPurchase?: boolean;
 }
 
-export const DEFAULT_OPTIONAL_PURCHASES = true;
+const DEFAULT_OPTIONAL_PURCHASES = true;
 
 export function resolveOptionalPurchases(config: OptionalPurchasesConfig): boolean {
   if (config.optionalPurchases !== undefined) {

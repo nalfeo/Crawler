@@ -13,6 +13,7 @@ import type {
   ScenarioRunOutcome,
   ScenarioStairConfirmationCopy,
   ScenarioStairMarkerState,
+  ScenarioStarterLoadoutCopy,
 } from '../shared/scenario-presentation.js';
 import {
   confirmFloor1StairDescend,
@@ -47,8 +48,10 @@ import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
   FLOOR3_VICTORY_GOAL_ID,
+  floor3KeptCompanionDescendGateSatisfied,
   floor3WildDirectorSystem,
   initializeFloor3Scenario,
+  autoDefaultFloor3KeptCompanion,
   selectFloor3KeptCompanion,
   selectFloor3LoadoutOption,
 } from './floor3Scenario.js';
@@ -59,6 +62,14 @@ import {
   initializeFloor4Scenario,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
+import {
+  confirmFloor5StairDescend,
+  getFloor5RunOutcome,
+  initializeFloor5Scenario,
+  siegeDirectorSystem,
+  siegeHeroSystem,
+  siegeMinionSystem,
+} from './floor5Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -71,6 +82,21 @@ export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
 }
 
+function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Takeover Failed',
+      subtitle: 'Floor 5 fell back',
+      body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
+    };
+  }
+  return {
+    title: 'Floor 5 Complete!',
+    subtitle: 'Hostile Takeover complete!',
+    body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
+}
+
 function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
   if (variant === 'failed_timeout') {
     return {
@@ -80,9 +106,9 @@ function getFloor3CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
     };
   }
   return {
-    title: 'Victory!',
-    subtitle: 'Floor 3 complete!',
-    body: 'The Final Four are down — you are the Companion League champion!\nMore floors coming soon...',
+    title: 'Best in Show',
+    subtitle: 'Floor 3 complete · Companion League champion',
+    body: 'The Final Four are down and your kept Companion is signed for the next floor.',
   };
 }
 
@@ -172,8 +198,8 @@ export interface ScenarioDefinition {
   ) => void;
   readonly selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   /**
-   * Overrides the auto-defaulted Floor 3 end-of-floor kept-companion pick
-   * (spec R7 §9.3, slice 11) with a specific live party Companion. Mirrors
+   * Sets the Floor 3 end-of-floor kept-companion pick (spec R7 §9.3, slice 11)
+   * to a specific live party Companion. Mirrors
    * `selectLoadoutOption`'s shape: exposed here as the scenario-contract
    * surface a future picker UI (slice 14) wires a real choice through, so the
    * underlying selection hook (`selectFloor3KeptCompanion`) has a documented,
@@ -182,6 +208,8 @@ export interface ScenarioDefinition {
    * implementation for the exact validation.
    */
   readonly selectKeptCompanion?: (world: GameWorld, partyEid: number) => boolean;
+  /** Deterministic non-interactive kept-companion choice used by headless runs. */
+  readonly autoSelectKeptCompanion?: (world: GameWorld) => boolean;
   /** Confirms a stair descend attempt; returns false when the floor is not clear. */
   readonly onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
@@ -219,6 +247,12 @@ export interface ScenarioDefinition {
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
   /**
+   * Presentation copy for the generic starter-loadout picker. Omitted by
+   * scenarios that present their own loadout surface (Floor 3) or offer no
+   * starter choice at all.
+   */
+  readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
    * unlock-effect, and runtime-eligibility policy lives here as validated
@@ -239,6 +273,7 @@ export function getScenarioPresentationContract(
     getCompletionCopy: scenario.getCompletionCopy,
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
+    starterLoadout: scenario.starterLoadout,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -318,7 +353,11 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     visible: studiosState.staircaseSpawned === true && studiosState.staircaseDiscovered !== true,
     // Same rule as Floor 1/2: `confirmFloor3StairDescend` rejects unless
     // `staircaseUnlocked` is set, so the prompt must be withheld until then.
-    locked: studiosState.staircaseUnlocked !== true,
+    // Floor 3 additionally requires the kept-companion pick, so the marker
+    // reuses that exact predicate — otherwise a stale pick would advertise an
+    // unlocked exit the confirmation then refuses.
+    locked:
+      studiosState.staircaseUnlocked !== true || !floor3KeptCompanionDescendGateSatisfied(world),
     label: '▼ EXIT',
   };
 }
@@ -390,6 +429,13 @@ function getFloor2CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
   }
 }
 
+const FLOOR_1_STARTER_LOADOUT: ScenarioStarterLoadoutCopy = {
+  title: 'Choose your opening loadout',
+  pausedNotice: 'Floor 1 is paused until you confirm a starter weapon.',
+  prompt: 'Pick the weapon you want to begin with.',
+  optionDescriptionPrefix: 'Starter weapon',
+};
+
 const FLOOR_1_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   title: 'Proceed to the next floor?',
   subtitle: 'You are at the stairs.',
@@ -413,6 +459,99 @@ const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   confirmLabel: 'Yes, exit now',
   confirmDescription: 'You win!',
 };
+
+function buildDirectorIntroVariants(
+  concepts: readonly string[],
+  firstObjectives: readonly string[],
+): readonly string[] {
+  const variants: string[] = [];
+  for (const concept of concepts) {
+    for (const firstObjective of firstObjectives) {
+      variants.push(`${concept} ${firstObjective}`);
+    }
+  }
+  return variants;
+}
+
+const FLOOR_1_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 1 opens. {playerName} must clear the quest and boss chain to unlock the exit stairs.',
+    'Floor 1 is live: {playerName} must complete the tutorial quest chain, then defeat the boss for the stairs.',
+    'Floor 1 starts now: {playerName} opens the escape stairs after the quest chain ends in a boss defeat.',
+    'Floor 1 broadcast begins with one way out: {playerName} must finish the quests and unlock the boss stairs.',
+    'Floor 1 kicks off: {playerName} advances the quest chain to the boss, then claims the exit stairs.',
+  ],
+  [
+    'First objective: reach the Welcome Office and speak with Tutorial Goon to start your quota quest.',
+    'First objective: find Tutorial Goon in the Welcome Office and accept the opening mission.',
+    'First objective: locate the Welcome Office, talk to Tutorial Goon, and trigger your first quest.',
+    'First objective: make contact in the Welcome Office with Tutorial Goon before pushing combat milestones.',
+  ],
+);
+
+const FLOOR_2_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 2 opens with the Mother Lode feud active across the cave network; resolve it to unlock the exit.',
+    'Floor 2 goes live as rival families contest the Mother Lode; settle the feud and take the stairs.',
+    'Floor 2 starts in open faction warfare around the Mother Lode tunnels; victory opens the exit route.',
+    'Floor 2 is on-air and every family wants control of the Mother Lode; end the conflict to reach the stairs.',
+    'Floor 2 begins with a live territorial feud over the Mother Lode; secure a win and unlock the exit.',
+  ],
+  [
+    'First objective: reach the settlement Broker and take the opening feud directive.',
+    'First objective: find the Broker in settlement to unlock your first territory objective.',
+    'First objective: report to the Broker and choose how you will break the family stalemate.',
+    'First objective: secure Broker contact in settlement so the first den objective can begin.',
+  ],
+);
+
+const FLOOR_3_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 3 opens in the Companion League wilds: defeat the Final Four to reach extraction.',
+    'Floor 3 goes live with roaming squads in the Companion League wilds; the Final Four guard the exit.',
+    'Floor 3 starts as a territory race through the Companion League wilds; winning the Final Four unlocks extraction.',
+    'Floor 3 is on-air with seven-biome warfare in the Companion League wilds; clear the Final Four for the exit.',
+    'Floor 3 begins in a live Companion League campaign for regional control; defeat the Final Four to escape.',
+  ],
+  [
+    'First objective: confirm your starter companion loadout and secure your opening territory.',
+    'First objective: lock in the starter companion choice, then claim your first biome node.',
+    'First objective: finalize your opening party and win the first territorial matchup.',
+    'First objective: complete the starter companion pick and take control of an initial zone.',
+  ],
+);
+
+const FLOOR_4_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 4 opens with the Main Event stage reset: clear all five acts and the stairs open.',
+    'Floor 4 goes live under house lights for a five-act trial; finish every act to unlock the exit.',
+    'Floor 4 starts as a broadcast arena rehearsal with five consecutive acts; completion opens the stairs.',
+    'Floor 4 is on-air and the Main Event stage expects five clean acts before it releases the exit.',
+    'Floor 4 begins with a timed five-act arena test; survive the program to reach the stairs.',
+  ],
+  [
+    'First objective: survive countdown and clear Act 1 waves to summon the first Headliner.',
+    'First objective: enter Act 1, beat the opening wave set, and drop the first Headliner.',
+    'First objective: push through the first wave window and finish the Act 1 Headliner fight.',
+    'First objective: convert the opening act into a clear by defeating the first Headliner.',
+  ],
+);
+
+const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 5 opens with Hostile Takeover at the Command Post; this foundation has no escape route yet.',
+    'Floor 5 goes live at the Command Post; no exit is active while the siege foundation is under construction.',
+    'Floor 5 starts in siege mode around the Command Post; survive its defense because extraction is not implemented.',
+    'Floor 5 is on-air with a hostile takeover of the Command Post; this foundation does not yet offer stairs.',
+    'Floor 5 begins with a command-center siege; there is no escape route until later siege systems arrive.',
+  ],
+  [
+    'First objective: hold the Command Post; the siege ends in defeat if its health falls to zero.',
+    'First objective: keep the Command Post intact while the siege foundation is active.',
+    'First objective: defend the Command Post, because its destruction ends the run.',
+    'First objective: protect the Command Post and avoid the defeat state triggered by its destruction.',
+  ],
+);
 
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
@@ -446,7 +585,8 @@ const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
 ];
 
 const FLOOR_1_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 1 opens. {playerName} enters the dungeon and the cameras are rolling.',
+  intro: FLOOR_1_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_1_INTRO_VARIANTS,
   victory: 'Floor 1 cleared. Queueing the transfer to the next floor.',
   timeout: 'Time expired before the stairs. Floor 1 run ends here.',
   milestones: FLOOR_1_MILESTONES,
@@ -456,7 +596,8 @@ const FLOOR_1_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 2 opens: families feud over the Mother Lode. Pick allies or wipe the board.',
+  intro: FLOOR_2_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_2_INTRO_VARIANTS,
   victory: 'Floor 2 secured. The tunnel network is yours — roll stairs for the next segment.',
   timeout: 'The floor collapsed before a side won. The Director calls the run.',
   milestones: [],
@@ -465,7 +606,8 @@ const FLOOR_2_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 3 opens: the Companion League wilds are live across seven biome territories.',
+  intro: FLOOR_3_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_3_INTRO_VARIANTS,
   victory: 'The Final Four are down. The Companion League crowns its champion.',
   timeout: 'The Companion League timer expired. The Director calls the run.',
   milestones: [],
@@ -474,13 +616,26 @@ const FLOOR_3_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
 };
 
 const FLOOR_4_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
-  intro: 'Floor 4 opens: the house lights come up on an empty Main Event stage.',
+  intro: FLOOR_4_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_4_INTRO_VARIANTS,
   victory: 'Floor 4 rehearsal complete. Five acts ran clean and the stairs opened on cue.',
   timeout: 'The Main Event never started. The Director cuts the feed.',
   milestones: [],
   isVictoryReached: isFloor4ArenaVictory,
   isTimeoutReached: (world: GameWorld) =>
     world.goalFlags.get(FLOOR4_STALL_BACKSTOP_GOAL_ID) === true,
+};
+
+const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: FLOOR_5_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_5_INTRO_VARIANTS,
+  victory: 'Floor 5 captured. The throne has changed management.',
+  timeout: 'The hostile takeover stalled out. The Director cuts the siege feed.',
+  milestones: [],
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
 };
 
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
@@ -534,6 +689,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor1CompletionCopy,
       getStairMarkerState: getFloor1StairMarkerState,
       stairConfirmation: FLOOR_1_STAIR_CONFIRMATION,
+      starterLoadout: FLOOR_1_STARTER_LOADOUT,
       aiTaskConfig: FLOOR1_AI_TASK_CONFIG,
     },
   ],
@@ -566,6 +722,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       configureWorld: initializeFloor3Scenario,
       selectLoadoutOption: selectFloor3LoadoutOption,
       selectKeptCompanion: selectFloor3KeptCompanion,
+      autoSelectKeptCompanion: autoDefaultFloor3KeptCompanion,
       onStairDescend: confirmFloor3StairDescend,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [floor3WildDirectorSystem],
@@ -585,11 +742,26 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
       onStairDescend: confirmFloor4StairDescend,
+      beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+    },
+  ],
+  [
+    'floor5',
+    {
+      floorId: 'floor5',
+      configureWorld: initializeFloor5Scenario,
+      onStairDescend: confirmFloor5StairDescend,
+      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem, siegeHeroSystem],
+      afterSpawnerSystems: [siegeDirectorSystem],
+      director: FLOOR_5_DIRECTOR,
+      getRunOutcome: getFloor5RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor5CompletionCopy,
     },
   ],
 ]);

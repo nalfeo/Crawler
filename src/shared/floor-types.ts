@@ -3,6 +3,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
+import type { CombatEvent } from './combat-events.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -275,10 +276,10 @@ export interface Floor3EncounterState {
   unlocked: boolean;
   /**
    * This Studio's Companions, deferred at floor init until `unlockLevel` is
-   * met (spec R6 soft-gate) — mirrors `Floor3StudiosState.finalFourPendingSpawns`.
+   * met (spec R6 soft-gate) — mirrors the Final Four rounds.
    * `floor3ObjectiveTick` spawns these once `unlocked` latches true and clears
    * the array so a re-tick never double-spawns. Unused by the Final Four,
-   * which has its own `finalFourPendingSpawns` field.
+   * which stores one pending roster per ordered round.
    */
   pendingSpawns: readonly Floor3PendingRosterSpawn[];
   /**
@@ -328,6 +329,16 @@ export interface Floor3PendingRosterSpawn {
   readonly y?: number;
 }
 
+/** One seeded Final Four handler round, kept in gauntlet order. */
+export interface Floor3FinalFourRoundState {
+  readonly handlerId: string;
+  readonly handlerName: string;
+  /** This handler's roster only; cleared after the round spawns. */
+  pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  /** Latched when this handler's active roster is wiped. */
+  defeated: boolean;
+}
+
 /**
  * Floor 3 · Slice 8 — Studios + Final Four + objective-tick state written to
  * `world.floorExtendedState.floor3Studios` by `initializeFloor3Scenario`.
@@ -341,13 +352,13 @@ export interface Floor3StudiosState {
   readonly finalFour: Floor3EncounterState;
   /** Count of `studios` currently `defeated`. Convenience — always derivable from `studios`. */
   studiosDefeatedCount: number;
+  /** Four seeded handler rounds in the exact order selected for this run. */
+  readonly finalFourRounds: Floor3FinalFourRoundState[];
   /**
-   * The Final Four's Companions, deferred at floor init (spec R6: the Final
-   * Four is soft-gated behind the Studios-defeated counter, not present in
-   * the world until it unlocks). `floor3ObjectiveTick` spawns these once and
-   * clears the array so a re-tick never double-spawns.
+   * Active round index after Final Four unlock; also equals the number of
+   * defeated rounds. Reaches `finalFourRounds.length` only after the last wipe.
    */
-  finalFourPendingSpawns: readonly Floor3PendingRosterSpawn[];
+  finalFourRoundIndex: number;
   /** World-space (ft) position of the exit staircase. Set on victory. */
   staircasePos?: { x: number; y: number };
   /** True once the exit staircase tile has been spawned (Final Four defeated). */
@@ -358,10 +369,9 @@ export interface Floor3StudiosState {
   staircaseDiscovered?: boolean;
   /**
    * ECS entity id of the single party Companion the player will keep
-   * cross-floor (spec R7 §9.3, slice 11). Auto-defaulted to the player's
-   * first party slot the moment victory latches, then overridable by
-   * `selectFloor3KeptCompanion` (the end-of-floor picker hook) before the
-   * floor-transition carryover is captured. `undefined` before victory.
+   * cross-floor (spec R7 §9.3, slice 11). Real play sets this through
+   * `selectFloor3KeptCompanion`; headless play may explicitly invoke the
+   * deterministic game-layer fallback. `undefined` before selection.
    */
   keptCompanionEid?: number;
 }
@@ -387,6 +397,8 @@ export interface Floor4HeadlinerCardEntry {
   readonly displayName: string;
   readonly entranceAnnouncement: string;
   readonly appearanceFeeGold: number;
+  /** Authored per-act contact damage for this act's Headliner (spec FR8.2). */
+  readonly contactDamage: number;
   readonly fixedFinale: boolean;
 }
 
@@ -561,10 +573,58 @@ export interface Floor4ArenaState {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
   /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
   activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** True when Floor 4 successfully re-hosted an optional kept-companion co-star. */
+  keptCompanionCoStarActive: boolean;
   /** Cumulative wave counters, retained across acts for RunStats. */
   waveTelemetry: Floor4WaveTelemetry;
   /** Cumulative Headliner/overtime counters, retained across acts for RunStats. */
   headlinerTelemetry: Floor4HeadlinerTelemetry;
+  /**
+   * Snapshot of the cumulative counters above, taken the instant the CURRENT
+   * act's `WAVES` phase was armed. The break-summary HUD (FR6/slice 6) reads
+   * this to project THIS act's gold-earned/enemies-engaged delta instead of
+   * the run-cumulative totals, which would otherwise re-report every prior
+   * act's numbers at every later break.
+   */
+  actBaseline: Floor4ActBreakBaseline;
+  /**
+   * Player gold at the instant the CURRENT break's `INTERMISSION` phase was
+   * entered. The break-summary HUD (FR6/slice 6) reads this instead of the
+   * live, continuously-mutating gold balance so "Gold earned" reports a
+   * locked, act-end figure rather than shrinking in real time as the player
+   * spends gold at sponsors during the break.
+   */
+  breakGoldSnapshot?: number;
+  /**
+   * Realised per-act income, appended once per act at its INTERMISSION entry
+   * (spec FR10.3). Recorded before any Green Room spend so it measures income,
+   * not net balance.
+   */
+  actIncome: Floor4ActIncomeEntry[];
+}
+
+/** See {@link Floor4ArenaState.actBaseline}. */
+export interface Floor4ActBreakBaseline {
+  readonly playerGold: number;
+  /** GoldLedger.earnedFromDrops snapshot at WAVES entry for this act. */
+  readonly dropGold: number;
+  readonly enemiesSpawned: number;
+  readonly enemiesCut: number;
+}
+
+/**
+ * Gold actually taken in during one act (spec FR10.3 / slice 7).
+ *
+ * `waveGold` is the drop income banked between the act's WAVES entry and its
+ * INTERMISSION entry; `appearanceFeeGold` is the act's authored Headliner fee.
+ * The two are reported separately because only the fee is guaranteed — the
+ * affordability invariant (FR6.8) is computed from fees alone.
+ */
+export interface Floor4ActIncomeEntry {
+  readonly act: Floor4ActIndex;
+  readonly waveGold: number;
+  readonly appearanceFeeGold: number;
+  readonly totalGold: number;
 }
 
 export interface Floor4ArenaRunStats {
@@ -574,6 +634,361 @@ export interface Floor4ArenaRunStats {
   readonly waveTelemetry: Floor4WaveTelemetry;
   readonly headlinerTelemetry: Floor4HeadlinerTelemetry;
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
+  /** Per-act realised income, in act order, for acts that reached a break. */
+  readonly actIncome: readonly Floor4ActIncomeEntry[];
+}
+
+export type Floor5SiegePhaseKind =
+  | 'MUSTER'
+  | 'CONTEST'
+  | 'BUILD'
+  | 'ESCORT'
+  | 'BREACH'
+  | 'COURTYARD'
+  | 'THRONE'
+  | 'CAPTURED'
+  | 'DEFEAT';
+
+export interface Floor5SiegePhase {
+  readonly kind: Floor5SiegePhaseKind;
+}
+
+export interface Floor5SiegePhaseTraceEntry {
+  readonly phase: Floor5SiegePhase;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly commandPostHealth: number;
+  readonly engineState: string;
+  readonly breachState: string;
+  readonly heroState: string;
+}
+
+/**
+ * Closed tactical-role set for Floor 5 field Heroes (spec `FR6.2`).
+ *
+ * A Hero's declared role is its SOLE strategic mode for its whole lifetime —
+ * there is no per-Hero multi-mode set and no cross-role switching. Adding a
+ * multi-mode Hero requires an explicit role-to-allowed-modes contract in
+ * `.specify/specs/floor5-hostile-takeover.md` first.
+ */
+export type Floor5FieldHeroRole =
+  | 'counter-push'
+  | 'checkpoint-defense'
+  | 'engine-disruption'
+  | 'minion-support'
+  | 'artillery';
+
+/**
+ * One append-only candidate in the Floor 5 field-Hero roster
+ * (spec `FR6.1`/`FR8.3`).
+ *
+ * `order` is the stable 1-based roster ordinal from the design bible §9 table.
+ * Names/roles/gimmicks are content (design bible); the combat and stance
+ * numbers below are Game AI Engineer tuning per `HUMAN_GATE-4`.
+ */
+export interface Floor5FieldHeroPoolEntry {
+  /** Stable 1-based roster ordinal. Never renumbered, never reused. */
+  readonly order: number;
+  /** Stable kebab-case identity, e.g. `turnaround-consultant`. */
+  readonly heroId: string;
+  readonly displayName: string;
+  readonly role: Floor5FieldHeroRole;
+  /** One-line gimmick, verbatim from the design bible §9 roster table. */
+  readonly gimmick: string;
+  readonly hp: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+  readonly speedFtPerFrame: number;
+  /** Reach at which this Hero stops closing and starts attacking. */
+  readonly engageRangeFt: number;
+  /** How far the Hero will look for a target from its own position. */
+  readonly aggroRadiusFt: number;
+  /** How far from its role anchor the Hero will travel before disengaging. */
+  readonly leashRadiusFt: number;
+}
+
+/** One drawn slot in the run's seeded field-Hero card (spec `FR6.1`). */
+export interface Floor5FieldHeroCardEntry {
+  /** 0-based draw ordinal within the run. */
+  readonly slotIndex: number;
+  /** Stable slot identity, `floor5-field-hero-slot-<slotIndex>`. */
+  readonly slotId: string;
+  readonly order: number;
+  readonly heroId: string;
+  readonly displayName: string;
+  readonly role: Floor5FieldHeroRole;
+  readonly hp: number;
+  readonly attackDamage: number;
+}
+
+/**
+ * Lifecycle of the single field-Hero slot (`HUMAN_GATE-3`: one active Hero at
+ * a time).
+ *
+ * `retired` is the terminal `FR6.4` "remain defeated according to their slot"
+ * outcome: the card is drawn without replacement and never cycles, so once the
+ * last roster entry is defeated the slot stays permanently empty.
+ */
+export type Floor5FieldHeroSlotStatus = 'pending' | 'active' | 'down' | 'retired';
+
+/** Runtime state of the one active field-Hero slot. */
+export interface Floor5FieldHeroSlotState {
+  /** Seeded without-replacement draw order for this run (spec `FR6.1`). */
+  readonly card: readonly Floor5FieldHeroCardEntry[];
+  status: Floor5FieldHeroSlotStatus;
+  /** Index into `card` of the Hero occupying the slot; `-1` when none has been drawn. */
+  cursor: number;
+  /** Live Hero entity id, or `0` when the slot is empty. */
+  eid: number;
+  health: number;
+  maxHealth: number;
+  /** Target entity committed by `siegeHeroSystem` this tick; `0` when holding. */
+  targetEid: number;
+  spawnedFrame: number | null;
+  defeatedFrame: number | null;
+  /** Fixed manifest-authored respawn frame (spec `FR6.4`); never wall-clock/RNG. */
+  respawnFrame: number | null;
+  /** Hero ids actually fielded this run, in draw order (reproducibility). */
+  readonly fieldedHeroIds: string[];
+  spawns: number;
+  defeats: number;
+  abilityCasts: number;
+  /**
+   * Remaining engine-disruption stall budget (ms) applied to Ratings Ram
+   * construction progress by the `engine-disruption` role ability.
+   */
+  buildStallMs: number;
+}
+
+export type Floor5SiegeTeam = 'allied' | 'enemy';
+export type Floor5SiegeCheckpointOwner = Floor5SiegeTeam | 'contested';
+export type Floor5SiegeStructureId =
+  | 'command-post'
+  | 'allied-checkpoint'
+  | 'enemy-checkpoint'
+  | 'outer-wall';
+
+export interface Floor5SiegeStructureState {
+  readonly id: Floor5SiegeStructureId;
+  readonly team: Floor5SiegeTeam;
+  eid: number;
+  health: number;
+  maxHealth: number;
+}
+
+export interface Floor5SiegeWaveManifestEntry {
+  readonly id: string;
+  readonly team: Floor5SiegeTeam;
+  readonly releaseFrame: number;
+  readonly count: number;
+}
+
+export interface Floor5SiegeLaneTelemetry {
+  waveCyclesCompleted: number;
+  checkpointContests: number;
+  legalDamageEvents: number;
+  illegalDamageEvents: number;
+  pathStalls: number;
+  spawned: Record<Floor5SiegeTeam, number>;
+  spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+}
+
+export type Floor5RatingsRamState =
+  | 'LOCKED'
+  | 'BUILDING'
+  | 'READY'
+  | 'ADVANCING'
+  | 'ATTACKING'
+  | 'BREACHED'
+  | 'DESTROYED';
+
+export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
+
+export type Floor5RequisitionMilestone =
+  | 'opening-push'
+  | 'siege-yard'
+  | 'components'
+  | 'checkpoint';
+
+export interface Floor5SiegeTaskState {
+  openingPushRepelled: boolean;
+  yardSecured: boolean;
+  recoveredComponents: Floor5RamComponentClass[];
+  checkpointCleared: boolean;
+}
+
+export interface Floor5SiegeConstructionState {
+  progressMs: number;
+  requiredMs: number;
+  lastProgressWorldElapsedMs: number;
+  buildSiteUnderAttack: boolean;
+  pausedMs: number;
+  attempts: number;
+  deniedAttempts: number;
+  startedFrame: number | null;
+  completedFrame: number | null;
+}
+
+export interface Floor5SiegeState {
+  phase: Floor5SiegePhase;
+  lastWorldElapsedMs: number;
+  commandPostHealth: number;
+  engineState: Floor5RatingsRamState;
+  breachState: string;
+  /**
+   * Derived display/trace projection of {@link Floor5SiegeState.heroes}:
+   * `PENDING` | `ACTIVE:<heroId>` | `DOWN:<heroId>@<respawnFrame>` | `RETIRED`.
+   * The authoritative typed state is `heroes`; this string exists so the phase
+   * trace and lab readout stay flat and stable.
+   */
+  heroState: string;
+  heroes: Floor5FieldHeroSlotState;
+  tasks: Floor5SiegeTaskState;
+  requisitionMilestones: Floor5RequisitionMilestone[];
+  construction: Floor5SiegeConstructionState;
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly heroes: string;
+    readonly tasks: string;
+    readonly dressing: string;
+    readonly rewards: string;
+  };
+  readonly trace: Floor5SiegePhaseTraceEntry[];
+  readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  waveCursor: Record<Floor5SiegeTeam, number>;
+  waveRemainder: Record<Floor5SiegeTeam, number>;
+  spawnDebt: Record<Floor5SiegeTeam, number>;
+  spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
+  liveMinions: Record<Floor5SiegeTeam, number>;
+  checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  combatEventCursor: number;
+  lastCombatEvent?: CombatEvent;
+}
+
+export interface Floor5SiegeRunStats {
+  readonly phase: Floor5SiegePhase;
+  readonly commandPostHealth: number;
+  readonly engineState: Floor5RatingsRamState;
+  readonly breachState: string;
+  readonly heroState: string;
+  readonly heroes: {
+    readonly card: readonly Floor5FieldHeroCardEntry[];
+    readonly status: Floor5FieldHeroSlotStatus;
+    readonly cursor: number;
+    readonly activeHeroId: string | null;
+    readonly activeRole: Floor5FieldHeroRole | null;
+    readonly eid: number;
+    readonly health: number;
+    readonly maxHealth: number;
+    readonly targetEid: number;
+    readonly spawnedFrame: number | null;
+    readonly defeatedFrame: number | null;
+    readonly respawnFrame: number | null;
+    readonly fieldedHeroIds: readonly string[];
+    readonly spawns: number;
+    readonly defeats: number;
+    readonly abilityCasts: number;
+    readonly buildStallMs: number;
+  };
+  readonly tasks: {
+    readonly openingPushRepelled: boolean;
+    readonly yardSecured: boolean;
+    readonly recoveredComponents: readonly Floor5RamComponentClass[];
+    readonly componentsReady: boolean;
+    readonly checkpointCleared: boolean;
+    readonly allPrerequisitesMet: boolean;
+  };
+  readonly requisition: {
+    readonly milestones: readonly Floor5RequisitionMilestone[];
+    readonly completedMilestones: number;
+    readonly requiredMilestones: number;
+    readonly ready: boolean;
+  };
+  readonly construction: {
+    readonly progressMs: number;
+    readonly requiredMs: number;
+    readonly buildSiteUnderAttack: boolean;
+    readonly pausedMs: number;
+    readonly attempts: number;
+    readonly deniedAttempts: number;
+    readonly startedFrame: number | null;
+    readonly completedFrame: number | null;
+  };
+  readonly rngStreamKeys: Floor5SiegeState['rngStreamKeys'];
+  readonly trace: readonly Floor5SiegePhaseTraceEntry[];
+  readonly structures: Readonly<Record<Floor5SiegeStructureId, Floor5SiegeStructureState>>;
+  readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
+  readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly checkpointOwner: Floor5SiegeCheckpointOwner;
+  readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
+ *
+ * Mirrors {@link Floor2SettlementShopItem} but is produced by the pure
+ * catalog-based `generateShopInventory`, so it references a purchasable catalog
+ * `itemId` and carries NO generated-equipment registry instance. That is what
+ * makes retirement orphan-free: retiring a visit drops these offers and leaves
+ * `world.generatedEquipmentRegistry` untouched (spec §7.2).
+ */
+export interface Floor4GreenRoomOffer {
+  readonly itemId: string;
+  readonly unitPrice: number;
+  /** Units offered. Slice A always emits 1 (the roller's per-line stock). */
+  readonly stock: number;
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — the immutable rolled stock of one fixed
+ * sponsor-table identity for one visit. `streamKey` records the exact derived
+ * stream (`<seed>:floor4:stock:<visitIndex>:<tableId>`) the offers were rolled
+ * from, so path-independence is auditable.
+ */
+export interface Floor4GreenRoomTableStock {
+  /** Stable table identity (spec §7.2: fixed across the floor). */
+  readonly tableId: string;
+  /** Shop-archetype pool this table drew from. */
+  readonly archetypeId: string;
+  /** The derived stream key the offers were rolled from. */
+  readonly streamKey: string;
+  readonly offers: readonly Floor4GreenRoomOffer[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — one visit's fully rolled, immutable stock
+ * across every sponsor table. Path-independent: visit `visitIndex` for a floor
+ * seed always yields identical stock regardless of how the acts before it went.
+ */
+export interface Floor4GreenRoomVisitStock {
+  /** 0-based visit ordinal — one per Headliner, in `[0, phase.actCount - 1]`. */
+  readonly visitIndex: number;
+  readonly tables: readonly Floor4GreenRoomTableStock[];
+}
+
+/**
+ * Floor 4 · Green Room (slice A) — floor/run-scoped shop lifecycle state, held
+ * on `world.floorExtendedState.floor4GreenRoom`. Deliberately NOT the Floor-2
+ * settlement/quartermaster state: the Green Room re-rolls every table every
+ * visit and retires unsold stock, which the Floor-2 single-restock model does
+ * not express. Transaction (purchase) and UI are owned by later slices; this
+ * state only holds the current visit's immutable offer and the lifecycle
+ * bookkeeping needed to guard against re-rolls and reopens.
+ */
+export interface Floor4GreenRoomState {
+  /** The open visit's rolled, immutable stock; undefined between visits. */
+  currentVisit?: Floor4GreenRoomVisitStock;
+  /** Count of visits retired so far — monotonic, for lifecycle assertions. */
+  retiredVisitCount: number;
+  /**
+   * Highest visitIndex ever opened, or -1 before the first visit. Guards
+   * against re-rolling an open visit and against reopening a retired one.
+   */
+  lastOpenedVisitIndex: number;
 }
 
 // Backward compatibility exports

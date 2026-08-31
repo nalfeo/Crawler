@@ -47,13 +47,10 @@ link back to this section instead of restating it.
   human explicitly asks for a file artifact.
 - **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
   actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).
-- **Run the apple-scaled review harness** and record a **review ledger**: a
-  separate-model **plan review** at ≥3🍎 (**adversarial** at >3🍎 — enumerate ≥2
-  alternatives and argue against the chosen design, recording `plan_divergence`),
-  a **code-review loop** until no concerns _or_ a 2-round cap then human
-  escalation at ≥3🍎, and **multi-model review + adjudication** at >3🍎. The
-  `pr-review-ledger` guard hard-denies `create_pull_request` without a valid
-  ledger for a code-touching change. See the
+- **Run apple-scaled post-diff review:** 1–2🍎 use tests/CI only, 3🍎 requires one
+  independent post-diff code review, and 4–5🍎 requires two. Adversarial design
+  review runs only for architectural changes. GitHub PR reviews and threads are
+  the only audit trail. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
   [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is

@@ -45,6 +45,51 @@ export function pointInRingBand(
 }
 
 /**
+ * True iff the circular wall band `[innerRadiusFt, outerRadiusFt]` centred on
+ * `(cxFt, cyFt)` intersects the axis-aligned rectangle
+ * `[minXFt, maxXFt] × [minYFt, maxYFt]` (feet). Inclusive on all edges.
+ *
+ * Existence of this test — rather than point sampling — is a correctness
+ * requirement for any TILE-granular consumer of an analytic ring wall. A ring
+ * wall can be thinner than a tile (the spawner arena raises a 1 ft band on a
+ * 4 ft grid), so it can pass cleanly BETWEEN two adjacent tile centres without
+ * either centre lying inside the band. Sampling only centres therefore reports
+ * a walkable transition straight through a physically sealed cage.
+ *
+ * The rectangle is connected and distance-to-centre is continuous on it, so
+ * the set of distances realised on the rectangle is exactly
+ * `[minDist, maxDist]`. The band intersects the rectangle iff that interval
+ * overlaps `[innerRadiusFt, outerRadiusFt]` — this test is therefore exact,
+ * not merely conservative. Squared distances only (no `sqrt`).
+ */
+export function ringBandIntersectsRect(
+  cxFt: number,
+  cyFt: number,
+  innerRadiusFt: number,
+  outerRadiusFt: number,
+  minXFt: number,
+  minYFt: number,
+  maxXFt: number,
+  maxYFt: number,
+): boolean {
+  // Nearest point of the rect to the centre (clamped), and its squared distance.
+  const nearestX = Math.min(Math.max(cxFt, minXFt), maxXFt);
+  const nearestY = Math.min(Math.max(cyFt, minYFt), maxYFt);
+  const nearDx = nearestX - cxFt;
+  const nearDy = nearestY - cyFt;
+  const minDistSq = nearDx * nearDx + nearDy * nearDy;
+
+  // Farthest point is always a corner: take the larger span on each axis.
+  const farDx = Math.max(Math.abs(minXFt - cxFt), Math.abs(maxXFt - cxFt));
+  const farDy = Math.max(Math.abs(minYFt - cyFt), Math.abs(maxYFt - cyFt));
+  const maxDistSq = farDx * farDx + farDy * farDy;
+
+  const innerSq = innerRadiusFt * innerRadiusFt;
+  const outerSq = outerRadiusFt * outerRadiusFt;
+  return minDistSq <= outerSq && maxDistSq >= innerSq;
+}
+
+/**
  * Enumerate tile indices that lie on a circular ring around `(cxFt, cyFt)`.
  * Returned in deterministic row-major order.
  *

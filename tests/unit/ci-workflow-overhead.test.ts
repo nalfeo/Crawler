@@ -77,7 +77,7 @@ describe('ci workflow overhead reduction', () => {
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
-      'Guard + review-ledger tests',
+      'Guard and agent-tooling tests',
       'Typecheck & Lint',
       'Human approval',
     ];
@@ -126,7 +126,7 @@ describe('ci workflow overhead reduction', () => {
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
-      'Guard + review-ledger tests',
+      'Guard and agent-tooling tests',
       'Typecheck & Lint',
       'Human approval',
     ];

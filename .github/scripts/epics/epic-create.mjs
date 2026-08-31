@@ -38,6 +38,11 @@
  *     issue's `closed`/`reopened` events, or via workflow_dispatch) only ever
  *     creates issues that do not already exist; it never edits or duplicates
  *     one that does.
+ *   - Every created issue is assigned to AND @-mentions the maintainer
+ *     (`ISSUE_OWNER`, default `nalfeo`), and the pull request that carried the
+ *     epic file gets one summary comment listing the issue numbers. The GitHub
+ *     mobile app has no repo-wide issue browser, so without those hooks a
+ *     freshly materialized epic is effectively unfindable from a phone.
  *
  * This is intentionally simpler than, and independent of, the bespoke
  * `docs/knowledge/epics/floor-2-equipment/epic-state.json` control plane
@@ -53,6 +58,7 @@ import { readFileSync } from 'node:fs';
 import { request, paginate } from '../ci-recovery/github.mjs';
 import {
   EPIC_NODE_MARKER_PREFIX,
+  epicIssuesCommentMarker,
   epicNodeMarker as nodeMarker,
   epicReviewMarker as reviewMarker,
 } from '../ci-recovery/markers.mjs';
@@ -61,6 +67,7 @@ export { nodeMarker, reviewMarker };
 
 export const EPIC_LABEL = 'epic';
 export const EPIC_REVIEW_LABEL = 'epic-review';
+export const DEFAULT_MAINTAINER_LOGIN = 'nalfeo';
 
 export function epicLabel(epicId) {
   return `epic:${epicId}`;
@@ -231,11 +238,30 @@ function reviewIssueTitle(epic) {
   return `${prefix} ${epic.title}`;
 }
 
-function buildReviewIssueBody(epic) {
+/**
+ * Every managed issue both assigns and @-mentions the maintainer.
+ *
+ * Assignment alone is not enough: the GitHub mobile app has no "all issues in
+ * this repo" browser, so an issue that is neither assigned to nor mentioning
+ * the maintainer is effectively invisible there. Assignment surfaces the issue
+ * in the mobile "Assigned to me" inbox; the mention is the fallback for when
+ * the REST API silently drops the assignee (it does that for any login without
+ * repo access) and additionally files the issue under "Mentions".
+ */
+function maintainerMentionLine(maintainerLogin, context) {
+  return `cc @${maintainerLogin} — ${context}`;
+}
+
+function buildReviewIssueBody(epic, maintainerLogin = DEFAULT_MAINTAINER_LOGIN) {
   const contentHash = epicContentHash(epic);
   const globalLabels = [EPIC_LABEL, epicLabel(epic.epic_id), ...(epic.labels || [])];
   const lines = [
     reviewMarker(epic.epic_id, contentHash),
+    '',
+    maintainerMentionLine(
+      maintainerLogin,
+      `this epic plan needs your review before any implementation issue is created.`,
+    ),
     '',
     `This issue gates the **${epic.title}** epic. No implementation-slice issue`,
     'will be created until this issue is closed (as **completed**, not "not',
@@ -283,7 +309,13 @@ function buildReviewIssueBody(epic) {
   return lines.join('\n');
 }
 
-function buildNodeIssueBody(epic, node, reviewIssueNumber, issueNumberByNodeId) {
+function buildNodeIssueBody(
+  epic,
+  node,
+  reviewIssueNumber,
+  issueNumberByNodeId,
+  maintainerLogin = DEFAULT_MAINTAINER_LOGIN,
+) {
   const blockedBy = [
     reviewIssueNumber,
     ...(node.depends_on || []).map((dep) => issueNumberByNodeId.get(dep)),
@@ -295,6 +327,7 @@ function buildNodeIssueBody(epic, node, reviewIssueNumber, issueNumberByNodeId) 
   // GitHub has no native "blocked by" relationship; this is human-readable
   // documentation of the dependency graph only, not an enforced gate.
   lines.push(`Blocked by ${blockedBy.map((n) => `#${n}`).join(', ')}`);
+  lines.push('', maintainerMentionLine(maintainerLogin, `slice of the \`${epic.epic_id}\` epic.`));
   return lines.join('\n');
 }
 
@@ -381,7 +414,15 @@ export async function ensureLabelsExist({ requestFn, paginateFn, token, owner, r
  * request/paginate functions, create whatever issues are safe to create on
  * this run and report the outcome. Never mutates existing issues.
  */
-export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, repo, epic }) {
+export async function planAndCreateEpic({
+  requestFn,
+  paginateFn,
+  token,
+  owner,
+  repo,
+  epic,
+  maintainerLogin = DEFAULT_MAINTAINER_LOGIN,
+}) {
   const errors = validateEpicFile(epic);
   if (errors.length > 0) {
     throw new Error(`invalid epic file:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
@@ -424,8 +465,9 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
       method: 'POST',
       body: {
         title: reviewIssueTitle(epic),
-        body: buildReviewIssueBody(epic),
+        body: buildReviewIssueBody(epic, maintainerLogin),
         labels: [...sharedLabels, EPIC_REVIEW_LABEL],
+        assignees: [maintainerLogin],
       },
     });
     reviewIssue = response.data;
@@ -525,8 +567,15 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
       method: 'POST',
       body: {
         title: node.title,
-        body: buildNodeIssueBody(epic, node, reviewIssue.number, issueNumberByNodeId),
+        body: buildNodeIssueBody(
+          epic,
+          node,
+          reviewIssue.number,
+          issueNumberByNodeId,
+          maintainerLogin,
+        ),
         labels: [...sharedLabels, ...(node.labels || [])],
+        assignees: [maintainerLogin],
       },
     });
     issueNumberByNodeId.set(node.id, response.data.number);
@@ -544,6 +593,136 @@ export async function planAndCreateEpic({ requestFn, paginateFn, token, owner, r
     reviewApproved: true,
     outcomes,
   };
+}
+
+/**
+ * Repo-relative, POSIX-separated form of an epic file path, so a path handed
+ * to this script as `./docs/...` or with Windows separators still matches what
+ * the GitHub commits API expects.
+ */
+function normalizeEpicPath(epicPath) {
+  return String(epicPath || '')
+    .replaceAll('\\', '/')
+    .replace(/^\.\//, '');
+}
+
+/**
+ * Resolve the pull request that introduced (or last changed) an epic file.
+ *
+ * Deliberately resolved from the FILE's own history rather than from
+ * `GITHUB_SHA`: this workflow also runs on `issues`, `schedule`, and
+ * `workflow_dispatch` events, where `GITHUB_SHA` is merely the current tip of
+ * `main` and has no relationship to the epic file being processed. Returns
+ * `null` when the file has no commit yet (e.g. an uncommitted local run) or
+ * when its latest commit was pushed straight to `main` without a PR.
+ */
+export async function findEpicPullRequestNumber({ requestFn, token, owner, repo, epicPath }) {
+  const path = normalizeEpicPath(epicPath);
+  if (!path) return null;
+  const commits = await requestFn(
+    token,
+    `/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1`,
+  );
+  const sha = (commits?.data || [])[0]?.sha;
+  if (!sha) return null;
+  const pulls = await requestFn(token, `/repos/${owner}/${repo}/commits/${sha}/pulls`);
+  const candidates = pulls?.data || [];
+  // GitHub can associate a commit SHA with several old/merged PRs (e.g. a
+  // cherry-pick or backport), so a merged association alone doesn't prove
+  // that PR is the one that actually carried this commit. Require the exact
+  // relationship the repo's other landed-PR resolver relies on: the PR's own
+  // merge commit must be this commit (see
+  // .github/scripts/merge-train/resolve-landed-pr.mjs:75-93).
+  const exact = candidates
+    .filter(
+      (pullRequest) =>
+        pullRequest?.merge_commit_sha === sha &&
+        typeof pullRequest?.merged_at === 'string' &&
+        Number.isInteger(pullRequest?.number),
+    )
+    .sort((left, right) => left.number - right.number)[0];
+  return exact?.number ?? null;
+}
+
+/**
+ * Every issue number this run knows about for the epic, review issue first,
+ * then node issues in dependency order — whether they were created on this run
+ * or already existed.
+ */
+function epicIssueNumbers(result) {
+  const numbers = (result?.outcomes || [])
+    .map((outcome) => outcome.issueNumber)
+    .filter((issueNumber) => Number.isInteger(issueNumber));
+  return Array.from(new Set(numbers));
+}
+
+export function buildEpicIssuesComment({
+  epic,
+  epicPath,
+  result,
+  maintainerLogin = DEFAULT_MAINTAINER_LOGIN,
+}) {
+  const issueNumbers = epicIssueNumbers(result);
+  const lines = [
+    epicIssuesCommentMarker(epic.epic_id, epicContentHash(epic), issueNumbers),
+    '',
+    `**Epic \`${epic.epic_id}\` processed** from \`${normalizeEpicPath(epicPath)}\`.`,
+    '',
+    `- Review issue: #${result.reviewIssueNumber}`,
+  ];
+  const nodeOutcomes = (result.outcomes || []).filter((outcome) => outcome.kind === 'node');
+  if (nodeOutcomes.length > 0) {
+    for (const outcome of nodeOutcomes) {
+      lines.push(`- \`${outcome.nodeId}\`: #${outcome.issueNumber}`);
+    }
+  } else {
+    lines.push(
+      '- Slice issues: _not created yet_ — they materialize once the review issue is closed as **completed**.',
+    );
+  }
+  lines.push('', maintainerMentionLine(maintainerLogin, 'issues created for this epic file.'));
+  return lines.join('\n');
+}
+
+/**
+ * Post a single summary comment listing this epic's issue numbers on the pull
+ * request that carried the epic file, so the issues are reachable from the PR
+ * (the GitHub mobile app has no repo-wide issue browser).
+ *
+ * Idempotent: the marker embeds the epic id, the plan content hash, AND the
+ * exact issue-number set, so the review-only phase and the later
+ * materialized-nodes phase each post exactly once while repeated hourly runs
+ * that observe the same set post nothing.
+ */
+export async function commentEpicIssuesOnPullRequest({
+  requestFn,
+  paginateFn,
+  token,
+  owner,
+  repo,
+  epic,
+  epicPath,
+  result,
+  maintainerLogin = DEFAULT_MAINTAINER_LOGIN,
+}) {
+  const issueNumbers = epicIssueNumbers(result);
+  if (issueNumbers.length === 0) {
+    return { posted: false, reason: 'no issues to report' };
+  }
+  const pullNumber = await findEpicPullRequestNumber({ requestFn, token, owner, repo, epicPath });
+  if (!pullNumber) {
+    return { posted: false, reason: 'no pull request found for this epic file' };
+  }
+  const marker = epicIssuesCommentMarker(epic.epic_id, epicContentHash(epic), issueNumbers);
+  const comments = await paginateFn(token, `/repos/${owner}/${repo}/issues/${pullNumber}/comments`);
+  if (comments.some((comment) => String(comment?.body || '').includes(marker))) {
+    return { posted: false, pullNumber, reason: 'summary comment already present' };
+  }
+  await requestFn(token, `/repos/${owner}/${repo}/issues/${pullNumber}/comments`, {
+    method: 'POST',
+    body: { body: buildEpicIssuesComment({ epic, epicPath, result, maintainerLogin }) },
+  });
+  return { posted: true, pullNumber, issueNumbers };
 }
 
 /**
@@ -585,6 +764,8 @@ async function main() {
 
   assertUniqueEpicIds(epics);
 
+  const maintainerLogin = process.env.ISSUE_OWNER || DEFAULT_MAINTAINER_LOGIN;
+
   let hadFailure = false;
   for (const { path, epic } of epics) {
     try {
@@ -595,6 +776,7 @@ async function main() {
         owner,
         repo,
         epic,
+        maintainerLogin,
       });
       process.stdout.write(`${path}:\n${JSON.stringify(result, null, 2)}\n`);
       if (result.reviewRejected) {
@@ -606,6 +788,22 @@ async function main() {
           `epic-create: waiting on human review issue #${result.reviewIssueNumber} to be closed (as completed) before creating node issues.\n`,
         );
       }
+      const comment = await commentEpicIssuesOnPullRequest({
+        requestFn: request,
+        paginateFn: paginate,
+        token,
+        owner,
+        repo,
+        epic,
+        epicPath: path,
+        result,
+        maintainerLogin,
+      });
+      process.stdout.write(
+        comment.posted
+          ? `epic-create: listed issues ${comment.issueNumbers.map((n) => `#${n}`).join(', ')} on PR #${comment.pullNumber}.\n`
+          : `epic-create: no PR comment posted (${comment.reason}).\n`,
+      );
     } catch (error) {
       hadFailure = true;
       process.stderr.write(

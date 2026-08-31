@@ -19,6 +19,8 @@ import {
   mergeTrainGitEnvironment,
   parseStalledQueuePasses,
   parseUnadvanceableStrike,
+  reconcileUnadvanceableStrike,
+  unadvanceableStrikePersisted,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   queuePositionAfterRecovery,
@@ -32,7 +34,13 @@ import {
   UNADVANCEABLE_ATTEMPT_CEILING,
   UNADVANCEABLE_STRIKE_THRESHOLD,
 } from './reconcile-lib.mjs';
-import { planAttributedPrefixPromotion, planPrefixPromotion } from './state.mjs';
+import {
+  candidateEvidenceId,
+  CANDIDATE_CHECK_NAME,
+  planAttributedPrefixPromotion,
+  planPrefixPromotion,
+  trainCheckState,
+} from './state.mjs';
 
 const baseSha = 'a'.repeat(40);
 const candidateSha = 'b'.repeat(40);
@@ -1836,6 +1844,115 @@ test('quarantine uses the sticky BLOCKED_LABEL and removes the queue label', () 
   );
 });
 
+test('a stale read cannot rewind a same-sha strike record backwards', () => {
+  // The regression: overlapping merge-train runs share one status comment and
+  // updateStatus is a blind PATCH, so a run holding a stale read wrote strike 1
+  // back over a persisted strike 2 -- pinning the counter at 1/3 forever and
+  // starving the whole FIFO queue behind an unquarantinable head.
+  const sha = 'a'.repeat(40);
+  const stale = evaluateUnadvanceableStrike({
+    headSha: sha,
+    recordedSha: '',
+    recordedStrikes: 0,
+    recordedAttempts: 0,
+  });
+  assert.equal(stale.strikes, 1, 'a stale read evaluates as a first strike');
+
+  const merged = reconcileUnadvanceableStrike(stale, {
+    recordedSha: sha,
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  assert.equal(merged.strikes, 2, 'the persisted strike must win over the stale evaluation');
+  assert.equal(merged.attempts, 2);
+});
+
+test('a new head sha still resets strikes so an out-of-band rebase is not penalized', () => {
+  const strike = evaluateUnadvanceableStrike({
+    headSha: 'b'.repeat(40),
+    recordedSha: 'a'.repeat(40),
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  const merged = reconcileUnadvanceableStrike(strike, {
+    recordedSha: 'a'.repeat(40),
+    recordedStrikes: 2,
+    recordedAttempts: 2,
+  });
+  assert.equal(merged.strikes, 1, 'a different head sha must not inherit the old strike count');
+  assert.equal(merged.attempts, strike.attempts, 'cumulative attempts still carry across shas');
+});
+
+test('strike writes are only confirmed when the record reads back at or above what was written', () => {
+  const sha = 'c'.repeat(40);
+  const strike = { headSha: sha, strikes: 2, attempts: 2, quarantine: false };
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: sha,
+      recordedStrikes: 2,
+      recordedAttempts: 2,
+    }),
+    true,
+  );
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: sha,
+      recordedStrikes: 1,
+      recordedAttempts: 1,
+    }),
+    false,
+    'a racing writer that clobbered the record back down must force a retry',
+  );
+  assert.equal(
+    unadvanceableStrikePersisted(strike, {
+      recordedSha: 'd'.repeat(40),
+      recordedStrikes: 9,
+      recordedAttempts: 9,
+    }),
+    false,
+    'a record for a different head sha is not confirmation of our write',
+  );
+});
+
+test('the restricted-branch 403 handler persists strikes through the confirming writer', () => {
+  const handler = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('if (strike.quarantine)'),
+    RECONCILE_SOURCE.indexOf('} else if (err.status === 422)'),
+  );
+  assert.doesNotMatch(
+    handler,
+    /await updateStatus\(/,
+    'the 403 path must never blind-write the status comment: updateStatus has no read-back, so ' +
+      'an overlapping merge-train run rewinds the strike counter and quarantine can never fire',
+  );
+  assert.equal(
+    (handler.match(/await updateUnadvanceableStatus\(/g) || []).length,
+    2,
+    'both the quarantine and the still-waiting branch must persist through the confirming writer',
+  );
+  const writer = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function updateUnadvanceableStatus('),
+  );
+  const body = writer.slice(0, writer.indexOf('\nasync function eligible('));
+  assert.doesNotMatch(
+    body,
+    /throw new Error/,
+    'the writer runs inside the queued-PR loop; an escaping throw would abandon every remaining ' +
+      'queued PR, which is a worse failure than one extra pass before quarantine',
+  );
+  assert.match(
+    body,
+    /for\s*\([^)]*UNADVANCEABLE_STATUS_WRITE_ATTEMPTS[^)]*\)\s*\{\s*try\s*\{/,
+    'every persistence attempt must be wrapped in a local try/catch so API failures cannot escape ' +
+      'the queued-PR loop',
+  );
+  assert.match(
+    body,
+    /catch \(error\) \{\s*process\.stderr\.write\(\s*`merge-train strike persist attempt failed/,
+    'attempt-local failures must be logged and retried instead of aborting reconcile',
+  );
+});
+
 test('STALLED_TRAIN_TRACKING_LABEL is provisioned by the startup ensureLabel sequence', () => {
   const ensureLabelCalls = RECONCILE_SOURCE.slice(
     RECONCILE_SOURCE.indexOf('await ensureLabel(QUEUE_LABEL'),
@@ -1985,4 +2102,155 @@ test('the stalled-train record always carries the tracking label', () => {
     'an unlabeled record cannot be found again, so it must never be created without a label',
   );
   assert.match(upsert, /\[STALLED_TRAIN_TRACKING_LABEL\]/);
+});
+
+test('candidate validation dispatch payload always carries the fingerprint idempotency key', async () => {
+  const calls = [];
+  const request = async (token, endpoint, options) => {
+    calls.push({ token, endpoint, options });
+    return { data: {} };
+  };
+
+  await dispatchValidationWorkflow({
+    request,
+    token: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    sha: candidateSha,
+    refName: 'refs/merge-train-candidates/candidate-7',
+    attestationSha: baseSha,
+    fingerprint: 'gen-7',
+    entries: [makePr({ number: 42 }), makePr({ number: 43 })],
+  });
+
+  assert.equal(
+    calls.length,
+    1,
+    'dispatchValidationWorkflow should issue exactly one dispatch request',
+  );
+  assert.equal(calls[0].options.method, 'POST');
+  assert.deepEqual(calls[0].options.body.inputs, {
+    candidate_sha: candidateSha,
+    candidate_ref: 'refs/merge-train-candidates/candidate-7',
+    attestation_sha: baseSha,
+    fingerprint: 'gen-7',
+    pr_numbers: '42,43',
+  });
+});
+
+test('re-reconciling the same candidate fingerprint dispatches validation at most once', async () => {
+  // Models two full reconciliation passes over the same unresolved candidate
+  // (same mainSha, same queued entries -> same fingerprint/evidenceId), which
+  // is exactly the scenario reconcile.mjs's dispatchValidation() guards
+  // against: it posts an `in_progress` check run (external_id = evidenceId)
+  // *before* calling dispatchValidationWorkflow, so trainCheckState() reports
+  // 'pending' (not 'missing') on the next reconciliation and
+  // planPrefixPromotion returns 'wait' instead of 'validate' again.
+  const fingerprint = 'f'.repeat(64);
+  const evidenceId = candidateEvidenceId(fingerprint, candidateSha);
+  const trustedAppId = 123;
+  let postedCheckRun = null;
+
+  const dispatchCalls = [];
+  const request = async (token, endpoint, options) => {
+    dispatchCalls.push({ token, endpoint, options });
+    return { data: {} };
+  };
+
+  async function reconciliationAttempt() {
+    const now = new Date('2026-01-01T00:05:00.000Z');
+    const checkRuns = postedCheckRun ? [postedCheckRun] : [];
+    const state = trainCheckState(checkRuns, evidenceId, trustedAppId, now);
+    const plan = planPrefixPromotion([state]);
+    if (plan.action !== 'validate') return plan.action;
+
+    // Mirrors reconcile.mjs's dispatchValidation(): create the authoritative
+    // check-run record first, then dispatch.
+    postedCheckRun = {
+      name: CANDIDATE_CHECK_NAME,
+      external_id: evidenceId,
+      status: 'in_progress',
+      started_at: '2026-01-01T00:00:00.000Z',
+      app: { id: trustedAppId },
+    };
+    await dispatchValidationWorkflow({
+      request,
+      token: 'actions-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      sha: candidateSha,
+      refName: 'refs/merge-train-candidates/candidate-7',
+      attestationSha: baseSha,
+      fingerprint,
+      entries: [makePr({ number: 42 })],
+    });
+    return plan.action;
+  }
+
+  const firstAction = await reconciliationAttempt();
+  const secondAction = await reconciliationAttempt();
+
+  assert.equal(firstAction, 'validate', 'first reconciliation must dispatch a missing candidate');
+  assert.equal(
+    secondAction,
+    'wait',
+    'second reconciliation must see the pending check run and wait rather than re-validate',
+  );
+  assert.equal(
+    dispatchCalls.length,
+    1,
+    'the same candidate fingerprint must not be dispatched for validation twice',
+  );
+});
+
+test('reconcile.mjs dispatchValidation() actually posts the in_progress check run before dispatching', () => {
+  // The test above models the invariant via the real state.mjs primitives
+  // (trainCheckState/planPrefixPromotion/candidateEvidenceId), but reconcile.mjs
+  // is a top-level script with side effects and cannot be imported directly, so
+  // that model reproduces createTrainCheck-before-dispatch by hand. This
+  // companion assertion pins the *real* dispatchValidation() source to that
+  // exact ordering, so the modeled test cannot silently drift from production
+  // if someone reorders or removes the createTrainCheck call.
+  const fn = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf('async function dispatchValidation('),
+    RECONCILE_SOURCE.indexOf(
+      '\n}\n',
+      RECONCILE_SOURCE.indexOf('async function dispatchValidation('),
+    ),
+  );
+  const createIndex = fn.indexOf('createTrainCheck(');
+  const dispatchIndex = fn.indexOf('baseDispatchValidation(');
+  assert.ok(createIndex >= 0, 'dispatchValidation must post a check run');
+  assert.ok(dispatchIndex >= 0, 'dispatchValidation must call the base dispatch');
+  assert.ok(
+    createIndex < dispatchIndex,
+    'createTrainCheck (the idempotency record) must be written before the validation dispatch fires',
+  );
+  assert.match(
+    fn.slice(createIndex, createIndex + 120),
+    /createTrainCheck\(\s*mainSha,\s*evidenceId,\s*'in_progress'/,
+    'the pre-dispatch check run must be keyed by the candidate evidenceId and marked in_progress',
+  );
+});
+
+test('clean-behind update-branch recovery keeps FIFO and only yields when rebinding cannot advance', () => {
+  const region = RECONCILE_SOURCE.slice(
+    RECONCILE_SOURCE.indexOf("if (livePr.mergeable_state === 'behind')"),
+    RECONCILE_SOURCE.indexOf('if (!yieldFifoLine) break;') + 'if (!yieldFifoLine) break;'.length,
+  );
+  assert.match(
+    region,
+    /`\/repos\/\$\{owner\}\/\$\{repo\}\/pulls\/\$\{pr\.number\}\/update-branch`/,
+    'behind PRs must attempt atomic update-branch rebinding before admission',
+  );
+  assert.match(
+    region,
+    /if \(!yieldFifoLine\) break;/,
+    'FIFO should hold only while rebinding is making progress',
+  );
+  assert.match(
+    region,
+    /yieldFifoLine = true/,
+    'non-advancing update-branch outcomes must yield the FIFO line to avoid queue starvation',
+  );
 });

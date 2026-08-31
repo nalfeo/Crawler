@@ -55,7 +55,7 @@ describe('AI playthrough level-up UX wiring', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
     expect(source).toContain('autoLevelUpAllocator: (world: GameWorld');
     expect(source).toContain(
-      'computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas)',
+      'computeAiStatAllocation(world, playerEid, available, featureFlags.weaponPersonas)',
     );
     expect(source).toContain('autoFloor2ProgressionSystem(world, playerEid);');
     expect(source).toContain(

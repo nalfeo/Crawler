@@ -1,3 +1,5 @@
+import { hashStringToSeed } from './random.js';
+
 /**
  * The scenario → presentation contract.
  *
@@ -66,6 +68,28 @@ export interface ScenarioStairConfirmationCopy {
 }
 
 /**
+ * Copy for the starter-loadout picker the presentation layer opens while the
+ * run is paused in `'loadout'` and the scenario offers `starterChoices`.
+ *
+ * Exists so the picker carries no floor identity: the "Floor 1 is paused until
+ * you confirm a starter weapon" line used to be a literal in the renderer, which
+ * would have narrated the wrong floor for any other scenario reusing the same
+ * generic picker.
+ */
+export interface ScenarioStarterLoadoutCopy {
+  readonly title: string;
+  /**
+   * Sentence appended after the protagonist name in the subtitle, e.g.
+   * `'Floor 1 is paused until you confirm a starter weapon.'`
+   */
+  readonly pausedNotice: string;
+  /** Line shown under the scenario's base-stat bonus summary. */
+  readonly prompt: string;
+  /** Prefix for an option's description, e.g. `'Starter weapon'`. */
+  readonly optionDescriptionPrefix: string;
+}
+
+/**
  * One ordered Director-commentary beat, shown strictly between `intro` and
  * `victory`/`timeout`. `id` is the stable identifier the presenting layer
  * latches "already shown" against — ids must never be reordered or reused for
@@ -79,6 +103,15 @@ export interface ScenarioDirectorMilestone<TWorld> {
 
 export interface ScenarioDirectorContract<TWorld> {
   readonly intro: string;
+  /**
+   * Optional authored intro pool. When present, the presenter chooses one
+   * deterministic variant per run seed/floor to increase replay variety.
+   *
+   * Authoring contract: each variant should explain the floor concept and
+   * explicitly state the first objective (the current authored set uses a
+   * `First objective:` sentence for that cue).
+   */
+  readonly introVariants?: readonly string[];
   readonly victory: string;
   readonly timeout?: string;
   /**
@@ -132,6 +165,12 @@ export interface ScenarioPresentationContract<TWorld> {
   readonly getStairMarkerState?: (world: TWorld) => ScenarioStairMarkerState | null;
   /** Copy for the stair-descend confirmation prompt. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /**
+   * Copy for the starter-loadout picker. Absent for scenarios that present
+   * their own loadout surface or offer no starter choice, in which case the
+   * generic picker stays closed.
+   */
+  readonly starterLoadout?: ScenarioStarterLoadoutCopy;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }
@@ -160,4 +199,23 @@ export function selectScenarioCompletionVariant(
     return 'transition_to_next_floor';
   }
   return scenario.isTerminalRunVictory === true ? 'terminal_victory' : 'terminal_complete';
+}
+
+/**
+ * Deterministically choose one authored Director intro variant for a run.
+ *
+ * Selection is stable for a `(seed, floorId)` pair and never consumes a shared
+ * RNG stream. Falls back to `director.intro` when no variants are authored.
+ */
+export function selectScenarioDirectorIntro<TWorld>(
+  director: ScenarioDirectorContract<TWorld>,
+  seed: number,
+  floorId: string,
+): string {
+  const variants = director.introVariants;
+  if (!variants || variants.length === 0) {
+    return director.intro;
+  }
+  const h = hashStringToSeed(`${seed}:${floorId}:scenario-director-intro`) >>> 0;
+  return variants[h % variants.length] ?? director.intro;
 }

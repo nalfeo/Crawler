@@ -155,7 +155,7 @@ fi
 # Extensions load once at session start and are NOT reloaded by git pull/rebase.
 # If main was synced above (or will be synced later), run `extensions_reload`
 # to pick up any guards that merged since this session launched.
-# Near-empty guard telemetry (only pr-preflight/pr-review-ledger events) is the
+# Near-empty guard telemetry (only pr-preflight events) is the
 # fingerprint of a stale load — see AGENTS.md "Known Environment Quirks".
 printf '🔄 Guard reminder: run `extensions_reload` after every sync onto main to activate any newly-merged guards.\n'
 

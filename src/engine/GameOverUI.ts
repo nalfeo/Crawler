@@ -8,6 +8,7 @@
  */
 import Phaser from 'phaser';
 import { createModalPickerUI } from './ModalPickerUI.js';
+import type { ModalPickerConfig } from '../shared/modal-picker.js';
 
 export type GameOverOption = 'restart' | 'quit';
 
@@ -20,7 +21,7 @@ export function createGameOverUI(
   scene: Phaser.Scene,
   hooks: GameOverUIHooks,
 ): {
-  show(): void;
+  show(config?: ModalPickerConfig): void;
   hide(): void;
   isVisible(): boolean;
   destroy(): void;
@@ -30,13 +31,13 @@ export function createGameOverUI(
   let visible = false;
 
   return {
-    show(): void {
+    show(config?: ModalPickerConfig): void {
       if (visible) {
         return;
       }
       visible = true;
       picker.open(
-        {
+        config ?? {
           title: 'Game Over',
           subtitle: 'You have been slain.',
           options: [

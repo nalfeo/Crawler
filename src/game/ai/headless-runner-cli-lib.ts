@@ -11,6 +11,7 @@ import { ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { DEFAULT_CONFIG } from './bt-ai-tuning.js';
 import { FLOOR_AGNOSTIC_DEFAULT_MAX_FRAMES } from './floor-run-budget.js';
 import { PLAYER_PERSONAS } from './personas.js';
+import type { AiFeatureFlags } from './feature-flags.js';
 
 export interface CLIArgs {
   seed: number;
@@ -29,26 +30,30 @@ export interface CLIArgs {
   eventSummary: string | null;
   sampleInterval: number;
   weapon: string | null;
+  forceAbilityIds: string[];
   enemyDamageMultiplier: number;
   enemyTelegraphMs: number;
   floorId: string;
   startPlayerLevel: number;
   weaponTelemetry: boolean;
-  weaponPersonas: boolean;
+  /** Explicit override; omitted inherits the canonical feature-flag registry default. */
+  weaponPersonas: boolean | undefined;
   pathingMode: AIPathingModeValue;
   decisionMode: AIDecisionModeValue;
-  /** Single shared flag for both optional AI purchases (merchant weapon + Spell Broker). Default true. */
-  optionalPurchases: boolean;
-  settlementReturnRouting: boolean;
+  /**
+   * Single shared flag for both optional AI purchases (merchant weapon + Spell
+   * Broker). Explicit override; omitted inherits the registry default.
+   */
+  optionalPurchases: boolean | undefined;
+  /** Explicit routing override; omitted inherits the selected floor's default. */
+  settlementReturnRouting: boolean | undefined;
   persona: PlayerPersona;
 }
 
 const PATHING_MODE_VALUES = Object.values(AIPathingMode) as AIPathingModeValue[];
 const DECISION_MODE_VALUES = Object.values(AIDecisionMode) as AIDecisionModeValue[];
 
-export function defaultCLIArgs(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): CLIArgs {
+function defaultCLIArgs(env: Readonly<Record<string, string | undefined>> = process.env): CLIArgs {
   const optionalPurchasesEnv = env.AI_OPTIONAL_PURCHASES ?? env.AI_MERCHANT_WEAPON_PURCHASE;
   return {
     seed: 12345,
@@ -62,25 +67,32 @@ export function defaultCLIArgs(
     eventSummary: null,
     sampleInterval: 15,
     weapon: null,
+    forceAbilityIds: [],
     enemyDamageMultiplier: 1,
     enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
-    weaponPersonas: true,
+    // `undefined` (not `true`): absent CLI overrides must fall through to the
+    // canonical registry defaults in `feature-flags.ts` instead of pinning a
+    // duplicate default here.
+    weaponPersonas: undefined,
     // Kept in sync with the game-runtime DEFAULT_CONFIG (bt-ai-tuning.ts) so the
     // manual `npm run ai:headless` CLI matches production unless a caller
     // explicitly passes --pathing-mode/--decision-mode.
     pathingMode: DEFAULT_CONFIG.pathingMode,
     decisionMode: DEFAULT_CONFIG.decisionMode,
-    // Legacy env var still honoured so existing scripts keep working.
+    // Legacy env var still honoured so existing scripts keep working; absent
+    // means "no override" so the registry default applies.
     optionalPurchases:
-      optionalPurchasesEnv === undefined ||
-      optionalPurchasesEnv === '1' ||
-      optionalPurchasesEnv.toLowerCase() === 'true',
+      optionalPurchasesEnv === undefined
+        ? undefined
+        : optionalPurchasesEnv === '1' || optionalPurchasesEnv.toLowerCase() === 'true',
     settlementReturnRouting:
-      env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
-      env.AI_SETTLEMENT_RETURN_ROUTING?.toLowerCase() === 'true',
+      env.AI_SETTLEMENT_RETURN_ROUTING === undefined
+        ? undefined
+        : env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
+          env.AI_SETTLEMENT_RETURN_ROUTING.toLowerCase() === 'true',
     persona: 'experienced_player',
   };
 }
@@ -133,6 +145,14 @@ export function parseArgs(
     } else if (arg === '--weapon' && next) {
       args.weapon = next;
       i++;
+    } else if (arg === '--force-ability') {
+      if (next === undefined || next.trim() === '' || next.startsWith('--')) {
+        throw new Error('--force-ability requires a non-blank ability id');
+      }
+      if (!args.forceAbilityIds.includes(next)) {
+        args.forceAbilityIds.push(next);
+      }
+      i++;
     } else if (arg === '--enemy-damage-multiplier' && next) {
       const parsed = Number.parseFloat(next);
       if (!Number.isFinite(parsed)) {
@@ -181,6 +201,8 @@ export function parseArgs(
       args.optionalPurchases = true;
     } else if (arg === '--settlement-return-routing') {
       args.settlementReturnRouting = true;
+    } else if (arg === '--no-settlement-return-routing') {
+      args.settlementReturnRouting = false;
     } else if (arg === '--persona') {
       // Handle unconditionally (no `&& next` guard) so a trailing `--persona`
       // fails fast instead of silently running as `experienced_player` and
@@ -221,6 +243,26 @@ export function parseArgs(
   return args;
 }
 
+/**
+ * Collect the CLI's explicit feature-flag overrides. Flags the caller did not
+ * set are omitted entirely (never passed as `undefined`) so the canonical
+ * registry defaults in `feature-flags.ts` own the effective values.
+ */
+export function resolveHeadlessRunnerOptions(
+  args: Pick<
+    CLIArgs,
+    'floorId' | 'settlementReturnRouting' | 'weaponPersonas' | 'optionalPurchases'
+  >,
+): Partial<AiFeatureFlags> {
+  const settlementReturnRouting =
+    args.settlementReturnRouting ?? (args.floorId === 'floor2' ? true : undefined);
+  return {
+    ...(args.weaponPersonas === undefined ? {} : { weaponPersonas: args.weaponPersonas }),
+    ...(args.optionalPurchases === undefined ? {} : { optionalPurchases: args.optionalPurchases }),
+    ...(settlementReturnRouting === undefined ? {} : { settlementReturnRouting }),
+  };
+}
+
 export function helpText(): string {
   const defaultPathingMode = DEFAULT_CONFIG.pathingMode;
   return `
@@ -236,6 +278,7 @@ Options:
   --progress <number>     Report progress every N frames (default: 3600)
   --aggression <number>   AI aggression override 0-2 (default: the --persona value)
   --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
+  --force-ability <id>    Grant an ability before frame 0 (repeatable; first-seen order)
   --event-log <path>      Write per-frame telemetry as JSONL to <path>
   --event-summary <path>  Write wasted-time summary JSON to <path>
   --sample-interval <n>   Frames between telemetry samples (default: 15)
@@ -259,7 +302,10 @@ Options:
                            Enable optional latched AI settlement-return route goal
                            (deterministic expected-gain-vs-travel/risk/opportunity
                            utility; periodically returns to settlement to run the
-                           maintenance planner — equip/shop/claim/abilities)
+                           maintenance planner — equip/shop/claim/abilities;
+                           enabled by default for --floor floor2)
+  --no-settlement-return-routing
+                           Disable optional settlement-return route goal
   --pathing-mode <mode>   AI pathing A/B axis: ${PATHING_MODE_VALUES.join(', ')} (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: ${DECISION_MODE_VALUES.join(', ')} (default: ${AIDecisionMode.LEGACY})
   --persona <name>         Evaluator persona (default: experienced_player)

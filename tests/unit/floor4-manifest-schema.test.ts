@@ -47,6 +47,119 @@ describe('floor4 manifest schema cross-field geometry rules', () => {
   });
 });
 
+describe('floor4 manifest schema Green Room shop rules', () => {
+  it('accepts the authored Green Room shop config', () => {
+    expect(floorManifestDefSchema.safeParse(cloneFloor4Manifest()).success).toBe(true);
+  });
+
+  it('rejects duplicate sponsor-table identities', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.tables[1]!.id = bad.floor4.greenRoom.tables[0]!.id;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects fewer than two or more than three tables', () => {
+    const tooFew = cloneFloor4Manifest();
+    tooFew.floor4.greenRoom.tables = tooFew.floor4.greenRoom.tables.slice(0, 1);
+    expect(floorManifestDefSchema.safeParse(tooFew).success).toBe(false);
+
+    const tooMany = cloneFloor4Manifest();
+    const tables = tooMany.floor4.greenRoom.tables;
+    tooMany.floor4.greenRoom.tables = [
+      ...tables,
+      { id: 'extra-a', archetypeId: tables[0]!.archetypeId },
+    ];
+    expect(floorManifestDefSchema.safeParse(tooMany).success).toBe(false);
+  });
+
+  it('rejects a price tier curve that does not cover every act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.priceTierByVisit = bad.floor4.greenRoom.priceTierByVisit.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an affordability budget curve that does not cover every act', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.affordabilityBudgetByVisit =
+      bad.floor4.greenRoom.affordabilityBudgetByVisit.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an affordability budget that drifts from the Headliner appearance fee', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.greenRoom.affordabilityBudgetByVisit[0] =
+      bad.floor4.headliners.slots[0]!.appearanceFeeGold + 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('floor4 manifest schema economy rules', () => {
+  it('rejects an income-budget act list that is incomplete', () => {
+    const bad = cloneFloor4Manifest();
+    bad.floor4.economy.actIncomeBudgetGold = bad.floor4.economy.actIncomeBudgetGold.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an income-budget act list that is reordered', () => {
+    const bad = cloneFloor4Manifest();
+    const [first, second] = bad.floor4.economy.actIncomeBudgetGold;
+    if (!first || !second) {
+      throw new Error('expected authored income budget entries');
+    }
+    bad.floor4.economy.actIncomeBudgetGold[0] = second;
+    bad.floor4.economy.actIncomeBudgetGold[1] = first;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an inverted act income budget range', () => {
+    const bad = cloneFloor4Manifest();
+    const budget = bad.floor4.economy.actIncomeBudgetGold[0];
+    if (!budget) {
+      throw new Error('expected authored income budget entries');
+    }
+    budget.minWaveGold = budget.maxWaveGold + 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a visit-price band list that is incomplete or reordered', () => {
+    const incomplete = cloneFloor4Manifest();
+    incomplete.floor4.economy.visitPriceBandGold =
+      incomplete.floor4.economy.visitPriceBandGold.slice(0, -1);
+    expect(floorManifestDefSchema.safeParse(incomplete).success).toBe(false);
+
+    const reordered = cloneFloor4Manifest();
+    const [first, second] = reordered.floor4.economy.visitPriceBandGold;
+    if (!first || !second) {
+      throw new Error('expected authored visit price band entries');
+    }
+    reordered.floor4.economy.visitPriceBandGold[0] = second;
+    reordered.floor4.economy.visitPriceBandGold[1] = first;
+    expect(floorManifestDefSchema.safeParse(reordered).success).toBe(false);
+  });
+
+  it('rejects an inverted visit price band range', () => {
+    const bad = cloneFloor4Manifest();
+    const band = bad.floor4.economy.visitPriceBandGold[0];
+    if (!band) {
+      throw new Error('expected authored visit price band entries');
+    }
+    band.minGold = band.maxGold + 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a visit price band whose minimum exceeds the affordability budget', () => {
+    const bad = cloneFloor4Manifest();
+    const budget = bad.floor4.greenRoom.affordabilityBudgetByVisit[0];
+    const band = bad.floor4.economy.visitPriceBandGold[0];
+    if (budget === undefined || !band) {
+      throw new Error('expected authored visit budget and price band entries');
+    }
+    band.minGold = budget + 1;
+    band.maxGold = Math.max(band.maxGold, band.minGold);
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
 describe('floor4 manifest schema wave rules', () => {
   it('rejects a wave pack that is not registered', () => {
     const bad = cloneFloor4Manifest();

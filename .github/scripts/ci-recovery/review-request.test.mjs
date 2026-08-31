@@ -155,6 +155,16 @@ test('does not request review while another policy is blocking the PR', () => {
   );
 });
 
+test('a non-review-thread policy blocker prevents requesting review evidence', () => {
+  assert.equal(
+    decision({
+      blockers: [{ kind: 'missing-handoff' }],
+      comments: [requestComment(HEADS[0], 'ready')],
+    }),
+    null,
+  );
+});
+
 test('allows one conflict review outside an exhausted normal budget', () => {
   const conflict = conflictComment(HEADS[2], BASES[0]);
   const episode = conflictEpisodeId({ headSha: HEADS[2], baseSha: BASES[0] });

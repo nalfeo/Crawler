@@ -57,6 +57,9 @@ import {
   DroppedItem,
   Owner,
   Team,
+  SiegeHero,
+  SiegeMinion,
+  SiegeStructure,
   Lifetime,
   AreaDamage,
   AoeOnImpact,
@@ -101,6 +104,7 @@ import type {
   Floor3StudiosState,
   Floor3PoachOffer,
   Floor4ArenaState,
+  Floor4GreenRoomState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -123,6 +127,7 @@ import {
 } from '../shared/achievements.js';
 import type { ResolvedRewardPresentation } from '../shared/reward-presentation.js';
 import type { Affinity } from '../shared/data/floor3/affinity.js';
+import type { Floor5SiegeState } from '../shared/floor-types.js';
 
 const logger = createLogger('core:world');
 
@@ -143,6 +148,8 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /** ECS entity id of Floor 3's Professor-like onboarding host NPC. */
+  floor3CompanionProfessorNpcEid?: number;
   /**
    * Pending Floor 3 starter-Companion offer (spec R5 §6.1): the seeded 4
    * `speciesId`s presented while `world.state === 'loadout'` at floor start.
@@ -159,6 +166,10 @@ export interface FloorExtendedState {
   floor3PoachOffer?: Floor3PoachOffer;
   /** Floor 4 arena clock + phase-machine state. */
   floor4Arena?: Floor4ArenaState;
+  /** Floor 4 Green Room shop lifecycle (per-visit stock roll + retirement). */
+  floor4GreenRoom?: Floor4GreenRoomState;
+  /** Floor 5 siege phase/latch skeleton state. */
+  floor5Siege?: Floor5SiegeState;
 }
 
 /**
@@ -800,7 +811,11 @@ export interface GameWorld {
   questEvents: QuestEvent[];
   /** Progressively-unlocked UI features. Latched true; never reset to false mid-run. */
   featureUnlocks: {
-    /** Inventory panel becomes usable once unlocked (Floor 1: on key-item pickup). */
+    /**
+     * Inventory panel becomes usable once unlocked. Ungated floors unlock on
+     * key-item pickup; floors with `merchantQuestGatesInventory` unlock on the
+     * configured quest completion.
+     */
     inventory: boolean;
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
@@ -942,6 +957,36 @@ export interface GameWorld {
     /** Enables AI settlement-maintenance behavior. Requires all other flags. */
     floor2EquipmentAiMaintenance: boolean;
   };
+  /**
+   * Attack waves feature flags. Defaults to `false`.
+   * Controls periodic rat pack spawning with safe-room suppression.
+   */
+  attackWaveFlags: {
+    /** Enables periodic rat attack waves. Default false. */
+    attackWaves: boolean;
+  };
+  /**
+   * Attack wave system runtime state.
+   * Tracks wave timing, safe-room distance field cache, and spawned rat count.
+   */
+  attackWaveState?: {
+    /** Next wave spawn time (ms) */
+    nextWaveAtMs: number;
+    /** Cached flow field for safe-room pathable distance (invalidated on map/clearedSafeRoomIds change) */
+    safeRoomDistanceField?: Int32Array | null;
+    /** Floor map that the safeRoomDistanceField was computed against (for invalidation) */
+    safeRoomDistanceFieldMap?: FloorMap | null;
+    /** Cleared-room ownership map used to build the cached distance field. */
+    safeRoomDistanceFieldClearedMap?: FloorMap | null;
+    /** Count of alive rats spawned by attack waves */
+    aliveWaveRatCount: number;
+    /** Snapshot of cleared safe room IDs for cache invalidation */
+    clearedSafeRoomIdsSnapshot?: string;
+    /** Snapshot of door-navigation blocker state for cache invalidation */
+    safeRoomDoorSnapshot?: string;
+    /** Barrier registry version used to build safe-room distance cache */
+    safeRoomBarrierVersion?: number;
+  };
 }
 
 export interface CreateWorldOptions {
@@ -1005,6 +1050,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, DroppedItem, stores.droppedItem);
   wireStore(ecs, Owner, stores.owner);
   wireStore(ecs, Team, stores.team);
+  wireStore(ecs, SiegeMinion, stores.siegeMinion);
+  wireStore(ecs, SiegeStructure, stores.siegeStructure);
+  wireStore(ecs, SiegeHero, stores.siegeHero);
   wireStore(ecs, Lifetime, stores.lifetime);
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
@@ -1145,6 +1193,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       floor2EquipmentUx: false,
       floor2EquipmentWorld: false,
       floor2EquipmentAiMaintenance: false,
+    },
+    attackWaveFlags: {
+      attackWaves: false,
     },
   };
   logger.info('Created game world', {

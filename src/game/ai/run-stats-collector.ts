@@ -11,6 +11,7 @@ import type {
 } from './types.js';
 import { computeVendorInteractions } from './vendor-interactions.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
+import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
 import { generatedEquipmentCatalogKey } from './headless-run-data.js';
 
 const GENERATED_EQUIPMENT_INSTANCE_SOURCE_PREFIX = 'generated-equipment-instance:';
@@ -185,6 +186,7 @@ export function collectHumanRunStats(
     runStartXp,
     totalGold: world.playerGold,
     floor4Arena: getFloor4ArenaRunStats(world),
+    floor5Siege: getFloor5SiegeRunStats(world),
     startingWeapon:
       world.floorScenario?.selectedWeaponId ?? world.floorScenario?.starterChoices[0] ?? 'unknown',
     vendors: computeVendorInteractions(world),

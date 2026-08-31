@@ -76,8 +76,47 @@ interface GoobersInstance {
   runner?: { envPassthrough?: string[] };
 }
 
+interface CiRecoveryWorkflow {
+  on?: {
+    workflow_dispatch?: {
+      inputs?: Record<string, { options?: string[] }>;
+    };
+  };
+  jobs?: {
+    reconcile?: {
+      steps?: Array<{ name?: string; env?: Record<string, string> }>;
+    };
+  };
+}
+
 function loadYaml<T>(...segments: string[]): T {
   return parse(readFileSync(path.join(REPO_ROOT, ...segments), 'utf8')) as T;
+}
+
+/**
+ * Reads the `runner.envPassthrough` entries out of the instance manifest that
+ * the "Materialize checked-in source into the instance" step writes with a
+ * heredoc, so contract assertions test the generated list itself rather than
+ * substring matches against the whole script.
+ */
+function readGeneratedEnvPassthrough(script: string | null | undefined): string[] {
+  if (!script) {
+    return [];
+  }
+  const lines = script.split('\n');
+  const start = lines.findIndex((line) => line.trim() === 'envPassthrough:');
+  if (start === -1) {
+    return [];
+  }
+  const entries: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    const match = line.match(/^\s*-\s+(\S+)\s*$/);
+    if (!match?.[1]) {
+      break;
+    }
+    entries.push(match[1]);
+  }
+  return entries;
 }
 
 function extractPinnedSha(script: string | null | undefined): string | null {
@@ -143,7 +182,6 @@ describe('Goobers automatic dispatch and recovery', () => {
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
-    const checkpoint = tasks.get('checkpoint-branch');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -161,10 +199,75 @@ describe('Goobers automatic dispatch and recovery', () => {
       'workspaceBranch',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
+    // GOOBERS_INSTANCE is Actions-only (set + envPassthrough'd by goobers-run.yml);
+    // the documented local instance.yaml.example does not pass it through, so the
+    // fresh-claim command must fall back to GOOBERS_INSTANCE_ROOT (the value a local
+    // Goobers run always has) and finally '.' rather than crashing under `set -eu`.
+    expect(tasks.get('query-backlog')?.run?.script).toContain(
+      'goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"',
+    );
     expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
     expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RESUME_BRANCH');
     expect(tasks.get('query-backlog')?.expectedOutputs).toContain('workspaceBranch');
+    const recoveryStep = loadYaml<GoobersActionsWorkflow>(
+      '.github',
+      'workflows',
+      'goobers-run.yml',
+    ).jobs.run?.steps?.find((step) => step.name === 'Resolve Goobers recovery target');
+    // Eligibility filters and the oldest-first ordering must be applied by
+    // GitHub's server-side search qualifiers, not a local sort after `gh
+    // issue list`'s 100-issue page: a local sort/filter can both miss an
+    // older eligible issue and falsely report "no work" when the fetched
+    // page happens to be all assigned/in-review.
+    expect(recoveryStep?.run).toContain('gh search issues');
+    expect(recoveryStep?.run).toContain('--repo "${GITHUB_REPOSITORY}"');
+    expect(recoveryStep?.run).toContain('--state open');
+    expect(recoveryStep?.run).toContain("--label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain('--no-assignee');
+    expect(recoveryStep?.run).toContain('-- \'-label:"goobers/status:in-review"\'');
+    expect(recoveryStep?.run).toContain('--sort created --order asc');
+    expect(recoveryStep?.run).not.toContain('"repo:${GITHUB_REPOSITORY} is:issue');
+    expect(recoveryStep?.run).toContain('should_run=false');
+    expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
+    // An empty backlog sweep must skip every costly setup step (binary
+    // download/verify, npm ci, Copilot CLI install, instance materialization),
+    // not just the final `goobers run` invocation, so hourly no-work sweeps
+    // stay cheap.
+    const goobersRunSteps = loadYaml<GoobersActionsWorkflow>(
+      '.github',
+      'workflows',
+      'goobers-run.yml',
+    ).jobs.run?.steps;
+    const gatedStepNames = [
+      'Require Goobers auth token',
+      'Resolve pinned archive checksum',
+      'Cache pinned Goobers archive',
+      'Verify archive against pinned checksum',
+      'Extract binary',
+      'Verify binary version',
+      'Set up Node.js',
+      'Install project dependencies',
+      'Install Copilot CLI',
+      'Validate .goobers source tree',
+      'Scaffold throwaway instance root',
+      'Materialize checked-in source into the instance',
+    ];
+    for (const stepName of gatedStepNames) {
+      const step = goobersRunSteps?.find((candidate) => candidate.name === stepName);
+      expect(step?.if, `expected "${stepName}" to be gated on should_run`).toBe(
+        "steps.recovery.outputs.should_run != 'false'",
+      );
+    }
+    for (const stepName of [
+      'Download pinned private Goobers draft',
+      'Download pinned public Goobers release',
+    ]) {
+      const step = goobersRunSteps?.find((candidate) => candidate.name === stepName);
+      expect(step?.if, `expected "${stepName}" to be gated on should_run`).toContain(
+        "steps.recovery.outputs.should_run != 'false'",
+      );
+    }
     expect(hydrate?.inputsFrom).toEqual({
       issueNumber: 'query-backlog.id',
       issueTitle: 'query-backlog.title',
@@ -199,18 +302,19 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(implement?.contextFrom).not.toContain('plan');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    expect(implement?.next).toBe('checkpoint-branch');
-    expect(checkpoint?.run?.script).toContain('goobers push-branch');
-    expect(checkpoint?.run?.script).toContain('npm ci');
-    expect(checkpoint?.run?.script).toContain('goobers open-pr');
-    expect(checkpoint?.next).toBe('review');
+    // The pre-review `checkpoint-branch` stage was removed; `implement` now
+    // hands straight to the review gate and no checkpoint task remains.
+    expect(implement?.next).toBe('review');
+    expect(tasks.get('push-branch')?.next).toBe('local-ci');
+    expect(tasks.get('local-ci')?.next).toBe('local-gate');
+    expect(tasks.get('checkpoint-branch')).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     }
     for (const name of [
       'query-backlog',
       'push-branch',
-      'checkpoint-branch',
+      'local-ci',
       'open-pr',
       'close-out',
       'park-needs-human',
@@ -220,8 +324,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(review?.agentic?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
     expect(runStep?.env).toMatchObject({
-      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GITHUB_TOKEN: '${{ github.token }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
     expect(runStep?.run).not.toMatch(/\b(for|while|until)\b/);
@@ -273,8 +378,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(publicDownload?.env?.GH_TOKEN).toBeUndefined();
     expect(publicDownload?.run).toContain('curl -fsSL -o dl/goobers.tar.gz');
     expect(run?.env).toMatchObject({
-      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
-      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GITHUB_TOKEN: '${{ github.token }}',
+      GOOBERS_GITHUB_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+      GH_TOKEN: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       COPILOT_GITHUB_TOKEN: '${{ secrets.COPILOT_GITHUB_TOKEN }}',
     });
 
@@ -301,18 +407,40 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(recoveryCheckout).toBeUndefined();
     expect(materialize?.run).toContain('envPassthrough:');
-    expect(materialize?.run).toContain('GOOBERS_RESUME_BRANCH');
+    expect(readGeneratedEnvPassthrough(materialize?.run)).toEqual([
+      'GOOBERS_INSTANCE',
+      'GOOBERS_RECOVERY_ISSUE',
+      'GOOBERS_RESUME_BRANCH',
+      'GH_TOKEN',
+      'GITHUB_REPOSITORY',
+    ]);
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_RESUME_BRANCH',
     ]);
   });
 
+  it('never forwards the hosted-progress GITHUB_TOKEN into runner stages', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into the instance',
+    );
+    const runStep = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+
+    // GITHUB_TOKEN carries checks/issues/PR write scopes for hosted progress on
+    // the top-level `goobers run` process only. Forwarding it through the
+    // runner would hand those scopes to stages that never declared them.
+    expect(runStep?.env?.GITHUB_TOKEN).toBe('${{ github.token }}');
+    expect(readGeneratedEnvPassthrough(materialize?.run)).not.toContain('GITHUB_TOKEN');
+    expect(instance.runner?.envPassthrough ?? []).not.toContain('GITHUB_TOKEN');
+  });
+
   it('keeps Goobers repository and model credentials separate', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
     const requireToken = workflow.jobs.run?.steps?.find(
-      (step) => step.name === 'Require GOOBERS_GITHUB_TOKEN',
+      (step) => step.name === 'Require Goobers auth token',
     );
 
     expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
@@ -320,7 +448,9 @@ describe('Goobers automatic dispatch and recovery', () => {
       capability: 'agent:model',
       token: { env: 'COPILOT_GITHUB_TOKEN' },
     });
-    expect(requireToken?.env?.GOOBERS_GITHUB_TOKEN_SET).toBe('${{ secrets.GOOBERS_GITHUB_TOKEN }}');
+    expect(requireToken?.env?.GOOBERS_AUTH_TOKEN_SET).toBe(
+      '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
+    );
   });
 
   it('supports deterministic issue-linked PR recovery and explicit abandon', () => {
@@ -334,13 +464,13 @@ describe('Goobers automatic dispatch and recovery', () => {
       abandon_existing: { default: false },
     });
     expect(recovery?.env).toMatchObject({
-      GOOBERS_GITHUB_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN }}',
+      GOOBERS_AUTH_TOKEN_SET: '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
       ISSUE_NUMBER: '${{ inputs.issue_number || github.event.issue.number }}',
       ABANDON_EXISTING: "${{ inputs.abandon_existing || 'false' }}",
     });
     expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
     expect(recovery?.run).toContain('cross-referenced');
-    expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN secret is required');
+    expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required');
     expect(recovery?.run).toContain('goobers/status:in-review');
     expect(recovery?.run).toContain('Scheduled recovery selected issue');
     expect(recovery?.run).toContain('goobers/crawler/*');
@@ -382,5 +512,25 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Validate .goobers source tree')?.run,
     ).toContain('"$GOOBERS_SOURCE"');
+  });
+
+  it('preserves single-writer lease fields in ci-recovery dispatch wiring', () => {
+    const workflow = loadYaml<CiRecoveryWorkflow>('.github', 'workflows', 'ci-recovery.yml');
+    const inputs = workflow.on?.workflow_dispatch?.inputs ?? {};
+    const reconcileStep = workflow.jobs?.reconcile?.steps?.find(
+      (step) => step.name === 'Reconcile PR or update shepherd lease',
+    );
+
+    expect(inputs.lease_id).toBeDefined();
+    expect(inputs.expected_head_sha).toBeDefined();
+    expect(inputs.expected_base_ref).toBeDefined();
+    expect(inputs.operation?.options).toEqual(
+      expect.arrayContaining(['reconcile', 'lease-acquire', 'lease-heartbeat', 'lease-release']),
+    );
+    expect(reconcileStep?.env).toMatchObject({
+      LEASE_ID: '${{ inputs.lease_id }}',
+      EXPECTED_HEAD_SHA: '${{ inputs.expected_head_sha }}',
+      EXPECTED_BASE_REF: '${{ inputs.expected_base_ref }}',
+    });
   });
 });

@@ -140,7 +140,7 @@ For each variant:
 - End-to-end pipeline agent: [`asset-forge`](../../agents/asset-forge.agent.md)
 - Legacy drain (existing `asset-checkin` issues only): [`asset-pr`](../asset-pr/SKILL.md)
 - Find what art can now replace a placeholder: [`placeholder-audit`](../placeholder-audit/SKILL.md)
-- Review harness + ledger for any wiring code change: [`review-harness`](../review-harness/SKILL.md)
+- Apple-scaled post-diff review for wiring changes: [`review-harness`](../review-harness/SKILL.md)
 - Style ground-truth (fed to prompts AND the judge): `docs/agent-os/sprite-style.md`
 - Graphics Designer persona: `docs/agent-os/personas/graphics-designer.md`
 - Scoring internals (do not reinvent): `scripts/sprites/score-candidate.ts`, `scripts/sprites/judge.ts`

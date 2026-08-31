@@ -17,12 +17,13 @@ const config = {
     },
   ],
   slots: [
-    { act: 1, eligibleGrades: ['finale'], appearanceFeeGold: 1 },
+    { act: 1, eligibleGrades: ['finale'], appearanceFeeGold: 1, contactDamage: 8 },
     {
       act: 5,
       eligibleGrades: ['finale'],
       fixedArchetypeId: 'fixed-finale',
       appearanceFeeGold: 1,
+      contactDamage: 16,
     },
   ],
 } satisfies Parameters<typeof buildFloor4HeadlinerCard>[0];

@@ -16,6 +16,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
+  selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
@@ -153,14 +154,22 @@ import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getNpcDef } from '../../shared/npc-types.js';
 import {
+  buildFloor3FinalFourVersusModel,
   buildFloor3IntroModel,
+  buildFloor3KeepCompanionPickerModel,
+  buildFloor3LoseModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
+  buildFloor3StudioVersusModel,
 } from '../../shared/floor3-ux.js';
 import type { ModalPickerConfig } from '../../shared/modal-picker.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
+import {
+  resolveFloor3KeepCompanionOptions,
+  resolveFloor3LeagueView,
+} from '../floor3-league-state.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
 import { listStaticInventorySlots } from '../../shared/inventory.js';
@@ -228,6 +237,12 @@ const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+/**
+ * Design-space gutter kept between the bottom of the interaction hint and the
+ * top of the bottom-anchored ability bar, so the Talk/Descend button stacks
+ * cleanly above the slots row instead of covering it.
+ */
+const INTERACTION_HINT_ABILITY_BAR_GAP = 10;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
 const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
@@ -336,6 +351,8 @@ export interface MainGameSceneOptions {
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
+  /** Injected scenario mutation for the required Floor 3 end-of-season choice. */
+  selectKeptCompanion?: (world: GameWorld, partyEid: number) => boolean;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
    * Called when a cleared floor should transition in-process to the next floor.
@@ -398,6 +415,13 @@ export interface MainGameSceneOptions {
   getSpellRewardOptions?: (
     world: GameWorld,
   ) => Array<{ id: string; label: string; description: string }>;
+  /**
+   * Player-facing numeric stat line for an ability (damage, range/radius, heal,
+   * slow, buff duration), derived from the game-layer ability catalog. Injected
+   * because `src/engine/` may not import `src/game/`; when it is omitted (labs,
+   * harnesses) the spell UI falls back to prose-only copy.
+   */
+  getAbilityEffectSummary?: (world: GameWorld, abilityId: string) => string | undefined;
   /**
    * Apply level-up stat allocations (game-layer `spendPoints` injected from
    * main.ts). When omitted, the level-up screen is skipped and the run resumes
@@ -624,6 +648,9 @@ export class MainGameScene extends Phaser.Scene {
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
   /** True once the Floor 3 rules briefing (UX surface #1) has been acknowledged this floor. */
   private floor3IntroAcknowledged = false;
+  /** UX-only show-once latches; gameplay ordering remains scenario-owned. */
+  private readonly announcedFloor3Studios = new Set<string>();
+  private readonly announcedFloor3FinalFourRounds = new Set<number>();
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
@@ -903,6 +930,12 @@ export class MainGameScene extends Phaser.Scene {
   private offInteractionHintScale?: () => void;
   private offInteractionHintSafeArea?: () => void;
 
+  /**
+   * Bottom-anchored baseline Y for the interaction hint, cached from the
+   * safe-area callback so the per-frame restack does no DOM layout/style reads.
+   */
+  private interactionHintBaselineY = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN;
+
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
 
@@ -1143,6 +1176,9 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
+    this.floor3IntroAcknowledged = false;
+    this.announcedFloor3Studios.clear();
+    this.announcedFloor3FinalFourRounds.clear();
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -1659,10 +1695,16 @@ export class MainGameScene extends Phaser.Scene {
 
   /**
    * Baseline Y for the bottom-anchored interaction hint, lifted clear of the
-   * home-indicator band on notched devices (zero inset elsewhere).
+   * home-indicator band on notched devices (zero inset elsewhere) and stacked
+   * above the ability bar whenever that bar is rendered.
    */
   private interactionHintY(): number {
-    return GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
+    const baseline = this.interactionHintBaselineY;
+    const abilityBarTop = this.hudUi?.getAbilityBarScreenTop() ?? null;
+    if (abilityBarTop === null) {
+      return baseline;
+    }
+    return Math.min(baseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP);
   }
 
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
@@ -1724,7 +1766,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleKeyboardE(): void {
-    if (this.isBlockingSurfaceOpen()) {
+    if (this.conversationNpcEid === null && this.isBlockingSurfaceOpen()) {
       return;
     }
     this.queuedInteraction = true;
@@ -1803,7 +1845,7 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
-    if (this.isBlockingSurfaceOpen()) {
+    if (this.conversationNpcEid === null && this.isBlockingSurfaceOpen()) {
       return;
     }
     if (event.code === 'KeyE') {
@@ -2150,6 +2192,7 @@ export class MainGameScene extends Phaser.Scene {
     this.conversationNpcEid = null;
     this.activeConversationLines = null;
     this.dialogueBox?.hide();
+    this.clearPendingInteractionInput();
   }
 
   private processOpenAbilitiesModal(): void {
@@ -2194,8 +2237,11 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private isBlockingSurfaceOpen(): boolean {
+    return this.conversationNpcEid !== null || this.isNonConversationBlockingSurfaceOpen();
+  }
+
+  private isNonConversationBlockingSurfaceOpen(): boolean {
     return (
-      this.conversationNpcEid !== null ||
       (this.hudUi?.isMapOverlayOpen() ?? false) ||
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
@@ -2225,7 +2271,8 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
-    const blockingSurfaceOpen = this.isBlockingSurfaceOpen();
+    this.showFloor3ProgressSurfaceIfNeeded();
+    const blockingSurfaceOpen = this.isNonConversationBlockingSurfaceOpen();
     if (blockingSurfaceOpen !== this.blockingSurfaceWasOpen) {
       this.blockingSurfaceWasOpen = blockingSurfaceOpen;
       this.clearPendingInteractionInput();
@@ -2988,6 +3035,8 @@ export class MainGameScene extends Phaser.Scene {
     this.hudUi = createHudUI(this);
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
+    this.interactionHintBaselineY =
+      GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
     this.interactionHint = this.add
       .text(GAME.WIDTH / 2, this.interactionHintY(), '', {
         fontFamily: 'monospace',
@@ -3012,7 +3061,8 @@ export class MainGameScene extends Phaser.Scene {
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
-    this.offInteractionHintSafeArea = onSafeAreaChange(this, () => {
+    this.offInteractionHintSafeArea = onSafeAreaChange(this, (insets) => {
+      this.interactionHintBaselineY = GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - insets.bottom;
       applyInteractionHintScale(getUiScale(this));
     });
 
@@ -3796,7 +3846,10 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    if (!this.world.floorScenario) {
+    // Copy comes from the scenario contract, never from a floor literal: a
+    // scenario without `starterLoadout` does not present this picker at all.
+    const loadoutCopy = this.options.scenarioPresentation?.starterLoadout;
+    if (!this.world.floorScenario || !loadoutCopy) {
       return;
     }
 
@@ -3805,7 +3858,7 @@ export class MainGameScene extends Phaser.Scene {
       return {
         id,
         label: weapon?.name ?? `Option ${index + 1}`,
-        description: weapon ? `Starter weapon: ${weapon.name}` : id,
+        description: weapon ? `${loadoutCopy.optionDescriptionPrefix}: ${weapon.name}` : id,
       };
     });
     const baseBonuses = this.world.floorScenario.baseStatBonuses;
@@ -3813,9 +3866,9 @@ export class MainGameScene extends Phaser.Scene {
 
     this.modalPicker.open(
       {
-        title: 'Choose your opening loadout',
-        subtitle: `${this.world.floorScenario.protagonistName} · Floor 1 is paused until you confirm a starter weapon.`,
-        body: `${baseBonusText}\nPick the weapon you want to begin with.`,
+        title: loadoutCopy.title,
+        subtitle: `${this.world.floorScenario.protagonistName} · ${loadoutCopy.pausedNotice}`,
+        body: `${baseBonusText}\n${loadoutCopy.prompt}`,
         options,
         allowCancel: true,
         initialSelectedId: this.world.floorScenario.starterChoices[0],
@@ -3902,6 +3955,71 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Presents Floor 3's scenario-owned progression as thin, blocking versus
+   * cards and routes the required season-win choice through the injected
+   * `ScenarioDefinition.selectKeptCompanion` seam.
+   */
+  private showFloor3ProgressSurfaceIfNeeded(): void {
+    if (
+      this.world.floorId !== 'floor3' ||
+      this.world.state !== 'playing' ||
+      !this.modalPicker ||
+      this.modalPicker.isOpen()
+    ) {
+      return;
+    }
+    const league = resolveFloor3LeagueView(this.world);
+    const state = this.world.floorExtendedState?.floor3Studios;
+    if (!state) return;
+
+    if (league.phase === 'best-in-show') {
+      const choices = resolveFloor3KeepCompanionOptions(this.world);
+      // A stored pick can go stale between victory and the stairs (the picked
+      // Companion is knocked out by a straggler), and the scenario's descend
+      // gate rejects a stale pick — so the picker must reopen whenever the
+      // stored eid is absent from the current valid choices, not just when it
+      // is undefined, or the run is stranded with no way to re-pick.
+      const keptEid = state.keptCompanionEid;
+      const keptIsValid = keptEid !== undefined && choices.some((choice) => choice.eid === keptEid);
+      if (choices.length === 0 || keptIsValid) return;
+      this.modalPicker.open(buildFloor3KeepCompanionPickerModel(choices), {
+        onConfirm: ({ option }) => {
+          const eid = Number(option.id);
+          if (Number.isInteger(eid)) {
+            this.options.selectKeptCompanion?.(this.world, eid);
+          }
+          this.updateOverlayText();
+        },
+      });
+      return;
+    }
+
+    if (league.phase === 'final-four' && league.activeRoundIndex !== null) {
+      const roundIndex = league.activeRoundIndex;
+      const round = league.rounds[roundIndex];
+      if (round && !this.announcedFloor3FinalFourRounds.has(roundIndex)) {
+        this.announcedFloor3FinalFourRounds.add(roundIndex);
+        this.modalPicker.open(
+          buildFloor3FinalFourVersusModel(round, roundIndex, league.rounds.length),
+          { onConfirm: () => this.updateOverlayText() },
+        );
+      }
+      return;
+    }
+
+    const studio = league.studios.find(
+      (candidate) =>
+        candidate.unlocked && !candidate.defeated && !this.announcedFloor3Studios.has(candidate.id),
+    );
+    if (studio) {
+      this.announcedFloor3Studios.add(studio.id);
+      this.modalPicker.open(buildFloor3StudioVersusModel(studio), {
+        onConfirm: () => this.updateOverlayText(),
+      });
+    }
+  }
+
   private openSpellSelectionModal(): void {
     if (!this.modalPicker || this.world.state !== 'playing') {
       return;
@@ -3946,6 +4064,15 @@ export class MainGameScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * Numeric stat line for an ability, via the injected game-layer catalog
+   * lookup. `undefined` when the ability has no spell effects or when the
+   * option was not wired (labs/harnesses).
+   */
+  private describeAbilityStats(abilityId: string): string | undefined {
+    return this.options.getAbilityEffectSummary?.(this.world, abilityId);
+  }
+
   private openAbilitiesConfigModal(): void {
     if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
       return;
@@ -3972,13 +4099,21 @@ export class MainGameScene extends Phaser.Scene {
       const activeEntries = activeIds.map((abilityId) => {
         const presentation = getAbilityPresentation(abilityId);
         const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
+        const effectSummary = this.describeAbilityStats(abilityId);
+        const description = presentation?.description ?? 'Configured auto ability.';
         return {
           id: abilityId,
           name: presentation?.name ?? abilityId,
           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
-          description: presentation?.description ?? 'Configured auto ability.',
+          description: effectSummary ? `${description}\n${effectSummary}` : description,
           category: presentation?.category ?? 'utility',
-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
+          details: [
+            presentation?.kind === 'spell' ? 'SPELL' : 'AUTO',
+            `${cooldownSeconds}s CD`,
+            formatAbilityTrigger(abilityId),
+          ]
+            .filter((part): part is string => part !== undefined)
+            .join('  •  '),
           equipped: state.equippedActiveAbilityIds.includes(abilityId),
         };
       });
@@ -4625,6 +4760,16 @@ export class MainGameScene extends Phaser.Scene {
     }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    // The ability bar appears/disappears at runtime (spell unlock, modal open),
+    // so restack the Talk/Descend hint above it right after the HUD syncs. Both
+    // inputs (cached safe-area baseline, cached ability-bar top) are plain
+    // numbers, so this frame path performs no DOM reads.
+    if (this.interactionHint) {
+      const hintY = this.interactionHintY();
+      if (this.interactionHint.y !== hintY) {
+        this.interactionHint.setY(hintY);
+      }
+    }
     this.updateDirectorCommentary();
 
     const canFileIssue = this.canFileIssue(issueOpen);
@@ -4700,7 +4845,12 @@ export class MainGameScene extends Phaser.Scene {
     // Ordered, floor-agnostic evaluation: intro, then the scenario's own
     // milestones in declaration order, then the victory/timeout bookends.
     // One beat per pass so a burst of simultaneous milestones still reads.
-    if (this.queueDirectorBeatOnce(COMMENTARY_INTRO_ID, director.intro)) {
+    if (
+      this.queueDirectorBeatOnce(
+        COMMENTARY_INTRO_ID,
+        selectScenarioDirectorIntro(director, this.world.seed, this.world.floorId),
+      )
+    ) {
       return;
     }
     for (const milestone of director.milestones) {
@@ -4998,7 +5148,7 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = true;
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
-    this.gameOverUI?.show();
+    this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
@@ -5804,7 +5954,9 @@ export class MainGameScene extends Phaser.Scene {
       id: offer.spellId,
       name: getAbilityPresentation(offer.spellId)?.name ?? offer.spellId,
       priceGold: offer.cost,
-      detail: 'A permanent spell for this run. One purchase per offer.',
+      // Lead with what the spell actually does to a target — a price with no
+      // damage/range numbers gave the player nothing to compare offers on.
+      detail: this.describeAbilityStats(offer.spellId) ?? 'A permanent spell for this run.',
       owned: offer.purchased,
       purchasable:
         !offer.purchased && broker.canPurchaseSpell!(this.world, this.playerEid, offer.spellId),

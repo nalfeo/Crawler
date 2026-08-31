@@ -1,17 +1,22 @@
-import { addComponent, entityExists, set } from 'bitecs';
+import { addComponent, entityExists, hasComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   BroadcastScore,
   DeathTimer,
+  EnemyProjectile,
+  Owner,
   Position,
   Projectile,
   Size,
   Sprite,
+  Team,
 } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
+import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('damageSystem', () => {
@@ -129,6 +134,37 @@ describe('damageSystem', () => {
       targetType: 'player',
     });
     expect(world.combatEvents[0]!.amount).toBeGreaterThan(0);
+  });
+
+  it('does not damage the player with same-team enemy projectiles', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const ally = spawnEnemy(world, 0, 0, 25);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const projectile = spawnEnemyProjectile(world, 0, 0, 0, 0, 10, ally);
+
+    expect(world.stores.owner.eid[projectile]).toBe(ally);
+    expect(hasComponent(world.ecs, projectile, EnemyProjectile)).toBe(true);
+    expect(hasComponent(world.ecs, projectile, Owner)).toBe(true);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(100);
+    expect(entityExists(world.ecs, projectile)).toBe(true);
+    expect(world.combatEvents).toHaveLength(0);
+  });
+
+  it('damages hostile enemies with player-team enemy projectiles', () => {
+    const world = createTestWorld();
+    const ally = spawnEnemy(world, 0, 0, 25);
+    addComponent(world.ecs, ally, set(Team, { id: TeamId.PLAYER }));
+    const hostile = spawnEnemy(world, 0, 0, 25);
+    const projectile = spawnEnemyProjectile(world, 0, 0, 0, 0, 10, ally);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[hostile]).toBe(15);
+    expect(entityExists(world.ecs, projectile)).toBe(false);
   });
 
   it('emits a blocked combat event when player is invincible', () => {

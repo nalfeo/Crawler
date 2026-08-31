@@ -60,6 +60,7 @@ function verbForKind(kind: AnnouncementKind): string {
       // The full authored announcement is the label; no subtitle verb.
       return '';
     case 'skillPassiveUnlocked':
+    case 'skillAbilityUnlocked':
       // The full authored announcement is the label; no subtitle verb.
       return '';
     default: {
@@ -78,6 +79,7 @@ function colorForKind(kind: AnnouncementKind): string {
     case 'bossAbilityCast':
       return COLORS.boss;
     case 'skillPassiveUnlocked':
+    case 'skillAbilityUnlocked':
       return COLORS.unlock;
     default:
       return COLORS.fallback;
@@ -205,13 +207,17 @@ export function createHudAnnouncementBanner(
   }
 
   function show(event: AnnouncementEvent, nowMs: number): void {
-    // Boss-ability casts and skill-passive-unlock milestones both carry a full
-    // authored string that must render exactly (never ellipsized or rebuilt
+    // Boss-ability casts and skill milestone unlocks (passive or active) all
+    // carry a full authored string that must render exactly (never ellipsized or rebuilt
     // from an archetype index). The panel is 420px wide; authored strings can
     // exceed the 44-char single-line budget, so we enable word wrap and
     // vertically re-center the label in the full panel.
     const FULL_TEXT_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
-    if (event.kind === 'bossAbilityCast' || event.kind === 'skillPassiveUnlocked') {
+    if (
+      event.kind === 'bossAbilityCast' ||
+      event.kind === 'skillPassiveUnlocked' ||
+      event.kind === 'skillAbilityUnlocked'
+    ) {
       labelText
         .setWordWrapWidth(FULL_TEXT_WRAP_WIDTH, true)
         .setText(event.text)

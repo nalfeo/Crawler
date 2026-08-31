@@ -15,7 +15,7 @@ import { createHudAnnouncementBanner } from './HudAnnouncementBanner.js';
 import { createHudMinimap } from './HudMinimap.js';
 import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
-import { createHudAbilityBar } from './HudAbilityBar.js';
+import { ABILITY_BAR_LAYOUT, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import {
@@ -32,6 +32,9 @@ import type { CommandResult } from './floor3-ability-command-state.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
+import { createHudFloor4Arena, type HudFloor4ArenaProbeState } from './HudFloor4Arena.js';
+import { createHudFloor3League, type HudFloor3LeagueState } from './HudFloor3League.js';
+import type { Floor3OverworldMarker } from './floor3-overworld-markers.js';
 
 export interface HudEncounterProbeBounds {
   timerPanel: ScreenBounds;
@@ -66,10 +69,20 @@ export function createHudUI(scene: Phaser.Scene): {
   isMapOverlayOpen(): boolean;
   closeMapOverlay(): void;
   getAbilityBarBounds(): ScreenBounds;
+  /**
+   * Screen-space (design-space) Y of the ability panel's top edge, or `null`
+   * when the bar is not rendered. Bottom-center affordances outside the HUD
+   * groups (the Talk/Descend interaction hint) stack above this line.
+   */
+  getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
   getFloor3PartyState(): HudFloor3PartyState;
+  getFloor3LeagueState(): HudFloor3LeagueState;
+  getFloor3OverworldMarkers(): readonly Floor3OverworldMarker[];
+  /** Floor-4 arena HUD read-back (clock, wave pips, Headliner, notices). */
+  getFloor4ArenaState(): HudFloor4ArenaProbeState;
   /** Fire the Floor-3 companion command verb; no-op off Floor 3. */
   issueFloor3Command(world: GameWorld, playerEid: number, slot?: number): CommandResult;
   getEncounterProbeBounds(): HudEncounterProbeBounds;
@@ -115,6 +128,8 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
+  const floor4Arena = createHudFloor4Arena(scene, { parent: topCenter });
+  const floor3League = createHudFloor3League(scene, { parent: topCenter });
   // Quest-arrow toggle clicks are captured here, not applied here: this HUD
   // facade renders sim state and reads input, but must not mutate `GameWorld`
   // (see .github/instructions/engine.instructions.md). Requests queue up and
@@ -166,6 +181,14 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeftTopEdge = bottomLeftNaturalBounds.top;
   const abilityBarLeftEdge = bottomCenter.getBounds().left;
 
+  // Live scale of the bottom-center group, mirrored out so callers can project
+  // the ability bar's authored design constants into screen space.
+  let bottomCenterScale = 1;
+  // Screen-space Y of the ability panel's top edge, recomputed only when the
+  // ui-scale / safe-area layout changes so per-frame callers never trigger a
+  // synchronous DOM layout or style read.
+  let abilityBarScreenTop = 0;
+
   function applyScale(): void {
     const s = computeVitalsScale({
       desiredScale: getUiScale(scene),
@@ -173,7 +196,7 @@ export function createHudUI(scene: Phaser.Scene): {
       clusterTopEdge: bottomLeftTopEdge,
       neighborLeftEdge: abilityBarLeftEdge,
     });
-    const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
+    bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = GAME.WIDTH;
     const h = GAME.HEIGHT;
     const cx = w / 2;
@@ -188,6 +211,13 @@ export function createHudUI(scene: Phaser.Scene): {
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale) - safe.bottom);
     topCenter.setScale(s).setPosition(cx * (1 - s), safe.top);
     bottomRight.setScale(s).setPosition(w * (1 - s) - safe.right, h * (1 - s) - safe.bottom);
+
+    // Inverse of the bottomCenter transform above. A child at local y
+    // `ABILITY_BAR_LAYOUT.panelTop` renders at
+    //   bottomCenter.y + bottomCenterScale * panelTop
+    // and bottomCenter.y is `h * (1 - bottomCenterScale) - safe.bottom`, which
+    // simplifies to the expression below.
+    abilityBarScreenTop = h - safe.bottom - bottomCenterScale * (h - ABILITY_BAR_LAYOUT.panelTop);
   }
 
   applyScale();
@@ -209,6 +239,8 @@ export function createHudUI(scene: Phaser.Scene): {
     for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
       group.setVisible(visible);
     }
+    floor4Arena.setVisible(visible);
+    floor3League.setVisible(visible);
     questTracker.setVisible(visible);
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
@@ -223,14 +255,23 @@ export function createHudUI(scene: Phaser.Scene): {
     healthBar.sync(world, playerEid);
     xpBar.sync(world);
     floorTimer.sync(world);
+    floor3League.sync(world);
+    floor4Arena.sync(world);
     bossBar.sync(world);
     announcementBanner.sync(world);
+    const tournamentLayout = floor4Arena.getLayoutBounds() ?? floor3League.getLayoutBounds();
+    const floor4Offset =
+      tournamentLayout !== null
+        ? tournamentLayout.panel.y + tournamentLayout.panel.height + 4 - ENCOUNTER_FIRST_ROW_Y
+        : 0;
     const encounterLayout = resolveEncounterStackLayout(
       bossBar.getLayoutBounds() !== null,
       announcementBanner.getLayoutBounds() !== null,
     );
-    bossBar.setTop(encounterLayout.bossTop ?? ENCOUNTER_FIRST_ROW_Y);
-    announcementBanner.setTop(encounterLayout.announcementTop ?? ENCOUNTER_FIRST_ROW_Y);
+    bossBar.setTop((encounterLayout.bossTop ?? ENCOUNTER_FIRST_ROW_Y) + floor4Offset);
+    announcementBanner.setTop(
+      (encounterLayout.announcementTop ?? ENCOUNTER_FIRST_ROW_Y) + floor4Offset,
+    );
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
@@ -275,6 +316,8 @@ export function createHudUI(scene: Phaser.Scene): {
     floorTimer.destroy();
     bossBar.destroy();
     announcementBanner.destroy();
+    floor4Arena.destroy();
+    floor3League.destroy();
     skillTracker.destroy();
     minimap.destroy();
     questTracker.destroy();
@@ -321,9 +364,47 @@ export function createHudUI(scene: Phaser.Scene): {
     isMapOverlayOpen: minimap.isOverlayOpen,
     closeMapOverlay: minimap.closeOverlay,
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
+    getAbilityBarScreenTop: () => {
+      if (hidden || !abilityBar.isVisible()) {
+        return null;
+      }
+      // Cached in applyScale(); no DOM reads on this (per-frame) path.
+      return abilityBarScreenTop;
+    },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
+    getFloor3LeagueState: () => {
+      const state = floor3League.getState();
+      if (hidden) {
+        return { ...state, visible: false, bounds: null };
+      }
+      // Reported in the same transformed screen space as the other top-center
+      // panels so overlap guards can compare them directly.
+      return state.bounds ? { ...state, bounds: transformBounds(state.bounds, topCenter) } : state;
+    },
+    getFloor3OverworldMarkers: () => (hidden ? [] : minimap.getFloor3MarkerStates()),
+    getFloor4ArenaState: () => {
+      const state = floor4Arena.getState();
+      if (hidden) {
+        return { ...state, visible: false, bounds: null };
+      }
+      if (!state.bounds) {
+        return state;
+      }
+      const transform = (bounds: ScreenBounds): ScreenBounds => transformBounds(bounds, topCenter);
+      return {
+        ...state,
+        bounds: {
+          panel: transform(state.bounds.panel),
+          clock: transform(state.bounds.clock),
+          pips: state.bounds.pips.map(transform),
+          headliner: state.bounds.headliner ? transform(state.bounds.headliner) : null,
+          notice: state.bounds.notice ? transform(state.bounds.notice) : null,
+          summary: state.bounds.summary.map(transform),
+        },
+      };
+    },
     issueFloor3Command: floor3Party.issueCommand,
     getEncounterProbeBounds,
     getCurrentAnnouncement: () => (hidden ? null : announcementBanner.getCurrentAnnouncement()),

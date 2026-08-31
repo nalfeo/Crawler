@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-16",
-  "session_slug": "merge-train-wakeups",
-  "task_title": "fix(merge-train): add reliable reconciliation wake-ups",
-  "estimated_apples": 2,
-  "stages": {}
-}

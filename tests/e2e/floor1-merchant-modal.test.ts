@@ -123,5 +123,14 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
     expect(content!.options[0]!.disabled).toBe(true);
     expect(content!.options[0]!.description).toBe('Unavailable right now.');
     expect(content!.options.some((option) => option.disabled === false)).toBe(true);
+
+    // Purchasable spells must state what they actually do — the broker used to
+    // show only a price and a generic "a permanent spell for this run" line.
+    const purchasable = content!.options.filter((option) => option.disabled === false);
+    for (const option of purchasable) {
+      expect(option.description, `${option.id} shows no stat line`).toMatch(
+        /(Damage|Heals|Radius|Range|Slow|Duration|Knockback|Move Speed).*\d/,
+      );
+    }
   });
 });

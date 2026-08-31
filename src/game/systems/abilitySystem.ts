@@ -726,6 +726,14 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
     return false;
   }
 
+  // Weapon-gated actives (e.g. the Arcane level-5 unlock) stay equipped on the
+  // bar but refuse to fire while the required weapon class/type is not
+  // equipped. Checked before the cooldown read/stamp below so a suppressed
+  // attempt neither consumes the cooldown nor emits activation feedback.
+  if (!weaponPrerequisiteMet(world, holderEid, abilityId)) {
+    return false;
+  }
+
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
   const cooldownFramesForGate =
     state.cooldownFramesByAbilityId.get(abilityId) ??
@@ -824,18 +832,22 @@ function emitAbilityActivationAnnouncement(
 }
 
 /**
- * Check whether the currently equipped weapon satisfies a passive ability's
- * weapon prerequisite. Returns true when:
+ * Check whether the currently equipped weapon satisfies an ability's weapon
+ * prerequisite. Returns true when:
  * - The ability has no prerequisite (always active), or
  * - The prerequisite matches the active weapon's class OR type skill id.
+ *
+ * Applies to passives (whose stat effects are applied/revoked on the
+ * transition) and to actives (which stay equipped but refuse to fire while the
+ * prerequisite is unmet).
  */
 export function weaponPrerequisiteMet(
   world: GameWorld,
   holderEid: number,
-  passiveId: string,
+  abilityId: string,
 ): boolean {
-  const def = getAbilityDefinition(passiveId);
-  if (def === undefined || def.kind !== 'passive') return false;
+  const def = getAbilityDefinition(abilityId);
+  if (def === undefined) return false;
   const prereq = def.weaponPrerequisite;
   if (prereq === undefined) return true;
 
