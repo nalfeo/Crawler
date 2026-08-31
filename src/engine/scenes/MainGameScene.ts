@@ -16,6 +16,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
+  selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
@@ -4818,7 +4819,12 @@ export class MainGameScene extends Phaser.Scene {
     // Ordered, floor-agnostic evaluation: intro, then the scenario's own
     // milestones in declaration order, then the victory/timeout bookends.
     // One beat per pass so a burst of simultaneous milestones still reads.
-    if (this.queueDirectorBeatOnce(COMMENTARY_INTRO_ID, director.intro)) {
+    if (
+      this.queueDirectorBeatOnce(
+        COMMENTARY_INTRO_ID,
+        selectScenarioDirectorIntro(director, this.world.seed, this.world.floorId),
+      )
+    ) {
       return;
     }
     for (const milestone of director.milestones) {
