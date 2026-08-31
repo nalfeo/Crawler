@@ -2095,6 +2095,12 @@ test('protected-path capability denial requires a specific path and explicit ses
     ),
     false,
   );
+  assert.equal(
+    isProtectedPathCapabilityDenial(
+      "I updated `.github/agents`; I can't complete the tests because this environment cannot run npm.",
+    ),
+    false,
+  );
 });
 
 test('protected-path quarantine waits until every remaining blocker is terminal', () => {

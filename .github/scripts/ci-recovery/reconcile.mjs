@@ -255,7 +255,8 @@ const TASK_COMMENT_MARKER_PATTERN = new RegExp(
   `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
   'i',
 );
-const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
+const TASK_REVIEW_THREAD_BLOCKER_PATTERN =
+  /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`(?:\s+at\s+`([^`:]+)(?::\d+)?`)?/gi;
 const REVIEW_THREAD_BLOCKER_ID_PATTERN = /^review-thread:([^:]+):/;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
   'copilot',
@@ -317,11 +318,17 @@ function extractTaskFingerprint(body) {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+function requiresProtectedPath(path) {
+  return String(path ?? '')
+    .replace(/\\/g, '/')
+    .startsWith('.github/agents/');
+}
+
 function extractTaskReviewThreadBlockerIds(body) {
-  return Array.from(
-    String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN),
-    (match) => match[1],
-  );
+  return Array.from(String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN), (match) => ({
+    id: match[1],
+    requiresProtectedPath: requiresProtectedPath(match[2] ?? ''),
+  }));
 }
 
 function extractStableReviewThreadId(blockerId) {
@@ -2519,9 +2526,9 @@ for (const comment of comments) {
   if (!isTrustedComment(comment)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
   if (!taskFingerprint) continue;
-  const blockerIds = extractTaskReviewThreadBlockerIds(comment?.body);
-  if (blockerIds.length > 0) {
-    taskReviewThreadBlockersByFingerprint.set(taskFingerprint, blockerIds);
+  const taskBlockers = extractTaskReviewThreadBlockerIds(comment?.body);
+  if (taskBlockers.length > 0) {
+    taskReviewThreadBlockersByFingerprint.set(taskFingerprint, taskBlockers);
   }
 }
 
@@ -2553,11 +2560,11 @@ for (const comment of comments) {
     // stale "Blocked" context would keep surfacing in the next task body even
     // though a subsequent reply already resolved it — mirroring the
     // trusted-marker boundary the in-thread backward scan already applies.
-    const resolvedBlockerIds = taskFingerprint
+    const resolvedTaskBlockers = taskFingerprint
       ? taskReviewThreadBlockersByFingerprint.get(taskFingerprint)
       : null;
-    if (resolvedBlockerIds?.length) {
-      for (const blockerId of resolvedBlockerIds) {
+    if (resolvedTaskBlockers?.length) {
+      for (const { id: blockerId } of resolvedTaskBlockers) {
         priorTopLevelReplyByBlockerId.delete(blockerId);
         protectedPathDenialByBlockerId.delete(blockerId);
         const stableThreadId = extractStableReviewThreadId(blockerId);
@@ -2570,17 +2577,20 @@ for (const comment of comments) {
     continue;
   }
   if (!taskFingerprint) continue;
-  const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
-  if (!blockerIds?.length) continue;
+  const taskBlockers = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
+  if (!taskBlockers?.length) continue;
   const priorReply = summarizePriorRecoveryIssueComment(comment?.body);
   if (!priorReply) continue;
   const protectedPathDenied = isProtectedPathCapabilityDenial(unquotedBody);
   // Keep the newest top-level recovery reply for a blocker ID: later dispatches
   // supersede older task attempts, so the most recent prior-attempt context is
   // the least misleading hint for the next recovery run.
-  for (const blockerId of blockerIds) {
+  for (const {
+    id: blockerId,
+    requiresProtectedPath: blockerRequiresProtectedPath,
+  } of taskBlockers) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
-    if (protectedPathDenied) {
+    if (protectedPathDenied && blockerRequiresProtectedPath) {
       protectedPathDenialByBlockerId.add(blockerId);
     } else {
       protectedPathDenialByBlockerId.delete(blockerId);
@@ -2657,7 +2667,7 @@ for (const thread of unresolvedThreads) {
       if (KNOWN_RECOVERY_REPLY_LOGINS.has(login)) {
         const replyBody = String(c?.body ?? '');
         priorUnresolvedReplyByThread.set(thread.id, replyBody.slice(0, 300));
-        if (isProtectedPathCapabilityDenial(replyBody)) {
+        if (requiresProtectedPath(thread.path) && isProtectedPathCapabilityDenial(replyBody)) {
           protectedPathDenialByThread.add(thread.id);
         }
         break;

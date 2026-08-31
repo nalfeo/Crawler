@@ -12226,7 +12226,7 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
     `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
     '@copilot Please recover this PR from the exact blockers below.',
     '',
-    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1073\``,
+    `1. **review-thread** \`${blockerId}\``,
     `   copilot-pull-request-reviewer: ${originalConcern}`,
   ].join('\n');
   const priorTopLevelReply = [
@@ -12643,7 +12643,7 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
   );
 });
 
-test('trusted protected-path denial quarantines instead of repeating an impossible dispatch', async (t) => {
+test('protected-path denial does not quarantine a mixed blocker set', async (t) => {
   const threadId = 'PRRT_protected_path_denial';
   const recoveryReply =
     'I fixed the currently-failing `Lightweight Checks` job: it was caused by two in-flight PRs (#3927, #3929) that merged to `main` after this branch diverged and added new `review-ledger.json` files (still following the old convention). Rebased onto `main` and removed those files in a9068d8e to restore the "no `docs/knowledge/review-ledgers` directory" invariant. ' +
@@ -12656,7 +12656,7 @@ test('trusted protected-path denial quarantines instead of repeating an impossib
     id: threadId,
     isResolved: false,
     isOutdated: false,
-    path: 'scripts/agent/review/review-policy.test.mjs',
+    path: '.github/agents/retired.agent.md',
     line: 14,
     comments: {
       nodes: [
@@ -12673,6 +12673,24 @@ test('trusted protected-path denial quarantines instead of repeating an impossib
           url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3940`,
           authorAssociation: 'NONE',
           author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  const repairableThread = {
+    id: 'PRRT_repairable_thread',
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/scripts/ci-recovery/reconcile.mjs',
+    line: 2584,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_repairable_finding',
+          body: 'Keep ordinary review blockers repairable.',
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3941`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
         },
       ],
     },
@@ -12718,12 +12736,30 @@ test('trusted protected-path denial quarantines instead of repeating an impossib
         };
       }
       if (query.includes('suggestedActors')) {
-        assert.fail('protected-path denial must not discover or assign Copilot');
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
       }
       if (query.trimStart().startsWith('mutation')) {
-        assert.fail('protected-path denial must not resolve threads or run assignment mutations');
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
       }
-      return { body: gqlReviewThreads([thread]) };
+      return { body: gqlReviewThreads([thread, repairableThread]) };
     },
   });
   t.after(() => server.close());
@@ -12734,16 +12770,8 @@ test('trusted protected-path denial quarantines instead of repeating an impossib
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /quarantined protected-path pr=#42/);
+  assert.doesNotMatch(stdout, /quarantined protected-path pr=#42/);
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
-  const quarantineComment = comments.find((comment) =>
-    String(comment.body).includes('<!-- crawler-ci-quarantine:v1 -->'),
-  );
-  assert.match(String(quarantineComment?.body), /protected path.*cannot read or edit/i);
-  const stateComment = comments.find((comment) =>
-    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
-  );
-  assert.equal(parseStateComment(stateComment?.body)?.trigger, 'protected-path-quarantined');
   assert.equal(
     mutatingCalls.some(
       (call) =>
@@ -12751,8 +12779,8 @@ test('trusted protected-path denial quarantines instead of repeating an impossib
         call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
         String(call.body?.body || '').includes('crawler-ci-task'),
     ),
-    false,
-    'protected-path denial must not post another Copilot repair task',
+    true,
+    'a repairable blocker must keep the recovery task dispatchable',
   );
 });
 
