@@ -57,13 +57,27 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6",
+      "head_sha": "f817257f5725e471b9eed23d29556af3c506b01e",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "docs/knowledge/game-design/floor6-hold-for-renovation.md",
+          "detail": "The bible/spec/ADR reference docs/knowledge/epics/floor-6-hero-tower-defense/floor-6-hero-tower-defense.epic.json, which is not part of this diff. It does exist on disk so links resolve, but this contract depends on an out-of-diff file; no change required unless that epic is later removed."
+        }
+      ],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Documentation-only proposed design contract. All cross-references resolve and focused lore/ADR checks pass; the only full docs-check failure is a pre-existing protected-agent stale path outside this diff."
     }
   }
 }
