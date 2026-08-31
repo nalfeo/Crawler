@@ -29,6 +29,7 @@ export interface CLIArgs {
   eventSummary: string | null;
   sampleInterval: number;
   weapon: string | null;
+  forceAbilityIds: string[];
   enemyDamageMultiplier: number;
   enemyTelegraphMs: number;
   floorId: string;
@@ -62,6 +63,7 @@ export function defaultCLIArgs(
     eventSummary: null,
     sampleInterval: 15,
     weapon: null,
+    forceAbilityIds: [],
     enemyDamageMultiplier: 1,
     enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
     floorId: 'floor1',
@@ -132,6 +134,14 @@ export function parseArgs(
       i++;
     } else if (arg === '--weapon' && next) {
       args.weapon = next;
+      i++;
+    } else if (arg === '--force-ability') {
+      if (next === undefined || next.trim() === '' || next.startsWith('--')) {
+        throw new Error('--force-ability requires a non-blank ability id');
+      }
+      if (!args.forceAbilityIds.includes(next)) {
+        args.forceAbilityIds.push(next);
+      }
       i++;
     } else if (arg === '--enemy-damage-multiplier' && next) {
       const parsed = Number.parseFloat(next);
@@ -236,6 +246,7 @@ Options:
   --progress <number>     Report progress every N frames (default: 3600)
   --aggression <number>   AI aggression override 0-2 (default: the --persona value)
   --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
+  --force-ability <id>    Grant an ability before frame 0 (repeatable; first-seen order)
   --event-log <path>      Write per-frame telemetry as JSONL to <path>
   --event-summary <path>  Write wasted-time summary JSON to <path>
   --sample-interval <n>   Frames between telemetry samples (default: 15)
