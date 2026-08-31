@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   FLOOR5_FIELD_HERO_ROSTER,
   buildFloor5FieldHeroCard,
-  floor5FieldHeroSlotId,
-  floor5FieldHeroStreamKey,
 } from '../../src/shared/floor5-heroes.js';
 import type { Floor5FieldHeroPoolEntry } from '../../src/shared/floor-types.js';
+
+/**
+ * The manifest-reserved `heroes` stream key, spelled the way
+ * `createFloor5SiegeState` derives it (`<seed>:floor5:<stream>`).
+ */
+function heroStreamKey(seed: number): string {
+  return `${seed}:floor5:heroes`;
+}
 
 describe('FLOOR5_FIELD_HERO_ROSTER', () => {
   it('is the append-only 8-entry design-bible roster in declared order', () => {
@@ -49,7 +55,7 @@ describe('FLOOR5_FIELD_HERO_ROSTER', () => {
 describe('buildFloor5FieldHeroCard', () => {
   it('is reproducible for a given stream key', () => {
     for (let seed = 0; seed < 50; seed += 1) {
-      const key = floor5FieldHeroStreamKey(seed);
+      const key = heroStreamKey(seed);
       const first = buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, key);
       const second = buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, key);
       expect(second.map((entry) => entry.heroId)).toEqual(first.map((entry) => entry.heroId));
@@ -58,10 +64,7 @@ describe('buildFloor5FieldHeroCard', () => {
 
   it('draws the whole roster without replacement, exactly once each', () => {
     for (let seed = 0; seed < 50; seed += 1) {
-      const card = buildFloor5FieldHeroCard(
-        FLOOR5_FIELD_HERO_ROSTER,
-        floor5FieldHeroStreamKey(seed),
-      );
+      const card = buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, heroStreamKey(seed));
       expect(card).toHaveLength(FLOOR5_FIELD_HERO_ROSTER.length);
       expect(new Set(card.map((entry) => entry.heroId)).size).toBe(FLOOR5_FIELD_HERO_ROSTER.length);
       expect([...card].map((entry) => entry.order).sort((a, b) => a - b)).toEqual([
@@ -71,10 +74,10 @@ describe('buildFloor5FieldHeroCard', () => {
   });
 
   it('numbers slots densely from zero and carries the roster tuning forward', () => {
-    const card = buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, floor5FieldHeroStreamKey(505));
+    const card = buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, heroStreamKey(505));
     card.forEach((entry, index) => {
       expect(entry.slotIndex).toBe(index);
-      expect(entry.slotId).toBe(floor5FieldHeroSlotId(index));
+      expect(entry.slotId).toBe(`floor5-field-hero-slot-${index}`);
       const roster = FLOOR5_FIELD_HERO_ROSTER.find(
         (candidate) => candidate.heroId === entry.heroId,
       );
@@ -87,7 +90,7 @@ describe('buildFloor5FieldHeroCard', () => {
   it('produces different orders across seeds rather than a fixed sequence', () => {
     const orders = new Set(
       Array.from({ length: 40 }, (_unused, seed) =>
-        buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, floor5FieldHeroStreamKey(seed))
+        buildFloor5FieldHeroCard(FLOOR5_FIELD_HERO_ROSTER, heroStreamKey(seed))
           .map((entry) => entry.heroId)
           .join(','),
       ),
@@ -104,9 +107,5 @@ describe('buildFloor5FieldHeroCard', () => {
     ];
     expect(() => buildFloor5FieldHeroCard(duplicateId, 'x')).toThrow(/heroId/i);
     expect(() => buildFloor5FieldHeroCard(duplicateOrder, 'x')).toThrow(/order/i);
-  });
-
-  it('namespaces the stream key onto the manifest-reserved `heroes` stream', () => {
-    expect(floor5FieldHeroStreamKey(505)).toBe('505:floor5:heroes');
   });
 });

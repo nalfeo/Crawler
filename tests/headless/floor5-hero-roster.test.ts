@@ -35,20 +35,30 @@ class IdleFloor5Provider implements AIInputProvider {
 }
 
 /**
- * Install a deterministic per-frame probe by wrapping the floor's own objective
- * tick — the documented Floor 5 damage-authority seam — so injected damage and
- * observation land in exactly the same frame position as real siege damage.
+ * Install deterministic per-frame probes around the floor's own objective tick
+ * — the documented Floor 5 damage-authority seam.
+ *
+ * `before` runs BEFORE the objective tick, which is where injected damage has
+ * to land: `resolveFloor5HeroDefeat` is post-damage defeat authority, so a
+ * killing blow dealt after it has already run this frame would only be booked
+ * on the NEXT frame and the killing-blow-frame contract would go unverified.
+ * `after` observes the bookkeeping the same tick wrote it.
+ *
  * `stopWhen` is used only as the once-per-frame installation trigger.
  */
-function withTickProbe(probe: (world: GameWorld) => void): (world: GameWorld) => boolean {
+function withTickProbe(probes: {
+  before?: (world: GameWorld) => void;
+  after?: (world: GameWorld) => void;
+}): (world: GameWorld) => boolean {
   let installed = false;
   return (world: GameWorld) => {
     if (!installed) {
       installed = true;
       const inner = world.floorObjectiveTick;
       world.floorObjectiveTick = (w: GameWorld) => {
+        probes.before?.(w);
         inner?.(w);
-        probe(w);
+        probes.after?.(w);
       };
     }
     return false;
@@ -153,6 +163,7 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
 
   it('respawns the next Hero on the card at exactly the manifest-authored offset', async () => {
     let defeatFrame = -1;
+    let killingBlowFrame = -1;
     let respawnScheduledFor = -1;
     let statusAfterDefeat = '';
     let killed = false;
@@ -166,20 +177,28 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
       seed: 505,
       maxFrames: 1_200,
       questStallFrames: 0,
-      stopWhen: withTickProbe((world) => {
-        const heroes = siegeState(world).heroes;
-        if (heroes.status === 'active' && heroes.cursor === 0 && !killed) {
-          killed = true;
-          executeActiveHero(world);
-          return;
-        }
+      stopWhen: withTickProbe({
+        // Damage lands BEFORE the objective tick, exactly like real siege
+        // damage, so the frame recorded below is genuinely the killing-blow
+        // frame and not the frame after it.
+        before: (world) => {
+          const heroes = siegeState(world).heroes;
+          if (heroes.status === 'active' && heroes.cursor === 0 && !killed) {
+            killed = true;
+            killingBlowFrame = world.frameCount;
+            executeActiveHero(world);
+          }
+        },
         // Capture the defeat bookkeeping on the frame it is written, before the
         // respawn clears it.
-        if (killed && heroes.status === 'down' && defeatFrame < 0) {
-          defeatFrame = heroes.defeatedFrame ?? -1;
-          respawnScheduledFor = heroes.respawnFrame ?? -1;
-          statusAfterDefeat = heroes.status;
-        }
+        after: (world) => {
+          const heroes = siegeState(world).heroes;
+          if (killed && heroes.status === 'down' && defeatFrame < 0) {
+            defeatFrame = heroes.defeatedFrame ?? -1;
+            respawnScheduledFor = heroes.respawnFrame ?? -1;
+            statusAfterDefeat = heroes.status;
+          }
+        },
       }),
       onFinish: (world) => {
         const heroes = siegeState(world).heroes;
@@ -191,6 +210,9 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
     });
 
     expect(defeatFrame).toBeGreaterThan(0);
+    // FR6.4: the recorded defeat frame IS the frame of the killing blow.
+    expect(killingBlowFrame).toBeGreaterThan(0);
+    expect(defeatFrame).toBe(killingBlowFrame);
     expect(cursorAfterRespawn).toBe(1);
     expect(secondHeroId).toBe(cardIds[1]);
     // FR6.4: respawn is a FIXED frame offset from defeat — no wall clock, no RNG.
@@ -212,10 +234,12 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
       // Long enough to burn the whole 8-entry card at the authored cadence.
       maxFrames: 4_000,
       questStallFrames: 0,
-      stopWhen: withTickProbe((world) => {
-        if (siegeState(world).heroes.status === 'active') {
-          executeActiveHero(world);
-        }
+      stopWhen: withTickProbe({
+        before: (world) => {
+          if (siegeState(world).heroes.status === 'active') {
+            executeActiveHero(world);
+          }
+        },
       }),
       onFinish: (world) => {
         const heroes = siegeState(world).heroes;
@@ -240,51 +264,81 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
 });
 
 describe('Floor 5 engine-disruption Heroes', () => {
-  it('commits to the build site rather than the lane once construction is live', async () => {
+  it('anchors on the command-post build site rather than the lane once construction is live', async () => {
     // Deterministic role probe: drive the card forward until the engine-
     // disruption Hero is the one on the field, then observe where it holds.
-    let observed: { role: string; distanceToBuildSiteFt: number; engineEngaged: boolean } | null =
-      null;
+    let observed: {
+      role: string;
+      anchorToBuildSiteFt: number;
+      engineEngaged: boolean;
+    } | null = null;
 
     await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 4_000,
       questStallFrames: 0,
-      stopWhen: withTickProbe((world) => {
-        const state = siegeState(world);
-        const heroes = state.heroes;
-        if (heroes.status !== 'active' || heroes.eid <= 0) return;
-        const card = heroes.card[heroes.cursor]!;
-        const engineEngaged =
-          state.phase.kind === 'BUILD' ||
-          state.phase.kind === 'ESCORT' ||
-          state.engineState !== 'LOCKED';
-        if (card.role === 'engine-disruption' && engineEngaged) {
-          const site = state.structures['command-post'];
-          if (observed === null && site.eid > 0) {
-            observed = {
-              role: card.role,
-              engineEngaged,
-              distanceToBuildSiteFt: Math.hypot(
-                (world.stores.position.x[heroes.eid] ?? 0) -
-                  (world.stores.siegeHero.anchorX[heroes.eid] ?? 0),
-                (world.stores.position.y[heroes.eid] ?? 0) -
-                  (world.stores.siegeHero.anchorY[heroes.eid] ?? 0),
-              ),
-            };
+      stopWhen: withTickProbe({
+        before: (world) => {
+          const state = siegeState(world);
+          const heroes = state.heroes;
+          if (heroes.status !== 'active' || heroes.eid <= 0) return;
+          const card = heroes.card[heroes.cursor]!;
+          // Mirrors production's `floor5EngineEngaged` latch exactly.
+          const engineEngaged =
+            state.phase.kind === 'BUILD' ||
+            state.phase.kind === 'ESCORT' ||
+            state.engineState === 'BUILDING' ||
+            state.engineState === 'READY' ||
+            state.engineState === 'ADVANCING' ||
+            state.engineState === 'ATTACKING';
+          if (card.role === 'engine-disruption' && engineEngaged) {
+            const site = state.structures['command-post'];
+            if (observed === null && site.eid > 0) {
+              observed = {
+                role: card.role,
+                engineEngaged,
+                // FR6.2/FR6.3: the role's ONE anchor rule is the build site, so
+                // measure the stored anchor against the command post itself —
+                // measuring the Hero against its own anchor would pass even if
+                // the Hero stayed anchored to the lane.
+                anchorToBuildSiteFt: Math.hypot(
+                  (world.stores.siegeHero.anchorX[heroes.eid] ?? 0) -
+                    (world.stores.position.x[site.eid] ?? 0),
+                  (world.stores.siegeHero.anchorY[heroes.eid] ?? 0) -
+                    (world.stores.position.y[site.eid] ?? 0),
+                ),
+              };
+            }
+            return;
           }
-          return;
-        }
-        // Not the role under test yet — advance the card.
-        executeActiveHero(world);
+          // Not the role under test yet — advance the card.
+          executeActiveHero(world);
+        },
       }),
-      onFinish: () => {},
     });
 
     expect(observed).not.toBeNull();
     expect(observed!.role).toBe('engine-disruption');
     expect(observed!.engineEngaged).toBe(true);
+    expect(observed!.anchorToBuildSiteFt).toBe(0);
+  });
+});
+
+describe('Floor 5 Hero telegraphed abilities in the real pipeline', () => {
+  it('drives a registered Hero all the way to ability resolution', async () => {
+    const stats = await runHeadless(new IdleFloor5Provider(), {
+      floorId: 'floor5',
+      seed: 505,
+      // Hero takes the field at frame 600, is first eligible 4,000ms later and
+      // resolves after a 1,200ms telegraph (~frame 912 at the fixed step).
+      maxFrames: 1_200,
+      questStallFrames: 0,
+    });
+
+    // The shared mob-ability runtime is the ONLY ability path on this floor, so
+    // a non-zero cast count is proof the Hero reached resolution through it.
+    expect(stats.floor5Siege!.heroes.abilityCasts).toBeGreaterThan(0);
   });
 });
 

@@ -73,6 +73,21 @@ blow.
 their resolve handlers read Floor 5 siege state; keeping them in the game layer
 avoids a core→floor5 dependency.
 
+**Telegraph origin is per role.** The four self-centred roles use
+`originMode: 'follows-caster'` so their drawn circle never lies about where the
+Hero is standing. Artillery ("Hostile Bid") stays `originMode: 'locked'`, because
+`follows-caster` re-centres the committed circle on the caster every telegraph
+tick and would silently discard the target-committed geometry produced by its
+`commitGeometry` hook.
+
+**The build stall is a real-time window, not a budget bank.** "Wildcat Strike"
+only takes effect while the Ratings Ram is actually `BUILDING`, and it never
+stacks past one window. `advanceFloor5RamConstruction` burns the window down
+against the fixed-step clock unconditionally — whether or not the Ram is
+progressing, and whether or not the build site is simultaneously under attack —
+so repeated casts cannot bank deferred stall debt that lands long after the
+telegraph, or after the Hero is dead.
+
 ## Consequences
 
 ### Positive

@@ -45,7 +45,7 @@ export function floor5HeroArchetypeKey(role: Floor5FieldHeroRole): string {
   return `floor5-field-hero-${role}`;
 }
 
-export function floor5HeroAbilityId(role: Floor5FieldHeroRole): string {
+function floor5HeroAbilityId(role: Floor5FieldHeroRole): string {
   return `floor5-field-hero-${role}-ability`;
 }
 
@@ -167,14 +167,22 @@ function resolveAuditZone(world: GameWorld, ctx: MobAbilityResolveContext): void
  * `engine-disruption` — "Wildcat Strike".
  *
  * Stalls Ratings Ram construction for a telegraphed window instead of dealing
- * damage: the stall budget is consumed by `advanceFloor5RamConstruction`, which
- * already owns the paused-progress accounting.
+ * damage. The stall is only meaningful while the Ram is actually being built,
+ * so it is gated on `engineState === 'BUILDING'` at resolution and clamped to a
+ * single window's worth of budget: it can never bank deferred debt that lands
+ * long after the cast (or after the Hero is dead). The budget is consumed by
+ * `advanceFloor5RamConstruction`, which expires it against the same fixed-step
+ * clock whether or not construction is progressing.
  */
 function resolveWildcatStrike(world: GameWorld, _ctx: MobAbilityResolveContext): void {
   countAbilityCast(world);
   const state = floor5State(world);
   if (!state) return;
-  state.heroes.buildStallMs += WILDCAT_STRIKE_STALL_MS;
+  if (state.engineState !== 'BUILDING') return;
+  state.heroes.buildStallMs = Math.min(
+    WILDCAT_STRIKE_STALL_MS,
+    state.heroes.buildStallMs + WILDCAT_STRIKE_STALL_MS,
+  );
 }
 
 /**
@@ -239,6 +247,14 @@ interface RoleAbilitySpec {
   readonly announcement: string;
   readonly resolve: (world: GameWorld, ctx: MobAbilityResolveContext) => void;
   readonly commitGeometry?: MobAbilityRuntimeDefinition['commitGeometry'];
+  /**
+   * Telegraph origin. Self-centred roles follow the caster so the drawn circle
+   * never lies about where the Hero is standing; the artillery lob must stay
+   * `locked`, because `follows-caster` re-centres the committed circle on the
+   * caster every telegraph tick and would silently discard the geometry that
+   * {@link commitHostileBidGeometry} committed onto the selected target.
+   */
+  readonly originMode: MobAbilityRuntimeDefinition['originMode'];
 }
 
 const ROLE_ABILITY_SPECS: Readonly<Record<Floor5FieldHeroRole, RoleAbilitySpec>> = {
@@ -246,27 +262,32 @@ const ROLE_ABILITY_SPECS: Readonly<Record<Floor5FieldHeroRole, RoleAbilitySpec>>
     radiusFt: 6,
     announcement: 'files a Restructuring Order!',
     resolve: resolveRestructuringOrder,
+    originMode: 'follows-caster',
   },
   'checkpoint-defense': {
     radiusFt: AUDIT_ZONE_RADIUS_FT,
     announcement: 'opens an Audit Zone!',
     resolve: resolveAuditZone,
+    originMode: 'follows-caster',
   },
   'engine-disruption': {
     radiusFt: WILDCAT_STRIKE_RADIUS_FT,
     announcement: 'calls a Wildcat Strike!',
     resolve: resolveWildcatStrike,
+    originMode: 'follows-caster',
   },
   'minion-support': {
     radiusFt: PERFORMANCE_REVIEW_RADIUS_FT,
     announcement: 'runs a Performance Review!',
     resolve: resolvePerformanceReview,
+    originMode: 'follows-caster',
   },
   artillery: {
     radiusFt: HOSTILE_BID_RADIUS_FT,
     announcement: 'lobs a Hostile Bid!',
     resolve: resolveHostileBid,
     commitGeometry: commitHostileBidGeometry,
+    originMode: 'locked',
   },
 };
 
@@ -293,7 +314,7 @@ export function createFloor5HeroAbilityDefinition(
     // Player entity exists, which is what makes the headless siege runs and the
     // windowed game commit identical geometry.
     targetingMode: 'self',
-    originMode: 'follows-caster',
+    originMode: spec.originMode,
     ...(spec.commitGeometry ? { commitGeometry: spec.commitGeometry } : {}),
     resolve: spec.resolve,
   };

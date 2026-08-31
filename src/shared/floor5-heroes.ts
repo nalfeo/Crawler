@@ -148,13 +148,11 @@ export const FLOOR5_FIELD_HERO_ROSTER: readonly Floor5FieldHeroPoolEntry[] = Obj
   }),
 ] satisfies Floor5FieldHeroPoolEntry[]);
 
-/** The isolated derived stream every field-Hero draw comes from (spec `FR8.1`). */
-export function floor5FieldHeroStreamKey(seed: number): string {
-  return `${seed}:floor5:heroes`;
-}
-
-/** Stable slot identity for the Nth Hero fielded in a run. */
-export function floor5FieldHeroSlotId(slotIndex: number): string {
+/**
+ * Stable slot identity for the Nth Hero fielded in a run. Internal: the card
+ * carries the derived `slotId` forward, so no caller needs to re-derive it.
+ */
+function floor5FieldHeroSlotId(slotIndex: number): string {
   return `floor5-field-hero-slot-${slotIndex}`;
 }
 

@@ -1364,7 +1364,7 @@ export function _recoverFloor5RamComponent(
   return true;
 }
 
-export function _setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
+function _setFloor5BuildSiteUnderAttack(world: GameWorld, underAttack: boolean): boolean {
   const state = floor5SiegeState(world);
   if (!state || isFloor5Terminal(state)) {
     return false;
@@ -1428,7 +1428,20 @@ function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState)
     world.elapsedMs - state.construction.lastProgressWorldElapsedMs,
   );
   state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
-  if (state.engineState !== 'BUILDING' || elapsedDeltaMs === 0) {
+  if (elapsedDeltaMs === 0) {
+    return;
+  }
+
+  // Engine-disruption Hero ability: a telegraphed window that stalls the Ram's
+  // advance (spec R6 gimmick). The window is a REAL-TIME window, so it burns
+  // down against the fixed-step clock unconditionally — whether or not the Ram
+  // is building and whether or not the build site is simultaneously under
+  // attack. That is what stops repeated casts from banking deferred stall debt
+  // that would be applied long after the telegraph (or after the Hero dies).
+  const stalled = Math.min(state.heroes.buildStallMs, elapsedDeltaMs);
+  state.heroes.buildStallMs -= stalled;
+
+  if (state.engineState !== 'BUILDING') {
     return;
   }
 
@@ -1437,12 +1450,8 @@ function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState)
     return;
   }
 
-  // Engine-disruption Hero ability: a telegraphed window that stalls the Ram's
-  // advance (spec R6 gimmick). Consumes a fixed authored budget, and is booked
-  // through the same paused-progress accounting as build-site pressure.
-  if (state.heroes.buildStallMs > 0) {
-    const stalled = Math.min(state.heroes.buildStallMs, elapsedDeltaMs);
-    state.heroes.buildStallMs -= stalled;
+  if (stalled > 0) {
+    // Booked through the same paused-progress accounting as build-site pressure.
     state.construction.pausedMs += stalled;
     if (stalled >= elapsedDeltaMs) {
       return;
