@@ -49,12 +49,16 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
   it('only "Apply staged + restart" and "↻ Restart" (via applyRunSettings) promote a selection to applied', () => {
     // applyRunSettings is the sole seam that copies the live selection into
     // the applied snapshot — no competing restart path exists.
-    expect(SOURCE).toContain('appliedFeatureFlags = { ...featureFlags };');
+    expect(SOURCE).toContain(
+      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
+    );
     const applyRunSettingsBody = SOURCE.slice(
       SOURCE.indexOf('const applyRunSettings = (next: {'),
       SOURCE.indexOf('const encodeFloorRunTarget'),
     );
-    expect(applyRunSettingsBody).toContain('appliedFeatureFlags = { ...featureFlags };');
+    expect(applyRunSettingsBody).toContain(
+      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
+    );
     expect(applyRunSettingsBody).toContain('updateFeatureFlagControllerState();');
     // Both buttons call applyRunSettings — no second/parallel apply path.
     expect(SOURCE).toContain('id="ai-run-apply"');
@@ -71,15 +75,17 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
     // The registry (not the lab) owns which flags are reload-required; the
     // lab reads `control.reloadRequired` generically rather than
     // hardcoding key names.
-    expect(SOURCE).toContain('for (const control of getAiFeatureFlagControls()) {');
+    expect(SOURCE).toContain(
+      'for (const control of getAiFeatureFlagControls(aiFeatureFlagContext())) {',
+    );
     expect(SOURCE).not.toContain("control.key === 'attackWaves'");
     expect(SOURCE).not.toContain("control.key === 'floor1Spawners'");
   });
 
   it('disables and relabels feature-flag controls inapplicable to the current floor/scenario target', () => {
     expect(SOURCE).toContain('function updateFeatureFlagControllerState(): void {');
-    expect(SOURCE).toContain('isAiFeatureFlagApplicable(control.key, context)');
-    expect(SOURCE).toContain('controller.disable(!applicable);');
+    expect(SOURCE).toContain('for (const control of getAiFeatureFlagControls(context)) {');
+    expect(SOURCE).toContain('controller.disable(!control.applicable);');
     expect(SOURCE).toContain("' (n/a for this scenario preset)'");
     expect(SOURCE).toContain('` (n/a on ${currentFloor})`');
     // Recomputed whenever the applied floor/scenario changes.
@@ -100,6 +106,16 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
     expect(SOURCE).toContain('function aiFeatureFlagContext(): AiFeatureFlagContext {');
     expect(SOURCE).toContain(
       'isRealFloorTarget: selectedScenarioPresetId === DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,',
+    );
+  });
+
+  it('masks inapplicable selections before applying them to a restarted scenario', () => {
+    const applyRunSettingsBody = SOURCE.slice(
+      SOURCE.indexOf('const applyRunSettings = (next: {'),
+      SOURCE.indexOf('const encodeFloorRunTarget'),
+    );
+    expect(applyRunSettingsBody).toContain(
+      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
     );
   });
 

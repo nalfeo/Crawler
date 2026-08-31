@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   getAiFeatureFlagControls,
-  isAiFeatureFlagApplicable,
   resolveAiFeatureFlags,
 } from '../../../src/game/ai/feature-flags.js';
 
@@ -125,53 +124,71 @@ describe('AI feature flag registry', () => {
   });
 
   describe('applicability metadata', () => {
-    it('always applies the three live AI-only flags, regardless of floor or target', () => {
+    it('always marks the three live AI-only flags applicable, regardless of floor or target', () => {
       for (const key of [
         'weaponPersonas',
         'optionalPurchases',
         'settlementReturnRouting',
       ] as const) {
-        expect(isAiFeatureFlagApplicable(key, { surface: 'lab', floorId: 'floor1' })).toBe(true);
-        expect(isAiFeatureFlagApplicable(key, { surface: 'lab', floorId: 'floor2' })).toBe(true);
         expect(
-          isAiFeatureFlagApplicable(key, {
+          getAiFeatureFlagControls({ surface: 'lab', floorId: 'floor1' }).find(
+            (control) => control.key === key,
+          )?.applicable,
+        ).toBe(true);
+        expect(
+          getAiFeatureFlagControls({ surface: 'lab', floorId: 'floor2' }).find(
+            (control) => control.key === key,
+          )?.applicable,
+        ).toBe(true);
+        expect(
+          getAiFeatureFlagControls({
             surface: 'lab',
             floorId: 'floor1',
             isRealFloorTarget: false,
-          }),
+          }).find((control) => control.key === key)?.applicable,
         ).toBe(true);
       }
     });
 
-    it('applies attackWaves only on a real target of a floor whose manifest declares trashAttackWaves', () => {
+    it('masks persisted inapplicable world-init flags and marks their controls unavailable', () => {
       expect(
-        isAiFeatureFlagApplicable('attackWaves', { surface: 'headless', floorId: 'floor1' }),
+        resolveAiFeatureFlags(
+          { attackWaves: true, floor1Spawners: true },
+          { surface: 'lab', floorId: 'floor1', isRealFloorTarget: false },
+        ),
+      ).toMatchObject({ attackWaves: false, floor1Spawners: false });
+      expect(
+        getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor1' }).find(
+          (control) => control.key === 'attackWaves',
+        )?.applicable,
       ).toBe(true);
       expect(
-        isAiFeatureFlagApplicable('attackWaves', { surface: 'headless', floorId: 'floor2' }),
+        resolveAiFeatureFlags(
+          { attackWaves: true, floor1Spawners: true },
+          { surface: 'lab', floorId: 'floor1', isRealFloorTarget: true },
+        ),
+      ).toMatchObject({ attackWaves: true, floor1Spawners: true });
+      expect(
+        getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor2' }).find(
+          (control) => control.key === 'attackWaves',
+        )?.applicable,
       ).toBe(false);
       expect(
-        isAiFeatureFlagApplicable('attackWaves', {
+        getAiFeatureFlagControls({
           surface: 'lab',
           floorId: 'floor1',
           isRealFloorTarget: false,
-        }),
+        }).find((control) => control.key === 'attackWaves')?.applicable,
       ).toBe(false);
-    });
-
-    it('applies floor1Spawners only on a real Floor 1 target', () => {
       expect(
-        isAiFeatureFlagApplicable('floor1Spawners', { surface: 'headless', floorId: 'floor1' }),
+        getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor1' }).find(
+          (control) => control.key === 'floor1Spawners',
+        )?.applicable,
       ).toBe(true);
       expect(
-        isAiFeatureFlagApplicable('floor1Spawners', { surface: 'headless', floorId: 'floor2' }),
-      ).toBe(false);
-      expect(
-        isAiFeatureFlagApplicable('floor1Spawners', {
-          surface: 'lab',
-          floorId: 'floor1',
-          isRealFloorTarget: false,
-        }),
+        getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor2' }).find(
+          (control) => control.key === 'floor1Spawners',
+        )?.applicable,
       ).toBe(false);
     });
   });

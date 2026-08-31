@@ -47,9 +47,9 @@ const AI_FEATURE_FLAG_DEFINITIONS = [
     label: 'Attack waves (periodic rat packs)',
     defaultEnabled: (_context: AiFeatureFlagContext) => false,
     resolve: undefined,
-    // Sets world.attackWaveFlags.attackWaves before play (see
-    // ScenarioInitializationOptions) — it is NOT re-read live mid-run, so a
-    // toggle only takes effect on the run's next (re)start.
+    // The system reads world.attackWaveFlags.attackWaves live each frame.
+    // This UI control is reload-required because it only configures the world
+    // through ScenarioInitializationOptions before play.
     reloadRequired: true,
     applicableTo: (context: AiFeatureFlagContext) =>
       context.isRealFloorTarget !== false &&
@@ -72,32 +72,20 @@ export type AiFeatureFlagKey = (typeof AI_FEATURE_FLAG_DEFINITIONS)[number]['key
 export type AiFeatureFlags = Record<AiFeatureFlagKey, boolean>;
 export type AiFeatureFlagInput = Partial<AiFeatureFlags> & OptionalPurchasesConfig;
 
-export function getAiFeatureFlagControls(): ReadonlyArray<{
+export function getAiFeatureFlagControls(context?: AiFeatureFlagContext): ReadonlyArray<{
   key: AiFeatureFlagKey;
   label: string;
   /** True when a toggle only takes effect on the run's next (re)start. */
   reloadRequired: boolean;
+  /** Whether this control can affect the supplied target. */
+  applicable: boolean;
 }> {
-  return AI_FEATURE_FLAG_DEFINITIONS.map(({ key, label, reloadRequired }) => ({
+  return AI_FEATURE_FLAG_DEFINITIONS.map(({ key, label, reloadRequired, applicableTo }) => ({
     key,
     label,
     reloadRequired,
+    applicable: context === undefined || applicableTo(context),
   }));
-}
-
-/**
- * Whether `key` is a meaningful control for `context` — e.g. Floor 1 static
- * spawners only mean something on a real Floor 1 target, never on Floor 2+ or
- * on a synthetic lab scenario preset that replaces Floor 1's real content.
- * UI surfaces use this to avoid presenting a control that would silently be a
- * no-op (or misleading) for the currently selected target.
- */
-export function isAiFeatureFlagApplicable(
-  key: AiFeatureFlagKey,
-  context: AiFeatureFlagContext,
-): boolean {
-  const definition = AI_FEATURE_FLAG_DEFINITIONS.find((candidate) => candidate.key === key);
-  return definition ? definition.applicableTo(context) : true;
 }
 
 export function resolveAiFeatureFlags(
@@ -106,8 +94,9 @@ export function resolveAiFeatureFlags(
 ): AiFeatureFlags {
   const resolved = {} as AiFeatureFlags;
   for (const definition of AI_FEATURE_FLAG_DEFINITIONS) {
-    resolved[definition.key] =
+    const requested =
       input[definition.key] ?? definition.resolve?.(input) ?? definition.defaultEnabled(context);
+    resolved[definition.key] = definition.applicableTo(context) ? requested : false;
   }
   return resolved;
 }

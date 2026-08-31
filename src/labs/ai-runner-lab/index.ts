@@ -22,7 +22,6 @@ import {
   RISK_REWARD_FIELD_CONSTANTS,
   getAiFeatureFlagControls,
   getPersonaConfig,
-  isAiFeatureFlagApplicable,
   resolveAiFeatureFlags,
   type AIDecisionModeValue,
   type AiFeatureFlagContext,
@@ -817,7 +816,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
    * reload" note in the Run setup panel.
    */
   function hasPendingFeatureFlagReload(): boolean {
-    return getAiFeatureFlagControls().some(
+    return getAiFeatureFlagControls(aiFeatureFlagContext()).some(
       (control) =>
         control.reloadRequired && featureFlags[control.key] !== appliedFeatureFlags[control.key],
     );
@@ -1419,7 +1418,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ReturnType<typeof getAiFeatureFlagControls>[number]['key'],
     Controller
   >();
-  for (const control of getAiFeatureFlagControls()) {
+  for (const control of getAiFeatureFlagControls(aiFeatureFlagContext())) {
     const controller = featureFlagsFolder
       .add(featureFlags, control.key)
       .name(control.label)
@@ -1443,12 +1442,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
    */
   function updateFeatureFlagControllerState(): void {
     const context = aiFeatureFlagContext();
-    for (const control of getAiFeatureFlagControls()) {
+    for (const control of getAiFeatureFlagControls(context)) {
       const controller = featureFlagControllers.get(control.key);
       if (!controller) continue;
-      const applicable = isAiFeatureFlagApplicable(control.key, context);
-      controller.disable(!applicable);
-      const suffix = applicable
+      controller.disable(!control.applicable);
+      const suffix = control.applicable
         ? ''
         : context.isRealFloorTarget === false
           ? ' (n/a for this scenario preset)'
@@ -1632,7 +1630,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     // where a reload-required feature-flag SELECTION becomes APPLIED: copy the
     // live `featureFlags` selection into the snapshot that actually feeds the
     // next world build.
-    appliedFeatureFlags = { ...featureFlags };
+    appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());
     Object.assign(
       sceneOptions,
       composeSceneOptions(
