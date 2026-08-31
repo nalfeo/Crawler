@@ -12197,6 +12197,12 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   const originalConcern = 'Issue #9999 explicitly required a detailed plan comment before code.';
   const priorBlockedReply =
     'Blocked outside this branch: issue #9999 still lacks the required pre-code plan comment.';
+  const supersededProtectedPathReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '',
+    "I can't complete the `.github/agents` work because this session's policy prevents access.",
+  ].join('\n');
   const thread = {
     id: threadId,
     isResolved: false,
@@ -12243,6 +12249,11 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
         },
         {
           id: 10031,
+          body: supersededProtectedPathReply,
+          user: { login: 'Copilot' },
+        },
+        {
+          id: 10032,
           body: priorTopLevelReply,
           user: { login: 'Copilot' },
         },

@@ -14,8 +14,23 @@
       "notes": "Adopted normalized current-thread-bound capability signal from full trusted recovery reply; distinct protected-path quarantine reason/operator copy; quarantine only when all remaining blockers are capability-denied; explicit trust boundary; full reconcile mutation-sequence regression. No architectural fork: reuse lifecycle quarantine."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     },
     "independent_grade": {
       "completed": false,

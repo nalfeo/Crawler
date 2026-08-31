@@ -2580,11 +2580,19 @@ for (const comment of comments) {
   // the least misleading hint for the next recovery run.
   for (const blockerId of blockerIds) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
-    if (protectedPathDenied) protectedPathDenialByBlockerId.add(blockerId);
+    if (protectedPathDenied) {
+      protectedPathDenialByBlockerId.add(blockerId);
+    } else {
+      protectedPathDenialByBlockerId.delete(blockerId);
+    }
     const stableThreadId = extractStableReviewThreadId(blockerId);
     if (stableThreadId) {
       priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
-      if (protectedPathDenied) protectedPathDenialByStableThreadId.add(stableThreadId);
+      if (protectedPathDenied) {
+        protectedPathDenialByStableThreadId.add(stableThreadId);
+      } else {
+        protectedPathDenialByStableThreadId.delete(stableThreadId);
+      }
     }
   }
 }
