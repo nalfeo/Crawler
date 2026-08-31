@@ -123,6 +123,10 @@ export function outputSemanticErrors(payload) {
       `outputs.hardGate is only valid for gate-bearing tasks (${[...GATE_TASKS].join(', ')}); got task=${task}`,
     );
   }
+  if (outputs.disposition !== undefined && outputs.disposition !== null && status !== 'no-work') {
+    errors.push(`outputs.disposition is only valid when status='no-work' (got status=${status})`);
+  }
+
   return errors;
 }
 

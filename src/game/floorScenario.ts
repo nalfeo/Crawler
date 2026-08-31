@@ -168,13 +168,14 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
-// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
-// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
-// placement machinery below is fully config-driven off this table — repopulate
-// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
-// spawners without touching the runtime pipelines.
+// Floor 1 is spawner-free by DEFAULT (ADR 0049): `spawnFloor1StaticSpawners`
+// only places Spawner entities when the caller opts in via
+// `ScenarioInitializationOptions.floor1Spawners` (default false — see
+// `initializeFloor1Scenario`). This table is the archetype set placed when
+// enabled; it stays fully config-driven — repopulate/trim it to change which
+// archetypes ship without touching any pipeline code.
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
-const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = ['rats-nest', 'slime-pool'];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -1573,11 +1574,11 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function spawnFloor1StaticSpawners(world: GameWorld): void {
-  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
-  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
-  // deriving the room stream so we do no wasted work.
-  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
+function spawnFloor1StaticSpawners(world: GameWorld, enabled: boolean): void {
+  // Config-driven no-op: default-off (`enabled` false) or an empty
+  // static-spawner table both mean Floor 1 places no Spawner entities. Bail
+  // before deriving the room stream so we do no wasted work.
+  if (!enabled || FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
     return;
   }
   const floorMap = world.floorMap;
@@ -2058,7 +2059,11 @@ export function initializePlayerWeaponSkills(world: GameWorld, playerEid: number
   }
 }
 
-export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
+export function initializeFloor1Scenario(
+  world: GameWorld,
+  playerEid: number,
+  options?: { readonly floor1Spawners?: boolean },
+): void {
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
@@ -2647,7 +2652,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     questItemPos.y,
     getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
   );
-  spawnFloor1StaticSpawners(world);
+  spawnFloor1StaticSpawners(world, options?.floor1Spawners ?? false);
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);

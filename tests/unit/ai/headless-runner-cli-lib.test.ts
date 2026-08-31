@@ -174,11 +174,14 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     expect(helpText()).toContain('purchase and Floor 1 Spell Broker purchase (default: on)');
   });
 
-  it('resolves Floor 2 routing while preserving explicit overrides and other-floor defaults', () => {
+  it('never contradicts the canonical registry default with an implicit per-floor override', () => {
+    // Regression: `resolveHeadlessRunnerOptions` used to force
+    // `settlementReturnRouting: true` whenever `--floor floor2` was passed
+    // with no explicit flag, contradicting the registry's own floor2 default
+    // (`false` — see `feature-flags.test.ts`). Per-floor defaults are the
+    // registry's job; the CLI resolver must forward explicit overrides only.
     expect(cli().settlementReturnRouting).toBeUndefined();
-    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor2'))).toEqual({
-      settlementReturnRouting: true,
-    });
+    expect(resolveHeadlessRunnerOptions(cli('--floor', 'floor2'))).toEqual({});
     expect(
       resolveHeadlessRunnerOptions(cli('--floor', 'floor2', '--settlement-return-routing')),
     ).toEqual({
@@ -213,6 +216,34 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
         .settlementReturnRouting,
     ).toBe(false);
     expect(helpText()).toContain('--no-settlement-return-routing');
+  });
+
+  it('leaves attackWaves unset by default and supports explicit CLI overrides', () => {
+    expect(cli().attackWaves).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli())).not.toHaveProperty('attackWaves');
+    expect(cli('--attack-waves').attackWaves).toBe(true);
+    expect(resolveHeadlessRunnerOptions(cli('--attack-waves'))).toEqual({ attackWaves: true });
+    expect(cli('--no-attack-waves').attackWaves).toBe(false);
+    expect(resolveHeadlessRunnerOptions(cli('--no-attack-waves'))).toEqual({
+      attackWaves: false,
+    });
+    expect(helpText()).toContain('--attack-waves');
+    expect(helpText()).toContain('--no-attack-waves');
+  });
+
+  it('leaves floor1Spawners unset by default and supports explicit CLI overrides', () => {
+    expect(cli().floor1Spawners).toBeUndefined();
+    expect(resolveHeadlessRunnerOptions(cli())).not.toHaveProperty('floor1Spawners');
+    expect(cli('--floor1-spawners').floor1Spawners).toBe(true);
+    expect(resolveHeadlessRunnerOptions(cli('--floor1-spawners'))).toEqual({
+      floor1Spawners: true,
+    });
+    expect(cli('--no-floor1-spawners').floor1Spawners).toBe(false);
+    expect(resolveHeadlessRunnerOptions(cli('--no-floor1-spawners'))).toEqual({
+      floor1Spawners: false,
+    });
+    expect(helpText()).toContain('--floor1-spawners');
+    expect(helpText()).toContain('--no-floor1-spawners');
   });
 });
 

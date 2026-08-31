@@ -318,11 +318,17 @@ describe('settlement return routing (headless integration)', () => {
     let seeded = false;
     const enabledStates: boolean[] = [];
     // Exactly what `headless-runner-cli.ts` spreads into `runHeadless` for
-    // `npm run ai:headless -- --floor floor2` — resolved by the real CLI parser
-    // rather than a hand-written literal, so a CLI-side regression is caught in
-    // the real headless pipeline and not only in the pure-resolver unit test.
+    // `npm run ai:headless -- --floor floor2 --settlement-return-routing` —
+    // resolved by the real CLI parser rather than a hand-written literal, so a
+    // CLI-side regression is caught in the real headless pipeline and not only
+    // in the pure-resolver unit test. Floor 2 does NOT default this on (see
+    // `feature-flags.ts`'s registry default and
+    // `headless-runner-cli-lib.test.ts`), so the explicit flag is required.
     const runnerOptions = resolveHeadlessRunnerOptions(
-      parseArgs(['node', 'headless-runner-cli.js', '--floor', 'floor2'], {}),
+      parseArgs(
+        ['node', 'headless-runner-cli.js', '--floor', 'floor2', '--settlement-return-routing'],
+        {},
+      ),
     );
     expect(runnerOptions).toEqual({ settlementReturnRouting: true });
 
