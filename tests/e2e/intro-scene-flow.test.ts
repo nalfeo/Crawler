@@ -91,7 +91,9 @@ async function waitForFloorDebug(page: Page, expectedName: string): Promise<void
       );
     },
     expectedName,
-    { timeout: 30_000 },
+    // Nominal local runtime is ~10s per intro-flow test; CI can be slower when
+    // this suite runs alongside 50+ visual tests, so keep a buffer above 30s.
+    { timeout: 45_000 },
   );
 }
 
