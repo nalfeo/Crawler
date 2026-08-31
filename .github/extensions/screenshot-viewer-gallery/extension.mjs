@@ -15,6 +15,12 @@ import { createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import { renderHtml } from './renderer.mjs';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const IMAGE_MIME_TYPES = new Map([
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+]);
 const POLL_INTERVAL_MS = 10_000;
 const SCAN_MAX_DEPTH = 5;
 const registry = new Map();
@@ -153,8 +159,7 @@ async function handle(instanceId, token, request, response) {
     try {
       const bytes = readFileSync(absolutePath);
       response.writeHead(200, {
-        'Content-Type':
-          extname(absolutePath).toLowerCase() === '.webp' ? 'image/webp' : 'image/png',
+        'Content-Type': IMAGE_MIME_TYPES.get(extname(absolutePath).toLowerCase()) ?? 'image/png',
         'Content-Length': bytes.byteLength,
         'Cache-Control': 'no-store',
       });

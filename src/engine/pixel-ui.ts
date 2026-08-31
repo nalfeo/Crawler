@@ -21,15 +21,15 @@ import Phaser from 'phaser';
 
 export const PIXEL_UI = {
   /** Panel body fill. */
-  panelFill: 0x161c2c,
+  panelFill: 0x111a2b,
   /** Inset track (behind bar fills). */
   trackFill: 0x0a0e18,
   /** Top/left bevel highlight. */
-  bevelLight: 0x4a5878,
+  bevelLight: 0x647aa5,
   /** Bottom/right bevel shadow. */
-  bevelDark: 0x080b14,
+  bevelDark: 0x050812,
   /** Outer 1px border. */
-  border: 0x02040a,
+  border: 0x0a1220,
   /** Glossy shine overlaid on bar fills. */
   shine: 0xffffff,
   /** Accent gold for titles/markers. */

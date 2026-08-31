@@ -103,6 +103,15 @@ export interface CliOptions {
   lineageState: string | null;
   /** Which side of the lineage this capture belongs to. Defaults to "after". */
   lineageSide: 'before' | 'after';
+  /**
+   * Skip the Azure OpenAI vision judge entirely (opt-in). Runs the same
+   * Playwright capture and deterministic geometry/text-raster checks, but
+   * writes a review.json with only `deterministic_status` /
+   * `deterministic_blocking_findings` — no LLM score, verdict, or findings —
+   * and does not require Azure credentials. For a release/CI capture path
+   * that must work without Azure access.
+   */
+  deterministicOnly: boolean;
 }
 
 type ScreenClip = { x: number; y: number; width: number; height: number };
@@ -384,6 +393,7 @@ export function parseArgs(argv: string[]): CliOptions {
     lineageScenario: null,
     lineageState: null,
     lineageSide: 'after',
+    deterministicOnly: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -486,6 +496,10 @@ export function parseArgs(argv: string[]): CliOptions {
       i += 1;
       continue;
     }
+    if (arg === '--deterministic-only') {
+      opts.deterministicOnly = true;
+      continue;
+    }
     if ((arg === '--viewport-width' || arg === '--viewport-height') && next) {
       const value = Number(next);
       if (!Number.isInteger(value) || value < 320 || value > 7680) {
@@ -565,6 +579,24 @@ function readEnvVar(name: string): string {
     throw new Error(`missing required env var ${name}`);
   }
   return value.trim();
+}
+
+function loadLocalReviewEnv(): void {
+  const envPath = resolve('.env.local');
+  try {
+    const contents = readFileSync(envPath, 'utf8');
+    for (const line of contents.split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (!match) continue;
+      const name = match[1];
+      const rawValue = match[2];
+      if (!name || rawValue === undefined) continue;
+      if (process.env[name]) continue;
+      process.env[name] = rawValue.replace(/^(['"])(.*)\1$/, '$2');
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 
 function extractJsonObject(raw: unknown): VisualReviewResult {
@@ -899,10 +931,12 @@ async function captureScreenshot(
       const globalWithProbe = window as unknown as {
         __uiProbe?: { ready?: () => boolean };
         __mainSceneProbe?: { ready?: () => boolean };
+        __hudProbe?: { ready?: () => boolean };
       };
       return (
         globalWithProbe.__uiProbe?.ready?.() === true ||
-        globalWithProbe.__mainSceneProbe?.ready?.() === true
+        globalWithProbe.__mainSceneProbe?.ready?.() === true ||
+        globalWithProbe.__hudProbe?.ready?.() === true
       );
     },
     opts.skipProbeWait,
@@ -1748,6 +1782,62 @@ function printResult(result: VisualReviewResult, screenshotPath: string, reviewP
 }
 
 /**
+ * Deterministic-only capture path (`--deterministic-only`): writes a
+ * review.json scoped to the geometry/text-raster checks only — no Azure
+ * credentials, no LLM call, no score/verdict/findings from a judge. Used by
+ * offline/CI capture flows (e.g. `capture-ux-baselines.ts`'s default path)
+ * that must not require Azure access.
+ */
+function writeDeterministicOnlyResult(
+  opts: CliOptions,
+  capture: CaptureResult,
+  screenshotPath: string,
+  reviewPath: string,
+): number {
+  const pixelGrounded = !lacksPixelGroundedGeometry(capture.harvestSource, capture.regions.length);
+  const deterministicStatus: VisualReviewResult['deterministic_status'] = pixelGrounded
+    ? capture.deterministicBlockers.length === 0
+      ? 'pass'
+      : 'fail'
+    : 'unscoped';
+  const captureHash = createHash('sha256').update(readFileSync(screenshotPath)).digest('hex');
+  const result: VisualReviewResult = {
+    overall: {
+      verdict: capture.deterministicBlockers.length > 0 ? 'fail' : 'pass',
+      summary:
+        'Deterministic-only capture (--deterministic-only): no LLM review was run, so this ' +
+        'result carries no score or LLM findings.',
+    },
+    blocking_findings: [...capture.deterministicBlockers],
+    deterministic_blocking_findings: capture.deterministicBlockers,
+    deterministic_status: deterministicStatus,
+    geometry: capture.geometry,
+    harvest_source: capture.harvestSource,
+    capture_hash: captureHash,
+    ...(capture.surface ? { surface: capture.surface } : {}),
+    ...(capture.regions.length > 0 ? { regions_declared: capture.regions.map((r) => r.id) } : {}),
+  };
+  writeFileSync(reviewPath, `${JSON.stringify(result, null, 2)}\n`, 'utf-8');
+  console.log(
+    `[visual-review-agent] deterministic-only: status=${deterministicStatus} ` +
+      `blockers=${capture.deterministicBlockers.length}`,
+  );
+  console.log(`[visual-review-agent] screenshot: ${screenshotPath}`);
+  console.log(`[visual-review-agent] report: ${reviewPath}`);
+
+  if (opts.lineageScenario && opts.lineageState) {
+    const lineageDir = resolve(opts.outputDir, opts.lineageSide, opts.lineageState);
+    mkdirSync(lineageDir, { recursive: true });
+    copyFileSync(screenshotPath, resolve(lineageDir, `${opts.lineageScenario}.png`));
+    copyFileSync(reviewPath, resolve(lineageDir, `${opts.lineageScenario}.review.json`));
+    console.log(
+      `[visual-review-agent] lineage: ${opts.lineageSide}/${opts.lineageState}/${opts.lineageScenario}.{png,review.json}`,
+    );
+  }
+  return deterministicStatus === 'fail' ? 1 : 0;
+}
+
+/**
  * Load blocking-finding keys from the most recent prior review artifact for this
  * surface (same screenshot-name prefix), so we can label current findings NEW vs
  * RECURRING. Timestamp suffixes sort lexicographically in chronological order.
@@ -2021,6 +2111,7 @@ function writeEvidenceBundle(args: {
 }
 
 async function main(): Promise<number> {
+  loadLocalReviewEnv();
   if (process.env.CI) {
     console.error('[visual-review-agent] Refusing to run in CI (dev-session tool only).');
     return 2;
@@ -2081,6 +2172,10 @@ async function main(): Promise<number> {
       `[visual-review-agent] geometry harvested (declared): surface=${capture.surface ?? '(unnamed)'} ` +
         `regions=${capture.regions.length} deterministic-blockers=${capture.deterministicBlockers.length}`,
     );
+  }
+
+  if (opts.deterministicOnly) {
+    return writeDeterministicOnlyResult(opts, capture, screenshotPath, reviewPath);
   }
 
   const endpoint = readEnvVar('AZURE_OPENAI_ENDPOINT');

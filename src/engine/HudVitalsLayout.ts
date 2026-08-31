@@ -1,6 +1,8 @@
 /**
  * HudVitalsLayout — shared stacking geometry for the bottom-left vitals HUD
- * cluster (skill tracker → loot counter → XP bar → health bar).
+ * cluster (skill tracker → XP bar → health bar). The gold/junk loot readout is
+ * no longer a standalone stacked row; it is embedded inline in the health
+ * bar's own panel (see HudHealthBar.ts) to cut wasted vertical space.
  *
  * Previously every widget hand-derived its own `GAME.HEIGHT - <magic offset>`
  * position, each one silently assuming its neighbors' heights and gaps without
@@ -35,15 +37,14 @@ export const VITALS_BOTTOM_MARGIN = 4;
  * without a deliberate, reviewed update here too.
  */
 export const VITALS_ROW_HEIGHTS = {
-  skill: 64,
-  loot: 30,
+  skill: 114,
   xp: 26,
-  health: 32,
+  health: 60,
 } as const;
 
 type VitalsRow = keyof typeof VITALS_ROW_HEIGHTS;
 
-const VITALS_ORDER: readonly VitalsRow[] = ['skill', 'loot', 'xp', 'health'];
+const VITALS_ORDER: readonly VitalsRow[] = ['skill', 'xp', 'health'];
 
 function computeStackYs(): Record<VitalsRow, number> {
   const ys = {} as Record<VitalsRow, number>;
@@ -53,7 +54,7 @@ function computeStackYs(): Record<VitalsRow, number> {
     const height = VITALS_ROW_HEIGHTS[row];
     const y = bottomEdge - height;
     ys[row] = y;
-    bottomEdge = y - (row === 'loot' ? 8 : VITALS_PANEL_GUTTER);
+    bottomEdge = y - VITALS_PANEL_GUTTER;
   }
   return ys;
 }

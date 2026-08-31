@@ -131,6 +131,20 @@ export const probe = {
     page.evaluate((i) => window.__uiProbe!.getInventoryCellBounds(i), index),
   getInventoryCellIndexForItem: (page: Page, itemId: string) =>
     page.evaluate((id) => window.__uiProbe!.getInventoryCellIndexForItem(id), itemId),
+  getInventoryVisibleItemIds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryVisibleItemIds()),
+  getInventoryVisibleCellIndices: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryVisibleCellIndices()),
+  scrollInventory: (page: Page, rows: number) =>
+    page.evaluate((r) => window.__uiProbe!.scrollInventory(r), rows),
+  getInventoryScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryScrollRow()),
+  getInventoryMaxScrollRow: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryMaxScrollRow()),
+  getInventoryScrollUpControlBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryScrollUpControlBounds()),
+  getInventoryScrollDownControlBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryScrollDownControlBounds()),
   isTooltipVisible: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipVisible()),
   isTooltipPinned: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipPinned()),
 
@@ -141,10 +155,14 @@ export const probe = {
     page.evaluate(() => window.__uiProbe!.getEquipmentPanelBounds()),
   getEquipmentHeaderBounds: (page: Page) =>
     page.evaluate(() => window.__uiProbe!.getEquipmentHeaderBounds()),
+  getEquipmentHeaderFrameBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getEquipmentHeaderFrameBounds()),
   getEquipmentDollBounds: (page: Page) =>
     page.evaluate(() => window.__uiProbe!.getEquipmentDollBounds()),
   getEquipmentSlotBounds: (page: Page, slotId: EquipmentSlotId) =>
     page.evaluate((slot) => window.__uiProbe!.getEquipmentSlotBounds(slot), slotId),
+  getEquipmentSlotIconBounds: (page: Page, slotId: EquipmentSlotId) =>
+    page.evaluate((slot) => window.__uiProbe!.getEquipmentSlotIconBounds(slot), slotId),
   getEquipmentEmptySlotCue: (page: Page, slotId: EquipmentSlotId) =>
     page.evaluate((slot) => window.__uiProbe!.getEquipmentEmptySlotCue(slot), slotId),
   getEquipmentTooltipBounds: (page: Page) =>

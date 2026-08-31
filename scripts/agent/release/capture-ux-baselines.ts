@@ -18,6 +18,12 @@ import { resolve, join } from 'node:path';
 import process from 'node:process';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { getSessionServerPorts } from '../../shared/session-server-ports.js';
+
+const require = createRequire(import.meta.url);
+
+const { labBaseUrl } = getSessionServerPorts();
 
 const MANIFEST_PATH = resolve('docs/knowledge/ux-baselines/manifest.json');
 const BASELINES_DIR = resolve('docs/knowledge/ux-baselines/releases');
@@ -75,8 +81,34 @@ function getCurrentCommitSha() {
   }
 }
 
+function resolveRefSha(ref: string): string {
+  try {
+    return execSync(`git rev-parse ${ref}`, {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    throw new Error(`Could not resolve --ref "${ref}" to a commit (is it a valid ref/tag?)`);
+  }
+}
+
 function getTimestamp() {
   return new Date().toISOString();
+}
+
+async function isServerReachable(baseUrl: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      await fetch(`${baseUrl}/`, { signal: controller.signal });
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return false;
+  }
 }
 
 type BaselineSurface = {
@@ -84,6 +116,9 @@ type BaselineSurface = {
   label: string;
   viewport: { width: number; height: number };
   captureSource: string;
+  // Which Phaser lab (?lab=<labId>) to load for capture. Defaults to
+  // 'ui-probe-lab' when omitted, since most existing surfaces use it.
+  labId?: string;
   setupFile: string;
   enabled: boolean;
   description?: string;
@@ -93,14 +128,22 @@ async function captureSurface(opts: {
   ref: string;
   releaseDir: string;
   surface: BaselineSurface;
+  withLlmReview: boolean;
 }): Promise<{ success: boolean; surface: string; score?: number }> {
-  const { ref, releaseDir, surface } = opts;
+  const { ref, releaseDir, surface, withLlmReview } = opts;
   const surfaceDir = join(releaseDir, surface.id);
   mkdirSync(surfaceDir, { recursive: true });
 
+  // visual-review-agent doesn't write directly into surfaceDir: it writes a
+  // timestamped capture at its output root, then (because we pass
+  // --lineage-*) copies it into `<outputDir>/<lineageSide>/<lineageState>/
+  // <lineageScenario>.{png,review.json}`. Point the baseline paths at that
+  // lineage copy instead of a `${surface.id}.png` that visual-review-agent
+  // never creates.
+  const lineageDir = join(surfaceDir, 'before', 'live-dev');
   const screenshotName = `${surface.id}.png`;
-  const screenshotPath = join(surfaceDir, screenshotName);
-  const reviewPath = join(surfaceDir, `${surface.id}.review.json`);
+  const screenshotPath = join(lineageDir, screenshotName);
+  const reviewPath = join(lineageDir, `${surface.id}.review.json`);
   const metadataPath = join(surfaceDir, 'metadata.json');
 
   console.log(
@@ -112,7 +155,7 @@ async function captureSurface(opts: {
     'tsx',
     'scripts/agent/review/visual-review-agent.ts',
     '--url',
-    `http://localhost:5173/lab.html?lab=ui-probe-lab&uxScenario=${encodeURIComponent(surface.id)}`,
+    `${labBaseUrl}/lab.html?lab=${encodeURIComponent(surface.labId ?? 'ui-probe-lab')}&uxScenario=${encodeURIComponent(surface.id)}`,
     '--output-dir',
     surfaceDir,
     '--screenshot-name',
@@ -133,15 +176,19 @@ async function captureSurface(opts: {
     'live-dev',
     '--lineage-side',
     'before',
+    // Deterministic by default: only spend Azure/LLM budget when explicitly
+    // requested. --with-llm-review opts into the Azure vision judge instead.
+    ...(withLlmReview ? [] : ['--deterministic-only']),
   ];
 
   // We need a running dev server. Check if one is already running, or start one.
+  // Use fetch instead of shelling out to `curl ... > /dev/null`: the /dev/null
+  // redirect target does not exist on Windows PowerShell/cmd, which made the
+  // health check always fail there and repeatedly (and invalidly) try to spawn
+  // a second dev server on top of an already-running one.
   let serverStarted = false;
   let serverProcess: ReturnType<typeof spawn> | undefined;
-  try {
-    // Quick health check
-    execSync('curl -s http://localhost:5173/ > /dev/null', { timeout: 5000 });
-  } catch {
+  if (!(await isServerReachable(labBaseUrl))) {
     // Server not running, start it in the background
     console.log('Starting Vite dev server for capture...');
     serverProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lab'], {
@@ -152,13 +199,11 @@ async function captureSurface(opts: {
     // Wait for server to be ready
     let ready = false;
     for (let i = 0; i < 30; i++) {
-      try {
-        execSync('curl -s http://localhost:5173/ > /dev/null', { timeout: 5000 });
+      if (await isServerReachable(labBaseUrl)) {
         ready = true;
         break;
-      } catch {
-        await new Promise((r) => setTimeout(r, 1000));
       }
+      await new Promise((r) => setTimeout(r, 1000));
     }
     if (!ready) {
       throw new Error('Dev server did not become ready within 30 seconds');
@@ -167,7 +212,14 @@ async function captureSurface(opts: {
 
   try {
     // Run visual-review agent
-    const result = spawnSync('tsx', visualReviewCmd.slice(1), {
+    // On Windows, `tsx` resolves to a .cmd shim which node's spawnSync cannot
+    // exec directly without shell:true — but shell:true then requires manual
+    // quoting of args, and the URL argument contains `&`, which cmd.exe would
+    // otherwise interpret as a command separator. Resolve to the tsx binary's
+    // underlying JS entrypoint instead so we can always run it via `node`
+    // directly, with no shell involved on any platform.
+    const tsxCliPath = resolve(require.resolve('tsx/package.json'), '..', 'dist', 'cli.mjs');
+    const result = spawnSync(process.execPath, [tsxCliPath, ...visualReviewCmd.slice(1)], {
       stdio: 'inherit',
       timeout: 120000,
     });
@@ -206,10 +258,11 @@ async function captureSurface(opts: {
       captureSource: surface.captureSource,
       sourceCommit: getCurrentCommitSha(),
       capturedAt: getTimestamp(),
-      screenshotPath: screenshotName,
-      reviewPath: `${surface.id}.review.json`,
+      screenshotPath: `before/live-dev/${screenshotName}`,
+      reviewPath: `before/live-dev/${surface.id}.review.json`,
       screenshotHash,
       determinismCheck: 'passed',
+      llmReviewed: withLlmReview,
     };
 
     writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
@@ -256,6 +309,34 @@ async function main() {
   console.log(`📸 Capturing UX baselines for release: ${ref}`);
   console.log(`📁 Output directory: ${releaseDir}`);
 
+  // The capture always runs against the current checkout, so labeling it
+  // "v0.1.0" while HEAD is actually somewhere else would silently mislabel
+  // the pixels and defeat baseline provenance. Fail fast unless the resolved
+  // --ref matches HEAD exactly.
+  const headSha = getCurrentCommitSha();
+  let resolvedRefSha: string;
+  try {
+    resolvedRefSha = resolveRefSha(ref);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`❌ ${msg}`);
+    process.exit(1);
+  }
+  if (headSha !== resolvedRefSha) {
+    console.error(
+      `❌ --ref "${ref}" resolves to ${resolvedRefSha}, but the current checkout (HEAD) is ${headSha}. ` +
+        'Check out the requested ref before capturing so the baseline is not mislabeled.',
+    );
+    process.exit(1);
+  }
+
+  const withLlmReview = flags['with-llm-review'] === true || flags['with-llm-review'] === 'true';
+  console.log(
+    withLlmReview
+      ? '🧠 LLM visual review ENABLED (--with-llm-review): Azure credentials are required.'
+      : '🔒 Deterministic-only capture (default): no Azure/LLM call. Pass --with-llm-review to include one.',
+  );
+
   // Read manifest
   let manifest;
   try {
@@ -271,8 +352,19 @@ async function main() {
     process.exit(1);
   }
 
-  // Filter to enabled surfaces
-  const enabledSurfaces = manifest.filter((s) => s.enabled);
+  // Filter to enabled surfaces, optionally narrowed to one --surface id. Doing
+  // this before the "no enabled surfaces" check lets --surface report a clear
+  // not-found error instead of silently falling through to "capture everything".
+  const surfaceFilter = typeof flags.surface === 'string' ? flags.surface : undefined;
+  let enabledSurfaces = manifest.filter((s) => s.enabled);
+  if (surfaceFilter !== undefined) {
+    const matched = enabledSurfaces.filter((s) => s.id === surfaceFilter);
+    if (matched.length === 0) {
+      console.error(`❌ --surface "${surfaceFilter}" did not match any enabled manifest entry.`);
+      process.exit(1);
+    }
+    enabledSurfaces = matched;
+  }
   if (enabledSurfaces.length === 0) {
     console.warn('⚠️  No enabled surfaces in manifest');
     process.exit(0);
@@ -296,6 +388,7 @@ async function main() {
           ref,
           releaseDir,
           surface,
+          withLlmReview,
         });
         results.push(result);
         if (result.success) capturedCount++;

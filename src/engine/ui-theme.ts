@@ -20,6 +20,19 @@ export const MIN_TEXT_RESOLUTION = 6;
 /** Legibility-first face shared by the equipment and inventory surfaces. */
 export const UI_FONT_FAMILY = '"Arial", "Segoe UI", sans-serif';
 
+/** Pixel-face used by the in-game HUD, distinct from menu body copy. */
+export const HUD_FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+
+/** Compact HUD text sizes keep labels readable without changing layout bounds. */
+export const HUD_TEXT = {
+  label: '10px',
+  value: '12px',
+  title: '11px',
+} as const;
+
+/** Keep bottom-anchored HUD panels clear of the screen edge/home indicator. */
+export const HUD_BOTTOM_INSET = 12;
+
 /** Convert a 0xRRGGBB colour number to a Phaser "#rrggbb" CSS colour string. */
 export function hex(value: number): string {
   return `#${value.toString(16).padStart(6, '0')}`;
@@ -30,10 +43,11 @@ export function hex(value: number): string {
  * and add their own tokens, e.g. `const COLORS = { ...BLUE_STEEL, tabBg: ... }`.
  */
 export const BLUE_STEEL = {
-  panelBg: 0x2f3f61,
-  panelBorder: 0x3f5f93,
-  textPrimary: 0xd9e2ef,
-  textSecondary: 0xaebdd5,
-  sectionHeader: 0x355180,
+  panelBg: 0x263858,
+  panelBorder: 0x5276ae,
+  textPrimary: 0xe8eef7,
+  textSecondary: 0xc0cde0,
+  sectionHeader: 0x3c5d8f,
   accent: 0xc2d0e6,
+  accentGold: 0xfcd34d,
 } as const;

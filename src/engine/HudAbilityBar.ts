@@ -6,20 +6,20 @@ import { GAME } from '../shared/constants.js';
 import { isAbilitySlotCastFlashing } from './ability-bar-flash-state.js';
 import { getAbilityIconEntry } from './ability-icon.js';
 import { createBeveledPanel } from './pixel-ui.js';
-import { BLUE_STEEL, hex } from './ui-theme.js';
+import { BLUE_STEEL, HUD_BOTTOM_INSET, hex } from './ui-theme.js';
 import { applyCrispText, fitScaleForBox, type ScreenBounds } from './ui-scale.js';
 
 const DEPTH = 1000;
 const SLOT_WIDTH = 54;
 const SLOT_HEIGHT = 58;
-const SLOT_GAP = 6;
+const SLOT_GAP = 10;
 const BAR_WIDTH =
   ACTIVE_ABILITY_SLOT_LIMIT * SLOT_WIDTH + (ACTIVE_ABILITY_SLOT_LIMIT - 1) * SLOT_GAP;
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
-const BAR_Y = GAME.HEIGHT - 140;
+const BAR_Y = GAME.HEIGHT - HUD_BOTTOM_INSET - SLOT_HEIGHT;
 const PANEL_PADDING = 8;
-const PANEL_TOP = BAR_Y - 30;
-const PANEL_HEIGHT = SLOT_HEIGHT + 38;
+const PANEL_TOP = BAR_Y - 34;
+const PANEL_HEIGHT = SLOT_HEIGHT + 42;
 
 const COLORS = {
   ...BLUE_STEEL,
@@ -113,9 +113,9 @@ export function createHudAbilityBar(
     const keyLabel = scene.add
       .text(x + 7, y + 5, i === 9 ? '0' : String(i + 1), {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '12px',
         fontStyle: 'bold',
-        color: '#53647f',
+        color: '#9fb3d6',
       })
       .setScrollFactor(0)
       .setDepth(DEPTH + 2)
@@ -123,7 +123,7 @@ export function createHudAbilityBar(
     const abilityLabel = scene.add
       .text(x + SLOT_WIDTH / 2, y + 29, '—', {
         fontFamily: 'monospace',
-        fontSize: '18px',
+        fontSize: '20px',
         fontStyle: 'bold',
         color: '#52637e',
       })
@@ -216,7 +216,7 @@ export function createHudAbilityBar(
       if (!id) {
         slot.setFillStyle(COLORS.slotBg, 0.92).setStrokeStyle(2, COLORS.slotBorder);
         accentBar.setFillStyle(COLORS.utility, 0.15);
-        keyLabel.setColor('#53647f');
+        keyLabel.setColor('#9fb3d6');
         abilityLabel.setText('—').setFontSize(18).setColor('#52637e');
         abilityLabel.setVisible(true);
         abilityIcon.setVisible(false);

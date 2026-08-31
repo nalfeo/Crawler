@@ -37,10 +37,14 @@ interface HudLabSettings {
 
 export interface HudProbeApi {
   ready(): boolean;
+  setScenario(scenario: 'safe-room-unlocked' | 'dungeon'): void;
   setBossFightActive(active: boolean): void;
   setLootSkillStressState(): void;
   getLootSkillLayout(): HudLootSkillLayout;
+  getVisualReviewRegions(): Record<string, HudProbeBounds>;
   getGameSize(): { width: number; height: number };
+  /** Hide/show the centered "HUD Lab" placeholder text (canvas-rendered, not CSS-reachable). */
+  setInfoTextVisible(visible: boolean): void;
 }
 
 export interface HudProbeBounds {
@@ -225,7 +229,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
 
       // Centre info text
-      this.add
+      const infoText = this.add
         .text(GAME.WIDTH / 2, GAME.HEIGHT / 2, 'HUD Lab\n(no floor map — minimap inactive)', {
           fontFamily: 'monospace',
           fontSize: '18px',
@@ -270,7 +274,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         inner.y + inner.height <= outer.y + outer.height;
       const getLootSkillLayout = (): HudLootSkillLayout => {
         const regionNames = [
-          'hud-loot-panel-bounds',
+          'hud-health-panel-bounds',
           'hud-loot-gold-value-bounds',
           'hud-loot-gold-text',
           'hud-loot-junk-value-bounds',
@@ -293,16 +297,21 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           regions[name] = bounds;
         }
 
-        const lootPanel = regions['hud-loot-panel-bounds']!;
+        // The loot readout is now inline inside the health panel (folded in
+        // from the former standalone HudLootCounter row); reuse the health
+        // panel bounds as the "loot panel" for adjacency/exclusion purposes.
+        const lootPanel = regions['hud-health-panel-bounds']!;
         const skillPanel = regions['hud-skill-panel-bounds']!;
-        const target = findNamedObject(this.children.list, 'hud-loot-panel-bounds');
+        const target = findNamedObject(this.children.list, 'hud-health-panel-bounds');
         const bottomLeft = target?.parentContainer;
         if (!bottomLeft) throw new Error('HUD bottom-left group not found');
 
         const adjacentRegions = collectLeaves(bottomLeft.list)
           .filter(
             (object) =>
-              !object.name.startsWith('hud-loot-') && !object.name.startsWith('hud-skill-'),
+              !object.name.startsWith('hud-loot-') &&
+              !object.name.startsWith('hud-skill-') &&
+              !object.name.startsWith('hud-health-'),
           )
           .map(readBounds)
           .filter((bounds): bounds is HudProbeBounds => bounds !== null)
@@ -327,8 +336,58 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           otherHudGroups,
         };
       };
+      const getVisualReviewRegions = (): Record<string, HudProbeBounds> => {
+        const bounds: Record<string, HudProbeBounds> = {};
+        const add = (
+          id: string,
+          value: { x: number; y: number; width: number; height: number } | null,
+        ) => {
+          if (value && value.width > 0 && value.height > 0) bounds[id] = value;
+        };
+        add('abilitiesPanel', hudUi!.getAbilityBarBounds());
+        for (const [id, value] of Object.entries(getLootSkillLayout().regions)) add(id, value);
+        const encounter = hudUi!.getEncounterProbeBounds();
+        add('timerPanel', encounter.timerPanel);
+        add('timerText', encounter.timerText);
+        add('bossPanel', encounter.bossPanel);
+        add('bossText', encounter.bossText);
+        add('minimap', hudUi!.getMinimapBounds());
+        return bounds;
+      };
       const probeApi: HudProbeApi = {
         ready: () => sceneBuilt,
+        setScenario: (scenario) => {
+          if (!world?.floorScenario) throw new Error('HUD lab world not ready');
+          if (scenario === 'safe-room-unlocked') {
+            settings.hpPercent = 100;
+            settings.maxHp = 250;
+            settings.timeRemainingS = 300;
+            settings.bossFightActive = false;
+            settings.bossHpPercent = 100;
+            settings.spellsUnlocked = true;
+            world.playerInSafeRoom = true;
+            world.state = 'safe_room';
+            world.featureUnlocks.inventory = true;
+            world.featureUnlocks.equipment = true;
+            world.featureUnlocks.equipmentPanel = true;
+            world.featureUnlocks.spells = true;
+            world.playerGold = 1250;
+            world.floorScenario.objective.junkCollected = 18;
+          } else {
+            settings.hpPercent = 64;
+            settings.maxHp = 100;
+            settings.timeRemainingS = 180;
+            settings.bossFightActive = true;
+            settings.bossHpPercent = 48;
+            settings.spellsUnlocked = true;
+            world.playerInSafeRoom = false;
+            world.state = 'playing';
+          }
+          world.goalFlags.set('floor1-drops-unlocked', true);
+          world.playerLevel.level = 3;
+          world.playerLevel.xp = 42;
+          hudUi?.sync(world, playerEid);
+        },
         setBossFightActive: (active: boolean) => {
           settings.bossFightActive = active;
         },
@@ -342,7 +401,11 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           hudUi?.sync(world, playerEid);
         },
         getLootSkillLayout,
+        getVisualReviewRegions,
         getGameSize: () => ({ width: this.scale.width, height: this.scale.height }),
+        setInfoTextVisible: (visible: boolean) => {
+          infoText.setVisible(visible);
+        },
       };
       probeWindow.__hudProbe = probeApi;
       sceneBuilt = true;

@@ -19,7 +19,9 @@ const NEUTRAL_COUNTERFACTUAL =
 const NEGATIVE_NEUTRAL_STATE =
   /\bno\b[^.]{0,40}\b(?:candidate|preview|delta|comparison|item changes?)\b[^.]{0,120}\b(?:so|therefore|which|making|prevent|impossible|cannot|can't|harder|limit)\b/i;
 const UNSUPPORTED_SEMANTIC_INFERENCE =
-  /\b(?:tooltip|legend|universally understood|usable items?|rare items?|negative contributions?|red for reductions?|gray for neutral)\b/i;
+  /\b(?:legend|universally understood|usable items?|rare items?|negative contributions?|red for reductions?|gray for neutral)\b/i;
+const UNSUPPORTED_TOOLTIP_SEMANTIC_CLAIM =
+  /\btooltips?\b[^.]{0,80}\b(?:legend|universally understood|mean|means|meaning|explain|explains|explaining|understood|understand)\b|\b(?:legend|universally understood|explain|explains|explaining)\b[^.]{0,80}\btooltips?\b/i;
 const UNSUPPORTED_BAG_BORDER_TREATMENT =
   /\b(?:green|blue)\b[^.]{0,120}\b(?:borders?|outlines?)\b[^.]{0,120}\b(?:semantic|contribut|equippable|usable|rare|meaning)\b/i;
 const BAG_BORDER_TREATMENT =
@@ -154,7 +156,10 @@ function rejectUnsupportedClaim(value, name) {
   if (NEUTRAL_COUNTERFACTUAL.test(value) || NEGATIVE_NEUTRAL_STATE.test(value)) {
     throw new Error(`${name} criticizes an intentionally absent neutral-state interaction`);
   }
-  if (UNSUPPORTED_SEMANTIC_INFERENCE.test(value)) {
+  if (
+    UNSUPPORTED_SEMANTIC_INFERENCE.test(value) ||
+    UNSUPPORTED_TOOLTIP_SEMANTIC_CLAIM.test(value)
+  ) {
     throw new Error(`${name} infers unsupported color semantics or behavior`);
   }
   if (UNSUPPORTED_BAG_BORDER_TREATMENT.test(value) || BAG_BORDER_TREATMENT.test(value)) {

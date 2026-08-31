@@ -13,7 +13,6 @@ import {
   buildSupersedeNoticeBody,
   hasLabelNamed,
   isConfirmedRestrictedBranchQuarantine,
-  isRestrictedCopilotBranch,
   isSameRepository,
   parseRepairMarker,
   renderRepairMarker,
@@ -30,9 +29,17 @@ const REPO = 'Crawler';
 const HEAD_SHA = '3a4a769647904d9a32f449bee658a241d0c4a748';
 const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 
-function quarantineStatusComment(headSha = HEAD_SHA, strikes = UNADVANCEABLE_STRIKE_THRESHOLD) {
+function quarantineStatusComment(
+  headSha = HEAD_SHA,
+  strikes = UNADVANCEABLE_STRIKE_THRESHOLD,
+  { trusted = true } = {},
+) {
   return {
     body: `${STATUS_MARKER}\n## Merge train\n\n${renderUnadvanceableStrike({ headSha, strikes, attempts: strikes })}`,
+    // The real status comment is always posted/patched by the merge-train
+    // automation identity; `performed_via_github_app` simulates that, the
+    // same signal `isTrustedNoticeAuthor` checks in production.
+    ...(trusted ? { performed_via_github_app: {} } : {}),
   };
 }
 
@@ -51,13 +58,6 @@ function originalPr(overrides = {}) {
     ...overrides,
   };
 }
-
-test('isRestrictedCopilotBranch matches only the copilot/* namespace', () => {
-  assert.equal(isRestrictedCopilotBranch('copilot/floor-4-slice-3-waves'), true);
-  assert.equal(isRestrictedCopilotBranch('nalfeo-repair-asset-queue'), false);
-  assert.equal(isRestrictedCopilotBranch(''), false);
-  assert.equal(isRestrictedCopilotBranch(undefined), false);
-});
 
 test('hasLabelNamed is case-insensitive and tolerant of missing labels', () => {
   assert.equal(hasLabelNamed({ labels: [{ name: 'Merge-Train-Blocked' }] }, BLOCKED_LABEL), true);
@@ -118,7 +118,7 @@ test('QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX uses the managed crawler- prefix th
   assert.ok(QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX.startsWith(MANAGED_COMMENT_PREFIX));
 });
 
-test('repairEligibility: only open, quarantined, same-repo, restricted-branch PRs are eligible', () => {
+test('repairEligibility: only open, quarantined, same-repo PRs with valid heads are eligible', () => {
   const repository = `${OWNER}/${REPO}`;
   assert.equal(repairEligibility(originalPr(), repository).eligible, true);
   assert.equal(repairEligibility(originalPr({ state: 'closed' }), repository).eligible, false);
@@ -135,11 +135,15 @@ test('repairEligibility: only open, quarantined, same-repo, restricted-branch PR
   assert.equal(
     repairEligibility(
       originalPr({
-        head: { ref: 'nalfeo-repair-asset-queue', sha: HEAD_SHA, repo: { full_name: repository } },
+        head: {
+          ref: 'goobers/crawler/crawler-feature-pr/4fbe2dffa13a86d955b03348158dd082',
+          sha: HEAD_SHA,
+          repo: { full_name: repository },
+        },
       }),
       repository,
     ).eligible,
-    false,
+    true,
   );
   assert.equal(
     repairEligibility(
@@ -173,6 +177,31 @@ test('isConfirmedRestrictedBranchQuarantine confirms only a live, threshold-reac
   );
   // Stale record: the branch moved since the strike was recorded.
   assert.equal((await confirmedFor([quarantineStatusComment('f'.repeat(40))])).confirmed, false);
+  // Untrusted marker: a public commenter pre-seeded a threshold-reaching
+  // strike record for the CURRENT head sha, but never through the
+  // automation identity. This must never be treated as a confirmed
+  // restricted-branch quarantine, even though the marker and strike count
+  // otherwise look legitimate -- see PR review discussion on
+  // `isConfirmedRestrictedBranchQuarantine`.
+  assert.equal(
+    (
+      await confirmedFor([
+        quarantineStatusComment(HEAD_SHA, UNADVANCEABLE_STRIKE_THRESHOLD, { trusted: false }),
+      ])
+    ).confirmed,
+    false,
+  );
+  // A trusted marker must still win even if an untrusted forged one was
+  // posted first (or second) in the comment thread.
+  assert.equal(
+    (
+      await confirmedFor([
+        quarantineStatusComment(HEAD_SHA, UNADVANCEABLE_STRIKE_THRESHOLD, { trusted: false }),
+        quarantineStatusComment(),
+      ])
+    ).confirmed,
+    true,
+  );
 });
 
 function stubGithub({
@@ -212,6 +241,9 @@ function stubGithub({
       // same signal `isTrustedNoticeAuthor` checks in production.
       comments.push({ body: options.body.body, performed_via_github_app: {} });
       return { data: { id: comments.length } };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588` && options?.method === 'PATCH') {
+      return { data: { ...originalPr(), state: options.body.state } };
     }
     throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
   };
@@ -263,6 +295,12 @@ test('repairQuarantinedPr creates the branch and replacement PR from scratch, th
 
   assert.equal(comments.length, 2);
   assert.match(comments[1].body, /Replacement PR #3700/);
+  assert.deepEqual(
+    calls.find(
+      (call) => call.path === `/repos/${OWNER}/${REPO}/pulls/3588` && call.method === 'PATCH',
+    ).body,
+    { state: 'closed' },
+  );
 });
 
 test('repairQuarantinedPr is idempotent: re-running does not recreate the branch, PR, or comment', async () => {
@@ -649,6 +687,9 @@ test('repairQuarantinedPr accepts an OPEN replacement whose branch legitimately 
     }
     if (path === `/repos/${OWNER}/${REPO}/issues/3588/comments` && options?.method === 'POST') {
       return { data: { id: 1 } };
+    }
+    if (path === `/repos/${OWNER}/${REPO}/pulls/3588` && options?.method === 'PATCH') {
+      return { data: { state: 'closed' } };
     }
     throw new Error(`unexpected request: ${options?.method || 'GET'} ${path}`);
   };
