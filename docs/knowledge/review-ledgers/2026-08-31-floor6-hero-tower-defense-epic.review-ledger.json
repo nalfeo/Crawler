@@ -28,13 +28,21 @@
       "notes": "Reviewer completed schema, DAG, implementability, canon/provenance, policy, and scope passes; no validated findings."
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "gemini-3.1-pro-preview",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "d67c32eb5f5fdf763e3063451ae9bcf139c8d707",
+      "findings": [],
+      "criteria": {
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 5
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The epic manifest is well-structured and thoroughly fulfills the requirements for a complex floor design. The slice decomposition forms a valid dependency DAG with clear deliverables and acceptance criteria. All repository policies for a 3-apple task have been strictly followed: a review ledger, an apples metric file, and a session handoff are all present, with perfectly aligned session slugs. The independent grade blocker regarding the slug mismatch has been successfully resolved."
     }
   }
 }
