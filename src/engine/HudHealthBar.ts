@@ -43,6 +43,13 @@ const LOOT_ICON_SIZE = 14;
 const LOOT_ROW_GAP = 6;
 const LOOT_PAIR_GAP = 16;
 const LOOT_ROW_H = 22;
+/**
+ * The gold/junk pixel-icon glyphs render with more visual mass toward the
+ * bottom of their 8x8 grid than a Phaser text baseline centers to, so the
+ * value text reads a few px "high" relative to the icon at this font size.
+ * Nudge the text down to align icon and digit visual centers.
+ */
+const LOOT_TEXT_Y_NUDGE = 3;
 
 const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
 /** Must match `VITALS_ROW_HEIGHTS.health` in HudVitalsLayout.ts. */
@@ -131,7 +138,7 @@ export function createHudHealthBar(
     .setOrigin(0, 0)
     .setName('hud-loot-gold-value-bounds');
   const goldText = scene.add
-    .text(goldTextX, lootRowCy, '0', {
+    .text(goldTextX, lootRowCy + LOOT_TEXT_Y_NUDGE, '0', {
       fontFamily: HUD_FONT_FAMILY,
       fontSize: LOOT_VALUE_FONT_SIZE,
       fontStyle: 'bold',
@@ -156,7 +163,7 @@ export function createHudHealthBar(
     .setOrigin(0, 0)
     .setName('hud-loot-junk-value-bounds');
   const junkText = scene.add
-    .text(junkTextX, lootRowCy, '0', {
+    .text(junkTextX, lootRowCy + LOOT_TEXT_Y_NUDGE, '0', {
       fontFamily: HUD_FONT_FAMILY,
       fontSize: LOOT_VALUE_FONT_SIZE,
       fontStyle: 'bold',
