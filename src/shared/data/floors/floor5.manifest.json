@@ -95,6 +95,28 @@
       "initial": "MUSTER",
       "terminal": ["CAPTURED", "DEFEAT"]
     },
+    "ram": {
+      "health": 120,
+      "routeLandmarks": [
+        "build-site",
+        "siege-yard-junction",
+        "checkpoint-junction",
+        "breach-approach"
+      ],
+      "protection": {
+        "radiusFt": 16.0,
+        "maxThreats": 0
+      },
+      "advanceSpeedFtPerFrame": 0.2,
+      "arrivalToleranceFt": 1.5,
+      "strike": {
+        "damage": 20,
+        "cooldownMs": 1200,
+        "rangeFt": 12.0,
+        "wallCounterDamage": 24
+      },
+      "recoveryDelayFrames": 90
+    },
     "rngStreams": ["waves", "heroes", "tasks", "dressing", "rewards"]
   }
 }

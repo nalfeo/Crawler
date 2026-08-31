@@ -747,6 +747,16 @@ export function getDoorRevision(world: GameWorld, tileMap: TileMap): number {
     hash = Math.imul(hash, 16777619);
   }
 
+  // Dynamic barriers are the OTHER runtime source of passability change (they
+  // are consulted by `buildDoorAwarePassable`/`findTilePath` via
+  // `floorMap.hasBarrierAtTile` but never mutate `TileMap.flags`, so the door
+  // loop above cannot see them). Folding the registry version in means raising
+  // or dropping a barrier — e.g. the Floor 5 outer-wall breach — invalidates
+  // the shared path memo and the ground flow field on the very next AI tick
+  // instead of leaving enemies pathing through a wall that no longer exists.
+  hash ^= world.barriers.version * 2166136261;
+  hash = Math.imul(hash, 16777619);
+
   const existing = doorRevisionByWorld.get(world);
   if (!existing) {
     doorRevisionByWorld.set(world, { hash, revision: 1 });

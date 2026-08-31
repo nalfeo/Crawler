@@ -805,6 +805,111 @@ export type Floor5RatingsRamState =
 
 export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
 
+/**
+ * Floor 5 · Ratings Ram (slice 5) — semantic escort-route landmarks.
+ *
+ * The manifest authors an ORDERED list of these ids; the concrete world
+ * positions are DERIVED from the authored `SiegeCastleGenerator` tile layout
+ * (never hardcoded coordinates), so re-authoring the castle moves the route
+ * with it. `build-site` is always first (the staging tile in front of the
+ * Command Post) and `breach-approach` is always last (the traversable
+ * lane-side attack anchor one tile short of the outer wall).
+ */
+export type Floor5RamRouteLandmark =
+  | 'build-site'
+  | 'siege-yard-junction'
+  | 'checkpoint-junction'
+  | 'breach-approach';
+
+/** One resolved escort-route waypoint (position derived from the tile layout). */
+export interface Floor5RamRouteMarkerState {
+  readonly landmark: Floor5RamRouteLandmark;
+  /** 0-based position in the authored landmark order. */
+  readonly index: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  /** Derived world position in feet. */
+  readonly x: number;
+  readonly y: number;
+  /** Marker entity id, or 0 when not spawned / already retired. */
+  eid: number;
+  /** Frame the ram first arrived at this landmark, else null. */
+  reachedFrame: number | null;
+}
+
+/** One recorded `engineState` transition — the hard-gate observation trace. */
+export interface Floor5RamStateTraceEntry {
+  readonly state: Floor5RatingsRamState;
+  readonly frame: number;
+  readonly reason: string;
+}
+
+/**
+ * Floor 5 · Ratings Ram (slice 5) — typed ram runtime state.
+ *
+ * Holds the ram entity, its derived escort route, protection evaluation, the
+ * strike/counter-battery ledger and the rebuild schedule. `wallAuthorizedHealth`
+ * is the ONLY sanctioned source of outer-wall damage: anything that lowers the
+ * wall's ECS health without a ram strike is restored and counted in
+ * `rejectedWallDamage` (spec FR5.5 — minions can neither prioritise nor damage
+ * the outer wall).
+ */
+export interface Floor5RamState {
+  /** Ram entity id, or 0 when the ram is not currently on the field. */
+  eid: number;
+  health: number;
+  maxHealth: number;
+  /** Index of the landmark the ram is currently travelling TOWARD. */
+  routeIndex: number;
+  readonly route: Floor5RamRouteMarkerState[];
+  protectionMet: boolean;
+  /** Live allied siege minions inside the protection radius this frame. */
+  escorts: number;
+  /** Live hostile threats (enemy minions + field Hero) inside the radius. */
+  threats: number;
+  strikes: number;
+  lastStrikeMs: number;
+  spawnedFrame: number | null;
+  destroyedFrame: number | null;
+  /** Frame at which a destroyed ram may re-enter `BUILDING`, else null. */
+  rebuildAvailableFrame: number | null;
+  builds: number;
+  destructions: number;
+  wallDamageDealt: number;
+  counterDamageTaken: number;
+  /** Outer-wall health the scenario has authorised (ram strikes only). */
+  wallAuthorizedHealth: number;
+  /** Total non-ram damage rejected by the wall-damage authority guard. */
+  rejectedWallDamage: number;
+  advanceFrames: number;
+  /** Frames spent holding position because protection was unmet. */
+  holdFrames: number;
+  readonly stateTrace: Floor5RamStateTraceEntry[];
+}
+
+/** One-shot outer-wall breach latch + its cleanup receipt. */
+export interface Floor5BreachCleanupState {
+  ramRetired: boolean;
+  markersRetired: number;
+  wallRetired: boolean;
+  heroesCleared: number;
+  minionsCleared: number;
+  waveDebtCleared: number;
+}
+
+export interface Floor5BreachState {
+  /** True once the breach has been committed — never un-latches. */
+  latched: boolean;
+  committedFrame: number | null;
+  /** Poly-barrier handle sealing the carved breach ingress, or null once dropped. */
+  barrierId: number | null;
+  /** True once the lane front is frozen at the courtyard (no further waves). */
+  frontFrozen: boolean;
+  /** Number of times commit was ATTEMPTED (proves the one-shot latch). */
+  commitAttempts: number;
+  readonly cleanup: Floor5BreachCleanupState;
+}
+
 export type Floor5RequisitionMilestone =
   | 'opening-push'
   | 'siege-yard'
@@ -835,7 +940,9 @@ export interface Floor5SiegeState {
   lastWorldElapsedMs: number;
   commandPostHealth: number;
   engineState: Floor5RatingsRamState;
-  breachState: string;
+  breachState: 'SEALED' | 'BREACHED';
+  ram: Floor5RamState;
+  breach: Floor5BreachState;
   /**
    * Derived display/trace projection of {@link Floor5SiegeState.heroes}:
    * `PENDING` | `ACTIVE:<heroId>` | `DOWN:<heroId>@<respawnFrame>` | `RETIRED`.
@@ -872,7 +979,37 @@ export interface Floor5SiegeRunStats {
   readonly phase: Floor5SiegePhase;
   readonly commandPostHealth: number;
   readonly engineState: Floor5RatingsRamState;
-  readonly breachState: string;
+  readonly breachState: 'SEALED' | 'BREACHED';
+  readonly ram: {
+    readonly eid: number;
+    readonly health: number;
+    readonly maxHealth: number;
+    readonly routeIndex: number;
+    readonly routeLandmarks: readonly Floor5RamRouteLandmark[];
+    readonly routeReached: readonly Floor5RamRouteLandmark[];
+    readonly protectionMet: boolean;
+    readonly escorts: number;
+    readonly threats: number;
+    readonly strikes: number;
+    readonly builds: number;
+    readonly destructions: number;
+    readonly wallDamageDealt: number;
+    readonly counterDamageTaken: number;
+    readonly rejectedWallDamage: number;
+    readonly advanceFrames: number;
+    readonly holdFrames: number;
+    readonly rebuildAvailableFrame: number | null;
+    readonly stateSequence: readonly Floor5RatingsRamState[];
+    readonly stateTrace: readonly Floor5RamStateTraceEntry[];
+  };
+  readonly breach: {
+    readonly latched: boolean;
+    readonly committedFrame: number | null;
+    readonly barrierSealed: boolean;
+    readonly frontFrozen: boolean;
+    readonly commitAttempts: number;
+    readonly cleanup: Floor5BreachCleanupState;
+  };
   readonly heroState: string;
   readonly heroes: {
     readonly card: readonly Floor5FieldHeroCardEntry[];

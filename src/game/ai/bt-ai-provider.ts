@@ -4538,12 +4538,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     const blockedDoors = getNavigationBlockedDoors(world);
     updateLockedDoorMemory(this.knownLockedDoors, blockedDoors);
     // Advance the navigation epoch whenever the passable graph could have changed
-    // — a different floor, or a door flipping blocked<->passable. The static tile
-    // topology is fixed for a floor's lifetime, so (floor, blocked-door tiles) is
-    // a complete signature of what reachability depends on. This is what
-    // invalidates the resolveReachableGoalTile memo.
+    // — a different floor, a door flipping blocked<->passable, or a dynamic
+    // barrier being raised/dropped. Barriers (`world.barriers`) never mutate
+    // `TileMap.flags` but ARE consulted by the pathfinder, so their registry
+    // version is part of the reachability signature: without it, dropping the
+    // Floor 5 outer-wall seal on breach would leave every memoised reachability
+    // answer claiming the courtyard is unreachable. The static tile topology is
+    // fixed for a floor's lifetime, so (floor, blocked-door tiles, barrier
+    // version) is a complete signature of what reachability depends on. This is
+    // what invalidates the resolveReachableGoalTile memo.
     const signature =
-      `${world.floor}:` +
+      `${world.floor}:${world.barriers.version}:` +
       blockedDoors
         .map((door) => `${door.tileX},${door.tileY}`)
         .sort()
