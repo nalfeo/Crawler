@@ -188,6 +188,12 @@ export const outputV1 = {
           type: ['string', 'null'],
           description: "Comma-separated issue numbers (when status='blocked')",
         },
+        disposition: {
+          type: ['string', 'null'],
+          enum: ['completed-existing-work', null],
+          description:
+            "Machine-readable no-work disposition; 'completed-existing-work' marks a claimed issue already satisfied by repository evidence",
+        },
       },
       additionalProperties: false,
     },
@@ -237,6 +243,7 @@ export const outputV1 = {
    * - outputs.verdict only non-null when task='plan'
    * - outputs.appleEstimate only non-null when task='plan'
    * - outputs.hardGate only non-null when task is 'plan', 'local-gate', 'pr-opened-gate', or 'review'
+   * - outputs.disposition='completed-existing-work' only when status='no-work'
    * - Deterministic gates fail on schema violation
    */
 };
