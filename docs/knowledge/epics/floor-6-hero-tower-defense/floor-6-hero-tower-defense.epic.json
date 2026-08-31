@@ -34,7 +34,11 @@
       "title": "Floor 6 Slice 4: wave loot, build currency, and run-scoped upgrade offers",
       "body": "Implement the approved Floor 6 economy as validated data plus deterministic runtime contracts: enemy and wave rewards, collectible build currency, ordinary loot compatibility, seeded without-replacement upgrade offers, purchase/selection transactions, and explicit reset/carryover rules. Separate persistent inventory from floor-scoped construction resources; no tower cost or upgrade effect may be hard-coded in UI or content prose. Ensure skipped or missed pickups cannot soft-lock mandatory progression, and isolate offer RNG from combat timing. Done when focused/property tests prove conservation and non-negative balances, identical seeds and decision traces yield identical offers, rejected or unaffordable transactions are atomic no-ops, floor-scoped state cannot leak across runs, and a headless run can collect loot and unlock at least one upgrade through the real pipeline.",
       "labels": ["economy", "progression", "gameplay", "floor-6"],
-      "depends_on": ["slice-1-design-contract", "slice-2-foundation-and-map"]
+      "depends_on": [
+        "slice-1-design-contract",
+        "slice-2-foundation-and-map",
+        "slice-3-wave-director-and-routing"
+      ]
     },
     {
       "id": "slice-5-tower-construction-and-combat",
