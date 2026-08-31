@@ -24,7 +24,7 @@ import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 import { loreCitedPaths } from './check-lore-canon.js';
 
-const HANDOFFS_DIR = 'docs/knowledge/handoffs';
+export const HANDOFFS_DIR = 'docs/knowledge/handoffs';
 const ARCHIVE_DIR = 'docs/knowledge/handoffs/archive';
 const MAX_AGE_DAYS = 30;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})-/;
@@ -40,6 +40,30 @@ function parseDateFromName(name: string): Date | null {
 
 function daysBetween(a: Date, b: Date): number {
   return Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export type HandoffDecision =
+  | { kind: 'unnamed' }
+  | { kind: 'fresh'; age: number }
+  | { kind: 'pinned'; age: number }
+  | { kind: 'archive'; age: number };
+
+/**
+ * Decide what happens to a single handoff filename. Pure so the archiving
+ * policy — notably the Lore Bible pin — is testable without touching the
+ * repository tree.
+ */
+export function decideHandoff(
+  entry: string,
+  today: Date,
+  pinned: ReadonlySet<string>,
+): HandoffDecision {
+  const date = parseDateFromName(entry);
+  if (!date) return { kind: 'unnamed' };
+  const age = daysBetween(today, date);
+  if (age <= MAX_AGE_DAYS) return { kind: 'fresh', age };
+  if (pinned.has(`${HANDOFFS_DIR}/${entry}`)) return { kind: 'pinned', age };
+  return { kind: 'archive', age };
 }
 
 async function main(): Promise<void> {
@@ -69,16 +93,16 @@ async function main(): Promise<void> {
     const abs = path.join(absHandoffs, entry);
     const stat = statSync(abs);
     if (!stat.isFile()) continue;
-    const date = parseDateFromName(entry);
-    if (!date) {
+    const decision = decideHandoff(entry, today, pinned);
+    if (decision.kind === 'unnamed') {
       report.warn(`Handoff filename missing YYYY-MM-DD- prefix; skipping.`, {
         file: `${HANDOFFS_DIR}/${entry}`,
       });
       continue;
     }
-    const age = daysBetween(today, date);
-    if (age <= MAX_AGE_DAYS) continue;
-    if (pinned.has(`${HANDOFFS_DIR}/${entry}`)) {
+    if (decision.kind === 'fresh') continue;
+    const { age } = decision;
+    if (decision.kind === 'pinned') {
       report.info(`Pinned ${entry} (age ${age}d): cited by the Lore Bible.`);
       continue;
     }
@@ -103,7 +127,9 @@ async function main(): Promise<void> {
   report.finish();
 }
 
-main().catch((err) => {
-  process.stderr.write(`archive-handoffs crashed: ${err instanceof Error ? err.stack : err}\n`);
-  process.exit(2);
-});
+if (process.argv[1]?.endsWith('archive-handoffs.ts')) {
+  main().catch((err) => {
+    process.stderr.write(`archive-handoffs crashed: ${err instanceof Error ? err.stack : err}\n`);
+    process.exit(2);
+  });
+}

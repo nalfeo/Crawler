@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { HANDOFFS_DIR, decideHandoff } from '../../scripts/agent/docs/archive-handoffs';
+import { fromRepo } from '../../scripts/agent/shared/report';
 import { loreCitedPaths, validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
 
 describe('lore canon validation', () => {
@@ -110,16 +112,40 @@ describe('lore citation pinning', () => {
 
     expect(cited.length).toBeGreaterThan(0);
     for (const source of cited) {
-      expect(existsSync(source)).toBe(true);
+      expect(existsSync(fromRepo(source))).toBe(true);
       expect(source.startsWith('docs/knowledge/handoffs/archive/')).toBe(false);
     }
   });
 
-  it('makes the handoff archiver skip Lore-Bible-cited handoffs', () => {
-    const source = readFileSync('scripts/agent/docs/archive-handoffs.ts', 'utf8');
+  it('archives an aged handoff but pins one the Lore Bible cites', () => {
+    const today = new Date('2026-08-31T00:00:00Z');
+    const cited = 'docs/knowledge/handoffs/2026-07-24-floor2-environmental-content.md';
+    const pinned = new Set([cited]);
 
-    expect(source).toContain("import { loreCitedPaths } from './check-lore-canon.js'");
-    expect(source).toContain('const pinned = new Set(loreCitedPaths());');
-    expect(source).toMatch(/if \(pinned\.has\(`\$\{HANDOFFS_DIR\}\/\$\{entry\}`\)\) \{/);
+    expect(decideHandoff('2026-07-24-floor2-environmental-content.md', today, pinned)).toEqual({
+      kind: 'pinned',
+      age: 38,
+    });
+    expect(decideHandoff('2026-07-24-some-other-session.md', today, pinned)).toEqual({
+      kind: 'archive',
+      age: 38,
+    });
+    expect(decideHandoff('2026-08-20-recent-session.md', today, pinned)).toEqual({
+      kind: 'fresh',
+      age: 11,
+    });
+    expect(decideHandoff('INDEX.md', today, pinned)).toEqual({ kind: 'unnamed' });
+  });
+
+  it('pins every real Lore Bible handoff citation against the real archiver policy', () => {
+    const pinned = new Set(loreCitedPaths());
+    const cited = [...pinned].filter((source) => source.startsWith(`${HANDOFFS_DIR}/`));
+    const farFuture = new Date('2099-01-01T00:00:00Z');
+
+    expect(cited.length).toBeGreaterThan(0);
+    for (const source of cited) {
+      const entry = source.slice(`${HANDOFFS_DIR}/`.length);
+      expect(decideHandoff(entry, farFuture, pinned).kind).toBe('pinned');
+    }
   });
 });
