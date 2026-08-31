@@ -170,7 +170,7 @@ export class IntroScene extends Phaser.Scene {
     let y = PANEL_Y + 22;
 
     const title = this.add
-      .text(cx, y, 'Character Select', {
+      .text(cx, y, 'Crawler', {
         fontFamily: 'monospace',
         fontSize: '26px',
         fontStyle: 'bold',
@@ -180,7 +180,19 @@ export class IntroScene extends Phaser.Scene {
       .setDepth(DEPTH + 2);
     texts.push(title);
 
-    y += 38;
+    y += 30;
+
+    const subtitle = this.add
+      .text(cx, y, 'Character Select', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: SLATE_DIM,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(DEPTH + 2);
+    texts.push(subtitle);
+
+    y += 24;
 
     this.add
       .rectangle(boxX + 2, y, boxW - 4, 2, PIXEL_UI.gold, 0.8)

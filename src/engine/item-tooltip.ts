@@ -411,14 +411,6 @@ export function renderItemTooltip(
       while (statText.text.length > 1 && statText.width + deltaWidth > statLineBudget) {
         statText.setText(`${statText.text.slice(0, -2)}…`);
       }
-      // eslint-disable-next-line no-console
-      console.log('DEBUG statLine', {
-        text: statText.text,
-        width: statText.width,
-        statLineBudget,
-        tooltipWidth,
-        compactLayout: !!compactLayout,
-      });
       container.add(statText);
       objects.push(statText);
       if (deltaObj) {
