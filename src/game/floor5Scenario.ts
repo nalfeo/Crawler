@@ -1980,7 +1980,6 @@ function clearFloor5WaveDebt(state: Floor5SiegeState): number {
   let cleared = 0;
   for (const team of ['allied', 'enemy'] as const) {
     cleared += state.waveRemainder[team] + state.spawnDebt[team];
-    cleared += state.spawnDebtManifestQueue[team].reduce((sum, count) => sum + count, 0);
     state.waveRemainder[team] = 0;
     state.spawnDebt[team] = 0;
     state.spawnDebtManifestQueue[team].length = 0;

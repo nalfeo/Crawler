@@ -4,9 +4,12 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { SiegeHero, SiegeMinion, SiegeRam, SiegeRouteMarker } from '../../src/core/components.js';
+import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import type { InputState } from '../../src/shared/input.js';
 import type { Floor5RatingsRamState } from '../../src/shared/floor-types.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 
 /**
  * Idle provider: the escort must complete under the REAL Floor 5 pipeline
@@ -185,4 +188,25 @@ describe('Floor 5 outer-wall seal', () => {
     expect(barrierSealedAtStart).toBe(true);
     expect(sealedReachable).toBe(false);
   }, 60_000);
+
+  it('counts each canceled wave and queued spawn exactly once in the breach receipt', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    state.waveRemainder = { allied: 2, enemy: 3 };
+    state.spawnDebt = { allied: 1, enemy: 3 };
+    state.spawnDebtManifestQueue = { allied: [0], enemy: [1, 1, 1] };
+    state.ram.wallAuthorizedHealth = 0;
+    const wall = state.structures['outer-wall'];
+    world.stores.health.current[wall.eid] = 0;
+
+    world.floorObjectiveTick!(world);
+
+    expect(state.breach.cleanup.waveDebtCleared).toBe(9);
+    expect(state.waveRemainder).toEqual({ allied: 0, enemy: 0 });
+    expect(state.spawnDebt).toEqual({ allied: 0, enemy: 0 });
+    expect(state.spawnDebtManifestQueue).toEqual({ allied: [], enemy: [] });
+  });
 });
