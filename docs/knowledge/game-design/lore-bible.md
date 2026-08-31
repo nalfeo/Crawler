@@ -27,6 +27,7 @@ consolidated. Paths are repository-relative and are checked by
 | Canon group                                                        | Official sources                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | World premise, The Gradient, The Director, dungeon, timeline, tone | [`docs/knowledge/game-design/game-design-document.md`](game-design-document.md)                                                                                                                                                                                                                                                                                                           |
+| Contestant origin, stakes, revival, and release                    | [`src/engine/scenes/IntroScene.ts`](../../../src/engine/scenes/IntroScene.ts)                                                                                                                                                                                                                                                                                                             |
 | Floor and environmental identity                                   | [`docs/knowledge/game-design/floor2-families-and-resources.md`](floor2-families-and-resources.md), [`docs/knowledge/game-design/floor3-companion-league.md`](floor3-companion-league.md), [`docs/knowledge/game-design/floor4-arena.md`](floor4-arena.md), [`docs/knowledge/handoffs/2026-07-24-floor2-environmental-content.md`](../handoffs/2026-07-24-floor2-environmental-content.md) |
 | Set-piece and production-set vocabulary                            | [`docs/knowledge/game-design/set-piece-lookbook.md`](set-piece-lookbook.md), [`docs/knowledge/handoffs/2026-08-01-welcome-room-v2-redesign.md`](../handoffs/2026-08-01-welcome-room-v2-redesign.md)                                                                                                                                                                                       |
 | In-world voice and authored dialogue                               | [`src/game/skills/registry.ts`](../../../src/game/skills/registry.ts), [`src/shared/data/achievements.floor1.json`](../../../src/shared/data/achievements.floor1.json), [`briefs/characters/welcome-goon-v3.yaml`](../../../briefs/characters/welcome-goon-v3.yaml), [`briefs/characters/sweaty-merchant-v3.yaml`](../../../briefs/characters/sweaty-merchant-v3.yaml)                    |
@@ -66,6 +67,15 @@ document when a narrative claim conflicts.
 
 **Sources:** [`game-design-document.md`](game-design-document.md);
 [`docs/knowledge/game-design/set-piece-lookbook.md`](set-piece-lookbook.md).
+
+## Contestant Origin and Stakes
+
+- The contestant's planet was conquered, and they were dragged from cold storage.
+- They fight through the dungeon for the galaxy's viewing pleasure.
+- High ratings can earn revival to compete in the next season.
+- Beating the dungeon can earn the contestant's release.
+
+**Sources:** [`src/engine/scenes/IntroScene.ts`](../../../src/engine/scenes/IntroScene.ts).
 
 ## Season Quirks (Procedural Personality Modifiers)
 
