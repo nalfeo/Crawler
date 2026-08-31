@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-31",
+  "session_slug": "floor5-ratings-ram",
+  "task_title": "Floor 5 Slice 5: Ratings Ram lifecycle and atomic breach",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Approved with changes. Alt A barrier-sealed seam adopted because the generator already carves the ingress and BarrierRegistry.version drives renderer invalidation; sealed-generator tile mutation was rejected because it duplicates terrain redraw/collision state; a monolithic scenario-objective implementation was rejected in favor of a dedicated siegeRamSystem for runtime movement with director/objective-tick authority for phase and post-damage resolution. Resolutions: create a poly wall barrier at init and drop it atomically with wall/ram/marker retirement; fold barriers.version into cached AI navigation signatures instead of inventing a parallel revision; derive route waypoints and a traversable attack anchor from semantic layout landmarks; remove outer-wall from minion targets and reject non-ram wall damage; order damage, HP sync, base defeat, wall-vs-ram resolution (wall lethal wins after base precedence), breach commit, rebuild scheduling, then goals/trace; test reachability through findTilePath, not raw tile flags."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    },
+    "independent_grade": {
+      "completed": false,
+      "grader_model": "",
+      "implementer_model": "",
+      "head_sha": "",
+      "criteria": {},
+      "verdict": "",
+      "findings_count": 0
+    }
+  }
+}
