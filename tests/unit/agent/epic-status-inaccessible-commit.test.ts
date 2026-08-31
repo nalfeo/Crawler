@@ -49,7 +49,7 @@ describe('epic evidence inaccessible-commit regression', () => {
 
     // Point the A0 handoff evidence entry at the inaccessible commit while
     // keeping the correct file path so only the commit lookup fails.
-    // validateEvidenceFiles checks handoff/review-ledger evidence at pr_open
+    // validateEvidenceFiles checks handoff evidence at pr_open
     // status, so this exercises the real validation code path.
     const a0 = state.nodes.find((n) => n.node_id === 'slice:A0');
     expect(a0).toBeDefined();
@@ -90,7 +90,7 @@ describe('epic evidence inaccessible-commit regression', () => {
   it('does NOT raise evidence.git-verification-failed when the recording commit is accessible', () => {
     // Confirm the fix: with correct, accessible commits recorded in the state
     // no git-verification-failed error is raised for handoff evidence.
-    // validateEvidenceFiles checks handoff/review-ledger at pr_open status.
+    // validateEvidenceFiles checks handoffs at pr_open status.
     const state = cloneState();
 
     const a0 = state.nodes.find((n) => n.node_id === 'slice:A0');

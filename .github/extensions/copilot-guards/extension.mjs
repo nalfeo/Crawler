@@ -17,7 +17,6 @@ import editPhaserInCore from './guards/edit-phaser-in-core.mjs';
 import editRepoMdJunk from './guards/edit-repo-md-junk.mjs';
 import editGuardSelfProtection from './guards/edit-guard-self-protection.mjs';
 import prPreflight from './guards/pr-preflight.mjs';
-import prReviewLedger from './guards/pr-review-ledger.mjs';
 
 // Order matters: shell/edit guards first (cheap), PR aggregator last
 // (it shells out to git and bash).
@@ -34,7 +33,6 @@ const guards = [
   editRepoMdJunk,
   editGuardSelfProtection,
   prPreflight,
-  prReviewLedger,
 ];
 
 const session = await joinSession({

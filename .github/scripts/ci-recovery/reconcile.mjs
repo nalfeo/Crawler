@@ -100,7 +100,6 @@ import {
   buildTerminalDecisionRecord,
   formatDecisionLog,
 } from './decision-log.mjs';
-import { reviewLedgerBlockers } from './review-ledger-lifecycle.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -212,10 +211,6 @@ const BLOCKER_PHASES = [
     // in-thread resolution, so the final phase is present only when threads exist.
     label: 'thread resolution',
     matches: (blocker) => blocker.kind === 'review-thread',
-  },
-  {
-    label: 'review-ledger repair',
-    matches: (blocker) => blocker.kind === 'review-ledger',
   },
 ];
 function isAdvisoryCheck(checkName) {
@@ -3152,27 +3147,6 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
   });
 }
 
-if (changedFiles.length > 0) {
-  const ledgerLifecycle = await reviewLedgerBlockers(changedFiles, async (path) => {
-    const encodedPath = path
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const response = await request(
-      readToken,
-      `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(pr.head.sha)}`,
-    );
-    if (response.data?.encoding !== 'base64' || typeof response.data?.content !== 'string') {
-      throw new Error('GitHub contents response did not contain base64 file content');
-    }
-    return Buffer.from(response.data.content.replace(/\s+/g, ''), 'base64').toString('utf8');
-  });
-  blockers.push(...ledgerLifecycle.blockers);
-  for (const warning of ledgerLifecycle.warnings) {
-    process.stdout.write(`warn ${warning}\n`);
-  }
-}
-
 const normalized = normalizeBlockers(blockers);
 const reviewDecision = shouldRequestReview({
   trigger,
@@ -4060,16 +4034,6 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
   const hasPriorRecoveryHint = commentBlockers.some((blocker) =>
     blocker.summary.startsWith('[Prior recovery reply (no marker posted'),
   );
-  const hasReviewLedgerThreadBlocker = commentBlockers.some(
-    (blocker) =>
-      blocker.kind === 'review-thread' &&
-      /^docs\/knowledge\/review-ledgers\/.+\.review-ledger\.json$/i.test(
-        String(blocker.path ?? ''),
-      ),
-  );
-  const hasReviewLedgerArtifactBlocker = commentBlockers.some(
-    (blocker) => blocker.kind === 'review-ledger',
-  );
   const hasImplementationMissingReviewBlocker = commentBlockers.some(
     isImplementationMissingReviewBlocker,
   );
@@ -4117,12 +4081,6 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           '',
         ]
       : []),
-    ...(hasReviewLedgerArtifactBlocker
-      ? [
-          '**Review-ledger protocol:** Do not duplicate CI results in the ledger; required CI is authoritative. Existing GitHub Copilot PR review counts as `code_review` evidence when recorded with `reviewer_actors`, `review_url`, finding/resolution counts, and final cleanliness. Complete every non-ledger code and review-thread repair first, then repair and validate the ledger on the final head. If ledger validation is the only failing CI step, repairing the ledger is the remaining CI fix.',
-          '',
-        ]
-      : []),
     ...(hasReviewThreadBlockers
       ? [
           `**GitHub auth/repo guardrail:** For any \`gh\` command, set \`GH_TOKEN="$CRAWLER_CI_PAT"\` and \`GH_REPO="${owner}/${repo}"\`. For \`gh api\`, use a fully qualified \`repos/${owner}/${repo}/...\` endpoint; do not pass \`--repo\` to \`gh api\`.`,
@@ -4132,12 +4090,6 @@ if (terminalRow.action === DISPATCH_ACTION.WAIT_ADMISSION) {
           ...(hasImplementationMissingReviewBlocker
             ? [
                 '**Implementation-missing protocol:** A trusted reviewer says this PR does not actually implement the requested feature. Treat that as the primary repair task: read the linked issue/PR scope, implement the missing production and test changes, and push a real repair commit. Do not stop at “I do not know what to do”, do not only edit documentation/ledger/planning files, and do not reply with a blocker unless the exact missing behavior is impossible to determine after reading the linked context.',
-                '',
-              ]
-            : []),
-          ...(hasReviewLedgerThreadBlocker
-            ? [
-                'If a listed thread targets `docs/knowledge/review-ledgers/*.review-ledger.json`, run `npm run review:ledger -- validate` on the current head to gather schema/validator evidence. That validation by itself does not settle policy findings the validator does not enforce (for example review-round cap concerns). Only reply in-thread with `✅ Not applicable: [one-line reason]` when validation output or the current diff deterministically proves the exact finding inapplicable; otherwise fix the finding or leave substantive policy disagreements unresolved for human escalation.',
                 '',
               ]
             : []),

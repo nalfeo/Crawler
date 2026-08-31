@@ -11,7 +11,7 @@
  * `.env.local`, then re-reads it. The full `npm run setup:azure`
  * (`-ProvisionResources`, ~228s) is reserved for first-time resource provisioning.
  *
- * Safety invariants (do not regress — see the plan-review ledger):
+ * Safety invariants (do not regress):
  *  - **Hot path is free.** If the required credentials are already present
  *    (shell env or an existing complete `.env.local`), bootstrap is skipped with
  *    ~0 latency.

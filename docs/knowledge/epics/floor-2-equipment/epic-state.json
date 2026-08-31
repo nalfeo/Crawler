@@ -149,13 +149,6 @@
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
-          "kind": "review-ledger",
-          "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
-          "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
-          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
-          "recorded_at": "2026-07-17T18:25:00.000Z"
-        },
-        {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
           "sha256": "294a8fe466b71466238e72d6090b027c555ba7d7b0a1368bd7c3a65051676425",

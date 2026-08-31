@@ -30,7 +30,7 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 1. Run the cheapest relevant targeted tests for touched files.
 2. Run `npm run verify:fast` after meaningful changes.
 3. Run `npm run verify:pr-prereqs` before PR publication.
-4. Run the apple-scaled review harness for ≥3🍎 work and keep its ledger complete.
+4. Run one independent post-diff code review for 3🍎 work or two for 4–5🍎 work.
 5. Run code review and CodeQL in the required order when code changed.
 6. Write a handoff under `docs/knowledge/handoffs/` with `## Systems touched`.
 7. For ≥3🍎 sessions, record apples with `npm run apples:record -- --session <slug> --estimated <n> --actual <n>`.
@@ -39,7 +39,7 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 
 ## Lightweight cases
 
-- Investigation-only sessions with no merge-intent fix may skip handoff/review-ledger ceremony.
+- Investigation-only sessions with no merge-intent fix may skip handoff/review ceremony.
 - 1–2🍎 sessions do not need an apples metrics file.
 - Do not rebuild `docs/knowledge/handoffs/INDEX.md`; CI owns that generated file.
 - Do not run broad sweeps locally. Use GitHub workflow dispatch and include `project:sweep-results-viewer runId=<run-id>` in every sweep status/result response.
@@ -48,5 +48,5 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 
 - `list_pr_cockpit`, `get_pr_cockpit`, `get_pr_blockers` — read-only PR status/blocker summary.
 - `dispatch_weapon_sweep`, `dispatch_ai_sweep` — GitHub-backed sweep dispatch. These are opinionated Crawler presets, not raw workflow mirrors: the default weapon set is the three Floor-1 starters (`sword,bow,baseball-bat`). They return a concrete Sweep Results Viewer reference only when the newly dispatched run is identified exactly; otherwise recheck before citing a `runId`.
-- `.github/skills/review-harness/SKILL.md` — review ledger flow for ≥3🍎 work.
+- `.github/skills/review-harness/SKILL.md` — apple-scaled post-diff review flow.
 - `.github/skills/pr-shepherd/SKILL.md` — takeover loop for already-published PRs.

@@ -201,9 +201,8 @@ scales.
   the Test Plan; lab is validation-support only.
 - **Principle 13 (Win-rate ≥ 90%):** Both slices gated on Floor 1
   completion test.
-- **Principle 14 (Apple-scaled review harness):** 🍎🍎🍎 → dual-plan
-  synthesis + multi-model review + code-review loop; review ledger
-  authored via the `review-harness` skill before each slice's PR.
+- **Principle 14 (Apple-scaled review):** 🍎🍎🍎 → one independent
+  post-diff code review via the `review-harness` skill for each slice.
 - **Principle 15 (Wired-systems check):** No new `*System` exports (Size
   logic lives inside existing `collisionSystem` and `knockbackSystem`), so
   the orphaned-systems gate does not fire. `check:wired-systems` still

@@ -12363,7 +12363,7 @@ test('implementation-missing review thread gets an implementation-first repair p
     id: 'PRRT_implementation_missing',
     isResolved: false,
     isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-31-empty.review-ledger.json',
+    path: 'src/game/floor5RatingsRam.ts',
     line: 12,
     comments: {
       nodes: [
@@ -12740,7 +12740,7 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
 test('protected-path denial does not quarantine a mixed blocker set', async (t) => {
   const threadId = 'PRRT_protected_path_denial';
   const recoveryReply =
-    'I fixed the currently-failing `Lightweight Checks` job: it was caused by two in-flight PRs (#3927, #3929) that merged to `main` after this branch diverged and added new `review-ledger.json` files (still following the old convention). Rebased onto `main` and removed those files in a9068d8e to restore the "no `docs/knowledge/review-ledgers` directory" invariant. ' +
+    'I fixed the currently-failing `Lightweight Checks` job: it was caused by two in-flight PRs (#3927, #3929) that merged to `main` after this branch diverged and added new stale generated artifact files (still following an old, now-retired convention). Rebased onto `main` and removed those files in a9068d8e to restore the repository invariant that the retired artifact directory does not exist. ' +
     "I can't complete the `.github/agents` portion of this request in this session — my environment explicitly disallows reading or editing files in that directory.";
   assert.ok(
     recoveryReply.indexOf("I can't complete") > 300,
@@ -12889,7 +12889,7 @@ test('a trusted human-escalation reply quarantines instead of re-dispatching Cop
     id: threadId,
     isResolved: false,
     isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    path: 'src/game/floor5RatingsRam.ts',
     line: 5,
     comments: {
       nodes: [
@@ -13009,7 +13009,7 @@ test('a stale KEEP before the human escalation does not suppress quarantine', as
     id: threadId,
     isResolved: false,
     isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    path: 'src/game/floor5RatingsRam.ts',
     line: 5,
     comments: {
       nodes: [
@@ -13113,7 +13113,7 @@ test('a KEEP after the human escalation resumes automated repair', async (t) => 
     id: 'PRRT_human_escalation_fresh_keep',
     isResolved: false,
     isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    path: 'src/game/floor5RatingsRam.ts',
     line: 5,
     comments: {
       nodes: [
@@ -13231,7 +13231,7 @@ test('a human-escalation reply does not quarantine a mixed blocker set', async (
     id: 'PRRT_human_escalation_mixed',
     isResolved: false,
     isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json',
+    path: 'src/game/floor5RatingsRam.ts',
     line: 5,
     comments: {
       nodes: [
@@ -13524,222 +13524,6 @@ test('a later top-level marker reply for the same fingerprint clears an earlier 
     new RegExp(escapeRegex(originalConcern.slice(0, 40))),
     'task body must still include the original reviewer concern',
   );
-});
-
-test('review-ledger thread blockers separate validator evidence from policy disagreements', async (t) => {
-  const threadId = 'PRRT_review_ledger_guidance';
-  const priorTaskFingerprint = '1f2e3d4c5b6a79888796959493929190ffeeddccbbaa99887766554433221100';
-  const originalConcern = 'The review ledger still needs a human escalation path.';
-  const priorBlockedReply =
-    'No ledger change needed: review:ledger validates and the finding appears to be a policy interpretation mismatch.';
-  const thread = {
-    id: threadId,
-    isResolved: false,
-    isOutdated: false,
-    path: 'docs/knowledge/review-ledgers/2026-08-18-unified-den-boss-telemetry.review-ledger.json',
-    line: 41,
-    comments: {
-      nodes: [
-        {
-          id: 'PRIC_reviewer_ledger_guidance',
-          body: originalConcern,
-          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r11`,
-          authorAssociation: 'COLLABORATOR',
-          author: { login: 'copilot-pull-request-reviewer' },
-        },
-      ],
-    },
-  };
-  const blockerId = reviewThreadBlockerId(thread);
-  const priorTaskComment = [
-    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
-    '@copilot Please recover this PR from the exact blockers below.',
-    '',
-    `1. **review-thread** \`${blockerId}\` at \`${thread.path}:41\``,
-    `   copilot-pull-request-reviewer: ${originalConcern}`,
-  ].join('\n');
-  const priorTopLevelReply = [
-    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
-    '> @copilot Please recover this PR from the exact blockers below.',
-    '',
-    priorBlockedReply,
-  ].join('\n');
-
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      body: [
-        {
-          id: 11050,
-          body: priorTaskComment,
-          user: { login: 'nalfeo' },
-          author_association: 'OWNER',
-        },
-        {
-          id: 11051,
-          body: priorTopLevelReply,
-          user: { login: 'Copilot' },
-        },
-      ],
-    }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: (_url, body) => {
-      const query = String(body?.query || '');
-      if (query.includes('suggestedActors')) {
-        return {
-          body: {
-            data: {
-              repository: {
-                suggestedActors: {
-                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
-                },
-              },
-            },
-          },
-        };
-      }
-      if (query.trimStart().startsWith('mutation')) {
-        return {
-          body: {
-            data: {
-              replaceActorsForAssignable: {
-                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
-              },
-            },
-          },
-        };
-      }
-      return {
-        body: gqlReviewThreads([thread]),
-      };
-    },
-    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [] },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      body: { id: 1105 },
-    }),
-  });
-
-  t.after(() => server.close());
-
-  const { code, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    CI_RECOVERY_MODE: 'live',
-  });
-
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-
-  const taskCommentCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'POST' &&
-      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
-      typeof call.body?.body === 'string' &&
-      call.body.body.includes('crawler-ci-task'),
-  );
-  assert.ok(taskCommentCall, 'expected a task comment to be posted for the ledger review thread');
-  assert.match(
-    taskCommentCall.body.body,
-    /run `npm run review:ledger -- validate` on the current head/i,
-    'task body should include deterministic ledger-validation guidance',
-  );
-  assert.match(
-    taskCommentCall.body.body,
-    /validation by itself does not settle policy findings the validator does not enforce/i,
-    'task body should not present validation as sufficient for policy disagreements',
-  );
-  assert.match(
-    taskCommentCall.body.body,
-    /leave substantive policy disagreements unresolved for human escalation/i,
-    'task body should direct unresolved policy disagreements to human escalation',
-  );
-  assert.match(
-    taskCommentCall.body.body,
-    /✅ Not applicable: \[one-line reason\]/i,
-    'task body should keep marker guidance only for deterministically inapplicable findings',
-  );
-});
-
-test('invalid added review ledger becomes a lifecycle recovery blocker', async (t) => {
-  const ledgerPath = 'docs/knowledge/review-ledgers/2026-08-28-invalid-ledger.review-ledger.json';
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), changed_files: 1 },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
-      body: [{ status: 'added', filename: ledgerPath }],
-    }),
-    [`GET /repos/${OWNER}/${REPO}/contents/${ledgerPath}`]: () => ({
-      body: {
-        encoding: 'base64',
-        content: Buffer.from('{"invalid":true}').toString('base64'),
-      },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: (_url, body) => {
-      const query = String(body?.query || '');
-      if (query.includes('suggestedActors')) {
-        return {
-          body: {
-            data: {
-              repository: {
-                suggestedActors: {
-                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
-                },
-              },
-            },
-          },
-        };
-      }
-      if (query.trimStart().startsWith('mutation')) {
-        return {
-          body: {
-            data: {
-              replaceActorsForAssignable: {
-                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
-              },
-            },
-          },
-        };
-      }
-      return { body: gqlReviewThreads([]) };
-    },
-    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [] },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
-      body: { id: 1106 },
-    }),
-  });
-  t.after(() => server.close());
-
-  const { code, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    CI_RECOVERY_MODE: 'live',
-  });
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-
-  const taskCommentCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'POST' &&
-      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
-      String(call.body?.body || '').includes('crawler-ci-task'),
-  );
-  assert.ok(taskCommentCall, 'expected a task comment for the invalid ledger');
-  assert.match(taskCommentCall.body.body, /\*\*review-ledger\*\*/);
-  assert.match(taskCommentCall.body.body, /Do not duplicate CI results in the ledger/);
-  assert.match(taskCommentCall.body.body, /reviewer_actors/);
-  assert.match(taskCommentCall.body.body, /repair and validate the ledger on the final head/i);
-  assert.match(taskCommentCall.body.body, /ledger validation is the only failing CI step/i);
 });
 
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {

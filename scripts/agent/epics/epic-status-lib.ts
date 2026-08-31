@@ -1497,7 +1497,6 @@ function isRepoFile(repoRoot: string, candidate: string): boolean {
 
 const EVIDENCE_CANONICAL_DIRS: Readonly<Record<string, string>> = {
   handoff: 'docs/knowledge/handoffs/',
-  'review-ledger': 'docs/knowledge/review-ledgers/',
 };
 
 function validateEvidenceFiles(
@@ -1506,7 +1505,7 @@ function validateEvidenceFiles(
   node: EpicNode,
   result: MutableValidation,
 ): void {
-  for (const kind of ['handoff', 'review-ledger']) {
+  for (const kind of ['handoff']) {
     const evidence = node.evidence.find((item) => item.kind === kind);
     if (!evidence) {
       result.errors.push({
@@ -1580,7 +1579,7 @@ function validateEvidenceRequirements(
   node: EpicNode,
   result: MutableValidation,
 ): void {
-  const handledKinds = new Set(['handoff', 'review-ledger']);
+  const handledKinds = new Set(['handoff']);
   for (const requirement of node.evidence_requirements) {
     const evidence = node.evidence.find((item) => item.kind === requirement);
     if (!evidence) {
@@ -2687,7 +2686,7 @@ function parseTrustedBlockedEvent(
 
 function findStaleHeadBoundEvidence(node: EpicNode, headSha: string): string[] {
   return node.evidence
-    .filter((item) => ['handoff', 'review-ledger'].includes(item.kind) && item.commit !== headSha)
+    .filter((item) => item.kind === 'handoff' && item.commit !== headSha)
     .map((item) => item.kind)
     .sort();
 }
@@ -2899,7 +2898,7 @@ export function auditGithub(
               `but ${staleEvidenceKinds.join(', ')} evidence is still pinned to an older commit`,
           });
           operatorActions.push(
-            `Refresh ${node.node_id} handoff/review-ledger evidence for PR #${pull.number} at ` +
+            `Refresh ${node.node_id} handoff evidence for PR #${pull.number} at ` +
               `${pull.head.sha}, then update cached PR head facts.`,
           );
         } else {

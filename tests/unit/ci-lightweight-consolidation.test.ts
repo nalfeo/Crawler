@@ -139,7 +139,7 @@ describe('ci.yml — check-lightweight blocking steps', () => {
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
-      'Guard + review-ledger tests',
+      'Guard and agent-tooling tests',
       'Typecheck & Lint',
       'Human approval',
     ]) {
@@ -153,7 +153,7 @@ describe('ci.yml — check-lightweight blocking steps', () => {
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
-      'Guard + review-ledger tests',
+      'Guard and agent-tooling tests',
       'Typecheck & Lint',
       'Human approval',
     ]);
@@ -197,7 +197,7 @@ describe('ci.yml — check-lightweight blocking steps', () => {
       'Format check',
       'Lab gate check',
       'Orphaned-system wiring guard',
-      'Guard + review-ledger tests',
+      'Guard and agent-tooling tests',
       'Typecheck & Lint',
     ];
     for (const name of nonApprovalBlocking) {

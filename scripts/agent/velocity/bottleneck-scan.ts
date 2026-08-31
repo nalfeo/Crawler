@@ -442,8 +442,6 @@ export function readGuardFriction(root: string): BottleneckReport['guardFriction
  * match the guard ID string recorded in the guard-telemetry JSON files.
  */
 export const GUARD_REMEDIATION: Readonly<Record<string, string>> = {
-  'pr-review-ledger':
-    'run `npm run verify:pr-prereqs` before `create_pull_request` to surface missing or incomplete ledger files early and avoid the denial loop',
   'pr-preflight':
     'run `npm run verify:pr-prereqs` before `create_pull_request` to catch missing handoffs, ADR requirements, and forbidden-path violations ahead of the gate',
 };

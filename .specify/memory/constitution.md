@@ -102,9 +102,14 @@ Explicit human requirements (from the user, spec, or ADR) are load-bearing. If a
 
 Gameplay balance is tuned against **deterministic seed sweeps** (e.g. `ai:winrate-sweep`, headless Floor gates). The 90 %+ win-rate target is a rate over many seeds; never adjust code to rescue a specific seed at the expense of the aggregate rate. Governor/balance changes must cite the sweep before and after.
 
-### 16. Apple-Scaled Review Harness
+### 16. Apple-Scaled Review
 
-Before opening a PR that touches code, run the apple-scaled review harness and append the result to the review ledger (`scripts/agent/review/ledger.mjs`). Apple complexity is declared before writing code and scored at handoff (see `docs/agent-os/policies/complexity-policy.md` and `.github/skills/review-harness/SKILL.md`).
+Apple complexity is declared before writing code and scored at handoff. Changes
+at 1–2🍎 use tests and CI only, 3🍎 requires one independent post-diff code
+review, and 4–5🍎 requires two. Adversarial design review runs only for
+architectural changes. GitHub PR reviews and threads are the only audit trail
+(see `docs/agent-os/policies/complexity-policy.md` and
+`.github/skills/review-harness/SKILL.md`).
 
 ## Architectural Boundaries
 
