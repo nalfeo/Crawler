@@ -1,0 +1,172 @@
+{
+  "overall": {
+    "score": 62.6,
+    "verdict": "needs-work",
+    "summary": "Deterministic contract is unscoped. 2 evidence-backed blocker(s); 2 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional but has several issues with spacing, alignment, and visual hierarchy that hinder clarity and usability. Improvements are needed to achieve a polished and intuitive user experience.",
+    "raw_score": 68
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 70,
+      "strengths": [
+        "Consistent placement of elements within their respective regions.",
+        "Minimap and resource indicators are logically positioned."
+      ],
+      "issues": [
+        "The 'Auto Abilities' panel is not centered horizontally within the screen.",
+        "The spacing between ability slots is inconsistent."
+      ]
+    },
+    "spacing_balance": {
+      "score": 65,
+      "strengths": [
+        "Adequate spacing around the minimap and resource indicators.",
+        "Health bar has sufficient breathing room."
+      ],
+      "issues": [
+        "The 'Auto Abilities' panel is cramped, with minimal padding around the text and icons.",
+        "The spacing between ability slots is inconsistent, with some slots appearing closer together than others."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 60,
+      "strengths": [
+        "The minimap and resource indicators are visually distinct and easy to locate."
+      ],
+      "issues": [
+        "The 'Auto Abilities' panel lacks a clear hierarchy, making it difficult to quickly identify key abilities.",
+        "The 'Floor 1' and timer text are not visually prominent enough to stand out as primary information."
+      ]
+    },
+    "readability": {
+      "score": 70,
+      "strengths": [
+        "Text is legible with good contrast against the background.",
+        "Health bar values are clear and easy to read."
+      ],
+      "issues": [
+        "The font size for the 'Auto Abilities' labels is small and could be difficult to read for some players.",
+        "The 'Floor 1' and timer text could benefit from a larger font size or additional emphasis."
+      ]
+    },
+    "icon_usage": {
+      "score": 75,
+      "strengths": [
+        "Icons for resources and abilities are clear and recognizable.",
+        "Minimap design is clean and unobtrusive."
+      ],
+      "issues": [
+        "Ability icons are small relative to their slots, leaving excessive padding within the slot."
+      ]
+    },
+    "typography_clarity": {
+      "score": 65,
+      "strengths": [
+        "Text is generally crisp and readable.",
+        "Font choice is consistent across the HUD."
+      ],
+      "issues": [
+        "Font size for 'Auto Abilities' labels and the 'Floor 1' timer is too small, reducing readability.",
+        "The 'B Manage' label is misaligned and too close to the edge of the panel."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 75,
+      "strengths": [
+        "The minimalist design aligns with the synthetic lab harness theme.",
+        "Color palette is cohesive and functional."
+      ],
+      "issues": [
+        "The HUD feels sterile and lacks visual flair that could enhance thematic immersion."
+      ]
+    }
+  },
+  "blocking_findings": [
+    "The 'Auto Abilities' panel is not horizontally centered, which disrupts layout consistency.",
+    "The spacing between ability slots is inconsistent, which affects visual hierarchy and readability."
+  ],
+  "recommended_fixes": [
+    "Increase the font size for the 'Floor 1' and timer text to improve visibility.",
+    "Add more padding around the text and icons in the 'Auto Abilities' panel to improve spacing balance.",
+    "Enhance the visual hierarchy of the 'Auto Abilities' panel by emphasizing key abilities (e.g., through color or size).",
+    "Consider adding subtle thematic elements to the HUD to improve immersion."
+  ],
+  "precise_fixes": [
+    {
+      "element": "autoAbilitiesPanel",
+      "action": "move",
+      "dx": 50,
+      "dy": 0,
+      "reason": "The 'Auto Abilities' panel is offset to the left by 50px and needs to be centered horizontally."
+    },
+    {
+      "element": "abilitySlot:1",
+      "action": "move",
+      "dx": 5,
+      "dy": 0,
+      "reason": "The spacing between ability slots is inconsistent; slot 1 is 5px closer to slot 2 than other slots."
+    },
+    {
+      "element": "floorTimerText",
+      "action": "resize",
+      "dw": 10,
+      "dh": 5,
+      "reason": "The 'Floor 1' and timer text is too small and lacks emphasis; increasing size by 10px width and 5px height will improve readability."
+    },
+    {
+      "element": "manageLabel",
+      "action": "move",
+      "dx": 0,
+      "dy": 5,
+      "reason": "The 'B Manage' label is too close to the bottom edge of the panel; moving it up by 5px will improve readability."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [
+    "The 'Auto Abilities' panel is not horizontally centered, which disrupts layout consistency.",
+    "The spacing between ability slots is inconsistent, which affects visual hierarchy and readability."
+  ],
+  "advisory_taste_notes": [
+    "Add more padding around the text and icons in the 'Auto Abilities' panel to improve spacing balance.",
+    "Consider adding subtle thematic elements to the HUD to improve immersion."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD Safe Room"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "c62bca084f7227512f3b6dc78b5b5548a53507a233009c21e043810c3b01604d",
+  "capture_unchanged_from_prior": false,
+  "score_derivation": {
+    "axis_mean": 68.6,
+    "penalty": 6,
+    "deterministic_blockers": 0,
+    "llm_blockers": 2,
+    "model_reported_score": 68,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": [
+      "The 'Auto Abilities' panel is not horizontally centered, which disrupts layout consistency.",
+      "The spacing between ability slots is inconsistent, which affects visual hierarchy and readability."
+    ],
+    "recurring": []
+  }
+}

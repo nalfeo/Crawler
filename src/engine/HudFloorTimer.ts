@@ -18,7 +18,7 @@ import { resolveFloorTimerRemainingMs } from './floor-timer-state.js';
 // ---------------------------------------------------------------------------
 
 const CENTER_X = GAME.WIDTH / 2;
-const TOP_Y = 12;
+const TOP_Y = 20;
 const PANEL_HEIGHT = 42;
 const MIN_PANEL_WIDTH = 184;
 
@@ -59,7 +59,8 @@ export function createHudFloorTimer(
   const timerText = scene.add
     .text(CENTER_X, TOP_Y + PANEL_HEIGHT / 2, '', {
       fontFamily: 'monospace',
-      fontSize: '18px',
+      fontSize: '20px',
+      fontStyle: 'bold',
       color: COLORS.neutral,
       stroke: '#02040a',
       strokeThickness: 3,

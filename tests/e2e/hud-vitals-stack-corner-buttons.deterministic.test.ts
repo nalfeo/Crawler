@@ -4,9 +4,9 @@
  * `main-scene-probe-lab`, which boots the shipped floor bootstrap) rather than
  * on a HUD lab or on source strings:
  *
- *   1. **Vitals stack gap.** The loot/currency pill drifted ~28px above where
- *      the shared `HudVitalsLayout` stack put it, reopening a visible gap above
- *      the XP bar. Asserted here by reading each row's real rendered zone
+ *   1. **Vitals stack gap.** The bottom-left vitals widgets must stay in the
+ *      shared `HudVitalsLayout` order after the loot readout was folded into
+ *      the health panel. Asserted here by reading each row's real rendered zone
  *      bounds out of the live scene and measuring the inter-row gaps.
  *   2. **Corner-button uniformity.** Bag/Gear/Awards/... must stay identically
  *      sized, left-aligned and evenly stacked. Asserted from the live buttons'
@@ -24,13 +24,11 @@ const VIEWPORTS = [
 ] as const;
 
 /**
- * `HudVitalsLayout` encodes an 8px skill→loot gutter and a 2px gutter for the
- * lower stack, but the whole cluster is uniformly magnified by the responsive
- * ui-scale, so the rendered gaps are asserted as fractions of the rendered row
- * height (scale-free) instead of against raw design-space pixels. The pre-fix
- * loot pill sat a full row height clear of the XP bar, far outside these bands.
+ * `HudVitalsLayout` encodes a compact 2px gutter between stacked panels, but
+ * the whole cluster is uniformly magnified by the responsive ui-scale, so the
+ * rendered gaps are asserted as fractions of the rendered row height
+ * (scale-free) instead of against raw design-space pixels.
  */
-const MAX_SKILL_TO_LOOT_GAP_RATIO = 0.4;
 const MAX_LOWER_STACK_GAP_RATIO = 0.15;
 /**
  * Authored inter-button spacing in `MainGameScene.applyMobileButtonScale`; the
@@ -66,14 +64,12 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
 
         const vitals = await mainSceneProbe.getVitalsStackBounds(page);
         const skill = vitals.skill;
-        const loot = vitals.loot;
         const xp = vitals.xp;
         const health = vitals.health;
-        if (!skill || !loot || !xp || !health) {
+        if (!skill || !xp || !health) {
           throw new Error(
             `vitals rows missing from the real scene: ${JSON.stringify({
               skill: Boolean(skill),
-              loot: Boolean(loot),
               xp: Boolean(xp),
               health: Boolean(health),
             })}`,
@@ -83,7 +79,6 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         // Every row renders (the XP row only after the drops unlock above).
         for (const [name, row] of [
           ['skill', skill],
-          ['loot', loot],
           ['xp', xp],
           ['health', health],
         ] as const) {
@@ -92,19 +87,13 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         }
 
         // Rows stack top-down in the documented order with no overlap and no
-        // gap wider than the authored gutter — the exact regression that
-        // reopened when the loot pill hardcoded its own offset.
-        const skillToLoot = loot.bounds.y - (skill.bounds.y + skill.bounds.height);
-        const lootToXp = xp.bounds.y - (loot.bounds.y + loot.bounds.height);
+        // gap wider than the authored gutter.
+        const skillToXp = xp.bounds.y - (skill.bounds.y + skill.bounds.height);
         const xpToHealth = health.bounds.y - (xp.bounds.y + xp.bounds.height);
 
-        expect(skillToLoot, 'skill→loot gap').toBeGreaterThanOrEqual(0);
-        expect(skillToLoot, 'skill→loot gap').toBeLessThanOrEqual(
-          loot.bounds.height * MAX_SKILL_TO_LOOT_GAP_RATIO,
-        );
-        expect(lootToXp, 'loot→XP gap (issue #3681)').toBeGreaterThanOrEqual(0);
-        expect(lootToXp, 'loot→XP gap (issue #3681)').toBeLessThanOrEqual(
-          loot.bounds.height * MAX_LOWER_STACK_GAP_RATIO,
+        expect(skillToXp, 'skill→XP gap').toBeGreaterThanOrEqual(0);
+        expect(skillToXp, 'skill→XP gap').toBeLessThanOrEqual(
+          xp.bounds.height * MAX_LOWER_STACK_GAP_RATIO,
         );
         expect(xpToHealth, 'XP→health gap').toBeGreaterThanOrEqual(0);
         expect(xpToHealth, 'XP→health gap').toBeLessThanOrEqual(
@@ -112,7 +101,7 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         );
 
         // The stack shares one left edge and stays on-canvas.
-        for (const row of [skill, loot, xp, health]) {
+        for (const row of [skill, xp, health]) {
           expect(row.bounds.x).toBeCloseTo(skill.bounds.x, 1);
           expect(row.bounds.y).toBeGreaterThanOrEqual(0);
         }

@@ -1,0 +1,17 @@
+{
+  "overall": {
+    "verdict": "pass",
+    "summary": "Deterministic-only capture (--deterministic-only): no LLM review was run, so this result carries no score or LLM findings."
+  },
+  "blocking_findings": [],
+  "deterministic_blocking_findings": [],
+  "deterministic_status": "unscoped",
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "capture_hash": "137e8d54829e81cc9b732a954899feb52e9425928af022a4eaebfcd7713d32ec",
+  "surface": "in-game HUD"
+}

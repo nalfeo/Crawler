@@ -18,9 +18,12 @@ import { resolve, join } from 'node:path';
 import process from 'node:process';
 import { execSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 
-const { labBaseUrl } = getSessionServerPorts();
+const require = createRequire(import.meta.url);
+
+const { gameBaseUrl, labBaseUrl } = getSessionServerPorts();
 
 const MANIFEST_PATH = resolve('docs/knowledge/ux-baselines/manifest.json');
 const BASELINES_DIR = resolve('docs/knowledge/ux-baselines/releases');
@@ -93,15 +96,56 @@ function getTimestamp() {
   return new Date().toISOString();
 }
 
+async function isServerReachable(baseUrl: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      await fetch(`${baseUrl}/`, { signal: controller.signal });
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return false;
+  }
+}
+
 type BaselineSurface = {
   id: string;
   label: string;
   viewport: { width: number; height: number };
   captureSource: string;
+  // Which Phaser lab (?lab=<labId>) to load for capture. Defaults to
+  // 'ui-probe-lab' when omitted, since most existing surfaces use it.
+  labId?: string;
   setupFile: string;
   enabled: boolean;
   description?: string;
 };
+
+function captureUrl(surface: BaselineSurface): string {
+  const scenarioParam = `uxScenario=${encodeURIComponent(surface.id)}`;
+  switch (surface.captureSource) {
+    case 'dev-server':
+      return `${gameBaseUrl}/?${scenarioParam}`;
+    case 'main-scene-probe-lab':
+      return `${labBaseUrl}/lab.html?lab=${encodeURIComponent(surface.labId ?? 'main-scene-probe-lab')}&${scenarioParam}`;
+    case 'lab':
+    case 'ui-probe-lab':
+      return `${labBaseUrl}/lab.html?lab=${encodeURIComponent(surface.labId ?? 'ui-probe-lab')}&${scenarioParam}`;
+    default:
+      throw new Error(`Unsupported captureSource "${surface.captureSource}" for ${surface.id}`);
+  }
+}
+
+function captureBaseUrl(surface: BaselineSurface): string {
+  return surface.captureSource === 'dev-server' ? gameBaseUrl : labBaseUrl;
+}
+
+function captureServerCommand(surface: BaselineSurface): string {
+  return surface.captureSource === 'dev-server' ? 'dev' : 'lab';
+}
 
 async function captureSurface(opts: {
   ref: string;
@@ -134,7 +178,7 @@ async function captureSurface(opts: {
     'tsx',
     'scripts/agent/review/visual-review-agent.ts',
     '--url',
-    `${labBaseUrl}/lab.html?lab=ui-probe-lab&uxScenario=${encodeURIComponent(surface.id)}`,
+    captureUrl(surface),
     '--output-dir',
     surfaceDir,
     '--screenshot-name',
@@ -161,29 +205,34 @@ async function captureSurface(opts: {
   ];
 
   // We need a running dev server. Check if one is already running, or start one.
+  // Use fetch instead of shelling out to `curl ... > /dev/null`: the /dev/null
+  // redirect target does not exist on Windows PowerShell/cmd, which made the
+  // health check always fail there and repeatedly (and invalidly) try to spawn
+  // a second dev server on top of an already-running one.
   let serverStarted = false;
   let serverProcess: ReturnType<typeof spawn> | undefined;
-  try {
-    // Quick health check
-    execSync(`curl -s ${labBaseUrl}/ > /dev/null`, { timeout: 5000 });
-  } catch {
+  const baseUrl = captureBaseUrl(surface);
+  if (!(await isServerReachable(baseUrl))) {
     // Server not running, start it in the background
-    console.log('Starting Vite dev server for capture...');
-    serverProcess = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'lab'], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
+    const serverCommand = captureServerCommand(surface);
+    console.log(`Starting Vite ${serverCommand} server for capture...`);
+    serverProcess = spawn(
+      process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      ['run', serverCommand],
+      {
+        stdio: 'ignore',
+        windowsHide: true,
+      },
+    );
     serverStarted = true;
     // Wait for server to be ready
     let ready = false;
     for (let i = 0; i < 30; i++) {
-      try {
-        execSync(`curl -s ${labBaseUrl}/ > /dev/null`, { timeout: 5000 });
+      if (await isServerReachable(baseUrl)) {
         ready = true;
         break;
-      } catch {
-        await new Promise((r) => setTimeout(r, 1000));
       }
+      await new Promise((r) => setTimeout(r, 1000));
     }
     if (!ready) {
       throw new Error('Dev server did not become ready within 30 seconds');
@@ -192,7 +241,14 @@ async function captureSurface(opts: {
 
   try {
     // Run visual-review agent
-    const result = spawnSync('tsx', visualReviewCmd.slice(1), {
+    // On Windows, `tsx` resolves to a .cmd shim which node's spawnSync cannot
+    // exec directly without shell:true — but shell:true then requires manual
+    // quoting of args, and the URL argument contains `&`, which cmd.exe would
+    // otherwise interpret as a command separator. Resolve to the tsx binary's
+    // underlying JS entrypoint instead so we can always run it via `node`
+    // directly, with no shell involved on any platform.
+    const tsxCliPath = resolve(require.resolve('tsx/package.json'), '..', 'dist', 'cli.mjs');
+    const result = spawnSync(process.execPath, [tsxCliPath, ...visualReviewCmd.slice(1)], {
       stdio: 'inherit',
       timeout: 120000,
     });
@@ -356,18 +412,14 @@ async function main() {
         continue;
       }
       const surface = rawSurface as BaselineSurface;
-      if (surface.captureSource === 'ui-probe-lab') {
-        const result = await captureSurface({
-          ref,
-          releaseDir,
-          surface,
-          withLlmReview,
-        });
-        results.push(result);
-        if (result.success) capturedCount++;
-      } else {
-        console.warn(`⚠️  Unsupported surface: ${surface.id} (skipped)`);
-      }
+      const result = await captureSurface({
+        ref,
+        releaseDir,
+        surface,
+        withLlmReview,
+      });
+      results.push(result);
+      if (result.success) capturedCount++;
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
