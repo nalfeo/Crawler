@@ -1556,6 +1556,8 @@ function commentTimestampMs(comment) {
 }
 
 function latestOwnerDispositionCommandAfter(afterMs) {
+  // Fail closed: if the escalation timestamp is unavailable, no existing KEEP
+  // can be proven to belong to the current escalation episode.
   if (!Number.isFinite(afterMs)) return null;
   for (let index = comments.length - 1; index >= 0; index -= 1) {
     const comment = comments[index];
