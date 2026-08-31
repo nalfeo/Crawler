@@ -84,7 +84,8 @@ export const SiegeRam = {};
  * Floor 5 Ratings Ram escort-route waypoint marker. Purely positional: never
  * carries `Team` or `Health`, so it is untargetable and unkillable.
  */
-export const SiegeRouteMarker = {}; /** Marks an entity for automatic removal after expiry. */
+export const SiegeRouteMarker = {};
+/** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
 export const AreaDamage = {};
