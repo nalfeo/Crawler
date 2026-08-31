@@ -830,7 +830,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   function hasPendingFeatureFlagReload(): boolean {
     return getAiFeatureFlagControls(aiFeatureFlagContext()).some(
       (control) =>
-        control.reloadRequired && featureFlags[control.key] !== appliedFeatureFlags[control.key],
+        control.reloadRequired &&
+        control.applicable &&
+        featureFlags[control.key] !== appliedFeatureFlags[control.key],
     );
   }
 

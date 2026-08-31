@@ -26,7 +26,7 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
     );
     expect(SOURCE).toContain('function hasPendingFeatureFlagReload(): boolean {');
     expect(SOURCE).toContain(
-      'control.reloadRequired && featureFlags[control.key] !== appliedFeatureFlags[control.key]',
+      'control.reloadRequired &&\n        control.applicable &&\n        featureFlags[control.key] !== appliedFeatureFlags[control.key]',
     );
   });
 
