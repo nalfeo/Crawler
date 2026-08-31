@@ -17,6 +17,14 @@ Do not push, open a pull request, modify the issue, or merge: deterministic
 workflow stages own those mutations. On a review or local-gate repass, address
 the attached evidence before making further changes.
 
+An open approved issue is work to perform. Do not return `no-work` merely
+because existing tests pass or related tuning already exists. `no-work` is
+valid only when repository evidence proves the claimed issue was already
+completed (for example, a linked merged pull request satisfies every acceptance
+criterion); cite that evidence in the summary. Otherwise implement the missing
+acceptance criteria, or return `blocked` with the specific external decision
+that prevents implementation.
+
 On any repass, read every attached review verdict or local-gate artifact and
 address all listed findings in one pass. Do not return `success` until fixable
 review findings have corresponding code, deterministic regression coverage, and

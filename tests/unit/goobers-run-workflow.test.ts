@@ -25,6 +25,7 @@ interface GoobersActionsWorkflow {
       if?: string;
       name?: string;
       env?: Record<string, string>;
+      concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
       steps?: Array<{
         name?: string;
         if?: string;
@@ -137,7 +138,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(workflow.jobs.run?.if).toContain("github.event_name != 'issues'");
     expect(workflow.jobs.run?.if).toContain("github.event.label.name == 'goobers:approved'");
     expect(workflow.jobs.run?.if).toContain("github.event.issue.state == 'open'");
-    expect(workflow.concurrency).toEqual({
+    expect(workflow.concurrency).toBeUndefined();
+    expect(workflow.jobs.run?.concurrency).toEqual({
       group: 'goobers-run',
       'cancel-in-progress': false,
     });
@@ -512,6 +514,47 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Validate .goobers source tree')?.run,
     ).toContain('"$GOOBERS_SOURCE"');
+  });
+
+  it('does not strand claimed issues when an implementer incorrectly returns no-work', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const retry = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Restore retry eligibility after no-work',
+    );
+    const diagnostics = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Comment with Goobers run diagnostics',
+    );
+    const coderInstructions = readFileSync(
+      path.join(REPO_ROOT, '.goobers', 'gaggles', 'crawler', 'goobers', 'coder', 'instructions.md'),
+      'utf8',
+    );
+    const producerInstructions = readFileSync(
+      path.join(
+        REPO_ROOT,
+        '.goobers',
+        'gaggles',
+        'crawler',
+        'goobers',
+        'producer',
+        'instructions.md',
+      ),
+      'utf8',
+    );
+
+    expect(coderInstructions).toContain('Do not return `no-work` merely');
+    expect(coderInstructions).toContain('linked merged pull request');
+    expect(producerInstructions).toContain("repository's existing canonical configuration");
+    expect(producerInstructions).toContain('do not by themselves');
+    expect(producerInstructions).toContain('require a maintainer decision');
+    expect(retry?.if).toBe("always() && steps.recovery.outputs.should_run != 'false'");
+    expect(retry?.env?.GOOBERS_RESUME_PR).toBe('${{ env.GOOBERS_RESUME_PR }}');
+    expect(retry?.run).toContain('if [ -n "${GOOBERS_RESUME_PR:-}" ]');
+    expect(retry?.run).toContain('preserving in-review ownership');
+    expect(retry?.run).toContain('.status == "no-work"');
+    expect(retry?.run).toContain("--remove-label 'goobers/status:in-review'");
+    expect(retry?.run).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
+    expect(diagnostics?.run).toContain('GOOBERS_RECOVERY_ISSUE');
+    expect(diagnostics?.run).toContain('.stage == "query-backlog"');
   });
 
   it('preserves single-writer lease fields in ci-recovery dispatch wiring', () => {

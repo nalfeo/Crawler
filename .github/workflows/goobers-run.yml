@@ -48,10 +48,6 @@ permissions:
   issues: write
   pull-requests: write
 
-concurrency:
-  group: goobers-run
-  cancel-in-progress: false
-
 jobs:
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
@@ -59,6 +55,12 @@ jobs:
       github.event_name != 'issues' ||
       (github.event.label.name == 'goobers:approved' &&
       github.event.issue.state == 'open')
+    # Keep irrelevant issue-label events from entering the workflow-level
+    # pending slot and cancelling a queued schedule/manual run before this
+    # job-level `if` can skip them.
+    concurrency:
+      group: goobers-run
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # Generous ceiling for a full plan -> implement -> review -> PR loop;
     # the workflow's own maxConcurrentRuns/gates bound retries within this.
@@ -408,6 +410,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Restore retry eligibility after no-work
+        if: always() && steps.recovery.outputs.should_run != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${GOOBERS_RESUME_PR:-}" ]; then
+            echo "Goobers resumed open PR #${GOOBERS_RESUME_PR}; preserving in-review ownership."
+            exit 0
+          fi
+
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
+          if [ -z "$events_file" ]; then
+            exit 0
+          fi
+          no_work_stage="$(
+            jq -r 'select(.type == "stage.finished" and .status == "no-work") | .stage' \
+              "$events_file" | tail -n 1
+          )"
+          if [ -z "$no_work_stage" ]; then
+            exit 0
+          fi
+
+          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
+          if [ -z "$issue_number" ]; then
+            issue_number="$(
+              jq -r 'select(.type == "stage.finished" and .stage == "query-backlog") | .outputs.id // empty' \
+                "$events_file" | tail -n 1
+            )"
+          fi
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Goobers stage '${no_work_stage}' returned no-work, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+            exit 1
+          fi
+
+          gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+            --remove-label 'goobers/status:in-review'
+          echo "::warning::Goobers stage '${no_work_stage}' returned no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+
       - name: Comment with Goobers run diagnostics
         if: always()
         env:
@@ -423,12 +466,20 @@ jobs:
             exit 0
           fi
 
-          issue_number="$(
-            jq -r '
-              select(.externalRef? and .externalRef.kind == "issue")
-              | .externalRef.id
-            ' "$events_file" | tail -n 1
-          )"
+          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
+          if [ -z "$issue_number" ]; then
+            issue_number="$(
+              jq -r '
+                if .externalRef? and .externalRef.kind == "issue" then
+                  .externalRef.id
+                elif .type == "stage.finished" and .stage == "query-backlog" then
+                  .outputs.id // empty
+                else
+                  empty
+                end
+              ' "$events_file" | tail -n 1
+            )"
+          fi
           if [ -z "$issue_number" ] || [ "$issue_number" = "null" ]; then
             echo "No claimed issue found in Goobers journal; skipping issue comment."
             exit 0
