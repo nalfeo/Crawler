@@ -28,22 +28,38 @@ import {
 import type { RewardOpeningUI } from './RewardOpeningUI.js';
 import { prefersReducedMotion } from './reduced-motion.js';
 import { getAchievementIconEntry } from './achievement-icon.js';
+import {
+  createRewardChest,
+  rewardChestTier,
+  rewardChestBounds,
+  LOOT_TIER_HEX,
+} from './reward-chest.js';
 
-const PANEL_PADDING = 16;
+const PANEL_PADDING = 20;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
-const ROW_HEIGHT = 98;
-const ROW_GAP = 8;
+const ROW_HEIGHT = 132;
+const ROW_GAP = 10;
 const ROW_SCROLL_STEP = ROW_HEIGHT + ROW_GAP;
 const DRAG_SLOP = 8;
 const ACHIEVEMENT_ICON_SIZE = 32;
 const ACHIEVEMENT_ICON_GAP = 10;
+/** Chest glyph edge length inside the reward column. */
+const CHEST_SIZE = 58;
+/** Height of the filter chip row, including its bottom margin. */
+const FILTER_ROW_H = 30;
+/** Width reserved on the right edge for the scrollbar track, whether or not it
+ * is currently visible, so rows never resize when scroll state toggles and
+ * the reward column can never overlap the thumb. */
+const SCROLLBAR_GUTTER = 16;
 
 /** Flavor text longer than this (chars) gets a collapse/expand toggle. */
 const FLAVOR_EXPAND_THRESHOLD = 120;
 /** Approx line height for flavor text (12 px font + spacing). */
-const FLAVOR_LINE_H = 16;
+const FLAVOR_LINE_H = 18;
 /** Number of lines to show in collapsed state. */
-const FLAVOR_COLLAPSED_LINES = 2;
+const FLAVOR_COLLAPSED_LINES = 4;
+/** Maximum lines shown when a long flavor text is expanded. */
+const FLAVOR_EXPANDED_LINES = 8;
 /** Height of the expand/collapse button row. */
 const EXPANDER_BTN_H = 18;
 
@@ -56,10 +72,24 @@ const COLORS = {
   textPrimary: 0xf8fafc,
   textSecondary: 0x9ca3af,
   flavor: 0xd6d9f1,
-  btnBg: 0x2a2a4a,
-  btnHover: 0x3a3a6a,
+  btnBg: 0x3a3a68,
+  btnHover: 0x5252a0,
+  btnTopBevel: 0x6e6ec4,
+  btnBottomBevel: 0x1c1c38,
   claimed: 0x22c55e,
+  chipBg: 0x1b1b34,
+  chipActiveBg: 0x3a3a68,
+  chipBorder: 0x3d3d66,
 } as const;
+
+/**
+ * Scope filters. `current_run` achievements apply to the whole run rather than
+ * one floor, so they are surfaced as "Global"; everything else is bucketed by
+ * the floor it belongs to.
+ */
+const FILTER_ALL = 'all';
+const FILTER_GLOBAL = 'global';
+type AwardsFilter = typeof FILTER_ALL | typeof FILTER_GLOBAL | `floor:${number}`;
 
 const DIFFICULTY_HEX: Record<AchievementDifficulty, number> = {
   basic: 0x9ca3af,
@@ -76,8 +106,8 @@ function rewardLabel(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
       return reward.lootTable === 'floor2-generated-equipment'
-        ? `${reward.tier} loot box`
-        : `${reward.tier} box`;
+        ? `${reward.tier} loot`
+        : reward.tier;
     case 'item':
       return reward.itemId;
     case 'directorMessage':
@@ -90,9 +120,9 @@ function rewardLabel(reward: AchievementReward): string {
 function rewardReveal(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
-      return `Opened: ${reward.tier} loot box`;
+      return 'Opened';
     case 'item':
-      return `Opened: ${reward.itemId}`;
+      return 'Opened';
     case 'directorMessage':
       return `Director: ${reward.message}`;
     case 'none':
@@ -135,8 +165,23 @@ export function createAchievementsUI(
    * without synthesizing a pointer event on an internal, non-exported button.
    */
   claimReward(achievementId: string): void;
+  setFilterForProbe(filter: AwardsFilter): void;
+  setExpandedForProbe(achievementId: string, expanded: boolean): void;
+  setScrollIndexForProbe(index: number): void;
   isOpen(): boolean;
   getScrollIndex(): number;
+  /**
+   * Rendered geometry for the visible surface, in design space. Consumed by the
+   * visual-review setup file so the judge measures REAL boxes (and the
+   * deterministic sensors can assert chest-in-row containment) instead of a
+   * single hand-written panel rectangle.
+   */
+  getLayoutRegions(): {
+    id: string;
+    box: { x: number; y: number; width: number; height: number };
+    kind: string;
+    parentId?: string;
+  }[];
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
@@ -169,6 +214,16 @@ export function createAchievementsUI(
   let dragTravel = 0;
   let draggedPointerId: number | null = null;
   const expandedIds = new Set<string>();
+  let activeFilter: AwardsFilter = FILTER_ALL;
+  /** Chip objects are rebuilt per render alongside rows. */
+  const filterObjects: Phaser.GameObjects.GameObject[] = [];
+  /** Geometry published for visual-review sensors; rebuilt every render. */
+  let layoutRegions: {
+    id: string;
+    box: { x: number; y: number; width: number; height: number };
+    kind: string;
+    parentId?: string;
+  }[] = [];
   /** Cache of measured full flavor text height keyed by achievement id. */
   const flavorHeightCache = new Map<string, number>();
 
@@ -183,22 +238,40 @@ export function createAchievementsUI(
   bg.setStrokeStyle(2, COLORS.panelBorder);
   container.add(bg);
 
-  const title = crispText(0, 0, '🏆 ACHIEVEMENTS', {
+  const title = crispText(0, 0, '🏆 AWARDS', {
     fontFamily: FONT_FAMILY,
     fontSize: '20px',
     color: hex(COLORS.textPrimary),
   });
   container.add(title);
 
-  const hint = crispText(0, 0, 'Open a reward to reveal the box · scroll for more · [V] to close', {
+  const hint = crispText(0, 0, '[V] close', {
     fontFamily: FONT_FAMILY,
-    fontSize: '12px',
+    fontSize: '13px',
     color: hex(COLORS.textSecondary),
   });
   hint.setOrigin(1, 0);
   container.add(hint);
 
-  const listTop = (): number => panelY + PANEL_PADDING + 40;
+  const summary = crispText(0, 0, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '12px',
+    color: hex(COLORS.textSecondary),
+  });
+  container.add(summary);
+
+  const headerRule = scene.add.rectangle(
+    0,
+    0,
+    panelWidth - PANEL_PADDING * 2,
+    1,
+    COLORS.panelBorder,
+    1,
+  );
+  container.add(headerRule);
+
+  const listTop = (): number => panelY + PANEL_PADDING + 62 + FILTER_ROW_H;
+  const filterTop = (): number => panelY + PANEL_PADDING + 62;
   const listBottom = (): number => panelY + panelHeight - PANEL_PADDING;
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
@@ -208,6 +281,15 @@ export function createAchievementsUI(
   function clearRows(): void {
     for (const obj of rowObjects) obj.destroy();
     rowObjects.length = 0;
+    for (const obj of filterObjects) obj.destroy();
+    filterObjects.length = 0;
+  }
+
+  /** True when `def` belongs in the currently selected filter bucket. */
+  function matchesFilter(def: AchievementDef, filter: AwardsFilter): boolean {
+    if (filter === FILTER_ALL) return true;
+    if (filter === FILTER_GLOBAL) return def.scope === 'current_run';
+    return def.scope !== 'current_run' && `floor:${def.floor}` === filter;
   }
 
   /**
@@ -216,7 +298,9 @@ export function createAchievementsUI(
    * player sees actionable "Open reward" boxes before already-claimed rows.
    */
   function unlockedDefs(world: GameWorld): AchievementDef[] {
-    const unlocked = ALL_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
+    const unlocked = ALL_ACHIEVEMENTS.filter(
+      (a) => world.achievements.unlockedIds.has(a.id) && matchesFilter(a, activeFilter),
+    );
     const rank = (def: AchievementDef): number => {
       const isUnopenedBox =
         def.reward.type === 'lootBox' && !world.achievements.claimedIds.has(def.id);
@@ -231,7 +315,7 @@ export function createAchievementsUI(
       .join(',');
     const claimed = [...world.achievements.claimedIds].sort().join(',');
     const expanded = [...expandedIds].sort().join(';');
-    return `${unlocked}|${claimed}|${scrollIndex}|${expanded}`;
+    return `${unlocked}|${claimed}|${scrollIndex}|${expanded}|${activeFilter}`;
   }
 
   function presentAchievementReward(world: GameWorld, id: string): void {
@@ -320,15 +404,16 @@ export function createAchievementsUI(
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
     const isExpanded = expandedIds.has(def.id);
     const claimed = lastWorld?.achievements.claimedIds.has(def.id) === true;
-    const rewardColumnWidth = 150;
+    const rewardColumnWidth = 170;
+    const iconEntry = getAchievementIconEntry(scene, def);
     const textLeft = x + 12 + ACHIEVEMENT_ICON_SIZE + ACHIEVEMENT_ICON_GAP;
     const detailsWidth = w - (textLeft - x) - rewardColumnWidth - 18;
     const flavorWrapW = detailsWidth;
     const flavorStyle: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
+      fontSize: '13px',
       color: hex(COLORS.flavor),
-      lineSpacing: 2,
+      lineSpacing: 3,
       wordWrap: { width: flavorWrapW },
     };
     const isLong = def.directorFlavor.length > FLAVOR_EXPAND_THRESHOLD;
@@ -347,15 +432,41 @@ export function createAchievementsUI(
     }
 
     const collapsedFlavorH = FLAVOR_COLLAPSED_LINES * FLAVOR_LINE_H;
-    const flavorH = isLong && !isExpanded ? collapsedFlavorH : fullFlavorH;
+    const expandedFlavorH = FLAVOR_EXPANDED_LINES * FLAVOR_LINE_H;
+    const flavorH = isLong ? (isExpanded ? expandedFlavorH : collapsedFlavorH) : fullFlavorH;
     const expanderH = isLong ? EXPANDER_BTN_H : 0;
-    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8);
+    // The reward column (chest + tier label + button) is often taller than the
+    // text column; the row must reserve whichever is larger or the chest leaks.
+    const rewardColumnH = 10 + rewardChestBounds(0, 0, CHEST_SIZE).height + 4 + 18 + 30 + 10;
+    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8, rewardColumnH);
 
     const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
+    if (claimed) box.setFillStyle(COLORS.panelBg, 0.72);
     container.add(box);
     rowObjects.push(box);
 
+    const rowId = `row:${def.id}`;
+    layoutRegions.push({
+      id: rowId,
+      box: { x, y, width: w, height: rowHeight },
+      kind: 'row',
+      parentId: 'awards-panel',
+    });
+    layoutRegions.push({
+      id: `${rowId}.icon`,
+      box: {
+        x: x + 12,
+        y: y + 10,
+        width: ACHIEVEMENT_ICON_SIZE,
+        height: ACHIEVEMENT_ICON_SIZE,
+      },
+      kind: 'icon',
+      parentId: rowId,
+    });
+
+    // The framed icon box always renders so the row keeps a stable left rail;
+    // the sprite is layered in only when art exists for this achievement.
     const iconBg = scene.add.rectangle(
       x + 12 + ACHIEVEMENT_ICON_SIZE / 2,
       y + 10 + ACHIEVEMENT_ICON_SIZE / 2,
@@ -368,7 +479,6 @@ export function createAchievementsUI(
     container.add(iconBg);
     rowObjects.push(iconBg);
 
-    const iconEntry = getAchievementIconEntry(scene, def);
     if (iconEntry) {
       const iconSprite = scene.add
         .image(
@@ -379,6 +489,17 @@ export function createAchievementsUI(
         .setDisplaySize(ACHIEVEMENT_ICON_SIZE - 4, ACHIEVEMENT_ICON_SIZE - 4);
       container.add(iconSprite);
       rowObjects.push(iconSprite);
+    } else {
+      // Placeholder glyph keeps the frame from reading as a broken image.
+      const placeholder = crispText(
+        x + 12 + ACHIEVEMENT_ICON_SIZE / 2,
+        y + 10 + ACHIEVEMENT_ICON_SIZE / 2,
+        '🏆',
+        { fontFamily: FONT_FAMILY, fontSize: '16px', color: hex(COLORS.textSecondary) },
+      );
+      placeholder.setOrigin(0.5, 0.5);
+      container.add(placeholder);
+      rowObjects.push(placeholder);
     }
 
     const t = crispText(textLeft, y + 8, def.title, {
@@ -392,7 +513,7 @@ export function createAchievementsUI(
 
     const crit = crispText(textLeft, y + 30, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
-      fontSize: '13px',
+      fontSize: '14px',
       color: hex(COLORS.textSecondary),
       wordWrap: { width: detailsWidth },
     });
@@ -401,18 +522,19 @@ export function createAchievementsUI(
 
     const flavor = crispText(textLeft, y + 50, def.directorFlavor, {
       ...flavorStyle,
-      maxLines: isLong && !isExpanded ? FLAVOR_COLLAPSED_LINES : 0,
+      maxLines: isLong ? (isExpanded ? FLAVOR_EXPANDED_LINES : FLAVOR_COLLAPSED_LINES) : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
 
     if (isLong) {
       const expanderY = y + 50 + flavorH + 2;
-      const expanderLabel = isExpanded ? '▲ less' : '▼ more';
+      const expanderLabel = isExpanded ? '▲ Show less' : '▼ Show more';
       const expander = crispText(textLeft, expanderY, expanderLabel, {
         fontFamily: FONT_FAMILY,
-        fontSize: '10px',
-        color: hex(COLORS.textSecondary),
+        fontSize: '14px',
+        fontStyle: 'bold',
+        color: hex(COLORS.btnTopBevel),
       });
       expander
         .setInteractive({ useHandCursor: true })
@@ -428,59 +550,232 @@ export function createAchievementsUI(
       rowObjects.push(expander);
     }
 
-    const btnLabel = claimed ? rewardReveal(def.reward) : `Open: ${rewardLabel(def.reward)}`;
-    const btn = crispText(x + w - 12, y + 14, btnLabel, {
+    // ---- Reward column: chest glyph above a beveled, center-aligned button. ----
+    const colRight = x + w - 18;
+    const colCx = colRight - rewardColumnWidth / 2;
+    const chestTier = rewardChestTier(def.reward);
+    const accent = LOOT_TIER_HEX[chestTier];
+
+    const chestTop = y + 10;
+    const chestBox = rewardChestBounds(colCx, chestTop, CHEST_SIZE);
+
+    const chestParts = createRewardChest(scene, {
+      x: colCx,
+      y: chestTop,
+      size: CHEST_SIZE,
+      tier: chestTier,
+      open: claimed,
+    });
+    for (const part of chestParts) {
+      container.add(part);
+      rowObjects.push(part);
+    }
+    // Declared as an `icon` bound to the row: the deterministic "icon escapes
+    // tile" sensor then fails the exact chest-leaking-out-of-its-row defect.
+    layoutRegions.push({
+      id: `${rowId}.chest`,
+      box: chestBox,
+      kind: 'icon',
+      parentId: rowId,
+    });
+
+    const tierLabel = crispText(colCx, chestBox.y + chestBox.height + 4, rewardLabel(def.reward), {
       fontFamily: FONT_FAMILY,
       fontSize: '12px',
       fontStyle: 'bold',
-      color: claimed ? hex(COLORS.claimed) : hex(COLORS.textPrimary),
-      backgroundColor: claimed ? undefined : hex(COLORS.btnBg),
-      padding: { x: 8, y: 6 },
-      align: 'right',
-      lineSpacing: 2,
-      wordWrap: { width: rewardColumnWidth },
+      color: hex(accent),
     });
-    btn.setOrigin(1, 0);
-    if (!claimed) {
-      btn
+    tierLabel.setOrigin(0.5, 0);
+    container.add(tierLabel);
+    rowObjects.push(tierLabel);
+
+    const btnW = rewardColumnWidth - 8;
+    const btnH = 30;
+    const btnCy = chestBox.y + chestBox.height + 4 + 18 + btnH / 2;
+    layoutRegions.push({
+      id: `${rowId}.cta`,
+      box: { x: colCx - btnW / 2, y: btnCy - btnH / 2, width: btnW, height: btnH },
+      kind: claimed ? 'label' : 'button',
+      parentId: rowId,
+    });
+
+    if (claimed) {
+      const claimedText = crispText(colCx, btnCy, `✔ ${rewardReveal(def.reward)}`, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: hex(COLORS.claimed),
+        align: 'center',
+        wordWrap: { width: btnW },
+      });
+      claimedText.setOrigin(0.5, 0.5);
+      container.add(claimedText);
+      rowObjects.push(claimedText);
+    } else {
+      // Bevel: a lit top edge and a dark bottom edge give the face real depth
+      // rather than the flat text-background the button used to be.
+      const bottomBevel = scene.add.rectangle(
+        colCx,
+        btnCy + 2,
+        btnW,
+        btnH,
+        COLORS.btnBottomBevel,
+        1,
+      );
+      container.add(bottomBevel);
+      rowObjects.push(bottomBevel);
+
+      const face = scene.add.rectangle(colCx, btnCy, btnW, btnH, COLORS.btnBg, 1);
+      // Neutral border: rarity color already reads via the chest + tier label,
+      // so the CTA itself stays a consistent shape regardless of reward tier.
+      face.setStrokeStyle(1, COLORS.btnTopBevel, 0.6);
+      container.add(face);
+      rowObjects.push(face);
+
+      const topBevel = scene.add.rectangle(
+        colCx,
+        btnCy - btnH / 2 + 2,
+        btnW - 4,
+        2,
+        COLORS.btnTopBevel,
+        0.75,
+      );
+      container.add(topBevel);
+      rowObjects.push(topBevel);
+
+      const btn = crispText(colCx, btnCy, 'OPEN', {
+        fontFamily: FONT_FAMILY,
+        fontSize: '15px',
+        fontStyle: 'bold',
+        color: hex(COLORS.textPrimary),
+        align: 'center',
+      });
+      btn.setOrigin(0.5, 0.5);
+      container.add(btn);
+      rowObjects.push(btn);
+
+      face
         .setInteractive({ useHandCursor: true })
-        .on('pointerover', () => btn.setBackgroundColor(hex(COLORS.btnHover)))
-        .on('pointerout', () => btn.setBackgroundColor(hex(COLORS.btnBg)))
+        .on('pointerover', () => {
+          face.setFillStyle(COLORS.btnHover, 1);
+          // Pressing the face down into the bevel sells the depth on hover.
+          topBevel.setVisible(true);
+        })
+        .on('pointerout', () => face.setFillStyle(COLORS.btnBg, 1))
         .on('pointerdown', onPointerDown)
         .on('pointerup', (pointer: Phaser.Input.Pointer) => {
           if (pointer.id !== draggedPointerId) open(def.id);
         });
     }
-    container.add(btn);
-    rowObjects.push(btn);
 
     return rowHeight;
   }
 
+  /** Renders the scope filter chips and returns nothing; chips drive re-render. */
+  function renderFilters(world: GameWorld, x: number, w: number): void {
+    const floors = [
+      ...new Set(
+        ALL_ACHIEVEMENTS.filter(
+          (a) => world.achievements.unlockedIds.has(a.id) && a.scope !== 'current_run',
+        ).map((a) => a.floor),
+      ),
+    ].sort((a, b) => a - b);
+
+    const chips: { id: AwardsFilter; label: string }[] = [
+      { id: FILTER_ALL, label: 'All' },
+      { id: FILTER_GLOBAL, label: 'Global' },
+      ...floors.map((floor) => ({ id: `floor:${floor}` as AwardsFilter, label: `Floor ${floor}` })),
+    ];
+
+    let chipX = x;
+    const chipY = filterTop();
+    const chipH = 22;
+    for (const chip of chips) {
+      const isActive = activeFilter === chip.id;
+      const label = crispText(0, 0, chip.label, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '13px',
+        fontStyle: isActive ? 'bold' : 'normal',
+        color: hex(isActive ? COLORS.textPrimary : COLORS.textSecondary),
+      });
+      const chipW = label.width + 22;
+      if (chipX + chipW > x + w) break;
+
+      const bgRect = scene.add.rectangle(
+        chipX + chipW / 2,
+        chipY + chipH / 2,
+        chipW,
+        chipH,
+        isActive ? COLORS.chipActiveBg : COLORS.chipBg,
+        1,
+      );
+      bgRect.setStrokeStyle(1, isActive ? COLORS.btnTopBevel : COLORS.chipBorder, 1);
+      container.add(bgRect);
+      filterObjects.push(bgRect);
+
+      label.setPosition(snap(chipX + chipW / 2), snap(chipY + chipH / 2)).setOrigin(0.5, 0.5);
+      container.add(label);
+      filterObjects.push(label);
+
+      bgRect
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', onPointerDown)
+        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          if (pointer.id === draggedPointerId) return;
+          if (activeFilter === chip.id) return;
+          activeFilter = chip.id;
+          scrollIndex = 0;
+          lastSignature = null;
+          if (lastWorld) refresh(lastWorld);
+        });
+
+      chipX += chipW + 8;
+    }
+  }
+
   function render(): void {
     clearRows();
+    layoutRegions = [];
     if (!lastWorld) return;
     const defs = unlockedDefs(lastWorld);
     const x = panelX + PANEL_PADDING;
-    const w = panelWidth - PANEL_PADDING * 2;
+    const w = panelWidth - PANEL_PADDING * 2 - SCROLLBAR_GUTTER;
+
+    renderFilters(lastWorld, x, w);
 
     if (defs.length === 0) {
       const empty = crispText(
         x,
         listTop(),
-        'No achievements unlocked yet — go earn some on Floor 1.',
+        activeFilter === FILTER_ALL
+          ? 'No achievements unlocked yet — go earn some on Floor 1.'
+          : 'No awards in this filter yet.',
         {
           fontFamily: FONT_FAMILY,
-          fontSize: '14px',
-          color: hex(COLORS.textSecondary),
+          fontSize: '16px',
+          fontStyle: 'bold',
+          color: hex(COLORS.textPrimary),
         },
       );
       container.add(empty);
       rowObjects.push(empty);
+      summary.setText('0 unlocked  ·  0 rewards ready');
       if (scrollbarTrack) scrollbarTrack.setVisible(false);
       if (scrollbarThumb) scrollbarThumb.setVisible(false);
+      layoutRegions.unshift({
+        id: 'awards-panel',
+        box: { x: panelX, y: panelY, width: panelWidth, height: panelHeight },
+        kind: 'panel',
+      });
       return;
     }
+
+    const openCount = defs.filter(
+      (def) => def.reward.type === 'lootBox' && !lastWorld?.achievements.claimedIds.has(def.id),
+    ).length;
+    summary.setText(
+      `${defs.length} unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`,
+    );
 
     if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
 
@@ -491,6 +786,7 @@ export function createAchievementsUI(
       const def = defs[i];
       if (!def) break;
       const rowStartIndex = rowObjects.length;
+      const rowRegionStartIndex = layoutRegions.length;
       const rowH = makeRow(def, x, currentY, w);
       if (visibleCount > 0 && currentY + rowH > bottom) {
         for (let j = rowObjects.length - 1; j >= rowStartIndex; j -= 1) {
@@ -498,6 +794,9 @@ export function createAchievementsUI(
           overflowObj?.destroy();
           rowObjects.pop();
         }
+        // Drop the discarded row's published geometry too, or the sensors see a
+        // row that overruns the panel even though nothing is drawn there.
+        layoutRegions.length = rowRegionStartIndex;
         break;
       }
       currentY += rowH + ROW_GAP;
@@ -505,13 +804,31 @@ export function createAchievementsUI(
       if (currentY > bottom) break;
     }
 
+    // Collapse the panel to its content so a short list does not leave a large
+    // empty band below the last row. Full height is still the ceiling.
+    const contentBottom = currentY - ROW_GAP + PANEL_PADDING;
+    const fittedHeight = Math.min(panelHeight, Math.max(240, contentBottom - panelY));
+    bg.setSize(panelWidth, fittedHeight);
+    bg.setPosition(panelX + panelWidth / 2, panelY + fittedHeight / 2);
+    // Panel first so it is the parent of every row region already collected.
+    layoutRegions.unshift({
+      id: 'awards-panel',
+      box: { x: panelX, y: panelY, width: panelWidth, height: fittedHeight },
+      kind: 'panel',
+    });
+
     // Show scrollbar if there are items off-screen
     const needsScrollbar = scrollIndex > 0 || scrollIndex + visibleCount < defs.length;
     if (needsScrollbar) {
-      const scrollbarX = panelX + panelWidth - PANEL_PADDING - 8;
+      const rowRight = x + w;
+      // Center the bar in the reserved gutter so it can never collide with a
+      // row's right edge, no matter how the reward column is sized.
+      const scrollbarX = rowRight + SCROLLBAR_GUTTER / 2;
       const scrollbarY = listTop();
-      const scrollbarH = listBottom() - listTop();
-      const trackW = 6;
+      // Track the FITTED frame, not the full-height one, or the bar overhangs
+      // the bottom edge of a collapsed panel.
+      const scrollbarH = panelY + fittedHeight - PANEL_PADDING - scrollbarY;
+      const trackW = 8;
 
       if (!scrollbarTrack) {
         scrollbarTrack = scene.add.rectangle(
@@ -519,9 +836,10 @@ export function createAchievementsUI(
           scrollbarY + scrollbarH / 2,
           trackW,
           scrollbarH,
-          COLORS.rowBorder,
-          0.5,
+          COLORS.rowBg,
+          0.6,
         );
+        scrollbarTrack.setStrokeStyle(1, COLORS.rowBorder, 0.8);
         container.add(scrollbarTrack);
       } else {
         scrollbarTrack.setPosition(scrollbarX, scrollbarY + scrollbarH / 2);
@@ -529,20 +847,16 @@ export function createAchievementsUI(
         scrollbarTrack.setVisible(true);
       }
 
-      const thumbH = Math.max(20, (visibleCount / defs.length) * scrollbarH);
+      const thumbH = Math.max(24, (visibleCount / defs.length) * scrollbarH);
       const thumbRange = scrollbarH - thumbH;
       const scrollProgress = defs.length > 1 ? scrollIndex / (defs.length - 1) : 0;
       const thumbY = scrollbarY + scrollProgress * thumbRange + thumbH / 2;
 
       if (!scrollbarThumb) {
-        scrollbarThumb = scene.add.rectangle(
-          scrollbarX,
-          thumbY,
-          trackW,
-          thumbH,
-          COLORS.textSecondary,
-          0.8,
-        );
+        // A beveled thumb with a lit accent stroke matches the button
+        // language instead of reading as a flat gray bar.
+        scrollbarThumb = scene.add.rectangle(scrollbarX, thumbY, trackW, thumbH, COLORS.btnBg, 1);
+        scrollbarThumb.setStrokeStyle(1, COLORS.btnTopBevel, 0.9);
         container.add(scrollbarThumb);
       } else {
         scrollbarThumb.setPosition(scrollbarX, thumbY);
@@ -566,6 +880,10 @@ export function createAchievementsUI(
     hint
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
+    summary
+      .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 30)
+      .setResolution(textResolution);
+    headerRule.setPosition(panelX + panelWidth / 2, panelY + PANEL_PADDING + 52);
     flavorHeightCache.clear();
     if (visible) lastSignature = null;
   }
@@ -587,6 +905,7 @@ export function createAchievementsUI(
     if (visible) {
       scrollIndex = 0;
       expandedIds.clear();
+      activeFilter = FILTER_ALL;
       applyLayout();
       lastSignature = null;
       refresh(world);
@@ -648,8 +967,27 @@ export function createAchievementsUI(
     refresh,
     resumePendingPresentation,
     claimReward: open,
+    setFilterForProbe(filter: AwardsFilter) {
+      activeFilter = filter;
+      scrollIndex = 0;
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
+    setExpandedForProbe(achievementId: string, expanded: boolean) {
+      if (expanded) expandedIds.add(achievementId);
+      else expandedIds.delete(achievementId);
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
+    setScrollIndexForProbe(index: number) {
+      const max = Math.max(0, lastWorld ? unlockedDefs(lastWorld).length - 1 : 0);
+      scrollIndex = Math.max(0, Math.min(index, max));
+      lastSignature = null;
+      if (lastWorld) refresh(lastWorld);
+    },
     isOpen: () => visible,
     getScrollIndex: () => scrollIndex,
+    getLayoutRegions: () => layoutRegions.map((region) => ({ ...region, box: { ...region.box } })),
     destroy() {
       scene.input.off('wheel', onWheel);
       scene.input.off('pointerdown', onPointerDown);

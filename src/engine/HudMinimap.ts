@@ -29,6 +29,7 @@ import {
   shouldDrawTerritoryOverlayBands,
   shouldUseFamilyRoomTint,
 } from './minimap-territory-guards.js';
+import { HUD_FONT_FAMILY } from './ui-theme.js';
 import {
   resolveFloor3OverworldMarkers,
   type Floor3OverworldMarker,
@@ -267,10 +268,42 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 5);
 
+  // Small gold rivets at the four cardinal points of the gold band, and short
+  // tick marks at E/S/W (N carries the "N" glyph instead), so the dial reads
+  // as a crafted compass instrument rather than a plain circle. Drawn once in
+  // dial-local space (radius baked in) and repositioned/rescaled alongside
+  // the rings in updateLayout.
+  const hudCompassTicks = scene.add
+    .graphics()
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 5);
+  const tickInner = HUD_RADAR_RADIUS - 9;
+  const tickOuter = HUD_RADAR_RADIUS - 3;
+  const rivetRadius = HUD_RADAR_RADIUS - 2;
+  const rivetSize = 2;
+  for (const angleDeg of [0, 90, 180, 270]) {
+    const angle = Phaser.Math.DegToRad(angleDeg - 90);
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    if (angleDeg !== 0) {
+      // E / S / W tick marks (N is covered by the compass letter).
+      hudCompassTicks.lineStyle(2, PIXEL_UI.gold, 0.85);
+      hudCompassTicks.beginPath();
+      hudCompassTicks.moveTo(tickInner * cosA, tickInner * sinA);
+      hudCompassTicks.lineTo(tickOuter * cosA, tickOuter * sinA);
+      hudCompassTicks.strokePath();
+    }
+    // Corner rivets on the gold band at all four cardinal points.
+    hudCompassTicks.fillStyle(0x3a2a08, 1);
+    hudCompassTicks.fillCircle(rivetRadius * cosA, rivetRadius * sinA, rivetSize + 0.6);
+    hudCompassTicks.fillStyle(PIXEL_UI.gold, 1);
+    hudCompassTicks.fillCircle(rivetRadius * cosA, rivetRadius * sinA, rivetSize);
+  }
+
   // Compass "N" marker at the top of the dial for orientation.
   const hudCompass = scene.add
     .text(0, 0, 'N', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -282,7 +315,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   // Small "MAP (M)" hint tab beneath the dial.
   const hudMapLabel = scene.add
     .text(0, 0, 'MAP (M)', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -314,7 +347,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const panelTitle = scene.add
     .text(0, 0, 'DUNGEON MAP', {
-      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
       color: '#fcd34d',
@@ -326,7 +359,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const panelHint = scene.add
     .text(0, 0, 'DRAG/PINCH: PAN & ZOOM  |  WHEEL / +/-: ZOOM  |  M: CLOSE', {
-      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '8px',
       color: '#aebdd5',
       padding: { top: 3, bottom: 2 },
@@ -344,7 +377,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   const closeLabel = scene.add
     .text(0, 0, '✕', {
-      fontFamily: 'monospace',
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '26px',
       color: '#fcd34d',
     })
@@ -497,6 +530,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     hudRingOuter.setPosition(scaledCx, scaledCy).setScale(radarScale);
     hudRingGold.setPosition(scaledCx, scaledCy).setScale(radarScale);
     hudRingInner.setPosition(scaledCx, scaledCy).setScale(radarScale);
+    hudCompassTicks.setPosition(scaledCx, scaledCy).setScale(radarScale);
     hudCompass.setPosition(scaledCx, scaledCy - scaledRadius + 9 * radarScale).setScale(radarScale);
     hudMapLabel
       .setPosition(scaledCx, scaledCy + scaledRadius + 4 * radarScale)
@@ -579,6 +613,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     hudRingOuter.setVisible(!visible);
     hudRingGold.setVisible(!visible);
     hudRingInner.setVisible(!visible);
+    hudCompassTicks.setVisible(!visible);
     hudCompass.setVisible(!visible);
     hudMapLabel.setVisible(!visible);
     if (visible) {
@@ -608,6 +643,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         hudRingOuter,
         hudRingGold,
         hudRingInner,
+        hudCompassTicks,
         hudCompass,
         hudMapLabel,
         radarRt,
@@ -1485,6 +1521,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     hudRingOuter.destroy();
     hudRingGold.destroy();
     hudRingInner.destroy();
+    hudCompassTicks.destroy();
     hudCompass.destroy();
     hudMapLabel.destroy();
     radarRt.destroy();

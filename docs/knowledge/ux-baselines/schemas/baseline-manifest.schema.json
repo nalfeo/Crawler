@@ -36,7 +36,7 @@
       },
       "captureSource": {
         "type": "string",
-        "enum": ["ui-probe-lab", "lab", "dev-server"],
+        "enum": ["ui-probe-lab", "main-scene-probe-lab", "lab", "dev-server"],
         "description": "How the screenshot is captured."
       },
       "setupFile": {

@@ -13,10 +13,13 @@ interface StubObject {
   setOrigin: () => StubObject;
   setScale: () => StubObject;
   setStrokeStyle: (width?: number, color?: number) => StubObject;
+  setText: (value: string) => StubObject;
+  setPosition: (x: number, y: number) => StubObject;
   getBounds: () => { x: number; y: number; width: number; height: number };
 }
 
 function object(x: number, y: number, width: number, height: number, text?: string): StubObject {
+  const charWidth = text && text.length > 0 ? width / text.length : 6;
   const value: StubObject = {
     text,
     width,
@@ -27,6 +30,16 @@ function object(x: number, y: number, width: number, height: number, text?: stri
     setScale: () => value,
     setStrokeStyle: (_width?: number, color?: number) => {
       value.strokeColor = color;
+      return value;
+    },
+    setText: (next: string) => {
+      value.text = next;
+      value.width = next.length * charWidth;
+      return value;
+    },
+    setPosition: (nextX: number, nextY: number) => {
+      value.x = nextX;
+      value.y = nextY;
       return value;
     },
     getBounds: () => ({ x: x - width / 2, y: y - height / 2, width, height }),

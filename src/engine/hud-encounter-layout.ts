@@ -1,4 +1,4 @@
-export const ENCOUNTER_FIRST_ROW_Y = 60;
+export const ENCOUNTER_FIRST_ROW_Y = 70;
 export const ENCOUNTER_ROW_GAP = 6;
 export const ENCOUNTER_PANEL_WIDTH = 420;
 export const BOSS_PANEL_HEIGHT = 60;

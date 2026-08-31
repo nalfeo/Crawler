@@ -1,0 +1,33 @@
+{
+  "overall": {
+    "verdict": "pass",
+    "summary": "Deterministic-only capture (--deterministic-only): no LLM review was run, so this result carries no score or LLM findings."
+  },
+  "blocking_findings": [],
+  "deterministic_blocking_findings": [],
+  "deterministic_status": "pass",
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "capture_hash": "2a1fde49dc097533c1c6fde57ecf68f1060fb58723c7af791105dde528e25a83",
+  "surface": "in-game HUD (safe room)",
+  "regions_declared": [
+    "abilitiesPanel",
+    "hud-health-panel-bounds",
+    "hud-loot-gold-value-bounds",
+    "hud-loot-gold-text",
+    "hud-loot-junk-value-bounds",
+    "hud-loot-junk-text",
+    "hud-skill-panel-bounds",
+    "hud-skill-title-strip",
+    "hud-skill-title-text",
+    "hud-skill-class-bar-bg",
+    "hud-skill-type-bar-bg",
+    "timerPanel",
+    "timerText",
+    "minimap"
+  ]
+}

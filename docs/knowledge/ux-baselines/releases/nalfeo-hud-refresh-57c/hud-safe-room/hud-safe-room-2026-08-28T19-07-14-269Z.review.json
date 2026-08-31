@@ -1,0 +1,155 @@
+{
+  "overall": {
+    "score": 63,
+    "verdict": "needs-work",
+    "summary": "Deterministic contract is unscoped. 1 evidence-backed blocker(s); 3 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional but has several issues with spacing, alignment, and visual hierarchy that hinder readability and polish. Improvements are needed to ensure better task readiness and thematic consistency.",
+    "raw_score": 68
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 65,
+      "strengths": [
+        "The HUD elements are generally placed in expected locations (e.g., minimap in the top-right corner, health bar at the bottom)."
+      ],
+      "issues": [
+        "The minimap is not aligned with the top-right corner of the screen, leaving an inconsistent margin.",
+        "The 'Floor 1' and timer panel is not optically centered at the top of the screen, creating a visual imbalance.",
+        "The 'Auto Abilities' panel is not aligned with the bottom edge of the screen, leaving an inconsistent gap."
+      ]
+    },
+    "spacing_balance": {
+      "score": 60,
+      "strengths": [
+        "The spacing between ability slots in the 'Auto Abilities' panel is consistent."
+      ],
+      "issues": [
+        "The 'Auto Abilities' panel is cramped vertically, with insufficient padding between the text and the top/bottom edges of the panel.",
+        "The health bar and currency panel are too close to the bottom edge of the screen, leaving no breathing room."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 62,
+      "strengths": ["The minimap and health bar are visually distinct and easy to locate."],
+      "issues": [
+        "The 'Floor 1' and timer panel lacks emphasis and does not stand out as a key piece of information.",
+        "The 'Auto Abilities' panel does not clearly differentiate between active and inactive abilities, making it harder to scan quickly."
+      ]
+    },
+    "readability": {
+      "score": 70,
+      "strengths": ["Text is crisp and legible, adhering to pixel art standards."],
+      "issues": [
+        "The text in the 'Auto Abilities' panel is slightly small, which may hinder readability for some players.",
+        "The red highlight for selected abilities is subtle and could be more visually prominent."
+      ]
+    },
+    "icon_usage": {
+      "score": 65,
+      "strengths": ["Icons for currency and health are clear and recognizable."],
+      "issues": [
+        "The minimap lacks any icons or markers, reducing its utility.",
+        "The 'Auto Abilities' panel does not use icons for abilities, relying solely on text, which reduces visual clarity."
+      ]
+    },
+    "typography_clarity": {
+      "score": 68,
+      "strengths": ["The font is consistent and matches the pixel art style of the game."],
+      "issues": [
+        "The text in the 'Floor 1' and timer panel is slightly misaligned within its container.",
+        "The 'Auto Abilities' panel text is cramped, with insufficient padding around the labels."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 72,
+      "strengths": ["The overall aesthetic matches the pixel art style of the game."],
+      "issues": [
+        "The 'Auto Abilities' panel feels overly sterile and lacks decorative elements to tie it into the game's theme.",
+        "The minimap's plain design does not align with the rest of the game's visual style."
+      ]
+    }
+  },
+  "blocking_findings": ["The minimap lacks any markers or icons, reducing its functionality."],
+  "recommended_fixes": [
+    "Add padding to the 'Auto Abilities' panel to improve text readability.",
+    "Introduce markers or icons to the minimap to enhance its utility.",
+    "Increase the visual emphasis of the 'Floor 1' and timer panel to improve its hierarchy.",
+    "Add decorative elements to the 'Auto Abilities' panel to better integrate it into the game's theme."
+  ],
+  "precise_fixes": [
+    {
+      "element": "minimap",
+      "action": "move",
+      "dx": -10,
+      "dy": -10,
+      "reason": "Align the minimap closer to the top-right corner for consistency with other HUD elements."
+    },
+    {
+      "element": "floorTimerPanel",
+      "action": "move",
+      "dx": 0,
+      "dy": -5,
+      "reason": "Center the 'Floor 1' and timer panel at the top of the screen for better visual balance."
+    },
+    {
+      "element": "autoAbilitiesPanel",
+      "action": "pad",
+      "dx": 0,
+      "dy": 0,
+      "dw": 0,
+      "dh": 10,
+      "reason": "Add vertical padding to the 'Auto Abilities' panel to improve text readability."
+    },
+    {
+      "element": "healthBar",
+      "action": "move",
+      "dx": 0,
+      "dy": 5,
+      "reason": "Add breathing room between the health bar and the bottom edge of the screen."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [
+    "The minimap lacks any markers or icons, reducing its functionality."
+  ],
+  "advisory_taste_notes": [
+    "The 'Auto Abilities' panel text is cramped, with insufficient padding, making it harder to read.",
+    "Add padding to the 'Auto Abilities' panel to improve text readability.",
+    "Add decorative elements to the 'Auto Abilities' panel to better integrate it into the game's theme."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD (Safe Room, All Systems Unlocked)"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "ce5ebb4ca28db47f96811913874d7247d3a69789b641ca84404cbff5cad78394",
+  "capture_unchanged_from_prior": false,
+  "score_derivation": {
+    "axis_mean": 66,
+    "penalty": 3,
+    "deterministic_blockers": 0,
+    "llm_blockers": 1,
+    "model_reported_score": 68,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": ["The minimap lacks any markers or icons, reducing its functionality."],
+    "recurring": []
+  }
+}
