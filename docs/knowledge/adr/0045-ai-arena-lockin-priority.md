@@ -156,4 +156,4 @@ producing real barriers, the gate becomes active automatically.
 - `src/game/ai/arena-lockin.ts` — the detector.
 - `src/game/ai/bt-ai-provider.ts` — `buildArenaLockinBehavior` and the
   priority slot wiring.
-- Review ledger: `docs/knowledge/review-ledgers/2026-07-04-ai-arena-lockin-priority.review-ledger.json`.
+- The historical review-ledger artifact was retired with that review mechanism.

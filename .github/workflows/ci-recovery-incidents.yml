@@ -8,8 +8,6 @@ on:
       - Promote to Production
       - Nightly Mutation Testing
       - Docs Update Loop
-      - Security Review Loop
-      - Test Health Loop
     types: [completed]
 
 concurrency:
