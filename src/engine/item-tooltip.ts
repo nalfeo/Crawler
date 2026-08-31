@@ -249,6 +249,18 @@ export function renderItemTooltip(
 
   const compactHeaderTopY = ty + 6;
   const compactHeaderFontSize = compactLayout && statLines.length === 0 ? '14px' : '12px';
+  // Measure the section label first (if any) so the name's word-wrap width can
+  // reserve real space for it — a fixed byte budget was tuned for a narrower
+  // font and let the wider pixel-font label collide with the name.
+  let sectionLabelWidth = 0;
+  if (compactLayout && sectionLabel !== undefined && sectionLabel.length > 0) {
+    const labelSizeProbe = crispText(0, -9999, sectionLabel, {
+      fontFamily,
+      fontSize: statLines.length === 0 ? '14px' : '10px',
+    });
+    sectionLabelWidth = labelSizeProbe.width;
+    if (typeof labelSizeProbe.destroy === 'function') labelSizeProbe.destroy();
+  }
   const nameText = crispText(
     compactLayout ? tx + 8 : tx + (richIcon ? 42 : 8),
     compactLayout ? compactHeaderTopY : ty + (sectionLabel ? 18 : 8),
@@ -259,7 +271,9 @@ export function renderItemTooltip(
       fontStyle: compactLayout ? 'bold' : undefined,
       color: `#${rarityColor.toString(16).padStart(6, '0')}`,
       wordWrap: {
-        width: compactLayout ? tooltipWidth - 76 : tooltipWidth - (richIcon ? 50 : 16),
+        width: compactLayout
+          ? tooltipWidth - 16 - (sectionLabelWidth > 0 ? sectionLabelWidth + 8 : 0)
+          : tooltipWidth - (richIcon ? 50 : 16),
       },
     },
   );
@@ -329,29 +343,48 @@ export function renderItemTooltip(
         : richContent
           ? ty + 50
           : ty + statY;
+    // Budget is checked against each object's own measured width (not an
+    // assumed glyph advance) so the label + delta pair can never run past the
+    // card's right edge regardless of which font is loaded.
+    const statLineBudget = tooltipWidth - 16;
     statLines.slice(0, 5).forEach((line, index) => {
       const text = typeof line === 'string' ? line : line.text;
-      const statText = crispText(tx + 8, statStartY + index * TOOLTIP_LINE_SPACING, text, {
+      const rowY = statStartY + index * TOOLTIP_LINE_SPACING;
+      const statText = crispText(tx + 8, rowY, text, {
         fontFamily,
         fontSize: compactLayout ? '14px' : '11px',
         color: '#d9e2ef',
       });
+      const deltaObj =
+        typeof line === 'string'
+          ? null
+          : crispText(0, rowY, line.deltaText, {
+              fontFamily,
+              fontSize: compactLayout ? '14px' : '11px',
+              fontStyle: 'bold',
+              color: line.deltaColor,
+            });
+      const deltaWidth = deltaObj?.width ?? 0;
+      // Trim the label against its own live-measured width until the label +
+      // delta pair fits the card. Re-measuring after every trim keeps this
+      // exact for any font's real glyph metrics instead of an estimate.
+      while (statText.text.length > 1 && statText.width + deltaWidth > statLineBudget) {
+        statText.setText(`${statText.text.slice(0, -2)}…`);
+      }
+      // eslint-disable-next-line no-console
+      console.log('DEBUG statLine', {
+        text: statText.text,
+        width: statText.width,
+        statLineBudget,
+        tooltipWidth,
+        compactLayout: !!compactLayout,
+      });
       container.add(statText);
       objects.push(statText);
-      if (typeof line !== 'string') {
-        const deltaText = crispText(
-          tx + 8 + statText.width,
-          statStartY + index * TOOLTIP_LINE_SPACING,
-          line.deltaText,
-          {
-            fontFamily,
-            fontSize: compactLayout ? '14px' : '11px',
-            fontStyle: 'bold',
-            color: line.deltaColor,
-          },
-        );
-        container.add(deltaText);
-        objects.push(deltaText);
+      if (deltaObj) {
+        deltaObj.setPosition(tx + 8 + statText.width, rowY);
+        container.add(deltaObj);
+        objects.push(deltaObj);
       }
     });
   }

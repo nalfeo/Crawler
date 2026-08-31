@@ -1192,23 +1192,21 @@ export function createEquipmentUI(
   }
 
   /**
-   * Conservative advance width for 12px stats-column text.
+   * Conservative advance width for 12px pixel-font stats-column text.
    *
-   * This estimate leaves room for the value column while retaining the full
-   * common stat names.
+   * Press Start 2P advances at roughly 1em; this lower estimate leaves room for
+   * the value column while retaining the full common stat names.
    * fitted text leaves a small safety margin. The e2e gate measures real glyph
    * boxes, so this remains intentionally conservative.
    */
+  const STATS_FONT_PX = 12;
   function measureStatsText(text: string): number {
-    // Arial's average glyph advance is materially narrower than its font size.
-    // Budgeting every character at 12px was needlessly truncating ordinary labels
-    // such as "Cooldown Reduction" despite visibly available row space.
-    return Math.ceil(text.length * 7.5);
+    return text.length * STATS_FONT_PX;
   }
 
   /** Truncate `text` (with an ellipsis) so it fits `maxWidth` design px. */
   function fitStatsText(text: string, maxWidth: number): string {
-    const budget = Math.max(3, Math.floor(maxWidth / 7.5));
+    const budget = Math.max(3, Math.floor(maxWidth / STATS_FONT_PX));
     if (text.length <= budget) return text;
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
@@ -1925,7 +1923,10 @@ export function createEquipmentUI(
     // columns edge-to-edge reads as scattered floating boxes rather than a
     // figure, so cap the column pitch and centre the grid in the leftover
     // width instead of stretching into it.
-    const MAX_COL_PITCH = SLOT_W + BAG_GAP;
+    // 155px clears "Main Hand" at the pixel font's full 1em glyph advance —
+    // narrower pitches (e.g. SLOT_W + BAG_GAP) let adjacent column labels
+    // collide once every character is a full 12px wide.
+    const MAX_COL_PITCH = 155;
     const rawUsableW = dollW - SLOT_W - innerPadX * 2;
     const usableW = Math.min(rawUsableW, MAX_COL_PITCH * 2);
     const gridOffsetX = (rawUsableW - usableW) / 2;
@@ -2219,6 +2220,17 @@ export function createEquipmentUI(
         },
       );
       centerTextOnPixels(slotLabel, cx, cy + SLOT_H / 2 + SLOT_LABEL_BAND / 2);
+      // The pixel font's full 1em glyph advance can make an outer-column label
+      // (e.g. "Main Hand") wider than the half-pitch available around its slot
+      // centre. Clamp the centred label back inside the doll's own bounds so it
+      // can never bleed past the panel edge it is measured against.
+      const labelMinX = dollX + 4;
+      const labelMaxX = dollX + dollW - 4;
+      if (slotLabel.x < labelMinX) {
+        slotLabel.setPosition(labelMinX, slotLabel.y);
+      } else if (slotLabel.x + slotLabel.width > labelMaxX) {
+        slotLabel.setPosition(labelMaxX - slotLabel.width, slotLabel.y);
+      }
       container.add(slotLabel);
       slotObjects.push(slotLabel);
     }
