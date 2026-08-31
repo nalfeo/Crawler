@@ -13139,7 +13139,7 @@ test('a KEEP after the human escalation resumes automated repair', async (t) => 
     {
       id: 7200,
       body: 'KEEP',
-      created_at: '2026-08-31T12:00:00Z',
+      created_at: '2026-08-31T12:01:00Z',
       user: { login: 'nalfeo' },
       author_association: 'OWNER',
     },
