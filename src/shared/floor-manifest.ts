@@ -20,6 +20,7 @@ import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
 import floor5ManifestJson from './data/floors/floor5.manifest.json';
+import floor6ManifestJson from './data/floors/floor6.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
@@ -27,6 +28,14 @@ import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 
 const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
+const FLOOR6_RNG_STREAMS = [
+  'waves',
+  'routes',
+  'rewards',
+  'upgrades',
+  'dressing',
+  'bosses',
+] as const;
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -1017,6 +1026,67 @@ export const floorManifestDefSchema = z
         }
       })
       .optional(),
+    /** Floor-6-specific authored defense geometry and phase skeleton config. */
+    floor6: z
+      .object({
+        geometry: z
+          .object({
+            routeWidthTiles: z.literal(5),
+            buildSiteSizeTiles: z.literal(3),
+            borderThicknessTiles: z.literal(2),
+          })
+          .strict(),
+        supportedFootprints: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                widthTiles: z.number().int().positive(),
+                heightTiles: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .min(1),
+        phase: z
+          .object({
+            initial: z.literal('SETUP'),
+            terminal: z.tuple([z.literal('VICTORY'), z.literal('DEFEAT')]),
+          })
+          .strict(),
+        rngStreams: z.tuple([
+          z.literal(FLOOR6_RNG_STREAMS[0]),
+          z.literal(FLOOR6_RNG_STREAMS[1]),
+          z.literal(FLOOR6_RNG_STREAMS[2]),
+          z.literal(FLOOR6_RNG_STREAMS[3]),
+          z.literal(FLOOR6_RNG_STREAMS[4]),
+          z.literal(FLOOR6_RNG_STREAMS[5]),
+        ]),
+      })
+      .strict()
+      .superRefine((floor6, ctx) => {
+        const ids = new Set<string>();
+        for (const [index, footprint] of floor6.supportedFootprints.entries()) {
+          if (ids.has(footprint.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index, 'id'],
+              message: `duplicate supported footprint id "${footprint.id}"`,
+            });
+          }
+          ids.add(footprint.id);
+          if (
+            footprint.widthTiles > floor6.geometry.routeWidthTiles ||
+            footprint.heightTiles > floor6.geometry.routeWidthTiles
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index],
+              message: `supported footprint "${footprint.id}" exceeds route width`,
+            });
+          }
+        }
+      })
+      .optional(),
     /**
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
@@ -1071,6 +1141,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor4ManifestJson;
   } else if (floorId === 'floor5') {
     manifestJson = floor5ManifestJson;
+  } else if (floorId === 'floor6') {
+    manifestJson = floor6ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -1088,3 +1160,4 @@ export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
 export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');
 export const floor5Manifest: FloorManifestDef = loadFloorManifest('floor5');
+export const floor6Manifest: FloorManifestDef = loadFloorManifest('floor6');

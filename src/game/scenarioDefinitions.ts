@@ -70,6 +70,11 @@ import {
   siegeHeroSystem,
   siegeMinionSystem,
 } from './floor5Scenario.js';
+import {
+  confirmFloor6StairDescend,
+  getFloor6RunOutcome,
+  initializeFloor6Scenario,
+} from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
@@ -107,10 +112,26 @@ function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
       body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
     };
   }
+
   return {
     title: 'Floor 5 Complete!',
     subtitle: 'Hostile Takeover complete!',
     body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
+}
+
+function getFloor6CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Relay Lost',
+      subtitle: 'Floor 6 went off-air',
+      body: 'The Broadcast Relay did not survive the renovation.',
+    };
+  }
+  return {
+    title: 'Floor 6 Complete!',
+    subtitle: 'Broadcast Relay secured',
+    body: 'The set survived its Deadline and the exit is clear.',
   };
 }
 
@@ -570,6 +591,22 @@ const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
   ],
 );
 
+const FLOOR_6_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 6 opens on the Hold for Renovation set; its defense foundation has no active schedule yet.',
+    'Floor 6 goes live around the Broadcast Relay; wave operations remain offline in this foundation.',
+    'Floor 6 starts inside a compact renovation set; the Broadcast Relay is present but pressure is not.',
+    'Floor 6 is on-air with fixed service routes converging on the Broadcast Relay; releases are not active yet.',
+    'Floor 6 begins at the player ingress beside the Relay defense set; the exit remains barred.',
+  ],
+  [
+    'First objective: inspect the Broadcast Relay and its two authored approach routes.',
+    'First objective: enter the set and identify the fixed maintenance plinths beside the routes.',
+    'First objective: locate the Broadcast Relay while the defense schedule remains in setup.',
+    'First objective: survey the ingress, route entrances, Relay, break enclosure, and barred exit.',
+  ],
+);
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -653,6 +690,18 @@ const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
     world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
   isTimeoutReached: (world: GameWorld) =>
     world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
+};
+
+const FLOOR_6_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: FLOOR_6_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_6_INTRO_VARIANTS,
+  victory: 'Floor 6 secured. The Broadcast Relay survived the Deadline.',
+  timeout: 'The Broadcast Relay went dark. The Director cuts the renovation feed.',
+  milestones: [],
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'VICTORY',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'DEFEAT',
 };
 
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
@@ -779,6 +828,18 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor5RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
+    },
+  ],
+  [
+    'floor6',
+    {
+      floorId: 'floor6',
+      configureWorld: initializeFloor6Scenario,
+      onStairDescend: confirmFloor6StairDescend,
+      director: FLOOR_6_DIRECTOR,
+      getRunOutcome: getFloor6RunOutcome,
+      isTerminalRunVictory: false,
+      getCompletionCopy: getFloor6CompletionCopy,
     },
   ],
 ]);
