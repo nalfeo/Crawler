@@ -179,10 +179,9 @@ function resolveWildcatStrike(world: GameWorld, _ctx: MobAbilityResolveContext):
   const state = floor5State(world);
   if (!state) return;
   if (state.engineState !== 'BUILDING') return;
-  state.heroes.buildStallMs = Math.min(
-    WILDCAT_STRIKE_STALL_MS,
-    state.heroes.buildStallMs + WILDCAT_STRIKE_STALL_MS,
-  );
+  // Refresh to a full window rather than adding to it: the stall is capped at
+  // one window, so a re-cast restarts it instead of banking a longer one.
+  state.heroes.buildStallMs = WILDCAT_STRIKE_STALL_MS;
 }
 
 /**
