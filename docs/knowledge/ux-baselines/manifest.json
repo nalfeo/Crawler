@@ -171,5 +171,15 @@
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
     "enabled": true,
     "description": "Hover a two-hand Bag weapon while Main Hand and Off Hand are occupied. The paired comparison must preserve both targets and avoid misleading duplicate deltas."
+  },
+  {
+    "id": "family-relationships",
+    "label": "Family Relationships (HUD panel)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Floor-2 Family Relations panel with a representative relation spread (ally/neutral/hostile/hate bands, one boss already defeated), refreshed with the Wave-1 gold-accent title and beveled status pill."
   }
 ]

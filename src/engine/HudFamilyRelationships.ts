@@ -71,6 +71,7 @@ interface RowVisuals {
   relationText: Phaser.GameObjects.Text;
   bossTile: Phaser.GameObjects.Rectangle;
   bossIcon: Phaser.GameObjects.Text;
+  statusPill: Phaser.GameObjects.Rectangle;
   statusText: Phaser.GameObjects.Text;
   row: FamilyRow | null;
 }
@@ -134,7 +135,7 @@ export function createHudFamilyRelationships(
       fontFamily: FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
-      color: hex(BLUE_STEEL.textPrimary),
+      color: hex(PIXEL_UI.gold),
       stroke: '#02040a',
       strokeThickness: 2,
       padding: { top: 3, bottom: 3 },
@@ -143,6 +144,16 @@ export function createHudFamilyRelationships(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add(title);
+
+  // Thin gold accent rule under the title bar — matches the Wave-1
+  // gold-accent-as-emphasis vocabulary (IntroScene divider, HudMinimap
+  // compass band) without adding per-row chrome that would fight fast
+  // row-to-row scanning.
+  const titleAccent = scene.add
+    .rectangle(PANEL_PAD - 2, 4 + 17, PANEL_WIDTH - PANEL_PAD * 2 + 4, 2, PIXEL_UI.gold, 0.85)
+    .setOrigin(0, 0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  root.add(titleAccent);
 
   const rowStartY = PANEL_PAD + TITLE_H;
   const rowVisuals: RowVisuals[] = [];
@@ -214,17 +225,23 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0.5, 0.5);
 
+    const statusPillX = 140;
+    const statusPillY = -1;
+    const statusPill = scene.add
+      .rectangle(statusPillX, statusPillY, 68, 18, PIXEL_UI.trackFill)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, BLUE_STEEL.panelBorder);
+
     const statusText = scene.add
-      .text(142, 1, '', {
+      .text(statusPillX + 34, statusPillY + 9, '', {
         fontFamily: FONT_FAMILY,
-        fontSize: '9px',
+        fontSize: '10px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
         strokeThickness: 2,
-        padding: { top: 5, bottom: 5 },
       })
-      .setOrigin(0, 0);
+      .setOrigin(0.5, 0.5);
 
     container.add([
       background,
@@ -235,6 +252,7 @@ export function createHudFamilyRelationships(
       relationText,
       bossTile,
       bossIcon,
+      statusPill,
       statusText,
     ]);
     root.add(container);
@@ -248,6 +266,7 @@ export function createHudFamilyRelationships(
       relationText,
       bossTile,
       bossIcon,
+      statusPill,
       statusText,
       row: null,
     });
@@ -267,6 +286,7 @@ export function createHudFamilyRelationships(
     const effectiveVisible = visible && masterVisible;
     panel.setVisible(effectiveVisible);
     titleFrame.setVisible(effectiveVisible);
+    titleAccent.setVisible(effectiveVisible);
     title.setVisible(effectiveVisible);
     for (const r of rowVisuals) r.container.setVisible(effectiveVisible);
   }
@@ -315,10 +335,19 @@ export function createHudFamilyRelationships(
             ? 'HOSTILE'
             : 'HATE';
     rv.statusText.setText(bandLabel);
-    if (row.band === 'friendly') rv.statusText.setColor('#86efac');
-    else if (row.band === 'neutral') rv.statusText.setColor('#d9e2ef');
-    else if (row.band === 'hostile') rv.statusText.setColor('#fdba74');
-    else rv.statusText.setColor('#fca5a5');
+    if (row.band === 'friendly') {
+      rv.statusText.setColor('#86efac');
+      rv.statusPill.setStrokeStyle(1, 0x2f6e46);
+    } else if (row.band === 'neutral') {
+      rv.statusText.setColor('#d9e2ef');
+      rv.statusPill.setStrokeStyle(1, BLUE_STEEL.panelBorder);
+    } else if (row.band === 'hostile') {
+      rv.statusText.setColor('#fdba74');
+      rv.statusPill.setStrokeStyle(1, 0x8a5222);
+    } else {
+      rv.statusText.setColor('#fca5a5');
+      rv.statusPill.setStrokeStyle(1, 0x8a2f2f);
+    }
   }
 
   function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
@@ -470,6 +499,7 @@ export function createHudFamilyRelationships(
     for (const r of rowVisuals) r.container.destroy();
     title.destroy();
     titleFrame.destroy();
+    titleAccent.destroy();
     panel.destroy();
     root.destroy();
   }
