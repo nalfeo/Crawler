@@ -166,6 +166,7 @@ export async function listReviewThreads(token, owner, repo, number, graphqlFn = 
                   id
                   body
                   url
+                  createdAt
                   author { login }
                   authorAssociation
                 }
