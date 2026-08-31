@@ -75,9 +75,10 @@ const PANEL_MAX_H = PAD + TITLE_H + ROW_GAP + ROW_COUNT * (ROW_H + ROW_GAP) + PA
 const PANEL_X = VITALS_X;
 /** Bottom edge of the panel's reserved slot; the panel resizes upward from here. */
 const PANEL_BOTTOM = VITALS_PANEL_Y.skill + PANEL_MAX_H;
+const HUD_ACCENT_GOLD = 0xfcd34d;
 
 const COLORS = {
-  title: hex(BLUE_STEEL.accentGold),
+  title: hex(HUD_ACCENT_GOLD),
   titleStrip: BLUE_STEEL.sectionHeader,
   classSkill: '#86efac',
   typeSkill: '#93c5fd',
@@ -162,7 +163,7 @@ export function createHudSkillTracker(
       fontFamily: HUD_FONT_FAMILY,
       fontSize: SKILL_TITLE_FONT_SIZE,
       fontStyle: 'bold',
-      color: hex(BLUE_STEEL.accentGold),
+      color: COLORS.title,
     })
     .setName('hud-skill-title-text')
     .setOrigin(0, 0.5)

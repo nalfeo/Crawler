@@ -3,7 +3,12 @@
   const probe = window.__mainSceneProbe;
   if (!probe?.ready?.()) throw new Error('__mainSceneProbe not ready');
 
-  const scenario = new URLSearchParams(location.search).get('awardsScenario') ?? 'all';
+  const params = new URLSearchParams(location.search);
+  const manifestScenario = params.get('uxScenario');
+  const scenario =
+    params.get('awardsScenario') ??
+    (manifestScenario?.startsWith('awards-') ? manifestScenario.slice('awards-'.length) : null) ??
+    'all';
   probe.resolveLoadout();
   probe.setSafeContext(true);
   const ids =

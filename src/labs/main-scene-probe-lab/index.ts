@@ -2223,7 +2223,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
       return {
         skill: read('hud-skill-panel-bounds'),
-        loot: read('hud-loot-panel-bounds'),
+        loot: null,
         xp: read('hud-xp-panel-bounds'),
         health: read('hud-health-panel-bounds'),
       };

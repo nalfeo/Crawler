@@ -4784,10 +4784,7 @@ export class MainGameScene extends Phaser.Scene {
         this.issueButton
           .setDepth(MODAL_DISMISS_BUTTON_DEPTH)
           .setPosition(
-            GAME.WIDTH / getUiScale(this) -
-              MOBILE_CORNER_BUTTON_MARGIN -
-              insets.right -
-              this.issueButton.displayWidth,
+            GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - this.issueButton.displayWidth,
             MOBILE_CORNER_BUTTON_MARGIN + insets.top,
           );
       } else if (this.hudHiddenForPanel === false) {

@@ -35,13 +35,13 @@ const BAR_HEIGHT = 18;
 
 /** Inline gold/junk readout stacked below the HP bar within the same panel. */
 const LOOT_GAP_ICON_TEXT = 5;
-const LOOT_VALUE_W = 68;
+const LOOT_VALUE_W = 84;
 const LOOT_VALUE_FONT_SIZE = '14px';
 const LOOT_VALUE_STROKE_THICKNESS = 3;
 const LOOT_ICON_SIZE = 14;
 /** Gap between the HP row and the loot row, and between the gold/junk pair. */
 const LOOT_ROW_GAP = 6;
-const LOOT_PAIR_GAP = 16;
+const LOOT_PAIR_GAP = 8;
 const LOOT_ROW_H = 22;
 /**
  * The gold/junk pixel-icon glyphs render with more visual mass toward the
@@ -49,7 +49,7 @@ const LOOT_ROW_H = 22;
  * value text reads a few px "high" relative to the icon at this font size.
  * Nudge the text down to align icon and digit visual centers.
  */
-const LOOT_TEXT_Y_NUDGE = 3;
+const LOOT_TEXT_Y_NUDGE = 1;
 
 const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
 /** Must match `VITALS_ROW_HEIGHTS.health` in HudVitalsLayout.ts. */

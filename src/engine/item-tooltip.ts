@@ -408,8 +408,10 @@ export function renderItemTooltip(
       // Trim the label against its own live-measured width until the label +
       // delta pair fits the card. Re-measuring after every trim keeps this
       // exact for any font's real glyph metrics instead of an estimate.
-      while (statText.text.length > 1 && statText.width + deltaWidth > statLineBudget) {
-        statText.setText(`${statText.text.slice(0, -2)}…`);
+      let fittedText = text;
+      while (fittedText.length > 1 && statText.width + deltaWidth > statLineBudget) {
+        fittedText = `${fittedText.slice(0, -2)}…`;
+        statText.setText(fittedText);
       }
       container.add(statText);
       objects.push(statText);

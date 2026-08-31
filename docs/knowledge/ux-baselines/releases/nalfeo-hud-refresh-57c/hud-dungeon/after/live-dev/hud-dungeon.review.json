@@ -1,174 +1,33 @@
 {
   "overall": {
-    "score": 75.7,
     "verdict": "pass",
-    "summary": "Deterministic contract is unscoped. 0 evidence-backed blocker(s); 2 advisory taste note(s).",
-    "raw_verdict": "needs-work",
-    "raw_summary": "The HUD is functional and readable but suffers from minor alignment, spacing, and hierarchy issues that detract from its polish and usability. Improvements to spacing, alignment, and text clarity would elevate the design.",
-    "raw_score": 72
-  },
-  "axes": {
-    "layout_consistency": {
-      "score": 70,
-      "strengths": [
-        "Consistent placement of HUD elements across the screen.",
-        "Minimap and boss bar are logically positioned."
-      ],
-      "issues": [
-        "The 'Auto Abilities' panel is slightly misaligned relative to the bottom of the screen.",
-        "The boss bar's label ('BOSS') and health text alignment feel slightly off-center."
-      ]
-    },
-    "spacing_balance": {
-      "score": 68,
-      "strengths": [
-        "Adequate spacing between ability slots.",
-        "Minimap has sufficient breathing room."
-      ],
-      "issues": [
-        "The 'Auto Abilities' panel feels cramped vertically, with text and borders too close.",
-        "The boss bar's health text is too close to the right edge of its container."
-      ]
-    },
-    "visual_hierarchy": {
-      "score": 75,
-      "strengths": [
-        "Boss bar is prominent and clearly indicates its importance.",
-        "Minimap and abilities are visually distinct."
-      ],
-      "issues": [
-        "The 'Floor 1' timer lacks emphasis and could be more visually prominent.",
-        "The player's health bar is less noticeable compared to other elements."
-      ]
-    },
-    "readability": {
-      "score": 78,
-      "strengths": [
-        "Text is crisp and legible.",
-        "Pixel font is consistent with the game's style."
-      ],
-      "issues": [
-        "The boss bar's health text ('240 / 500') is slightly cramped and could use more padding.",
-        "The 'Auto Abilities' labels are small and could benefit from increased size or contrast."
-      ]
-    },
-    "icon_usage": {
-      "score": 80,
-      "strengths": [
-        "Icons for currency and health are clear and recognizable.",
-        "Minimap frame is visually distinct and thematic."
-      ],
-      "issues": [
-        "The coin icon could be slightly larger for better visibility.",
-        "The gear icon for settings is small and lacks emphasis."
-      ]
-    },
-    "typography_clarity": {
-      "score": 74,
-      "strengths": [
-        "Font choice is consistent with the pixel art style.",
-        "Text is sharp and readable."
-      ],
-      "issues": [
-        "Text in the 'Auto Abilities' panel is slightly small and could be difficult to read for some players.",
-        "The 'Floor 1' timer text is visually underemphasized."
-      ]
-    },
-    "thematic_fidelity": {
-      "score": 85,
-      "strengths": [
-        "The pixel art style is consistent across all elements.",
-        "Color palette and design align with the game's aesthetic."
-      ],
-      "issues": [
-        "The 'Auto Abilities' panel feels slightly sterile compared to the rest of the HUD."
-      ]
-    }
+    "summary": "Deterministic-only capture (--deterministic-only): no LLM review was run, so this result carries no score or LLM findings."
   },
   "blocking_findings": [],
-  "recommended_fixes": [
-    "Increase the padding around the boss bar's health text to improve readability.",
-    "Adjust the vertical alignment of the 'Auto Abilities' panel to better center it relative to the bottom of the screen.",
-    "Increase the size or contrast of the 'Auto Abilities' labels for better readability.",
-    "Enhance the visibility of the 'Floor 1' timer by increasing its size or adding a background highlight.",
-    "Increase the size of the coin and gear icons for better visibility."
-  ],
-  "precise_fixes": [
-    {
-      "element": "bossBar.healthText",
-      "action": "pad",
-      "dx": 0,
-      "dy": 0,
-      "dw": 10,
-      "dh": 0,
-      "reason": "The boss bar's health text ('240 / 500') is too close to the right edge of its container and needs more padding."
-    },
-    {
-      "element": "floorTimer",
-      "action": "resize",
-      "dx": 0,
-      "dy": 0,
-      "dw": 20,
-      "dh": 5,
-      "reason": "The 'Floor 1' timer text is too small and lacks emphasis; increasing its size will improve visibility."
-    },
-    {
-      "element": "coinIcon",
-      "action": "resize",
-      "dx": 0,
-      "dy": 0,
-      "dw": 5,
-      "dh": 5,
-      "reason": "The coin icon is too small and could be more visible with a slight size increase."
-    },
-    {
-      "element": "gearIcon",
-      "action": "resize",
-      "dx": 0,
-      "dy": 0,
-      "dw": 5,
-      "dh": 5,
-      "reason": "The gear icon for settings is small and lacks emphasis; increasing its size will improve discoverability."
-    }
-  ],
-  "suppressed_alignment_findings": 1,
   "deterministic_blocking_findings": [],
-  "evidence_backed_blockers": [],
-  "advisory_taste_notes": [
-    "Increase the padding around the boss bar's health text to improve readability.",
-    "Adjust the vertical alignment of the 'Auto Abilities' panel to better center it relative to the bottom of the screen."
-  ],
-  "deterministic_status": "unscoped",
-  "confidence": {
-    "level": "low",
-    "pixel_grounded": false,
-    "focused_interaction": false,
-    "basis": "Screenshot-only review without a valid measured geometry contract."
-  },
-  "capture_scope": {
-    "frame": "full",
-    "placement_context": "same-as-image",
-    "azure_images": ["HUD (Dungeon, Boss Encounter)"]
-  },
+  "deterministic_status": "pass",
   "geometry": {
     "panel": null,
     "tooltip": null,
     "slots": []
   },
   "harvest_source": "declared",
-  "surface": "in-game HUD",
-  "capture_hash": "fbd0eed3bfe0cbc98f9099edd293deaadec26867f7758a912bf7780218e702a0",
-  "capture_unchanged_from_prior": false,
-  "score_derivation": {
-    "axis_mean": 75.7,
-    "penalty": 0,
-    "deterministic_blockers": 0,
-    "llm_blockers": 0,
-    "model_reported_score": 72,
-    "focused_hover_weights": false
-  },
-  "finding_trajectory": {
-    "new": [],
-    "recurring": []
-  }
+  "capture_hash": "b2f6c7ebfc998b4d9e758f84e4f5db2ec3a837ee60ee91b88d15323aa42b0fdb",
+  "surface": "in-game HUD (dungeon)",
+  "regions_declared": [
+    "abilitiesPanel",
+    "hud-health-panel-bounds",
+    "hud-loot-gold-value-bounds",
+    "hud-loot-gold-text",
+    "hud-loot-junk-value-bounds",
+    "hud-loot-junk-text",
+    "hud-skill-panel-bounds",
+    "hud-skill-title-strip",
+    "hud-skill-title-text",
+    "hud-skill-class-bar-bg",
+    "hud-skill-type-bar-bg",
+    "timerPanel",
+    "timerText",
+    "minimap"
+  ]
 }
