@@ -1568,7 +1568,7 @@ function latestOwnerDispositionCommandAfter(candidateComments, afterMs) {
       continue;
     }
     const createdMs = commentTimestampMs(comment);
-    if (!Number.isFinite(createdMs) || createdMs <= afterMs) continue;
+    if (!Number.isFinite(createdMs) || createdMs < afterMs) continue;
     const command = parseDispositionCommand(comment?.body);
     if (command) return command;
   }
@@ -3401,13 +3401,17 @@ if (scopeMismatchBlocker) {
 // reaching a stable state (PR #3958 / loop incident #3969). Route it to the same
 // human-decision quarantine the other terminal blockers use. An explicit owner
 // `KEEP` overrides the escalation and lets automated repair resume.
-const newestHumanEscalationDeclaredAtMs = Math.max(
-  // If every escalation lacks createdAt, keep -Infinity so
-  // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
-  -Infinity,
-  ...Array.from(humanEscalationByThread.values()).filter(Number.isFinite),
-);
+const hasHumanEscalationDeclarations = humanEscalationByThread.size > 0;
+const newestHumanEscalationDeclaredAtMs = hasHumanEscalationDeclarations
+  ? Math.max(
+      // If every escalation lacks createdAt, keep -Infinity so
+      // latestOwnerDispositionCommandAfter fails closed instead of honoring stale KEEP.
+      -Infinity,
+      ...Array.from(humanEscalationByThread.values()).filter(Number.isFinite),
+    )
+  : null;
 if (
+  hasHumanEscalationDeclarations &&
   latestOwnerDispositionCommandAfter(comments, newestHumanEscalationDeclaredAtMs) !== 'KEEP' &&
   shouldQuarantineHumanEscalatedBlockers(normalized)
 ) {
