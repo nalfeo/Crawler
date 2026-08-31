@@ -227,7 +227,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryStep?.run).toContain('--state open');
     expect(recoveryStep?.run).toContain("--label 'goobers:approved'");
     expect(recoveryStep?.run).toContain('--no-assignee');
-    expect(recoveryStep?.run).toContain('-- \'-label:"goobers/status:in-review"\'');
+    expect(recoveryStep?.run).toContain(
+      '-- \'-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"\'',
+    );
     expect(recoveryStep?.run).toContain('--sort created --order asc');
     expect(recoveryStep?.run).not.toContain('"repo:${GITHUB_REPOSITORY} is:issue');
     expect(recoveryStep?.run).toContain('should_run=false');
@@ -519,7 +521,7 @@ describe('Goobers automatic dispatch and recovery', () => {
   it('does not strand claimed issues when an implementer incorrectly returns no-work', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const retry = workflow.jobs.run?.steps?.find(
-      (step) => step.name === 'Restore retry eligibility after no-work',
+      (step) => step.name === 'Handle no-work disposition',
     );
     const diagnostics = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Comment with Goobers run diagnostics',
@@ -543,6 +545,8 @@ describe('Goobers automatic dispatch and recovery', () => {
 
     expect(coderInstructions).toContain('Do not return `no-work` merely');
     expect(coderInstructions).toContain('linked merged pull request');
+    expect(coderInstructions).toContain('outputs.disposition');
+    expect(coderInstructions).toContain('completed-existing-work');
     expect(producerInstructions).toContain("repository's existing canonical configuration");
     expect(producerInstructions).toContain('do not by themselves');
     expect(producerInstructions).toContain('require a maintainer decision');
@@ -551,7 +555,12 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(retry?.run).toContain('if [ -n "${GOOBERS_RESUME_PR:-}" ]');
     expect(retry?.run).toContain('preserving in-review ownership');
     expect(retry?.run).toContain('.status == "no-work"');
+    expect(retry?.run).toContain('outputs.disposition // empty');
+    expect(retry?.run).toContain('no_work_disposition" = "completed-existing-work"');
+    expect(retry?.run).toContain("gh label view 'goobers/status:completed-existing-work'");
+    expect(retry?.run).toContain("--add-label 'goobers/status:completed-existing-work'");
     expect(retry?.run).toContain("--remove-label 'goobers/status:in-review'");
+    expect(retry?.run).toContain('returned invalid no-work');
     expect(retry?.run).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
     expect(diagnostics?.run).toContain('GOOBERS_RECOVERY_ISSUE');
     expect(diagnostics?.run).toContain('.stage == "query-backlog"');

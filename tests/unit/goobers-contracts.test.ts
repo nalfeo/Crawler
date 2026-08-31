@@ -357,6 +357,28 @@ describe('crawler.goobers.output/v1 schema', () => {
     ).toBe(true);
   });
 
+  it('allows completed-existing-work disposition only for no-work status', () => {
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work' },
+        summary: 'Linked merged PR already satisfies every acceptance criterion',
+      }),
+    ).toBe(true);
+
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: { disposition: 'completed-existing-work' },
+        summary: 'Implementation finished',
+      }),
+    ).toBe(false);
+  });
+
   it('rejects a non-planning task carrying a verdict or appleEstimate', () => {
     expect(
       isOutputValid({

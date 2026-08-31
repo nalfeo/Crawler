@@ -21,9 +21,11 @@ An open approved issue is work to perform. Do not return `no-work` merely
 because existing tests pass or related tuning already exists. `no-work` is
 valid only when repository evidence proves the claimed issue was already
 completed (for example, a linked merged pull request satisfies every acceptance
-criterion); cite that evidence in the summary. Otherwise implement the missing
-acceptance criteria, or return `blocked` with the specific external decision
-that prevents implementation.
+criterion); cite that evidence in the summary and set
+`outputs.disposition` to `completed-existing-work` so recovery can retire the
+issue from scheduled selection. Otherwise implement the missing acceptance
+criteria, or return `blocked` with the specific external decision that prevents
+implementation.
 
 On any repass, read every attached review verdict or local-gate artifact and
 address all listed findings in one pass. Do not return `success` until fixable

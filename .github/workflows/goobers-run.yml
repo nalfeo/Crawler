@@ -141,7 +141,7 @@ jobs:
                 --no-assignee \
                 --sort created --order asc --limit 1 \
                 --json number --jq '.[0].number // empty' \
-                -- '-label:"goobers/status:in-review"'
+                -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"'
             )"
             if [ -z "${ISSUE_NUMBER}" ]; then
               echo "No eligible goobers:approved issue found; skipping this run."
@@ -410,7 +410,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Restore retry eligibility after no-work
+      - name: Handle no-work disposition
         if: always() && steps.recovery.outputs.should_run != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -434,6 +434,10 @@ jobs:
           if [ -z "$no_work_stage" ]; then
             exit 0
           fi
+          no_work_disposition="$(
+            jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
+              "$events_file" | tail -n 1
+          )"
 
           issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
           if [ -z "$issue_number" ]; then
@@ -447,9 +451,21 @@ jobs:
             exit 1
           fi
 
+          if [ "$no_work_disposition" = "completed-existing-work" ]; then
+            gh label view 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+              gh label create 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" \
+                --color '0e8a16' \
+                --description 'Goobers determined the approved issue was already completed by existing work'
+            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+              --add-label 'goobers/status:completed-existing-work' \
+              --remove-label 'goobers/status:in-review'
+            echo "::notice::Goobers stage '${no_work_stage}' reported completed-existing-work for issue #${issue_number}; marked it ineligible for scheduled recovery."
+            exit 0
+          fi
+
           gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
             --remove-label 'goobers/status:in-review'
-          echo "::warning::Goobers stage '${no_work_stage}' returned no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+          echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
 
       - name: Comment with Goobers run diagnostics
         if: always()
