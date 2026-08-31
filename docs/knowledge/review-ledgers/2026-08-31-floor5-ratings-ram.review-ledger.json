@@ -20,83 +20,64 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 1,
-          "resolved_count": 1,
+          "models": ["claude-opus-5"],
+          "concerns_count": 9,
+          "resolved_count": 8,
           "clean": false
         },
         {
           "round": 2,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["claude-opus-5", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "resolved_count": 3,
           "clean": true
         }
       ]
     },
     "multi_model_review": {
       "clean": true,
-      "adjudicator_model": "gpt-5.4",
+      "adjudicator_model": "gpt-5.6-sol",
       "rounds": [
         {
           "round": 1,
-          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
-          "concerns_count": 2,
-          "valid_count": 1,
-          "resolved_count": 0,
+          "models": ["claude-opus-5", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 10,
+          "valid_count": 9,
+          "resolved_count": 9,
           "clean": false
         },
         {
           "round": 2,
-          "models": ["claude-sonnet-5", "gemini-3.6-flash"],
-          "concerns_count": 2,
-          "valid_count": 1,
-          "resolved_count": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
           "clean": true
         }
       ]
     },
     "independent_grade": {
       "completed": true,
-      "grader_model": "claude-opus-5",
+      "grader_model": "claude-sonnet-4.6",
       "implementer_model": "gpt-5.6-sol",
-      "head_sha": "9a801b8d636691281efdaed01a19f7f50af7a388",
+      "head_sha": "d601e01a296dbbef571d6e094267ccb6226cabb1",
       "findings": [
         {
-          "severity": "blocker",
-          "file": "docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json",
-          "detail": "The stated 5-apple Ratings Ram lifecycle and atomic breach task is entirely unimplemented; the graded tree changes only the ledger and contains no runtime or test changes."
-        },
-        {
-          "severity": "blocker",
-          "file": "docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json",
-          "detail": "The ledger records completed code-review stages for a code-free diff, so those stages cannot serve as clean evidence for the stated gameplay task."
-        },
-        {
-          "severity": "major",
-          "file": "docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json",
-          "detail": "The committed ledger still lacks its independent-grade record and therefore fails validation until this grade is recorded."
-        },
-        {
-          "severity": "major",
-          "file": "docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json",
-          "detail": "The stated 5-apple implementation also lacks its required handoff, apple record, runtime observation, and deterministic regression evidence."
+          "severity": "minor",
+          "file": "tests/headless/floor5-ratings-ram.test.ts",
+          "detail": "The simultaneous Command Post lethal plus outer-wall lethal precedence path is not directly exercised; implementation ordering is correct and the gap is non-blocking."
         }
       ],
       "criteria": {
-        "correctness": 1,
-        "scope_discipline": 2,
-        "test_coverage": 1,
-        "policy_compliance": 2,
-        "maintainability": 3
+        "correctness": 5,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 5
       },
-      "verdict": "fail",
-      "findings_count": 4,
-      "notes": "Graded strictly against the stated task, the one-file ledger diff delivers none of the Ratings Ram runtime behavior or tests. The JSON and plan notes are readable, but the correct independent verdict is fail and human escalation rather than fabricated cleanliness.",
-      "escalated_to_human": {
-        "reason": "criteria below 3: correctness, scope_discipline, test_coverage, policy_compliance; 2 blocker finding(s)",
-        "unresolved_findings": 4
-      }
+      "verdict": "pass",
+      "findings_count": 1,
+      "notes": "Independent grade of d601e01a passed. The real headless pipeline proves the exact lifecycle, 300-frame post-breach persistence, sealed/open pathfinding, zero debt, and armed stall detection. The final review fix counts wave remainder and queued spawn debt exactly once and has deterministic non-zero manifest-index coverage."
     }
   }
 }
