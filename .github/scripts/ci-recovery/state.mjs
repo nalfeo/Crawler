@@ -939,6 +939,20 @@ const scopeMismatchUnsupportedPattern =
   /\b(?:unsupported|not\s+supported|do(?:es)?\s+not\s+(?:support|implement|add)|do(?:es)?n't\s+(?:support|implement|add)|scope\s+mismatch|materially\s+inconsistent|not\s+implement(?:ed|ing)?|no\s+implementation|diff\s+(?:only|does\s+not|doesn't)|changed\s+files\s+(?:only|do\s+not|don't))\b/i;
 const scopeMismatchPromisePattern =
   /\b(?:pr\s+(?:title|body|description)|declared\s+(?:issue|scope)|promis(?:e|es|ed)|fixes?\s+#\d+)\b/i;
+const implementationMissingPattern =
+  /\b(?:did(?:\s+not|n't)\s+(?:actually\s+)?implement|do(?:es)?(?:\s+not|n't)\s+(?:actually\s+)?implement|not\s+actually\s+implement(?:ed|ing)?|not\s+implement(?:ed|ing)?|no\s+(?:implementation|runtime\s+or\s+test\s+changes)|none\s+of\s+the\s+[^.!?\n]{0,120}\s+(?:changes|work|implementation)[^.!?\n]{0,80}\s+(?:are|is)\s+present|only\s+(?:adds?|changes?)\s+[^.!?\n]{0,100}\b(?:ledger|plan|planning|docs?|documentation|metadata)\b|empty\s+pr|empty\s+diff)\b/i;
+
+/**
+ * Detect a trusted review finding that says the PR does not actually implement
+ * the requested feature. Unlike scope mismatch, this is still an implementation
+ * task when the requested behavior is knowable from the issue/PR context, so it
+ * should make the repair prompt more direct rather than immediately quarantine.
+ */
+export function isImplementationMissingReviewBlocker(blocker) {
+  if (blocker?.kind !== 'review-thread') return false;
+  if (blocker.scopeMismatchTrusted !== true) return false;
+  return implementationMissingPattern.test(compact(blocker.summary));
+}
 
 // The inverse direction of the same finding: the diff carries substantial work
 // the PR never declared (scope creep) rather than promising work the diff lacks.

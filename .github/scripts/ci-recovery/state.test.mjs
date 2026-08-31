@@ -16,6 +16,7 @@ import {
   isAgentSessionRunning,
   isDuplicateDispatch,
   isHumanEscalationDeclaration,
+  isImplementationMissingReviewBlocker,
   isProtectedPathCapabilityDenial,
   isScopeMismatchReviewBlocker,
   isHealthyRecoveryOwner,
@@ -2008,6 +2009,40 @@ test('isScopeMismatchReviewBlocker matches active-voice "does not implement" fin
       summary,
     );
   }
+});
+
+test('isImplementationMissingReviewBlocker detects trusted empty-implementation findings', () => {
+  for (const summary of [
+    "reviewer: This PR didn't actually implement the feature.",
+    'reviewer: The change adds only the planning ledger; none of the runtime or test changes are present.',
+    'reviewer: This is an empty PR for the requested behavior.',
+  ]) {
+    assert.equal(
+      isImplementationMissingReviewBlocker({
+        kind: 'review-thread',
+        scopeMismatchTrusted: true,
+        summary,
+      }),
+      true,
+      summary,
+    );
+  }
+
+  assert.equal(
+    isImplementationMissingReviewBlocker({
+      kind: 'review-thread',
+      scopeMismatchTrusted: true,
+      summary: 'reviewer: Please add a missing unit test for this implementation.',
+    }),
+    false,
+  );
+  assert.equal(
+    isImplementationMissingReviewBlocker({
+      kind: 'review-thread',
+      summary: "drive-by: This PR didn't actually implement the feature.",
+    }),
+    false,
+  );
 });
 
 test('isScopeMismatchReviewBlocker matches undeclared-scope (scope-creep) findings', () => {

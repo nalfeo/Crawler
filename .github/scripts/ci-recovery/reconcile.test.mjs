@@ -12358,6 +12358,100 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   );
 });
 
+test('implementation-missing review thread gets an implementation-first repair prompt', async (t) => {
+  const thread = {
+    id: 'PRRT_implementation_missing',
+    isResolved: false,
+    isOutdated: false,
+    path: 'docs/knowledge/review-ledgers/2026-08-31-empty.review-ledger.json',
+    line: 12,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_implementation_missing',
+          body: "This PR didn't actually implement the requested feature. It adds only the planning ledger; none of the runtime or test changes are present.",
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3958`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 6100 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlReviewThreads([thread]) };
+    },
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /quarantined scope-mismatch pr=#42/);
+  assert.doesNotMatch(stdout, /quarantined human-escalation pr=#42/);
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a repair task comment');
+  assert.match(taskCommentCall.body.body, /Implementation-missing protocol/);
+  assert.match(taskCommentCall.body.body, /implement the missing production and test changes/);
+  assert.match(
+    taskCommentCall.body.body,
+    /do not only edit documentation\/ledger\/planning files/i,
+  );
+});
+
 test('closed PR resumes a persisted linked-issue restart that failed after abandonment', async (t) => {
   // Regression: abandonment closes the PR *before* restarting its linked
   // issues. A restart that fails mid-flight must not be lost, because every

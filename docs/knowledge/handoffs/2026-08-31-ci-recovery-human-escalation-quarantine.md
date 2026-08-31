@@ -82,10 +82,15 @@ no repair task. Full `state.test.mjs` + `reconcile.test.mjs` suite: 269/269 pass
 
 ### Lessons Learned
 
-- CI recovery has three quarantine classes now (no-activity/superfluous, protected-path,
+- CI recovery has four quarantine classes now (no-activity/superfluous, protected-path,
   scope-mismatch, and this one). They share an identical shape: detector in `state.mjs`,
   per-thread set in `reconcile.mjs`, blocker field through `normalizeBlockers`, quarantine
   branch before the dispatch path. Copying that shape is much cheaper than inventing a path.
+- Follow-up review feedback added an implementation-missing repair prompt for trusted review
+  threads that say a PR is effectively empty or did not implement the requested feature. Those
+  threads stay repairable when they are not terminal scope-mismatch/human-escalation cases, but
+  the next task now explicitly tells Copilot to implement production/test changes instead of
+  stopping at uncertainty or editing only planning artifacts.
 - `reconcile.test.mjs` fixtures assert-fail inside the mocked GraphQL handler when the code
   walks into the dispatch path — a negative-control run (stub the detector to `false`) is a
   cheap and convincing fail-to-pass proof, but it hangs for ~5 minutes on the assign path,
