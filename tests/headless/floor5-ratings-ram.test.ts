@@ -3,13 +3,7 @@ import { query } from 'bitecs';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import type { GameWorld } from '../../src/core/world.js';
-import {
-  Health,
-  SiegeHero,
-  SiegeMinion,
-  SiegeRam,
-  SiegeRouteMarker,
-} from '../../src/core/components.js';
+import { SiegeHero, SiegeMinion, SiegeRam, SiegeRouteMarker } from '../../src/core/components.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import type { InputState } from '../../src/shared/input.js';
 import type { Floor5RatingsRamState } from '../../src/shared/floor-types.js';
