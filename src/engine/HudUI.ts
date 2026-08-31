@@ -34,6 +34,8 @@ import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
 import { createHudFloor4Arena, type HudFloor4ArenaProbeState } from './HudFloor4Arena.js';
+import { createHudFloor3League, type HudFloor3LeagueState } from './HudFloor3League.js';
+import type { Floor3OverworldMarker } from './floor3-overworld-markers.js';
 
 export interface HudEncounterProbeBounds {
   timerPanel: ScreenBounds;
@@ -78,6 +80,8 @@ export function createHudUI(scene: Phaser.Scene): {
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
   getFloor3PartyState(): HudFloor3PartyState;
+  getFloor3LeagueState(): HudFloor3LeagueState;
+  getFloor3OverworldMarkers(): readonly Floor3OverworldMarker[];
   /** Floor-4 arena HUD read-back (clock, wave pips, Headliner, notices). */
   getFloor4ArenaState(): HudFloor4ArenaProbeState;
   /** Fire the Floor-3 companion command verb; no-op off Floor 3. */
@@ -127,6 +131,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
   const floor4Arena = createHudFloor4Arena(scene, { parent: topCenter });
+  const floor3League = createHudFloor3League(scene, { parent: topCenter });
   // Quest-arrow toggle clicks are captured here, not applied here: this HUD
   // facade renders sim state and reads input, but must not mutate `GameWorld`
   // (see .github/instructions/engine.instructions.md). Requests queue up and
@@ -237,6 +242,7 @@ export function createHudUI(scene: Phaser.Scene): {
       group.setVisible(visible);
     }
     floor4Arena.setVisible(visible);
+    floor3League.setVisible(visible);
     questTracker.setVisible(visible);
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
@@ -251,13 +257,14 @@ export function createHudUI(scene: Phaser.Scene): {
     healthBar.sync(world, playerEid);
     xpBar.sync(world);
     floorTimer.sync(world);
+    floor3League.sync(world);
     floor4Arena.sync(world);
     bossBar.sync(world);
     announcementBanner.sync(world);
-    const floor4Layout = floor4Arena.getLayoutBounds();
+    const tournamentLayout = floor4Arena.getLayoutBounds() ?? floor3League.getLayoutBounds();
     const floor4Offset =
-      floor4Layout !== null
-        ? floor4Layout.panel.y + floor4Layout.panel.height + 4 - ENCOUNTER_FIRST_ROW_Y
+      tournamentLayout !== null
+        ? tournamentLayout.panel.y + tournamentLayout.panel.height + 4 - ENCOUNTER_FIRST_ROW_Y
         : 0;
     const encounterLayout = resolveEncounterStackLayout(
       bossBar.getLayoutBounds() !== null,
@@ -313,6 +320,7 @@ export function createHudUI(scene: Phaser.Scene): {
     bossBar.destroy();
     announcementBanner.destroy();
     floor4Arena.destroy();
+    floor3League.destroy();
     lootCounter.destroy();
     skillTracker.destroy();
     minimap.destroy();
@@ -370,6 +378,16 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
+    getFloor3LeagueState: () => {
+      const state = floor3League.getState();
+      if (hidden) {
+        return { ...state, visible: false, bounds: null };
+      }
+      // Reported in the same transformed screen space as the other top-center
+      // panels so overlap guards can compare them directly.
+      return state.bounds ? { ...state, bounds: transformBounds(state.bounds, topCenter) } : state;
+    },
+    getFloor3OverworldMarkers: () => (hidden ? [] : minimap.getFloor3MarkerStates()),
     getFloor4ArenaState: () => {
       const state = floor4Arena.getState();
       if (hidden) {

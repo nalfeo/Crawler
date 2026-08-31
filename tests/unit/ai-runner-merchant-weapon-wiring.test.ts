@@ -2,37 +2,38 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('AI runner optional purchases wiring', () => {
-  it('uses the shared optional-purchases resolver for persisted state', () => {
+  it('resolves all persisted feature flags through the shared registry', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
+
+    expect(source).toContain('resolveAiFeatureFlags(');
+    expect(source).toContain('...persisted?.featureFlags');
+  });
+
+  it('passes registry-derived flags into every behavior consumer', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
     expect(source).toMatch(
-      /optionalPurchases:\s*resolveOptionalPurchases\(persisted\?\.aiConfig\s*\?\?\s*\{\}\)/,
+      /configureMerchantWeaponPurchase\(world,\s*featureFlags\.optionalPurchases\)/,
+    );
+    expect(source).toMatch(
+      /configureSpellBrokerPurchase\(world,\s*featureFlags\.optionalPurchases\)/,
+    );
+    expect(source).toMatch(
+      /autoFloor1ProgressionSystem\(world,\s*playerEid,\s*ai,\s*featureFlags\.weaponPersonas\)/,
+    );
+    expect(source).toMatch(
+      /syncAiRunnerSettlementReturnRouting\(\s*world,\s*!manualControl,\s*featureFlags\.settlementReturnRouting,\s*\)/,
     );
   });
 
-  it('passes optionalPurchases into both purchase intent configurators', () => {
+  it('builds a dedicated Feature Flags folder from every registry control', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
-    expect(source).toMatch(
-      /configureMerchantWeaponPurchase\(world,\s*aiConfig\.optionalPurchases\)/,
-    );
-    expect(source).toMatch(/configureSpellBrokerPurchase\(world,\s*aiConfig\.optionalPurchases\)/);
-  });
-
-  it('GUI is wired to the single optionalPurchases field', () => {
-    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
-
-    expect(source).toMatch(/\.add\(aiConfig,\s*'optionalPurchases'\)/);
-    expect(source).toMatch(/\.add\(aiConfig,\s*'settlementReturnRouting'\)/);
-    // The two old independent fields must not have their own separate GUI toggles
-    expect(source).not.toMatch(/\.add\(aiConfig,\s*'merchantWeaponPurchase'\)/);
-    expect(source).not.toMatch(/\.add\(aiConfig,\s*'spellBrokerPurchase'\)/);
-  });
-
-  it('passes the settlement-return feature flag into policy sync', () => {
-    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
-    expect(source).toMatch(
-      /syncAiRunnerSettlementReturnRouting\(\s*world,\s*!manualControl,\s*aiConfig\.settlementReturnRouting,\s*\)/,
+    expect(source).toContain("gui.addFolder('Feature Flags')");
+    expect(source).toContain('for (const control of getAiFeatureFlagControls())');
+    expect(source).toContain('.add(featureFlags, control.key)');
+    expect(source).not.toMatch(
+      /\.add\(aiConfig,\s*'(optionalPurchases|settlementReturnRouting|weaponPersonas)'\)/,
     );
   });
 });

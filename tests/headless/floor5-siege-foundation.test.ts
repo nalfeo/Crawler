@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { applyDamage } from '../../src/core/apply-damage.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
@@ -11,7 +12,6 @@ import {
   getFloor5SiegeRunStats,
   _recoverFloor5RamComponent,
   _requestFloor5RamConstruction,
-  _setFloor5BuildSiteUnderAttack,
   siegeDirectorSystem,
 } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -140,7 +140,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
-      maxFrames: 5,
+      maxFrames: 0,
       questStallFrames: 0,
       onFinish: (world) => {
         headlessMap = serializeFloor5Map(world.floorMap);
@@ -244,16 +244,18 @@ describe('Floor 5 siege foundation real pipeline', () => {
       simulationOptions: {
         postSystems: [
           (world) => {
+            const commandPost =
+              world.floorExtendedState!.floor5Siege!.structures['command-post'].eid;
             if (!requested) {
               completeFloor5RamPrerequisites(world);
               requested = _requestFloor5RamConstruction(world);
-              world.floorExtendedState!.floor5Siege!.commandPostHealth -= 1;
-              _setFloor5BuildSiteUnderAttack(world, true);
+              const current = world.stores.health.current[commandPost] ?? 0;
+              world.stores.health.current[commandPost] = current - 1;
               return;
             }
             if (world.frameCount === 80) {
-              world.floorExtendedState!.floor5Siege!.commandPostHealth += 1;
-              _setFloor5BuildSiteUnderAttack(world, false);
+              const current = world.stores.health.current[commandPost] ?? 0;
+              world.stores.health.current[commandPost] = current + 1;
             }
           },
         ],
@@ -302,6 +304,52 @@ describe('Floor 5 siege foundation real pipeline', () => {
 
     expect(state.trace).toHaveLength(1);
     expect(state.lastWorldElapsedMs).toBe(7_000);
+  });
+
+  it('resolves live Command Post structure destruction on the same post-damage tick', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+    const commandPost = state.structures['command-post'].eid;
+
+    world.frameCount = 99;
+    world.elapsedMs = 12_000;
+    applyDamage(
+      world,
+      commandPost,
+      world.stores.health.current[commandPost] ?? 0,
+      world.stores.position.x[commandPost] ?? 0,
+      world.stores.position.y[commandPost] ?? 0,
+      { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
+    );
+    world.floorObjectiveTick!(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(getFloor5RunOutcome(world)).toBe('failed_timeout');
+    expect(getFloor5SiegeRunStats(world)?.trace.at(-1)).toMatchObject({
+      phase: { kind: 'DEFEAT' },
+      reason: 'command-post-destroyed',
+      frame: 99,
+      worldElapsedMs: 12_000,
+      commandPostHealth: 0,
+    });
+  });
+
+  it('does not trust a stale structure EID after the slot is reused by another health entity', () => {
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    state.structures['enemy-checkpoint'].eid = player;
+
+    const stats = getFloor5SiegeRunStats(world)!;
+    expect(stats.structures['enemy-checkpoint']).toMatchObject({
+      eid: 0,
+      health: 0,
+      maxHealth: 36,
+    });
   });
 
   it('does not transition while the run is not playing or the Command Post survives', () => {

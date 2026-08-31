@@ -1,0 +1,81 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "floor3-sequential-finals-ux",
+  "task_title": "Floor 3 sequential finals and Slice 14 UX",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Revised plan: sequentially spawn one seeded handler roster at a time using one reusable Final Four team id; migrate existing victory tests; game layer owns mandatory keep selection and descent gate; shared owns view models; extend existing labs and real-scene e2e."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer", "gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 9,
+          "resolved_count": 9,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "reviewer_actors": ["copilot-pull-request-reviewer", "gpt-5.4", "gemini-3.1-pro-preview"],
+      "review_url": "https://github.com/nalfeo/Crawler/pull/3937",
+      "notes": "Round 1: the GitHub Copilot PR review (https://github.com/nalfeo/Crawler/pull/3937) raised 7 findings and two independent code-review models raised 2 more. Copilot's 7: (1) the keep-companion picker never reopened on a stale pick, stranding the run; (2) Floor 3 minimap markers were drawn inside the quest-waypoint loop, so they vanished with no waypoints and redrew per waypoint; (3) lastFloor3Markers was refreshed only by the full-map drawDots, so the docked radar showed no markers until the overlay had been opened; (4) the league panel at y=8 overlapped Floor 3's floor timer (y 12-54); (5) the Studio affinity label was indexed by shuffled array position instead of the authored studioId; (6) this ledger itself was incomplete; (7) the shipped HUD had no deterministic e2e coverage. gpt-5.4 additionally found a hard softlock (a post-victory or mutual-KO party wipe left an unlocked exit that confirmFloor3StairDescend could never accept) and, after that fix, a marker/confirmation disagreement (getFloor3StairMarkerState reported locked:false for a stale pick the confirmation rejects). gemini-3.1-pro-preview flagged the headless Floor 3 auto-descend's missing stair-proximity gate. All 9 resolved: picker reopens whenever the stored eid is absent from the current valid choices; the marker draw closed out of the waypoint loop with shared colour/size helpers; drawRadar refreshes the projection; panel moved to y=58; affinity resolved through STUDIO_AFFINITY_BY_ID; new tests/e2e/floor3-league-hud.deterministic.test.ts asserts real-scene mount, timer non-overlap and radar marker kinds; floor3KeptCompanionDescendGateSatisfied() now backs both the descend and the stair marker; and the headless proximity deviation was accepted as a documented, headless-only limitation (the BT AI has no Floor 3 exit navigation and getFloor3RunOutcome only reports cleared_floor after descend, so a proximity gate would stall every headless Floor 3 run) with an explicit follow-up note in code. Round 2: gpt-5.4 and gemini-3.1-pro-preview re-reviewed the fixed tree; gemini reported clean and gpt-5.4's only remaining item was this ledger's own completeness, repaired here."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["copilot-pull-request-reviewer", "gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 9,
+          "valid_count": 9,
+          "resolved_count": 9,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-opus-4.8"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Three independent reviewers with non-overlapping findings: the GitHub Copilot PR reviewer covered player-visible progression/HUD/minimap defects, gpt-5.4 found the descend softlock and the marker/confirmation disagreement, and gemini-3.1-pro-preview challenged the legitimacy of the headless Floor 3 auto-descend. Adjudicator claude-opus-4.8 re-read the final diff and ruled on the one genuine disagreement: gemini asked for a proximity-gated autoFloor3ProgressionSystem; the adjudicator verified that the descend is already inert until latchFloor3Victory pops the stairs, that proximity gating is the caller's job on every floor, and that the BT AI has no Floor 3 exit navigation while getFloor3RunOutcome only reports cleared_floor after descend — so the requested gate would make every headless Floor 3 run stall at the win. Ruling: accept as a documented headless-only follow-up, do not apply. The adjudicator then re-verified each resolved finding (shared descend predicate and its stair-marker reuse, unconditional headless descend sequencing, overlay + docked-radar marker refresh, the league panel Y=58 clearing the timer's 54px bottom edge, and STUDIO_AFFINITY_BY_ID) and reported no blocking or non-blocking issues, leaving only a non-gating suggestion to link a tracking issue to the in-code follow-up."
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.5",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "f34e5d1bb912231673f770ac658ea3aed3d0fc7d",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 4,
+        "policy_compliance": 4,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "gpt-5.5 graded the diff having reviewed nothing else on this change. Its first pass returned verdict fail on one finding — the headless Floor 3 descend was gated on autoSelectKeptCompanion returning true, so a post-victory wiped party (which the descend gate explicitly allows) could never auto-descend and would stall. After that was fixed under the Floor 3 capability seam and covered by scenario-level and runner-sequencing regression tests, the re-grade returned verdict pass with zero remaining merge-blocking correctness or policy issues."
+    }
+  }
+}

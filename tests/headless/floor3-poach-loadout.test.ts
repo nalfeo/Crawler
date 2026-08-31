@@ -1,8 +1,9 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Companion, PartySlot, Team } from '../../src/core/index.js';
+import { Companion, PartySlot, Player, Position, Team } from '../../src/core/index.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import type { SimEvent } from '../../src/game/ai/event-log.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { TeamId } from '../../src/shared/constants.js';
 
@@ -28,7 +29,77 @@ function knockOutTeams(world: GameWorld, teamIds: readonly number[]): void {
   }
 }
 
+function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): number {
+  return query(world.ecs, [Companion, Team]).filter((eid) =>
+    teamIds.includes(world.stores.team.id[eid] ?? -1),
+  ).length;
+}
+
 describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
+  it('logs the initial starter pick while resolving the real Floor 3 loadout hook', async () => {
+    const events: SimEvent[] = [];
+    let partyAtFinish = 0;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 33 }), {
+      seed: 33,
+      floorId: 'floor3',
+      maxFrames: 1,
+      questStallFrames: 0,
+      recordEvent: (event) => events.push(event),
+      onFinish: (world) => {
+        partyAtFinish = countPartyCompanions(world);
+      },
+    });
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'control' &&
+          event.reason === 'loadout auto-selected through scenario.selectLoadoutOption' &&
+          event.note === 'floor3 initial loadout auto-selected option 0',
+      ),
+    ).toBe(true);
+    expect(partyAtFinish).toBe(1);
+  });
+
+  it('leaves the entrance without repeatedly interacting with Professor Thistle', async () => {
+    const events: SimEvent[] = [];
+    let professorEid: number | undefined;
+    let leftEntrance = false;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 33 }), {
+      seed: 33,
+      floorId: 'floor3',
+      maxFrames: 600,
+      questStallFrames: 0,
+      eventSampleInterval: 1,
+      recordEvent: (event) => events.push(event),
+      stopWhen: (world) => {
+        const playerEid = query(world.ecs, [Player, Position])[0];
+        const floorMap = world.floorMap;
+        if (playerEid === undefined || !floorMap?.spawnRoom) return false;
+        const tile = floorMap.worldToTile(
+          world.stores.position.x[playerEid] ?? 0,
+          world.stores.position.y[playerEid] ?? 0,
+        );
+        leftEntrance ||= floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== floorMap.spawnRoom.id;
+        return leftEntrance;
+      },
+      onFinish: (world) => {
+        professorEid = world.floorExtendedState?.floor3CompanionProfessorNpcEid;
+      },
+    });
+
+    expect(professorEid).toBeDefined();
+    expect(leftEntrance).toBe(true);
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'sample' && event.state === 'INTERACT' && event.targetEid === professorEid,
+      ),
+    ).toBe(false);
+  });
+
   it('resolves the mid-run poach pause and keeps the floor simulating', async () => {
     let sawPause = false;
     let partyBeforePoach = 0;
@@ -85,5 +156,60 @@ describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
     expect(pendingOfferAtEnd).toBe(false);
     // ...and the pick actually recruited the poached Companion.
     expect(partyAfterPoach).toBe(partyBeforePoach + 1);
+  });
+
+  it('runs four ordered Final Four rounds and deterministically keeps one Companion', async () => {
+    const observedHandlerOrder: string[] = [];
+    let lastWipedRound = -1;
+    let finalRoundIndex = -1;
+    let keptCompanionEid: number | undefined;
+    let victoryLatched = false;
+    let selectedHandlerOrder: string[] = [];
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 3539 }), {
+      seed: 3539,
+      floorId: 'floor3',
+      maxFrames: 300,
+      questStallFrames: 0,
+      startPlayerLevel: 20,
+      stopWhen: (world) => {
+        const state = world.floorExtendedState?.floor3Studios;
+        if (!state) return false;
+
+        // Deterministic combat stand-in: clear every spawned Studio roster.
+        for (const studio of state.studios) {
+          if (studio.unlocked && !studio.defeated) knockOutTeams(world, studio.teamIds);
+        }
+
+        // Clear each Final Four roster once, only after the production tick has
+        // advanced and spawned that round.
+        const round = state.finalFourRounds[state.finalFourRoundIndex];
+        if (
+          round &&
+          state.finalFour.unlocked &&
+          state.finalFourRoundIndex !== lastWipedRound &&
+          countCompanionsOnTeams(world, state.finalFour.teamIds) > 0
+        ) {
+          observedHandlerOrder.push(round.handlerId);
+          lastWipedRound = state.finalFourRoundIndex;
+          knockOutTeams(world, state.finalFour.teamIds);
+        }
+        return false;
+      },
+      onFinish: (world) => {
+        const state = world.floorExtendedState?.floor3Studios;
+        finalRoundIndex = state?.finalFourRoundIndex ?? -1;
+        keptCompanionEid = state?.keptCompanionEid;
+        selectedHandlerOrder = state?.finalFourRounds.map((round) => round.handlerId) ?? [];
+        victoryLatched = world.goalFlags.get('floor3-victory') === true;
+      },
+    });
+
+    expect(observedHandlerOrder).toHaveLength(4);
+    expect(observedHandlerOrder).toEqual(selectedHandlerOrder);
+    expect(finalRoundIndex).toBe(4);
+    expect(victoryLatched).toBe(true);
+    expect(keptCompanionEid).toBeDefined();
+    expect(stats.outcome).toBe('victory');
   });
 });

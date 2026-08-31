@@ -19,6 +19,7 @@ import type {
   PropRenderSize,
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
+  Floor3LeagueHudProbeState,
   FloatingTextProbe,
   FloorSummaryProbeState,
   ItemIconRenderInfo,
@@ -103,6 +104,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
   getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
+  getFloor3LeagueHudState: (page: Page): Promise<Floor3LeagueHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3LeagueHudState()),
   openBossRewardPicker: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.openBossRewardPicker()),
   startStaircaseBossBattle: (page: Page): Promise<number> =>

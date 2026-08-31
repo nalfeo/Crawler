@@ -17,9 +17,12 @@ import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { _generateStarterOffer, _generateTrainerPoachOffer } from '../../game/floor3Recruiting.js';
 import { loadPetSpecies } from '../../shared/data/floor3/species.js';
 import {
+  buildFloor3FinalFourVersusModel,
   buildFloor3IntroModel,
+  buildFloor3KeepCompanionPickerModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
+  buildFloor3StudioVersusModel,
 } from '../../shared/floor3-ux.js';
 import { createLogger } from '../../shared/logger.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -113,6 +116,57 @@ function createFloor3UxLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     );
   };
 
+  const openStudioVersus = (): void => {
+    picker?.open(
+      buildFloor3StudioVersusModel({
+        id: 'emberforge',
+        name: 'Emberforge Studio',
+        affinity: 'ember',
+        unlockLevel: 8,
+        unlocked: true,
+        defeated: false,
+      }),
+      { onConfirm: () => logger.info('Studio versus acknowledged') },
+    );
+  };
+
+  const openFinalFourVersus = (): void => {
+    picker?.open(
+      buildFloor3FinalFourVersusModel(
+        { handlerId: 'finalist-vega', handlerName: 'Vega Voltage', defeated: false },
+        0,
+        4,
+      ),
+      { onConfirm: () => logger.info('Final Four versus acknowledged') },
+    );
+  };
+
+  const openBestInShow = (): void => {
+    picker?.open(
+      buildFloor3KeepCompanionPickerModel([
+        {
+          eid: 101,
+          speciesId: 'ember-charger',
+          currentName: 'Cinder Pup',
+          ultimateName: 'Cinder Crown',
+          level: 18,
+          affinity: 'ember',
+          fightingStyle: 'charger',
+        },
+        {
+          eid: 102,
+          speciesId: 'bloom-warden',
+          currentName: 'Briar Guard',
+          ultimateName: 'Verdant Bastion',
+          level: 21,
+          affinity: 'bloom',
+          fightingStyle: 'warden',
+        },
+      ]),
+      { onConfirm: ({ option }) => logger.info('Best in Show selected', { eid: option.id }) },
+    );
+  };
+
   class Floor3UxLabScene extends Phaser.Scene {
     constructor() {
       super({ key: SCENE_KEY });
@@ -161,6 +215,9 @@ function createFloor3UxLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   gui.add({ intro: () => openIntro() }, 'intro').name('Open rules briefing (#1)');
   gui.add({ starter: () => openStarter() }, 'starter').name('Open starter picker (#2)');
   gui.add({ poach: () => openPoach() }, 'poach').name('Open poach picker (#3)');
+  gui.add({ studio: () => openStudioVersus() }, 'studio').name('Open Studio versus (#10)');
+  gui.add({ finals: () => openFinalFourVersus() }, 'finals').name('Open Final Four versus (#11)');
+  gui.add({ winner: () => openBestInShow() }, 'winner').name('Open Best in Show (#12/#14)');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
   createGame();

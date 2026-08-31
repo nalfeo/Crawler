@@ -1,0 +1,73 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-30",
+  "session_slug": "floor5-lane-war",
+  "task_title": "Floor 5 lane war",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial review rejected the initial sidecar-heavy single-system plan. Alt A explicit floor-scoped ECS markers plus split pre/post authority was adopted. Alt B reuse generic combatant AI mode was partially rejected because generic Enemy tagging would cause AI/drop leakage, but existing path/passability and applyDamage are still reused. Alt C authored lane waypoints was rejected in favor of per-minion shared tile pathfinding (findTilePath) as the movement model, deferring cached/waypoint routing. Resolutions: add SiegeMinion/SiegeStructure markers; split siegeMinionSystem pre-step from floor5ObjectiveTick post-damage captures/audits/terminal; add Floor 5 progress telemetry; use stable manifest slot ids with transient EIDs; make command post entity health authoritative; audit combat events/health deltas independently; pin ScenarioDefinition ordering; keep generic combat/pathfinding changes minimal."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 7,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "copilot-coding-agent",
+      "head_sha": "3bc72d5c967e40d802de992d38e742c5f7f5c5da",
+      "findings": [
+        {
+          "severity": "minor",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "spawnFloor5Minion and updateFloor5Checkpoint each recompute computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig())) from scratch on every spawn/tick. It is deterministic and bounded (<=4 minions) so not a correctness bug, but it is redundant work; compute the layout once during initializeFloor5Scenario and store it on the siege state (or a memoized module cache) and reuse it."
+        },
+        {
+          "severity": "minor",
+          "file": "src/game/floor5Scenario.ts",
+          "detail": "The combat-event audit resets combatEventCursor to 0 whenever combatEvents[cursor-1] !== lastCombatEvent. If the render layer drains and then refills world.combatEvents to the same length with different objects inside a single tick, the mismatch forces a full rescan and could re-count already-audited legal/illegal events (telemetry only, not gameplay). Consider keying staleness on a monotonic event id/sequence rather than the last-object reference to make the audit robust to same-length refills."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 5,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 2,
+      "notes": "The diff implements the Floor 5 lane-war slice cleanly and stays tightly scoped to that task. siegeMinionSystem is wired into the real ScenarioDefinition beforeEnemyAISystems slot and floor5ObjectiveTick via floorObjectiveTick, so behavior runs through the shared game/headless pipeline rather than a lab only; the floor1-main-scene-options test is updated to match the wiring. Determinism is preserved (SeededRandom for the frozen wave manifest, world.elapsedMs/frameCount for timing, deterministic query+sort ordering, no Math.random/Date.now), layer boundaries hold, and siege actors avoid generic Enemy tagging per the ADR. Edge cases are handled and tested: same-post-damage-tick Command Post defeat precedence, stale/recycled structure EID revalidation, bounded per-team spawn debt with manifest-index preservation, and the drained combat-event cursor staleness reset. The new headless lane-war test and the two foundation tests exercise every changed behavior and would fail without the change. The only issues found are minor performance/robustness nits (redundant layout recomputation and a telemetry double-count edge on same-length event refills); no criterion scores below 3 and no blocker exists, so the verdict is pass."
+    }
+  }
+}
