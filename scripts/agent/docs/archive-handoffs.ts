@@ -127,7 +127,7 @@ async function main(): Promise<void> {
   report.finish();
 }
 
-if (process.argv[1]?.endsWith('archive-handoffs.ts')) {
+if (/[\\/]archive-handoffs\.(ts|js)$/.test(process.argv[1] ?? '')) {
   main().catch((err) => {
     process.stderr.write(`archive-handoffs crashed: ${err instanceof Error ? err.stack : err}\n`);
     process.exit(2);
