@@ -780,8 +780,8 @@ function selectFloor5Target(
   // Last resort only. The active field Hero is a legal target for the opposing
   // side, but it sits BEHIND the lane objective on purpose: a boss-strength
   // named defender parked on the lane would otherwise soak every allied minion
-  // indefinitely and stall the Slice-2 push contract. Heroes are meant to be
-  // worn down by the player, not by minion chaff.
+  // indefinitely and stall the Slice-2 push contract. Allied minions engage a
+  // Hero only when that Hero becomes an immediate threat to the ram.
   const heroEid = state.heroes.eid;
   if (team === 'allied' && floor5HeroEntityIsAlive(world, heroEid)) {
     // Spec `FR5.3` escort precedence: while the Ratings Ram is on the field an
@@ -1855,11 +1855,10 @@ function floor5RamAtAttackAnchor(world: GameWorld, state: Floor5SiegeState): boo
  * Spec `FR5.5` — outer-wall damage authority.
  *
  * `ram.wallAuthorizedHealth` is the scenario's ledger of the ONLY legitimate
- * source of outer-wall damage (ram strikes). Anything else that lowered the
- * wall's ECS health since the last tick — a stray minion hit, a player weapon,
- * splash — is restored here and counted. Symmetrically, the ram's hull is only
- * ever spent by outer-wall counter-battery fire, so it is restored too. Run
- * BEFORE `applyFloor5RamStrike` so the strike's own damage is never rolled back.
+ * source of outer-wall damage (ram strikes). Any other system that lowers the
+ * wall's ECS health is restored here and counted. Symmetrically, the ram's hull
+ * is only ever spent by outer-wall counter-battery fire, so it is restored too.
+ * Run BEFORE `applyFloor5RamStrike` so the strike's own damage is never rolled back.
  */
 function enforceFloor5SiegeDamageAuthority(world: GameWorld, state: Floor5SiegeState): void {
   const wall = state.structures['outer-wall'];
@@ -1973,7 +1972,7 @@ function destroyFloor5Ram(world: GameWorld, state: Floor5SiegeState, reason: str
   state.ram.destructions += 1;
   state.ram.rebuildAvailableFrame = world.frameCount + getFloor5RamConfig().recoveryDelayFrames;
   setFloor5EngineState(world, state, 'DESTROYED', reason);
-  recordFloor5PhaseTransition(world, state, { kind: 'ESCORT' }, reason);
+  transitionFloor5Phase(world, state, { kind: 'BUILD' }, reason);
 }
 
 /** Zero every outstanding wave/spawn obligation. Returns the units cancelled. */
@@ -2006,9 +2005,8 @@ function clearFloor5Minions(world: GameWorld, state: Floor5SiegeState): number {
  * One-shot outer-wall breach commit (spec `FR5.7`).
  *
  * Every observable consequence of the breach lands in ONE transaction, in a
- * fixed order, exactly once: drop the sealing barrier (which bumps
- * `world.barriers.version` and therefore invalidates every cached nav
- * signature), retire the ram + route markers + wall entity, freeze the lane
+ * fixed order, exactly once: drop the sealing barrier (whose live blocked-tile
+ * registry is consulted by navigation), retire the ram + route markers + wall entity, freeze the lane
  * front at the courtyard, cancel all outstanding wave/spawn debt, and
  * explicitly clean up the field Hero and every live minion. Re-entry is a
  * counted no-op — `commitAttempts` proves the latch under test.
@@ -2019,8 +2017,8 @@ function commitFloor5Breach(world: GameWorld, state: Floor5SiegeState): void {
   state.breach.latched = true;
   state.breach.committedFrame = world.frameCount;
 
-  // 1. Drop the barrier that sealed the carved ingress. The version bump is
-  //    what makes the newly-open lane visible to cached nav signatures.
+  // 1. Drop the barrier that sealed the carved ingress. Navigation consults the
+  //    live blocked-tile registry, so the newly-open lane is visible immediately.
   if (state.breach.barrierId !== null) {
     dropBarrier(world, state.breach.barrierId);
     state.breach.barrierId = null;
@@ -2093,15 +2091,14 @@ function advanceFloor5RamRebuild(world: GameWorld, state: Floor5SiegeState): voi
   if (availableFrame === null || world.frameCount < availableFrame) return;
   state.ram.rebuildAvailableFrame = null;
   state.construction.progressMs = 0;
-  state.construction.pausedMs = 0;
   state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
   state.construction.attempts += 1;
   state.construction.startedFrame = world.frameCount;
-  state.construction.buildSiteUnderAttack = false;
+  state.construction.completedFrame = null;
   state.ram.builds += 1;
   setFloor5EngineState(world, state, 'BUILDING', 'ratings-ram-rebuild-started');
   spawnFloor5RamEntity(world, state);
-  recordFloor5PhaseTransition(world, state, { kind: 'BUILD' }, 'ratings-ram-rebuild-started');
+  transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ratings-ram-rebuild-started');
 }
 
 /**
@@ -2323,10 +2320,18 @@ export function siegeDirectorSystem(world: GameWorld): void {
     return;
   }
   state.lastWorldElapsedMs = world.elapsedMs;
-  _setFloor5BuildSiteUnderAttack(
-    world,
-    state.commandPostHealth < getFloor5Config().commandPost.health,
-  );
+  const buildSite = state.ram.route[0];
+  const threatRadius = getFloor5RamConfig().protection.radiusFt;
+  const isNearBuildSite = (eid: number): boolean =>
+    buildSite !== undefined &&
+    Math.hypot(
+      (world.stores.position.x[eid] ?? 0) - buildSite.x,
+      (world.stores.position.y[eid] ?? 0) - buildSite.y,
+    ) <= threatRadius;
+  const enemyMinionThreat = liveFloor5Minions(world, 'enemy').some(isNearBuildSite);
+  const heroThreat =
+    floor5HeroEntityIsAlive(world, state.heroes.eid) && isNearBuildSite(state.heroes.eid);
+  _setFloor5BuildSiteUnderAttack(world, enemyMinionThreat || heroThreat);
   if (state.commandPostHealth <= 0) {
     recordFloor5PhaseTransition(world, state, { kind: 'DEFEAT' }, 'command-post-destroyed');
   }

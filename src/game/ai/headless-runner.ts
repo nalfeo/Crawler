@@ -183,7 +183,12 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.laneTelemetry.spawned.enemy +
       floor5Siege.laneTelemetry.legalDamageEvents +
       floor5Siege.laneTelemetry.checkpointContests +
-      floor5Siege.laneTelemetry.waveCyclesCompleted
+      floor5Siege.laneTelemetry.waveCyclesCompleted +
+      floor5Siege.ram.builds +
+      floor5Siege.ram.destructions +
+      floor5Siege.ram.strikes +
+      floor5Siege.ram.advanceFrames +
+      (floor5Siege.breach.latched ? 1 : 0)
     );
   }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);

@@ -234,7 +234,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(cloneInventoryBag(bag)).toEqual(inventoryBefore);
   });
 
-  it('pauses and resumes construction deterministically while the build site is under attack', async () => {
+  it('does not treat historical Command Post damage as a permanent build-site threat', async () => {
     let requested = false;
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
@@ -253,10 +253,6 @@ describe('Floor 5 siege foundation real pipeline', () => {
               world.stores.health.current[commandPost] = current - 1;
               return;
             }
-            if (world.frameCount === 80) {
-              const current = world.stores.health.current[commandPost] ?? 0;
-              world.stores.health.current[commandPost] = current + 1;
-            }
           },
         ],
       },
@@ -265,8 +261,8 @@ describe('Floor 5 siege foundation real pipeline', () => {
 
     expect(headless.floor5Siege?.engineState).toBe('READY');
     expect(headless.floor5Siege?.construction.progressMs).toBe(3000);
-    expect(headless.floor5Siege?.construction.pausedMs).toBeCloseTo((79 * 1000) / 60, 5);
-    expect(headless.floor5Siege?.construction.completedFrame).toBeGreaterThan(80);
+    expect(headless.floor5Siege?.construction.completedFrame).not.toBeNull();
+    expect(headless.floor5Siege?.commandPostHealth).toBe(999);
   });
 
   it('records exactly one DEFEAT transition when the Command Post is destroyed', () => {

@@ -54,14 +54,38 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     let liveMinions = 0;
     let liveHeroes = 0;
     let courtyardReachableAfterBreach = false;
+    let barrierVersionAtStart: number | null = null;
     let barrierVersionAtEnd = 0;
+    let finishFrame = 0;
+    let commandPostPreDamaged = false;
 
     const stats = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 6000,
-      questStallFrames: 0,
+      questStallFrames: 600,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            barrierVersionAtStart ??= world.barriers.version;
+            if (commandPostPreDamaged) return;
+            const state = world.floorExtendedState!.floor5Siege!;
+            const commandPost = state.structures['command-post'].eid;
+            if (commandPost <= 0) throw new Error('Floor 5 Command Post was not spawned');
+            world.stores.health.current[commandPost] =
+              (world.stores.health.current[commandPost] ?? 0) - 1;
+            commandPostPreDamaged = true;
+          },
+        ],
+      },
+      stopWhen: (world) => {
+        const committedFrame = world.floorExtendedState?.floor5Siege?.breach.committedFrame;
+        return committedFrame !== null && committedFrame !== undefined
+          ? world.frameCount >= committedFrame + 300
+          : false;
+      },
       onFinish: (world) => {
+        finishFrame = world.frameCount;
         liveRams = Array.from(query(world.ecs, [SiegeRam])).length;
         liveMarkers = Array.from(query(world.ecs, [SiegeRouteMarker])).length;
         liveMinions = Array.from(query(world.ecs, [SiegeMinion])).length;
@@ -90,6 +114,7 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     // --- One-shot breach latch --------------------------------------------
     expect(siege!.breach.latched).toBe(true);
     expect(siege!.breach.committedFrame).not.toBeNull();
+    expect(finishFrame).toBeGreaterThanOrEqual(siege!.breach.committedFrame! + 300);
     // Commit was attempted at least once and the latch admitted exactly one.
     expect(siege!.breach.commitAttempts).toBeGreaterThanOrEqual(1);
     expect(siege!.ram.stateSequence.filter((entry) => entry === 'BREACHED')).toHaveLength(1);
@@ -124,7 +149,8 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     expect(liveHeroes).toBe(0);
 
     // --- Real passability parity + nav invalidation ------------------------
-    expect(barrierVersionAtEnd).toBeGreaterThan(0);
+    expect(barrierVersionAtStart).not.toBeNull();
+    expect(barrierVersionAtEnd).toBeGreaterThan(barrierVersionAtStart!);
     expect(courtyardReachableAfterBreach).toBe(true);
 
     // --- No stall ----------------------------------------------------------
