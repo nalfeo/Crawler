@@ -1,4 +1,5 @@
 import type { RunBundle } from '../shared/run-bundle.js';
+import { resolveRunBundleUploadConfig } from './run-bundle-upload.js';
 
 const MAX_ISSUE_SCREENSHOT_BASE64_BYTES = 2 * 1024 * 1024;
 const MAX_ISSUE_RECORDER_BYTES = 1024 * 1024;
@@ -14,12 +15,6 @@ export interface FileIssueResponse {
   readonly runId: string;
   readonly issueUrl?: string;
 }
-
-type RunsIngestEnv = ImportMeta & {
-  readonly env?: {
-    readonly VITE_RUNS_INGEST_URL?: string;
-  };
-};
 
 function base64ByteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
@@ -72,8 +67,7 @@ export function buildFileIssuePayload(
 }
 
 function getRunsIngestUrl(): string | undefined {
-  const value = (import.meta as RunsIngestEnv).env?.VITE_RUNS_INGEST_URL?.trim();
-  return value || undefined;
+  return resolveRunBundleUploadConfig().endpoint ?? undefined;
 }
 
 export async function submitFileIssue(
