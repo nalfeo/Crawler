@@ -1,0 +1,162 @@
+{
+  "overall": {
+    "score": 62.6,
+    "verdict": "needs-work",
+    "summary": "Deterministic contract is unscoped. 2 evidence-backed blocker(s); 1 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional but has several spacing, alignment, and readability issues that detract from its usability and polish. Improvements to text alignment, spacing, and visual hierarchy are needed to make it more user-friendly.",
+    "raw_score": 68
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 70,
+      "strengths": [
+        "Consistent placement of HUD elements across the screen.",
+        "Minimap and ability bar are logically positioned."
+      ],
+      "issues": [
+        "The 'Floor 1' and timer panel is slightly off-center horizontally.",
+        "The ability bar feels cramped with minimal spacing between slots."
+      ]
+    },
+    "spacing_balance": {
+      "score": 65,
+      "strengths": [
+        "Adequate spacing between the minimap and other elements.",
+        "Health bar and currency panel have sufficient breathing room."
+      ],
+      "issues": [
+        "Ability slots are too tightly packed, with no visible breathing room between them.",
+        "The 'Floor 1' panel is too close to the top edge of the screen."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 60,
+      "strengths": ["Key elements like health and abilities are visually distinct."],
+      "issues": [
+        "The 'Floor 1' panel does not stand out enough as a primary indicator.",
+        "The ability bar lacks clear emphasis on active or important abilities."
+      ]
+    },
+    "readability": {
+      "score": 70,
+      "strengths": [
+        "Text is legible with good contrast against the background.",
+        "Numeric values for health and currency are clear."
+      ],
+      "issues": [
+        "The font size for ability labels is small and could be difficult to read for some players.",
+        "The 'MAP (M)' label under the minimap is slightly cramped."
+      ]
+    },
+    "icon_usage": {
+      "score": 75,
+      "strengths": [
+        "Icons for health and currency are clear and recognizable.",
+        "Minimap frame is visually distinct."
+      ],
+      "issues": [
+        "Ability icons are missing, relying solely on text, which reduces quick recognition."
+      ]
+    },
+    "typography_clarity": {
+      "score": 65,
+      "strengths": ["Text is crisp and not blurry.", "Font choice is consistent across the HUD."],
+      "issues": [
+        "Ability labels are too small and lack padding, making them feel cramped.",
+        "The 'Floor 1' panel text alignment feels slightly off."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 75,
+      "strengths": [
+        "The minimalistic design aligns with the game's theme.",
+        "Color choices are consistent and appropriate."
+      ],
+      "issues": [
+        "The HUD feels slightly sterile and could benefit from subtle decorative elements to enhance immersion."
+      ]
+    }
+  },
+  "blocking_findings": [
+    "Ability slots are too tightly packed, with no visible breathing room between them.",
+    "The font size for ability labels is small and could hinder readability."
+  ],
+  "recommended_fixes": [
+    "Increase spacing between ability slots to improve readability and reduce visual clutter.",
+    "Increase font size for ability labels to enhance readability.",
+    "Reposition the 'Floor 1' panel slightly downward to create more breathing room from the top edge."
+  ],
+  "precise_fixes": [
+    {
+      "element": "abilityBar.slot",
+      "action": "pad",
+      "dx": 0,
+      "dy": 0,
+      "dw": 4,
+      "dh": 0,
+      "reason": "Ability slots are too tightly packed; adding 4px horizontal padding will improve readability."
+    },
+    {
+      "element": "floorPanel",
+      "action": "move",
+      "dx": 0,
+      "dy": 10,
+      "reason": "The 'Floor 1' panel is too close to the top edge; moving it down by 10px will create better spacing."
+    },
+    {
+      "element": "abilityBar.label",
+      "action": "resize",
+      "dx": 0,
+      "dy": 0,
+      "dw": 0,
+      "dh": 2,
+      "reason": "Increasing the font size of ability labels by 2px will improve readability without overcrowding."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [
+    "Ability slots are too tightly packed, with no visible breathing room between them.",
+    "The font size for ability labels is small and could hinder readability."
+  ],
+  "advisory_taste_notes": [
+    "Reposition the 'Floor 1' panel slightly downward to create more breathing room from the top edge."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD Safe Room"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "8f37fc09e55ad994a80504436dbdd8f6c90eb5950bf137622d36f3fa6c68cae8",
+  "capture_unchanged_from_prior": false,
+  "score_derivation": {
+    "axis_mean": 68.6,
+    "penalty": 6,
+    "deterministic_blockers": 0,
+    "llm_blockers": 2,
+    "model_reported_score": 68,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": [
+      "Ability slots are too tightly packed, with no visible breathing room between them.",
+      "The font size for ability labels is small and could hinder readability."
+    ],
+    "recurring": []
+  }
+}

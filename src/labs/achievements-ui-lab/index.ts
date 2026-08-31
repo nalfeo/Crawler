@@ -42,8 +42,8 @@ function rewardText(reward: AchievementReward): string {
   switch (reward.type) {
     case 'lootBox':
       return reward.lootTable === 'floor2-generated-equipment'
-        ? `${reward.tier} loot box`
-        : `${reward.tier} box`;
+        ? `${reward.tier} loot`
+        : reward.tier;
     case 'item':
       return reward.itemId;
     case 'directorMessage':

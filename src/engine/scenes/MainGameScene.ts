@@ -1062,6 +1062,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private offMobileButtonScale?: () => void;
   private offMobileButtonSafeArea?: () => void;
+  /** Reapplies the stacked corner-button layout; also used to restore the
+   * Issue button's normal position after it is temporarily relocated to
+   * avoid overlapping an open panel (see {@link updateOverlayText}). */
+  private applyMobileButtonScale?: (scale: number) => void;
 
   private floorCompletionMessageShown = false;
 
@@ -3168,6 +3172,7 @@ export class MainGameScene extends Phaser.Scene {
       }
     };
     applyMobileButtonScale(getUiScale(this));
+    this.applyMobileButtonScale = applyMobileButtonScale;
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
     this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
       applyMobileButtonScale(getUiScale(this));
@@ -4769,6 +4774,24 @@ export class MainGameScene extends Phaser.Scene {
 
     const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
+    // Panels are centered, so parking the Issue button in the opposite corner
+    // (top-right) while any panel is open keeps it clickable without ever
+    // overlapping panel content; it returns to its normal stacked corner
+    // position once every panel closes.
+    if (this.issueButton) {
+      if (panelOpen) {
+        const insets = getSafeAreaInsets(this);
+        this.issueButton
+          .setDepth(MODAL_DISMISS_BUTTON_DEPTH)
+          .setPosition(
+            GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - this.issueButton.displayWidth,
+            MOBILE_CORNER_BUTTON_MARGIN + insets.top,
+          );
+      } else if (this.hudHiddenForPanel === false) {
+        this.issueButton.setDepth(ISSUE_BUTTON_DEPTH);
+        this.applyMobileButtonScale?.(getUiScale(this));
+      }
+    }
 
     if (!this.world.floorScenario) {
       this.loadoutText?.setVisible(false);

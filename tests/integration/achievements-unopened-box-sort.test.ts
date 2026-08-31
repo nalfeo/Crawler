@@ -41,11 +41,10 @@ function makeRecordingScene(titles: string[]): unknown {
       circle: () => stub,
       image: () => stub,
       text: (_x: number, _y: number, text: string, style: { fontSize?: string }) => {
-        // Row titles are the only text calls rendered at 15px, so this
-        // isolates the achievement-title text calls in render order (the
-        // reward button also uses fontStyle: 'bold', so that alone can't
-        // distinguish them).
-        if (style?.fontSize === '15px') titles.push(text);
+        // Row titles are the only text rendered at 15px that is NOT the reward
+        // CTA. The CTA's label is a fixed string, so excluding it keeps this
+        // probe isolated to achievement titles in render order.
+        if (style?.fontSize === '15px' && text !== 'OPEN') titles.push(text);
         return stub;
       },
       particles: () => stub,

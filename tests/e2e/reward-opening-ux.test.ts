@@ -426,7 +426,7 @@ describe('real reward-opening UX (achievement path)', () => {
       const summary = await waitForRewardOpeningState(page, (s) => s.phase === 'summary', {
         label: 'first summary',
       });
-      expect(summary.nextLabel).toBe('rare box');
+      expect(summary.nextLabel).toBe('rare');
 
       // Driven through REAL keyboard input, not the probe, so the `[N]`
       // keydown wiring in RewardOpeningUI is itself covered end to end.
