@@ -74,10 +74,11 @@ describe('run bundle upload browser configuration', () => {
         });
         return;
       }
+      const postData = request.postDataJSON() as { file_issue?: boolean } | null;
       requests.push({
         url: request.url(),
         mode: request.headers()['x-run-upload-mode'],
-        fileIssue: (JSON.parse(request.postData() ?? '{}') as { file_issue?: boolean }).file_issue,
+        fileIssue: postData?.file_issue,
       });
       await route.fulfill({
         status: 202,
