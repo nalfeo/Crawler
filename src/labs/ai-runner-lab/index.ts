@@ -7,7 +7,7 @@
  * - Showcasing the AI player
  * - Comparing AI vs human performance
  */
-import GUI from 'lil-gui';
+import GUI, { type Controller } from 'lil-gui';
 import Phaser from 'phaser';
 import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
@@ -24,6 +24,7 @@ import {
   getPersonaConfig,
   resolveAiFeatureFlags,
   type AIDecisionModeValue,
+  type AiFeatureFlagContext,
   type AiFeatureFlags,
   type AIPathingModeValue,
   type FusedHeadingDebug,
@@ -54,6 +55,7 @@ import {
   questSystem,
   setTrackedQuest,
   startFloor1BossEncounter,
+  type ScenarioInitializationOptions,
 } from '../../game/index.js';
 import {
   Player,
@@ -376,6 +378,15 @@ const AI_RUNNER_PANEL_STYLES = `
     font-size: 10px;
     line-height: 1.45;
   }
+  .runner-note-warn {
+    margin-top: 4px;
+    padding: 5px 7px;
+    border: 1px solid rgba(251, 191, 36, 0.42);
+    border-radius: 6px;
+    color: #fde68a;
+    background: rgba(146, 64, 14, 0.22);
+  }
+  .runner-note-warn[hidden] { display: none; }
   .runner-telemetry-strip {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -542,17 +553,26 @@ interface AiRunnerLabState {
     autoPauseOnDamage: boolean;
     /** Player-persona preset driving the AI's tuning knobs. */
     playerPersona?: PlayerPersona;
-    /** @deprecated Retained for reading old persisted state only. */
+    /**
+     * @deprecated Legacy read-only migration field. Older persisted lab state
+     * stored feature flags nested under `aiConfig` instead of the canonical
+     * top-level `featureFlags` (above). Kept ONLY so `resolveAiFeatureFlags`
+     * can still read a pre-migration save (see its call site, which spreads
+     * `persisted?.aiConfig` before `persisted?.featureFlags` so the canonical
+     * field wins on conflict) — `persistLabState` never writes these fields
+     * back, so a save made after this change silently drops them from
+     * `aiConfig` and is fully migrated to `featureFlags`.
+     */
     weaponPersonas?: boolean;
-    /** @deprecated Retained for reading old persisted state only. */
+    /** @deprecated See `weaponPersonas` deprecation note. */
     optionalPurchases?: boolean;
-    /** @deprecated Retained for reading old persisted state only. */
+    /** @deprecated See `weaponPersonas` deprecation note. */
     settlementReturnRouting?: boolean;
     /**
-     * @deprecated Retained for reading old persisted state only.
+     * @deprecated See `weaponPersonas` deprecation note.
      */
     merchantWeaponPurchase?: boolean;
-    /** @deprecated See `merchantWeaponPurchase` deprecation note. */
+    /** @deprecated See `weaponPersonas` deprecation note. */
     spellBrokerPurchase?: boolean;
   };
 }
@@ -716,6 +736,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     urlScenario != null
       ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
       : (persisted?.seed ?? INITIAL_SEED);
+  // Declared ahead of `featureFlags` (below) so its context can reflect the
+  // real starting floor rather than re-deriving the same expression twice.
+  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
@@ -748,8 +771,70 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       ...persisted?.aiConfig,
       ...persisted?.featureFlags,
     },
-    { surface: 'lab', floorId: persisted?.floorId ?? 'floor1' },
+    aiFeatureFlagContext(),
   );
+  // Snapshot of the flags actually wired into the currently built
+  // `sceneOptions` (`world.attackWaveFlags`, `ScenarioInitializationOptions`).
+  // Reload-required flags (`attackWaves`, `floor1Spawners`) only take effect
+  // on the run's next restart, so `featureFlags` — the live "selected" state,
+  // bound directly to the Feature Flags GUI folder — can drift from this
+  // snapshot until the user clicks "Apply staged + restart". See
+  // `applyRunSettings` and `hasPendingFeatureFlagReload`.
+  let appliedFeatureFlags: AiFeatureFlags = appliedFeatureFlagsForCurrentTarget();
+
+  /**
+   * Applicability/default-resolution context for the CURRENTLY applied run
+   * target (not any staged-but-unapplied seed/floor/scenario edit).
+   * Recomputed on demand wherever `currentFloor`/`selectedScenarioPresetId`
+   * change (see `applyRunSettings` and `recomposeFloorTransitionOptions`).
+   */
+  function aiFeatureFlagContext(): AiFeatureFlagContext {
+    return {
+      surface: 'lab',
+      floorId: currentFloor,
+      isRealFloorTarget: selectedScenarioPresetId === DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
+    };
+  }
+
+  /**
+   * The reload-required flags from `appliedFeatureFlags`, shaped as the
+   * `ScenarioInitializationOptions` seam every `createFloorMainSceneOptions`
+   * call in this lab must forward — the single path that sets
+   * `world.attackWaveFlags.attackWaves` and gates Floor 1's static spawners.
+   */
+  function scenarioInitializationOptionsFromApplied(): ScenarioInitializationOptions {
+    return {
+      attackWaves: appliedFeatureFlags.attackWaves,
+      floor1Spawners: appliedFeatureFlags.floor1Spawners,
+    };
+  }
+
+  /** Mask flags that cannot affect the currently applied lab target. */
+  function appliedFeatureFlagsForCurrentTarget(): AiFeatureFlags {
+    const context = aiFeatureFlagContext();
+    const applied = { ...featureFlags };
+    for (const control of getAiFeatureFlagControls(context)) {
+      if (!control.applicable) {
+        applied[control.key] = false;
+      }
+    }
+    return applied;
+  }
+
+  /**
+   * True when a reload-required flag's live selection (`featureFlags`, bound
+   * to the Feature Flags GUI folder) differs from what's actually wired into
+   * the currently running world (`appliedFeatureFlags`). Drives the "pending
+   * reload" note in the Run setup panel.
+   */
+  function hasPendingFeatureFlagReload(): boolean {
+    return getAiFeatureFlagControls(aiFeatureFlagContext()).some(
+      (control) =>
+        control.reloadRequired &&
+        control.applicable &&
+        featureFlags[control.key] !== appliedFeatureFlags[control.key],
+    );
+  }
 
   /**
    * Single construction point for the AI brain. Every knob comes from the
@@ -929,7 +1014,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     });
     runSettlementMaintenancePlanner(world);
   };
-  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
   let stagedSeedText = String(currentSeed);
   let stagedRunTarget: AiRunnerRunTargetKey | null = null;
   const recorderControls = createSessionRecorderControls({
@@ -973,12 +1057,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       selectedScenarioPresetId = resolved.presetId;
       applyScenarioVisualProfile(selectedScenarioPresetId);
       persistLabState();
+      updateFeatureFlagControllerState();
       Object.assign(sceneOptions, composeSceneOptions(nextFloorOptions));
       return sceneOptions;
     },
   });
 
-  const sceneOptions = composeSceneOptions(createFloorMainSceneOptions(currentFloor));
+  const sceneOptions = composeSceneOptions(
+    createFloorMainSceneOptions(currentFloor, scenarioInitializationOptionsFromApplied()),
+  );
 
   const config = createFloorGameConfig(canvas, sceneOptions, currentFloor);
 
@@ -1341,16 +1428,46 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   aiFolder.close();
 
   const featureFlagsFolder = gui.addFolder('Feature Flags');
-  for (const control of getAiFeatureFlagControls()) {
-    featureFlagsFolder
+  const featureFlagControllers = new Map<
+    ReturnType<typeof getAiFeatureFlagControls>[number]['key'],
+    Controller
+  >();
+  for (const control of getAiFeatureFlagControls(aiFeatureFlagContext())) {
+    const controller = featureFlagsFolder
       .add(featureFlags, control.key)
       .name(control.label)
       .onChange(() => {
         persistLabState();
         renderControls();
       });
+    featureFlagControllers.set(control.key, controller);
   }
+  updateFeatureFlagControllerState();
   featureFlagsFolder.close();
+
+  /**
+   * Disable (and relabel) Feature Flags GUI controls that are not applicable
+   * to the currently applied floor/scenario target — e.g. Floor 1 static
+   * spawners on Floor 2, or either Floor-1-gated flag on a synthetic lab
+   * scenario preset — so the lab never presents a control that would
+   * silently be a no-op or misleading for what's actually loaded. Called on
+   * initial build and whenever `currentFloor`/`selectedScenarioPresetId`
+   * change (`applyRunSettings`, `recomposeFloorTransitionOptions`).
+   */
+  function updateFeatureFlagControllerState(): void {
+    const context = aiFeatureFlagContext();
+    for (const control of getAiFeatureFlagControls(context)) {
+      const controller = featureFlagControllers.get(control.key);
+      if (!controller) continue;
+      controller.disable(!control.applicable);
+      const suffix = control.applicable
+        ? ''
+        : context.isRealFloorTarget === false
+          ? ' (n/a for this scenario preset)'
+          : ` (n/a on ${currentFloor})`;
+      controller.name(`${control.label}${suffix}`);
+    }
+  }
 
   // Rebuild the AI brain in place (preserving the current seed) so an A/B mode
   // toggle takes effect immediately without restarting the scene/floor.
@@ -1522,9 +1639,21 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     currentFloor = next.floorId;
     selectedScenarioPresetId = scenarioResolution.presetId;
     applyScenarioVisualProfile(selectedScenarioPresetId);
-    Object.assign(sceneOptions, composeSceneOptions(createFloorMainSceneOptions(currentFloor)));
+    // "Apply staged + restart" (and the plain Restart button, which calls this
+    // with the currently applied seed/floor/scenario) is the single point
+    // where a reload-required feature-flag SELECTION becomes APPLIED: copy the
+    // live `featureFlags` selection into the snapshot that actually feeds the
+    // next world build.
+    appliedFeatureFlags = appliedFeatureFlagsForCurrentTarget();
+    Object.assign(
+      sceneOptions,
+      composeSceneOptions(
+        createFloorMainSceneOptions(currentFloor, scenarioInitializationOptionsFromApplied()),
+      ),
+    );
     reseed(next.seed);
     persistLabState();
+    updateFeatureFlagControllerState();
     return { forcedDefault: scenarioResolution.forcedDefault };
   };
 
@@ -2357,7 +2486,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           <div class="runner-primary-actions" aria-label="Primary run commands">
             <button id="ai-manual-toggle" class="runner-takeover" type="button">◆ Control</button>
             <button id="ai-toggle-run" class="runner-play" type="button">Resume</button>
-            <button id="ai-restart-current" class="runner-restart" type="button" title="Restart with the currently applied seed and target">↻ Restart</button>
+            <button id="ai-restart-current" class="runner-restart" type="button" title="Restart with the currently applied seed/target, applying any pending Feature Flags change">↻ Restart</button>
           </div>
           <div class="runner-transport-row">
             <div class="runner-speed-group" role="group" aria-label="Simulation speed">
@@ -2384,10 +2513,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
                 </div>
               </div>
               <div class="runner-setup-actions">
-                <button id="ai-run-apply" class="runner-apply" type="button">Apply staged + restart</button>
+                <button id="ai-run-apply" class="runner-apply" type="button" title="Applies the staged seed/target AND any pending Feature Flags change, then restarts">Apply staged + restart</button>
                 <button id="ai-seed-random" type="button" title="Stage a random seed">Randomize</button>
               </div>
               <div id="ai-run-settings-note" class="runner-note">${pendingRunSettingsNote ?? 'Stage a seed or target here; Restart above always replays the applied run.'}</div>
+              <div id="ai-feature-flag-reload-note" class="runner-note runner-note-warn"${hasPendingFeatureFlagReload() ? '' : ' hidden'}>⚠ Feature flag change staged — click "Apply staged + restart" (or ↻ Restart) to apply it.</div>
               <div id="ai-scenario-description" class="runner-note">${selectedRunTarget.startsWith('scenario:') ? (selectedScenarioPreset?.description ?? '') : 'Floor target selected — scenario overrides are disabled for this run.'}</div>
             </div>
           </details>
