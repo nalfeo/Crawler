@@ -150,24 +150,23 @@ describe('AI feature flag registry', () => {
       }
     });
 
-    it('masks persisted inapplicable world-init flags and marks their controls unavailable', () => {
-      expect(
-        resolveAiFeatureFlags(
-          { attackWaves: true, floor1Spawners: true },
-          { surface: 'lab', floorId: 'floor1', isRealFloorTarget: false },
-        ),
-      ).toMatchObject({ attackWaves: false, floor1Spawners: false });
+    it('reports world-init flag applicability without overriding headless inputs', () => {
       expect(
         getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor1' }).find(
           (control) => control.key === 'attackWaves',
         )?.applicable,
       ).toBe(true);
+      const syntheticControls = getAiFeatureFlagControls({
+        surface: 'lab',
+        floorId: 'floor1',
+        isRealFloorTarget: false,
+      });
+      expect(syntheticControls.find((control) => control.key === 'attackWaves')?.applicable).toBe(
+        false,
+      );
       expect(
-        resolveAiFeatureFlags(
-          { attackWaves: true, floor1Spawners: true },
-          { surface: 'lab', floorId: 'floor1', isRealFloorTarget: true },
-        ),
-      ).toMatchObject({ attackWaves: true, floor1Spawners: true });
+        syntheticControls.find((control) => control.key === 'floor1Spawners')?.applicable,
+      ).toBe(false);
       expect(
         getAiFeatureFlagControls({ surface: 'headless', floorId: 'floor2' }).find(
           (control) => control.key === 'attackWaves',

@@ -780,7 +780,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // bound directly to the Feature Flags GUI folder — can drift from this
   // snapshot until the user clicks "Apply staged + restart". See
   // `applyRunSettings` and `hasPendingFeatureFlagReload`.
-  let appliedFeatureFlags: AiFeatureFlags = { ...featureFlags };
+  let appliedFeatureFlags: AiFeatureFlags = appliedFeatureFlagsForCurrentTarget();
 
   /**
    * Applicability/default-resolution context for the CURRENTLY applied run
@@ -807,6 +807,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       attackWaves: appliedFeatureFlags.attackWaves,
       floor1Spawners: appliedFeatureFlags.floor1Spawners,
     };
+  }
+
+  /** Mask flags that cannot affect the currently applied lab target. */
+  function appliedFeatureFlagsForCurrentTarget(): AiFeatureFlags {
+    const context = aiFeatureFlagContext();
+    const applied = { ...featureFlags };
+    for (const control of getAiFeatureFlagControls(context)) {
+      if (!control.applicable) {
+        applied[control.key] = false;
+      }
+    }
+    return applied;
   }
 
   /**
@@ -1630,7 +1642,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     // where a reload-required feature-flag SELECTION becomes APPLIED: copy the
     // live `featureFlags` selection into the snapshot that actually feeds the
     // next world build.
-    appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());
+    appliedFeatureFlags = appliedFeatureFlagsForCurrentTarget();
     Object.assign(
       sceneOptions,
       composeSceneOptions(

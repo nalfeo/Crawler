@@ -21,7 +21,9 @@ const SOURCE = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
 describe('AI Runner lab — reload-required feature-flag wiring', () => {
   it('keeps a distinct selected (featureFlags) vs applied (appliedFeatureFlags) snapshot', () => {
-    expect(SOURCE).toContain('let appliedFeatureFlags: AiFeatureFlags = { ...featureFlags };');
+    expect(SOURCE).toContain(
+      'let appliedFeatureFlags: AiFeatureFlags = appliedFeatureFlagsForCurrentTarget();',
+    );
     expect(SOURCE).toContain('function hasPendingFeatureFlagReload(): boolean {');
     expect(SOURCE).toContain(
       'control.reloadRequired && featureFlags[control.key] !== appliedFeatureFlags[control.key]',
@@ -49,15 +51,13 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
   it('only "Apply staged + restart" and "↻ Restart" (via applyRunSettings) promote a selection to applied', () => {
     // applyRunSettings is the sole seam that copies the live selection into
     // the applied snapshot — no competing restart path exists.
-    expect(SOURCE).toContain(
-      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
-    );
+    expect(SOURCE).toContain('appliedFeatureFlags = appliedFeatureFlagsForCurrentTarget();');
     const applyRunSettingsBody = SOURCE.slice(
       SOURCE.indexOf('const applyRunSettings = (next: {'),
       SOURCE.indexOf('const encodeFloorRunTarget'),
     );
     expect(applyRunSettingsBody).toContain(
-      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
+      'appliedFeatureFlags = appliedFeatureFlagsForCurrentTarget();',
     );
     expect(applyRunSettingsBody).toContain('updateFeatureFlagControllerState();');
     // Both buttons call applyRunSettings — no second/parallel apply path.
@@ -109,13 +109,20 @@ describe('AI Runner lab — reload-required feature-flag wiring', () => {
     );
   });
 
-  it('masks inapplicable selections before applying them to a restarted scenario', () => {
+  it('masks inapplicable selections on initial load and before applying a restarted scenario', () => {
+    expect(SOURCE).toContain(
+      'let appliedFeatureFlags: AiFeatureFlags = appliedFeatureFlagsForCurrentTarget();',
+    );
+    expect(SOURCE).toContain('function appliedFeatureFlagsForCurrentTarget(): AiFeatureFlags {');
+    expect(SOURCE).toContain('for (const control of getAiFeatureFlagControls(context)) {');
+    expect(SOURCE).toContain('if (!control.applicable) {');
+    expect(SOURCE).toContain('applied[control.key] = false;');
     const applyRunSettingsBody = SOURCE.slice(
       SOURCE.indexOf('const applyRunSettings = (next: {'),
       SOURCE.indexOf('const encodeFloorRunTarget'),
     );
     expect(applyRunSettingsBody).toContain(
-      'appliedFeatureFlags = resolveAiFeatureFlags(featureFlags, aiFeatureFlagContext());',
+      'appliedFeatureFlags = appliedFeatureFlagsForCurrentTarget();',
     );
   });
 

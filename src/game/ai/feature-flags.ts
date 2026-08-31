@@ -96,7 +96,7 @@ export function resolveAiFeatureFlags(
   for (const definition of AI_FEATURE_FLAG_DEFINITIONS) {
     const requested =
       input[definition.key] ?? definition.resolve?.(input) ?? definition.defaultEnabled(context);
-    resolved[definition.key] = definition.applicableTo(context) ? requested : false;
+    resolved[definition.key] = requested;
   }
   return resolved;
 }
