@@ -7,6 +7,48 @@
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
+  const opened = probe.getSnapshot();
+  const initialSelectedId = opened.selectedAbilityId;
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      code: 'ArrowDown',
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  for (
+    let attempt = 0;
+    attempt < 50 && probe.getSnapshot().selectedAbilityId === initialSelectedId;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  const selected = probe.getSnapshot();
+  const selectedId = selected.selectedAbilityId;
+  const expectedSelectedId = opened.visibleAbilityIds[1];
+  if (!expectedSelectedId || selectedId !== expectedSelectedId) {
+    throw new Error('abilities loadout did not select the second row');
+  }
+  const initiallyEquipped = selected.equippedAbilityIds.includes(selectedId);
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      code: 'Enter',
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  for (
+    let attempt = 0;
+    attempt < 50 &&
+    probe.getSnapshot().equippedAbilityIds.includes(selectedId) === initiallyEquipped;
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
   window.dispatchEvent(new Event('resize'));
   await new Promise((resolve) => setTimeout(resolve, 400));
 
@@ -15,6 +57,13 @@
   if (!snapshot.panel || !snapshot.listViewport || !snapshot.footer || !canvas) {
     throw new Error('abilities loadout bounds unavailable');
   }
+  if (snapshot.selectedAbilityId !== selectedId) {
+    throw new Error('abilities loadout selection changed during toggle');
+  }
+  if (snapshot.equippedAbilityIds.includes(selectedId) === initiallyEquipped) {
+    throw new Error('abilities loadout toggle did not change the selected row');
+  }
+
   const rect = canvas.getBoundingClientRect();
   const scaleX = rect.width / 1280;
   const scaleY = rect.height / 720;
@@ -72,7 +121,7 @@
   });
 
   window.__visualReview = {
-    surface: 'abilities loadout default state',
+    surface: 'abilities loadout selected and toggled state',
     regions: [
       { id: 'loadout-panel', box: toScreenshotBox(snapshot.panel), kind: 'panel' },
       {
