@@ -17,21 +17,14 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
-import {
-  BLUE_STEEL,
-  HUD_FONT_FAMILY,
-  MIN_TEXT_RESOLUTION,
-  UI_FONT_FAMILY,
-  hex,
-} from './ui-theme.js';
+import { BLUE_STEEL, HUD_FONT_FAMILY, MIN_TEXT_RESOLUTION, hex } from './ui-theme.js';
 import {
   resolveFamilyRows,
   shouldShowFamilyRelationships,
-  displayNameForRow,
   type FamilyRow,
 } from './family-relationships-state.js';
 
-const PANEL_WIDTH = 292;
+const MIN_PANEL_WIDTH = 264;
 const TITLE_H = 30;
 const ROW_H = 42;
 const ROW_GAP = 2;
@@ -39,15 +32,41 @@ const MAX_ROWS = 4;
 const PANEL_PAD = 8;
 
 const SWATCH_SIZE = 12;
-const BAR_WIDTH = 142;
+const NAME_X = 22;
+const MIN_NAME_COLUMN_WIDTH = 96;
+const NAME_STATUS_GAP = 12;
+const BAR_WIDTH = 110;
 const BAR_HEIGHT = 8;
+const VALUE_COLUMN_WIDTH = 24;
+const VALUE_RIGHT_X = NAME_X + BAR_WIDTH + 5 + VALUE_COLUMN_WIDTH;
+const STATUS_PILL_WIDTH = 76;
+const STATUS_BOSS_GAP = 10;
+const BOSS_TILE_WIDTH = 28;
 const CLEARANCE = 8;
 const IDENTITY_CENTER_Y = 11;
 const METRIC_CENTER_Y = 33;
+const FAMILY_BODY_FONT = '"Aptos", "Segoe UI", sans-serif';
+const COLLAPSE_STORAGE_KEY = 'crawler:family-relationships-collapsed';
 
 /** Panel anchored bottom-right so it doesn't collide with the top-right radar. */
 const PANEL_MARGIN_RIGHT = 12;
 const PANEL_MARGIN_BOTTOM = 160;
+
+function readCollapsedPref(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(COLLAPSE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsedPref(collapsed: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(COLLAPSE_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Storage may be unavailable in private or headless contexts.
+  }
+}
 
 export interface FamilyRelationshipRowLayout {
   readonly row: ScreenBounds;
@@ -60,6 +79,7 @@ export interface FamilyRelationshipRowLayout {
   readonly bossLabel: ScreenBounds;
   readonly statusPill: ScreenBounds;
   readonly status: ScreenBounds;
+  readonly statusLabel: string;
   readonly displayedName: string;
   readonly relation: number;
   readonly band: FamilyRow['band'];
@@ -73,6 +93,8 @@ export interface FamilyRelationshipsLayout {
   readonly title: ScreenBounds | null;
   readonly columnHeader: null;
   readonly columnLabels: null;
+  readonly collapsed: boolean;
+  readonly collapseToggle: ScreenBounds | null;
   readonly rows: readonly FamilyRelationshipRowLayout[];
 }
 
@@ -113,6 +135,7 @@ export function createHudFamilyRelationships(
 ): {
   sync(world: GameWorld): void;
   setVisible(visible: boolean): void;
+  setCollapsed(collapsed: boolean): void;
   getState(): HudFamilyRelationshipsState;
   getLayout(): FamilyRelationshipsLayout;
   destroy(): void;
@@ -121,16 +144,27 @@ export function createHudFamilyRelationships(
   const families = options.families ?? loadFamilies();
 
   const totalRows = MAX_ROWS;
-  const panelHeight = PANEL_PAD + TITLE_H + totalRows * (ROW_H + ROW_GAP) + PANEL_PAD;
-  const panelX = GAME.WIDTH - PANEL_WIDTH - PANEL_MARGIN_RIGHT;
-  const panelY = GAME.HEIGHT - panelHeight - PANEL_MARGIN_BOTTOM;
+  const expandedPanelHeight = (): number =>
+    PANEL_PAD +
+    TITLE_H +
+    rowVisuals.filter((row) => row.row !== null).length * (ROW_H + ROW_GAP) +
+    PANEL_PAD;
+  const collapsedPanelHeight = PANEL_PAD + TITLE_H;
+  let collapsed = readCollapsedPref();
+  let panelWidth = MIN_PANEL_WIDTH;
+  let panelHeight = collapsed
+    ? collapsedPanelHeight
+    : PANEL_PAD + TITLE_H + totalRows * (ROW_H + ROW_GAP) + PANEL_PAD;
 
   const root = scene.add
-    .container(panelX, panelY)
+    .container(
+      GAME.WIDTH - panelWidth - PANEL_MARGIN_RIGHT,
+      GAME.HEIGHT - panelHeight - PANEL_MARGIN_BOTTOM,
+    )
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.panel);
   parent?.add(root);
-  const panel = createBeveledPanel(scene, 0, 0, PANEL_WIDTH, panelHeight, {
+  const panel = createBeveledPanel(scene, 0, 0, panelWidth, panelHeight, {
     parent: root,
     fill: BLUE_STEEL.panelBg,
     highlight: BLUE_STEEL.panelBorder,
@@ -140,7 +174,7 @@ export function createHudFamilyRelationships(
   });
 
   const titleFrame = scene.add
-    .rectangle(PANEL_PAD - 2, 4, PANEL_WIDTH - PANEL_PAD * 2 + 4, 17, BLUE_STEEL.sectionHeader)
+    .rectangle(PANEL_PAD - 2, 4, panelWidth - PANEL_PAD * 2 + 4, 17, BLUE_STEEL.sectionHeader)
     .setOrigin(0, 0)
     .setStrokeStyle(1, BLUE_STEEL.panelBorder)
     .setDepth(PIXEL_UI_DEPTH.content);
@@ -166,10 +200,22 @@ export function createHudFamilyRelationships(
   // compass band) without adding per-row chrome that would fight fast
   // row-to-row scanning.
   const titleAccent = scene.add
-    .rectangle(PANEL_PAD - 2, 4 + 17, PANEL_WIDTH - PANEL_PAD * 2 + 4, 2, PIXEL_UI.gold, 0.85)
+    .rectangle(PANEL_PAD - 2, 4 + 17, panelWidth - PANEL_PAD * 2 + 4, 2, PIXEL_UI.gold, 0.85)
     .setOrigin(0, 0)
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add(titleAccent);
+
+  const chevron = scene.add
+    .text(panelWidth - PANEL_PAD - 2, 12, collapsed ? '▸' : '▾', {
+      fontFamily: FAMILY_BODY_FONT,
+      fontSize: '17px',
+      fontStyle: 'bold',
+      color: hex(PIXEL_UI.gold),
+    })
+    .setOrigin(1, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  root.add(chevron);
 
   const rowStartY = PANEL_PAD + TITLE_H;
   const rowVisuals: RowVisuals[] = [];
@@ -182,7 +228,7 @@ export function createHudFamilyRelationships(
       .setDepth(PIXEL_UI_DEPTH.content);
 
     const background = scene.add
-      .rectangle(0, 0, PANEL_WIDTH - PANEL_PAD * 2, ROW_H, i % 2 === 0 ? 0x394c74 : 0x35476d)
+      .rectangle(0, 0, panelWidth - PANEL_PAD * 2, ROW_H, i % 2 === 0 ? 0x394c74 : 0x35476d)
       .setOrigin(0, 0)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const swatch = scene.add
@@ -190,11 +236,10 @@ export function createHudFamilyRelationships(
       .setOrigin(0, 0.5)
       .setStrokeStyle(1, PIXEL_UI.border);
 
-    const nameX = 4 + SWATCH_SIZE + 6;
     const name = scene.add
-      .text(nameX, IDENTITY_CENTER_Y, '', {
-        fontFamily: UI_FONT_FAMILY,
-        fontSize: '12px',
+      .text(NAME_X, IDENTITY_CENTER_Y, '', {
+        fontFamily: FAMILY_BODY_FONT,
+        fontSize: '13px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textPrimary),
         stroke: '#02040a',
@@ -202,7 +247,7 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0, 0.5);
 
-    const barX = nameX;
+    const barX = NAME_X;
     const barY = METRIC_CENTER_Y - BAR_HEIGHT / 2;
     const barTrack = scene.add
       .rectangle(barX, barY, BAR_WIDTH, BAR_HEIGHT, PIXEL_UI.trackFill)
@@ -225,43 +270,42 @@ export function createHudFamilyRelationships(
     );
 
     const relationText = scene.add
-      .text(barX + BAR_WIDTH + 5, METRIC_CENTER_Y, '', {
-        fontFamily: UI_FONT_FAMILY,
-        fontSize: '12px',
+      .text(VALUE_RIGHT_X, METRIC_CENTER_Y, '', {
+        fontFamily: FAMILY_BODY_FONT,
+        fontSize: '13px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
         strokeThickness: 1,
       })
-      .setOrigin(0, 0.5);
+      .setOrigin(1, 0.5);
 
-    const bossTileX = 260;
+    const bossTileX = panelWidth - PANEL_PAD * 2 - BOSS_TILE_WIDTH / 2 - 2;
     const bossTileY = IDENTITY_CENTER_Y;
     const bossTile = scene.add
-      .rectangle(bossTileX, bossTileY, 28, 18, 0x2b3c61)
+      .rectangle(bossTileX, bossTileY, BOSS_TILE_WIDTH, 18, 0x2b3c61)
       .setOrigin(0.5, 0.5)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const bossIcon = scene.add
       .text(bossTileX, bossTileY, '♥', {
-        fontFamily: UI_FONT_FAMILY,
+        fontFamily: FAMILY_BODY_FONT,
         fontSize: '14px',
         fontStyle: 'bold',
         color: '#f87171',
       })
       .setOrigin(0.5, 0.5);
 
-    const statusPillX = 160;
+    const statusPillX = NAME_X + MIN_NAME_COLUMN_WIDTH + NAME_STATUS_GAP;
     const statusPillY = IDENTITY_CENTER_Y - 9;
-    const statusPillWidth = 76;
     const statusPill = scene.add
-      .rectangle(statusPillX, statusPillY, statusPillWidth, 18, PIXEL_UI.trackFill)
+      .rectangle(statusPillX, statusPillY, STATUS_PILL_WIDTH, 18, PIXEL_UI.trackFill)
       .setOrigin(0, 0)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
 
     const statusText = scene.add
-      .text(statusPillX + statusPillWidth / 2, IDENTITY_CENTER_Y, '', {
-        fontFamily: UI_FONT_FAMILY,
-        fontSize: '11px',
+      .text(statusPillX + STATUS_PILL_WIDTH / 2, IDENTITY_CENTER_Y, '', {
+        fontFamily: FAMILY_BODY_FONT,
+        fontSize: '12px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
@@ -302,6 +346,7 @@ export function createHudFamilyRelationships(
 
   const allTexts = [
     title,
+    chevron,
     ...rowVisuals.flatMap((r) => [r.name, r.relationText, r.bossIcon, r.statusText]),
   ];
   const detachCrispText = applyCrispText(scene, allTexts, MIN_TEXT_RESOLUTION + 2);
@@ -325,7 +370,10 @@ export function createHudFamilyRelationships(
     titleFrame.setVisible(effectiveVisible);
     titleAccent.setVisible(effectiveVisible);
     title.setVisible(effectiveVisible);
-    for (const r of rowVisuals) r.container.setVisible(effectiveVisible);
+    chevron.setVisible(effectiveVisible);
+    for (const r of rowVisuals) {
+      r.container.setVisible(effectiveVisible && !collapsed && r.row !== null);
+    }
   }
 
   function fingerprintFor(rows: FamilyRow[]): string {
@@ -341,17 +389,16 @@ export function createHudFamilyRelationships(
       rv.container.setVisible(false);
       return;
     }
-    rv.container.setVisible(true);
+    rv.container.setVisible(masterVisible && lastVisible && !collapsed);
     rv.swatch.setFillStyle(row.hudColor);
-    // Prefer the full name; fall back to the short species label when it's too wide.
-    rv.name.setText(displayNameForRow(row));
+    rv.name.setText(row.name);
 
     const inner = BAR_WIDTH - 2;
     const pct = Math.max(0, Math.min(1, row.relation / 100));
     const w = Math.max(1, Math.round(inner * pct));
     rv.barFill.setSize(w, BAR_HEIGHT - 2);
     rv.barFill.setFillStyle(row.barColor);
-    rv.relationText.setText(String(Math.round(row.relation)).padStart(3, ' '));
+    rv.relationText.setText(String(Math.round(row.relation)));
 
     if (row.bossDefeated) {
       rv.bossIcon.setText('☠️');
@@ -387,6 +434,35 @@ export function createHudFamilyRelationships(
     }
   }
 
+  function applyDynamicLayout(): void {
+    const widestName = rowVisuals.reduce(
+      (width, rv) => (rv.row ? Math.max(width, Math.ceil(rv.name.width)) : width),
+      MIN_NAME_COLUMN_WIDTH,
+    );
+    const statusPillX = Math.max(
+      NAME_X + widestName + NAME_STATUS_GAP,
+      VALUE_RIGHT_X + NAME_STATUS_GAP,
+    );
+    const bossTileX = statusPillX + STATUS_PILL_WIDTH + STATUS_BOSS_GAP + BOSS_TILE_WIDTH / 2;
+    const contentRight = bossTileX + BOSS_TILE_WIDTH / 2 + 2;
+
+    panelWidth = Math.max(MIN_PANEL_WIDTH, contentRight + PANEL_PAD * 2);
+    panelHeight = collapsed ? collapsedPanelHeight : expandedPanelHeight();
+    panel.setSize(panelWidth, panelHeight);
+    titleFrame.setSize(panelWidth - PANEL_PAD * 2 + 4, 17);
+    titleAccent.setSize(panelWidth - PANEL_PAD * 2 + 4, 2);
+    chevron.setX(panelWidth - PANEL_PAD - 2);
+
+    const rowWidth = panelWidth - PANEL_PAD * 2;
+    for (const rv of rowVisuals) {
+      rv.background.setSize(rowWidth, ROW_H);
+      rv.statusPill.setX(statusPillX);
+      rv.statusText.setX(statusPillX + STATUS_PILL_WIDTH / 2);
+      rv.bossTile.setX(bossTileX);
+      rv.bossIcon.setX(bossTileX);
+    }
+  }
+
   function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
     return (
       a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
@@ -394,11 +470,23 @@ export function createHudFamilyRelationships(
   }
 
   function panelScreenBounds(): ScreenBounds {
-    return screenBounds(root);
+    const titleBounds = screenBounds(titleFrame);
+    const titleFrameWidth = panelWidth - PANEL_PAD * 2 + 4;
+    const scaleX = titleBounds.width / titleFrameWidth;
+    const scaleY = titleBounds.height / 17;
+    return {
+      x: titleBounds.x - (PANEL_PAD - 2) * scaleX,
+      y: titleBounds.y - 4 * scaleY,
+      width: panelWidth * scaleX,
+      height: panelHeight * scaleY,
+    };
   }
 
   function updateAvoidance(): void {
-    root.setPosition(panelX, panelY);
+    root.setPosition(
+      GAME.WIDTH - panelWidth - PANEL_MARGIN_RIGHT,
+      GAME.HEIGHT - panelHeight - PANEL_MARGIN_BOTTOM,
+    );
     const avoid = options
       .getAvoidBounds?.()
       .filter((bounds) => bounds.width > 0 && bounds.height > 0);
@@ -451,16 +539,17 @@ export function createHudFamilyRelationships(
       }
     }
     if (!shouldShow || !masterVisible) return;
-    updateAvoidance();
 
     const rows = resolveFamilyRows(world, families).slice(0, MAX_ROWS);
     const fp = fingerprintFor(rows);
-    if (fp === lastFingerprint) return;
-    lastFingerprint = fp;
-
-    for (let i = 0; i < rowVisuals.length; i += 1) {
-      renderRow(rowVisuals[i]!, i < rows.length ? rows[i]! : null);
+    if (fp !== lastFingerprint) {
+      lastFingerprint = fp;
+      for (let i = 0; i < rowVisuals.length; i += 1) {
+        renderRow(rowVisuals[i]!, i < rows.length ? rows[i]! : null);
+      }
     }
+    applyDynamicLayout();
+    updateAvoidance();
   }
 
   // Hidden by default until sync sees Floor 2.
@@ -477,6 +566,22 @@ export function createHudFamilyRelationships(
     }
     setPanelVisible(lastVisible);
   }
+
+  function setCollapsed(nextCollapsed: boolean): void {
+    if (nextCollapsed === collapsed) return;
+    collapsed = nextCollapsed;
+    writeCollapsedPref(collapsed);
+    chevron.setText(collapsed ? '▸' : '▾');
+    applyDynamicLayout();
+    setPanelVisible(lastVisible);
+    if (lastVisible && masterVisible) updateAvoidance();
+  }
+
+  const onTitlePointerUp = (): void => {
+    if (!lastVisible || !masterVisible) return;
+    setCollapsed(!collapsed);
+  };
+  titleFrame.setInteractive({ useHandCursor: true }).on('pointerup', onTitlePointerUp);
 
   function getState(): HudFamilyRelationshipsState {
     const parentVisible = parent?.visible ?? true;
@@ -512,6 +617,8 @@ export function createHudFamilyRelationships(
         title: null,
         columnHeader: null,
         columnLabels: null,
+        collapsed,
+        collapseToggle: null,
         rows: [],
       };
     }
@@ -521,6 +628,8 @@ export function createHudFamilyRelationships(
       title: screenBounds(title),
       columnHeader: null,
       columnLabels: null,
+      collapsed,
+      collapseToggle: screenBounds(chevron),
       rows: rowVisuals.flatMap((rv) => {
         if (!rv.container.visible || !rv.row) return [];
         return [
@@ -535,6 +644,7 @@ export function createHudFamilyRelationships(
             bossLabel: screenBounds(rv.bossIcon),
             statusPill: screenBounds(rv.statusPill),
             status: screenBounds(rv.statusText),
+            statusLabel: rv.statusText.text,
             displayedName: rv.name.text,
             relation: rv.row.relation,
             band: rv.row.band,
@@ -551,11 +661,13 @@ export function createHudFamilyRelationships(
     detachCrispText();
     for (const r of rowVisuals) r.container.destroy();
     title.destroy();
+    titleFrame.off('pointerup', onTitlePointerUp);
+    chevron.destroy();
     titleFrame.destroy();
     titleAccent.destroy();
     panel.destroy();
     root.destroy();
   }
 
-  return { sync, setVisible, getState, getLayout, destroy };
+  return { sync, setVisible, setCollapsed, getState, getLayout, destroy };
 }

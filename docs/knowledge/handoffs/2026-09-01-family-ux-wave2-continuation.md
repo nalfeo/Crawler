@@ -14,8 +14,8 @@ hud-ux
 
 ## Apples
 
-4🍎 estimated, 4🍎 actual; maintainer feedback follow-up 3🍎 estimated,
-3🍎 actual
+4🍎 estimated, 4🍎 actual; first maintainer feedback follow-up 3🍎
+estimated, 3🍎 actual; responsive/collapse follow-up 4🍎 estimated, 4🍎 actual
 
 ## Starting point
 
@@ -57,10 +57,50 @@ hud-ux
    the legend was removed; `UP`/`OUT` became heart/skull icons; and row content
    moved to the approved readable UI face. The `v1.8.0` observation passed all
    50 remaining regions with zero blockers in every scenario.
+6. **Measured full-name layout and collapse (`v1.9.0`).** Fixed width and
+   character-count fallback still made the row contract depend on guessed text
+   capacity. Removed fallback/ellipsis rendering, measured the widest visible
+   full name after fonts load, reflowed every row and the bottom-right anchor
+   from that width, shortened bars from 142px to 110px, and reserved a measured
+   gap between value and status. Added the quest-style persisted title-strip
+   collapse. The next Phaser observation showed `The Trash Panda Family` and
+   the other longest identities in full, aligned scores, distinct metric/status
+   columns, and a title-only collapsed footprint.
+7. **Decision-text legibility (`v1.9.1`).** The first new capture proved the
+   structure but showed that family identity and score/status hierarchy remained
+   undersized at capture scale. Switched all row text to the requested Aptos
+   stack and promoted family names, scores, and statuses while enlarging the
+   collapse chevron. Dynamic measurement absorbed the wider glyphs with no
+   collision or density loss; the next observation made names and values faster
+   to scan at both target sizes.
+8. **Boss-icon consistency (`v1.9.2`).** The second capture exposed a mixed
+   icon language: defeated state rasterized as a multicolor emoji while the
+   active heart was a monochrome HUD glyph. Forced the skull to the Aptos text
+   glyph and equalized icon size. The final observation showed a consistent,
+   centered heart/skull pair across normal, all-defeated, compact, and collapsed
+   scenarios.
+9. **Maintainer icon preference (`v1.9.3`).** The maintainer compared the
+   lineage directly and found the `v1.8.0` emoji skull more legible than the
+   monochrome experiment. Restored that exact 14px skull treatment while
+   preserving every measured layout improvement. The next observation confirmed
+   its stronger small-scale silhouette with zero geometry or evidence-backed
+   blockers. This is the final accepted icon state.
+10. **Review-driven contract closure (`v1.9.4`).** Independent review found
+    proportional-font scores were still aligned with padded spaces, hidden
+    title-strip input could mutate preference, and an unused status-tag model
+    disagreed with the visible band pills. Right-anchored scores to a fixed
+    edge, guarded hidden input, removed the dead parallel status contract, and
+    asserted exact visible status text plus score-edge stability across rapid
+    one/two/three-digit changes. The final capture retained the accepted skull
+    and passed every scenario with zero deterministic or evidence-backed
+    blockers.
 
 ## Final visual contract
 
-- Complete real family identities; no ellipsis in the registered stress roster.
+- Complete real family identities; no short-label fallback or ellipsis.
+- Width derived from actual rendered Aptos metrics, including the longest roster
+  identities.
+- 110px standing bars with aligned scores and a measured gap before status.
 - Three threshold markers per relation bar.
 - Prominent numeric standing values.
 - Redundant text and color for `HATE`, `HOSTILE`, `NEUTRAL`, and `ALLY`.
@@ -69,20 +109,26 @@ hud-ux
 - Swatches inset inside their family row bounds.
 - Nested containment for swatches, ticks, status text/pills, and boss text/tiles.
 - Scenario-specific defeated-boss counts.
+- Persisted `▾`/`▸` title-strip collapse with a measured title-only footprint.
+- Expanded height derived from the actual 3- or 4-family roster.
 
-Tracked final lineage under `files/visual-review/after/v1.8.0/`:
+Tracked final lineage under `files/visual-review/after/v1.9.4/`:
 
 | Scenario                              | Score | Deterministic blockers | Evidence-backed blockers |
 | ------------------------------------- | ----: | ---------------------: | -----------------------: |
 | `family-relationships-band-spectrum`  |  80.0 |                      0 |                        0 |
 | `family-relationships-boss-aftermath` |  80.0 |                      0 |                        0 |
 | `family-relationships-compact-stress` |  80.0 |                      0 |                        0 |
+| `family-relationships-collapsed`      |  80.0 |                      0 |                        0 |
 
-The A|B UX Testing viewer was refreshed with all final pairs. Judge suggestions
-for blanket five-pixel padding, larger boss emphasis, and title centering were
-classified as task-specific taste advisories: they were inconsistent across
-scenarios, unsupported by measured containment, and would reduce compact
-comparison density at 960x540.
+Expanded scenarios now expose 51 measured regions; the collapsed scenario
+exposes the panel, title, and toggle as 3 measured regions. The A|B UX Testing
+and Screenshot viewers were refreshed with all final states. Judge suggestions
+for blanket extra padding, centered titles, larger boss tiles, and moving the
+right-edge chevron were classified as task-specific taste advisories: the
+left-anchored title and right-edge title-strip toggle match the approved Wave 1
+and quest-tracker grammar, all text/icon containment is measured, and larger
+fixed cells would spend compact-screen width without improving a failed signal.
 
 The stale `v1.6.1` lineage state is invalid and must not be cited: port 4176 had
 been taken over by another worktree. Final observations used isolated port 4191
@@ -92,32 +138,37 @@ and verified this branch's transformed source before capture.
 
 The `main-scene-probe-lab` booted the real `MainGameScene` through the shipped
 Floor 2 bootstrap at 1280x720 and 960x540. Evidence is under
-`files/family-ux-wave2-real-game/`. The final panel:
+`files/visual-review/real-game-v1.9.4/`. The final panel:
 
 - mounts and remains inside the viewport at both resolutions;
 - remains legible at the compact game scale;
 - clears the active Floor 2 quest tracker;
 - hides while the fullscreen map is open;
 - restores with unchanged bounds when the map closes.
+- removes the unused fourth-row height on three-family runs.
 
 ## Why this is done
 
-The surface is complete because maintainer feedback and every remaining
-improvement hypothesis were tested against the real rendered hierarchy, the
-compact viewport, or expanded geometry—not because the score reached 80. The
-panel now answers the player's three questions in one scan: which family, how
-it feels about the player, and whether its boss remains active. The full roster,
-extremes, defeated-boss mix, and compact viewport all satisfy the same 50-region
-contract. Further proposed changes are unsupported spacing/emphasis taste churn
-or would trade away the compact four-family comparison that the real-game
-observation confirms is clear.
+The surface is complete because every maintainer-reported defect now has both a
+rendered outcome and a deterministic contract—not because each judge reports 80. Full Aptos names drive panel width instead of being collapsed, standing
+bars/scores/statuses occupy measured non-overlapping columns, all row content
+shares explicit optical centerlines, boss state uses one coherent icon language,
+and players can reclaim the entire row area through the same persisted
+title-strip interaction as quests. The full roster, longest identities,
+extremes, defeated-boss mix, collapsed state, compact viewport, and real game
+pipeline all pass. The only remaining proposals are unsupported padding and
+emphasis preferences that would either contradict approved Crawler hierarchy or
+reduce compact comparison density without fixing a measured or observed defect.
 
 ## Validation
 
-- Typecheck plus focused Family unit and e2e tests: 30 tests passed.
+- Typecheck plus focused Family unit and deterministic e2e tests.
 - Real `MainGameScene` Family/map integration: 4 tests passed.
 - `npm run verify:fast`.
-- Three tracked visual-review scenarios at `v1.8.0`.
+- Four tracked visual-review scenarios at `v1.9.4`.
+- Collapse coverage clicks the real title strip, reloads the mounted artifact,
+  and verifies persisted restoration; three-family coverage verifies compact
+  dynamic height.
 
 ## Constraints preserved
 

@@ -200,6 +200,16 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Compact 960x540 contract: complete widest-rendered identities, readable centered row content, zero/threshold/max relation values, three threshold notches per bar, alternating heart/skull bosses, and no HUD collision."
+    "description": "Compact 960x540 contract: complete longest real identities with measured panel width, readable Aptos row content, shortened standing bars, aligned values, zero/threshold/max relation values, three threshold notches per bar, alternating heart/skull bosses, and no HUD collision."
+  },
+  {
+    "id": "family-relationships-collapsed",
+    "label": "Family Relationships (Collapsed)",
+    "viewport": { "width": 960, "height": 540 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Collapsed Floor-2 contract: the Family title remains identifiable and expandable while all comparison rows release their screen space."
   }
 ]

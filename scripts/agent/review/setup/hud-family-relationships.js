@@ -19,6 +19,9 @@
     for (let index = 0; index < 4; index += 1) probe.setBossDefeated(index, true);
   } else if (scenario === 'family-relationships-compact-stress') {
     probe.setStressState('worst-case');
+  } else if (scenario === 'family-relationships-collapsed') {
+    probe.setStressState('representative');
+    probe.setCollapsed(true);
   } else {
     throw new Error(`Unknown Family Relationships UX scenario: ${scenario}`);
   }
@@ -39,8 +42,10 @@
   const panel = layout.family.panel;
   if (!panel) throw new Error('family panel did not render');
   const defeatedCount = layout.family.rows.filter((row) => row.bossDefeated).length;
-  const expectedDefeated =
-    scenario === 'family-relationships-band-spectrum'
+  const isCollapsedScenario = scenario === 'family-relationships-collapsed';
+  const expectedDefeated = isCollapsedScenario
+    ? 0
+    : scenario === 'family-relationships-band-spectrum'
       ? 1
       : scenario === 'family-relationships-boss-aftermath'
         ? 4
@@ -49,6 +54,15 @@
     throw new Error(
       `${scenario} expected ${expectedDefeated} defeated bosses, got ${defeatedCount}`,
     );
+  }
+  if (layout.family.collapsed !== isCollapsedScenario) {
+    throw new Error(`${scenario} rendered the wrong collapsed state`);
+  }
+  if (
+    !isCollapsedScenario &&
+    !layout.family.rows.some((row) => row.displayedName === 'The Trash Panda Family')
+  ) {
+    throw new Error(`${scenario} must exercise the longest family identity`);
   }
   if (layout.family.rows.some((row) => row.displayedName.includes('…'))) {
     throw new Error(`${scenario} must render every real family identity without truncation`);
@@ -79,6 +93,14 @@
       id: 'family-title',
       box: toScreen(layout.family.title),
       kind: 'text',
+      parentId: 'family-panel',
+    });
+  }
+  if (layout.family.collapseToggle) {
+    regions.push({
+      id: 'family-collapse-toggle',
+      box: toScreen(layout.family.collapseToggle),
+      kind: 'control',
       parentId: 'family-panel',
     });
   }

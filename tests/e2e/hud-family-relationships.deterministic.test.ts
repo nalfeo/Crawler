@@ -4,7 +4,7 @@ import { parsePng, readPixel, regionContainsColor, colorDist } from './helpers/p
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
-import { displayNameForRow, parseHexColor } from '../../src/engine/family-relationships-state.js';
+import { parseHexColor } from '../../src/engine/family-relationships-state.js';
 import { TERRITORY_OVERLAY_ALPHA, toGrayscale } from '../../src/engine/minimap-family-tint.js';
 import type { FamilyRelProbeApi } from '../../src/labs/hud-family-relationships-lab/index.js';
 
@@ -22,11 +22,7 @@ const OVERLAY_TILE_PX = 33;
 const OVERLAY_CENTER = { x: GAME_W / 2, y: 364 };
 
 const PRESENT_FAMILIES = [...loadFamilies()]
-  .sort(
-    (a, b) =>
-      displayNameForRow({ name: b.name, shortLabel: b.species }).length -
-      displayNameForRow({ name: a.name, shortLabel: a.species }).length,
-  )
+  .sort((a, b) => b.name.length - a.name.length || a.name.localeCompare(b.name))
   .slice(0, 4);
 
 function rgbFromHex(color: number): { r: number; g: number; b: number } {
@@ -451,6 +447,11 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
       ).toBe(false);
 
       expect(layout.family.rows).toHaveLength(4);
+      expect(layout.family.collapsed).toBe(false);
+      expect(layout.family.collapseToggle).not.toBeNull();
+      expect(layout.family.rows.map((row) => row.displayedName)).toEqual(
+        PRESENT_FAMILIES.map((family) => family.name),
+      );
       expect(new Set(layout.family.rows.map((row) => row.band))).toEqual(
         new Set(['hate', 'hostile', 'neutral', 'friendly']),
       );
@@ -458,6 +459,15 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
       expect(layout.family.columnHeader).toBeNull();
       expect(layout.family.columnLabels).toBeNull();
       for (const [index, row] of layout.family.rows.entries()) {
+        expect(row.statusLabel).toBe(
+          row.band === 'friendly'
+            ? 'ALLY'
+            : row.band === 'neutral'
+              ? 'NEUTRAL'
+              : row.band === 'hostile'
+                ? 'HOSTILE'
+                : 'HATE',
+        );
         expect(
           contains(panel, row.row),
           `row ${index} escapes panel at ${viewport.width}x${viewport.height}`,
@@ -514,6 +524,14 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           Math.abs(centerY(row.value) - centerY(row.bar)),
           `standing value must align with the bar in row ${index}`,
         ).toBeLessThanOrEqual(0.5);
+        expect(
+          row.statusPill.x - (row.value.x + row.value.width),
+          `standing value must keep a readable gap before status in row ${index}`,
+        ).toBeGreaterThanOrEqual(8);
+        expect(
+          row.statusPill.x - (row.bar.x + row.bar.width),
+          `standing bar must not enter the status column in row ${index}`,
+        ).toBeGreaterThanOrEqual(8);
         expect(row.relationTicks).toHaveLength(3);
         for (const [tickIndex, tick] of row.relationTicks.entries()) {
           expect(
@@ -525,12 +543,80 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
         expect(contains(row.bossTile, row.bossLabel)).toBe(true);
       }
 
+      const expandedHeight = panel.height;
+      const canvasRect = await getCanvasRect(page);
+      const toggle = layout.family.collapseToggle;
+      if (!toggle) throw new Error('family collapse toggle must be visible');
+      const togglePoint = gameToScreen(
+        canvasRect,
+        toggle.x + toggle.width / 2,
+        toggle.y + toggle.height / 2,
+      );
+      const storedBeforeHiddenClick = await page.evaluate(() =>
+        localStorage.getItem('crawler:family-relationships-collapsed'),
+      );
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setReputationSystemActive(false);
+      });
+      await page.waitForTimeout(100);
+      await page.mouse.click(togglePoint.x, togglePoint.y);
+      expect(
+        await page.evaluate(() => localStorage.getItem('crawler:family-relationships-collapsed')),
+      ).toBe(storedBeforeHiddenClick);
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setReputationSystemActive(true);
+      });
+      await page.waitForTimeout(100);
+      await page.mouse.click(togglePoint.x, togglePoint.y);
+      await page.waitForTimeout(100);
+      const collapsedLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return {
+          layout: probe.getLayout().family,
+          stored: localStorage.getItem('crawler:family-relationships-collapsed'),
+        };
+      });
+      expect(collapsedLayout.layout.collapsed).toBe(true);
+      expect(collapsedLayout.layout.rows).toHaveLength(0);
+      expect(collapsedLayout.layout.panel?.height).toBeLessThan(expandedHeight / 2);
+      expect(collapsedLayout.stored).toBe('1');
+      await page.reload({ waitUntil: 'commit' });
+      await page.waitForFunction(
+        () =>
+          Boolean((window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe?.ready()),
+        undefined,
+        { timeout: 30_000 },
+      );
+      const persistedLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.getLayout().family;
+      });
+      expect(persistedLayout.collapsed).toBe(true);
+      expect(persistedLayout.rows).toHaveLength(0);
+      const restoredCanvasRect = await getCanvasRect(page);
+      const restoredToggle = persistedLayout.collapseToggle;
+      if (!restoredToggle) throw new Error('persisted collapse toggle must be visible');
+      const restoredTogglePoint = gameToScreen(
+        restoredCanvasRect,
+        restoredToggle.x + restoredToggle.width / 2,
+        restoredToggle.y + restoredToggle.height / 2,
+      );
+      await page.mouse.click(restoredTogglePoint.x, restoredTogglePoint.y);
+      await page.waitForTimeout(100);
+
       const rapidSnapshots = await page.evaluate(() => {
         const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
         if (!probe) throw new Error('__familyRelProbe missing');
         return probe.cycleRapidState(64);
       });
       expect(rapidSnapshots).toHaveLength(64);
+      const initialValueRightEdges = layout.family.rows.map((row) => row.value.x + row.value.width);
       for (const [rapidIndex, rapid] of rapidSnapshots.entries()) {
         expect(
           rapid.family.rows,
@@ -546,7 +632,33 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           rapid.family.panel && overlaps(rapid.family.panel, rapid.bottomCenter),
           `rapid frame ${rapidIndex} overlaps bottom-center HUD`,
         ).toBe(false);
+        for (const [rowIndex, row] of rapid.family.rows.entries()) {
+          expect(
+            Math.abs(row.value.x + row.value.width - initialValueRightEdges[rowIndex]!),
+            `rapid frame ${rapidIndex} row ${rowIndex} must preserve the score's right edge`,
+          ).toBeLessThanOrEqual(0.5);
+        }
       }
+
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setPresentCount(3);
+      });
+      await page.waitForTimeout(100);
+      const threeFamilyLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.getLayout().family;
+      });
+      expect(threeFamilyLayout.rows).toHaveLength(3);
+      expect(threeFamilyLayout.panel?.height).toBeLessThan(expandedHeight);
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setPresentCount(4);
+      });
+      await page.waitForTimeout(100);
     }
   });
 });
