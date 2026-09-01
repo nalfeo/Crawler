@@ -1085,6 +1085,8 @@ export interface Floor6LiveEnemyRecord {
   stillFrames: number;
   /** True once the stall was detected and logged — prevents repeated telemetry. */
   stallResolved: boolean;
+  /** True once this entry is dead or missing and can count toward wave-clear rewards. */
+  defeated: boolean;
   /** True once this manifest entry has spawned its Floor 6 build-currency reward. */
   rewardSpawned: boolean;
 }

@@ -142,6 +142,38 @@ describe('Floor 6 run-scoped economy and upgrade offers', () => {
     expect(stats?.unlockedOfferIds.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('does not credit wave-clear currency for stalled raiders that are still alive', () => {
+    const { world } = initFloor6(606);
+    releaseFirstWave(world);
+    const state = defenseState(world);
+    for (const record of state.liveEnemies) {
+      record.stallResolved = true;
+    }
+    tickDirector(world);
+
+    expect(query(world.ecs, [BroadcastRelayRaider, Health]).length).toBe(3);
+    expect(getFloor6DefenseRunStats(world)?.buildCurrencyEarnedFromWaves).toBe(0);
+    expect(getFloor6DefenseRunStats(world)?.buildCurrencyBalance).toBe(0);
+  });
+
+  it('rewards a stalled raider if it later dies', () => {
+    const { world } = initFloor6(606);
+    releaseFirstWave(world);
+    const state = defenseState(world);
+    const firstRaider = Array.from(query(world.ecs, [BroadcastRelayRaider, Health]))[0]!;
+    const manifestIndex = world.stores.broadcastRelayRaider.manifestIndex[firstRaider] ?? 0;
+    state.liveEnemies[manifestIndex]!.stallResolved = true;
+
+    setComponent(world.ecs, firstRaider, Health, {
+      current: 0,
+      max: world.stores.health.max[firstRaider] ?? 1,
+    });
+    tickDirector(world);
+
+    expect(query(world.ecs, [BuildCurrencyPickup]).length).toBe(1);
+    expect(state.liveEnemies[manifestIndex]?.defeated).toBe(true);
+  });
+
   it('collects build currency separately from ordinary gold', () => {
     const { world, player } = initFloor6(606);
     releaseFirstWave(world);
@@ -184,6 +216,21 @@ describe('Floor 6 run-scoped economy and upgrade offers', () => {
     expect(query(world.ecs, [BuildCurrencyPickup])).toEqual([]);
   });
 
+  it('preserves terminal reset telemetry across a new SETUP transition in the same world', () => {
+    const { world, player } = initFloor6(606);
+    tickDirector(world);
+    setComponent(world.ecs, player, Health, { current: 0, max: 100 });
+    tickDirector(world);
+    const state = defenseState(world);
+    expect(state.economy.terminalResetCount).toBe(1);
+
+    state.phase = { kind: 'SETUP' };
+    setComponent(world.ecs, player, Health, { current: 100, max: 100 });
+    tickDirector(world);
+
+    expect(getFloor6DefenseRunStats(world)?.terminalResetCount).toBe(1);
+  });
+
   it('preserves conservation and non-negative balances across arbitrary purchase traces', () => {
     fc.assert(
       fc.property(
@@ -209,6 +256,19 @@ describe('Floor 6 run-scoped economy and upgrade offers', () => {
         },
       ),
     );
+  });
+
+  it('caps upgrade selection telemetry while preserving atomic balances', () => {
+    const { world } = initFloor6(606);
+    tickDirector(world);
+    const state = defenseState(world);
+    for (let i = 0; i < 80; i += 1) {
+      purchaseFloor6UpgradeOffer(world, 'missing-offer');
+    }
+
+    expect(state.economy.selectionTrace).toHaveLength(64);
+    expect(state.economy.balance).toBe(0);
+    expect(state.economy.totalSpent).toBe(0);
   });
 
   it('returns an atomic no-op outside Floor 6', () => {

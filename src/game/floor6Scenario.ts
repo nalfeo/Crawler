@@ -180,6 +180,7 @@ export function initializeFloor6Scenario(
 // ── Slice 3: Wave director, route-following raider AI ──────────────────────
 
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
+const FLOOR6_SELECTION_TRACE_LIMIT = 64;
 
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
@@ -369,13 +370,20 @@ function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): 
 
 function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
   const offers = state.upgradeOfferManifest ?? [];
-  state.economy.unlockedOfferIds = offers
+  const nextUnlockedOfferIds = offers
     .filter(
       (offer) =>
         offer.cost <= state.economy.balance &&
         !state.economy.selectedOfferIds.includes(offer.offerId),
     )
     .map((offer) => offer.offerId);
+  if (
+    nextUnlockedOfferIds.length === state.economy.unlockedOfferIds.length &&
+    nextUnlockedOfferIds.every((id, index) => id === state.economy.unlockedOfferIds[index])
+  ) {
+    return;
+  }
+  state.economy.unlockedOfferIds = nextUnlockedOfferIds;
 }
 
 function creditFloor6WaveRewards(state: Floor6DefenseState): void {
@@ -389,7 +397,7 @@ function creditFloor6WaveRewards(state: Floor6DefenseState): void {
     if (waveEntries.length === 0) continue;
     const waveResolved = waveEntries.every((entry) => {
       const record = state.liveEnemies[entry.manifestIndex];
-      return record?.stallResolved === true;
+      return record?.defeated === true;
     });
     if (!waveResolved) continue;
 
@@ -452,6 +460,12 @@ export function purchaseFloor6UpgradeOffer(
     balanceBefore,
     balanceAfter: state.economy.balance,
   });
+  if (state.economy.selectionTrace.length > FLOOR6_SELECTION_TRACE_LIMIT) {
+    state.economy.selectionTrace.splice(
+      0,
+      state.economy.selectionTrace.length - FLOOR6_SELECTION_TRACE_LIMIT,
+    );
+  }
   return { ok, reason };
 }
 
@@ -472,11 +486,12 @@ function countLiveFloor6Raiders(world: GameWorld): number {
  */
 function reconcileFloor6LiveEnemies(world: GameWorld, state: Floor6DefenseState): void {
   for (const record of state.liveEnemies) {
-    if (record.eid <= 0 || record.stallResolved) continue;
+    if (record.eid <= 0 || record.defeated) continue;
     const eid = record.eid;
     const alive =
       entityExists(world.ecs, record.eid) && (world.stores.health.current[record.eid] ?? 0) > 0;
     if (!alive) {
+      record.defeated = true;
       const manifestEntry = state.waveManifest?.find((candidate) => {
         const rec = state.liveEnemies[candidate.manifestIndex];
         return rec === record;
@@ -543,6 +558,7 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
         waypointIndex: 0,
         stillFrames: 0,
         stallResolved: false,
+        defeated: false,
         rewardSpawned: false,
       });
     }
@@ -705,7 +721,9 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     const manifest = buildFloor6WaveManifest(state, config);
     state.waveManifest = manifest;
     state.upgradeOfferManifest = buildFloor6UpgradeOfferManifest(state, config);
+    const terminalResetCount = state.economy.terminalResetCount;
     state.economy = createFloor6EconomyState();
+    state.economy.terminalResetCount = terminalResetCount;
     state.relayHp = tuning?.relayMaxHp ?? 100;
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
