@@ -172,6 +172,7 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
+          base: main
           branch: automation/docs-update
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
           commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
@@ -214,6 +215,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
+          base: main
           branch: automation/docs-update
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
           commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
