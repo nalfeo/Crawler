@@ -22,7 +22,7 @@ import { spawnEnemy } from '../../core/helpers.js';
 import { familyRelationshipSystem, statSystem, statusEffectSystem } from '../../core/index.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import type { MainGameSceneOptions } from '../../engine/scenes/MainGameScene.js';
-import type { AbilityLoadoutConfig, AbilityLoadoutEntry } from '../../engine/AbilityLoadoutUI.js';
+import type { AbilityLoadoutConfig } from '../../engine/AbilityLoadoutUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import {
   abilitySystem,
@@ -43,9 +43,8 @@ import {
   weaponPrerequisiteMet,
   type AbilityDefinition,
 } from '../../game/index.js';
-import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { getAbilityEffectSummary } from '../../game/abilities/effect-summary.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
@@ -294,6 +293,7 @@ interface AbilityLoadoutProbe {
     readonly description: ScreenBounds;
   }[];
   getVisibleAbilityIds(): string[];
+  getVisibleSectionHeaderLabel(): string | null;
   getFooterScreenBounds(): ScreenBounds;
   getSelectedAbilityId(): string | null;
 }
@@ -323,6 +323,7 @@ export interface AbilitiesProbeSnapshot {
     readonly description: ScreenBounds;
   }[];
   readonly visibleAbilityIds: readonly string[];
+  readonly visibleSectionHeaderLabel: string | null;
   readonly footer: ScreenBounds | null;
   readonly hotbar: ScreenBounds | null;
   readonly slots: readonly ScreenBounds[];
@@ -383,6 +384,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
   // ---- Debug hotbar overlay (HTML — clickable slots that force-fire) ----
   const hotbarWrap = document.createElement('div');
+  hotbarWrap.id = 'abilities-debug-hotbar';
   hotbarWrap.style.position = 'absolute';
   hotbarWrap.style.left = '50%';
   hotbarWrap.style.bottom = '16px';
@@ -411,6 +413,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
   // HUD (top-left status)
   const hud = document.createElement('div');
+  hud.id = 'abilities-debug-hud';
   hud.style.position = 'absolute';
   hud.style.top = '16px';
   hud.style.left = '16px';
@@ -614,84 +617,19 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     const world = scene.world;
     const playerEid = scene.playerEid ?? -1;
     const loadout = scene.abilityLoadoutUI;
-    if (!world || playerEid < 0 || !loadout || loadout.isOpen()) {
-      return;
-    }
-
-    const existingState = world.abilityStatesByEntity.get(playerEid);
-    if (!existingState) {
-      const fresh: AbilityState = {
-        learnedSpellIds: [],
-        equippedActiveAbilityIds: [],
-        passiveAbilityIds: [],
-        cooldownByAbilityId: new Map(),
-        cooldownFramesByAbilityId: new Map(),
-        appliedPassiveAbilityIds: new Set(),
-      };
-      world.abilityStatesByEntity.set(playerEid, fresh);
-    }
-    const state = world.abilityStatesByEntity.get(playerEid)!;
-    const availableIds = [
-      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
-    ];
-    if (availableIds.length === 0) {
+    if (
+      !world ||
+      playerEid < 0 ||
+      !loadout ||
+      loadout.isOpen() ||
+      !scene.openAbilitiesConfigModal
+    ) {
       return;
     }
 
     probeLoadoutPreviousState = world.state;
     world.state = 'safe_room';
-
-    const buildEntries = (): AbilityLoadoutEntry[] =>
-      availableIds.map((abilityId) => {
-        const presentation = getAbilityPresentation(abilityId);
-        const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
-        return {
-          id: abilityId,
-          name: presentation?.name ?? abilityId,
-          shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
-          description: presentation?.description ?? 'Configured auto ability.',
-          category: presentation?.category ?? 'utility',
-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD`,
-          equipped: state.equippedActiveAbilityIds.includes(abilityId),
-        };
-      });
-
-    loadout.open({
-      entries: buildEntries(),
-      slotLimit: ACTIVE_ABILITY_SLOT_LIMIT,
-      onToggle: (abilityId) => {
-        const presentation = getAbilityPresentation(abilityId);
-        const name = presentation?.name ?? abilityId;
-        const equippedIndex = state.equippedActiveAbilityIds.indexOf(abilityId);
-        if (equippedIndex >= 0) {
-          state.equippedActiveAbilityIds.splice(equippedIndex, 1);
-          return {
-            entries: buildEntries(),
-            feedback: `${name} removed from the auto bar.`,
-            tone: 'success',
-          };
-        }
-        if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-          return {
-            entries: buildEntries(),
-            feedback: `All ${ACTIVE_ABILITY_SLOT_LIMIT} slots are full. Remove an ability first.`,
-            tone: 'warning',
-          };
-        }
-        state.equippedActiveAbilityIds.push(abilityId);
-        return {
-          entries: buildEntries(),
-          feedback: `${name} equipped to the auto bar.`,
-          tone: 'success',
-        };
-      },
-      onClose: () => {
-        if (probeLoadoutPreviousState !== null) {
-          world.state = probeLoadoutPreviousState;
-          probeLoadoutPreviousState = null;
-        }
-      },
-    });
+    scene.openAbilitiesConfigModal();
   };
   const probeWindow = window as unknown as { __abilitiesProbe?: AbilitiesProbeApi };
   const probe: AbilitiesProbeApi = {
@@ -737,6 +675,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         visibleRows: open ? (loadout?.getVisibleRowScreenBounds() ?? []) : [],
         visibleRowLayouts: open ? (loadout?.getVisibleRowLayouts() ?? []) : [],
         visibleAbilityIds: open ? (loadout?.getVisibleAbilityIds() ?? []) : [],
+        visibleSectionHeaderLabel: open ? (loadout?.getVisibleSectionHeaderLabel() ?? null) : null,
         footer: open ? (loadout?.getFooterScreenBounds() ?? null) : null,
         hotbar: scene?.hudUi?.getAbilityBarBounds() ?? null,
         slots,

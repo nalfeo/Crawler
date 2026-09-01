@@ -2,6 +2,25 @@
   if (document.fonts?.ready) await document.fonts.ready;
   const probe = window.__abilitiesProbe;
   if (!probe?.ready?.()) throw new Error('__abilitiesProbe not ready');
+  const canvasHost = document.querySelector('#lab-canvas');
+  const controls = document.querySelector('#lab-controls');
+  const header = document.querySelector('#app-header');
+  const controlsToggle = document.querySelector('#controls-toggle');
+  const debugHotbar = document.querySelector('#abilities-debug-hotbar');
+  const debugHud = document.querySelector('#abilities-debug-hud');
+  if (header instanceof HTMLElement) header.style.display = 'none';
+  if (controlsToggle instanceof HTMLElement) controlsToggle.style.display = 'none';
+  if (controls instanceof HTMLElement) controls.style.display = 'none';
+  if (debugHotbar instanceof HTMLElement) debugHotbar.style.display = 'none';
+  if (debugHud instanceof HTMLElement) debugHud.style.display = 'none';
+  if (canvasHost instanceof HTMLElement) {
+    canvasHost.style.width = '100vw';
+    canvasHost.style.height = '100vh';
+    if (canvasHost.parentElement) {
+      canvasHost.parentElement.style.width = '100vw';
+      canvasHost.parentElement.style.height = '100vh';
+    }
+  }
   probe.openLoadout();
   for (let attempt = 0; attempt < 50 && !probe.getSnapshot().open; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 50));

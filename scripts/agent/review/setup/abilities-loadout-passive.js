@@ -21,51 +21,31 @@
       canvasHost.parentElement.style.height = '100vh';
     }
   }
+
   probe.openLoadout();
-  for (let attempt = 0; attempt < 50 && !probe.getSnapshot().open; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    const snapshot = probe.getSnapshot();
+    if (snapshot.visibleSectionHeaderLabel === 'PASSIVE ABILITIES') break;
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        code: 'ArrowDown',
+        key: 'ArrowDown',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
-
-  const opened = probe.getSnapshot();
-  const initialSelectedId = opened.selectedAbilityId;
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      code: 'ArrowDown',
-      key: 'ArrowDown',
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
-  for (
-    let attempt = 0;
-    attempt < 50 && probe.getSnapshot().selectedAbilityId === initialSelectedId;
-    attempt += 1
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-
-  const selected = probe.getSnapshot();
-  const selectedId = selected.selectedAbilityId;
-  const expectedSelectedId = opened.visibleAbilityIds[1];
-  if (!expectedSelectedId || selectedId !== expectedSelectedId) {
-    throw new Error('abilities loadout did not select the second row');
-  }
-  const initiallyEquipped = selected.equippedAbilityIds.includes(selectedId);
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      code: 'Enter',
-      key: 'Enter',
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
-  for (
-    let attempt = 0;
-    attempt < 50 &&
-    probe.getSnapshot().equippedAbilityIds.includes(selectedId) === initiallyEquipped;
-    attempt += 1
-  ) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  for (let step = 0; step < 3; step += 1) {
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        code: 'ArrowDown',
+        key: 'ArrowDown',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
   }
 
   window.dispatchEvent(new Event('resize'));
@@ -74,13 +54,10 @@
   const snapshot = probe.getSnapshot();
   const canvas = document.querySelector('#lab-canvas canvas');
   if (!snapshot.panel || !snapshot.listViewport || !snapshot.footer || !canvas) {
-    throw new Error('abilities loadout bounds unavailable');
+    throw new Error('passive abilities loadout bounds unavailable');
   }
-  if (snapshot.selectedAbilityId !== selectedId) {
-    throw new Error('abilities loadout selection changed during toggle');
-  }
-  if (snapshot.equippedAbilityIds.includes(selectedId) === initiallyEquipped) {
-    throw new Error('abilities loadout toggle did not change the selected row');
+  if (snapshot.visibleSectionHeaderLabel !== 'PASSIVE ABILITIES') {
+    throw new Error('passive section heading did not remain visible after scrolling');
   }
 
   const rect = canvas.getBoundingClientRect();
@@ -94,24 +71,13 @@
   });
   const authoredScale = snapshot.listViewport.width / 716;
   const rowRegions = snapshot.visibleRowLayouts.flatMap((layout) => {
-    const rowId = `ability-row:${layout.id}`;
+    const rowId = `passive-row:${layout.id}`;
     return [
       {
         id: rowId,
         box: toScreenshotBox(layout.row),
         kind: 'row',
-        parentId: 'ability-list',
-      },
-      {
-        id: `${rowId}.tile`,
-        box: toScreenshotBox({
-          x: layout.row.x + 12 * authoredScale,
-          y: layout.row.y + 20 * authoredScale,
-          width: 62 * authoredScale,
-          height: 62 * authoredScale,
-        }),
-        kind: 'tile',
-        parentId: rowId,
+        parentId: 'passive-list',
       },
       {
         id: `${rowId}.details`,
@@ -126,7 +92,7 @@
         parentId: rowId,
       },
       {
-        id: `${rowId}.action`,
+        id: `${rowId}.state`,
         box: toScreenshotBox({
           x: layout.row.x + layout.row.width - 124 * authoredScale,
           y: layout.row.y + 32 * authoredScale,
@@ -140,20 +106,20 @@
   });
 
   window.__visualReview = {
-    surface: 'abilities loadout selected and toggled state',
+    surface: 'abilities loadout passive state',
     regions: [
-      { id: 'loadout-panel', box: toScreenshotBox(snapshot.panel), kind: 'panel' },
+      { id: 'passive-panel', box: toScreenshotBox(snapshot.panel), kind: 'panel' },
       {
-        id: 'ability-list',
+        id: 'passive-list',
         box: toScreenshotBox(snapshot.listViewport),
         kind: 'section',
-        parentId: 'loadout-panel',
+        parentId: 'passive-panel',
       },
       {
-        id: 'loadout-footer',
+        id: 'passive-footer',
         box: toScreenshotBox(snapshot.footer),
         kind: 'section',
-        parentId: 'loadout-panel',
+        parentId: 'passive-panel',
       },
       ...rowRegions,
     ],

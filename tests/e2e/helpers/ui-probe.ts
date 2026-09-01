@@ -49,10 +49,10 @@ export async function loadUiProbeLab(page: Page): Promise<void> {
   // probe's ready flag instead. waitForFunction re-binds across Vite's own
   // self-reload; the bounded re-navigation below is the recovery path if an
   // optimize/reload cycle wedges or outlasts a single polling window.
-  await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
   const windows = 3;
   for (let i = 0; i < windows; i += 1) {
     try {
+      await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
       await page.waitForFunction(() => Boolean(window.__uiProbe?.ready()), undefined, {
         timeout: 30_000,
         polling: 200,
@@ -62,7 +62,6 @@ export async function loadUiProbeLab(page: Page): Promise<void> {
       return;
     } catch (err) {
       if (i === windows - 1) throw err;
-      await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
     }
   }
 }

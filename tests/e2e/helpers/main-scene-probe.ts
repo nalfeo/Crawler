@@ -68,10 +68,10 @@ export async function loadMainSceneProbeLab(
   // lab, so waiting on network state is flaky. We commit the navigation and poll
   // for the probe's ready flag instead, re-navigating within a bounded number of
   // windows if an optimize/reload cycle wedges a single polling window.
-  await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
   const windows = 3;
   for (let i = 0; i < windows; i += 1) {
     try {
+      await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
       await page.waitForFunction(() => Boolean(window.__mainSceneProbe?.ready()), undefined, {
         timeout: 30_000,
         polling: 200,
@@ -81,7 +81,6 @@ export async function loadMainSceneProbeLab(
       return;
     } catch (err) {
       if (i === windows - 1) throw err;
-      await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
     }
   }
 }

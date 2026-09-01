@@ -425,12 +425,19 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           'hud-skill-panel-bounds',
           'hud-skill-title-strip',
           'hud-skill-title-text',
+          'hud-skill-overflow-text',
           'hud-skill-class-name-text',
           'hud-skill-class-level',
           'hud-skill-class-bar-bg',
           'hud-skill-type-name-text',
           'hud-skill-type-level',
           'hud-skill-type-bar-bg',
+          'hud-skill-spell-0-name-text',
+          'hud-skill-spell-0-level',
+          'hud-skill-spell-0-bar-bg',
+          'hud-skill-spell-1-name-text',
+          'hud-skill-spell-1-level',
+          'hud-skill-spell-1-bar-bg',
         ] as const;
         const regions: Record<string, HudProbeBounds> = {};
         for (const name of regionNames) {

@@ -16,9 +16,10 @@ import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
+import { BLUE_STEEL, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY, hex } from './ui-theme.js';
 import { GAME } from '../shared/constants.js';
 import { PRIMARY_STATS, isAllocatablePrimaryStat, type PrimaryStatId } from '../shared/stats.js';
-import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
+import { PRIMARY_STAT_DISPLAY } from '../shared/stat-display.js';
 import {
   cancel,
   confirm,
@@ -77,7 +78,25 @@ export interface LevelUpUI {
   getDraftAllocations(): Readonly<Record<PrimaryStatId, number>> | null;
   /** Test/automation affordance: unspent points remaining in the draft. */
   getRemainingPoints(): number;
+  getLayoutSnapshot(): LevelUpUILayoutSnapshot | null;
   destroy(): void;
+}
+
+export interface LevelUpUILayoutSnapshot {
+  readonly selectedStat: PrimaryStatId;
+  readonly panel: ScreenBounds;
+  readonly header: ScreenBounds;
+  readonly rows: ReadonlyArray<{
+    readonly stat: PrimaryStatId;
+    readonly row: ScreenBounds;
+    readonly minus: ScreenBounds;
+    readonly plus: ScreenBounds;
+  }>;
+  readonly footer: ScreenBounds;
+  readonly description: ScreenBounds;
+  readonly hint: ScreenBounds;
+  readonly reset: ScreenBounds;
+  readonly confirm: ScreenBounds;
 }
 
 const PANEL_WIDTH = 560;
@@ -86,39 +105,40 @@ const ROW_HEIGHT = 38;
 const ROW_GAP = 4;
 const STAT_BUTTON_SIZE = 34;
 const HEADER_HEIGHT = 70;
-const FOOTER_HEIGHT = 64;
+const FOOTER_HEIGHT = 92;
 const PANEL_HEIGHT =
   HEADER_HEIGHT + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + FOOTER_HEIGHT + PANEL_PADDING;
 
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '22px',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '25px',
   fontStyle: 'bold',
-  color: '#fcd34d',
+  color: hex(BLUE_STEEL.accentGold),
 };
 const POINTS_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '15px',
-  color: '#cbd5e1',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '16px',
+  fontStyle: 'bold',
+  color: hex(BLUE_STEEL.accent),
 };
 const LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '15px',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '16px',
   fontStyle: 'bold',
-  color: '#f8fafc',
+  color: hex(BLUE_STEEL.textPrimary),
 };
 const VALUE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '13px',
-  color: '#94a3b8',
+  color: hex(BLUE_STEEL.textSecondary),
 };
 const PREVIEW_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '13px',
   color: '#46d369',
 };
 const BUTTON_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '18px',
   fontStyle: 'bold',
   color: '#f8fafc',
@@ -128,15 +148,15 @@ const BUTTON_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   color: '#475569',
 };
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '12px',
-  color: '#94a3b8',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '13px',
+  color: hex(BLUE_STEEL.textSecondary),
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '12px',
-  color: '#94a3b8',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '13px',
+  color: hex(BLUE_STEEL.textSecondary),
 };
 
 export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): LevelUpUI {
@@ -148,7 +168,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
   // same factor to keep the upscaled glyphs crisp.
   let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
   const baseResolution = getRenderScale(scene);
-  let textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  let textResolution = Math.max(MIN_TEXT_RESOLUTION, Math.round(baseResolution * uiScale));
   const snap = (value: number): number => Math.round(value);
   const crispText = (
     x: number,
@@ -167,11 +187,11 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
   const backdrop = scene.add
     .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);
-  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, PIXEL_UI.panelFill, 0.98);
+  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, BLUE_STEEL.panelBg, 0.99);
   panel.setOrigin(0, 0);
-  panel.setStrokeStyle(2, PIXEL_UI.border, 1);
+  panel.setStrokeStyle(2, BLUE_STEEL.panelBorder, 1);
   const titleStrip = scene.add
-    .rectangle(0, 0, PANEL_WIDTH - 4, 38, PIXEL_UI.trackFill, 1)
+    .rectangle(0, 0, PANEL_WIDTH - 4, 40, BLUE_STEEL.sectionHeader, 1)
     .setOrigin(0, 0);
   const titleRule = scene.add.rectangle(0, 0, PANEL_WIDTH - 4, 2, PIXEL_UI.gold, 1).setOrigin(0, 0);
   overlay.add([backdrop, panel, titleStrip, titleRule]);
@@ -187,6 +207,15 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     minus: Phaser.GameObjects.Rectangle;
     plus: Phaser.GameObjects.Rectangle;
   }> = [];
+  let rowRects: Array<{ stat: PrimaryStatId; row: Phaser.GameObjects.Rectangle }> = [];
+  let footerObjects:
+    | {
+        description: Phaser.GameObjects.Text;
+        hint: Phaser.GameObjects.Text;
+        reset: Phaser.GameObjects.Rectangle;
+        confirm: Phaser.GameObjects.Rectangle;
+      }
+    | undefined;
 
   const clearDynamic = (): void => {
     for (const node of dynamicNodes) {
@@ -194,6 +223,8 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     }
     dynamicNodes = [];
     statControls = [];
+    rowRects = [];
+    footerObjects = undefined;
   };
 
   const previewValue = (stat: PrimaryStatId, draftPoints: number): number =>
@@ -205,7 +236,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     panel.x = Math.round((viewWidth() - PANEL_WIDTH) / 2);
     panel.y = Math.round((viewHeight() - PANEL_HEIGHT) / 2);
     titleStrip.setPosition(panel.x + 2, panel.y + 2);
-    titleRule.setPosition(panel.x + 2, panel.y + 40);
+    titleRule.setPosition(panel.x + 2, panel.y + 42);
   };
 
   const dispatch = (next: LevelUpAllocationState): void => {
@@ -262,19 +293,19 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     }
     // Refresh responsive scale before laying out (handles resize/rotation).
     uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
-    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    textResolution = Math.max(MIN_TEXT_RESOLUTION, Math.round(baseResolution * uiScale));
     overlay.setScale(uiScale);
     layoutPanel();
     const panelX = panel.x;
     const panelY = panel.y;
     const left = panelX + PANEL_PADDING;
 
-    const title = crispText(left, panelY + 10, `Level Up!  —  Level ${params.level}`, TITLE_STYLE);
+    const title = crispText(left, panelY + 8, `LEVEL ${params.level} REACHED`, TITLE_STYLE);
     const remaining = remainingPoints(state);
     const points = crispText(
       left,
       panelY + HEADER_HEIGHT - 24,
-      `Points to spend: ${remaining} / ${state.available}`,
+      `${remaining} OF ${state.available} ATTRIBUTE POINTS REMAINING`,
       POINTS_STYLE,
     );
     dynamicNodes.push(title, points);
@@ -294,15 +325,19 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
           rowY,
           PANEL_WIDTH - PANEL_PADDING * 2,
           ROW_HEIGHT,
-          isSelected ? 0x1e293b : PIXEL_UI.panelFill,
+          isSelected ? 0x355180 : 0x1e2a44,
           isSelected ? 0.95 : 0.6,
         )
         .setOrigin(0, 0)
-        .setStrokeStyle(isSelected ? 2 : 1, isSelected ? PIXEL_UI.gold : PIXEL_UI.bevelDark);
+        .setStrokeStyle(
+          isSelected ? 2 : 1,
+          isSelected ? BLUE_STEEL.accentGold : BLUE_STEEL.panelBorder,
+        );
       row.setInteractive({ useHandCursor: true });
       row.on('pointerdown', () => dispatch(selectStat(state!, stat)));
       dynamicNodes.push(row);
       overlay.add(row);
+      rowRects.push({ stat, row });
 
       const marker = isSelected ? '▶ ' : '  ';
       const currentPts = params?.currentStats[stat] ?? 0;
@@ -312,12 +347,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
         `${marker}${PRIMARY_STAT_DISPLAY[stat].label}`,
         LABEL_STYLE,
       );
-      const value = crispText(
-        left + 10,
-        rowY + 21,
-        `${currentPts} pts  (${formatCoreStatGains(stat)}/pt)`,
-        VALUE_STYLE,
-      );
+      const value = crispText(left + 10, rowY + 21, `${currentPts} points invested`, VALUE_STYLE);
       dynamicNodes.push(label, value);
       overlay.add([label, value]);
 
@@ -371,7 +401,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     const confirmX = left + (PANEL_WIDTH - PANEL_PADDING * 2) - confirmW;
     const confirmY = panelY + PANEL_HEIGHT - PANEL_PADDING - confirmH;
     const confirmBox = scene.add
-      .rectangle(confirmX, confirmY, confirmW, confirmH, 0x16a34a, 0.95)
+      .rectangle(confirmX, confirmY, confirmW, confirmH, 0x23846b, 1)
       .setOrigin(0, 0)
       .setStrokeStyle(2, PIXEL_UI.gold)
       .setInteractive({ useHandCursor: true });
@@ -406,11 +436,17 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     const hint = crispText(
       left,
       confirmY - 18,
-      '↑/↓ Select · ←/→ Adjust · Enter Confirm',
+      '↑/↓ Select   ←/→ Adjust   Enter Confirm   Esc Bank all',
       FOOTER_STYLE,
     );
     dynamicNodes.push(hint);
     overlay.add(hint);
+    footerObjects = {
+      description: desc,
+      hint,
+      reset: resetBox,
+      confirm: confirmBox,
+    };
 
     overlay.setVisible(true);
   };
@@ -521,6 +557,51 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     },
     getRemainingPoints(): number {
       return state ? remainingPoints(state) : 0;
+    },
+    getLayoutSnapshot(): LevelUpUILayoutSnapshot | null {
+      if (!state || !params || !footerObjects) return null;
+      const toBounds = (
+        object: Phaser.GameObjects.Components.Transform & { width: number; height: number },
+      ): ScreenBounds => ({
+        x: object.x * uiScale,
+        y: object.y * uiScale,
+        width: object.width * uiScale,
+        height: object.height * uiScale,
+      });
+      const controlsByStat = new Map(statControls.map((control) => [control.stat, control]));
+      return {
+        selectedStat: selectedStat(state),
+        panel: toBounds(panel),
+        header: {
+          x: titleStrip.x * uiScale,
+          y: titleStrip.y * uiScale,
+          width: titleStrip.width * uiScale,
+          height: HEADER_HEIGHT * uiScale,
+        },
+        rows: rowRects.flatMap(({ stat, row }) => {
+          const control = controlsByStat.get(stat);
+          return control
+            ? [
+                {
+                  stat,
+                  row: toBounds(row),
+                  minus: toBounds(control.minus),
+                  plus: toBounds(control.plus),
+                },
+              ]
+            : [];
+        }),
+        footer: {
+          x: panel.x * uiScale,
+          y: (panel.y + PANEL_HEIGHT - FOOTER_HEIGHT - PANEL_PADDING) * uiScale,
+          width: PANEL_WIDTH * uiScale,
+          height: (FOOTER_HEIGHT + PANEL_PADDING) * uiScale,
+        },
+        description: toBounds(footerObjects.description),
+        hint: toBounds(footerObjects.hint),
+        reset: toBounds(footerObjects.reset),
+        confirm: toBounds(footerObjects.confirm),
+      };
     },
     destroy(): void {
       if (keyListener) {

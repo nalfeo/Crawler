@@ -76,6 +76,8 @@ export function createHudUI(scene: Phaser.Scene): {
    */
   getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
+  getVisibleAbilityIds(): readonly string[];
+  getVisibleMasteryLabels(): readonly string[];
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices, command charges). */
   getFloor3PartyState(): HudFloor3PartyState;
@@ -372,6 +374,8 @@ export function createHudUI(scene: Phaser.Scene): {
       return abilityBarScreenTop;
     },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
+    getVisibleAbilityIds: () => (hidden ? [] : abilityBar.getVisibleAbilityIds()),
+    getVisibleMasteryLabels: () => (hidden ? [] : skillTracker.getVisibleLabels()),
     getFamilyRelationshipsState: familyRelationships.getState,
     getFloor3PartyState: floor3Party.getState,
     getFloor3LeagueState: () => {

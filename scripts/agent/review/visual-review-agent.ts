@@ -918,206 +918,214 @@ async function captureScreenshot(
   cropsDir: string | null,
 ): Promise<CaptureResult> {
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: opts.viewport });
-  const page = await context.newPage();
+  try {
+    const context = await browser.newContext({ viewport: opts.viewport });
+    const page = await context.newPage();
 
-  console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
-  await page.goto(opts.labUrl, { waitUntil: 'commit', timeout: 45_000 });
-  await page.waitForFunction(
-    (skipProbeWait) => {
-      if (skipProbeWait) {
-        return document.readyState === 'complete';
-      }
-      const globalWithProbe = window as unknown as {
-        __uiProbe?: { ready?: () => boolean };
-        __mainSceneProbe?: { ready?: () => boolean };
-        __hudProbe?: { ready?: () => boolean };
-      };
-      return (
-        globalWithProbe.__uiProbe?.ready?.() === true ||
-        globalWithProbe.__mainSceneProbe?.ready?.() === true ||
-        globalWithProbe.__hudProbe?.ready?.() === true
-      );
-    },
-    opts.skipProbeWait,
-    { timeout: opts.probeTimeoutMs },
-  );
-  await page.waitForTimeout(250);
-  if (opts.setupFile) {
-    const setupScript = readFileSync(opts.setupFile, 'utf-8');
-    await page.evaluate(setupScript);
-  } else {
-    await page.evaluate(() => {
-      const probe = (
-        window as {
-          __uiProbe?: { openEquipment: () => void; equipCharm?: () => boolean };
-        }
-      ).__uiProbe;
-      probe?.openEquipment?.();
-      probe?.equipCharm?.();
-      const header = document.getElementById('app-header');
-      if (header) header.style.display = 'none';
-      const controls = document.getElementById('lab-controls');
-      if (controls) controls.style.display = 'none';
-      const host = document.getElementById('lab-canvas');
-      if (host) {
-        host.style.position = 'fixed';
-        host.style.left = '0';
-        host.style.top = '0';
-        host.style.width = '100vw';
-        host.style.height = '100vh';
-        host.style.zIndex = '9999';
-        host.style.background = '#000';
-      }
-      window.dispatchEvent(new Event('resize'));
-    });
-  }
-  await page.waitForTimeout(opts.waitMs);
-  const hoverPoint = await page.evaluate(() => {
-    const globalWithHover = window as unknown as {
-      __visualReviewHoverPoint?: { x?: unknown; y?: unknown };
-    };
-    const point = globalWithHover.__visualReviewHoverPoint;
-    if (!point || typeof point !== 'object') return null;
-    const x = Number(point.x);
-    const y = Number(point.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    return { x, y };
-  });
-  if (hoverPoint) {
-    await page.mouse.move(1, 1);
-    await page.waitForTimeout(40);
-    await page.mouse.move(hoverPoint.x, hoverPoint.y);
-    await page.mouse.move(hoverPoint.x + 1, hoverPoint.y + 1);
-    await page.waitForTimeout(120);
-  }
-
-  const harvest = await harvestSurface(page);
-  if (harvest.source === 'equipment-legacy') {
-    // A surface that predates the text-raster probe (e.g. an older commit being
-    // baselined) has no font-load state to wait on. Treat a missing probe as
-    // "nothing to wait for" rather than hanging until the timeout, so older
-    // revisions remain reviewable for A/B comparison.
+    console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
+    await page.goto(opts.labUrl, { waitUntil: 'commit', timeout: 45_000 });
     await page.waitForFunction(
-      () => {
-        const probe = window.__uiProbe;
-        if (typeof probe?.getEquipmentTextRasterMetadata !== 'function') {
+      (skipProbeWait) => {
+        if (skipProbeWait) {
           return document.readyState === 'complete';
         }
-        const state = probe.getEquipmentTextRasterMetadata()?.fontLoadState;
-        return state === 'loaded' || state === 'unavailable';
+        const globalWithProbe = window as unknown as {
+          __uiProbe?: { ready?: () => boolean };
+          __mainSceneProbe?: { ready?: () => boolean };
+          __hudProbe?: { ready?: () => boolean };
+          __abilitiesProbe?: { ready?: () => boolean };
+        };
+        return (
+          globalWithProbe.__uiProbe?.ready?.() === true ||
+          globalWithProbe.__mainSceneProbe?.ready?.() === true ||
+          globalWithProbe.__hudProbe?.ready?.() === true ||
+          globalWithProbe.__abilitiesProbe?.ready?.() === true
+        );
       },
-      undefined,
-      { timeout: 10_000 },
+      opts.skipProbeWait,
+      { timeout: opts.probeTimeoutMs },
     );
-  }
-  let captured: CaptureResult;
-  if (harvest.source === 'declared') {
-    const regions = normalizeHarvestedRegions(harvest.regions);
-    const computed = computeGeometryBlockers(regions);
-    if (harvest.expect.tooltipAfterHover && !regions.some((region) => region.kind === 'tooltip')) {
-      computed.push('Declared hover contract failed: tooltip region is not present.');
+    await page.waitForTimeout(250);
+    if (opts.setupFile) {
+      const setupScript = readFileSync(opts.setupFile, 'utf-8');
+      await page.evaluate(setupScript);
+    } else {
+      await page.evaluate(() => {
+        const probe = (
+          window as {
+            __uiProbe?: { openEquipment: () => void; equipCharm?: () => boolean };
+          }
+        ).__uiProbe;
+        probe?.openEquipment?.();
+        probe?.equipCharm?.();
+        const header = document.getElementById('app-header');
+        if (header) header.style.display = 'none';
+        const controls = document.getElementById('lab-controls');
+        if (controls) controls.style.display = 'none';
+        const host = document.getElementById('lab-canvas');
+        if (host) {
+          host.style.position = 'fixed';
+          host.style.left = '0';
+          host.style.top = '0';
+          host.style.width = '100vw';
+          host.style.height = '100vh';
+          host.style.zIndex = '9999';
+          host.style.background = '#000';
+        }
+        window.dispatchEvent(new Event('resize'));
+      });
     }
-    // Author-declared `flags` are treated as deterministic blockers alongside the
-    // geometry the lib computes from the regions.
-    const deterministicBlockers = [...new Set<string>([...computed, ...harvest.flags])];
-    captured = {
-      deterministicBlockers,
-      geometry: emptyGeometry(),
-      geometryText: formatRegions(harvest.surface, regions),
-      harvestSource: 'declared',
-      surface: harvest.surface,
-      regions,
-      expect: harvest.expect,
-      evidenceRegions: [],
-      textRaster: null,
-      declaredFocusClip: null,
-      focusedHover: false,
-      fullPanelContextPath: null,
-    };
-  } else if (harvest.source === 'equipment-legacy') {
-    // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
-    // equipment review output stays byte-for-byte identical to before.
-    const { deterministicBlockers, geometry } = await harvestEquipment(page);
-    captured = {
-      deterministicBlockers,
-      geometry,
-      geometryText: formatGeometry(geometry),
-      harvestSource: 'equipment-legacy',
-      surface: null,
-      regions: [],
-      expect: {
-        tooltipAfterHover: true,
-        statLabelsHumanReadable: true,
-        sectionDividers: true,
-      },
-      evidenceRegions: [],
-      textRaster: null,
-      declaredFocusClip: null,
-      focusedHover: false,
-      fullPanelContextPath: null,
-    };
-  } else {
-    // No declared contract and no equipment probe: no deterministic checks, no
-    // false blockers. main() prints a loud non-gating warning for this case.
-    captured = {
-      deterministicBlockers: [],
-      geometry: emptyGeometry(),
-      geometryText: NONE_GEOMETRY_NOTE,
-      harvestSource: 'none',
-      surface: null,
-      regions: [],
-      expect: {
-        tooltipAfterHover: false,
-        statLabelsHumanReadable: false,
-        sectionDividers: false,
-      },
-      evidenceRegions: [],
-      textRaster: null,
-      declaredFocusClip: null,
-      focusedHover: false,
-      fullPanelContextPath: null,
-    };
-  }
-  const setupClip = normalizeClip(
-    await page.evaluate(() => {
-      const globalWithClip = window as unknown as { __visualReviewClip?: unknown };
-      return globalWithClip.__visualReviewClip ?? null;
-    }),
-  );
-  const screenshotClip = opts.clip ?? setupClip;
-  captured.declaredFocusClip = setupClip;
-  captured.focusedHover =
-    setupClip !== null && captured.regions.some((region) => region.id.startsWith('hover-target:'));
-  if (captured.focusedHover) {
-    mkdirSync(resolve(fullPanelContextPath, '..'), { recursive: true });
-    await page.screenshot({ path: fullPanelContextPath, fullPage: false });
-    captured.fullPanelContextPath = fullPanelContextPath;
-  }
-  await page.screenshot({
-    path: outPath,
-    fullPage: false,
-    ...(screenshotClip ? { clip: screenshotClip } : {}),
-  });
-  if (captured.harvestSource === 'equipment-legacy') {
-    captured.textRaster = await captureEquipmentTextRaster(page, outPath, screenshotClip);
-    if (!captured.textRaster.passed) {
-      captured.deterministicBlockers.push(
-        ...captured.textRaster.failures.map((failure) => `text raster: ${failure}`),
+    await page.waitForTimeout(opts.waitMs);
+    const hoverPoint = await page.evaluate(() => {
+      const globalWithHover = window as unknown as {
+        __visualReviewHoverPoint?: { x?: unknown; y?: unknown };
+      };
+      const point = globalWithHover.__visualReviewHoverPoint;
+      if (!point || typeof point !== 'object') return null;
+      const x = Number(point.x);
+      const y = Number(point.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return { x, y };
+    });
+    if (hoverPoint) {
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(40);
+      await page.mouse.move(hoverPoint.x, hoverPoint.y);
+      await page.mouse.move(hoverPoint.x + 1, hoverPoint.y + 1);
+      await page.waitForTimeout(120);
+    }
+
+    const harvest = await harvestSurface(page);
+    if (harvest.source === 'equipment-legacy') {
+      // A surface that predates the text-raster probe (e.g. an older commit being
+      // baselined) has no font-load state to wait on. Treat a missing probe as
+      // "nothing to wait for" rather than hanging until the timeout, so older
+      // revisions remain reviewable for A/B comparison.
+      await page.waitForFunction(
+        () => {
+          const probe = window.__uiProbe;
+          if (typeof probe?.getEquipmentTextRasterMetadata !== 'function') {
+            return document.readyState === 'complete';
+          }
+          const state = probe.getEquipmentTextRasterMetadata()?.fontLoadState;
+          return state === 'loaded' || state === 'unavailable';
+        },
+        undefined,
+        { timeout: 10_000 },
       );
     }
-  }
+    let captured: CaptureResult;
+    if (harvest.source === 'declared') {
+      const regions = normalizeHarvestedRegions(harvest.regions);
+      const computed = computeGeometryBlockers(regions);
+      if (
+        harvest.expect.tooltipAfterHover &&
+        !regions.some((region) => region.kind === 'tooltip')
+      ) {
+        computed.push('Declared hover contract failed: tooltip region is not present.');
+      }
+      // Author-declared `flags` are treated as deterministic blockers alongside the
+      // geometry the lib computes from the regions.
+      const deterministicBlockers = [...new Set<string>([...computed, ...harvest.flags])];
+      captured = {
+        deterministicBlockers,
+        geometry: emptyGeometry(),
+        geometryText: formatRegions(harvest.surface, regions),
+        harvestSource: 'declared',
+        surface: harvest.surface,
+        regions,
+        expect: harvest.expect,
+        evidenceRegions: [],
+        textRaster: null,
+        declaredFocusClip: null,
+        focusedHover: false,
+        fullPanelContextPath: null,
+      };
+    } else if (harvest.source === 'equipment-legacy') {
+      // Legacy EquipmentUI path: the two in-browser probes run VERBATIM so the
+      // equipment review output stays byte-for-byte identical to before.
+      const { deterministicBlockers, geometry } = await harvestEquipment(page);
+      captured = {
+        deterministicBlockers,
+        geometry,
+        geometryText: formatGeometry(geometry),
+        harvestSource: 'equipment-legacy',
+        surface: null,
+        regions: [],
+        expect: {
+          tooltipAfterHover: true,
+          statLabelsHumanReadable: true,
+          sectionDividers: true,
+        },
+        evidenceRegions: [],
+        textRaster: null,
+        declaredFocusClip: null,
+        focusedHover: false,
+        fullPanelContextPath: null,
+      };
+    } else {
+      // No declared contract and no equipment probe: no deterministic checks, no
+      // false blockers. main() prints a loud non-gating warning for this case.
+      captured = {
+        deterministicBlockers: [],
+        geometry: emptyGeometry(),
+        geometryText: NONE_GEOMETRY_NOTE,
+        harvestSource: 'none',
+        surface: null,
+        regions: [],
+        expect: {
+          tooltipAfterHover: false,
+          statLabelsHumanReadable: false,
+          sectionDividers: false,
+        },
+        evidenceRegions: [],
+        textRaster: null,
+        declaredFocusClip: null,
+        focusedHover: false,
+        fullPanelContextPath: null,
+      };
+    }
+    const setupClip = normalizeClip(
+      await page.evaluate(() => {
+        const globalWithClip = window as unknown as { __visualReviewClip?: unknown };
+        return globalWithClip.__visualReviewClip ?? null;
+      }),
+    );
+    const screenshotClip = opts.clip ?? setupClip;
+    captured.declaredFocusClip = setupClip;
+    captured.focusedHover =
+      setupClip !== null &&
+      captured.regions.some((region) => region.id.startsWith('hover-target:'));
+    if (captured.focusedHover) {
+      mkdirSync(resolve(fullPanelContextPath, '..'), { recursive: true });
+      await page.screenshot({ path: fullPanelContextPath, fullPage: false });
+      captured.fullPanelContextPath = fullPanelContextPath;
+    }
+    await page.screenshot({
+      path: outPath,
+      fullPage: false,
+      ...(screenshotClip ? { clip: screenshotClip } : {}),
+    });
+    if (captured.harvestSource === 'equipment-legacy') {
+      captured.textRaster = await captureEquipmentTextRaster(page, outPath, screenshotClip);
+      if (!captured.textRaster.passed) {
+        captured.deterministicBlockers.push(
+          ...captured.textRaster.failures.map((failure) => `text raster: ${failure}`),
+        );
+      }
+    }
 
-  // Art-review evidence corpus: crop each declared/published element in the
-  // SAME screenshot space (browser still open) so we can later file the crops
-  // as GOOD/BAD training examples once the LLM verdict is known.
-  if (cropsDir) {
-    captured.evidenceRegions = await captureEvidenceCrops(page, cropsDir);
-  }
+    // Art-review evidence corpus: crop each declared/published element in the
+    // SAME screenshot space (browser still open) so we can later file the crops
+    // as GOOD/BAD training examples once the LLM verdict is known.
+    if (cropsDir) {
+      captured.evidenceRegions = await captureEvidenceCrops(page, cropsDir);
+    }
 
-  await context.close();
-  await browser.close();
-  return captured;
+    return captured;
+  } finally {
+    await browser.close();
+  }
 }
 
 /**
@@ -2470,11 +2478,11 @@ async function main(): Promise<number> {
 if (process.argv[1] && basename(process.argv[1]) === basename(fileURLToPath(import.meta.url))) {
   main()
     .then((code) => {
-      process.exit(code);
+      process.exitCode = code;
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[visual-review-agent] ${message}`);
-      process.exit(1);
+      process.exitCode = 1;
     });
 }

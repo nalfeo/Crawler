@@ -93,6 +93,8 @@ export function createHudAbilityBar(
   sync(world: GameWorld, playerEid: number): void;
   /** Whether the bar is currently rendered (spells unlocked). */
   isVisible(): boolean;
+  /** Ability ids currently projected into visible slots, in slot order. */
+  getVisibleAbilityIds(): readonly string[];
   getPanelScreenBounds(): ScreenBounds;
   getSlotScreenBounds(index: number): ScreenBounds | null;
   destroy(): void;
@@ -157,11 +159,11 @@ export function createHudAbilityBar(
       .setScrollFactor(0)
       .setDepth(DEPTH + 1);
     const keyLabel = scene.add
-      .text(x + 7, y + 5, i === 9 ? '0' : String(i + 1), {
+      .text(x + 7, y + 6, i === 9 ? '0' : String(i + 1), {
         fontFamily: 'monospace',
-        fontSize: '10px',
+        fontSize: '16px',
         fontStyle: 'bold',
-        color: '#53647f',
+        color: '#7f91ad',
       })
       .setScrollFactor(0)
       .setDepth(DEPTH + 2)
@@ -226,6 +228,7 @@ export function createHudAbilityBar(
   ]);
 
   let barVisible = false;
+  let visibleAbilityIds: readonly string[] = [];
   const setVisible = (visible: boolean): void => {
     barVisible = visible;
     panel.setVisible(visible);
@@ -249,6 +252,7 @@ export function createHudAbilityBar(
     // must be visible for those too or the ability is invisible to the player.
     const visible = world.featureUnlocks.spells === true || equipped.length > 0;
     setVisible(visible);
+    visibleAbilityIds = visible ? equipped.slice(0, ACTIVE_ABILITY_SLOT_LIMIT) : [];
     if (!visible) return;
 
     const cooldowns = state?.cooldownByAbilityId ?? new Map();
@@ -267,7 +271,7 @@ export function createHudAbilityBar(
       if (!id) {
         slot.setFillStyle(COLORS.slotBg, 0.92).setStrokeStyle(2, COLORS.slotBorder);
         accentBar.setFillStyle(COLORS.utility, 0.15);
-        keyLabel.setColor('#53647f');
+        keyLabel.setColor('#7f91ad');
         abilityLabel.setText('—').setFontSize(18).setColor('#52637e');
         abilityLabel.setVisible(true);
         abilityIcon.setVisible(false);
@@ -348,6 +352,7 @@ export function createHudAbilityBar(
   return {
     sync,
     isVisible: () => barVisible,
+    getVisibleAbilityIds: () => visibleAbilityIds,
     getPanelScreenBounds: () => ({
       x: BAR_X - PANEL_PADDING,
       y: PANEL_TOP,

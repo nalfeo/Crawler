@@ -46,6 +46,7 @@ import type {
 } from '../../engine/EquipmentUI.js';
 import { createHudMinimap } from '../../engine/HudMinimap.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
+import type { LevelUpUILayoutSnapshot } from '../../engine/LevelUpUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import {
   GENERATED_SPRITE_REGISTRY_KEY,
@@ -232,6 +233,7 @@ export interface UiProbeApi {
   getStatControlBounds(): StatControlBounds[];
   getDraftAllocation(stat: PrimaryStatId): number;
   getRemainingPoints(): number;
+  getLevelUpLayout(): LevelUpUILayoutSnapshot | null;
 }
 
 /** Builds a revealed single-room safe floor so the minimap overlay has terrain. */
@@ -825,6 +827,7 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         getDraftAllocation: (stat: PrimaryStatId) =>
           this.levelUpUI?.getDraftAllocations()?.[stat] ?? 0,
         getRemainingPoints: () => this.levelUpUI?.getRemainingPoints() ?? 0,
+        getLevelUpLayout: () => this.levelUpUI?.getLayoutSnapshot() ?? null,
       };
       probeWindow.__uiProbe = api;
     }

@@ -60,6 +60,18 @@ async function waitForModalTitle(page: Page, title: string, label: string): Prom
   }
 }
 
+async function expectModalTitleContained(page: Page): Promise<void> {
+  const layout = await mainSceneProbe.getModalPickerLayout(page);
+  expect(layout, 'modal layout must be available').not.toBeNull();
+  expect(layout!.title.x + layout!.title.width).toBeLessThanOrEqual(
+    layout!.panel.x + layout!.panel.width,
+  );
+  expect(layout!.title.y + layout!.title.height).toBeLessThanOrEqual(layout!.titleRule.y);
+  if (layout!.subtitle) {
+    expect(layout!.titleRule.y + layout!.titleRule.height).toBeLessThanOrEqual(layout!.subtitle.y);
+  }
+}
+
 describe('MainGameScene Floor 3 party-combat UX wiring', () => {
   let browser: Browser;
 
@@ -93,6 +105,7 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         'Professor Thistle: Choose your starter Companion',
         'Floor 3 starter-companion modal after intro',
       );
+      await expectModalTitleContained(page);
 
       await page.keyboard.press('Enter');
       await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'playing', {
@@ -168,4 +181,26 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       await closeQuietly(context);
     }
   }, 90_000);
+
+  it('contains the long starter-companion title at 960x540', async () => {
+    const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor3' });
+      await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'loadout', {
+        timeoutMs: 20_000,
+        label: 'Floor 3 briefing at mobile-scale viewport',
+      });
+      await page.keyboard.press('Enter');
+      await waitForModalTitle(
+        page,
+        'Professor Thistle: Choose your starter Companion',
+        'mobile-scale Floor 3 starter-companion modal',
+      );
+      await expectModalTitleContained(page);
+    } finally {
+      await closeQuietly(page);
+      await closeQuietly(context);
+    }
+  }, 45_000);
 });

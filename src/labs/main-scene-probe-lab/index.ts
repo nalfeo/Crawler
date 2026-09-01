@@ -192,6 +192,8 @@ interface MainSceneInternals {
   hudUi?: {
     isMapOverlayOpen(): boolean;
     getBottomCenterBounds?(): ScreenBounds;
+    getVisibleAbilityIds?(): readonly string[];
+    getVisibleMasteryLabels?(): readonly string[];
     getMinimapBounds?(): ScreenBounds | null;
     getMinimapRadarWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
     getMinimapOverlayWaypointArrowStates?(): readonly MinimapWaypointArrowBounds[];
@@ -554,6 +556,10 @@ export interface MainSceneState {
   readonly currentAnnouncement: { readonly kind: string; readonly text: string } | null;
   /** Active abilities currently equipped to the auto bar. */
   readonly equippedActiveAbilityIds: readonly string[];
+  /** Ability ids currently rendered by the real HUD auto bar. */
+  readonly hudAbilityIds: readonly string[];
+  /** Labels currently rendered by the real HUD mastery tracker. */
+  readonly hudMasteryLabels: readonly string[];
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
@@ -1514,6 +1520,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         eid >= 0
           ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
           : [];
+      const hudAbilityIds = scene?.hudUi?.getVisibleAbilityIds?.() ?? [];
+      const hudMasteryLabels = scene?.hudUi?.getVisibleMasteryLabels?.() ?? [];
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
@@ -1536,6 +1544,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         abilityLoadoutSectionHeaderLabel,
         currentAnnouncement,
         equippedActiveAbilityIds,
+        hudAbilityIds,
+        hudMasteryLabels,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
