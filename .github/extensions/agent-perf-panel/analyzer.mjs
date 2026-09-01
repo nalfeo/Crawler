@@ -704,6 +704,15 @@ export function buildSummary(raw) {
     0,
   );
 
+  // "Compaction storm" detector: sessions that compact far more often than a
+  // normal session, usually because a tight tool loop (screenshots, browser
+  // evaluate results, etc.) keeps re-filling the context window within
+  // minutes. A session compacting once every 15 minutes on average is normal
+  // churn; several per hour is a real signal something in the loop is too
+  // heavy for the window, not that the conversation is merely long.
+  // See: docs/knowledge/handoffs — CLI session efficiency analysis (2026-09).
+  const compactionStorm = computeCompactionStorm(raw.compactions, walltimeMs);
+
   return {
     sessionId: raw.sessionId,
     repository: raw.repository,
@@ -748,6 +757,9 @@ export function buildSummary(raw) {
       maxParallelism: parallelStats.maxParallelism,
       tokens: totalTokens,
       peakContextTokens: peakContextTokens || undefined,
+      compactionsPerHour: compactionStorm.compactionsPerHour,
+      compactionStorm: compactionStorm.isStorm,
+      minCompactionGapMs: compactionStorm.minGapMs,
     },
     tools: raw.tools.map(sanitizeToolForClient),
     hooks: raw.hooks,
@@ -829,6 +841,49 @@ export function computeParallelStats(tools) {
     serialToolTimeMs: serialMs,
     parallelismRatio: denom > 0 ? parallelMs / denom : 0,
     maxParallelism: peak,
+  };
+}
+
+/** Sessions per hour of compaction above which a session is flagged as a
+ *  "storm" — repeatedly blowing the context window in a tight loop rather
+ *  than compacting from ordinary conversation growth. Chosen from observed
+ *  data: normal sessions compact a handful of times over hours; storm
+ *  sessions (heavy playwright screenshot/eval loops) compacted 50+ times in
+ *  under an hour, i.e. one every 1-3 minutes. */
+const COMPACTION_STORM_THRESHOLD_PER_HOUR = 12;
+/** Minimum absolute compaction count required before the rate is trusted.
+ *  A short session with only 2-3 compactions can trivially exceed the
+ *  per-hour rate just from being brief, without ever exhibiting the
+ *  pathological repeated-refill pattern the detector is meant to catch. */
+const COMPACTION_STORM_MIN_COUNT = 5;
+
+/**
+ * Detects a "compaction storm": a session compacting far more frequently than
+ * conversation growth alone would explain, usually caused by a tight tool
+ * loop (browser screenshots, verbose eval results) repeatedly re-filling the
+ * context window within minutes rather than hours. Distinguishing this from
+ * ordinary long-session compaction matters because the fix is different: a
+ * storm is fixed by giving the agent more headroom (a larger context-window
+ * model) or by shrinking the loop's payload, not by "the session ran a long
+ * time".
+ */
+export function computeCompactionStorm(compactions, walltimeMs) {
+  const timestamps = compactions.map((c) => c.ts).filter((ts) => Number.isFinite(ts));
+  if (timestamps.length < 2 || !(walltimeMs > 0)) {
+    return { compactionsPerHour: 0, isStorm: false, minGapMs: undefined };
+  }
+  timestamps.sort((a, b) => a - b);
+  let minGapMs = Infinity;
+  for (let i = 1; i < timestamps.length; i += 1) {
+    minGapMs = Math.min(minGapMs, timestamps[i] - timestamps[i - 1]);
+  }
+  const compactionsPerHour = (timestamps.length / walltimeMs) * 3_600_000;
+  return {
+    compactionsPerHour,
+    isStorm:
+      timestamps.length >= COMPACTION_STORM_MIN_COUNT &&
+      compactionsPerHour >= COMPACTION_STORM_THRESHOLD_PER_HOUR,
+    minGapMs: Number.isFinite(minGapMs) ? minGapMs : undefined,
   };
 }
 
