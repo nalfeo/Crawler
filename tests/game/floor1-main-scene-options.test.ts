@@ -34,6 +34,7 @@ import {
 } from '../../src/game/floor5Scenario.js';
 import {
   floor6DefenseDirectorSystem,
+  floor6CombatContributionSystem,
   floor6RaiderSystem,
   floor6TowerSystem,
 } from '../../src/game/floor6Scenario.js';
@@ -112,6 +113,7 @@ describe('createFloor1MainSceneOptions', () => {
       beforeWeaponSystems: [],
       beforeEnemyAISystems: [floor6RaiderSystem],
       afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
       foreignSystems: [
         floor1PlayerStatSystem,
         floor1EnemyDirectorSystem,
@@ -130,6 +132,7 @@ describe('createFloor1MainSceneOptions', () => {
       beforeWeaponSystems,
       beforeEnemyAISystems,
       afterSpawnerSystems,
+      afterCoreSystems,
       foreignSystems,
     }) => {
       // The expected slot contents below are hardcoded independently of
@@ -139,8 +142,10 @@ describe('createFloor1MainSceneOptions', () => {
       expect(scenario.beforeWeaponSystems ?? []).toEqual(beforeWeaponSystems);
       expect(scenario.beforeEnemyAISystems ?? []).toEqual(beforeEnemyAISystems);
       expect(scenario.afterSpawnerSystems ?? []).toEqual(afterSpawnerSystems);
+      expect(scenario.afterCoreSystems ?? []).toEqual(afterCoreSystems ?? []);
 
       const preSystems = createFloorMainSceneOptions(floorId).preSystems ?? [];
+      const postSystems = createFloorMainSceneOptions(floorId).postSystems ?? [];
       const localSystems = [
         ...beforeWeaponSystems,
         ...beforeEnemyAISystems,
@@ -175,6 +180,7 @@ describe('createFloor1MainSceneOptions', () => {
       ).toEqual(beforeEnemyAISystems);
       expect(preSystems.slice(preSystems.indexOf(spawnerSystem) + 1)).toEqual(afterSpawnerSystems);
       expect(preSystems.indexOf(spawnerSystem)).toBe(preSystems.indexOf(spawnerArenaSystem) + 1);
+      expect(postSystems.slice(0, afterCoreSystems?.length ?? 0)).toEqual(afterCoreSystems ?? []);
     },
   );
 

@@ -947,9 +947,9 @@ export function floor6TowerSystem(world: GameWorld): void {
  * `floor6DefenseDirectorSystem` — sole writer of Floor 6 phase, phase trace,
  * wave manifests, and terminal transitions (ADR 0097 D1, spec FR2.1–FR2.4).
  *
- * Runs as `afterSpawnerSystems` so combat resolution (damage / death) has
- * already occurred for this tick, giving terminal-precedence checks a
- * consistent view of player and relay HP.
+ * Runs as `afterSpawnerSystems` to release waves and advance defense phase
+ * before this tick's core combat systems. Same-frame combat contribution
+ * telemetry is drained by `floor6CombatContributionSystem` in postSystems.
  *
  * Terminal ordering within a single tick (FR2.2):
  *   1. Player death → DEFEAT
@@ -964,7 +964,6 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
 
   const config = getFloor6Config();
   const tuning = config.tuning;
-  recordFloor6CombatContributions(world, state);
 
   // ── SETUP → DEFEND: build manifest and transition ────────────────────────
   if (state.phase.kind === 'SETUP') {
@@ -1004,6 +1003,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
       break;
     }
   }
+
   if (playerDead) {
     clearFloor6TerminalState(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'player-death');
@@ -1058,6 +1058,12 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   if (state.phase.kind === 'DEFEND' || state.phase.kind === 'FINALE') {
     releaseFloor6WaveEntries(world, state);
   }
+}
+
+export function floor6CombatContributionSystem(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state) return;
+  recordFloor6CombatContributions(world, state);
 }
 
 /**

@@ -7,11 +7,14 @@ import {
   _getFloor6TowerRoster,
   _sellFloor6Tower,
   buildFloor6Tower,
+  floor6CombatContributionSystem,
   floor6DefenseDirectorSystem,
   floor6TowerSystem,
   getFloor6DefenseRunStats,
   purchaseFloor6UpgradeOffer,
 } from '../../src/game/floor6Scenario.js';
+import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
+import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function initFloor6() {
@@ -77,7 +80,7 @@ describe('Floor 6 authored tower construction', () => {
       addComponent(world.ecs, eid, set(Position, { x: 178, y: 102 }));
     }
     floor6TowerSystem(world);
-    floor6DefenseDirectorSystem(world);
+    floor6CombatContributionSystem(world);
     const target = Math.min(first, second);
     expect(world.stores.health.current[target]).toBeLessThan(20);
     expect(world.stores.health.current[Math.max(first, second)]).toBe(20);
@@ -92,8 +95,34 @@ describe('Floor 6 authored tower construction', () => {
       canCrit: false,
       sourceEid: player,
     });
-    floor6DefenseDirectorSystem(world);
+    floor6CombatContributionSystem(world);
     expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(3);
+  });
+
+  it('records same-step hero contribution before the visual combat queue drain', () => {
+    const { world, player, defense } = initFloor6();
+    defense.phase = { kind: 'DEFEND', waveIndex: 0, remainingToRelease: 0 };
+    const raider = createEntity(world);
+    addComponent(world.ecs, raider, set(BroadcastRelayRaider, { manifestIndex: 0 }));
+    addComponent(world.ecs, raider, set(Health, { current: 20, max: 20 }));
+    addComponent(world.ecs, raider, set(Position, { x: 178, y: 102 }));
+
+    runSimulationStep(world, createInputState(), {
+      preSystems: [floor6DefenseDirectorSystem],
+      afterInput: () => {
+        applyDamage(world, raider, 4, 178, 102, {
+          origin: 'player',
+          affinity: 'physical',
+          scaleWithPrimary: false,
+          canCrit: false,
+          sourceEid: player,
+        });
+      },
+      postSystems: [floor6CombatContributionSystem],
+    });
+    world.combatEvents.length = 0;
+
+    expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(4);
   });
 
   it('sells and terminally tears down all tower entities exactly once', () => {

@@ -187,6 +187,7 @@ export function createFloorMainSceneOptions(
       ...(scenario.afterSpawnerSystems ?? []),
     ],
     postSystems: [
+      ...(scenario.afterCoreSystems ?? []),
       levelSystem,
       skillSystem,
       abilitySystem,
