@@ -232,7 +232,10 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     expect(recoveryStep?.run).toContain('--sort created --order asc');
     expect(recoveryStep?.run).not.toContain('"repo:${GITHUB_REPOSITORY} is:issue');
-    expect(recoveryStep?.run).toContain('issues/${ISSUE_NUMBER}/dependencies/blocked_by');
+    expect(recoveryStep?.run).toContain('gh api --paginate');
+    expect(recoveryStep?.run).toContain('Scheduled recovery skipped blocked issue');
+    expect(recoveryStep?.run).toContain('--limit 50');
+    expect(recoveryStep?.run).toContain('issues/$1/dependencies/blocked_by');
     expect(recoveryStep?.run).toContain('Skipping before Goobers claim or repository mutation.');
     expect(recoveryStep?.run).toContain('should_run=false');
     expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
