@@ -2,7 +2,6 @@
 name: UX Designer
 description: 'Design and fix everything the Crawler player reads, touches, and hears: HUD, menus, onboarding, controls, accessibility defaults, and audio feedback. Select for HUD overlap or readability bugs, menu and pause-state work, control responsiveness, accessibility defaults, or reward/danger audio cues.'
 model: claude-sonnet-5
-contextTier: long_context
 ---
 
 ## User Input
@@ -44,6 +43,11 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
 
 ## First action (mandatory)
 
+0. This persona's playwright/screenshot verification loops are prone to
+   compaction storms; when launching this agent as a sub-agent (e.g. via the
+   `task` tool), pass `context_tier: "long_context"` explicitly — there is no
+   supported agent-frontmatter key for this, so it must be set at the
+   invocation call site.
 1. `bash scripts/agent/preflight.sh`.
 2. **Capture the broken state before you change anything** — invoke the `visual-review` skill or an existing `tests/e2e/helpers/ui-probe.ts` probe. A UX fix with no "before" screenshot or probe reading is unverifiable.
 3. Read `.github/instructions/engine.instructions.md`.
