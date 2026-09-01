@@ -94,8 +94,8 @@ describe('familyRowFromRelation', () => {
 });
 
 describe('displayNameForRow', () => {
-  it('keeps the pixel-font label within the 108px name column', () => {
-    expect(FAMILY_NAME_MAX_CHARS * 9).toBeLessThanOrEqual(108);
+  it('keeps the pixel-font label within the 138px name column', () => {
+    expect(FAMILY_NAME_MAX_CHARS * 9).toBeLessThanOrEqual(138);
   });
 
   it('returns the full name when it fits within the column', () => {
@@ -104,7 +104,7 @@ describe('displayNameForRow', () => {
   });
 
   it('falls back to the short species label when the full name is too wide', () => {
-    // Real roster cases must fit the 108px name column in the 9px pixel face.
+    // Real roster species labels must fit the 138px name column in the 9px pixel face.
     expect(displayNameForRow({ name: 'The Thornbloom Growers', shortLabel: 'Cactusfolk' })).toBe(
       'Cactusfolk',
     );

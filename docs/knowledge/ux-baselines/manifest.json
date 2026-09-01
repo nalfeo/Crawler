@@ -180,7 +180,7 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Floor-2 Family Relations panel covering ally, neutral, hostile, and hate bands together with both alive and defeated boss glyphs."
+    "description": "Floor-2 Family Relations comparison contract: four complete family identities, all standing bands, visible 25/50/75 thresholds, and explicit UP/OUT boss labels with no collisions."
   },
   {
     "id": "family-relationships-boss-aftermath",
@@ -190,7 +190,7 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Floor-2 Family Relations panel after every present family boss is defeated, proving repeated skull glyphs and desaturated boss tiles remain readable."
+    "description": "Boss-aftermath contract: every family remains independently scannable while four repeated OUT tiles are explicit, contained, and subordinate to the standing values."
   },
   {
     "id": "family-relationships-compact-stress",
@@ -200,6 +200,6 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Compact supported viewport with zero/threshold/max relations, alternating defeated bosses, and the widest rendered family labels."
+    "description": "Compact 960x540 contract: complete widest-rendered identities, zero/threshold/max relation values, three threshold notches per bar, alternating UP/OUT bosses, and no HUD collision."
   }
 ]

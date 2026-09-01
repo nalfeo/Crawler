@@ -50,6 +50,15 @@
       `${scenario} expected ${expectedDefeated} defeated bosses, got ${defeatedCount}`,
     );
   }
+  if (layout.family.rows.some((row) => row.displayedName.includes('…'))) {
+    throw new Error(`${scenario} must render every real family identity without truncation`);
+  }
+  if (layout.family.rows.some((row) => row.bossStateLabel !== (row.bossDefeated ? 'OUT' : 'UP'))) {
+    throw new Error(`${scenario} boss state labels must read UP or OUT`);
+  }
+  if (layout.family.rows.some((row) => row.relationTicks.length !== 3)) {
+    throw new Error(`${scenario} must expose the 25/50/75 standing thresholds`);
+  }
 
   // Canvas (design space, GAME_W x GAME_H) -> CSS pixel space for the capture.
   const canvas = document.querySelector('canvas');
@@ -65,15 +74,65 @@
   });
 
   const regions = [{ id: 'family-panel', box: toScreen(panel), kind: 'panel' }];
+  if (layout.family.title) {
+    regions.push({
+      id: 'family-title',
+      box: toScreen(layout.family.title),
+      kind: 'text',
+      parentId: 'family-panel',
+    });
+  }
+  if (layout.family.columnHeader && layout.family.columnLabels) {
+    regions.push({
+      id: 'family-column-header',
+      box: toScreen(layout.family.columnHeader),
+      kind: 'content',
+      parentId: 'family-panel',
+    });
+    for (const [id, box] of Object.entries(layout.family.columnLabels)) {
+      regions.push({
+        id: `family-column-${id}`,
+        box: toScreen(box),
+        kind: 'text',
+        parentId: 'family-column-header',
+      });
+    }
+  }
   layout.family.rows.forEach((row, index) => {
     const rowId = `family-row-${index}`;
     regions.push({ id: rowId, box: toScreen(row.row), kind: 'content', parentId: 'family-panel' });
+    regions.push({
+      id: `${rowId}-swatch`,
+      box: toScreen(row.swatch),
+      kind: 'icon',
+      parentId: rowId,
+    });
     regions.push({ id: `${rowId}-name`, box: toScreen(row.name), kind: 'text', parentId: rowId });
     regions.push({ id: `${rowId}-bar`, box: toScreen(row.bar), kind: 'control', parentId: rowId });
+    row.relationTicks.forEach((tick, tickIndex) => {
+      regions.push({
+        id: `${rowId}-threshold-${tickIndex}`,
+        box: toScreen(tick),
+        kind: 'content',
+        parentId: `${rowId}-bar`,
+      });
+    });
     regions.push({ id: `${rowId}-value`, box: toScreen(row.value), kind: 'text', parentId: rowId });
     regions.push({
-      id: `${rowId}-boss-icon`,
-      box: toScreen(row.bossIcon),
+      id: `${rowId}-boss-tile`,
+      box: toScreen(row.bossTile),
+      kind: 'content',
+      parentId: rowId,
+    });
+    regions.push({
+      id: `${rowId}-boss-label`,
+      box: toScreen(row.bossLabel),
+      kind: 'text',
+      parentId: `${rowId}-boss-tile`,
+    });
+    regions.push({
+      id: `${rowId}-status-pill`,
+      box: toScreen(row.statusPill),
       kind: 'content',
       parentId: rowId,
     });
@@ -81,7 +140,7 @@
       id: `${rowId}-status`,
       box: toScreen(row.status),
       kind: 'text',
-      parentId: rowId,
+      parentId: `${rowId}-status-pill`,
     });
   });
 

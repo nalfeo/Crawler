@@ -25,15 +25,15 @@ import {
   type FamilyRow,
 } from './family-relationships-state.js';
 
-const PANEL_WIDTH = 244;
-const TITLE_H = 24;
+const PANEL_WIDTH = 292;
+const TITLE_H = 44;
 const ROW_H = 42;
 const ROW_GAP = 2;
 const MAX_ROWS = 4;
 const PANEL_PAD = 8;
 
 const SWATCH_SIZE = 12;
-const BAR_WIDTH = 112;
+const BAR_WIDTH = 142;
 const BAR_HEIGHT = 8;
 const CLEARANCE = 8;
 const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
@@ -44,20 +44,32 @@ const PANEL_MARGIN_BOTTOM = 160;
 
 export interface FamilyRelationshipRowLayout {
   readonly row: ScreenBounds;
+  readonly swatch: ScreenBounds;
   readonly name: ScreenBounds;
   readonly bar: ScreenBounds;
+  readonly relationTicks: readonly ScreenBounds[];
   readonly value: ScreenBounds;
-  readonly bossIcon: ScreenBounds;
+  readonly bossTile: ScreenBounds;
+  readonly bossLabel: ScreenBounds;
+  readonly statusPill: ScreenBounds;
   readonly status: ScreenBounds;
   readonly displayedName: string;
   readonly relation: number;
   readonly band: FamilyRow['band'];
   readonly bossDefeated: boolean;
+  readonly bossStateLabel: 'UP' | 'OUT';
 }
 
 export interface FamilyRelationshipsLayout {
   readonly visible: boolean;
   readonly panel: ScreenBounds | null;
+  readonly title: ScreenBounds | null;
+  readonly columnHeader: ScreenBounds | null;
+  readonly columnLabels: {
+    readonly family: ScreenBounds;
+    readonly standing: ScreenBounds;
+    readonly boss: ScreenBounds;
+  } | null;
   readonly rows: readonly FamilyRelationshipRowLayout[];
 }
 
@@ -68,6 +80,7 @@ interface RowVisuals {
   name: Phaser.GameObjects.Text;
   barTrack: Phaser.GameObjects.Rectangle;
   barFill: Phaser.GameObjects.Rectangle;
+  relationTicks: Phaser.GameObjects.Rectangle[];
   relationText: Phaser.GameObjects.Text;
   bossTile: Phaser.GameObjects.Rectangle;
   bossIcon: Phaser.GameObjects.Text;
@@ -155,6 +168,41 @@ export function createHudFamilyRelationships(
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add(titleAccent);
 
+  const familyColumn = scene.add
+    .text(PANEL_PAD + 3, 31, 'FAMILY', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      fontStyle: 'bold',
+      color: hex(BLUE_STEEL.textSecondary),
+      stroke: '#02040a',
+      strokeThickness: 2,
+    })
+    .setOrigin(0, 0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  const standingColumn = scene.add
+    .text(166, 31, 'STANDING', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      fontStyle: 'bold',
+      color: hex(BLUE_STEEL.textSecondary),
+      stroke: '#02040a',
+      strokeThickness: 2,
+    })
+    .setOrigin(0, 0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  const bossColumn = scene.add
+    .text(245, 31, 'BOSS', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      fontStyle: 'bold',
+      color: hex(BLUE_STEEL.textSecondary),
+      stroke: '#02040a',
+      strokeThickness: 2,
+    })
+    .setOrigin(0, 0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  root.add([familyColumn, standingColumn, bossColumn]);
+
   const rowStartY = PANEL_PAD + TITLE_H;
   const rowVisuals: RowVisuals[] = [];
 
@@ -196,11 +244,24 @@ export function createHudFamilyRelationships(
     const barFill = scene.add
       .rectangle(barX + 1, barY + 1, BAR_WIDTH - 2, BAR_HEIGHT - 2, PIXEL_UI.hpHigh)
       .setOrigin(0, 0);
+    const relationTicks = [0.25, 0.5, 0.75].map((fraction) =>
+      scene.add
+        .rectangle(
+          Math.round(barX + BAR_WIDTH * fraction),
+          barY + 1,
+          1,
+          BAR_HEIGHT - 2,
+          0xd9e2ef,
+          0.5,
+        )
+        .setOrigin(0, 0),
+    );
 
     const relationText = scene.add
-      .text(barX + BAR_WIDTH + 3, barY - 3, '', {
+      .text(barX + BAR_WIDTH + 3, barY - 4, '', {
         fontFamily: FONT_FAMILY,
-        fontSize: '9px',
+        fontSize: '10px',
+        fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
         strokeThickness: 2,
@@ -208,16 +269,16 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0, 0);
 
-    const bossTileX = 216;
+    const bossTileX = 258;
     const bossTileY = 9;
     const bossTile = scene.add
-      .rectangle(bossTileX, bossTileY, 16, 16, 0x2b3c61)
+      .rectangle(bossTileX, bossTileY, 32, 16, 0x2b3c61)
       .setOrigin(0.5, 0.5)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const bossIcon = scene.add
-      .text(bossTileX, bossTileY - 1, '♥', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
+      .text(bossTileX, bossTileY, 'UP', {
+        fontFamily: FONT_FAMILY,
+        fontSize: '7px',
         fontStyle: 'bold',
         color: '#f87171',
         stroke: '#02040a',
@@ -225,9 +286,9 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0.5, 0.5);
 
-    const statusPillX = 126;
+    const statusPillX = 160;
     const statusPillY = 0;
-    const statusPillWidth = 78;
+    const statusPillWidth = 76;
     const statusPill = scene.add
       .rectangle(statusPillX, statusPillY, statusPillWidth, 18, PIXEL_UI.trackFill)
       .setOrigin(0, 0)
@@ -250,6 +311,7 @@ export function createHudFamilyRelationships(
       name,
       barTrack,
       barFill,
+      ...relationTicks,
       relationText,
       bossTile,
       bossIcon,
@@ -264,6 +326,7 @@ export function createHudFamilyRelationships(
       name,
       barTrack,
       barFill,
+      relationTicks,
       relationText,
       bossTile,
       bossIcon,
@@ -275,6 +338,9 @@ export function createHudFamilyRelationships(
 
   const allTexts = [
     title,
+    familyColumn,
+    standingColumn,
+    bossColumn,
     ...rowVisuals.flatMap((r) => [r.name, r.relationText, r.bossIcon, r.statusText]),
   ];
   const detachCrispText = applyCrispText(scene, allTexts, MIN_TEXT_RESOLUTION + 2);
@@ -298,6 +364,9 @@ export function createHudFamilyRelationships(
     titleFrame.setVisible(effectiveVisible);
     titleAccent.setVisible(effectiveVisible);
     title.setVisible(effectiveVisible);
+    familyColumn.setVisible(effectiveVisible);
+    standingColumn.setVisible(effectiveVisible);
+    bossColumn.setVisible(effectiveVisible);
     for (const r of rowVisuals) r.container.setVisible(effectiveVisible);
   }
 
@@ -327,11 +396,11 @@ export function createHudFamilyRelationships(
     rv.relationText.setText(String(Math.round(row.relation)).padStart(3, ' '));
 
     if (row.bossDefeated) {
-      rv.bossIcon.setText('☠');
+      rv.bossIcon.setText('OUT');
       rv.bossIcon.setColor('#94a3b8');
       rv.bossTile.setStrokeStyle(1, 0x94a3b8);
     } else {
-      rv.bossIcon.setText('♥');
+      rv.bossIcon.setText('UP');
       rv.bossIcon.setColor('#f87171');
       rv.bossTile.setStrokeStyle(1, 0xf87171);
     }
@@ -476,28 +545,56 @@ export function createHudFamilyRelationships(
     return { x: b.x, y: b.y, width: b.width, height: b.height };
   }
 
+  function unionBounds(bounds: readonly ScreenBounds[]): ScreenBounds {
+    const left = Math.min(...bounds.map((box) => box.x));
+    const top = Math.min(...bounds.map((box) => box.y));
+    const right = Math.max(...bounds.map((box) => box.x + box.width));
+    const bottom = Math.max(...bounds.map((box) => box.y + box.height));
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+
   function getLayout(): FamilyRelationshipsLayout {
     const parentVisible = parent?.visible ?? true;
     if (!lastVisible || !masterVisible || !parentVisible || !root.visible) {
-      return { visible: false, panel: null, rows: [] };
+      return {
+        visible: false,
+        panel: null,
+        title: null,
+        columnHeader: null,
+        columnLabels: null,
+        rows: [],
+      };
     }
+    const columnLabels = {
+      family: screenBounds(familyColumn),
+      standing: screenBounds(standingColumn),
+      boss: screenBounds(bossColumn),
+    };
     return {
       visible: true,
       panel: panelScreenBounds(),
+      title: screenBounds(title),
+      columnHeader: unionBounds(Object.values(columnLabels)),
+      columnLabels,
       rows: rowVisuals.flatMap((rv) => {
         if (!rv.container.visible || !rv.row) return [];
         return [
           {
             row: screenBounds(rv.background),
+            swatch: screenBounds(rv.swatch),
             name: screenBounds(rv.name),
             bar: screenBounds(rv.barTrack),
+            relationTicks: rv.relationTicks.map(screenBounds),
             value: screenBounds(rv.relationText),
-            bossIcon: screenBounds(rv.bossTile),
+            bossTile: screenBounds(rv.bossTile),
+            bossLabel: screenBounds(rv.bossIcon),
+            statusPill: screenBounds(rv.statusPill),
             status: screenBounds(rv.statusText),
             displayedName: rv.name.text,
             relation: rv.row.relation,
             band: rv.row.band,
             bossDefeated: rv.row.bossDefeated,
+            bossStateLabel: rv.row.bossDefeated ? 'OUT' : 'UP',
           },
         ];
       }),
@@ -511,6 +608,9 @@ export function createHudFamilyRelationships(
     title.destroy();
     titleFrame.destroy();
     titleAccent.destroy();
+    familyColumn.destroy();
+    standingColumn.destroy();
+    bossColumn.destroy();
     panel.destroy();
     root.destroy();
   }

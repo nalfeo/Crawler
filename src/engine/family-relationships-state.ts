@@ -96,7 +96,7 @@ function findFamilyDef(families: readonly FamilyDef[], id: FamilyId): FamilyDef 
 }
 
 /** Max pixel-font characters the row's name column can show before using the short label. */
-export const FAMILY_NAME_MAX_CHARS = 11;
+export const FAMILY_NAME_MAX_CHARS = 15;
 
 /** Whether the family widget is unlocked for the current world. */
 export function shouldShowFamilyRelationships(

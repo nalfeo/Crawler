@@ -461,10 +461,13 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           `row ${index} escapes panel at ${viewport.width}x${viewport.height}`,
         ).toBe(true);
         for (const [name, bounds] of Object.entries({
+          swatch: row.swatch,
           name: row.name,
           bar: row.bar,
           value: row.value,
-          bossIcon: row.bossIcon,
+          bossTile: row.bossTile,
+          bossLabel: row.bossLabel,
+          statusPill: row.statusPill,
           status: row.status,
         })) {
           expect(
@@ -473,11 +476,12 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           ).toBe(true);
         }
         const siblings = Object.entries({
+          swatch: row.swatch,
           name: row.name,
           bar: row.bar,
           value: row.value,
-          bossIcon: row.bossIcon,
-          status: row.status,
+          bossTile: row.bossTile,
+          statusPill: row.statusPill,
         });
         for (let left = 0; left < siblings.length; left += 1) {
           for (let right = left + 1; right < siblings.length; right += 1) {
@@ -489,6 +493,17 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
             ).toBe(false);
           }
         }
+        expect(row.displayedName).not.toContain('…');
+        expect(row.bossStateLabel).toBe(row.bossDefeated ? 'OUT' : 'UP');
+        expect(row.relationTicks).toHaveLength(3);
+        for (const [tickIndex, tick] of row.relationTicks.entries()) {
+          expect(
+            contains(row.bar, tick),
+            `relation threshold ${tickIndex} escapes bar in row ${index}`,
+          ).toBe(true);
+        }
+        expect(contains(row.statusPill, row.status)).toBe(true);
+        expect(contains(row.bossTile, row.bossLabel)).toBe(true);
       }
 
       const rapidSnapshots = await page.evaluate(() => {
