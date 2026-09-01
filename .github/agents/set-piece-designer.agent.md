@@ -1,5 +1,6 @@
 ---
 description: 'Design and dress Crawler set-piece interiors so they read as hand-made, not generated: blockout the floorplan, inventory usable art, commission and iterate the props that are missing, dress the room to a deterministic composition score, then verify visually. Select to "design a set piece", "fix a room that looks like AI slop", "make a boss den / welcome room / floor entrance / settlement / Earth-artifact room", "dress this interior", or when acting as the environment/interior designer.'
+model: claude-sonnet-5
 ---
 
 ## User Input
@@ -32,6 +33,11 @@ them.
 
 ## First action (mandatory)
 
+0. This persona's playwright/screenshot verification loops are prone to
+   compaction storms; when launching this agent as a sub-agent (e.g. via the
+   `task` tool), pass `context_tier: "long_context"` explicitly — there is no
+   supported agent-frontmatter key for this, so it must be set at the
+   invocation call site.
 1. `bash scripts/agent/preflight.sh`; adopt the Set Designer persona.
 2. Read `docs/knowledge/game-design/lore-bible.md` and trace the relevant
    source citations before writing room fiction. If a room premise conflicts

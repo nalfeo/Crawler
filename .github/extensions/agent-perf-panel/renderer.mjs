@@ -327,7 +327,7 @@ const CLIENT_SCRIPT = `
         \${kpi('Model API calls', fmtInt(t.apiCalls), 'across ' + s.modelBreakdown.length + ' model(s)')}
         \${kpi('Output tokens', fmtInt(t.tokens.output), t.tokens.input ? fmtInt(t.tokens.input) + ' input tokens' : 'input tokens not logged locally')}
         \${kpi('Peak context', t.peakContextTokens ? fmtInt(t.peakContextTokens) + ' tok' : '—', s.modelContextBudget ? fmtPct((t.peakContextTokens || 0) / s.modelContextBudget) + ' of ' + fmtInt(s.modelContextBudget) + ' budget' : 'model budget unknown')}
-        \${kpi('Compactions', fmtInt(t.compactions), (t.errors ? t.errors + ' errors' : 'no errors'))}
+        \${kpi('Compactions', fmtInt(t.compactions), t.compactionStorm ? \`⚠ storm: \${t.compactionsPerHour.toFixed(1)}/hr\` : (t.errors ? t.errors + ' errors' : 'no errors'))}
         \${kpi('Hook time', fmtMs(t.hookTimeMs), fmtInt(t.hookInvocations) + ' invocations')}
         \${kpi('Sub-agent spawns', fmtInt(t.subagentSpawns), fmtInt(t.skillInvocations) + ' skill invocations')}
         \${kpi('Reasoning', fmtBytes(t.reasoningChars) + ' text', fmtBytes(t.reasoningOpaqueBytes) + ' opaque')}
@@ -652,7 +652,7 @@ const CLIENT_SCRIPT = `
           <td class="num">\${fmtPct(s.parallelismRatio)}</td>
           <td class="num">\${fmtInt(s.outputTokens)}</td>
           <td class="num">\${s.peakContextTokens ? fmtInt(s.peakContextTokens) : '—'}</td>
-          <td class="num">\${fmtInt(s.compactions)}</td>
+          <td class="num">\${fmtInt(s.compactions)}\${s.compactionStorm ? ' <span title="compaction storm" style="color:var(--err)">⚠</span>' : ''}</td>
           <td class="num">\${s.errors ? '<span style="color:var(--err)">' + s.errors + '</span>' : '0'}</td>
           <td><span class="muted" title="\${esc(s.summaryText || '')}">\${esc((s.summaryText || '').slice(0, 40))}</span></td>
         </tr>\`).join('');
@@ -663,7 +663,7 @@ const CLIENT_SCRIPT = `
           \${kpi('Total tool time', fmtMs(t.toolTimeMs), fmtInt(t.toolCalls) + ' tool calls')}
           \${kpi('Total hook time', fmtMs(t.hookTimeMs), 'guard overhead')}
           \${kpi('Output tokens', fmtInt(t.outputTokens), fmtInt(t.apiCalls) + ' API calls')}
-          \${kpi('Compactions', fmtInt(t.compactions), 'context flushes')}
+          \${kpi('Compactions', fmtInt(t.compactions), t.compactionStormSessions ? \`⚠ \${t.compactionStormSessions} storm session(s)\` : 'context flushes')}
           \${kpi('Skill invocations', fmtInt(t.skillInvocations), fmtInt(t.subagentSpawns) + ' sub-agents')}
           \${kpi('Errors', fmtInt(t.errors), 'across all sessions')}
         </div>
