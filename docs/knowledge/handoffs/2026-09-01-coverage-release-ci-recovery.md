@@ -29,3 +29,18 @@ ci-policy
 
 - Preflight and pre-publish `sync:main` both attempted sync but aborted cleanly because commit signing failed during rebase with a remote signing `Bad Request`; branch state remained intact.
 - `verify:fast` skipped the local silent merge-revert guard because history was not resolvable in this shallow clone; CI runs that guard with `fetch-depth: 0`.
+
+## Follow-up: Security checks recovery
+
+- GitHub Actions job `99976268483` failed in `npm run security:audit` on high-severity `browserslist` advisories affecting `<=4.28.6`.
+- Added exact npm overrides for `browserslist@4.28.7` and its browser-data dependencies at non-quarantined versions so the repo's proxy quarantine lock-integrity gate passes.
+- `runtime-tools-gh-advisory-database` was attempted for `browserslist@4.28.7` but failed because the tool had no GitHub token; validation used the repository's `security:audit`/`security:check` gates.
+
+## Follow-up verification
+
+- `npm run security:audit`
+- `npm run security:check`
+- `npm run verify:fast`
+- `npm run verify:pr-prereqs`
+- Code review: clean.
+- CodeQL checker: no analyzable code changes for dependency-only repair.
