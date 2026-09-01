@@ -94,9 +94,15 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Legacy mutation bridge disabled; skipping direct merge-train mutations
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true' && steps.train-gate.outputs.enabled == 'true'
+        run: |
+          echo "Legacy CI mutation bridge is disabled. Skipping legacy merge-train PR mutations; Goobers handles lifecycle orchestration in steady-state."
+
       - name: Reconcile six-PR build-expiry train
-        if: steps.train-gate.outputs.enabled == 'true'
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -112,8 +118,9 @@ jobs:
       - name: Repair merge-train-quarantined restricted-branch PRs
         # Runs after reconcile so a PR quarantined earlier in THIS pass (a
         # fresh third strike) is repaired the same cycle, not one cycle late.
-        if: steps.train-gate.outputs.enabled == 'true'
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/scripts/merge-train/quarantine-repair.mjs
