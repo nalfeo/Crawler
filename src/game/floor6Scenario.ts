@@ -531,7 +531,10 @@ function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseS
   ) {
     state.combatEventCursor = 0;
   }
-  const floor6RaiderEids = new Set(state.liveEnemies.map((record) => record.eid));
+  const floor6RaiderEids = new Set<number>();
+  for (const record of state.liveEnemies) {
+    floor6RaiderEids.add(record.eid);
+  }
   for (
     let eventIndex = state.combatEventCursor;
     eventIndex < combatEvents.length;
