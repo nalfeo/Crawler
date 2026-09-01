@@ -101,7 +101,7 @@ describe('Floor 6 authored tower construction', () => {
 
   it('records same-step hero contribution before the visual combat queue drain', () => {
     const { world, player, defense } = initFloor6();
-    defense.phase = { kind: 'DEFEND', waveIndex: 0, remainingToRelease: 0 };
+    defense.phase = { kind: 'DEFEND' };
     const raider = createEntity(world);
     addComponent(world.ecs, raider, set(BroadcastRelayRaider, { manifestIndex: 0 }));
     addComponent(world.ecs, raider, set(Health, { current: 20, max: 20 }));
