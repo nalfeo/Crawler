@@ -81,8 +81,15 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Legacy mutation bridge disabled; skipping direct legacy CI recovery
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+        run: |
+          echo "Legacy CI mutation bridge is disabled (default false). Skipping direct PR mutation in steady-state; Goobers is responsible for lifecycle orchestration."
+
       - name: Reconcile PR or update shepherd lease
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

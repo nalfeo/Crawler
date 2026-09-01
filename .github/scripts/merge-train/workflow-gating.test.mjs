@@ -13,6 +13,9 @@ const read = (name) => readFileSync(path.join(workflows, name), 'utf8');
 
 const ci = read('ci.yml');
 const incidents = read('ci-recovery-incidents.yml');
+const mergeTrain = read('merge-train.yml');
+const ciRecovery = read('ci-recovery.yml');
+const autoRebase = read('auto-rebase-prs.yml');
 
 test('ci.yml runs the full-CI backstop daily, not hourly', () => {
   const crons = [...ci.matchAll(/-\s*cron:\s*'([^']+)'/g)].map((m) => m[1]);
@@ -62,4 +65,16 @@ test('ci-recovery-incidents.yml routes scheduled CI regardless of MERGE_TRAIN_EN
     .replace(/^\s*#.*$/gm, '');
   assert.match(routeIncident, /github\.event\.workflow_run\.event != 'pull_request'/);
   assert.doesNotMatch(routeIncident, /MERGE_TRAIN_ENABLED/);
+});
+
+test('legacy mutation workflows default to the disabled bridge and gate direct legacy mutations', () => {
+  for (const content of [mergeTrain, ciRecovery, autoRebase]) {
+    assert.match(content, /LEGACY_CI_MUTATION_BRIDGE_ENABLED/);
+    assert.match(content, /== 'true'/);
+    assert.match(content, /false/);
+  }
+
+  assert.match(mergeTrain, /Legacy mutation bridge disabled; skipping direct merge-train mutations/);
+  assert.match(ciRecovery, /Legacy mutation bridge disabled; skipping direct legacy CI recovery/);
+  assert.match(autoRebase, /Bridge disabled; skip legacy rebase mutations/);
 });

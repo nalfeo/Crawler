@@ -44,6 +44,7 @@ permissions:
 jobs:
   rebase-prs:
     if: >-
+      vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' &&
       (github.event_name != 'pull_request_target' ||
        github.event.pull_request.head.repo.full_name == github.repository) &&
       (vars.MERGE_TRAIN_ENABLED == 'true' ||
@@ -51,6 +52,11 @@ jobs:
                  vars.MERGE_QUEUE_ENABLED))
     runs-on: ubuntu-latest
     steps:
+      - name: Bridge disabled; skip legacy rebase mutations
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+        run: |
+          echo "Legacy CI mutation bridge is disabled. Skipping direct auto-rebase PR mutations; Goobers handles the steady-state lifecycle path."
+
       - name: Generate app token
         id: app-token
         uses: actions/create-github-app-token@v1
