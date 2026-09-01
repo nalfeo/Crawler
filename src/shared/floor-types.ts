@@ -989,6 +989,63 @@ export interface Floor6DefenseState {
     readonly bosses: string;
   };
   readonly geometry: Floor6DefenseGeometry;
+  /** Immutable wave schedule built at SETUP→DEFEND. Null before first transition. */
+  waveManifest: readonly Floor6WaveManifestEntry[] | null;
+  /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
+  readonly liveEnemies: Floor6LiveEnemyRecord[];
+  /** Index into waveManifest of next entry to release. */
+  nextReleaseIndex: number;
+  /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
+  spawnDebt: number;
+  /** Authoritative relay HP — decremented when raiders reach the relay target. */
+  relayHp: number;
+  /** Consecutive frames of zero wave-release progress used for stall backstop. */
+  stallFrames: number;
+  /** Total enemies released across all waves. */
+  totalReleased: number;
+  /** Frame on which the last enemy was released (used for stall tracking). */
+  lastReleaseFrame: number;
+}
+
+/**
+ * One authored wave schedule entry — immutable once built at SETUP→DEFEND.
+ * Stable by `manifestIndex`; reordering is seed-breaking (FR3.4).
+ */
+export interface Floor6WaveManifestEntry {
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  /** Absolute frame at which this entry is eligible to release. */
+  readonly releaseTick: number;
+}
+
+/** Per-entry mutable runtime tracking. Index mirrors manifestIndex. */
+export interface Floor6LiveEnemyRecord {
+  /** 0 = not yet spawned, -1 = stalled/missing, positive = live ECS eid. */
+  eid: number;
+  /** Current waypoint index in route.waypoints; incremented as raider advances. */
+  waypointIndex: number;
+  /** Consecutive frames the raider has not moved (for stall detection). */
+  stillFrames: number;
+  /** True once the stall was detected and logged — prevents repeated telemetry. */
+  stallResolved: boolean;
+}
+
+/** Telemetry snapshot emitted by the director at every phase transition. */
+export interface Floor6DefenseRunStats {
+  readonly phase: Floor6DefensePhase;
+  readonly phaseTrace: readonly Floor6DefensePhase[];
+  readonly relayHp: number;
+  readonly relayMaxHp: number;
+  readonly nextReleaseIndex: number;
+  readonly spawnDebt: number;
+  readonly totalReleased: number;
+  readonly liveEnemyCount: number;
+  readonly stalledCount: number;
+  readonly waveManifestLength: number;
 }
 
 /**

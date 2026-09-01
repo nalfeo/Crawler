@@ -1061,6 +1061,49 @@ export const floorManifestDefSchema = z
           z.literal(FLOOR6_RNG_STREAMS[4]),
           z.literal(FLOOR6_RNG_STREAMS[5]),
         ]),
+        /**
+         * Slice-3 authored tuning values for wave director and raider AI.
+         * All numeric gates deferred to S9; these are operational defaults.
+         */
+        tuning: z
+          .object({
+            relayMaxHp: z.number().int().positive(),
+            liveCap: z.number().int().positive(),
+            spawnDebtCap: z.number().int().positive(),
+            stallBackstopFrames: z.number().int().positive(),
+            raiderSpeedFtPerFrame: z.number().positive(),
+            raiderAttackRangeFt: z.number().positive(),
+            raiderRelayDamage: z.number().int().positive(),
+            raiderAttackCooldownMs: z.number().int().positive(),
+            waypointArriveThresholdFt: z.number().positive(),
+            stalledFramesThreshold: z.number().int().positive(),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Authored wave schedule. Each wave is a named group of enemy
+         * releases; entries are stable-ID ordered (reordering is seed-breaking).
+         */
+        waves: z
+          .array(
+            z
+              .object({
+                waveIndex: z.number().int().nonnegative(),
+                label: z.string().min(1),
+                startTick: z.number().int().nonnegative(),
+                entries: z.array(
+                  z
+                    .object({
+                      routeIndex: z.number().int().nonnegative(),
+                      archetypeId: z.string().min(1),
+                      releaseTick: z.number().int().nonnegative(),
+                    })
+                    .strict(),
+                ),
+              })
+              .strict(),
+          )
+          .optional(),
       })
       .strict()
       .superRefine((floor6, ctx) => {

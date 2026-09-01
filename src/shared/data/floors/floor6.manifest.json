@@ -64,6 +64,53 @@
       "initial": "SETUP",
       "terminal": ["VICTORY", "DEFEAT"]
     },
-    "rngStreams": ["waves", "routes", "rewards", "upgrades", "dressing", "bosses"]
+    "rngStreams": ["waves", "routes", "rewards", "upgrades", "dressing", "bosses"],
+    "tuning": {
+      "relayMaxHp": 100,
+      "liveCap": 6,
+      "spawnDebtCap": 12,
+      "stallBackstopFrames": 3600,
+      "raiderSpeedFtPerFrame": 0.15,
+      "raiderAttackRangeFt": 2.5,
+      "raiderRelayDamage": 8,
+      "raiderAttackCooldownMs": 800,
+      "waypointArriveThresholdFt": 1.5,
+      "stalledFramesThreshold": 90
+    },
+    "waves": [
+      {
+        "waveIndex": 0,
+        "label": "opening-crew",
+        "startTick": 120,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 120 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 150 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 180 }
+        ]
+      },
+      {
+        "waveIndex": 1,
+        "label": "mid-push",
+        "startTick": 600,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-demo-lead", "releaseTick": 600 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 610 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 620 },
+          { "routeIndex": 1, "archetypeId": "floor6-demo-lead", "releaseTick": 660 }
+        ]
+      },
+      {
+        "waveIndex": 2,
+        "label": "escalation",
+        "startTick": 1200,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-demo-lead", "releaseTick": 1200 },
+          { "routeIndex": 1, "archetypeId": "floor6-demo-lead", "releaseTick": 1210 },
+          { "routeIndex": 0, "archetypeId": "floor6-cable-crew", "releaseTick": 1240 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 1250 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 1260 }
+        ]
+      }
+    ]
   }
 }
