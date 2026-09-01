@@ -105,6 +105,19 @@ describe('docs-update workflow', () => {
     expect(retryPr?.with?.base).toBe('main');
   });
 
+  it('supplies an explicit base branch because the checkout is a detached SHA', () => {
+    const workflow = loadWorkflow();
+    const openPr = workflow.jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Open docs automation PR',
+    );
+    const retryPr = workflow.jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Retry docs automation PR after branch race',
+    );
+
+    expect(openPr?.with?.base).toBe('main');
+    expect(retryPr?.with?.base).toBe('main');
+  });
+
   it('prunes stale remote refs before opening the automation PR', () => {
     const workflow = loadWorkflow();
     const steps = workflow.jobs['docs-update']?.steps ?? [];
