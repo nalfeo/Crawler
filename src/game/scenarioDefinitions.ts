@@ -74,9 +74,13 @@ import {
   confirmFloor6StairDescend,
   getFloor6RunOutcome,
   initializeFloor6Scenario,
+  buildFloor6Tower,
   floor6TowerSystem,
+  getFloor6TowerRoster,
   floor6RaiderSystem,
   floor6DefenseDirectorSystem,
+  sellFloor6Tower,
+  upgradeFloor6Tower,
 } from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -85,7 +89,11 @@ import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js'
 import { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
-import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import type {
+  Floor1SpellBrokerOffer,
+  Floor6TowerManifestEntry,
+  Floor6TowerTransactionResult,
+} from '../shared/floor-types.js';
 import type { ErasedScenarioAiTaskConfig } from './ai/scenario-ai-tasks.js';
 import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
@@ -264,6 +272,16 @@ export interface ScenarioDefinition {
   readonly nextFloorId?: string;
   /** Quest-giver callbacks this floor exposes to the scene. */
   readonly npcs?: ScenarioNpcCallbacks;
+  readonly floor6Towers?: {
+    readonly getRoster: (world: GameWorld) => readonly Floor6TowerManifestEntry[];
+    readonly build: (
+      world: GameWorld,
+      siteId: string,
+      towerId: string,
+    ) => Floor6TowerTransactionResult;
+    readonly upgrade: (world: GameWorld, siteId: string) => Floor6TowerTransactionResult;
+    readonly sell: (world: GameWorld, siteId: string) => Floor6TowerTransactionResult;
+  };
   readonly director: ScenarioDirectorContract<GameWorld>;
   /**
    * Canonical terminal-outcome selector — pure with respect to `world`. This
@@ -849,6 +867,12 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       onStairDescend: confirmFloor6StairDescend,
       beforeEnemyAISystems: [floor6TowerSystem, floor6RaiderSystem],
       afterSpawnerSystems: [floor6DefenseDirectorSystem],
+      floor6Towers: {
+        getRoster: getFloor6TowerRoster,
+        build: buildFloor6Tower,
+        upgrade: upgradeFloor6Tower,
+        sell: sellFloor6Tower,
+      },
       director: FLOOR_6_DIRECTOR,
       getRunOutcome: getFloor6RunOutcome,
       isTerminalRunVictory: false,

@@ -700,21 +700,30 @@ export function buildFloor6Tower(
     result = { ok: false, reason: 'unknown-tower' };
   } else if (site.towerId !== null || site.towerEid > 0) {
     result = { ok: false, reason: 'occupied' };
-  } else if (
-    !state.geometry.supportedFootprints.some((footprint) => footprint.id === tower.footprintId)
-  ) {
-    result = { ok: false, reason: 'invalid-footprint' };
-  } else if (balanceBefore < tower.cost) {
-    result = { ok: false, reason: 'unaffordable' };
   } else {
-    state.economy.balance = balanceBefore - tower.cost;
-    state.economy.totalSpent += tower.cost;
-    site.towerId = tower.id;
-    site.upgradeLevel = 0;
-    site.totalSpent = tower.cost;
-    site.towerEid = spawnFloor6TowerEntity(world, state, site, tower);
-    state.towers.builds += 1;
-    result = { ok: true, reason: 'built' };
+    const footprint = state.geometry.supportedFootprints.find(
+      (candidate) => candidate.id === tower.footprintId,
+    );
+    const buildSite = state.geometry.buildSites[site.siteIndex];
+    if (
+      !footprint ||
+      !buildSite ||
+      footprint.widthTiles > buildSite.bounds.width ||
+      footprint.heightTiles > buildSite.bounds.height
+    ) {
+      result = { ok: false, reason: 'invalid-footprint' };
+    } else if (balanceBefore < tower.cost) {
+      result = { ok: false, reason: 'unaffordable' };
+    } else {
+      state.economy.balance = balanceBefore - tower.cost;
+      state.economy.totalSpent += tower.cost;
+      site.towerId = tower.id;
+      site.upgradeLevel = 0;
+      site.totalSpent = tower.cost;
+      site.towerEid = spawnFloor6TowerEntity(world, state, site, tower);
+      state.towers.builds += 1;
+      result = { ok: true, reason: 'built' };
+    }
   }
   return recordFloor6TowerTransaction(
     world,

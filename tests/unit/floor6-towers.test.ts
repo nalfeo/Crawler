@@ -20,6 +20,7 @@ import {
   upgradeFloor6Tower,
 } from '../../src/game/floor6Scenario.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
+import { floor6Manifest, floorManifestDefSchema } from '../../src/shared/floor-manifest.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function initFloor6(seed = 606) {
@@ -108,6 +109,34 @@ describe('Floor 6 authored-site tower contracts', () => {
     expect(getFloor6DefenseRunStats(world)?.towers.sites.map((site) => site.siteId)).toEqual(
       floor6State(world).geometry.buildSites.map((site) => site.id),
     );
+  });
+
+  it('rejects supported tower footprints larger than an authored build site', () => {
+    const invalidManifest = JSON.parse(JSON.stringify(floor6Manifest));
+    invalidManifest.floor6.supportedFootprints.push({
+      id: 'oversized',
+      widthTiles: 4,
+      heightTiles: 4,
+    });
+    invalidManifest.floor6.towers.roster.push({
+      id: 'bad-fit',
+      displayName: 'Bad Fit',
+      cost: 1,
+      footprintId: 'oversized',
+      rangeFt: 10,
+      damage: 1,
+      fireCooldownMs: 100,
+      effectLimit: 1,
+      upgrades: [],
+    });
+
+    const result = floorManifestDefSchema.safeParse(invalidManifest);
+
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error('oversized footprint unexpectedly parsed');
+    expect(
+      result.error.issues.some((issue) => issue.message.includes('authored build-site size')),
+    ).toBe(true);
   });
 
   it('builds every starter tower on authored sites without changing route topology', () => {

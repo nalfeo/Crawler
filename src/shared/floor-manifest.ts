@@ -1206,13 +1206,13 @@ export const floorManifestDefSchema = z
           }
           ids.add(footprint.id);
           if (
-            footprint.widthTiles > floor6.geometry.routeWidthTiles ||
-            footprint.heightTiles > floor6.geometry.routeWidthTiles
+            footprint.widthTiles > floor6.geometry.buildSiteSizeTiles ||
+            footprint.heightTiles > floor6.geometry.buildSiteSizeTiles
           ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: ['supportedFootprints', index],
-              message: `supported footprint "${footprint.id}" exceeds route width`,
+              message: `supported footprint "${footprint.id}" exceeds authored build-site size`,
             });
           }
         }

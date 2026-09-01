@@ -2,12 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { GameWorld } from '../../src/core/world.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
-import {
-  buildFloor6Tower,
-  getFloor6TowerRoster,
-  purchaseFloor6UpgradeOffer,
-  upgradeFloor6Tower,
-} from '../../src/game/floor6Scenario.js';
+import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
+import { purchaseFloor6UpgradeOffer } from '../../src/game/floor6Scenario.js';
 import type { InputState } from '../../src/shared/input.js';
 
 class IdleFloor6Provider implements AIInputProvider {
@@ -38,11 +34,18 @@ function installTowerDecisions(): (world: GameWorld) => void {
     applied = true;
     state.economy.balance = 999;
     state.economy.totalEarned = 999;
-    for (const [index, tower] of getFloor6TowerRoster(world).entries()) {
+    const towerCommands = getScenarioDefinition('floor6').floor6Towers!;
+    for (const [index, tower] of towerCommands.getRoster(world).entries()) {
       const site = state.towers.sites[index]!;
-      expect(buildFloor6Tower(world, site.siteId, tower.id)).toEqual({ ok: true, reason: 'built' });
+      expect(towerCommands.build(world, site.siteId, tower.id)).toEqual({
+        ok: true,
+        reason: 'built',
+      });
       for (const _upgrade of tower.upgrades) {
-        expect(upgradeFloor6Tower(world, site.siteId)).toEqual({ ok: true, reason: 'upgraded' });
+        expect(towerCommands.upgrade(world, site.siteId)).toEqual({
+          ok: true,
+          reason: 'upgraded',
+        });
       }
     }
     for (const offer of state.upgradeOfferManifest ?? []) {
