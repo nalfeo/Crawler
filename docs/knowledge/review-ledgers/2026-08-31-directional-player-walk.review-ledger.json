@@ -42,13 +42,21 @@
       ]
     },
     "independent_grade": {
-      "completed": false,
-      "grader_model": "",
-      "implementer_model": "",
-      "head_sha": "",
-      "criteria": {},
-      "verdict": "",
-      "findings_count": 0
+      "completed": true,
+      "grader_model": "claude-opus-4.8",
+      "implementer_model": "gpt-5.6-sol",
+      "head_sha": "352a7b87ca7d4268ee00f89506a7e2aeaeb39fbb",
+      "findings": [],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 5,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "pass",
+      "findings_count": 0,
+      "notes": "The change delivers a coherent 8-direction 32-frame player atlas end to end. The core runtime fix in walkDirectionFromVelocity is a real boundary bug fix and is pinned by tests. Directional validation, manifest clips, frame-local opaque bounds, runtime wiring, and idle behavior agree across implementation and tests. Rectangular sheet support and the 32-frame limit are justified by the asset-generation and atlas requirements. Determinism, layer boundaries, and shared portability are preserved. The deterministic one-off composition tooling is maintainable and no provable defect remains."
     }
   }
 }
