@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "commit": "26df582d99a660af0fa1e42a4761e6781b6f557f",
+    "commitDate": "2026-08-31T07:41:50Z",
+    "commitSubject": "Define Floor 6 hero tower-defense epic (#3960)",
+    "capturedAt": "2026-08-31T08:31:01.422Z",
+    "runId": "33369584468",
+    "runNumber": 1789,
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33369584468",
+    "sweep": { "seeds": "1-50", "kind": "winrate", "revision": 2 }
+  },
+  "floor1Count": 300,
+  "floor2Count": 150,
+  "chainedCount": 150
+}

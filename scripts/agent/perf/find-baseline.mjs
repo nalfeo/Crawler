@@ -63,7 +63,9 @@ function parseArgs() {
 }
 
 function git(...gitArgs) {
-  return execFileSync('git', gitArgs, { encoding: 'utf8' }).trim();
+  // Release baselines retain every RunStats record. A 600-run payload exceeds
+  // Node's 1 MiB default exec buffer, so permit the bounded release artifact.
+  return execFileSync('git', gitArgs, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).trim();
 }
 
 function gitOrNull(...gitArgs) {

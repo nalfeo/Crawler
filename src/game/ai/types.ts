@@ -599,6 +599,8 @@ export interface SkillRunMetrics {
   uniqueAbilityCount: number;
   /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
   milestonesReached: Record<string, number[]>;
+  /** Highest player combat-skill level reached during the run. */
+  maxCombatSkillLevel: number;
 }
 
 /**
