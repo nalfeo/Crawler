@@ -30,10 +30,16 @@ echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 # changing compiler context.
 TSC_PROJECT="tsconfig.json"
 test_static_only=0
+test_step3_only=0
 if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]; then
   # Regression tests exercise this real parallel gate against isolated projects
   # and stop before the unrelated unit/headless phases.
   test_static_only=1
+  TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:-$TSC_PROJECT}"
+elif [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STEP3_ONLY:-}" = "1" ]; then
+  # Regression tests exercise the Step 3 scheduler without paying real
+  # tsc/eslint/vitest cost; production never sets this test-only hook.
+  test_step3_only=1
   TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:-$TSC_PROJECT}"
 fi
 
@@ -170,7 +176,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     echo "   Move the file into a known .mjs tree or extend verify:fast first." >&2
     exit 1
   fi
-  if [ "$test_static_only" -eq 1 ]; then
+  if [ "$test_static_only" -eq 1 ] || [ "$test_step3_only" -eq 1 ]; then
     LINT_CMD=(true)
   elif [ -z "${CI:-}" ]; then
     changed_lint=("${changed_ts[@]}" "${changed_github_scripts_mjs[@]}")
@@ -182,14 +188,16 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
       LINT_CMD=(npx eslint "${changed_lint[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
     fi
   fi
-elif [ "$test_static_only" -eq 1 ]; then
+elif [ "$test_static_only" -eq 1 ] || [ "$test_step3_only" -eq 1 ]; then
   LINT_CMD=(true)
 fi
 
 # In test_static_only mode, allow long-running stubs so signal-lifecycle tests
 # can send SIGTERM and assert exit-143 behaviour without real compiler invocations.
 tsc_cmd=(npx tsc --noEmit --project "$TSC_PROJECT")
-if [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; then
+if [ "$test_step3_only" -eq 1 ]; then
+  tsc_cmd=(true)
+elif [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; then
   stub_secs="${VERIFY_FAST_TSC_STUB_SECONDS//[^0-9]/}"
   # Cap at 600 s to avoid runaway processes from an accidental large value.
   if [ -n "$stub_secs" ] && [ "$stub_secs" -gt 600 ]; then stub_secs=600; fi
@@ -244,7 +252,9 @@ if [ "$test_static_only" -eq 1 ]; then
 fi
 
 echo "🔍 Step 2/3: Changed tests..."
-if [ -n "${CI:-}" ]; then
+if [ "$test_step3_only" -eq 1 ]; then
+  echo "   ⏭️  Skipping changed tests in Step 3 scheduler test mode."
+elif [ -n "${CI:-}" ]; then
   # unit + sprites are independent Vitest projects with disjoint `include`
   # globs (see vitest.config.ts) and no shared mutable state, so running them
   # in one `vitest run` invocation with both --project flags is equivalent to
@@ -292,11 +302,36 @@ run_check() {
   CHECK_PIDS+=("$!")
   CHECK_NAMES+=("$name")
 }
-run_check physics-defs-sync npx tsx scripts/agent/health/check-physics-defs-sync.ts
-run_check ai-equip-parity npx tsx scripts/agent/health/check-ai-equip-parity.ts
-run_check registry-integrity npx tsx scripts/agent/health/check-registry-integrity.ts
-run_check asset-integrity npx tsx scripts/agent/health/check-asset-integrity.ts
-run_check allowlist-expiry npx tsx scripts/agent/health/check-allowlist-expiry.ts
+run_health_check() {
+  local name="$1"
+  shift
+  if [ "$test_step3_only" -eq 1 ] && [ -n "${VERIFY_FAST_STEP3_STUB_DIR:-}" ]; then
+    run_check "$name" bash "${VERIFY_FAST_STEP3_STUB_DIR}/${name}.sh"
+  else
+    run_check "$name" "$@"
+  fi
+}
+cleanup_checks() {
+  # Same rationale as Step 1's cleanup_parallel: kill each job's whole process
+  # group (negative PID, valid because `set -m` at the top of this script gives
+  # every background job its own process group) so no `npx tsx` child outlives
+  # an interrupted verify-fast run.
+  for pid in "${CHECK_PIDS[@]}"; do
+    kill -- -"$pid" 2>/dev/null || true
+  done
+  for pid in "${CHECK_PIDS[@]}"; do
+    kill -KILL -- -"$pid" 2>/dev/null || true
+  done
+}
+trap cleanup_checks EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+run_health_check physics-defs-sync npx tsx scripts/agent/health/check-physics-defs-sync.ts
+run_health_check ai-equip-parity npx tsx scripts/agent/health/check-ai-equip-parity.ts
+run_health_check registry-integrity npx tsx scripts/agent/health/check-registry-integrity.ts
+run_health_check asset-integrity npx tsx scripts/agent/health/check-asset-integrity.ts
+run_health_check allowlist-expiry npx tsx scripts/agent/health/check-allowlist-expiry.ts
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
@@ -320,28 +355,12 @@ if [ -z "${CI:-}" ]; then
 fi
 
 if [ "$run_size_weight" -eq 1 ]; then
-  run_check size-coverage npx tsx scripts/agent/health/check-size-coverage.ts
-  run_check weight-coverage npx tsx scripts/agent/health/check-weight-coverage.ts
+  run_health_check size-coverage npx tsx scripts/agent/health/check-size-coverage.ts
+  run_health_check weight-coverage npx tsx scripts/agent/health/check-weight-coverage.ts
 else
   echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
 fi
-
-cleanup_checks() {
-  # Same rationale as Step 1's cleanup_parallel: kill each job's whole process
-  # group (negative PID, valid because `set -m` at the top of this script gives
-  # every background job its own process group) so no `npx tsx` child outlives
-  # an interrupted verify-fast run.
-  for pid in "${CHECK_PIDS[@]}"; do
-    kill -- -"$pid" 2>/dev/null || true
-  done
-  for pid in "${CHECK_PIDS[@]}"; do
-    kill -KILL -- -"$pid" 2>/dev/null || true
-  done
-}
-trap cleanup_checks EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
 
 check_failed=0
 for i in "${!CHECK_PIDS[@]}"; do
