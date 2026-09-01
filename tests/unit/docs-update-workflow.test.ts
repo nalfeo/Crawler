@@ -99,8 +99,10 @@ describe('docs-update workflow', () => {
 
     expect(openPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(openPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(openPr?.with?.base).toBe('main');
     expect(retryPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(retryPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(retryPr?.with?.base).toBe('main');
   });
 
   it('prunes stale remote refs before opening the automation PR', () => {
