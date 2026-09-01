@@ -40,10 +40,17 @@ Implemented the approved Floor 6 Slice 4 economy contract:
 - `npx vitest run --project headless tests/headless/floor6-economy-obs.test.ts tests/headless/floor6-wave-director-obs.test.ts`
 - `npx vitest run --project unit tests/unit/floor6-wave-director.test.ts tests/unit/floor6-economy.test.ts`
 - `npm run typecheck`
+- `bash scripts/agent/verify-fast.sh`
+- Post-review reruns:
+  - `npx vitest run --project unit tests/unit/floor6-economy.test.ts tests/unit/floor6-wave-director.test.ts`
+  - `npm run typecheck`
+  - `npx vitest run --project headless tests/headless/floor6-economy-obs.test.ts tests/headless/floor6-wave-director-obs.test.ts`
 
 Observed before implementation: a seed-606 Floor 6 `runHeadless` BehaviorTree run killed 6 raiders and collected ordinary XP/gold, but `RunStats.floor6Defense` had no economy/offer telemetry.
 
 Observed after implementation: the same seed-606 real headless pipeline killed 6 raiders, collected ordinary XP/gold, collected 5 Floor 6 build-currency pickups, reached `buildCurrencyBalance=8`, and unlocked all 3 generated upgrade offers.
+
+Post-diff review found that `stallResolved` was too broad for wave-reward gating and that reset telemetry could be zeroed on a same-world re-setup. The fix added a separate defeated/missing latch for rewards, preserved reset telemetry across `SETUP`, and added regression tests for stalled-live raiders, later death after stall, reset-count preservation, and capped selection telemetry.
 
 ## Unresolved issues
 
