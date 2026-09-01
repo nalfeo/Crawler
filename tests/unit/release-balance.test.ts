@@ -119,4 +119,47 @@ describe('release balance analysis', () => {
     expect(summary.meanCompletedBossFightMs).toBe(300);
     expect(summary.incompleteBossFightCount).toBe(1);
   });
+
+  it('reports null skill levels when maxCombatSkillLevel is missing', () => {
+    const summary = analyzeReleaseBalance({
+      floor1: [
+        run({
+          skills: {
+            grants: [],
+            uniqueAbilityCount: 0,
+            milestonesReached: {},
+            // Missing maxCombatSkillLevel
+            maxCombatSkillLevel: undefined as unknown as number,
+          },
+        }),
+      ],
+      floor2: [run()],
+      floor1Chain: [run()],
+    });
+    // Floor 1 has missing telemetry, so skill level is null
+    expect(summary.floor1P90CombatSkillLevel).toBeNull();
+    // Floor 2 has complete telemetry, so skill level is calculated
+    expect(summary.floor2P90CombatSkillLevel).toBe(4);
+  });
+
+  it('requires complete telemetry for floor2 skill levels', () => {
+    const summary = analyzeReleaseBalance({
+      floor1: [run()],
+      floor2: [
+        run(),
+        run({
+          skills: {
+            grants: [],
+            uniqueAbilityCount: 0,
+            milestonesReached: {},
+            // Missing maxCombatSkillLevel
+            maxCombatSkillLevel: undefined as unknown as number,
+          },
+        }),
+      ],
+      floor1Chain: [run()],
+    });
+    // Floor 2 has incomplete telemetry (one run missing), so skill level is null
+    expect(summary.floor2P90CombatSkillLevel).toBeNull();
+  });
 });

@@ -50,6 +50,10 @@ function bossDurations(run: RunStats): { completed: number[]; incomplete: number
 /**
  * Derive deterministic release-balance metrics from the canonical leg payload.
  * Chained runs represent Floor 3 entry by their completed Floor 2 endpoint.
+ * 
+ * Requires complete telemetry: if maxCombatSkillLevel is missing on any run,
+ * the result's skill-level fields are null and acceptance gates must require
+ * complete observations before passing.
  */
 export function analyzeReleaseBalance(input: {
   floor1: readonly RunStats[];
@@ -57,6 +61,18 @@ export function analyzeReleaseBalance(input: {
   floor1Chain: readonly RunStats[];
 }): ReleaseBalanceSummary {
   const fights = [...input.floor1, ...input.floor2].map(bossDurations);
+  
+  // Check for missing maxCombatSkillLevel — if any run is missing it, report null
+  const floor1SkillLevels = input.floor1
+    .map((run) => run.skills?.maxCombatSkillLevel)
+    .filter((level): level is number => level !== undefined && level !== null);
+  const floor1SkillsComplete = floor1SkillLevels.length === input.floor1.length;
+  
+  const floor2SkillLevels = input.floor2
+    .map((run) => run.skills?.maxCombatSkillLevel)
+    .filter((level): level is number => level !== undefined && level !== null);
+  const floor2SkillsComplete = floor2SkillLevels.length === input.floor2.length;
+  
   return {
     revision: RELEASE_SWEEP_REVISION,
     floor1RunCount: input.floor1.length,
@@ -68,12 +84,8 @@ export function analyzeReleaseBalance(input: {
     meanFloor3EntryLevel: mean(
       input.floor1Chain.filter((run) => run.outcome === 'victory').map((run) => run.finalLevel),
     ),
-    floor1P90CombatSkillLevel: percentile90(
-      input.floor1.map((run) => run.skills?.maxCombatSkillLevel ?? 0),
-    ),
-    floor2P90CombatSkillLevel: percentile90(
-      input.floor2.map((run) => run.skills?.maxCombatSkillLevel ?? 0),
-    ),
+    floor1P90CombatSkillLevel: floor1SkillsComplete ? percentile90(floor1SkillLevels) : null,
+    floor2P90CombatSkillLevel: floor2SkillsComplete ? percentile90(floor2SkillLevels) : null,
     completedBossFightCount: fights.reduce((sum, fight) => sum + fight.completed.length, 0),
     incompleteBossFightCount: fights.reduce((sum, fight) => sum + fight.incomplete, 0),
     meanCompletedBossFightMs: mean(fights.flatMap((fight) => fight.completed)),
