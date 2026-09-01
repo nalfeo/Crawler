@@ -53,9 +53,11 @@ npm run verify         # full pre-commit chain (add VERIFY_COVERAGE=1 / VERIFY_F
 
 ## Goobers (agent orchestration)
 
-Crawler uses [Goobers](https://github.com/Agent-Clubhouse/Goobers) to run its manual-only `crawler-feature-pr`
-workflow (producer plan → implementer → independent reviewer → `npm run verify:fast` →
-ready-for-review PR). The versioned desired-state source lives in [`.goobers/`](.goobers/README.md).
+Crawler uses [Goobers](https://github.com/Agent-Clubhouse/Goobers) to run its
+`crawler-feature-pr` workflow automatically for approved issues (and by manual
+dispatch): producer plan → implementer → independent reviewer →
+`npm run verify:fast` → ready-for-review PR. The versioned desired-state source
+lives in [`.goobers/`](.goobers/README.md).
 
 To set up a local Goobers instance:
 
