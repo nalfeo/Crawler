@@ -3,10 +3,10 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
 import {
   _getFloor6InitializationArtifact,
+  _getFloor6TowerRoster,
   buildFloor6Tower,
   floor6DefenseDirectorSystem,
   floor6TowerSystem,
-  getFloor6TowerRoster,
   getFloor6DefenseRunStats,
 } from '../../game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
@@ -56,11 +56,15 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
 
     // Build wave stats by ticking the director N times
     const worldForStats = initializeViaWindowedPath(state.seed);
+    worldForStats.frameCount += 1;
+    worldForStats.elapsedMs += 16;
+    floor6TowerSystem(worldForStats);
+    floor6DefenseDirectorSystem(worldForStats);
     const defense = worldForStats.floorExtendedState?.floor6Defense;
     if (defense) {
       defense.economy.balance = 99;
       const site = defense.geometry.buildSites[state.siteIndex];
-      const tower = getFloor6TowerRoster()[state.towerIndex];
+      const tower = _getFloor6TowerRoster()[state.towerIndex];
       if (site && tower) buildFloor6Tower(worldForStats, site.id, tower.id);
     }
     tickDirectorN(worldForStats, state.tickCount);
@@ -99,7 +103,7 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
   gui.add(state, 'tickCount', 0, 2000, 1).name('Tick count').onFinishChange(render);
   gui.add(state, 'siteIndex', 0, 4, 1).name('Build site').onFinishChange(render);
   gui
-    .add(state, 'towerIndex', 0, Math.max(0, getFloor6TowerRoster().length - 1), 1)
+    .add(state, 'towerIndex', 0, Math.max(0, _getFloor6TowerRoster().length - 1), 1)
     .name('Tower roster index')
     .onFinishChange(render);
   gui.add({ render }, 'render').name('Rebuild parity artifacts');

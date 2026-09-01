@@ -401,8 +401,17 @@ function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
   return getFloor6Config().towers?.find((tower) => tower.id === towerId);
 }
 
-export function getFloor6TowerRoster(): readonly Floor6TowerDef[] {
+export function _getFloor6TowerRoster(): readonly Floor6TowerDef[] {
   return getFloor6Config().towers ?? [];
+}
+
+function sortFloor6TowerInstancesBySite(state: Floor6DefenseState): void {
+  const siteOrder = new Map(state.geometry.buildSites.map((site, index) => [site.id, index]));
+  state.towerInstances.sort(
+    (a, b) =>
+      (siteOrder.get(a.siteId) ?? Number.MAX_SAFE_INTEGER) -
+      (siteOrder.get(b.siteId) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 export function buildFloor6Tower(
@@ -451,17 +460,18 @@ export function buildFloor6Tower(
     world.ecs,
     eid,
     set(Floor6Tower, {
-      towerIndex: getFloor6TowerRoster().findIndex((candidate) => candidate.id === towerId),
+      towerIndex: _getFloor6TowerRoster().findIndex((candidate) => candidate.id === towerId),
       lastAttackMs: -tower.attackCooldownMs,
     }),
   );
   state.economy.balance -= tower.cost;
   state.economy.totalSpent += tower.cost;
   state.towerInstances.push({ siteId, towerId, eid });
+  sortFloor6TowerInstancesBySite(state);
   return { ok: true, reason: 'built', eid };
 }
 
-export function sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSellResult {
+export function _sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSellResult {
   const state = floor6DefenseState(world);
   if (!state) return { ok: false, reason: 'not-floor6' };
   const index = state.towerInstances.findIndex((instance) => instance.siteId === siteId);
@@ -478,7 +488,7 @@ export function sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSe
 }
 
 /** Idempotently removes every Floor 6 tower without changing the authored map. */
-export function teardownFloor6Towers(world: GameWorld): void {
+function teardownFloor6Towers(world: GameWorld): void {
   const state = floor6DefenseState(world);
   if (!state) return;
   for (const instance of state.towerInstances) {
@@ -827,7 +837,7 @@ export function floor6RaiderSystem(world: GameWorld): void {
  * Deterministically choose the nearest legal raider. Equal distances resolve
  * to the lower EID, which is stable for equal seed and transaction traces.
  */
-export function selectFloor6TowerTarget(
+function selectFloor6TowerTarget(
   world: GameWorld,
   towerEid: number,
   rangeFt: number,

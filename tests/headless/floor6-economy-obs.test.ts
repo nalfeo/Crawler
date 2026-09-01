@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { GameWorld } from '../../src/core/index.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 
@@ -23,21 +24,41 @@ describe('Floor 6 economy real headless pipeline', () => {
   });
 
   it('executes deterministic tower requests through the real headless pipeline', async () => {
-    const config = {
-      floorId: 'floor6',
-      seed: 606,
-      maxFrames: 2000,
-      maxWallTimeMs: 30_000,
-      questStallFrames: 0,
-      floor6TowerBuildRequests: [{ siteId: 'plinth-west-a', towerId: 'signal-slinger' }],
-    } as const;
-    const first = await runHeadless(new BehaviorTreeAI({ seed: 606 }), config);
-    const second = await runHeadless(new BehaviorTreeAI({ seed: 606 }), config);
+    const createConfig = () => {
+      let towerFundingGranted = false;
+      return {
+        floorId: 'floor6',
+        seed: 606,
+        maxFrames: 2000,
+        maxWallTimeMs: 30_000,
+        questStallFrames: 0,
+        simulationOptions: {
+          preSystems: [
+            (world: GameWorld): void => {
+              const defense = world.floorExtendedState?.floor6Defense;
+              if (towerFundingGranted || defense?.phase.kind !== 'DEFEND') return;
+              defense.economy.balance += 16;
+              defense.economy.totalEarned += 16;
+              towerFundingGranted = true;
+            },
+          ],
+        },
+        floor6TowerBuildRequests: [
+          { siteId: 'plinth-west-a', towerId: 'signal-slinger' },
+          { siteId: 'plinth-west-b', towerId: 'relay-riveter' },
+          { siteId: 'plinth-south-a', towerId: 'crane-caster' },
+        ],
+      } as const;
+    };
+    const first = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
+    const second = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
 
     expect(first.floor6Defense?.towers).toEqual([
       { siteId: 'plinth-west-a', towerId: 'signal-slinger' },
+      { siteId: 'plinth-west-b', towerId: 'relay-riveter' },
+      { siteId: 'plinth-south-a', towerId: 'crane-caster' },
     ]);
-    expect(first.floor6Defense?.buildCurrencySpent).toBeGreaterThanOrEqual(4);
+    expect(first.floor6Defense?.buildCurrencySpent).toBeGreaterThanOrEqual(16);
     expect(first.floor6Defense).toEqual(second.floor6Defense);
   });
 });

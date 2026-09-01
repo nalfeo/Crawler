@@ -4,13 +4,12 @@ import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scen
 import { BroadcastRelayRaider, Floor6Tower, Health, Position } from '../../src/core/index.js';
 import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import {
+  _getFloor6TowerRoster,
+  _sellFloor6Tower,
   buildFloor6Tower,
   floor6DefenseDirectorSystem,
   floor6TowerSystem,
-  getFloor6TowerRoster,
   purchaseFloor6UpgradeOffer,
-  selectFloor6TowerTarget,
-  sellFloor6Tower,
 } from '../../src/game/floor6Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -32,11 +31,15 @@ describe('Floor 6 authored tower construction', () => {
     defense.economy.balance = 100;
     defense.economy.totalEarned = 100;
     const routeFlags = [...world.floorMap!.tileMap.flags];
-    const towers = getFloor6TowerRoster();
+    const towers = _getFloor6TowerRoster();
 
-    for (const [index, tower] of towers.entries()) {
+    for (const [index, tower] of [...towers].reverse().entries()) {
       expect(
-        buildFloor6Tower(world, defense.geometry.buildSites[index]!.id, tower.id),
+        buildFloor6Tower(
+          world,
+          defense.geometry.buildSites[towers.length - index - 1]!.id,
+          tower.id,
+        ),
       ).toMatchObject({
         ok: true,
         reason: 'built',
@@ -54,6 +57,9 @@ describe('Floor 6 authored tower construction', () => {
     });
     expect(defense.economy.balance).toBe(balance);
     expect(defense.towerInstances).toHaveLength(towers.length);
+    expect(defense.towerInstances.map(({ siteId }) => siteId)).toEqual(
+      defense.geometry.buildSites.slice(0, towers.length).map(({ id }) => id),
+    );
     expect([...world.floorMap!.tileMap.flags]).toEqual(routeFlags);
   });
 
@@ -62,7 +68,6 @@ describe('Floor 6 authored tower construction', () => {
     defense.economy.balance = 10;
     const built = buildFloor6Tower(world, defense.geometry.buildSites[4]!.id, 'signal-slinger');
     expect(built.ok).toBe(true);
-    const towerEid = built.eid!;
     const first = createEntity(world);
     const second = createEntity(world);
     for (const eid of [first, second]) {
@@ -70,7 +75,6 @@ describe('Floor 6 authored tower construction', () => {
       addComponent(world.ecs, eid, set(Health, { current: 20, max: 20 }));
       addComponent(world.ecs, eid, set(Position, { x: 178, y: 102 }));
     }
-    expect(selectFloor6TowerTarget(world, towerEid, 36)).toBe(Math.min(first, second));
     floor6TowerSystem(world);
     const target = Math.min(first, second);
     expect(world.stores.health.current[target]).toBeLessThan(20);
@@ -84,7 +88,7 @@ describe('Floor 6 authored tower construction', () => {
     const siteB = defense.geometry.buildSites[1]!.id;
     const a = buildFloor6Tower(world, siteA, 'signal-slinger').eid!;
     const b = buildFloor6Tower(world, siteB, 'relay-riveter').eid!;
-    expect(sellFloor6Tower(world, siteA)).toEqual({ ok: true, reason: 'sold' });
+    expect(_sellFloor6Tower(world, siteA)).toEqual({ ok: true, reason: 'sold' });
     expect(hasComponent(world.ecs, a, Floor6Tower)).toBe(false);
     setComponent(world.ecs, player, Health, { current: 0, max: 100 });
     floor6DefenseDirectorSystem(world);
