@@ -1141,10 +1141,50 @@ export const floorManifestDefSchema = z
                     cost: z.number().int().nonnegative(),
                     effect: z
                       .object({
-                        kind: z.string().min(1),
+                        kind: z.enum([
+                          'relayMaxHpBonus',
+                          'towerFireRateBonus',
+                          'towerDamageBonus',
+                          'relayRepair',
+                          'raiderSlowBonus',
+                        ]),
                         value: z.number(),
                       })
                       .strict(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        towers: z
+          .object({
+            roster: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    displayName: z.string().min(1),
+                    cost: z.number().int().nonnegative(),
+                    footprintId: z.string().min(1),
+                    rangeFt: z.number().positive(),
+                    damage: z.number().positive(),
+                    fireCooldownMs: z.number().int().positive(),
+                    effectLimit: z.number().int().positive(),
+                    upgrades: z
+                      .array(
+                        z
+                          .object({
+                            level: z.number().int().positive(),
+                            cost: z.number().int().nonnegative(),
+                            damageBonus: z.number().nonnegative().optional(),
+                            rangeBonusFt: z.number().nonnegative().optional(),
+                            fireCooldownMultiplier: z.number().positive().max(1).optional(),
+                          })
+                          .strict(),
+                      )
+                      .default([]),
                   })
                   .strict(),
               )
@@ -1245,6 +1285,39 @@ export const floorManifestDefSchema = z
               });
             }
             offerIds.add(offer.id);
+          }
+        }
+        if (floor6.towers) {
+          const footprintIds = new Set(floor6.supportedFootprints.map((footprint) => footprint.id));
+          const towerIds = new Set<string>();
+          for (const [towerIndex, tower] of floor6.towers.roster.entries()) {
+            if (towerIds.has(tower.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['towers', 'roster', towerIndex, 'id'],
+                message: `duplicate tower id "${tower.id}"`,
+              });
+            }
+            towerIds.add(tower.id);
+            if (!footprintIds.has(tower.footprintId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['towers', 'roster', towerIndex, 'footprintId'],
+                message: `unknown supported footprint "${tower.footprintId}"`,
+              });
+            }
+            const levels = tower.upgrades.map((upgrade) => upgrade.level);
+            const expectedLevels = Array.from(
+              { length: tower.upgrades.length },
+              (_unused, index) => index + 1,
+            );
+            if (levels.join(',') !== expectedLevels.join(',')) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['towers', 'roster', towerIndex, 'upgrades'],
+                message: `tower "${tower.id}" upgrade levels must be consecutive from 1`,
+              });
+            }
           }
         }
       })

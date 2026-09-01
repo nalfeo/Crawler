@@ -83,6 +83,10 @@ export const SiegeHero = {};
  * owns their movement and `floor6DefenseDirectorSystem` owns their lifecycle.
  */
 export const BroadcastRelayRaider = {};
+/** Floor 6 authored-site tower marker. Scenario transactions own placement. */
+export const Floor6Tower = {};
+/** Bounded Floor 6 tower shot/effect marker; damage is applied by the tower system. */
+export const Floor6TowerEffect = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -414,6 +418,24 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       prevX: new Float32Array(maxEntities),
       /** Position captured at end of previous tick, used to detect stalls. */
       prevY: new Float32Array(maxEntities),
+    },
+    floor6Tower: {
+      /** Index into the immutable Floor 6 tower manifest. */
+      towerIndex: new Uint16Array(maxEntities),
+      /** Index into `Floor6DefenseGeometry.buildSites`. */
+      siteIndex: new Uint16Array(maxEntities),
+      /** Current site-local upgrade level. */
+      upgradeLevel: new Uint8Array(maxEntities),
+      /** Last legal target selected by this tower; 0 when none. */
+      targetEid: new Uint32Array(maxEntities),
+      /** Elapsed-ms timestamp of the last fired shot. */
+      lastFireMs: new Float32Array(maxEntities),
+    },
+    floor6TowerEffect: {
+      /** Index into the immutable Floor 6 tower manifest. */
+      towerIndex: new Uint16Array(maxEntities),
+      /** Target eid the shot/effect was spawned for. */
+      targetEid: new Uint32Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),

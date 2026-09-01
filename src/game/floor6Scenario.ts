@@ -14,7 +14,10 @@ import {
   BuildCurrencyPickup,
   Damage,
   Enemy,
+  Floor6Tower,
+  Floor6TowerEffect,
   Health,
+  Lifetime,
   Player,
   Position,
   Size,
@@ -24,7 +27,12 @@ import {
   Weight,
   type GameWorld,
 } from '../core/index.js';
-import { clearEntityStores, createEntity, spawnBuildCurrencyPickup } from '../core/helpers.js';
+import {
+  applyDamage,
+  clearEntityStores,
+  createEntity,
+  spawnBuildCurrencyPickup,
+} from '../core/helpers.js';
 import {
   broadcastRelaySetOptionsFromConfig,
   computeBroadcastRelaySetLayout,
@@ -35,6 +43,12 @@ import { floor6Manifest } from '../shared/floor-manifest.js';
 import type {
   Floor6DefenseRunStats,
   Floor6DefenseState,
+  Floor6TowerDefinition,
+  Floor6TowerManifestEntry,
+  Floor6TowerRuntimeState,
+  Floor6TowerSiteState,
+  Floor6TowerTransactionKind,
+  Floor6TowerTransactionResult,
   Floor6UpgradeOfferManifestEntry,
   Floor6UpgradeSelectionResult,
   Floor6WaveManifestEntry,
@@ -72,6 +86,27 @@ function createFloor6EconomyState(): Floor6DefenseState['economy'] {
     selectedOfferIds: [],
     selectionTrace: [],
     terminalResetCount: 0,
+  };
+}
+
+function createFloor6TowerState(): Floor6TowerRuntimeState {
+  return {
+    towerManifest: null,
+    sites: [],
+    transactionTrace: [],
+    combatTrace: [],
+    activeEffectEids: [],
+    appliedUpgradeOfferIds: [],
+    towerDamageBonus: 0,
+    towerFireRateBonus: 0,
+    relayMaxHpBonus: 0,
+    raiderSlowBonus: 0,
+    builds: 0,
+    upgrades: 0,
+    sells: 0,
+    deniedTransactions: 0,
+    effectsSpawned: 0,
+    effectsDeniedByCap: 0,
   };
 }
 
@@ -120,6 +155,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     totalReleased: 0,
     lastReleaseFrame: 0,
     economy: createFloor6EconomyState(),
+    towers: createFloor6TowerState(),
   };
 }
 
@@ -267,6 +303,134 @@ function buildFloor6UpgradeOfferManifest(
   return Object.freeze(selected.sort((a, b) => a.stableIndex - b.stableIndex));
 }
 
+function buildFloor6TowerManifest(
+  config: NonNullable<typeof floor6Manifest.floor6>,
+): readonly Floor6TowerManifestEntry[] {
+  return Object.freeze(
+    (config.towers?.roster ?? []).map((tower, stableIndex) =>
+      Object.freeze({
+        ...tower,
+        stableIndex,
+        upgrades: Object.freeze(tower.upgrades.map((upgrade) => Object.freeze({ ...upgrade }))),
+      }),
+    ),
+  );
+}
+
+function buildFloor6TowerSites(state: Floor6DefenseState): Floor6TowerSiteState[] {
+  return state.geometry.buildSites.map((site, siteIndex) => ({
+    siteId: site.id,
+    siteIndex,
+    towerId: null,
+    towerEid: -1,
+    upgradeLevel: 0,
+    totalSpent: 0,
+  }));
+}
+
+function floor6TowerDef(
+  state: Floor6DefenseState,
+  towerId: string | null,
+): Floor6TowerManifestEntry | null {
+  if (!towerId) return null;
+  return state.towers.towerManifest?.find((tower) => tower.id === towerId) ?? null;
+}
+
+function floor6TowerUpgradeCost(tower: Floor6TowerDefinition, currentLevel: number): number | null {
+  return tower.upgrades.find((upgrade) => upgrade.level === currentLevel + 1)?.cost ?? null;
+}
+
+function floor6TowerUpgradeDamage(tower: Floor6TowerDefinition, currentLevel: number): number {
+  return tower.upgrades
+    .filter((upgrade) => upgrade.level <= currentLevel)
+    .reduce((sum, upgrade) => sum + (upgrade.damageBonus ?? 0), 0);
+}
+
+function floor6TowerUpgradeRange(tower: Floor6TowerDefinition, currentLevel: number): number {
+  return tower.upgrades
+    .filter((upgrade) => upgrade.level <= currentLevel)
+    .reduce((sum, upgrade) => sum + (upgrade.rangeBonusFt ?? 0), 0);
+}
+
+function floor6TowerCooldownMultiplier(tower: Floor6TowerDefinition, currentLevel: number): number {
+  return tower.upgrades
+    .filter((upgrade) => upgrade.level <= currentLevel)
+    .reduce((multiplier, upgrade) => multiplier * (upgrade.fireCooldownMultiplier ?? 1), 1);
+}
+
+function floor6RelayMaxHp(state: Floor6DefenseState): number {
+  return (getFloor6Config().tuning?.relayMaxHp ?? 100) + state.towers.relayMaxHpBonus;
+}
+
+function pruneFloor6TowerEffects(world: GameWorld, state: Floor6DefenseState): void {
+  state.towers.activeEffectEids = state.towers.activeEffectEids.filter(
+    (eid) => eid > 0 && entityExists(world.ecs, eid),
+  );
+}
+
+function recordFloor6TowerTransaction(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  kind: Floor6TowerTransactionKind,
+  siteId: string,
+  towerId: string | null,
+  result: Floor6TowerTransactionResult,
+  balanceBefore: number,
+): Floor6TowerTransactionResult {
+  if (!result.ok) state.towers.deniedTransactions += 1;
+  state.towers.transactionTrace.push({
+    frame: world.frameCount,
+    kind,
+    siteId,
+    towerId,
+    ok: result.ok,
+    reason: result.reason,
+    balanceBefore,
+    balanceAfter: state.economy.balance,
+  });
+  return result;
+}
+
+function spawnFloor6TowerEntity(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  site: Floor6TowerSiteState,
+  tower: Floor6TowerManifestEntry,
+): number {
+  const area = state.geometry.buildSites[site.siteIndex];
+  const floorMap = world.floorMap;
+  const tileSizeFt = floorMap?.config.tileSizeFt ?? 4;
+  const centerTile = area
+    ? { x: area.bounds.x + area.bounds.width / 2, y: area.bounds.y + area.bounds.height / 2 }
+    : { x: 0, y: 0 };
+  const eid = createEntity(world);
+  addComponent(
+    world.ecs,
+    eid,
+    set(Position, { x: centerTile.x * tileSizeFt, y: centerTile.y * tileSizeFt }),
+  );
+  addComponent(world.ecs, eid, set(Team, { id: TeamId.PLAYER }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Floor6Tower, {
+      towerIndex: tower.stableIndex,
+      siteIndex: site.siteIndex,
+      upgradeLevel: site.upgradeLevel,
+      targetEid: 0,
+      lastFireMs: -tower.fireCooldownMs,
+    }),
+  );
+  return eid;
+}
+
+function removeFloor6Entity(world: GameWorld, eid: number): void {
+  if (eid > 0 && entityExists(world.ecs, eid)) {
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+  }
+}
+
 /**
  * Spawn one raider entity for the given manifest entry.
  * Returns the new entity id.
@@ -363,8 +527,26 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
   state.upgradeOfferManifest = [];
 }
 
+function clearFloor6TowersForTerminal(world: GameWorld, state: Floor6DefenseState): void {
+  for (const site of state.towers.sites) {
+    removeFloor6Entity(world, site.towerEid);
+    site.towerId = null;
+    site.towerEid = -1;
+    site.upgradeLevel = 0;
+    site.totalSpent = 0;
+  }
+  for (const eid of query(world.ecs, [Floor6Tower])) {
+    removeFloor6Entity(world, eid);
+  }
+  for (const eid of query(world.ecs, [Floor6TowerEffect])) {
+    removeFloor6Entity(world, eid);
+  }
+  state.towers.activeEffectEids = [];
+}
+
 function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
   clearFloor6Raiders(world, state);
+  clearFloor6TowersForTerminal(world, state);
   clearFloor6EconomyForTerminal(world, state);
 }
 
@@ -427,6 +609,32 @@ export function getFloor6UpgradeOffers(
   return world.floorExtendedState?.floor6Defense?.upgradeOfferManifest ?? [];
 }
 
+function applyFloor6UpgradeEffectOnce(
+  state: Floor6DefenseState,
+  offer: Floor6UpgradeOfferManifestEntry,
+): void {
+  if (state.towers.appliedUpgradeOfferIds.includes(offer.offerId)) return;
+  state.towers.appliedUpgradeOfferIds.push(offer.offerId);
+  switch (offer.effect.kind) {
+    case 'relayMaxHpBonus':
+      state.towers.relayMaxHpBonus += offer.effect.value;
+      state.relayHp += offer.effect.value;
+      break;
+    case 'towerFireRateBonus':
+      state.towers.towerFireRateBonus += offer.effect.value;
+      break;
+    case 'towerDamageBonus':
+      state.towers.towerDamageBonus += offer.effect.value;
+      break;
+    case 'relayRepair':
+      state.relayHp = Math.min(floor6RelayMaxHp(state), state.relayHp + offer.effect.value);
+      break;
+    case 'raiderSlowBonus':
+      state.towers.raiderSlowBonus += offer.effect.value;
+      break;
+  }
+}
+
 export function purchaseFloor6UpgradeOffer(
   world: GameWorld,
   offerId: string,
@@ -449,6 +657,7 @@ export function purchaseFloor6UpgradeOffer(
     state.economy.balance = balanceBefore - offer.cost;
     state.economy.totalSpent += offer.cost;
     state.economy.selectedOfferIds.push(offerId);
+    applyFloor6UpgradeEffectOnce(state, offer);
   }
 
   refreshFloor6UnlockedOffers(state);
@@ -469,6 +678,119 @@ export function purchaseFloor6UpgradeOffer(
   return { ok, reason };
 }
 
+export function getFloor6TowerRoster(world: GameWorld): readonly Floor6TowerManifestEntry[] {
+  return world.floorExtendedState?.floor6Defense?.towers.towerManifest ?? [];
+}
+
+export function buildFloor6Tower(
+  world: GameWorld,
+  siteId: string,
+  towerId: string,
+): Floor6TowerTransactionResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const balanceBefore = state.economy.balance;
+  const site = state.towers.sites.find((candidate) => candidate.siteId === siteId);
+  const tower = state.towers.towerManifest?.find((candidate) => candidate.id === towerId);
+  let result: Floor6TowerTransactionResult;
+
+  if (!site) {
+    result = { ok: false, reason: 'unknown-site' };
+  } else if (!tower) {
+    result = { ok: false, reason: 'unknown-tower' };
+  } else if (site.towerId !== null || site.towerEid > 0) {
+    result = { ok: false, reason: 'occupied' };
+  } else if (
+    !state.geometry.supportedFootprints.some((footprint) => footprint.id === tower.footprintId)
+  ) {
+    result = { ok: false, reason: 'invalid-footprint' };
+  } else if (balanceBefore < tower.cost) {
+    result = { ok: false, reason: 'unaffordable' };
+  } else {
+    state.economy.balance = balanceBefore - tower.cost;
+    state.economy.totalSpent += tower.cost;
+    site.towerId = tower.id;
+    site.upgradeLevel = 0;
+    site.totalSpent = tower.cost;
+    site.towerEid = spawnFloor6TowerEntity(world, state, site, tower);
+    state.towers.builds += 1;
+    result = { ok: true, reason: 'built' };
+  }
+  return recordFloor6TowerTransaction(
+    world,
+    state,
+    'build',
+    siteId,
+    towerId,
+    result,
+    balanceBefore,
+  );
+}
+
+export function upgradeFloor6Tower(world: GameWorld, siteId: string): Floor6TowerTransactionResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const balanceBefore = state.economy.balance;
+  const site = state.towers.sites.find((candidate) => candidate.siteId === siteId);
+  const tower = floor6TowerDef(state, site?.towerId ?? null);
+  let result: Floor6TowerTransactionResult;
+
+  if (!site) {
+    result = { ok: false, reason: 'unknown-site' };
+  } else if (!tower || site.towerEid <= 0 || !entityExists(world.ecs, site.towerEid)) {
+    result = { ok: false, reason: 'empty-site' };
+  } else {
+    const cost = floor6TowerUpgradeCost(tower, site.upgradeLevel);
+    if (cost === null) {
+      result = { ok: false, reason: 'max-upgrade' };
+    } else if (balanceBefore < cost) {
+      result = { ok: false, reason: 'unaffordable' };
+    } else {
+      state.economy.balance = balanceBefore - cost;
+      state.economy.totalSpent += cost;
+      site.upgradeLevel += 1;
+      site.totalSpent += cost;
+      world.stores.floor6Tower.upgradeLevel[site.towerEid] = site.upgradeLevel;
+      state.towers.upgrades += 1;
+      result = { ok: true, reason: 'upgraded' };
+    }
+  }
+  return recordFloor6TowerTransaction(
+    world,
+    state,
+    'upgrade',
+    siteId,
+    site?.towerId ?? null,
+    result,
+    balanceBefore,
+  );
+}
+
+export function sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerTransactionResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const balanceBefore = state.economy.balance;
+  const site = state.towers.sites.find((candidate) => candidate.siteId === siteId);
+  const towerId = site?.towerId ?? null;
+  let result: Floor6TowerTransactionResult;
+
+  if (!site) {
+    result = { ok: false, reason: 'unknown-site' };
+  } else if (site.towerId === null || site.towerEid <= 0) {
+    result = { ok: false, reason: 'empty-site' };
+  } else {
+    state.economy.balance += Math.floor(site.totalSpent / 2);
+    removeFloor6Entity(world, site.towerEid);
+    site.towerId = null;
+    site.towerEid = -1;
+    site.upgradeLevel = 0;
+    site.totalSpent = 0;
+    state.towers.sells += 1;
+    result = { ok: true, reason: 'sold' };
+  }
+  return recordFloor6TowerTransaction(world, state, 'sell', siteId, towerId, result, balanceBefore);
+}
+
 /**
  * Count live raider entities currently in world (health > 0 and entity exists).
  */
@@ -478,6 +800,134 @@ function countLiveFloor6Raiders(world: GameWorld): number {
     if ((world.stores.health.current[eid] ?? 0) > 0) count += 1;
   }
   return count;
+}
+
+function chooseFloor6TowerTarget(
+  world: GameWorld,
+  towerEid: number,
+  rangeFt: number,
+): { eid: number; manifestIndex: number; distanceSq: number } | null {
+  const floorMap = world.floorMap;
+  const tx = world.stores.position.x[towerEid] ?? 0;
+  const ty = world.stores.position.y[towerEid] ?? 0;
+  const rangeSq = rangeFt * rangeFt;
+  const candidates: { eid: number; manifestIndex: number; distanceSq: number }[] = [];
+
+  for (const eid of query(world.ecs, [BroadcastRelayRaider, Health, Position])) {
+    if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[eid] ?? 0;
+    const ey = world.stores.position.y[eid] ?? 0;
+    const distanceSq = (ex - tx) * (ex - tx) + (ey - ty) * (ey - ty);
+    if (distanceSq > rangeSq) continue;
+    if (floorMap && !floorMap.hasLineOfSight(tx, ty, ex, ey)) continue;
+    candidates.push({
+      eid,
+      manifestIndex: world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0,
+      distanceSq,
+    });
+  }
+
+  candidates.sort(
+    (a, b) => a.distanceSq - b.distanceSq || a.manifestIndex - b.manifestIndex || a.eid - b.eid,
+  );
+  return candidates[0] ?? null;
+}
+
+function spawnFloor6TowerEffect(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  tower: Floor6TowerManifestEntry,
+  targetEid: number,
+): void {
+  pruneFloor6TowerEffects(world, state);
+  const activeForTower = state.towers.activeEffectEids.filter(
+    (eid) =>
+      entityExists(world.ecs, eid) &&
+      (world.stores.floor6TowerEffect.towerIndex[eid] ?? -1) === tower.stableIndex,
+  ).length;
+  if (activeForTower >= tower.effectLimit) {
+    state.towers.effectsDeniedByCap += 1;
+    return;
+  }
+  const eid = createEntity(world);
+  addComponent(
+    world.ecs,
+    eid,
+    set(Position, {
+      x: world.stores.position.x[targetEid] ?? 0,
+      y: world.stores.position.y[targetEid] ?? 0,
+    }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Floor6TowerEffect, { towerIndex: tower.stableIndex, targetEid }),
+  );
+  addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + 120 }));
+  state.towers.activeEffectEids.push(eid);
+  state.towers.effectsSpawned += 1;
+}
+
+export function floor6TowerSystem(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state || (state.phase.kind !== 'DEFEND' && state.phase.kind !== 'FINALE')) return;
+  pruneFloor6TowerEffects(world, state);
+
+  for (const eid of query(world.ecs, [Floor6Tower, Position])) {
+    const siteIndex = world.stores.floor6Tower.siteIndex[eid] ?? 0;
+    const site = state.towers.sites[siteIndex];
+    const tower = floor6TowerDef(state, site?.towerId ?? null);
+    if (!site || !tower || site.towerEid !== eid) continue;
+
+    const cooldownMs =
+      tower.fireCooldownMs *
+      floor6TowerCooldownMultiplier(tower, site.upgradeLevel) *
+      Math.max(0.1, 1 - state.towers.towerFireRateBonus);
+    const lastFireMs = world.stores.floor6Tower.lastFireMs[eid] ?? -cooldownMs;
+    if (world.elapsedMs - lastFireMs < cooldownMs) continue;
+
+    const rangeFt = tower.rangeFt + floor6TowerUpgradeRange(tower, site.upgradeLevel);
+    const target = chooseFloor6TowerTarget(world, eid, rangeFt);
+    if (!target) {
+      world.stores.floor6Tower.targetEid[eid] = 0;
+      continue;
+    }
+
+    const damage =
+      tower.damage +
+      floor6TowerUpgradeDamage(tower, site.upgradeLevel) +
+      state.towers.towerDamageBonus;
+    const dealt = applyDamage(
+      world,
+      target.eid,
+      damage,
+      world.stores.position.x[target.eid] ?? 0,
+      world.stores.position.y[target.eid] ?? 0,
+      {
+        origin: 'environment',
+        affinity: 'unscaled',
+        scaleWithPrimary: false,
+        canCrit: false,
+        sourceX: world.stores.position.x[eid] ?? 0,
+        sourceY: world.stores.position.y[eid] ?? 0,
+        sourceEid: eid,
+      },
+    );
+    world.stores.floor6Tower.lastFireMs[eid] = world.elapsedMs;
+    world.stores.floor6Tower.targetEid[eid] = target.eid;
+    if (dealt > 0) {
+      state.towers.combatTrace.push({
+        frame: world.frameCount,
+        towerId: tower.id,
+        siteId: site.siteId,
+        towerEid: eid,
+        targetEid: target.eid,
+        targetManifestIndex: target.manifestIndex,
+        damage: dealt,
+      });
+      spawnFloor6TowerEffect(world, state, tower, target.eid);
+    }
+  }
 }
 
 /**
@@ -594,7 +1044,8 @@ export function floor6RaiderSystem(world: GameWorld): void {
 
   const config = getFloor6Config();
   const tuning = config.tuning;
-  const speedFt = tuning?.raiderSpeedFtPerFrame ?? 0.15;
+  const speedFt =
+    (tuning?.raiderSpeedFtPerFrame ?? 0.15) * Math.max(0.1, 1 - state.towers.raiderSlowBonus);
   const arriveThreshold = tuning?.waypointArriveThresholdFt ?? 1.5;
   const attackRange = tuning?.raiderAttackRangeFt ?? 2.5;
   const relayDamage = tuning?.raiderRelayDamage ?? 8;
@@ -718,9 +1169,13 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
 
   // ── SETUP → DEFEND: build manifest and transition ────────────────────────
   if (state.phase.kind === 'SETUP') {
+    clearFloor6TowersForTerminal(world, state);
     const manifest = buildFloor6WaveManifest(state, config);
     state.waveManifest = manifest;
     state.upgradeOfferManifest = buildFloor6UpgradeOfferManifest(state, config);
+    state.towers = createFloor6TowerState();
+    state.towers.towerManifest = buildFloor6TowerManifest(config);
+    state.towers.sites = buildFloor6TowerSites(state);
     const terminalResetCount = state.economy.terminalResetCount;
     state.economy = createFloor6EconomyState();
     state.economy.terminalResetCount = terminalResetCount;
@@ -732,7 +1187,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     // would reuse the stale defeated entry, skip reconciliation, award wave
     // currency instantly, and never spawn their death pickup.
     state.liveEnemies.length = 0;
-    state.relayHp = tuning?.relayMaxHp ?? 100;
+    state.relayHp = floor6RelayMaxHp(state);
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
     state.totalReleased = 0;
@@ -813,8 +1268,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
 export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStats | undefined {
   const state = floor6DefenseState(world);
   if (!state) return undefined;
-  const config = getFloor6Config();
-  const relayMaxHp = config.tuning?.relayMaxHp ?? 100;
+  const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
   const stalledCount = state.liveEnemies.filter((r) => r.stallResolved && r.eid > 0).length;
   return {
@@ -843,6 +1297,29 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     selectedOfferIds: [...state.economy.selectedOfferIds],
     upgradeSelectionTrace: state.economy.selectionTrace.map((entry) => ({ ...entry })),
     terminalResetCount: state.economy.terminalResetCount,
+    towers: {
+      towerManifest: (state.towers.towerManifest ?? []).map((tower) => ({
+        ...tower,
+        upgrades: tower.upgrades.map((upgrade) => ({ ...upgrade })),
+      })),
+      sites: state.towers.sites.map((site) => ({ ...site })),
+      transactionTrace: state.towers.transactionTrace.map((entry) => ({ ...entry })),
+      combatTrace: state.towers.combatTrace.map((entry) => ({ ...entry })),
+      activeEffectCount: state.towers.activeEffectEids.filter(
+        (eid) => eid > 0 && entityExists(world.ecs, eid),
+      ).length,
+      appliedUpgradeOfferIds: [...state.towers.appliedUpgradeOfferIds],
+      towerDamageBonus: state.towers.towerDamageBonus,
+      towerFireRateBonus: state.towers.towerFireRateBonus,
+      relayMaxHpBonus: state.towers.relayMaxHpBonus,
+      raiderSlowBonus: state.towers.raiderSlowBonus,
+      builds: state.towers.builds,
+      upgrades: state.towers.upgrades,
+      sells: state.towers.sells,
+      deniedTransactions: state.towers.deniedTransactions,
+      effectsSpawned: state.towers.effectsSpawned,
+      effectsDeniedByCap: state.towers.effectsDeniedByCap,
+    },
   };
 }
 

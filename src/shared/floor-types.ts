@@ -1009,6 +1009,8 @@ export interface Floor6DefenseState {
   lastReleaseFrame: number;
   /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
   economy: Floor6EconomyState;
+  /** Floor-scoped authored-site tower state. Reset at terminal cleanup. */
+  towers: Floor6TowerRuntimeState;
 }
 
 export interface Floor6EconomyState {
@@ -1047,7 +1049,12 @@ export interface Floor6UpgradeSelectionResult {
 }
 
 export interface Floor6UpgradeEffect {
-  readonly kind: string;
+  readonly kind:
+    | 'relayMaxHpBonus'
+    | 'towerFireRateBonus'
+    | 'towerDamageBonus'
+    | 'relayRepair'
+    | 'raiderSlowBonus';
   readonly value: number;
 }
 
@@ -1091,6 +1098,96 @@ export interface Floor6LiveEnemyRecord {
   rewardSpawned: boolean;
 }
 
+export interface Floor6TowerUpgradeStep {
+  readonly level: number;
+  readonly cost: number;
+  readonly damageBonus?: number;
+  readonly rangeBonusFt?: number;
+  readonly fireCooldownMultiplier?: number;
+}
+
+export interface Floor6TowerDefinition {
+  readonly id: string;
+  readonly displayName: string;
+  readonly cost: number;
+  readonly footprintId: string;
+  readonly rangeFt: number;
+  readonly damage: number;
+  readonly fireCooldownMs: number;
+  readonly effectLimit: number;
+  readonly upgrades: readonly Floor6TowerUpgradeStep[];
+}
+
+export interface Floor6TowerManifestEntry extends Floor6TowerDefinition {
+  readonly stableIndex: number;
+}
+
+export interface Floor6TowerSiteState {
+  readonly siteId: string;
+  readonly siteIndex: number;
+  towerId: string | null;
+  towerEid: number;
+  upgradeLevel: number;
+  totalSpent: number;
+}
+
+export type Floor6TowerTransactionKind = 'build' | 'upgrade' | 'sell';
+
+export type Floor6TowerTransactionFailureReason =
+  | 'not-floor6'
+  | 'unknown-site'
+  | 'unknown-tower'
+  | 'occupied'
+  | 'empty-site'
+  | 'max-upgrade'
+  | 'unaffordable'
+  | 'invalid-footprint';
+
+export interface Floor6TowerTransactionResult {
+  readonly ok: boolean;
+  readonly reason: Floor6TowerTransactionFailureReason | 'built' | 'upgraded' | 'sold';
+}
+
+export interface Floor6TowerTransactionTraceEntry {
+  readonly frame: number;
+  readonly kind: Floor6TowerTransactionKind;
+  readonly siteId: string;
+  readonly towerId: string | null;
+  readonly ok: boolean;
+  readonly reason: Floor6TowerTransactionResult['reason'];
+  readonly balanceBefore: number;
+  readonly balanceAfter: number;
+}
+
+export interface Floor6TowerCombatTraceEntry {
+  readonly frame: number;
+  readonly towerId: string;
+  readonly siteId: string;
+  readonly towerEid: number;
+  readonly targetEid: number;
+  readonly targetManifestIndex: number;
+  readonly damage: number;
+}
+
+export interface Floor6TowerRuntimeState {
+  towerManifest: readonly Floor6TowerManifestEntry[] | null;
+  sites: Floor6TowerSiteState[];
+  transactionTrace: Floor6TowerTransactionTraceEntry[];
+  combatTrace: Floor6TowerCombatTraceEntry[];
+  activeEffectEids: number[];
+  appliedUpgradeOfferIds: string[];
+  towerDamageBonus: number;
+  towerFireRateBonus: number;
+  relayMaxHpBonus: number;
+  raiderSlowBonus: number;
+  builds: number;
+  upgrades: number;
+  sells: number;
+  deniedTransactions: number;
+  effectsSpawned: number;
+  effectsDeniedByCap: number;
+}
+
 /** Telemetry snapshot emitted by the director at every phase transition. */
 export interface Floor6DefenseRunStats {
   readonly phase: Floor6DefensePhase;
@@ -1115,6 +1212,24 @@ export interface Floor6DefenseRunStats {
   readonly selectedOfferIds: readonly string[];
   readonly upgradeSelectionTrace: readonly Floor6UpgradeSelectionTraceEntry[];
   readonly terminalResetCount: number;
+  readonly towers: {
+    readonly towerManifest: readonly Floor6TowerManifestEntry[];
+    readonly sites: readonly Floor6TowerSiteState[];
+    readonly transactionTrace: readonly Floor6TowerTransactionTraceEntry[];
+    readonly combatTrace: readonly Floor6TowerCombatTraceEntry[];
+    readonly activeEffectCount: number;
+    readonly appliedUpgradeOfferIds: readonly string[];
+    readonly towerDamageBonus: number;
+    readonly towerFireRateBonus: number;
+    readonly relayMaxHpBonus: number;
+    readonly raiderSlowBonus: number;
+    readonly builds: number;
+    readonly upgrades: number;
+    readonly sells: number;
+    readonly deniedTransactions: number;
+    readonly effectsSpawned: number;
+    readonly effectsDeniedByCap: number;
+  };
 }
 
 /**

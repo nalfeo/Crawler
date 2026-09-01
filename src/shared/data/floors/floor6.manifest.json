@@ -142,6 +142,52 @@
           "effect": { "kind": "raiderSlowBonus", "value": 0.08 }
         }
       ]
+    },
+    "towers": {
+      "roster": [
+        {
+          "id": "spotlight-lancer",
+          "displayName": "Spotlight Lancer",
+          "cost": 2,
+          "footprintId": "standard",
+          "rangeFt": 42,
+          "damage": 6,
+          "fireCooldownMs": 480,
+          "effectLimit": 2,
+          "upgrades": [
+            { "level": 1, "cost": 2, "damageBonus": 2 },
+            { "level": 2, "cost": 3, "rangeBonusFt": 4 }
+          ]
+        },
+        {
+          "id": "cable-snare",
+          "displayName": "Cable Snare",
+          "cost": 3,
+          "footprintId": "standard",
+          "rangeFt": 34,
+          "damage": 4,
+          "fireCooldownMs": 360,
+          "effectLimit": 2,
+          "upgrades": [
+            { "level": 1, "cost": 2, "fireCooldownMultiplier": 0.9 },
+            { "level": 2, "cost": 3, "damageBonus": 1, "rangeBonusFt": 3 }
+          ]
+        },
+        {
+          "id": "ratings-mortar",
+          "displayName": "Ratings Mortar",
+          "cost": 4,
+          "footprintId": "large",
+          "rangeFt": 56,
+          "damage": 9,
+          "fireCooldownMs": 900,
+          "effectLimit": 1,
+          "upgrades": [
+            { "level": 1, "cost": 3, "damageBonus": 3 },
+            { "level": 2, "cost": 4, "fireCooldownMultiplier": 0.85 }
+          ]
+        }
+      ]
     }
   }
 }

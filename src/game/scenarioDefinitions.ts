@@ -74,6 +74,7 @@ import {
   confirmFloor6StairDescend,
   getFloor6RunOutcome,
   initializeFloor6Scenario,
+  floor6TowerSystem,
   floor6RaiderSystem,
   floor6DefenseDirectorSystem,
 } from './floor6Scenario.js';
@@ -846,7 +847,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       floorId: 'floor6',
       configureWorld: initializeFloor6Scenario,
       onStairDescend: confirmFloor6StairDescend,
-      beforeEnemyAISystems: [floor6RaiderSystem],
+      beforeEnemyAISystems: [floor6TowerSystem, floor6RaiderSystem],
       afterSpawnerSystems: [floor6DefenseDirectorSystem],
       director: FLOOR_6_DIRECTOR,
       getRunOutcome: getFloor6RunOutcome,
