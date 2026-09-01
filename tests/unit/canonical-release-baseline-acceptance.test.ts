@@ -40,8 +40,11 @@ describe('Canonical release-baseline acceptance infrastructure', () => {
 
   it('demonstrates that analysis correctly handles incomplete telemetry', () => {
     // Synthetic runs that mimic the baseline's missing maxCombatSkillLevel
-    const runWithoutSkillTelemetry: Record<string, unknown> = {
-      outcome: 'victory',
+    // This test uses incomplete/minimal RunStats to verify the analysis function
+    // properly detects and reports incomplete observations
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const partialRun: any = {
+      outcome: 'victory' as const,
       finalLevel: 8,
       skills: {
         grants: [],
@@ -49,12 +52,15 @@ describe('Canonical release-baseline acceptance infrastructure', () => {
         milestonesReached: {},
         maxCombatSkillLevel: undefined, // Missing, like the published baseline
       },
+      // Include minimal other required fields
+      floor1BossProgression: undefined,
+      floor2Progression: undefined,
     };
 
     const analysis = analyzeReleaseBalance({
-      floor1: [runWithoutSkillTelemetry as any],
-      floor2: [runWithoutSkillTelemetry as any],
-      floor1Chain: [runWithoutSkillTelemetry as any],
+      floor1: [partialRun],
+      floor2: [partialRun],
+      floor1Chain: [partialRun],
     });
 
     // With incomplete telemetry, skill levels must be null
