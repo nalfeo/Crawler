@@ -34,6 +34,7 @@ import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
+  autoFloor6ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import {
@@ -1009,6 +1010,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, featureFlags.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
+    autoFloor6ProgressionSystem(world);
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
     });

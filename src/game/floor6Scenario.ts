@@ -724,6 +724,14 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     const terminalResetCount = state.economy.terminalResetCount;
     state.economy = createFloor6EconomyState();
     state.economy.terminalResetCount = terminalResetCount;
+    // `liveEnemies` is a readonly-array *reference* (cannot be reassigned) that
+    // is otherwise append-only per FR3.4 stability. A same-world run restart
+    // re-enters SETUP without recreating floor6DefenseState, so without this
+    // truncation the prior run's records (many already `defeated: true`)
+    // would still be indexed by `manifestIndex` — newly released raiders
+    // would reuse the stale defeated entry, skip reconciliation, award wave
+    // currency instantly, and never spawn their death pickup.
+    state.liveEnemies.length = 0;
     state.relayHp = tuning?.relayMaxHp ?? 100;
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;

@@ -233,6 +233,38 @@ describe('Floor 6 run-scoped economy and upgrade offers', () => {
     expect(getFloor6DefenseRunStats(world)?.terminalResetCount).toBe(1);
   });
 
+  it('clears stale defeated liveEnemies records on a same-world SETUP restart', () => {
+    const { world, player } = initFloor6(606);
+    releaseFirstWave(world);
+    killRaidersForWave(world, 0);
+    const stateBeforeRestart = defenseState(world);
+    // Sanity: killing the wave really did mark manifestIndex 0 defeated —
+    // otherwise this test would pass vacuously.
+    expect(stateBeforeRestart.liveEnemies[0]?.defeated).toBe(true);
+
+    setComponent(world.ecs, player, Health, { current: 0, max: 100 });
+    tickDirector(world);
+    expect(defenseState(world).phase.kind).toBe('DEFEAT');
+
+    defenseState(world).phase = { kind: 'SETUP' };
+    setComponent(world.ecs, player, Health, { current: 100, max: 100 });
+    tickDirector(world);
+
+    const restartedState = defenseState(world);
+    expect(restartedState.phase.kind).toBe('DEFEND');
+    expect(restartedState.liveEnemies).toEqual([]);
+
+    // Release the new run's opening wave and confirm the manifestIndex-0
+    // raider is tracked fresh: a stale `defeated: true` record would make
+    // reconciliation skip it, award wave currency immediately, and never
+    // spawn its death pickup.
+    releaseFirstWave(world);
+    const record = defenseState(world).liveEnemies[0];
+    expect(record?.defeated).toBe(false);
+    expect(record?.eid).toBeGreaterThan(0);
+    expect(defenseState(world).economy.rewardedWaveIndexes).toEqual([]);
+  });
+
   it('preserves conservation and non-negative balances across arbitrary purchase traces', () => {
     fc.assert(
       fc.property(

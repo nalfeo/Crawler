@@ -162,6 +162,9 @@
     "gold": {
       "proceduralTexture": "gold"
     },
+    "build_currency": {
+      "proceduralTexture": "build_currency"
+    },
     "proj": {
       "proceduralTexture": "proj",
       "kenneySpriteId": "weapon.arrow",
