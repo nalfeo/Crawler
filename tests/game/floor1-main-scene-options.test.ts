@@ -32,6 +32,11 @@ import {
   siegeHeroSystem,
   siegeMinionSystem,
 } from '../../src/game/floor5Scenario.js';
+import {
+  floor6DefenseDirectorSystem,
+  floor6RaiderSystem,
+  floor6TowerSystem,
+} from '../../src/game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -100,6 +105,22 @@ describe('createFloor1MainSceneOptions', () => {
         familyFeudSystem,
         floor3WildDirectorSystem,
         arenaDirectorSystem,
+      ],
+    },
+    {
+      floorId: 'floor6',
+      beforeWeaponSystems: [],
+      beforeEnemyAISystems: [floor6RaiderSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      foreignSystems: [
+        floor1PlayerStatSystem,
+        floor1EnemyDirectorSystem,
+        floor2VictorySystem,
+        emergentEventSystem,
+        familyFeudSystem,
+        floor3WildDirectorSystem,
+        arenaDirectorSystem,
+        siegeDirectorSystem,
       ],
     },
   ])(

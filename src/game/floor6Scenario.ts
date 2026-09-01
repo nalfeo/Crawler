@@ -131,6 +131,9 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     economy: createFloor6EconomyState(),
     towerInstances: [],
     towersTornDown: 0,
+    combatEventCursor: 0,
+    heroDamageDealt: 0,
+    towerDamageDealt: 0,
   };
 }
 
@@ -517,6 +520,31 @@ function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
     return;
   }
   state.economy.unlockedOfferIds = nextUnlockedOfferIds;
+}
+
+function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseState): void {
+  for (
+    let eventIndex = state.combatEventCursor;
+    eventIndex < world.combatEvents.length;
+    eventIndex += 1
+  ) {
+    const event = world.combatEvents[eventIndex];
+    if (
+      event?.type !== 'hit' ||
+      event.targetType !== 'enemy' ||
+      event.targetEid === undefined ||
+      (!hasComponent(world.ecs, event.targetEid, BroadcastRelayRaider) &&
+        !state.liveEnemies.some((record) => record.eid === event.targetEid))
+    ) {
+      continue;
+    }
+    if (event.sourceEid !== undefined && hasComponent(world.ecs, event.sourceEid, Floor6Tower)) {
+      state.towerDamageDealt += event.amount;
+    } else {
+      state.heroDamageDealt += event.amount;
+    }
+  }
+  state.combatEventCursor = world.combatEvents.length;
 }
 
 function creditFloor6WaveRewards(state: Floor6DefenseState): void {
@@ -923,6 +951,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
 
   const config = getFloor6Config();
   const tuning = config.tuning;
+  recordFloor6CombatContributions(world, state);
 
   // ── SETUP → DEFEND: build manifest and transition ────────────────────────
   if (state.phase.kind === 'SETUP') {
@@ -946,6 +975,9 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.totalReleased = 0;
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
+    state.combatEventCursor = world.combatEvents.length;
+    state.heroDamageDealt = 0;
+    state.towerDamageDealt = 0;
     recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'setup-complete');
     return;
   }
@@ -1052,6 +1084,8 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     terminalResetCount: state.economy.terminalResetCount,
     towers: state.towerInstances.map(({ siteId, towerId }) => ({ siteId, towerId })),
     towersTornDown: state.towersTornDown,
+    heroDamageDealt: state.heroDamageDealt,
+    towerDamageDealt: state.towerDamageDealt,
   };
 }
 

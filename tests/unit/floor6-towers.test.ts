@@ -9,6 +9,7 @@ import {
   buildFloor6Tower,
   floor6DefenseDirectorSystem,
   floor6TowerSystem,
+  getFloor6DefenseRunStats,
   purchaseFloor6UpgradeOffer,
 } from '../../src/game/floor6Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -76,9 +77,12 @@ describe('Floor 6 authored tower construction', () => {
       addComponent(world.ecs, eid, set(Position, { x: 178, y: 102 }));
     }
     floor6TowerSystem(world);
+    floor6DefenseDirectorSystem(world);
     const target = Math.min(first, second);
     expect(world.stores.health.current[target]).toBeLessThan(20);
     expect(world.stores.health.current[Math.max(first, second)]).toBe(20);
+    expect(getFloor6DefenseRunStats(world)?.towerDamageDealt).toBeGreaterThan(0);
+    expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(0);
   });
 
   it('sells and terminally tears down all tower entities exactly once', () => {

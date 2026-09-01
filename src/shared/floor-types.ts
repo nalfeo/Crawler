@@ -1013,6 +1013,12 @@ export interface Floor6DefenseState {
   towerInstances: Floor6TowerInstance[];
   /** Number of tower entities removed through sell or terminal teardown. */
   towersTornDown: number;
+  /** Cursor into world.combatEvents for Floor 6 hero/tower contribution telemetry. */
+  combatEventCursor: number;
+  /** Damage dealt to Floor 6 raiders by normal non-tower combat paths. */
+  heroDamageDealt: number;
+  /** Damage dealt to Floor 6 raiders by Floor 6 towers. */
+  towerDamageDealt: number;
 }
 
 export interface Floor6TowerDef {
@@ -1162,6 +1168,8 @@ export interface Floor6DefenseRunStats {
   readonly terminalResetCount: number;
   readonly towers: readonly Pick<Floor6TowerInstance, 'siteId' | 'towerId'>[];
   readonly towersTornDown: number;
+  readonly heroDamageDealt: number;
+  readonly towerDamageDealt: number;
 }
 
 /**
