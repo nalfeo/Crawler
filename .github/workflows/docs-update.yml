@@ -172,7 +172,6 @@ jobs:
         continue-on-error: true
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
-          base: main
           branch: automation/docs-update
           # The workflow_run path checks out a bare merge-train SHA, so HEAD is
           # detached and the action cannot infer a base branch from it. Without
@@ -221,7 +220,6 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
-          base: main
           branch: automation/docs-update
           base: main
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
