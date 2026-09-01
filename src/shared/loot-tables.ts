@@ -155,8 +155,8 @@ export const LOOT_TABLES = {
   FLOOR_1: {
     id: 'floor_1',
     entries: [
-      // Reduced from value 4 → 1 so regular kills contribute ~2 XP each
-      // (BASIC_MELEE + FLOOR_1) while boss kills remain the floor's major beats.
+      // CI recovery: restore Floor 1's floor-level bonus from 0 → 1 so regular
+      // kills contribute ~2 XP each (BASIC_MELEE + FLOOR_1).
       { type: 'xp' as const, value: 1, chance: 1.0, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.2, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'rusted-scrap', value: 1, chance: 0.14, min: 1, max: 1 },
