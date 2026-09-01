@@ -221,14 +221,28 @@ The static dev build posts run bundles to the Azure Function in
 private `playtest-runs` container and only files a GitHub issue when a survey or
 an explicit `file_issue` request is present.
 
-Provision the Function App using the existing storage account:
+Provision the Function App using the existing storage account. `githubCiPat` is
+a **required, `@secure()` parameter with no default** — the deployment fails
+up front (instead of silently succeeding without it) if you omit it. Pass it
+from an environment variable so it never lands in shell history or a
+committed file:
 
 ```powershell
 az deployment group create `
   --resource-group crawler-sprites-rg `
   --template-file infra/dev-build-ingest.bicep `
-  --parameters functionAppName=<globally-unique-name> storageAccountName=crawlersprites
+  --parameters functionAppName=<globally-unique-name> storageAccountName=crawlersprites githubCiPat=$env:CRAWLER_CI_PAT
 ```
+
+> [!IMPORTANT]
+> `githubCiPat` must be a PAT scoped to `repo` (issues:write) on
+> `nalfeo/Crawler`. Every deployment — first-time or a later update to any
+> other setting — re-supplies this parameter; there is no default value to
+> fall back to. This is intentional: it is what turns a missing GitHub
+> credential into an immediate, loud deployment failure instead of a
+> Function that silently returns HTTP 500 the first time a player reports an
+> issue (see `tests/unit/dev-build-ingest-bicep.test.ts` for the contract
+> test that fails if this wiring is removed or renamed).
 
 > [!IMPORTANT]
 > The template uses a **Flex Consumption (FC1)** plan, not the classic Dynamic
@@ -272,15 +286,26 @@ Pop-Location
 > `package-lock.json`, not `devDependencies`) in the zip's `node_modules` to
 > keep the package small.
 
-Set the GitHub credential after deployment; never commit it or put it in the
-browser bundle:
+The `githubCiPat` Bicep parameter (above) sets `CRAWLER_CI_PAT` as part of
+deployment; never commit its value or put it in the browser bundle. To rotate
+the credential without a full redeployment, you can still update the app
+setting directly:
 
 ```powershell
+# Store the new value in a local env-var first — never pass the raw token
+# as a positional argument because command-line arguments land in shell
+# history, process listings, and audit logs.
+$env:CRAWLER_CI_PAT = '<repository-owner-PAT-with-issues-write>'   # populate securely (e.g. Read-Host -AsSecureString, a vault CLI, or a CI secret)
+
 az functionapp config appsettings set `
   --name <function-app-name> `
   --resource-group crawler-sprites-rg `
-  --settings CRAWLER_CI_PAT=<repository-owner-PAT-with-issues-write>
+  --settings CRAWLER_CI_PAT=$env:CRAWLER_CI_PAT
 ```
+
+Note this is an **out-of-band** rotation path only — the next Bicep
+deployment still requires `githubCiPat` to be passed, and will overwrite
+whatever value was set this way.
 
 The app setting `GITHUB_REPOSITORY` defaults to `nalfeo/Crawler` in the Bicep
 template. The endpoint is anonymous by design because the public GitHub Pages
@@ -305,17 +330,172 @@ after one day. The Function CORS allowlist is
   az storage blob list --account-name crawlersprites --container-name playtest-runs --output table
   ```
 
-- `CRAWLER_CI_PAT` is **not yet set** on the Function App. Telemetry ingest
-  (storing run bundles) works without it; only the **survey/explicit
-  "file an issue"** path (which creates a GitHub issue) needs it. Set it with
-  the command above using a PAT scoped to `repo` (issue creation) on
-  `nalfeo/Crawler` before relying on in-game issue filing.
+- `CRAWLER_CI_PAT` **is set** on the live `crawler-dev-ingest` Function App and
+  has been verified end-to-end: a real browser session against the deployed
+  GitHub Pages dev build filed
+  [nalfeo/Crawler#4034](https://github.com/nalfeo/Crawler/issues/4034) through
+  the in-game Report Issue flow. Telemetry ingest (storing run bundles) works
+  without this credential; only the **survey/explicit "file an issue"** path
+  (which creates a GitHub issue) needs it — see `infra/dev-build-ingest.bicep`'s
+  `githubCiPat` parameter, which now makes a fresh or repeated deployment fail
+  immediately instead of silently omitting the credential.
+
+  > [!NOTE]
+  > `.github/workflows/dev-ingest-lifecycle.yml` now automates the two gaps
+  > that used to be open follow-up work here — a `deploy` job publishes this
+  > Bicep template + the Function code, and a `canary` job runs a live E2E
+  > check of the `file_issue:true` path on a schedule. See
+  > **"Automated Function deployment (OIDC)"** and **"Token lifecycle"**
+  > below for exactly what is automated, what remains a one-time **human**
+  > setup step, and why.
 
 If you only want resource provisioning (no `.env.local` writes or secrets sync), run:
 
 ```powershell
 pwsh scripts/setup-azure-resources.ps1
 ```
+
+### Automated Function deployment (OIDC)
+
+`.github/workflows/dev-ingest-lifecycle.yml`'s `deploy` job publishes
+`infra/dev-build-ingest.bicep` and the built `functions/dev-build-ingest` code
+on every push that touches either path, plus on manual `workflow_dispatch`. It
+authenticates to Azure with **OIDC federated login**
+(`azure/login@v2` + `id-token: write`) — **there is no Azure client secret
+anywhere in this repo or workflow**, and the contract test
+`tests/unit/dev-ingest-lifecycle-workflow.test.ts` fails the build if one is
+ever added.
+
+**Status: this one-time Azure AD setup is complete and live** — the App
+Registration, federated credential, RBAC role assignment, and all three
+GitHub Actions secrets described below already exist for
+`nalfeo/Crawler`/`crawler-sprites-rg` in the **Visual Studio Enterprise
+Subscription** (`308f5463-c4b1-4cfb-94e9-c3e0fd0dc67c`). A push to `main`
+touching `infra/dev-build-ingest.bicep` or `functions/dev-build-ingest/**` (or
+a manual `workflow_dispatch`) deploys automatically today; the manual
+`func azure functionapp publish` / zip-deploy path above is now a fallback,
+not the primary path. The steps below are recorded so the setup is
+reproducible (e.g. against a new subscription, or if the App Registration is
+ever recreated) — they are not a pending TODO.
+
+Creating an App Registration and granting it a subscription-scoped role
+assignment are identity/security decisions that require someone with
+Owner/User Access Administrator rights on the target subscription — this is
+inherently a human/one-time step, not something a CI job can bootstrap for
+itself. **If these secrets are ever missing** (e.g. a new environment, a
+rotated App Registration), the `deploy` job's `preflight` step **fails the
+whole run** with an `::error::` annotation — it does not soft-skip or warn,
+because release-triggered deployment automation must not silently omit the
+Function publish (see "release automation must fail loud" below). The only
+way to intentionally omit the deploy without failing the run is an explicit
+`workflow_dispatch` with `skip_deploy: true` (a human-requested canary-only
+run), or the periodic `schedule` trigger, which never attempts a deploy.
+
+Setup steps (already applied; re-run only to reproduce or recreate):
+
+```powershell
+# 1. Create the App Registration used only for GitHub Actions OIDC login.
+$app = az ad app create --display-name "crawler-dev-ingest-deploy-oidc" | ConvertFrom-Json
+az ad sp create --id $app.appId
+
+# 2. Federate it to this repo's GitHub Actions OIDC issuer. One credential
+#    with this subject covers push-to-main, workflow_dispatch (run against
+#    main), and schedule (which also runs against the default branch ref) —
+#    add a second federated-credential block only if you need to dispatch
+#    the deploy job from a non-main branch.
+az ad app federated-credential create --id $app.appId --parameters '{
+  "name": "crawler-main-branch",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:nalfeo/Crawler:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# 3. Grant least-privilege access scoped to ONLY the resource group this
+#    Function lives in — never subscription-wide. A single resource-scoped
+#    role (e.g. Website Contributor on just the Function App) is NOT
+#    sufficient here: `az deployment group create` also needs
+#    `Microsoft.Resources/deployments/*` at the *resource group* scope, and
+#    the same Bicep template also manages the sibling `Microsoft.Web/
+#    serverfarms` plan and a `Microsoft.Storage/storageAccounts/
+#    blobServices/containers` sub-resource + `listKeys` on the storage
+#    account — both outside a Function-App-scoped assignment's reach.
+#    `crawler-sprites-rg` contains exactly the three resources this pipeline
+#    manages (the storage account, the plan, and the Function App), so
+#    Contributor scoped to that RG (not the subscription) is the
+#    "least privilege that is technically required" choice, not
+#    subscription-wide Contributor. Tightening further would mean a custom
+#    role combining `Microsoft.Resources/deployments/*` +
+#    `Microsoft.Web/serverFarms/*` + `Microsoft.Web/sites/*` +
+#    `Microsoft.Storage/storageAccounts/*`, scoped to the RG.
+az role assignment create `
+  --assignee $app.appId `
+  --role "Contributor" `
+  --scope "/subscriptions/<subscription-id>/resourceGroups/crawler-sprites-rg"
+
+# 4. Store the three identifiers as GitHub Actions secrets. None of these
+#    are bearer credentials by themselves — a stolen client ID/tenant
+#    ID/subscription ID cannot authenticate without also controlling a
+#    workflow run in this exact repo whose OIDC token matches the federated
+#    subject above.
+gh secret set AZURE_CLIENT_ID --body $app.appId
+gh secret set AZURE_TENANT_ID --body (az account show --query tenantId -o tsv)
+gh secret set AZURE_SUBSCRIPTION_ID --body (az account show --query id -o tsv)
+```
+
+The Pages build (`.github/workflows/deploy.yml`) and this Function release
+are independently versioned; if a future change makes them tightly coupled
+(e.g. a breaking `/runs` request/response shape change), gate the Pages
+deploy on the Function's `deploy` job completing, or pin a version query
+param, rather than assuming push order is deployment order.
+
+### Token lifecycle
+
+The live `CRAWLER_CI_PAT` is a **static personal/classic GitHub token**,
+manually copied into the Function App setting from an authenticated `gh`
+session (see "Current deployment status" above). It does not self-refresh:
+if it is revoked, expires, or the account is deactivated, the Function
+returns the same `missing required configuration` / GitHub-401 failure it
+had before this work, until someone notices and re-sets it by hand.
+
+**Preferred durable design**: replace it with **GitHub App short-lived
+installation tokens** (minted per-request, scoped to `issues: write` only,
+auto-expiring in ~1 hour, and revocable without touching a personal
+account). This requires a human to:
+
+1. Create a GitHub App (Settings → Developer settings → GitHub Apps), grant
+   it repository permission `Issues: Read and write` only, and install it on
+   `nalfeo/Crawler`.
+2. Record the **App ID** and **installation ID**, and generate a private key.
+3. Store the private key as a Function App setting (e.g.
+   `GITHUB_APP_PRIVATE_KEY`) instead of `CRAWLER_CI_PAT`, and update
+   `functions/dev-build-ingest/src/index.ts` to mint an installation access
+   token per request (e.g. via `@octokit/auth-app`) rather than using a
+   long-lived PAT directly.
+
+This is a real code change to the Function's auth path, not just an infra
+setting swap, so it is intentionally **not** done in this pass — doing it
+without also testing the new auth path live would just trade one
+unverified assumption for another. **Interim mitigation implemented now
+instead**: `.github/workflows/dev-ingest-lifecycle.yml`'s `canary` job runs a
+real end-to-end check of the `file_issue:true` path
+(`.github/scripts/dev-ingest-canary/run-canary.mjs`) every 6 hours, on
+`workflow_dispatch`, and after every deploy. It:
+
+- POSTs a synthetic `RunBundle` with `file_issue: true` to the live `/runs`
+  endpoint using **no credential of its own** (the endpoint is anonymous by
+  design);
+- on success, labels and closes the canary-filed GitHub issue immediately
+  (so canaries never accumulate as issue noise), and closes any existing
+  alert issue if one was open;
+- on failure (non-201 response, missing `issueUrl`, or an unparseable issue
+  URL — which is exactly what a revoked/expired `CRAWLER_CI_PAT` produces),
+  files or updates a single deduplicated alert issue labeled
+  `dev-ingest-canary-alert` using **only the workflow's own `GITHUB_TOKEN`**
+  — never `CRAWLER_CI_PAT` — so a broken credential cannot also suppress its
+  own alert. The alert issue is reused/updated across repeated failures
+  rather than creating a new one every 6 hours.
+
+This does not make the token self-refresh, but the six-hour schedule is the intended detection cadence — a failure will open a GitHub issue when the canary job completes successfully and the alert-filing step runs. Note that an API or network failure can make the job exit non-zero without ever reaching the issue-filing step, so issue delivery is not guaranteed on every failure; the canary exists to surface broken credentials promptly under normal operating conditions rather than to provide a hard SLA.
 
 ### Idempotency & re-creating resources
 

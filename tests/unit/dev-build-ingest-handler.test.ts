@@ -118,6 +118,29 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('fails loudly with 500 when CRAWLER_CI_PAT is not configured, instead of silently skipping issue filing', async () => {
+    // Regression test for nalfeo/Crawler#4033: the deployed Function returned
+    // this exact HTTP 500 the first time a player used the in-game Report
+    // Issue flow because CRAWLER_CI_PAT was never set on the Function App.
+    delete process.env.CRAWLER_CI_PAT;
+
+    const result = await handleRuns(
+      makeRequest({
+        ...validRun,
+        meta: { runId: 'missing-credential-run' },
+        file_issue: true,
+        issue_description: 'The player became stuck.',
+      }),
+      context,
+    );
+
+    expect(result.status).toBe(500);
+    expect((result.jsonBody as { error: string }).error).toBe(
+      'missing required configuration: CRAWLER_CI_PAT',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('keeps explicit bug reports telemetry-only', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
