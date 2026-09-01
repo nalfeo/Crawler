@@ -1,0 +1,69 @@
+{
+  "id": "floor6",
+  "name": "Floor 6 - Hold for Renovation",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": false,
+    "released": false
+  },
+  "timer": {
+    "durationMs": 3600000,
+    "stairSpawnCountdownMs": 0
+  },
+  "objectives": {
+    "requiredRats": 0,
+    "requiredSlimes": 0,
+    "requiredTotalKills": 0,
+    "requiredGold": 0,
+    "requiredJunk": 0,
+    "markerRadiusFt": 8.0
+  },
+  "map": {
+    "widthTiles": 72,
+    "heightTiles": 48,
+    "biome": "broadcast_relay_set",
+    "seed": 606,
+    "roomWidthRange": [4, 12],
+    "roomHeightRange": [4, 12],
+    "maxRooms": 6,
+    "floorDensity": 1.0,
+    "tileSizeFt": 4.0
+  },
+  "player": {
+    "hpBonus": 0,
+    "moveSpeedBonus": 0,
+    "pickupRangeBonus": 0
+  },
+  "camera": {
+    "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomPausesFloorTimer": false,
+    "safeRoomWeaponImmunity": false,
+    "safeRoomDoorsAutoClose": false,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": true
+  },
+  "lighting": {
+    "ambient": 0.45
+  },
+  "floor6": {
+    "geometry": {
+      "routeWidthTiles": 5,
+      "buildSiteSizeTiles": 3,
+      "borderThicknessTiles": 2
+    },
+    "supportedFootprints": [
+      { "id": "standard", "widthTiles": 1, "heightTiles": 1 },
+      { "id": "large", "widthTiles": 2, "heightTiles": 2 }
+    ],
+    "phase": {
+      "initial": "SETUP",
+      "terminal": ["VICTORY", "DEFEAT"]
+    },
+    "rngStreams": ["waves", "routes", "rewards", "upgrades", "dressing", "bosses"]
+  }
+}

@@ -235,6 +235,21 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
+/**
+ * Depth for the terminal action-status toast (run-bundle/RunStats completion
+ * telemetry AND issue-filing submission results share this single slot). Must
+ * stay above EVERY terminal-outcome surface (GameOverUI's ModalPickerUI at
+ * depth 5000, the floor-completion screen container at depth 5500, and the
+ * issue-report picker at {@link ISSUE_REPORT_PICKER_DEPTH}) so the player can
+ * always read the outcome, even though the underlying promise typically
+ * resolves AFTER one of those screens is already showing.
+ *
+ * This is intentionally NOT the shared `interactionHint` slot: `updateInteractions()`
+ * unconditionally hides `interactionHint` every frame the player isn't near an
+ * NPC/staircase, which would clobber a network-result message long before the
+ * player could read it.
+ */
+const ACTION_STATUS_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 500;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
 /**
@@ -311,6 +326,26 @@ function unionScreenBounds(
 }
 
 const logger = createLogger('engine:main-game-scene');
+
+/**
+ * Structural (not nominal) guard for the shape `submitRunBundleUpload()` /
+ * `defaultRunBundleSink()` resolve with — `{ ok: boolean; used?: string;
+ * reason?: string }`. Deliberately NOT typed against
+ * `RunBundleUploadResult` from `engine/run-bundle-upload.ts`: `onRunBundle` is
+ * a generic `(bundle) => Promise<unknown> | void` hook so labs/tests can plug
+ * in anything, and this scene must degrade gracefully (no player-facing
+ * status) when a hook returns something else entirely.
+ */
+function isRunBundleUploadResultLike(
+  value: unknown,
+): value is { readonly ok: boolean; readonly used?: string; readonly reason?: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'ok' in value &&
+    typeof (value as { ok: unknown }).ok === 'boolean'
+  );
+}
 
 /** Mark a named stage in the browser performance timeline (no-op in Node). */
 function markGame(label: string): void {
@@ -675,6 +710,20 @@ export class MainGameScene extends Phaser.Scene {
   private runBundleEmitted = false;
   private lastRunBundle?: RunBundle;
   private lastRunBundleUpload?: Promise<unknown>;
+  /**
+   * Player-visible confirmation of a terminal action's network outcome: the
+   * run-bundle (RunStats payload) upload AND issue-filing submissions both
+   * report through this single toast. Sits above every terminal-outcome
+   * screen — see {@link ACTION_STATUS_DEPTH} — and, unlike `interactionHint`,
+   * is never clobbered by `updateInteractions()`'s per-frame proximity check,
+   * because both outcomes resolve asynchronously (often well after the
+   * triggering key press/frame, sometimes after a death/floor-completion
+   * screen is already showing).
+   */
+  private actionStatusText?: Phaser.GameObjects.Text;
+  private actionStatusDisplayToken = 0;
+  /** Last observed run-bundle upload outcome, exposed for e2e/test probes. */
+  private lastRunBundleUploadStatus?: 'ok' | 'failed' | 'disabled';
   private runSurveyUI?: ReturnType<typeof createRunSurveyUI>;
   private runSurveyShown = false;
   private runSurveySubmitted = false;
@@ -1132,6 +1181,7 @@ export class MainGameScene extends Phaser.Scene {
     this.runBundleEmitted = false;
     this.lastRunBundle = undefined;
     this.lastRunBundleUpload = undefined;
+    this.lastRunBundleUploadStatus = undefined;
     this.runSurveyShown = false;
     this.runSurveySubmitted = false;
 
@@ -1544,6 +1594,8 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseSprite = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
+      this.actionStatusText?.destroy();
+      this.actionStatusText = undefined;
       this.directorCommentaryText = undefined;
       this.floorCompletionScreen?.destroy();
       this.floorCompletionScreen = undefined;
@@ -1605,6 +1657,17 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Last observed outcome of the terminal run-bundle (RunStats payload)
+   * upload kicked off by {@link emitRunBundle}, or `undefined` before any
+   * terminal outcome has settled. Test/automation affordance so e2e probes
+   * can assert the production `defaultRunBundleSink` path reported a real
+   * result — see {@link reportRunBundleUploadResult}.
+   */
+  getRunBundleUploadStatus(): 'ok' | 'failed' | 'disabled' | undefined {
+    return this.lastRunBundleUploadStatus;
   }
 
   /**
@@ -2881,6 +2944,73 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Briefly show a transient terminal-action confirmation above every
+   * terminal-outcome screen (see {@link ACTION_STATUS_DEPTH}). Longer
+   * duration than {@link flashHint} because a player reading a death/victory
+   * screen (or waiting on an issue-filing network round trip) is less likely
+   * to be looking at the very top of the screen the instant it appears, and
+   * because this slot is never clobbered by `updateInteractions()`'s
+   * per-frame proximity check the way `interactionHint` is.
+   */
+  private flashActionStatus(message: string): void {
+    if (!this.actionStatusText) {
+      return;
+    }
+    const displayToken = ++this.actionStatusDisplayToken;
+    this.actionStatusText.setText(message).setVisible(true);
+    this.time.delayedCall(4000, () => {
+      if (this.actionStatusDisplayToken === displayToken) {
+        this.actionStatusText?.setVisible(false);
+      }
+    });
+  }
+
+  /**
+   * Reports the outcome of the terminal run-bundle (RunStats payload) upload
+   * kicked off by {@link emitRunBundle} to the player, once the promise
+   * returned by `options.onRunBundle` settles. Handles three shapes:
+   *
+   *  - A well-formed {@link RunBundleUploadResult}-like object (`{ ok, used,
+   *    reason? }`) as produced by the shipped `submitRunBundleUpload()` /
+   *    `defaultRunBundleSink()` — the production path.
+   *  - A thrown/rejected error from a custom `onRunBundle` hook.
+   *  - `undefined`/an unrecognized shape (e.g. a lab/test hook with no
+   *    structured result) — nothing actionable to report, so this is a no-op.
+   *
+   * `used === 'disabled'` (no ingest endpoint configured for this build) is
+   * intentionally NOT surfaced as a failure: it is an expected, silent
+   * configuration state for local/dev builds, not a broken upload attempt.
+   */
+  private reportRunBundleUploadResult(result: unknown, error?: unknown): void {
+    if (error !== undefined) {
+      this.lastRunBundleUploadStatus = 'failed';
+      const message = error instanceof Error ? error.message : 'run bundle upload failed';
+      logger.warn('Run completion telemetry upload failed', error);
+      this.flashActionStatus(`Run telemetry upload failed: ${message}`);
+      return;
+    }
+    if (!isRunBundleUploadResultLike(result)) {
+      return;
+    }
+    if (result.used === 'disabled') {
+      this.lastRunBundleUploadStatus = 'disabled';
+      return;
+    }
+    if (result.ok) {
+      this.lastRunBundleUploadStatus = 'ok';
+      this.flashActionStatus('Run telemetry uploaded.');
+      return;
+    }
+    this.lastRunBundleUploadStatus = 'failed';
+    logger.warn('Run completion telemetry upload failed', result.reason);
+    this.flashActionStatus(
+      result.reason
+        ? `Run telemetry upload failed: ${result.reason}`
+        : 'Run telemetry upload failed.',
+    );
+  }
+
   private playBossSpawnIntro(): void {
     const objective = this.world.floorScenario?.objective;
     if (!objective) {
@@ -3216,6 +3346,27 @@ export class MainGameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0)
       .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    // Terminal action-status toast — sits above GameOverUI, the
+    // floor-completion screen, and the issue-report picker (see
+    // ACTION_STATUS_DEPTH) so the player can read the outcome of a run-bundle
+    // upload or an issue-filing submission, no matter which terminal screen
+    // is showing when the underlying promise settles.
+    this.actionStatusText = this.add
+      .text(GAME.WIDTH / 2, 16, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        fontStyle: 'bold',
+        color: '#e2e8f0',
+        backgroundColor: '#1f2937ee',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 120 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(ACTION_STATUS_DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
 
@@ -5225,7 +5376,24 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.runBundleEmitted = true;
     this.lastRunBundle = bundle;
-    this.lastRunBundleUpload = Promise.resolve(this.options.onRunBundle?.(bundle));
+    const upload = (() => {
+      try {
+        return Promise.resolve(this.options.onRunBundle?.(bundle));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    })();
+    this.lastRunBundleUpload = upload;
+    // Report success/failure to the player once the upload settles. Chained
+    // separately from `lastRunBundleUpload` (rather than replacing it) so the
+    // existing survey-append wait in showRunSurveyIfNeeded still observes the
+    // raw upload promise. Optional-chained because this method is exercised
+    // in isolation (via source-text extraction) against plain test fixtures
+    // that don't define `reportRunBundleUploadResult`.
+    void upload.then(
+      (result) => this.reportRunBundleUploadResult?.(result),
+      (error: unknown) => this.reportRunBundleUploadResult?.(undefined, error),
+    );
   }
 
   private createIssueRunBundle(): RunBundle | null {
@@ -5433,7 +5601,7 @@ export class MainGameScene extends Phaser.Scene {
         });
       this.issueReportRetryPayload = payload;
       const response = await submitFileIssue(payload);
-      this.flashHint(
+      this.flashActionStatus(
         response.issueUrl
           ? `Issue created: ${response.issueUrl}`
           : `Run ${response.runId} uploaded. Issue creation is pending.`,
@@ -5442,7 +5610,7 @@ export class MainGameScene extends Phaser.Scene {
       this.issueReportRunId = undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Issue submission failed.';
-      this.flashHint(`Could not submit issue: ${message}`);
+      this.flashActionStatus(`Could not submit issue: ${message}`);
     } finally {
       this.issueReportSubmitting = false;
     }

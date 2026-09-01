@@ -105,6 +105,7 @@ import type {
   Floor3PoachOffer,
   Floor4ArenaState,
   Floor4GreenRoomState,
+  Floor6DefenseState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -170,6 +171,8 @@ export interface FloorExtendedState {
   floor4GreenRoom?: Floor4GreenRoomState;
   /** Floor 5 siege phase/latch skeleton state. */
   floor5Siege?: Floor5SiegeState;
+  /** Floor 6 authored defense geometry and phase skeleton. */
+  floor6Defense?: Floor6DefenseState;
 }
 
 /**

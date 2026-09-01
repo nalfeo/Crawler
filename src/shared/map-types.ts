@@ -79,6 +79,11 @@ export enum BiomeType {
    * so the lane, breach, courtyard, throne, and task pockets are stable data.
    */
   SIEGE_CASTLE = 'siege_castle',
+  /**
+   * Floor 6 — compact authored Broadcast Relay defense set. The route and site
+   * topology is fixed; seeded streams are reserved for later content manifests.
+   */
+  BROADCAST_RELAY_SET = 'broadcast_relay_set',
 }
 
 // --- Map Configuration ---
@@ -207,6 +212,17 @@ export interface MapConfig {
     readonly balconyWidthTiles?: number;
     readonly balconyHeightTiles?: number;
     readonly borderThicknessTiles?: number;
+  };
+  /** Optional authored-set knobs for {@link BiomeType.BROADCAST_RELAY_SET} (Floor 6). */
+  readonly broadcastRelaySet?: {
+    readonly routeWidthTiles?: number;
+    readonly buildSiteSizeTiles?: number;
+    readonly borderThicknessTiles?: number;
+    readonly supportedFootprints?: readonly {
+      readonly id: string;
+      readonly widthTiles: number;
+      readonly heightTiles: number;
+    }[];
   };
 }
 
