@@ -245,45 +245,58 @@ fi
 
 echo "🔍 Step 2/3: Changed tests..."
 if [ -n "${CI:-}" ]; then
-  npx vitest run --project unit --reporter=dot
-  npx vitest run --project sprites --reporter=dot
+  # unit + sprites are independent Vitest projects with disjoint `include`
+  # globs (see vitest.config.ts) and no shared mutable state, so running them
+  # in one `vitest run` invocation with both --project flags is equivalent to
+  # two sequential invocations but pays Vite's config-load + project-discovery
+  # startup cost (observed ~2s locally) only once instead of twice.
+  npx vitest run --project unit --project sprites --reporter=dot
 else
-  npx vitest run --changed --project unit --reporter=dot --passWithNoTests
   # Also run changed sprite pipeline tests (scripts/sprites/** maps to tests/unit/sprites/**
-  # and tests/integration/sprites/**). The --changed filter handles the case where no
-  # sprite files changed (passWithNoTests suppresses the "no tests found" error).
-  npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
+  # and tests/integration/sprites/**). --changed + --passWithNoTests handles the
+  # case where no sprite files changed. Combined into one process for the same
+  # startup-cost reason as the CI branch above.
+  npx vitest run --changed --project unit --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 3/3: Data-contract + integrity + coverage checks..."
-# physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
-# edit is gameplay_safe yet must still be validated against the code), so it always
-# runs.
-npx tsx scripts/agent/health/check-physics-defs-sync.ts
-
-# AI equipment-parity guard: a pure text scan of src/game/ai (~40 files, well
-# under a second) that fails if the AI path forces past the safe-context gate a
-# human player is bound by. Cheap enough to run unconditionally, and the failure
-# it prevents — a silently privileged balance oracle — is invisible in review.
-npx tsx scripts/agent/health/check-ai-equip-parity.ts
-
-# The three integrity guards below are pure JSON/file reads (no sim, no git, no
-# subprocess) and together cost well under a second, so they always run — the
-# whole point is that a data-contract break is caught at edit time rather than by
-# a red CI job or, worse, by a human noticing broken art in-game.
+echo "🔍 Step 3/3: Data-contract + integrity + coverage checks (parallel)..."
+# All checks below are independent, read-only, side-effect-free scripts with no
+# shared state — each opens its own files/runs its own in-process headless sim
+# and writes only to stdout (plus an optional per-script JSON summary keyed by
+# its own script name via AUTOMATION_REPORT_DIR). Running them concurrently
+# instead of serially turns their combined wall-clock cost into roughly the
+# slowest single script instead of the sum of all of them — the same
+# process-group-per-job pattern as Step 1's parallel tsc/eslint.
 #
+#  - physics-defs-sync: docs ↔ registry drift (a docs-only entity-sizing.md
+#    edit is gameplay_safe yet must still be validated against the code).
+#  - ai-equip-parity: pure text scan of src/game/ai (~40 files) guarding
+#    against a silently privileged balance oracle.
 #  - registry-integrity: duplicate/blank ids WITHIN a registry file and ACROSS
-#    sibling files sharing one logical id namespace. The cross-file case is the
-#    one no per-file loader can see (achievements.floor1 + floor2 tier collision).
+#    sibling files sharing one logical id namespace (the cross-file case is
+#    the one no per-file loader can see — achievements.floor1/floor2 tier
+#    collision).
 #  - asset-integrity: the shard ↔ PNG ↔ contentHash triple over the entire
-#    committed corpus, so a stale hash or an orphaned shard is found once rather
-#    than by eye (welcome-room stale shard hashes, resurrected walk shard).
+#    committed corpus, so a stale hash or an orphaned shard is found once
+#    rather than by eye (welcome-room stale shard hashes, resurrected walk
+#    shard).
 #  - allowlist-expiry: every governed allowlist entry still has a specific
 #    reason and an unexpired / correctly-shaped deadline (npm audit exceptions
 #    went red because an allowlist quietly expired on a date).
-npx tsx scripts/agent/health/check-registry-integrity.ts
-npx tsx scripts/agent/health/check-asset-integrity.ts
-npx tsx scripts/agent/health/check-allowlist-expiry.ts
+CHECK_PIDS=()
+CHECK_NAMES=()
+run_check() {
+  local name="$1"
+  shift
+  "$@" &
+  CHECK_PIDS+=("$!")
+  CHECK_NAMES+=("$name")
+}
+run_check physics-defs-sync npx tsx scripts/agent/health/check-physics-defs-sync.ts
+run_check ai-equip-parity npx tsx scripts/agent/health/check-ai-equip-parity.ts
+run_check registry-integrity npx tsx scripts/agent/health/check-registry-integrity.ts
+run_check asset-integrity npx tsx scripts/agent/health/check-asset-integrity.ts
+run_check allowlist-expiry npx tsx scripts/agent/health/check-allowlist-expiry.ts
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
@@ -307,11 +320,40 @@ if [ -z "${CI:-}" ]; then
 fi
 
 if [ "$run_size_weight" -eq 1 ]; then
-  npx tsx scripts/agent/health/check-size-coverage.ts
-  npx tsx scripts/agent/health/check-weight-coverage.ts
+  run_check size-coverage npx tsx scripts/agent/health/check-size-coverage.ts
+  run_check weight-coverage npx tsx scripts/agent/health/check-weight-coverage.ts
 else
   echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
+fi
+
+cleanup_checks() {
+  # Same rationale as Step 1's cleanup_parallel: kill each job's whole process
+  # group (negative PID, valid because `set -m` at the top of this script gives
+  # every background job its own process group) so no `npx tsx` child outlives
+  # an interrupted verify-fast run.
+  for pid in "${CHECK_PIDS[@]}"; do
+    kill -- -"$pid" 2>/dev/null || true
+  done
+  for pid in "${CHECK_PIDS[@]}"; do
+    kill -KILL -- -"$pid" 2>/dev/null || true
+  done
+}
+trap cleanup_checks EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+check_failed=0
+for i in "${!CHECK_PIDS[@]}"; do
+  if ! wait "${CHECK_PIDS[$i]}"; then
+    echo "❌ Health check failed: ${CHECK_NAMES[$i]}" >&2
+    check_failed=1
+  fi
+done
+trap - EXIT INT TERM
+
+if [ "$check_failed" -ne 0 ]; then
+  exit 1
 fi
 
 # ── Silent merge-revert guard (local, merge-commit-only) ────────────────────
