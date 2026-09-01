@@ -5,12 +5,11 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Regression coverage for the headless and coverage job gating policy in ci.yml.
+ * Regression coverage for the headless job gating policy in ci.yml.
  *
  * Key requirements from nalfeo/Crawler#1696:
  *   - PR headless jobs start only when `sim_touched=true`.
- *   - PR coverage jobs start only when `coverage_touched=true`.
- *   - Classifier failure cannot silently skip either gate (changes job failure
+ *   - Classifier failure cannot silently skip the gate (changes job failure
  *     propagates through the merge gate check).
  *   - Main-push and scheduled behavior remains a documented backstop
  *     (jobs run unconditionally on non-PR events).
@@ -62,7 +61,7 @@ describe('ci.yml headless and coverage gating policy', () => {
     const doc = loadCiWorkflow();
     expect(doc.jobs['changes']).toBeDefined();
     expect(doc.jobs['test-headless']).toBeDefined();
-    expect(doc.jobs['ci-coverage']).toBeDefined();
+    expect(doc.jobs['ci-coverage']).toBeUndefined();
     expect(doc.jobs['merge-gate']).toBeDefined();
   });
 
@@ -72,12 +71,6 @@ describe('ci.yml headless and coverage gating policy', () => {
     const doc = loadCiWorkflow();
     const outputs = getJob(doc, 'changes').outputs ?? {};
     expect(Object.keys(outputs)).toContain('sim_touched');
-  });
-
-  it('changes job exposes coverage_touched output', () => {
-    const doc = loadCiWorkflow();
-    const outputs = getJob(doc, 'changes').outputs ?? {};
-    expect(Object.keys(outputs)).toContain('coverage_touched');
   });
 
   // --- test-headless gating ---
@@ -112,25 +105,13 @@ describe('ci.yml headless and coverage gating policy', () => {
     expect(condition).toContain("docs_only != 'true'");
   });
 
-  // --- ci-coverage gating ---
+  it('does not run or comment code coverage from PR CI', () => {
+    const raw = readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const doc = loadCiWorkflow();
 
-  it('ci-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
-    // Fail-closed: only an explicit 'false' skips coverage — a missing/blank value runs the job.
-    // Pattern: (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
-    expect(condition).toContain("coverage_touched != 'false'");
-    expect(condition).toContain("github.event_name != 'pull_request'");
-  });
-
-  it('ci-coverage runs on non-PR events regardless of coverage_touched (backstop)', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
-    expect(condition).toMatch(/github\.event_name\s*!=\s*'pull_request'/);
-  });
-
-  it('ci-coverage still skips on docs_only and sprites_only', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
-    expect(condition).toContain("docs_only != 'true'");
-    expect(condition).toContain("sprites_only != 'true'");
+    expect(doc.jobs['ci-coverage']).toBeUndefined();
+    expect(raw).not.toContain('vitest-coverage-report-action');
+    expect(raw).not.toContain('Coverage report comment');
   });
 
   // --- merge gate headless check ---

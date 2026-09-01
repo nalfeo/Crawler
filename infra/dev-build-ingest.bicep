@@ -16,6 +16,11 @@ param allowedOrigins array = [
   'http://localhost:5173'
 ]
 
+@secure()
+@minLength(1)
+@description('GitHub PAT (repo scope, issues:write) the Function uses to file GitHub issues for the "file an issue"/survey feedback path. Required with no default AND with a minimum length so a deployment fails up front — both when the parameter is omitted entirely and when it is supplied as an empty string (e.g. an unset GitHub Actions secret expands to "") — instead of silently shipping a Function that 500s the first time a player reports an issue. Never commit the value or put it in the browser bundle.')
+param githubCiPat string
+
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' existing = {
   name: storageAccountName
 }
@@ -82,6 +87,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'GITHUB_REPOSITORY'
           value: githubRepository
+        }
+        {
+          name: 'CRAWLER_CI_PAT'
+          value: githubCiPat
         }
       ]
     }

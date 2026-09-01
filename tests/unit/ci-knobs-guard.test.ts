@@ -652,9 +652,7 @@ describe('ci-config knobs + invariants guard', () => {
     );
     expect(concurrencyTests).toContain('cancels superseded runs only for pull_request');
     expect(concurrencyTests).toContain('keeps PR groups isolated and separate from non-PR runs');
-    expect(ciGatingPolicyTests).toContain(
-      'ci-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)',
-    );
+    expect(ciGatingPolicyTests).toContain('does not run or comment code coverage from PR CI');
     expect(ciWorkflowOverheadTests).toContain(
       'scope-gated jobs carry allow_skipped=true so art/sprites-only changes pass',
     );
