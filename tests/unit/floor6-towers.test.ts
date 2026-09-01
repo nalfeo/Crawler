@@ -2,7 +2,7 @@ import { addComponent, entityExists, hasComponent, set, setComponent } from 'bit
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import { BroadcastRelayRaider, Floor6Tower, Health, Position } from '../../src/core/index.js';
-import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
+import { applyDamage, createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import {
   _getFloor6TowerRoster,
   _sellFloor6Tower,
@@ -65,7 +65,7 @@ describe('Floor 6 authored tower construction', () => {
   });
 
   it('selects stable legal targets and applies tower damage through the combat primitive', () => {
-    const { world, defense } = initFloor6();
+    const { world, player, defense } = initFloor6();
     defense.economy.balance = 10;
     const built = buildFloor6Tower(world, defense.geometry.buildSites[4]!.id, 'signal-slinger');
     expect(built.ok).toBe(true);
@@ -83,6 +83,17 @@ describe('Floor 6 authored tower construction', () => {
     expect(world.stores.health.current[Math.max(first, second)]).toBe(20);
     expect(getFloor6DefenseRunStats(world)?.towerDamageDealt).toBeGreaterThan(0);
     expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(0);
+
+    world.combatEvents.length = 0;
+    applyDamage(world, Math.max(first, second), 3, 178, 102, {
+      origin: 'player',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceEid: player,
+    });
+    floor6DefenseDirectorSystem(world);
+    expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(3);
   });
 
   it('sells and terminally tears down all tower entities exactly once', () => {

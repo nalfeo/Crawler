@@ -1116,7 +1116,7 @@ export async function runHeadless(
   // frame while a status is held).
   let lastSettlementReturnStatus: string | null = null;
   const pendingFloor6TowerBuilds = [...(mergedConfig.floor6TowerBuildRequests ?? [])];
-  const floor6AutoStrategyEnabled = config.floor6TowerBuildRequests === undefined;
+  const floor6AutoStrategyEnabled = pendingFloor6TowerBuilds.length === 0;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;

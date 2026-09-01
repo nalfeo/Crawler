@@ -1015,6 +1015,8 @@ export interface Floor6DefenseState {
   towersTornDown: number;
   /** Cursor into world.combatEvents for Floor 6 hero/tower contribution telemetry. */
   combatEventCursor: number;
+  /** Last combat event observed at combatEventCursor - 1; detects render-queue drains. */
+  lastCombatEvent?: CombatEvent;
   /** Damage dealt to Floor 6 raiders by normal non-tower combat paths. */
   heroDamageDealt: number;
   /** Damage dealt to Floor 6 raiders by Floor 6 towers. */

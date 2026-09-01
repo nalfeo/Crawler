@@ -523,13 +523,21 @@ function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
 }
 
 function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseState): void {
+  const combatEvents = world.combatEvents;
+  if (
+    state.combatEventCursor > combatEvents.length ||
+    (state.combatEventCursor > 0 &&
+      combatEvents[state.combatEventCursor - 1] !== state.lastCombatEvent)
+  ) {
+    state.combatEventCursor = 0;
+  }
   const floor6RaiderEids = new Set(state.liveEnemies.map((record) => record.eid));
   for (
     let eventIndex = state.combatEventCursor;
-    eventIndex < world.combatEvents.length;
+    eventIndex < combatEvents.length;
     eventIndex += 1
   ) {
-    const event = world.combatEvents[eventIndex];
+    const event = combatEvents[eventIndex];
     if (
       event?.type !== 'hit' ||
       event.targetType !== 'enemy' ||
@@ -545,7 +553,8 @@ function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseS
       state.heroDamageDealt += event.amount;
     }
   }
-  state.combatEventCursor = world.combatEvents.length;
+  state.combatEventCursor = combatEvents.length;
+  state.lastCombatEvent = combatEvents.at(-1);
 }
 
 function creditFloor6WaveRewards(state: Floor6DefenseState): void {
@@ -977,6 +986,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
     state.combatEventCursor = world.combatEvents.length;
+    state.lastCombatEvent = world.combatEvents.at(-1);
     state.heroDamageDealt = 0;
     state.towerDamageDealt = 0;
     recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'setup-complete');
