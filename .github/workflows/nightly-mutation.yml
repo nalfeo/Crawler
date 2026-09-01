@@ -3,7 +3,7 @@ name: Nightly Mutation Testing
 on:
   schedule:
     # Nightly at 02:00 UTC — low-traffic window before the 06:00 UTC
-    # security-review loop, giving the runner pool time to clear.
+    # full-CI backstop, giving the runner pool time to clear.
     - cron: '0 2 * * *'
   workflow_dispatch:
 

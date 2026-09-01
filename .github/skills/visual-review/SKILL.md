@@ -260,7 +260,6 @@ Written under:
 - `files/visual-review/after/v1/<task>.png`
 - `files/visual-review/after/v2/<task>.png`
 - `files/visual-review/feedback/*.jsonl`
-- `files/visual-review/reviews/*.review.json`
 
 ## Before/After review loop
 

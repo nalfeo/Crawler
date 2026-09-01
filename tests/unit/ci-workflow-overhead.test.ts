@@ -322,11 +322,10 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
       expect(condition, `${step} must not use fail-open == true`).not.toContain(
         "dependencies_touched == 'true'",
       );
-      // Non-PR events (schedule/workflow_dispatch) must not hard-fail the workflow
-      // on advisory findings; that is expressed via continue-on-error, not the if:.
-      expect(stepDef?.['continue-on-error'], `${step} must not hard-fail on non-PR events`).toBe(
-        "${{ github.event_name != 'pull_request' }}",
-      );
+      expect(
+        stepDef?.['continue-on-error'],
+        `${step} must hard-fail on PR findings`,
+      ).toBeUndefined();
     }
   });
 
