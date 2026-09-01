@@ -1,0 +1,175 @@
+name: Dev Ingest Lifecycle
+
+# Publishes functions/dev-build-ingest via `az deployment group create` +
+# zip-deploy, then runs a live canary against the deployed /runs endpoint to
+# confirm the GitHub issue-filing credential (CRAWLER_CI_PAT) still works.
+#
+# Deploy uses Azure OIDC federated login (azure/login@v2, no client secret).
+# That requires a one-time human-owned Azure AD App Registration + federated
+# credential + RBAC role assignment — see infra/README.md § "Automated
+# Function deployment (OIDC)" for the exact commands. Release automation must
+# not silently omit the Function publish: on a push-to-main (or a manual
+# workflow_dispatch that did not explicitly request skip_deploy=true), the
+# `preflight` job FAILS the whole run (not a warning) if the
+# AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID secrets are missing.
+# The only way to intentionally omit the deploy without failing the run is an
+# explicit `workflow_dispatch` with `skip_deploy: true` (a human-requested
+# canary-only run), or the periodic `schedule` trigger, which never attempts
+# a deploy at all.
+#
+# The canary always runs (on its own schedule, after a deploy, or on manual
+# dispatch) regardless of whether OIDC deploy is configured, because it is
+# checking the *live* Function's credential, not this workflow's ability to
+# redeploy it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/dev-build-ingest/**'
+      - 'infra/dev-build-ingest.bicep'
+      - '.github/workflows/dev-ingest-lifecycle.yml'
+  schedule:
+    # Every 6 hours — frequent enough to catch a revoked/expired
+    # CRAWLER_CI_PAT within a bounded window, infrequent enough to stay well
+    # under the Function's per-IP rate limit and avoid GitHub API noise.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: 'Run the canary only; skip the Azure deploy job'
+        type: boolean
+        default: false
+
+# Serialize runs (schedule/push/manual all share one group) so two canary
+# invocations can never race on the same managed alert issue — the alert
+# dedup logic in .github/scripts/dev-ingest-canary/alert-lib.mjs does a
+# list-then-create with no server-side lock, so overlapping runs could
+# otherwise create duplicate alerts or reopen one a later healthy run just
+# closed. `cancel-in-progress: false` queues instead of cancelling, so a
+# push-triggered deploy is never dropped by an overlapping scheduled canary.
+concurrency:
+  group: dev-ingest-lifecycle
+  cancel-in-progress: false
+
+# Least-privilege default; each job declares the write scopes it actually
+# needs (mirrors .github/workflows/deploy.yml's convention).
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    # Scheduled canary-only runs never need OIDC — skip this check entirely
+    # rather than reporting a misleading "not configured" warning on every
+    # 6-hourly run.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      oidc_configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Check Azure OIDC secrets exist
+        id: check
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          SKIP_DEPLOY_INPUT: ${{ github.event.inputs.skip_deploy }}
+        run: |
+          if [ "$SKIP_DEPLOY_INPUT" = "true" ]; then
+            # Explicit human opt-out (workflow_dispatch skip_deploy=true) —
+            # this is the only case where omitting the Function publish is
+            # allowed to succeed rather than fail: it was requested, not
+            # silently defaulted into.
+            echo "configured=skip" >> "$GITHUB_OUTPUT"
+            echo "::notice::skip_deploy=true was passed — the deploy job is intentionally skipped for this run; only the canary will run."
+            exit 0
+          fi
+          if [ -n "$AZURE_CLIENT_ID" ] && \
+             [ -n "$AZURE_TENANT_ID" ] && \
+             [ -n "$AZURE_SUBSCRIPTION_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Azure OIDC secrets (AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID) are not configured, so the automated Function deploy cannot run. This is a release-triggered deployment: it must fail loudly, not silently skip the Function publish. Either complete the one-time human Azure AD setup in infra/README.md § 'Automated Function deployment (OIDC)', or re-run manually via workflow_dispatch with skip_deploy=true for a canary-only run."
+            exit 1
+          fi
+
+  deploy:
+    needs: preflight
+    if: >
+      github.event_name != 'schedule' &&
+      needs.preflight.outputs.oidc_configured == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC — no client secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy infra/dev-build-ingest.bicep
+        env:
+          GITHUB_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+        run: |
+          az deployment group create \
+            --resource-group crawler-sprites-rg \
+            --template-file infra/dev-build-ingest.bicep \
+            --parameters functionAppName=crawler-dev-ingest \
+              storageAccountName=crawlersprites \
+              githubCiPat="$GITHUB_CI_PAT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Function
+        working-directory: functions/dev-build-ingest
+        run: |
+          npm ci
+          npm run build
+          npm prune --omit=dev
+
+      - name: Zip-deploy Function code
+        working-directory: functions/dev-build-ingest
+        run: |
+          zip -r ../dev-build-ingest.zip dist host.json package.json node_modules
+          az functionapp deployment source config-zip \
+            --resource-group crawler-sprites-rg \
+            --name crawler-dev-ingest \
+            --src ../dev-build-ingest.zip
+
+  canary:
+    needs: [preflight, deploy]
+    # Always runs: on schedule, on manual dispatch, after a push-triggered
+    # deploy that succeeded, was intentionally skipped (skip_deploy=true),
+    # never ran because `preflight` failed the run (missing OIDC secrets), OR
+    # even outright *failed* partway through (e.g. the Bicep apply succeeded
+    # but the zip-deploy step then failed) — the canary checks the *live*
+    # Function's credential, which can be broken by exactly that kind of
+    # partial deploy, so it must never be suppressed by any `deploy`/
+    # `preflight` outcome.
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      # Deliberately GITHUB_TOKEN only, never CRAWLER_CI_PAT — the canary
+      # exists to detect when that credential is broken, so it must not
+      # depend on it to file/manage its own alert issue.
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run live canary against /runs (file_issue:true)
+        run: node .github/scripts/dev-ingest-canary/run-canary.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INGEST_URL: https://crawler-dev-ingest.azurewebsites.net/runs
