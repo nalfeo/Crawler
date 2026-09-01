@@ -100,9 +100,14 @@ jobs:
             echo "::error::abandon_existing=true requires an explicit issue_number; refusing to close an arbitrary recovered PR." >&2
             exit 1
           fi
+          find_open_dependency_blockers() {
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by" \
+              --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
+          }
           if [ -z "${ISSUE_NUMBER}" ]; then
             for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
-              --state open --label 'goobers/status:in-review' --json number --jq '.[].number'); do
+              --state open --label 'goobers/status:in-review' --limit 1000 --json number --jq '.[].number'); do
               candidate_pr="$(
                 gh api --paginate \
                   "repos/${GITHUB_REPOSITORY}/issues/${candidate_issue}/timeline" \
@@ -119,6 +124,11 @@ jobs:
                   done
               )"
               if [ -n "${candidate_pr}" ]; then
+                blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
+                if [ -n "${blocked_by}" ]; then
+                  echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
+                  continue
+                fi
                 ISSUE_NUMBER="${candidate_issue}"
                 echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr}."
                 break
@@ -133,26 +143,42 @@ jobs:
             # filtering, which can both miss an older eligible issue and
             # falsely report "no work" when those 100 are all
             # assigned/in-review.
-            ISSUE_NUMBER="$(
+            for candidate_issue in $(
               gh search issues \
                 --repo "${GITHUB_REPOSITORY}" \
                 --state open \
                 --label 'goobers:approved' \
                 --no-assignee \
-                --sort created --order asc --limit 1 \
-                --json number --jq '.[0].number // empty' \
+                --sort created --order asc --limit 1000 \
+                --json number --jq '.[].number' \
                 -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"'
-            )"
+            ); do
+              blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
+              if [ -n "${blocked_by}" ]; then
+                echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
+                continue
+              fi
+              ISSUE_NUMBER="${candidate_issue}"
+              echo "Selected fresh approved issue #${ISSUE_NUMBER}."
+              break
+            done
             if [ -z "${ISSUE_NUMBER}" ]; then
-              echo "No eligible goobers:approved issue found; skipping this run."
+              echo "No unblocked eligible goobers:approved issue found; skipping this run."
               echo "should_run=false" >> "${GITHUB_OUTPUT}"
               exit 0
             fi
-            echo "Selected fresh approved issue #${ISSUE_NUMBER}."
           fi
           if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; use workflow_dispatch issue_number with an integer." >&2
             exit 1
+          fi
+          blocked_by="$(
+            find_open_dependency_blockers "${ISSUE_NUMBER}"
+          )"
+          if [ -n "${blocked_by}" ]; then
+            echo "::warning::Issue #${ISSUE_NUMBER} is blocked by open prerequisite issue(s): ${blocked_by}. Skipping before Goobers claim or repository mutation."
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
           echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}" >> "${GITHUB_ENV}"
 

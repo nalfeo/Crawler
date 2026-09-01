@@ -18,6 +18,7 @@ function row(over = {}) {
     inputTokens: 0,
     cacheReadTokens: 0,
     compactions: 0,
+    compactionStorm: false,
     skillInvocations: 0,
     subagentSpawns: 0,
     errors: 0,
@@ -66,4 +67,22 @@ test('sumSessionTotals does not mutate its input rows', () => {
   const r = row({ walltimeMs: 5 });
   sumSessionTotals([r]);
   assert.equal(r.walltimeMs, 5);
+});
+
+test('sumSessionTotals counts only storm-flagged sessions in compactionStormSessions', () => {
+  const t = sumSessionTotals([
+    row({ compactions: 8, compactionStorm: true }),
+    row({ compactions: 2, compactionStorm: false }),
+    row({ compactions: 6, compactionStorm: true }),
+  ]);
+  assert.equal(t.compactions, 16);
+  assert.equal(t.compactionStormSessions, 2);
+});
+
+test('sumSessionTotals reports zero compactionStormSessions when no row is a storm', () => {
+  const t = sumSessionTotals([
+    row({ compactions: 1, compactionStorm: false }),
+    row({ compactions: 2, compactionStorm: false }),
+  ]);
+  assert.equal(t.compactionStormSessions, 0);
 });

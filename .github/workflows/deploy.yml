@@ -118,6 +118,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Release-time coverage reporting. PR CI intentionally avoids v8 coverage
+      # overhead; this job publishes the signal when the change actually ships.
+      - name: Unit tests with coverage
+        id: coverage
+        continue-on-error: true
+        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json --coverage.reporter=json-summary --coverage.reporter=text
+
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-coverage-summary
+          path: coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 30
+
       # --- Build Dev (includes labs) ---
       - name: Build dev
         run: npm run build
@@ -312,6 +328,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PAGES_URL: ${{ steps.deploy-url.outputs.page_url }}
+          COVERAGE_SUMMARY_JSON: ${{ github.workspace }}/coverage/coverage-summary.json
         run: |
           # Ensure the "released" label exists
           if ! gh label create "released" --repo "${{ github.repository }}" \
@@ -349,7 +366,9 @@ jobs:
                 }
               " 2>/dev/null || true)
 
-            BODY="🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)"$'\n'"🤖 [AI Runner lab](${LAB_BASE}?lab=ai-runner)${RELATED_LABS_LINE}"
+            COVERAGE_LINE=$(node scripts/agent/ci/format-release-coverage-comment.mjs)
+
+            BODY="🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)"$'\n'"🤖 [AI Runner lab](${LAB_BASE}?lab=ai-runner)${RELATED_LABS_LINE}${COVERAGE_LINE}"
 
             if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
               echo "::warning::Failed to comment on PR #$PR"

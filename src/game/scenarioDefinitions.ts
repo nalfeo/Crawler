@@ -75,6 +75,7 @@ import {
   getFloor6RunOutcome,
   initializeFloor6Scenario,
   floor6RaiderSystem,
+  floor6TowerSystem,
   floor6DefenseDirectorSystem,
 } from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
@@ -847,7 +848,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       configureWorld: initializeFloor6Scenario,
       onStairDescend: confirmFloor6StairDescend,
       beforeEnemyAISystems: [floor6RaiderSystem],
-      afterSpawnerSystems: [floor6DefenseDirectorSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
       director: FLOOR_6_DIRECTOR,
       getRunOutcome: getFloor6RunOutcome,
       isTerminalRunVictory: false,

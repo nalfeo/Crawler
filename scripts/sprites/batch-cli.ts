@@ -33,6 +33,8 @@ import {
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import { resolveGenerationRunStore } from './run-durability.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 
 interface BatchCliArgs {
   readonly briefs: ReadonlyArray<string>;
@@ -156,6 +158,17 @@ function printHelp(): void {
       '                             rate-limit + budget accounting reasons).',
       '  --dry-run                  List briefs + project cost; no Azure calls.',
       '',
+      'Run storage (durable by default):',
+      '  Briefs, exact prompts, raw sheets and sliced candidates are persisted to',
+      '  the Azure run store so approved art can never point at content that only',
+      '  ever existed in this worktree. Requires AZURE_STORAGE_ACCOUNT +',
+      '  AZURE_STORAGE_KEY (or AZURE_STORAGE_CONNECTION_STRING).',
+      '  SPRITES_RUN_STORE=local    Explicit offline mode. Artifacts are NOT durably',
+      '                             persisted and cannot be approved into git until',
+      '                             they are durably backfilled.',
+      '  Without credentials and without SPRITES_RUN_STORE this command fails closed;',
+      '  run `npm run setup:azure:env` to refresh credentials.',
+      '',
       '  --help, -h                 Show this help.',
       '',
     ].join('\n'),
@@ -232,6 +245,7 @@ function formatLine(result: BatchBriefResult, index: number, total: number): str
 }
 
 async function main(): Promise<number> {
+  loadEnvLocal(process.cwd());
   let args: BatchCliArgs;
   try {
     args = parseArgs(process.argv.slice(2));
@@ -316,6 +330,15 @@ async function main(): Promise<number> {
     process.stdout.write(`  judge-cache: disabled (--no-judge-cache)\n`);
   }
 
+  let runStore;
+  try {
+    runStore = resolveGenerationRunStore({ repoRoot: process.cwd(), outputRoot: generatedDir });
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+  process.stdout.write(`  ${runStore.description}\n`);
+
   const summary = await runBatch({
     briefPaths: briefs,
     repoRoot: process.cwd(),
@@ -325,6 +348,7 @@ async function main(): Promise<number> {
     provider,
     textProvider,
     visionProvider,
+    store: runStore.store,
     concurrency: args.concurrency,
     onBriefComplete: (result, index, total) => {
       process.stderr.write(formatLine(result, index, total));

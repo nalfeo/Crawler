@@ -41,8 +41,10 @@ interface WorkflowJob {
     id?: string;
     name?: string;
     if?: string;
+    env?: Record<string, string>;
     run?: string;
     uses?: string;
+    'continue-on-error'?: boolean;
     with?: Record<string, string | number | boolean>;
   }>;
 }
@@ -235,5 +237,33 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
         `"${stepName}" must gate on tip-guard skip output`,
       ).toBe("steps.tip-guard.outputs.skip != 'true'");
     }
+  });
+
+  it('deploy job owns release-time coverage reporting before release comments', () => {
+    const doc = loadDeployWorkflow();
+    const deploy = getJob(doc, 'deploy');
+    const steps = deploy.steps ?? [];
+    const coverageIdx = steps.findIndex((step) => step.name === 'Unit tests with coverage');
+    const uploadIdx = steps.findIndex((step) => step.name === 'Upload coverage summary');
+    const commentIdx = steps.findIndex((step) => step.name === 'Label and comment on released PRs');
+    const coverageStep = steps[coverageIdx];
+    const commentStep = steps[commentIdx];
+
+    expect(
+      coverageIdx,
+      'deploy must generate coverage before release comments',
+    ).toBeGreaterThanOrEqual(0);
+    expect(uploadIdx, 'deploy must upload the release coverage artifact').toBeGreaterThan(
+      coverageIdx,
+    );
+    expect(commentIdx, 'deploy must comment after coverage has been generated').toBeGreaterThan(
+      uploadIdx,
+    );
+    expect(String(coverageStep?.run ?? '')).toContain('--coverage');
+    expect(coverageStep?.['continue-on-error']).toBe(true);
+    expect(commentStep?.env?.COVERAGE_SUMMARY_JSON).toContain('coverage/coverage-summary.json');
+    expect(String(commentStep?.run ?? '')).toContain(
+      'scripts/agent/ci/format-release-coverage-comment.mjs',
+    );
   });
 });

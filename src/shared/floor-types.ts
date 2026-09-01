@@ -1009,6 +1009,44 @@ export interface Floor6DefenseState {
   lastReleaseFrame: number;
   /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
   economy: Floor6EconomyState;
+  /** Built towers, ordered by authored build site. Never changes map topology. */
+  towerInstances: Floor6TowerInstance[];
+  /** Number of tower entities removed through sell or terminal teardown. */
+  towersTornDown: number;
+}
+
+export interface Floor6TowerDef {
+  readonly id: string;
+  readonly footprintId: string;
+  readonly cost: number;
+  readonly sellRefund: number;
+  readonly attackRangeFt: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+}
+
+export interface Floor6TowerInstance {
+  readonly siteId: string;
+  readonly towerId: string;
+  readonly eid: number;
+}
+
+export type Floor6TowerBuildFailureReason =
+  | 'not-floor6'
+  | 'invalid-site'
+  | 'unknown-tower'
+  | 'occupied'
+  | 'unaffordable';
+
+export interface Floor6TowerBuildResult {
+  readonly ok: boolean;
+  readonly reason: Floor6TowerBuildFailureReason | 'built';
+  readonly eid?: number;
+}
+
+export interface Floor6TowerSellResult {
+  readonly ok: boolean;
+  readonly reason: 'not-floor6' | 'vacant' | 'sold';
 }
 
 export interface Floor6EconomyState {
@@ -1046,8 +1084,15 @@ export interface Floor6UpgradeSelectionResult {
   readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
 }
 
+export type Floor6UpgradeEffectKind =
+  | 'relayMaxHpBonus'
+  | 'towerFireRateBonus'
+  | 'towerDamageBonus'
+  | 'relayRepair'
+  | 'raiderSlowBonus';
+
 export interface Floor6UpgradeEffect {
-  readonly kind: string;
+  readonly kind: Floor6UpgradeEffectKind;
   readonly value: number;
 }
 
@@ -1115,6 +1160,8 @@ export interface Floor6DefenseRunStats {
   readonly selectedOfferIds: readonly string[];
   readonly upgradeSelectionTrace: readonly Floor6UpgradeSelectionTraceEntry[];
   readonly terminalResetCount: number;
+  readonly towers: readonly Pick<Floor6TowerInstance, 'siteId' | 'towerId'>[];
+  readonly towersTornDown: number;
 }
 
 /**
