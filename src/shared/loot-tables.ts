@@ -155,22 +155,21 @@ export const LOOT_TABLES = {
   FLOOR_1: {
     id: 'floor_1',
     entries: [
-      // Reduced from value 4 → 1 so regular kills contribute ~2 XP each (BASIC_MELEE+FLOOR_1).
-      // Boss kills now provide the bulk of XP so the player reaches ~level 6 by floor end.
-      { type: 'xp' as const, value: 1, chance: 1.0, min: 1, max: 1 },
+      // Regular kills retain their BASIC_MELEE XP; bosses remain the floor's
+      // large progression beats. This keeps the release cohort near level 7.
+      { type: 'xp' as const, value: 0, chance: 1.0, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.2, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'rusted-scrap', value: 1, chance: 0.14, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'old-sock', value: 1, chance: 0.08, min: 1, max: 1 },
     ],
   } satisfies LootTable,
 
-  // Floor 2 floor-level bonus: adds 3 XP per kill on top of BASIC_MELEE (1 XP)
-  // so each trash kill yields 4 XP total. This margin is calibrated to the
-  // first-boss level gate on contiguous seeds 1–3 while staying under the
-  // current first-boss upper bound.
+  // Floor 2 floor-level bonus: adds 2 XP per kill on top of BASIC_MELEE (1 XP).
+  // This is the smallest floor-scoped value that preserves the direct-start
+  // first-boss level-10 gate while reducing the former four-XP reward.
   FLOOR_2: {
     id: 'floor_2',
-    entries: [{ type: 'xp' as const, value: 3, chance: 1.0, min: 1, max: 1 }],
+    entries: [{ type: 'xp' as const, value: 2, chance: 1.0, min: 1, max: 1 }],
   } satisfies LootTable,
 
   // Floor 3 reuses Floor 2's simple XP-only floor bonus for the wild-spawn slice.

@@ -1098,7 +1098,11 @@ export async function runHeadless(
     for (const g of grants) {
       (milestonesReached[g.skillId] ??= []).push(g.milestoneLevel);
     }
-    return { grants, uniqueAbilityCount, milestonesReached };
+    const maxCombatSkillLevel = [...world.playerSkills.values()].reduce(
+      (maximum, skill) => Math.max(maximum, skill.level),
+      0,
+    );
+    return { grants, uniqueAbilityCount, milestonesReached, maxCombatSkillLevel };
   };
 
   const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
