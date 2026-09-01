@@ -58,7 +58,7 @@ export interface TravelThreat {
 export interface TravelPickup {
   /** Stable entity id for debug / single-channel assertions. */
   eid?: number;
-  kind?: 'xp' | 'gold' | 'item';
+  kind?: 'xp' | 'gold' | 'item' | 'buildCurrency';
   x: number;
   y: number;
   /** Caller-precomputed desirability (item > xp > gold). */
