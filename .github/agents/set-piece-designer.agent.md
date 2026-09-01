@@ -1,5 +1,7 @@
 ---
 description: 'Design and dress Crawler set-piece interiors so they read as hand-made, not generated: blockout the floorplan, inventory usable art, commission and iterate the props that are missing, dress the room to a deterministic composition score, then verify visually. Select to "design a set piece", "fix a room that looks like AI slop", "make a boss den / welcome room / floor entrance / settlement / Earth-artifact room", "dress this interior", or when acting as the environment/interior designer.'
+model: claude-sonnet-5
+contextTier: long_context
 ---
 
 ## User Input

@@ -1,6 +1,8 @@
 ---
 name: UX Designer
 description: 'Design and fix everything the Crawler player reads, touches, and hears: HUD, menus, onboarding, controls, accessibility defaults, and audio feedback. Select for HUD overlap or readability bugs, menu and pause-state work, control responsiveness, accessibility defaults, or reward/danger audio cues.'
+model: claude-sonnet-5
+contextTier: long_context
 ---
 
 ## User Input
