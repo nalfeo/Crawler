@@ -10,6 +10,7 @@ interface WorkflowStep {
   name?: string;
   uses?: string;
   with?: Record<string, unknown>;
+  env?: Record<string, string>;
   run?: string;
   if?: string;
   id?: string;
@@ -52,8 +53,9 @@ function loadWorkflow(relativePath: string): WorkflowDoc {
 }
 
 describe('ci workflow overhead reduction', () => {
-  it('consolidates 4 former lightweight jobs into check-lightweight and splits coverage into ci-coverage', () => {
+  it('consolidates 4 former lightweight jobs into check-lightweight and moves coverage to release deploy', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const deployWorkflow = loadWorkflow('.github/workflows/deploy.yml');
 
     // Former independent jobs must be gone
     expect(workflow.jobs['check-types-and-lint']).toBeUndefined();
@@ -100,14 +102,21 @@ describe('ci workflow overhead reduction', () => {
       ).toBeTruthy();
     }
 
-    // ci-coverage: independent advisory job for the ~140-second coverage suite
-    const coverage = workflow.jobs['ci-coverage'];
-    expect(coverage).toBeTruthy();
-    expect(coverage?.needs).toEqual(['changes']);
-    expect(coverage?.permissions).toMatchObject({ 'pull-requests': 'write' });
-    expect(coverage?.steps?.find((step) => step.name === 'Unit tests with coverage')).toBeTruthy();
-    expect(coverage?.steps?.find((step) => step.name === 'Upload coverage summary')).toBeTruthy();
-    expect(coverage?.steps?.find((step) => step.name === 'Coverage report comment')).toBeTruthy();
+    expect(workflow.jobs['ci-coverage']).toBeUndefined();
+
+    // Release deploy owns the slower coverage signal after a change ships.
+    const deploy = deployWorkflow.jobs.deploy;
+    const coverageStep = deploy?.steps?.find((step) => step.name === 'Unit tests with coverage');
+    expect(coverageStep?.run).toContain('--coverage');
+    expect(coverageStep?.['continue-on-error']).toBe(true);
+    expect(deploy?.steps?.find((step) => step.name === 'Upload coverage summary')).toBeTruthy();
+    const releaseCommentStep = deploy?.steps?.find(
+      (step) => step.name === 'Label and comment on released PRs',
+    );
+    expect(releaseCommentStep?.env).toMatchObject({
+      COVERAGE_SUMMARY_JSON: '${{ github.workspace }}/coverage/coverage-summary.json',
+    });
+    expect(releaseCommentStep?.run).toContain('format-release-coverage-comment.mjs');
 
     expect(workflow.jobs['merge-gate']?.needs).toContain('check-lightweight');
     expect(workflow.jobs['merge-gate']?.needs).not.toContain('static-validation');

@@ -4337,21 +4337,14 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
 });
 
 test('failed job-level continue-on-error checks (including matrix-suffixed report-only legs) never become ci-failure blockers (PR #3032)', async (t) => {
-  // "Advisory coverage" and "Headless Multi-Floor Legs (report-only)" run with
+  // "Headless Multi-Floor Legs (report-only)" runs with
   // `continue-on-error: true` at the job level in .github/workflows/ci.yml, and
-  // `merge-gate`'s `needs` list deliberately omits both, so their failure can never
-  // block or unblock merge. Recovery previously flagged a red Advisory coverage
+  // `merge-gate`'s `needs` list deliberately omits it, so its failure can never
+  // block or unblock merge. Recovery previously flagged a red advisory
   // check-run as a `ci-failure` blocker and dispatched Copilot to "fix" it, but a
-  // transient infra failure (e.g. a 429 downloading an action) in an advisory job
-  // gives the agent nothing to fix that changes the PR's mergeable state -- the
-  // recovery loop spun with no progress across repeated attempts.
-  const advisoryFailedCheck = {
-    id: 1,
-    name: 'Advisory coverage',
-    status: 'completed',
-    conclusion: 'failure',
-    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
-  };
+  // transient infra failure in an advisory job gives the agent nothing to fix that
+  // changes the PR's mergeable state -- the recovery loop spun with no progress
+  // across repeated attempts.
   const matrixAdvisoryFailedCheck = {
     id: 2,
     name: 'Headless Multi-Floor Legs (report-only) (floor2, --floor floor2 --seed 42)',
@@ -4368,7 +4361,7 @@ test('failed job-level continue-on-error checks (including matrix-suffixed repor
     }),
     [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [advisoryFailedCheck, matrixAdvisoryFailedCheck] },
+      body: { check_runs: [matrixAdvisoryFailedCheck] },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });

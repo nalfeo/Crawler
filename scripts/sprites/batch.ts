@@ -67,6 +67,12 @@ export interface BatchOptions {
   readonly provider: RunFullOptions['provider'];
   readonly textProvider?: RunFullOptions['textProvider'];
   readonly visionProvider?: RunFullOptions['visionProvider'];
+  /**
+   * Run store shared by every brief in the batch. Threaded through to
+   * `runFull` so `sprites:batch` cannot fall back to `generateSheetCore`'s
+   * ephemeral local default — the exact gap that lost seven finished runs.
+   */
+  readonly store?: RunFullOptions['store'];
   /** Reserved for future parallel execution. Currently must be 1. */
   readonly concurrency?: number;
   /** Clock injection for deterministic batch IDs + timestamps. */
@@ -257,6 +263,7 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
         judgeCache: options.judgeCache,
         repoRoot: options.repoRoot,
         outputRoot,
+        ...(options.store ? { store: options.store } : {}),
         ...(options.now ? { now: options.now } : {}),
       };
       const run = await generate(generateOptions);
