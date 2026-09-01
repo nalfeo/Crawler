@@ -2,6 +2,7 @@ import { addComponent, hasComponent, query, setComponent } from 'bitecs';
 import {
   DeathTimer,
   Damage,
+  Companion,
   DoorState,
   Enemy,
   EnemyBehavior,
@@ -2243,6 +2244,7 @@ export function enemyAISystem(world: GameWorld): void {
     // Floor 3 slice 4: SUPPORT is movement-only; remove this exclusion when
     // the Kindler support-ability slice wires its actual attack/buff payload.
     if (
+      !hasComponent(world.ecs, eid, Companion) &&
       behaviorType !== AI_TYPE.SUPPORT &&
       attackRange > EPSILON &&
       distanceToPlayer <= attackRange

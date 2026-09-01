@@ -1,6 +1,7 @@
-import { query } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Companion, PartySlot, Player, Position, Team } from '../../src/core/index.js';
+import { Companion, Invincible, PartySlot, Player, Position, Team } from '../../src/core/index.js';
+import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import type { SimEvent } from '../../src/game/ai/event-log.js';
@@ -36,6 +37,28 @@ function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): n
 }
 
 describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
+  it('uses the starter companion to fight while the Wrangler remains unharmed and unarmed', async () => {
+    let playerIsInvincible = false;
+    let playerHasWeapon = true;
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 4015 }), {
+      seed: 4015,
+      floorId: 'floor3',
+      maxFrames: 1800,
+      questStallFrames: 0,
+      onFinish: (world) => {
+        const player = query(world.ecs, [Player])[0];
+        playerIsInvincible = player !== undefined && hasComponent(world.ecs, player, Invincible);
+        playerHasWeapon = getActiveWeaponDef(world) !== undefined;
+      },
+    });
+
+    expect(stats.combat.damageDealt).toBeGreaterThan(0);
+    expect(stats.combat.damageTaken).toBe(0);
+    expect(playerIsInvincible).toBe(true);
+    expect(playerHasWeapon).toBe(false);
+  });
+
   it('logs the initial starter pick while resolving the real Floor 3 loadout hook', async () => {
     const events: SimEvent[] = [];
     let partyAtFinish = 0;

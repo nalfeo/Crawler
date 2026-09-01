@@ -24,6 +24,17 @@ export function getCompanionAIDecision(
   return decisionsByWorld.get(world)?.get(eid);
 }
 
+/** Sets a floor-specific target override consumed by enemyAISystem this frame. */
+export function setCompanionAIDecision(
+  world: GameWorld,
+  eid: number,
+  decision: CompanionAIDecision,
+): void {
+  const decisions = decisionsByWorld.get(world) ?? new Map<number, CompanionAIDecision>();
+  decisions.set(eid, decision);
+  decisionsByWorld.set(world, decisions);
+}
+
 /** Test/lab helper to clear cached companion decisions. */
 export function resetCompanionAIState(world: GameWorld): void {
   decisionsByWorld.delete(world);

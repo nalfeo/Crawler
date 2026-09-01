@@ -7,6 +7,9 @@ import {
 import {
   arenaDirectorSystem,
   companionAISystem,
+  companionCombatSystem,
+  floor3NonCombatantSystem,
+  floor3WildTargetRedirectSystem,
   enemyAISystem,
   emergentEventSystem,
   familyFeudSystem,
@@ -54,8 +57,12 @@ describe('createFloor1MainSceneOptions', () => {
     },
     {
       floorId: 'floor3',
-      beforeWeaponSystems: [],
-      beforeEnemyAISystems: [companionAISystem],
+      beforeWeaponSystems: [floor3NonCombatantSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        floor3WildTargetRedirectSystem,
+        companionCombatSystem,
+      ],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,
