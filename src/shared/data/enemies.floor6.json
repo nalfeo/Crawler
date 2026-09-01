@@ -39,7 +39,7 @@
       "spawnWeight": 0.0
     }
   ],
-  "enemyCap": 1,
+  "enemyCap": 6,
   "spawnIntervalMs": 0,
   "spawnRadiusMin": 0,
   "despawnDistanceFt": 0,

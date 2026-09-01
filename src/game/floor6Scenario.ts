@@ -342,7 +342,8 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
   // First drain debt (already-due entries waiting for a slot)
   while (state.spawnDebt > 0 && countLiveFloor6Raiders(world) < liveCap) {
     // Find oldest unreleased due entry
-    const debtEntry = manifest.slice(0, state.nextReleaseIndex).find((e) => {
+    const debtEntry = manifest.find((e) => {
+      if (e.manifestIndex >= state.nextReleaseIndex) return false;
       const rec = state.liveEnemies[e.manifestIndex];
       return rec && rec.eid === 0; // 0 = not yet spawned
     });
@@ -539,8 +540,13 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 
   // ── Terminal precedence check 1: player death ─────────────────────────────
-  const playerEntities = Array.from(query(world.ecs, [Player, Health]));
-  const playerDead = playerEntities.some((eid) => (world.stores.health.current[eid] ?? 1) <= 0);
+  let playerDead = false;
+  for (const eid of query(world.ecs, [Player, Health])) {
+    if ((world.stores.health.current[eid] ?? 1) <= 0) {
+      playerDead = true;
+      break;
+    }
+  }
   if (playerDead) {
     clearFloor6Raiders(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'player-death');
