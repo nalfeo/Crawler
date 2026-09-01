@@ -53,6 +53,7 @@ import {
 import { expandVariations } from './expand-variations.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
+import { buildRunProvenance } from './run-durability.js';
 import { sliceSheetFromBrief, type BriefSliceResult } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
@@ -521,6 +522,27 @@ export async function generateSheetCore(
   const storeKey = (rel: string) => `${brief.name}/${runId}/${rel}`;
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
+  // Persist the LLM-authored inputs BEFORE the provider call. A crash, a
+  // provider outage, or a discarded worktree must never be able to destroy the
+  // brief and the exact prompt that produced a sheet — that is the loss this
+  // whole durability contract exists to prevent (see run-durability.ts). Keys
+  // are content-stable, so a retried run rewrites byte-identical bytes.
+  for (const artifact of buildRunProvenance({
+    briefId: brief.name,
+    runId,
+    createdAt,
+    briefPath: path.relative(repoRoot, loaded.briefPath).replace(/\\/g, '/'),
+    briefSource: readBriefSource(loaded.briefPath),
+    effectiveBrief,
+    prompt,
+    singleVariantPrompt,
+    styleGuide,
+    ...(referenceSprites ? { referenceSprites } : {}),
+    ...(seedFrameRefs.length > 0 ? { seedFrames: seedFrameRefs } : {}),
+  })) {
+    await store.put(storeKey(artifact.key), artifact.data);
+  }
+
   // --- Generate the sheet, with bounded retries on transient grid issues. ---
   let attempts = 0;
   let lastError: ProviderError | undefined;
@@ -679,6 +701,21 @@ function shortPromptHash(prompt: string): string {
   // Re-use the same hashing helper indirectly via run-artifacts.makeRunId
   // logic. Inlined here to avoid exporting an extra helper.
   return makeRunId(new Date(0), prompt).slice(20);
+}
+
+/**
+ * Read the authored brief verbatim for the per-run provenance snapshot.
+ * Best-effort by design: a brief that was supplied preloaded (or whose file has
+ * since moved) must not abort a generation run. The provenance record records
+ * `briefSourceCaptured: false` in that case, and `prompt.json` — which carries
+ * the fully-expanded effective brief — remains the required artifact.
+ */
+function readBriefSource(briefPath: string): string | null {
+  try {
+    return readFileSync(briefPath, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 function asProviderError(err: unknown): ProviderError {

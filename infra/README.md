@@ -83,8 +83,12 @@ Add these to your `.env.local` file (which is gitignored):
 AZURE_STORAGE_ACCOUNT=crawlersprites          # your storage account name
 AZURE_STORAGE_KEY=<paste key from step 4>
 
-# Opt-in: use Azure backends instead of local filesystem / noop
-SPRITES_RUN_STORE=azure-blob                  # 'local' (default) | 'azure-blob'
+# Run store / asset queue backend selection.
+# `sprites:run`, `sprites:batch` and the sidecar all default to Azure when
+# credentials are present, and FAIL CLOSED rather than silently writing
+# generated art to ephemeral local-only storage. Set `local` to opt explicitly
+# into offline mode (runs generated that way cannot be approved into git).
+SPRITES_RUN_STORE=azure-blob                  # 'local' | 'azure-blob'
 SPRITES_ASSET_QUEUE=azure-queue               # 'noop' (default) | 'azure-queue'
 
 # Optional overrides (uncomment to change defaults):
@@ -145,6 +149,42 @@ To run the sidecar fully local (offline, or in a test), opt in explicitly:
 ```bash
 SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop npm run sprites:gallery
 ```
+
+---
+
+## Generation durability (`sprites:run`, `sprites:batch`, `sprites:approve`)
+
+Direct generation CLIs follow the **same** Azure-first policy as the sidecar.
+`sprites:run` and `sprites:batch` resolve their run store through
+`scripts/sprites/run-durability.ts`:
+
+| `SPRITES_RUN_STORE` | Azure credentials | Result                                                                 |
+| ------------------- | ----------------- | ---------------------------------------------------------------------- |
+| unset               | present           | **durable** — Azure, mirrored to `generated/runs/` for local review    |
+| unset               | missing           | **fails closed** with setup guidance (no silent local-only generation) |
+| `local`             | (any)             | explicit offline mode — clearly labelled `LOCAL ONLY`, not publishable |
+| `azure-blob`        | present           | durable, mirrored                                                      |
+
+Every run additionally persists a `provenance/` record — the authored brief
+verbatim (`provenance/brief.yaml`) plus the exact prompt, expanded effective
+brief, reference-sprite and seed-frame provenance, and content hashes
+(`provenance/prompt.json`) — so a run can be reproduced from durable storage
+alone rather than only from a hash in `summary.json`.
+
+`sprites:approve` then gates git publication on that durability: before it
+writes a manifest `sourceRun` pointer or commits to `assets/queue`, it backfills
+anything the durable store is missing from the local run directory and verifies
+the required artifact set. If verification fails it exits **5** and publishes
+nothing. The backfill is `has`-gated, so re-running a failed approve is
+idempotent.
+
+To generate offline (nothing generated this way can be approved into git):
+
+```bash
+SPRITES_RUN_STORE=local npm run sprites:run -- --brief <path>
+```
+
+---
 
 ## Automated setup (recommended)
 

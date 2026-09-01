@@ -25,7 +25,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { JudgeBudget } from './cost-tracker.js';
-import { runFull } from './run-full.js';
+import { runFull, type RunFullOptions } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
 import {
   DEFAULT_AZURE_DEPLOYMENT,
@@ -34,6 +34,7 @@ import {
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import { resolveGenerationRunStore } from './run-durability.js';
 import { ensureSidecarService } from './sidecar/service-manager.js';
 
 // The baseline `DEFAULT_AZURE_DEPLOYMENT` (provider/factory.ts) is listed first
@@ -201,6 +202,16 @@ function printHelp(): void {
       '  AZURE_OPENAI_IMAGE_DEPLOYMENT, AZURE_OPENAI_API_VERSION (optional; --model takes precedence)',
       '  SPRITES_PROVIDER=azure-openai (default; future: mai-image)',
       '',
+      'Run storage (durable by default):',
+      '  Generated briefs, exact prompts, raw sheets and sliced candidates are',
+      '  persisted to the Azure run store so approved art can never point at',
+      '  content that only ever existed in this worktree.',
+      '  AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_KEY, or AZURE_STORAGE_CONNECTION_STRING',
+      '  SPRITES_RUN_STORE=local    Explicit offline mode. Artifacts are NOT durably',
+      '                             persisted and CANNOT be approved into git.',
+      '  Without credentials and without SPRITES_RUN_STORE this command fails closed;',
+      '  run `npm run setup:azure:env` to refresh credentials.',
+      '',
     ].join('\n'),
   );
 }
@@ -352,6 +363,7 @@ async function runOne(
   pick: number | undefined,
   judgeBudget: JudgeBudget | null,
   judgeCache: JudgeCache | null,
+  store: RunFullOptions['store'],
 ): Promise<BriefRunOutcome> {
   const start = Date.now();
   try {
@@ -366,6 +378,7 @@ async function runOne(
       judgeBudget,
       judgeCache,
       repoRoot: process.cwd(),
+      store,
     });
     const duration = Date.now() - start;
     printSummary(
@@ -530,9 +543,21 @@ async function main(): Promise<number> {
   if (!judgeCache.enabled) {
     process.stdout.write(`  judge-cache: disabled (--no-judge-cache)\n`);
   }
+
+  // Fail closed before any paid generation: refuse to burn Azure image spend on
+  // artifacts that would only ever exist in this worktree.
+  let runStore;
+  try {
+    runStore = resolveGenerationRunStore({ repoRoot: process.cwd() });
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
+  process.stdout.write(`  ${runStore.description}\n`);
+
   const outcomes: BriefRunOutcome[] = [];
   for (const briefPath of briefs) {
-    outcomes.push(await runOne(briefPath, args.pick, judgeBudget, judgeCache));
+    outcomes.push(await runOne(briefPath, args.pick, judgeBudget, judgeCache, runStore.store));
   }
   // Final budget + cache summary for batch visibility.
   process.stdout.write(`\n${judgeBudget.format()}\n`);
