@@ -20,6 +20,24 @@ name: Sprite queue reconciler
 # CI run normally and the armed auto-merge proceeds. We run `gh auth setup-git`
 # so `git push` uses the PAT credentials (checkout keeps persist-credentials
 # false so the default GITHUB_TOKEN is never used for the push).
+#
+# PROCESS RULE — mirror direct art fixes back onto assets/queue (PR #4031 /
+# #4043 incident): if bad art bytes are ever fixed by a commit applied
+# directly to `assets/promote` (or to `main`) instead of to `assets/queue`
+# itself, you MUST also push the same corrected bytes onto `assets/queue`
+# (or retire/reset the affected path there) in the same breath. Otherwise
+# `assets/queue` keeps holding bytes that differ from `main`'s current
+# bytes forever, and every hourly cycle reopens a duplicate promotion PR for
+# the same asset — main's own git history never records the bad blob (it was
+# fixed pre-merge), so the staleness guard never blocks re-promotion, while
+# the retirement guard correctly refuses to reset a queue that still
+# disagrees with main. `reconcile-queue.ts`'s `sourceAddsNothingToBase` has a
+# "landed-fix amnesty" fallback that detects this exact shape (a fix applied
+# within the very promotion PR being used to authorize retirement) and
+# converges automatically, but it only fires for fixes committed on the
+# PROMOTE branch of the promotion that lands the fix — a fix applied only
+# on `main` after merge, or via a manual PR unrelated to this one, is NOT
+# covered and must be mirrored onto `assets/queue` by hand.
 
 on:
   schedule:
