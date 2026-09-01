@@ -393,8 +393,11 @@ async function historicBlobsAtPaths(
   repoRoot: string,
   ref: string,
   paths: readonly string[],
+  options?: {
+    readonly excludeRef?: string;
+  },
 ): Promise<Map<string, Set<string>> | null> {
-  const history = await runGit(exec, repoRoot, [
+  const args = [
     '-c',
     'core.quotePath=false',
     'log',
@@ -403,9 +406,10 @@ async function historicBlobsAtPaths(
     '--no-renames',
     '--no-abbrev',
     ref,
-    '--',
-    ...paths,
-  ]);
+  ];
+  if (options?.excludeRef !== undefined) args.push('--not', options.excludeRef);
+  args.push('--', ...paths);
+  const history = await runGit(exec, repoRoot, args);
   if (history.code !== 0) return null;
   const seenByPath = new Map<string, Set<string>>();
   for (const line of parseNameOnly(history.stdout)) {
@@ -1047,6 +1051,28 @@ export async function findLandedPromotion(
  * retirement: a superseded source contributes no promotable path, so it produces
  * a `noop` cycle whether or not it is ever retired.
  *
+ * LANDED-FIX AMNESTY (`landedRef`): the repo squash-merges, so when a bad path a
+ * source harvested gets corrected by a FOLLOW-UP commit on the promotion branch
+ * itself, before merge, the squash commit that lands on `main` is byte-identical
+ * to its parent for that path — `main`'s own history never carries the bad
+ * bytes at all. Without this amnesty, that leaves the source's still-bad tip
+ * permanently unretirable (its bytes forever differ from `main`'s current
+ * bytes) AND, independently, permanently re-promotable (`filterPromotablePaths`'s
+ * staleness check also only consults `main`'s history), so the same rejected
+ * edit re-opens a duplicate promotion PR every cycle (PR #4043 duplicating the
+ * already-merged PR #4031: `player-walk-cycle-male.png` was fixed on the
+ * promote branch before merge, so `main`'s history was never polluted, and
+ * `assets/queue` kept re-offering the stale bytes forever). `landedRef` is the
+ * promotion PR's own UN-SQUASHED head (`LANDED_SCRATCH_REF`), which — unlike
+ * `main` — DOES contain that follow-up fix. A diverging path is granted amnesty
+ * only when BOTH hold:
+ *   1) the landed PR's own final tree at that path is BYTE-IDENTICAL to
+ *      `base`'s current bytes; and
+ *   2) the path's SOURCE blob appears in the landed PR's PR-exclusive history
+ *      (`landedRef --not baseRef`), proving this divergence was actually
+ *      present and corrected inside that promotion rather than merely inherited
+ *      from `base`.
+ *
  * Fail closed: any git failure answers `false` (do not retire).
  */
 async function sourceAddsNothingToBase(
@@ -1054,7 +1080,10 @@ async function sourceAddsNothingToBase(
   repoRoot: string,
   baseRef: string,
   sourceRef: string,
-  options?: { readonly dropLegacyAggregateManifestPaths?: boolean },
+  options?: {
+    readonly dropLegacyAggregateManifestPaths?: boolean;
+    readonly landedRef?: string;
+  },
 ): Promise<boolean> {
   const delta = await runGit(exec, repoRoot, [
     'diff',
@@ -1067,13 +1096,33 @@ async function sourceAddsNothingToBase(
     ...ART_SURFACE_ALLOWLIST,
   ]);
   if (delta.code !== 0) return false;
-  const paths = parseNameOnly(delta.stdout);
-  return (
-    (options?.dropLegacyAggregateManifestPaths === true
-      ? paths.filter((p) => !isLegacyAggregateManifestPath(p))
-      : paths
-    ).length === 0
-  );
+  let paths = parseNameOnly(delta.stdout);
+  if (options?.dropLegacyAggregateManifestPaths === true) {
+    paths = paths.filter((p) => !isLegacyAggregateManifestPath(p));
+  }
+  if (paths.length === 0) return true;
+  if (options?.landedRef === undefined) return false;
+
+  // Landed-fix amnesty: drop any diverging path the landed promotion's own
+  // final tree already carries as byte-identical to `base`'s current state.
+  const sourceBlobs = await blobsAtPaths(exec, repoRoot, sourceRef, paths);
+  const baseBlobs = await blobsAtPaths(exec, repoRoot, baseRef, paths);
+  const landedBlobs = await blobsAtPaths(exec, repoRoot, options.landedRef, paths);
+  const landedHistory = await historicBlobsAtPaths(exec, repoRoot, options.landedRef, paths, {
+    excludeRef: baseRef,
+  });
+  if (sourceBlobs === null || baseBlobs === null || landedBlobs === null || landedHistory === null)
+    return false;
+  const remaining = paths.filter((p) => {
+    const sourceSha = sourceBlobs.get(p);
+    if (sourceSha === undefined) return true;
+    const baseSha = baseBlobs.get(p);
+    // `base` no longer has the path at all — not something the landed PR's
+    // tree can attest to; leave it blocking (fail closed, not fail open).
+    if (baseSha === undefined) return true;
+    return landedBlobs.get(p) !== baseSha || landedHistory.get(p)?.has(sourceSha) !== true;
+  });
+  return remaining.length === 0;
 }
 
 /** What a tidy-up pass retired. */
@@ -1166,7 +1215,10 @@ export async function tidyUpLandedPromotion(
     if (fetched.code !== 0) return false;
     const resolved = await runGit(exec, repoRoot, ['rev-parse', SOURCE_SCRATCH_REF]);
     if (resolved.code !== 0 || resolved.stdout.trim() !== expectedSha) return false;
-    return sourceAddsNothingToBase(exec, repoRoot, BASE_SCRATCH_REF, SOURCE_SCRATCH_REF, options);
+    return sourceAddsNothingToBase(exec, repoRoot, BASE_SCRATCH_REF, SOURCE_SCRATCH_REF, {
+      ...options,
+      landedRef: LANDED_SCRATCH_REF,
+    });
   };
 
   let queueReset = false;
