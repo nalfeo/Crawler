@@ -78,9 +78,7 @@ import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
-  autoFloor6ProgressionSystem,
   autoNpcInteractionSystem,
-  NPC_INTERACTION_COOLDOWN,
 } from './auto-progression.js';
 import {
   runSettlementMaintenancePlanner,
@@ -1000,6 +998,7 @@ export async function runHeadless(
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
+  const NPC_INTERACTION_COOLDOWN = 30; // frames
 
   // Track initial state
   const playerMaxHealth = world.stores.health.max[playerEid] ?? 100;
@@ -1351,7 +1350,6 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
-      autoFloor6ProgressionSystem(world);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
       // `restockFloor2Quartermaster`, so a human run only ever sees the stock

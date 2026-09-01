@@ -777,13 +777,6 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     expiresOn: '2026-11-22',
   },
   {
-    file: 'src/game/ai/auto-progression.ts',
-    name: 'computeAiStatAllocation',
-    reason:
-      'Pure level-up stat-point allocation split out of autoAllocateStatPoints for determinism testing; production reaches it only through autoAllocateStatPoints in the same file, so unit tests import it directly.',
-    expiresOn: '2026-11-22',
-  },
-  {
     file: 'src/engine/phaser-bridge/sprite-kind.ts',
     name: 'PLACEHOLDER_SPAWNER_TINT',
     reason:
@@ -816,6 +809,20 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     name: 'GENERATED_KEY_BY_NPC_DEF',
     reason:
       'Pinned NPC def-id -> generated texture key map, consumed only by pickGeneratedNpcTextureKey in the same file; exported so unit tests can assert the mapping directly against src/shared/data/npc-sprite-map.json.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor6Scenario.ts',
+    name: 'getFloor6UpgradeOffers',
+    reason:
+      'Public read accessor for the Floor 6 run-scoped upgrade offer manifest, part of the atomic purchase API (see purchaseFloor6UpgradeOffer). The Floor 6 upgrade-picker UI that drives it lands in a follow-up slice; an eager headless auto-buyer was tried and reverted because it emptied the very offers this API exposes before a run stats snapshot could observe them (tests/headless/floor6-economy-obs.test.ts).',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor6Scenario.ts',
+    name: 'purchaseFloor6UpgradeOffer',
+    reason:
+      'Atomic purchase transaction for a Floor 6 run-scoped upgrade offer (no-op for unknown/duplicate/unaffordable/non-Floor-6 requests). The Floor 6 upgrade-picker UI that calls it lands in a follow-up slice; unit tests exercise every branch of the transaction directly in the interim.',
     expiresOn: '2026-11-22',
   },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];

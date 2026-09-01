@@ -27,7 +27,6 @@ import {
   merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
-import { getFloor6UpgradeOffers, purchaseFloor6UpgradeOffer } from '../floor6Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
@@ -426,34 +425,6 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
     return;
   }
   confirmFloor2StairDescend(world, playerEid);
-}
-
-/**
- * Headless/lab-only: spend Floor 6 build currency on unlocked upgrade offers
- * the way a survival-minded player would via the run-scoped upgrade picker.
- * Deterministic — always selects the cheapest unlocked, not-yet-selected
- * offer (ties broken by `stableIndex`), so spend order is stable across runs
- * sharing the same RNG seed. `purchaseFloor6UpgradeOffer` is a safe no-op for
- * unknown/duplicate/unaffordable/non-Floor-6 requests, so this can run
- * unconditionally every tick.
- */
-export function autoFloor6ProgressionSystem(world: GameWorld): void {
-  const state = world.floorExtendedState?.floor6Defense;
-  if (!state) {
-    return;
-  }
-  const offers = getFloor6UpgradeOffers(world);
-  if (offers.length === 0) {
-    return;
-  }
-  const unlockedIds = new Set(state.economy.unlockedOfferIds);
-  const next = offers
-    .filter((offer) => unlockedIds.has(offer.offerId))
-    .sort((a, b) => a.cost - b.cost || a.stableIndex - b.stableIndex)[0];
-  if (!next) {
-    return;
-  }
-  purchaseFloor6UpgradeOffer(world, next.offerId);
 }
 
 /**
