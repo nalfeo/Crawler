@@ -143,8 +143,12 @@ export {
   companionAISystem,
   getCompanionAIDecision,
   resetCompanionAIState,
+  setCompanionAIDecision,
 } from './systems/companionAISystem.js';
 export type { CompanionAIDecision, CompanionTargetKind } from './systems/companionAISystem.js';
+export { companionCombatSystem } from './systems/companionCombatSystem.js';
+export { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
+export { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 export {
   _aiTypeForSpecies,
   _generateStarterOffer,

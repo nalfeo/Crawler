@@ -24,6 +24,17 @@ export function getCompanionAIDecision(
   return decisionsByWorld.get(world)?.get(eid);
 }
 
+/** Sets a floor-specific target override consumed by enemyAISystem this frame. */
+export function setCompanionAIDecision(
+  world: GameWorld,
+  eid: number,
+  decision: CompanionAIDecision,
+): void {
+  const decisions = decisionsByWorld.get(world) ?? new Map<number, CompanionAIDecision>();
+  decisions.set(eid, decision);
+  decisionsByWorld.set(world, decisions);
+}
+
 /** Test/lab helper to clear cached companion decisions. */
 export function resetCompanionAIState(world: GameWorld): void {
   decisionsByWorld.delete(world);
@@ -33,6 +44,7 @@ export function companionAISystem(world: GameWorld): void {
   const players = query(world.ecs, [Player, Position]);
   const playerEid = players[0];
   const decisions = decisionsByWorld.get(world) ?? new Map<number, CompanionAIDecision>();
+  const previousDecisions = new Map(decisions);
   decisions.clear();
   decisionsByWorld.set(world, decisions);
   if (playerEid === undefined) return;
@@ -44,6 +56,16 @@ export function companionAISystem(world: GameWorld): void {
   const rivalRangeSq = rivalRangeFt * rivalRangeFt;
   const companions = query(world.ecs, [Enemy, Companion, Position]);
   const candidates = query(world.ecs, [Enemy, Position, Team]);
+
+  // Ranged/support archetypes are the only ones stamped with a positive
+  // `attackRange` (see floor3Scenario.ts's recruit/spawn helpers) — they kite
+  // away from anything inside their retreat band (buildRangedPathTarget /
+  // buildSupportPathTarget in enemyAISystem.ts) rather than closing distance.
+  // A melee attacker (attackRange <= 0) can never corner one of these on its
+  // own, so it must not get target-locked onto an uncatchable kiter while a
+  // catchable rival is available.
+  const isEvasiveRival = (candidateEid: number): boolean =>
+    (world.stores.enemyBehavior.attackRange[candidateEid] ?? 0) > 0;
 
   for (const eid of companions) {
     if (hasComponent(world.ecs, eid, DeathTimer)) continue;
@@ -62,8 +84,49 @@ export function companionAISystem(world: GameWorld): void {
     const teamId = world.stores.team.id[eid] ?? 0;
     const x = world.stores.position.x[eid] ?? 0;
     const y = world.stores.position.y[eid] ?? 0;
+    const isMeleeAttacker = (world.stores.enemyBehavior.attackRange[eid] ?? 0) <= 0;
+
+    // Target-lock: a rival recomputed strictly-nearest every single frame
+    // thrashes between several similarly-close mobs, spreading hits across
+    // all of them instead of concentrating fire on one — the companion can
+    // then chase forever without ever landing a kill. Keep the previous
+    // frame's rival target as long as it is still alive, in range, and (for
+    // a melee attacker) not an uncatchable kiter that a fresh scan would
+    // otherwise avoid; only fall through to a new nearest-rival scan once it
+    // dies, is knocked out, leaves engagement range, or is an evasive target
+    // this attacker can never actually reach.
+    const previous = previousDecisions.get(eid);
+    if (previous?.kind === 'rival-primary' && previous.targetEid !== undefined) {
+      const lockedEid = previous.targetEid;
+      const stillValid =
+        candidates.includes(lockedEid) &&
+        !hasComponent(world.ecs, lockedEid, DeathTimer) &&
+        (world.stores.team.id[lockedEid] ?? 0) !== teamId &&
+        !(
+          hasComponent(world.ecs, lockedEid, Companion) &&
+          (world.stores.companion.knockedOut[lockedEid] ?? 0) === 1
+        ) &&
+        !(isMeleeAttacker && isEvasiveRival(lockedEid));
+      if (stillValid) {
+        const lx = world.stores.position.x[lockedEid] ?? 0;
+        const ly = world.stores.position.y[lockedEid] ?? 0;
+        const dx = lx - x;
+        const dy = ly - y;
+        if (dx * dx + dy * dy <= rivalRangeSq) {
+          decisions.set(eid, {
+            x: lx,
+            y: ly,
+            kind: 'rival-primary',
+            targetEid: lockedEid,
+            bypassPlayerDetection: true,
+          });
+          continue;
+        }
+      }
+    }
 
     let nearestRival: { eid: number; x: number; y: number; d2: number } | null = null;
+    let nearestEvasiveRival: { eid: number; x: number; y: number; d2: number } | null = null;
     for (const other of candidates) {
       if (other === eid) continue;
       if (hasComponent(world.ecs, other, DeathTimer)) continue;
@@ -80,6 +143,19 @@ export function companionAISystem(world: GameWorld): void {
       const dy = oy - y;
       const d2 = dx * dx + dy * dy;
       if (d2 > rivalRangeSq) continue;
+      // A melee attacker prefers any catchable (non-evasive) rival over an
+      // evasive one, regardless of raw distance, since it can never close on
+      // a kiter; keep the nearest evasive candidate only as a last resort.
+      if (isMeleeAttacker && isEvasiveRival(other)) {
+        if (
+          nearestEvasiveRival === null ||
+          d2 < nearestEvasiveRival.d2 ||
+          (d2 === nearestEvasiveRival.d2 && other < nearestEvasiveRival.eid)
+        ) {
+          nearestEvasiveRival = { eid: other, x: ox, y: oy, d2 };
+        }
+        continue;
+      }
       if (
         nearestRival === null ||
         d2 < nearestRival.d2 ||
@@ -89,12 +165,13 @@ export function companionAISystem(world: GameWorld): void {
       }
     }
 
-    if (nearestRival !== null) {
+    const chosenRival = nearestRival ?? nearestEvasiveRival;
+    if (chosenRival !== null) {
       decisions.set(eid, {
-        x: nearestRival.x,
-        y: nearestRival.y,
+        x: chosenRival.x,
+        y: chosenRival.y,
         kind: 'rival-primary',
-        targetEid: nearestRival.eid,
+        targetEid: chosenRival.eid,
         bypassPlayerDetection: true,
       });
       continue;

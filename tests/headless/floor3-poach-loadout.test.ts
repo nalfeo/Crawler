@@ -1,6 +1,7 @@
-import { query } from 'bitecs';
+import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Companion, PartySlot, Player, Position, Team } from '../../src/core/index.js';
+import { Companion, Invincible, PartySlot, Player, Position, Team } from '../../src/core/index.js';
+import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import type { SimEvent } from '../../src/game/ai/event-log.js';
@@ -36,6 +37,52 @@ function countCompanionsOnTeams(world: GameWorld, teamIds: readonly number[]): n
 }
 
 describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
+  // The starter-Companion pick is an automatic `'loadout'` pause at floor
+  // entry (spec R5 §6.1), mirroring Floor 1's weapon pick — it is not gated
+  // behind interacting with Professor Thistle, whose NPC is flavor/decorative
+  // (confirmed separately below: "leaves the entrance without repeatedly
+  // interacting with Professor Thistle"). This test therefore starts from
+  // that real auto-selected pause rather than fabricating an interaction
+  // requirement the design doesn't have, and proves the rest of the loop:
+  // the pet fights and actually defeats a mob while leaving the starting
+  // room over a full 1,800-frame budget, and the Wrangler stays passive.
+  it('uses the starter companion to fight and defeat a mob while the Wrangler remains unharmed and unarmed', async () => {
+    let playerIsInvincible = false;
+    let playerHasWeapon = true;
+    let sawCompanionAttributedKill = false;
+
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 4015 }), {
+      seed: 4015,
+      floorId: 'floor3',
+      maxFrames: 1800,
+      questStallFrames: 0,
+      onFinish: (world) => {
+        const player = query(world.ecs, [Player])[0];
+        playerIsInvincible = player !== undefined && hasComponent(world.ecs, player, Invincible);
+        playerHasWeapon = getActiveWeaponDef(world) !== undefined;
+        // Floor 3 Companions never actually reach 0 HP — `companionKOSystem`
+        // clamps `Health.current` to 1 and flips `knockedOut` instead — so a
+        // real `death`/`enemy` combat event can only be a genuine trash mob,
+        // and a `sourceEid` carrying `Companion` proves the starter pet (not
+        // the invincible, unarmed Wrangler) landed the killing blow.
+        sawCompanionAttributedKill = world.combatEvents.some(
+          (event) =>
+            event.type === 'death' &&
+            event.targetType === 'enemy' &&
+            event.sourceEid !== undefined &&
+            hasComponent(world.ecs, event.sourceEid, Companion),
+        );
+      },
+    });
+
+    expect(stats.combat.totalKills).toBeGreaterThan(0);
+    expect(sawCompanionAttributedKill).toBe(true);
+    expect(stats.combat.damageDealt).toBeGreaterThan(0);
+    expect(stats.combat.damageTaken).toBe(0);
+    expect(playerIsInvincible).toBe(true);
+    expect(playerHasWeapon).toBe(false);
+  });
+
   it('logs the initial starter pick while resolving the real Floor 3 loadout hook', async () => {
     const events: SimEvent[] = [];
     let partyAtFinish = 0;
