@@ -419,9 +419,9 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     floor6Tower: {
       /** Index into the immutable Floor 6 tower roster. */
-      towerIndex: new Uint8Array(maxEntities),
+      towerIndex: new Uint16Array(maxEntities),
       /** Elapsed-ms timestamp of this tower's most recent attack. */
-      lastAttackMs: new Float32Array(maxEntities),
+      lastAttackMs: new Float64Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),

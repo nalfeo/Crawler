@@ -1084,8 +1084,15 @@ export interface Floor6UpgradeSelectionResult {
   readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
 }
 
+export type Floor6UpgradeEffectKind =
+  | 'relayMaxHpBonus'
+  | 'towerFireRateBonus'
+  | 'towerDamageBonus'
+  | 'relayRepair'
+  | 'raiderSlowBonus';
+
 export interface Floor6UpgradeEffect {
-  readonly kind: string;
+  readonly kind: Floor6UpgradeEffectKind;
   readonly value: number;
 }
 

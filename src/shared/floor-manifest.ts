@@ -36,6 +36,13 @@ const FLOOR6_RNG_STREAMS = [
   'dressing',
   'bosses',
 ] as const;
+const FLOOR6_UPGRADE_EFFECT_KINDS = [
+  'relayMaxHpBonus',
+  'towerFireRateBonus',
+  'towerDamageBonus',
+  'relayRepair',
+  'raiderSlowBonus',
+] as const;
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -1157,7 +1164,7 @@ export const floorManifestDefSchema = z
                     cost: z.number().int().nonnegative(),
                     effect: z
                       .object({
-                        kind: z.string().min(1),
+                        kind: z.enum(FLOOR6_UPGRADE_EFFECT_KINDS),
                         value: z.number(),
                       })
                       .strict(),
@@ -1180,32 +1187,6 @@ export const floorManifestDefSchema = z
               message: `duplicate supported footprint id "${footprint.id}"`,
             });
           }
-          const towerIds = new Set<string>();
-          const footprintIds = new Set(floor6.supportedFootprints.map((footprint) => footprint.id));
-          for (const [index, tower] of (floor6.towers ?? []).entries()) {
-            if (towerIds.has(tower.id)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['towers', index, 'id'],
-                message: `duplicate tower id "${tower.id}"`,
-              });
-            }
-            towerIds.add(tower.id);
-            if (!footprintIds.has(tower.footprintId)) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['towers', index, 'footprintId'],
-                message: `tower "${tower.id}" has unsupported footprint "${tower.footprintId}"`,
-              });
-            }
-            if (tower.sellRefund > tower.cost) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['towers', index, 'sellRefund'],
-                message: `tower "${tower.id}" refund cannot exceed its cost`,
-              });
-            }
-          }
           ids.add(footprint.id);
           if (
             footprint.widthTiles > floor6.geometry.routeWidthTiles ||
@@ -1215,6 +1196,45 @@ export const floorManifestDefSchema = z
               code: z.ZodIssueCode.custom,
               path: ['supportedFootprints', index],
               message: `supported footprint "${footprint.id}" exceeds route width`,
+            });
+          }
+        }
+        const towerIds = new Set<string>();
+        const footprintIds = new Set(floor6.supportedFootprints.map((footprint) => footprint.id));
+        for (const [index, tower] of (floor6.towers ?? []).entries()) {
+          if (towerIds.has(tower.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'id'],
+              message: `duplicate tower id "${tower.id}"`,
+            });
+          }
+          towerIds.add(tower.id);
+          if (!footprintIds.has(tower.footprintId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'footprintId'],
+              message: `tower "${tower.id}" has unsupported footprint "${tower.footprintId}"`,
+            });
+          }
+          if (tower.sellRefund > tower.cost) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'sellRefund'],
+              message: `tower "${tower.id}" refund cannot exceed its cost`,
+            });
+          }
+        }
+        for (const [index, offer] of (floor6.upgrades?.offers ?? []).entries()) {
+          if (
+            (offer.effect.kind === 'towerFireRateBonus' ||
+              offer.effect.kind === 'raiderSlowBonus') &&
+            (offer.effect.value < 0 || offer.effect.value > 1)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offers', index, 'effect', 'value'],
+              message: `${offer.effect.kind} must be between 0 and 1`,
             });
           }
         }

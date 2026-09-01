@@ -192,6 +192,7 @@ export function initializeFloor6Scenario(
 
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
 const FLOOR6_SELECTION_TRACE_LIMIT = 64;
+const FLOOR6_MAX_FIRE_RATE_BONUS = 0.9;
 
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
@@ -484,8 +485,8 @@ export function teardownFloor6Towers(world: GameWorld): void {
     if (entityExists(world.ecs, instance.eid)) {
       removeEntity(world.ecs, instance.eid);
       clearEntityStores(world, instance.eid);
-      state.towersTornDown += 1;
     }
+    state.towersTornDown += 1;
   }
   state.towerInstances.length = 0;
 }
@@ -859,7 +860,10 @@ export function floor6TowerSystem(world: GameWorld): void {
   const state = floor6DefenseState(world);
   if (!state || state.phase.kind !== 'DEFEND') return;
   const damageBonus = selectedFloor6UpgradeValue(state, 'towerDamageBonus');
-  const fireRateBonus = selectedFloor6UpgradeValue(state, 'towerFireRateBonus');
+  const fireRateBonus = Math.min(
+    FLOOR6_MAX_FIRE_RATE_BONUS,
+    selectedFloor6UpgradeValue(state, 'towerFireRateBonus'),
+  );
   for (const instance of state.towerInstances) {
     if (!entityExists(world.ecs, instance.eid)) continue;
     const tower = getFloor6TowerDef(instance.towerId);
