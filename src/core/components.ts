@@ -74,6 +74,13 @@ export const SiegeStructure = {};
  * wave logic, caps, and telemetry never count a Hero as a minion.
  */
 export const SiegeHero = {};
+/**
+ * Floor 6 route-following raider marker. Placed on demolition crew enemies that
+ * follow authored waypoint routes toward the Broadcast Relay. Distinct from
+ * `Enemy`/`EnemyBehavior` so normal AI systems skip them; `floor6RaiderSystem`
+ * owns their movement and `floor6DefenseDirectorSystem` owns their lifecycle.
+ */
+export const BroadcastRelayRaider = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -376,6 +383,34 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       /** World-space role anchor the Hero leashes to. */
       anchorX: new Float32Array(maxEntities),
       anchorY: new Float32Array(maxEntities),
+    },
+    broadcastRelayRaider: {
+      /**
+       * Index into the wave manifest; links this entity back to its authored
+       * release entry for telemetry and lifecycle tracking.
+       */
+      manifestIndex: new Uint16Array(maxEntities),
+      /**
+       * 0-based index of the current target waypoint in route.waypoints.
+       * Incremented as the raider passes each waypoint; clamped at
+       * waypoints.length to signal "reached relay".
+       */
+      waypointIndex: new Uint16Array(maxEntities),
+      /**
+       * Consecutive frames the raider has not moved (position compared to
+       * prevX/prevY). Reset on movement; used by floor6RaiderSystem for
+       * stall detection.
+       */
+      stillFrames: new Uint16Array(maxEntities),
+      /**
+       * Elapsed-ms timestamp of the last attack on the relay by this raider.
+       * Compared against raiderAttackCooldownMs to gate repeated hits.
+       */
+      lastRelayAttackMs: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevX: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevY: new Float32Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),
