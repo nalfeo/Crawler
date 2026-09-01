@@ -125,6 +125,35 @@
         { "waveIndex": 2, "buildCurrency": 5 }
       ]
     },
+    "towers": [
+      {
+        "id": "signal-slinger",
+        "footprintId": "standard",
+        "cost": 4,
+        "sellRefund": 2,
+        "attackRangeFt": 36,
+        "attackDamage": 4,
+        "attackCooldownMs": 500
+      },
+      {
+        "id": "relay-riveter",
+        "footprintId": "standard",
+        "cost": 5,
+        "sellRefund": 2,
+        "attackRangeFt": 28,
+        "attackDamage": 7,
+        "attackCooldownMs": 800
+      },
+      {
+        "id": "crane-caster",
+        "footprintId": "large",
+        "cost": 7,
+        "sellRefund": 3,
+        "attackRangeFt": 44,
+        "attackDamage": 3,
+        "attackCooldownMs": 350
+      }
+    ],
     "upgrades": {
       "offerCount": 3,
       "offers": [

@@ -31,7 +31,7 @@ import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipme
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
-import { getFloor6DefenseRunStats } from '../floor6Scenario.js';
+import { buildFloor6Tower, getFloor6DefenseRunStats } from '../floor6Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -329,6 +329,11 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Deterministic player construction intents for Floor 6. They use the same
+   * transaction API as presentation code and are retried while unaffordable.
+   */
+  floor6TowerBuildRequests?: readonly { readonly siteId: string; readonly towerId: string }[];
+  /**
    * Player state carried in from a previous floor, applied during scenario
    * configuration exactly as the visual runner does when descending stairs
    * (`src/bootstrap/floor-main-scene-options.ts`). Omitted starts a fresh run.
@@ -500,6 +505,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   enforcePlayabilityInvariants: true,
+  floor6TowerBuildRequests: [],
 };
 
 function uniqueInFirstSeenOrder(values: readonly string[]): string[] {
@@ -1052,6 +1058,7 @@ export async function runHeadless(
   // event, so only genuine transitions are recorded (not one event per
   // frame while a status is held).
   let lastSettlementReturnStatus: string | null = null;
+  const pendingFloor6TowerBuilds = [...(mergedConfig.floor6TowerBuildRequests ?? [])];
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
@@ -1233,6 +1240,13 @@ export async function runHeadless(
 
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
+      if (world.floorId === 'floor6' && pendingFloor6TowerBuilds.length > 0) {
+        const request = pendingFloor6TowerBuilds[0]!;
+        const result = buildFloor6Tower(world, request.siteId, request.towerId);
+        if (result.ok || result.reason !== 'unaffordable') {
+          pendingFloor6TowerBuilds.shift();
+        }
+      }
       // Check wall-clock timeout
       const elapsed = Date.now() - startTime;
       if (elapsed > mergedConfig.maxWallTimeMs) {

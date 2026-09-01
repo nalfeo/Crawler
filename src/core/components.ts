@@ -83,6 +83,8 @@ export const SiegeHero = {};
  * owns their movement and `floor6DefenseDirectorSystem` owns their lifecycle.
  */
 export const BroadcastRelayRaider = {};
+/** Floor 6 authored-site defensive tower. Combat is owned by floor6TowerSystem. */
+export const Floor6Tower = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -414,6 +416,12 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       prevX: new Float32Array(maxEntities),
       /** Position captured at end of previous tick, used to detect stalls. */
       prevY: new Float32Array(maxEntities),
+    },
+    floor6Tower: {
+      /** Index into the immutable Floor 6 tower roster. */
+      towerIndex: new Uint16Array(maxEntities),
+      /** Elapsed-ms timestamp of this tower's most recent attack. */
+      lastAttackMs: new Float64Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),
