@@ -2,7 +2,7 @@
   "briefId": "player-walk-cycle-male",
   "spriteName": "player-walk-cycle-male",
   "assetPath": "generated/player-walk-cycle-male.png",
-  "approvedAt": "2026-09-01T05:38:01.329Z",
+  "approvedAt": "2026-09-01T08:55:35.153Z",
   "sourceRun": "generated/runs/player-walk-cycle-male/directional-v8-accepted-2026-09-01",
   "variantIndex": 0,
   "anchor": null,
@@ -54,12 +54,12 @@
   "type": "character",
   "contentHash": "7b405d1b8c76a84c9ad02e7dda43095c8c3d40fe99a88afc792e061da91afb2b",
   "opaqueBounds": {
-    "x": 21,
-    "y": 17,
-    "width": 986,
-    "height": 3086,
-    "canvasWidth": 1024,
-    "canvasHeight": 3120
+    "x": 24,
+    "y": 21,
+    "width": 208,
+    "height": 352,
+    "canvasWidth": 256,
+    "canvasHeight": 390
   },
   "sourceAssets": [
     {
