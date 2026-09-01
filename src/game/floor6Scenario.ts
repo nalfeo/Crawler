@@ -363,9 +363,13 @@ function floor6RelayMaxHp(state: Floor6DefenseState): number {
   return (getFloor6Config().tuning?.relayMaxHp ?? 100) + state.towers.relayMaxHpBonus;
 }
 
+function isLiveFloor6TowerEffect(world: GameWorld, eid: number): boolean {
+  return eid > 0 && entityExists(world.ecs, eid) && hasComponent(world.ecs, eid, Floor6TowerEffect);
+}
+
 function pruneFloor6TowerEffects(world: GameWorld, state: Floor6DefenseState): void {
-  state.towers.activeEffectEids = state.towers.activeEffectEids.filter(
-    (eid) => eid > 0 && entityExists(world.ecs, eid),
+  state.towers.activeEffectEids = state.towers.activeEffectEids.filter((eid) =>
+    isLiveFloor6TowerEffect(world, eid),
   );
 }
 
@@ -852,7 +856,7 @@ function spawnFloor6TowerEffect(
   pruneFloor6TowerEffects(world, state);
   const activeForTower = state.towers.activeEffectEids.filter(
     (eid) =>
-      entityExists(world.ecs, eid) &&
+      isLiveFloor6TowerEffect(world, eid) &&
       (world.stores.floor6TowerEffect.towerIndex[eid] ?? -1) === tower.stableIndex,
   ).length;
   if (activeForTower >= tower.effectLimit) {
@@ -1319,8 +1323,8 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
       sites: state.towers.sites.map((site) => ({ ...site })),
       transactionTrace: state.towers.transactionTrace.map((entry) => ({ ...entry })),
       combatTrace: state.towers.combatTrace.map((entry) => ({ ...entry })),
-      activeEffectCount: state.towers.activeEffectEids.filter(
-        (eid) => eid > 0 && entityExists(world.ecs, eid),
+      activeEffectCount: state.towers.activeEffectEids.filter((eid) =>
+        isLiveFloor6TowerEffect(world, eid),
       ).length,
       appliedUpgradeOfferIds: [...state.towers.appliedUpgradeOfferIds],
       towerDamageBonus: state.towers.towerDamageBonus,

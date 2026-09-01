@@ -1,4 +1,4 @@
-import { query, setComponent } from 'bitecs';
+import { query, removeEntity, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
@@ -8,7 +8,7 @@ import {
   Health,
   Position,
 } from '../../src/core/index.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import {
   buildFloor6Tower,
   floor6DefenseDirectorSystem,
@@ -311,6 +311,42 @@ describe('Floor 6 authored-site tower contracts', () => {
     expect(
       getFloor6DefenseRunStats(world)?.towers.sites.every((site) => site.towerId === null),
     ).toBe(true);
+  });
+
+  it('does not count a recycled non-effect EID against the tower effect cap', () => {
+    const { world } = initFloor6();
+    releaseFirstWave(world);
+    const state = floor6State(world);
+    const site = state.towers.sites[0]!;
+    const tower = getFloor6TowerRoster(world)[0]!;
+    grantBuildCurrency(world, tower.cost);
+    expect(buildFloor6Tower(world, site.siteId, tower.id)).toEqual({
+      ok: true,
+      reason: 'built',
+    });
+    const target = Array.from(query(world.ecs, [BroadcastRelayRaider, Health]))[0]!;
+    setComponent(world.ecs, target, Health, { current: 999, max: 999 });
+    setRaiderPosition(
+      world,
+      target,
+      (world.stores.position.x[site.towerEid] ?? 0) + 4,
+      world.stores.position.y[site.towerEid] ?? 0,
+    );
+
+    floor6TowerSystem(world);
+    world.elapsedMs += tower.fireCooldownMs;
+    floor6TowerSystem(world);
+    const expiredEffect = state.towers.activeEffectEids[0]!;
+    removeEntity(world.ecs, expiredEffect);
+    expect(createEntity(world)).toBe(expiredEffect);
+    const effectsSpawnedBefore = state.towers.effectsSpawned;
+
+    world.elapsedMs += tower.fireCooldownMs;
+    floor6TowerSystem(world);
+
+    expect(state.towers.effectsSpawned).toBe(effectsSpawnedBefore + 1);
+    expect(query(world.ecs, [Floor6TowerEffect])).toHaveLength(tower.effectLimit);
+    expect(getFloor6DefenseRunStats(world)?.towers.activeEffectCount).toBe(tower.effectLimit);
   });
 
   it('sells built towers through an atomic floor-scoped transaction', () => {

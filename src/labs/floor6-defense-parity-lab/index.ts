@@ -1,9 +1,11 @@
 import GUI from 'lil-gui';
+import { setComponent } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { createGameWorld, spawnPlayer } from '../../core/index.js';
+import { Position, createGameWorld, spawnPlayer } from '../../core/index.js';
 import {
   _getFloor6InitializationArtifact,
   floor6DefenseDirectorSystem,
+  floor6TowerSystem,
   getFloor6DefenseRunStats,
 } from '../../game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
@@ -33,6 +35,28 @@ function tickDirectorN(world: ReturnType<typeof createGameWorld>, ticks: number)
   }
 }
 
+function exerciseTowerSystem(seed: number) {
+  const world = initializeViaWindowedPath(seed);
+  tickDirectorN(world, 181);
+  const state = world.floorExtendedState?.floor6Defense;
+  const commands = getScenarioDefinition('floor6').floor6Towers;
+  if (!state || !commands) throw new Error('Floor 6 tower state missing');
+  state.economy.balance = 999;
+  state.economy.totalEarned = 999;
+  const site = state.towers.sites[0]!;
+  const tower = commands.getRoster(world)[0]!;
+  const buildResult = commands.build(world, site.siteId, tower.id);
+  const target = state.liveEnemies.find((record) => record.eid > 0 && !record.defeated);
+  if (buildResult.ok && target) {
+    setComponent(world.ecs, target.eid, Position, {
+      x: (world.stores.position.x[site.towerEid] ?? 0) + 4,
+      y: world.stores.position.y[site.towerEid] ?? 0,
+    });
+    floor6TowerSystem(world);
+  }
+  return { buildResult, stats: getFloor6DefenseRunStats(world) };
+}
+
 function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
   if (!(gui instanceof GUI)) throw new Error('Lab runner did not initialize lil-gui.');
@@ -54,6 +78,7 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
     const worldForStats = initializeViaWindowedPath(state.seed);
     tickDirectorN(worldForStats, state.tickCount);
     const stats = getFloor6DefenseRunStats(worldForStats);
+    const towerExercise = exerciseTowerSystem(state.seed);
 
     panel.textContent = [
       `seed=${state.seed}  ticks=${state.tickCount}`,
@@ -72,6 +97,12 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
       `live enemy count=${stats?.liveEnemyCount ?? 0}`,
       `stalled count=${stats?.stalledCount ?? 0}`,
       `relay HP=${stats?.relayHp ?? 'n/a'} / ${stats?.relayMaxHp ?? 'n/a'}`,
+      ``,
+      `── Tower System ──`,
+      `build=${towerExercise.buildResult.reason}`,
+      `targets hit=${towerExercise.stats?.towers.combatTrace.length ?? 0}`,
+      `effects spawned=${towerExercise.stats?.towers.effectsSpawned ?? 0}`,
+      `active effects=${towerExercise.stats?.towers.activeEffectCount ?? 0}`,
       ``,
       `── Geometry ──`,
       `routes=${geometry?.routes.map((route) => route.id).join(', ') ?? '(none)'}`,
@@ -98,6 +129,6 @@ registerLab('floor6-defense-parity-lab', {
   name: 'Floor 6 Defense Parity',
   category: 'Meta',
   description:
-    'Compare Floor 6 windowed and shared/headless initialization artifacts byte-for-byte. Also shows wave director stats at a configurable tick count.',
+    'Compare Floor 6 initialization paths and exercise tower build, targeting, and effect behavior.',
   create: createFloor6DefenseParityLab,
 });
