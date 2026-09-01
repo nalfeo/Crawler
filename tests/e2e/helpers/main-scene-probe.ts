@@ -126,6 +126,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   getModalPickerContent: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
+  getIssueReportPickerContent: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getIssueReportPickerContent()),
   primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
     page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
   primeShopkeeperPostQuestStock: (

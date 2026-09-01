@@ -335,7 +335,17 @@ interface MainSceneInternals {
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
-  issueReportPicker?: { isOpen(): boolean };
+  issueReportPicker?: {
+    isOpen(): boolean;
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+    getContentSnapshot(): ModalPickerContentSnapshot | null;
+  };
+  /**
+   * The shared transient hint text object (`flashHint()` target). For
+   * `submitIssueReport()` issue/run telemetry feedback, see the separate
+   * `actionStatusText` probe. Read-only probe surface.
+   */
+  interactionHint?: { readonly visible: boolean; readonly text: string };
   getIssueButtonBounds?(): ScreenBounds | null;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
   getAchievementsButtonBounds?(): ScreenBounds | null;
@@ -420,6 +430,21 @@ interface MainSceneInternals {
     renderableOpenCount: number;
   };
   getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean };
+  /**
+   * Last observed outcome of the terminal run-bundle (RunStats payload)
+   * upload kicked off by `emitRunBundle()`, or `undefined` before any
+   * terminal outcome has been reached. Public getter (not a raw field cast)
+   * because the underlying private field is otherwise write-only within
+   * `MainGameScene` and would trip `noUnusedLocals`. See
+   * `MainGameScene.reportRunBundleUploadResult`.
+   */
+  getRunBundleUploadStatus?(): 'ok' | 'failed' | 'disabled' | undefined;
+  /**
+   * The player-visible terminal action-status confirmation toast (shared by
+   * run-bundle upload completion AND issue-filing submission results). Read-only
+   * probe surface — real rendered projection, not internal upload state.
+   */
+  actionStatusText?: { readonly visible: boolean; readonly text: string };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -598,6 +623,31 @@ export interface MainSceneState {
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
   readonly settlementShopArchetypeIds: readonly string[];
+  /**
+   * Outcome of the terminal run-bundle (RunStats payload) upload, or `null`
+   * before any terminal outcome (death/victory/timeout/quit) has emitted a
+   * run bundle. `'disabled'` means no ingest endpoint is configured for this
+   * build — not a failed upload attempt.
+   */
+  readonly runBundleUploadStatus: 'ok' | 'failed' | 'disabled' | null;
+  /**
+   * Whether the terminal action-status toast is currently visible. Shared by
+   * run-bundle upload completion AND issue-filing submission results — see
+   * `MainGameScene.flashActionStatus`.
+   */
+  readonly actionStatusToastVisible: boolean;
+  /** Exact text of the terminal action-status toast, or `null` when hidden/unset. */
+  readonly actionStatusToastText: string | null;
+  /**
+   * Whether the shared transient hint text (`flashHint()` target) is
+   * currently visible. NOT used by run-bundle/issue-filing feedback (see
+   * `actionStatusToastVisible`/`actionStatusToastText` instead) because
+   * `updateInteractions()` clobbers this slot every frame the player isn't
+   * near an NPC/staircase.
+   */
+  readonly interactionHintVisible: boolean;
+  /** Exact text of the shared transient hint, or `null` when hidden/unset. */
+  readonly interactionHintText: string | null;
 }
 
 /**
@@ -984,6 +1034,12 @@ export interface MainSceneProbeApi {
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Text currently rendered by the open real modal picker, else null. */
   getModalPickerContent(): ModalPickerContentSnapshot | null;
+  /**
+   * Text currently rendered by the F8 issue-report picker (a SEPARATE
+   * `ModalPickerUI` instance from the shared `modalPicker` above — see
+   * `MainGameScene.issueReportPicker`), else `null` when it is closed.
+   */
+  getIssueReportPickerContent(): ModalPickerContentSnapshot | null;
   /**
    * Arrange the live Floor-1 world so the shipped shopkeeper is at its
    * `ready-to-buy` stage with `gold` in the player's purse, and park the player
@@ -1575,6 +1631,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             : []),
           ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
         ],
+        runBundleUploadStatus: scene?.getRunBundleUploadStatus?.() ?? null,
+        actionStatusToastVisible: scene?.actionStatusText?.visible ?? false,
+        actionStatusToastText: scene?.actionStatusText?.text ?? null,
+        interactionHintVisible: scene?.interactionHint?.visible ?? false,
+        interactionHintText: scene?.interactionHint?.text ?? null,
       };
     },
 
@@ -1702,6 +1763,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
+
+    getIssueReportPickerContent: () => getScene()?.issueReportPicker?.getContentSnapshot() ?? null,
 
     getFloorSummaryState: (): FloorSummaryProbeState =>
       getScene()?.getFloorSummaryState?.() ?? {
