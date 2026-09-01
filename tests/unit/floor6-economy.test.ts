@@ -196,6 +196,8 @@ describe('Floor 6 run-scoped economy and upgrade offers', () => {
     expect(world.playerGold).toBe(0);
     expect(defenseState(world).economy.balance).toBe(expectedValue);
     expect(defenseState(world).economy.earnedFromPickups).toBe(expectedValue);
+    expect(query(world.ecs, [BuildCurrencyPickup])).toEqual([]);
+    expect(world.stores.buildCurrencyPickup.value[pickup]).toBe(0);
   });
 
   it('terminal cleanup clears floor-scoped currency, offers, and pickups once', () => {

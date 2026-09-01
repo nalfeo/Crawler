@@ -12,6 +12,7 @@ import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import { BuildCurrencyPickup, DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
+import { clearEntityStores } from '../helpers.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
 import { pushFloaterEvent } from '../../shared/floater-events.js';
@@ -80,6 +81,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       }
       emitPickupSparkle(world, otherEid, 'gold', 'gold');
       removeEntity(world.ecs, otherEid);
+      clearEntityStores(world, otherEid);
       continue;
     }
 
