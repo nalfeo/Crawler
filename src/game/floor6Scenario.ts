@@ -475,17 +475,20 @@ export function floor6RaiderSystem(world: GameWorld): void {
     const vy = ((ty - cy) / dist) * speedFt;
     setComponent(world.ecs, eid, Velocity, { x: vx, y: vy });
 
-    // Stall detection: if velocity is essentially zero increment still counter
-    const speed = Math.hypot(vx, vy);
-    if (speed < 0.001) {
+    // Stall detection: compare actual position to stored previous position.
+    // prevX/prevY are written at the end of the last tick, so a full frame
+    // of physics should have moved the raider by at least a small amount.
+    const px = world.stores.broadcastRelayRaider.prevX[eid] ?? cx;
+    const py = world.stores.broadcastRelayRaider.prevY[eid] ?? cy;
+    const moved = Math.hypot(cx - px, cy - py);
+    if (moved < 0.01) {
       const sf = (world.stores.broadcastRelayRaider.stillFrames[eid] ?? 0) + 1;
       world.stores.broadcastRelayRaider.stillFrames[eid] = sf;
-      // Sync back to live record for director reconciliation
       const rec = state.liveEnemies[mIdx];
       if (rec && rec.eid === eid) {
         rec.stillFrames = sf;
         if (sf >= stalledThreshold && !rec.stallResolved) {
-          rec.stallResolved = true; // logged; director will reconcile
+          rec.stallResolved = true; // director will reconcile
         }
       }
     } else {
@@ -493,6 +496,9 @@ export function floor6RaiderSystem(world: GameWorld): void {
       const rec = state.liveEnemies[mIdx];
       if (rec) rec.stillFrames = 0;
     }
+    // Capture current position for next tick's stall comparison
+    world.stores.broadcastRelayRaider.prevX[eid] = cx;
+    world.stores.broadcastRelayRaider.prevY[eid] = cy;
   }
 }
 

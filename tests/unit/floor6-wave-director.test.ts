@@ -372,4 +372,31 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     expect(state.phase.kind).toBe('DEFEAT');
     expect(state.spawnDebt).toBe(0);
   });
+
+  it('position-based stall detection: stillFrames increments when raider does not move', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+    // Fast-forward past first release tick so at least one raider spawns
+    const firstReleaseTick = state.waveManifest?.[0]?.releaseTick ?? 999;
+    while (world.frameCount <= firstReleaseTick) {
+      tickBoth(world);
+    }
+    tickBoth(world);
+    const raiders = Array.from(query(world.ecs, [BroadcastRelayRaider, Health]));
+    if (raiders.length === 0) return; // nothing spawned yet — skip
+    const eid = raiders[0]!;
+    // Freeze position by repeatedly ticking without physics (position stays constant)
+    // After stalledFramesThreshold ticks, stallResolved should be set
+    const threshold = 90; // default stalledFramesThreshold from tuning
+    // Tick past threshold; in unit tests position never changes (no physics)
+    for (let i = 0; i < threshold + 2; i++) {
+      tickBoth(world);
+    }
+    const mIdx = world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0;
+    const rec = state.liveEnemies[mIdx];
+    // Either the raider's still frames have accumulated, or stallResolved was set
+    const sf = world.stores.broadcastRelayRaider.stillFrames[eid] ?? 0;
+    expect(sf > 0 || (rec?.stallResolved ?? false)).toBe(true);
+  });
 });

@@ -397,8 +397,9 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
        */
       waypointIndex: new Uint16Array(maxEntities),
       /**
-       * Consecutive frames the raider has not advanced (velocity ≈ 0).
-       * Reset on movement; used by floor6RaiderSystem for stall detection.
+       * Consecutive frames the raider has not moved (position compared to
+       * prevX/prevY). Reset on movement; used by floor6RaiderSystem for
+       * stall detection.
        */
       stillFrames: new Uint16Array(maxEntities),
       /**
@@ -406,6 +407,10 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
        * Compared against raiderAttackCooldownMs to gate repeated hits.
        */
       lastRelayAttackMs: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevX: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevY: new Float32Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),
