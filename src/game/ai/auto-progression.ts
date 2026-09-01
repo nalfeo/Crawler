@@ -27,6 +27,7 @@ import {
   merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
+import { getFloor6UpgradeOffers, purchaseFloor6UpgradeOffer } from '../floor6Scenario.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
