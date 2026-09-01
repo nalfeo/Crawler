@@ -2,7 +2,7 @@
 
 ## Systems touched
 
-ai-combat-balance
+ai-combat-balance, release-baseline, ai-headless
 
 ## Apples
 
@@ -17,6 +17,8 @@ and regression coverage.
 - Added a pure release-balance analyzer that fixes cohort identity to revision
   2 and reports completion/entry levels, p90 player combat-skill levels, and
   completed versus incomplete boss encounters.
+- Added a canonical release-gate helper that enforces the 300/150/150 cohort
+  and fails when any required observation is missing or out of range.
 - Added `maxCombatSkillLevel` to real `runHeadless` `RunStats`.
 - Reduced Floor 1's additive XP to zero and Floor 2's additive XP to two. The
   Floor 2 value is the smallest tested value that retains the existing direct
@@ -38,9 +40,9 @@ the real `runHeadless` Floor 2 first-boss gate passes for contiguous seeds 1–3
 
 ## Verification
 
-- `npx vitest run tests/headless/floor2-boss-level-gate.test.ts tests/unit/release-balance.test.ts --reporter=dot`
-- `npm run typecheck`
-- `npm run verify:fast`
+- `npx vitest run --project unit tests/unit/release-balance.test.ts tests/unit/canonical-release-baseline-acceptance.test.ts`
+- `npx vitest run --project headless tests/headless/release-balance-acceptance.test.ts`
+- `bash scripts/agent/verify-fast.sh`
 
 ## Unresolved
 

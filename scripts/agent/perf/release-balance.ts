@@ -50,7 +50,7 @@ function bossDurations(run: RunStats): { completed: number[]; incomplete: number
 /**
  * Derive deterministic release-balance metrics from the canonical leg payload.
  * Chained runs represent Floor 3 entry by their completed Floor 2 endpoint.
- * 
+ *
  * Requires complete telemetry: if maxCombatSkillLevel is missing on any run,
  * the result's skill-level fields are null and acceptance gates must require
  * complete observations before passing.
@@ -61,18 +61,18 @@ export function analyzeReleaseBalance(input: {
   floor1Chain: readonly RunStats[];
 }): ReleaseBalanceSummary {
   const fights = [...input.floor1, ...input.floor2].map(bossDurations);
-  
+
   // Check for missing maxCombatSkillLevel — if any run is missing it, report null
   const floor1SkillLevels = input.floor1
     .map((run) => run.skills?.maxCombatSkillLevel)
     .filter((level): level is number => level !== undefined && level !== null);
   const floor1SkillsComplete = floor1SkillLevels.length === input.floor1.length;
-  
+
   const floor2SkillLevels = input.floor2
     .map((run) => run.skills?.maxCombatSkillLevel)
     .filter((level): level is number => level !== undefined && level !== null);
   const floor2SkillsComplete = floor2SkillLevels.length === input.floor2.length;
-  
+
   return {
     revision: RELEASE_SWEEP_REVISION,
     floor1RunCount: input.floor1.length,
@@ -94,4 +94,98 @@ export function analyzeReleaseBalance(input: {
 
 export function canonicalReleaseBalanceCounts(): Record<string, number> {
   return Object.fromEntries(RELEASE_SWEEP_LEGS.map((leg) => [leg.id, leg.runs]));
+}
+
+export function validateReleaseBalanceSummary(summary: ReleaseBalanceSummary): string[] {
+  const errors: string[] = [];
+  const expectedCounts = canonicalReleaseBalanceCounts();
+
+  const expectedFloor1 = expectedCounts.floor1 ?? 300;
+  const expectedFloor2 = expectedCounts.floor2 ?? 150;
+  const expectedChained = expectedCounts['floor1-chain'] ?? 150;
+
+  if (summary.floor1RunCount !== expectedFloor1) {
+    errors.push(
+      `Expected ${expectedFloor1} Floor 1 runs for the release cohort, received ${summary.floor1RunCount}.`,
+    );
+  }
+  if (summary.floor2RunCount !== expectedFloor2) {
+    errors.push(
+      `Expected ${expectedFloor2} Floor 2 runs for the release cohort, received ${summary.floor2RunCount}.`,
+    );
+  }
+  if (summary.chainedRunCount !== expectedChained) {
+    errors.push(
+      `Expected ${expectedChained} chained runs for the release cohort, received ${summary.chainedRunCount}.`,
+    );
+  }
+
+  const floor1MeanMin = 6.5;
+  const floor1MeanMax = 7.5;
+  const floor3MeanMin = 9.5;
+  const floor3MeanMax = 10.5;
+
+  if (summary.meanFloor1CompletionLevel === null) {
+    errors.push('Floor 1 completion-level telemetry is required for the canonical release gate.');
+  } else if (
+    summary.meanFloor1CompletionLevel < floor1MeanMin ||
+    summary.meanFloor1CompletionLevel > floor1MeanMax
+  ) {
+    errors.push(
+      `Floor 1 mean completion level ${summary.meanFloor1CompletionLevel} is outside ${floor1MeanMin}–${floor1MeanMax}.`,
+    );
+  }
+
+  if (summary.meanFloor3EntryLevel === null) {
+    errors.push('Floor 3-entry telemetry is required for the canonical release gate.');
+  } else if (
+    summary.meanFloor3EntryLevel < floor3MeanMin ||
+    summary.meanFloor3EntryLevel > floor3MeanMax
+  ) {
+    errors.push(
+      `Floor 3 entry mean level ${summary.meanFloor3EntryLevel} is outside ${floor3MeanMin}–${floor3MeanMax}.`,
+    );
+  }
+
+  if (summary.floor1P90CombatSkillLevel === null) {
+    errors.push(
+      'Floor 1 skill telemetry is incomplete; canonical release gate requires complete observations.',
+    );
+  } else if (summary.floor1P90CombatSkillLevel > 4) {
+    errors.push(
+      `Floor 1 p90 combat skill level ${summary.floor1P90CombatSkillLevel} exceeds the 4-level cap.`,
+    );
+  }
+
+  if (summary.floor2P90CombatSkillLevel === null) {
+    errors.push(
+      'Floor 2 skill telemetry is incomplete; canonical release gate requires complete observations.',
+    );
+  } else if (summary.floor2P90CombatSkillLevel > 6) {
+    errors.push(
+      `Floor 2 p90 combat skill level ${summary.floor2P90CombatSkillLevel} exceeds the 6-level cap.`,
+    );
+  }
+
+  if (summary.meanCompletedBossFightMs === null) {
+    errors.push(
+      'Boss-fight duration telemetry is incomplete; canonical release gate requires complete observations.',
+    );
+  } else if (
+    summary.meanCompletedBossFightMs < 27_000 ||
+    summary.meanCompletedBossFightMs > 33_000
+  ) {
+    errors.push(
+      `Mean completed boss-fight duration ${summary.meanCompletedBossFightMs}ms is outside 27,000–33,000ms.`,
+    );
+  }
+
+  return errors;
+}
+
+export function assertReleaseBalanceSummary(summary: ReleaseBalanceSummary): void {
+  const errors = validateReleaseBalanceSummary(summary);
+  if (errors.length > 0) {
+    throw new Error(`Canonical release-balance gate failed:\n- ${errors.join('\n- ')}`);
+  }
 }

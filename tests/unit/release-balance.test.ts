@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RunStats } from '../../src/game/ai/types.js';
 import {
   analyzeReleaseBalance,
+  assertReleaseBalanceSummary,
   canonicalReleaseBalanceCounts,
 } from '../../scripts/agent/perf/release-balance.js';
 
@@ -161,5 +162,43 @@ describe('release balance analysis', () => {
     });
     // Floor 2 has incomplete telemetry (one run missing), so skill level is null
     expect(summary.floor2P90CombatSkillLevel).toBeNull();
+  });
+
+  it('accepts canonical release-balance summaries with complete observations', () => {
+    const summary = {
+      revision: 2,
+      floor1RunCount: 300,
+      floor2RunCount: 150,
+      chainedRunCount: 150,
+      meanFloor1CompletionLevel: 7,
+      meanFloor3EntryLevel: 10,
+      floor1P90CombatSkillLevel: 4,
+      floor2P90CombatSkillLevel: 6,
+      completedBossFightCount: 100,
+      incompleteBossFightCount: 0,
+      meanCompletedBossFightMs: 30_000,
+    };
+
+    expect(() => assertReleaseBalanceSummary(summary)).not.toThrow();
+  });
+
+  it('rejects canonical release-balance summaries with missing telemetry or out-of-range values', () => {
+    const summary = {
+      revision: 2,
+      floor1RunCount: 300,
+      floor2RunCount: 150,
+      chainedRunCount: 150,
+      meanFloor1CompletionLevel: 7,
+      meanFloor3EntryLevel: 10,
+      floor1P90CombatSkillLevel: null,
+      floor2P90CombatSkillLevel: null,
+      completedBossFightCount: 100,
+      incompleteBossFightCount: 0,
+      meanCompletedBossFightMs: null,
+    };
+
+    expect(() => assertReleaseBalanceSummary(summary)).toThrow(
+      /canonical release-balance gate failed/i,
+    );
   });
 });

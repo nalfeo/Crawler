@@ -18,7 +18,10 @@
  * 4. Mean completed boss-fight duration 27–33 seconds (target 30s)
  */
 import { describe, expect, it } from 'vitest';
-import { analyzeReleaseBalance } from '../../scripts/agent/perf/release-balance.js';
+import {
+  analyzeReleaseBalance,
+  assertReleaseBalanceSummary,
+} from '../../scripts/agent/perf/release-balance.js';
 import { getCanonicalBaselineMetadata } from '../../scripts/agent/perf/load-canonical-baseline.js';
 
 describe('Canonical release-baseline acceptance infrastructure', () => {
@@ -84,5 +87,24 @@ describe('Canonical release-baseline acceptance infrastructure', () => {
     // The baseline commit is deterministic and can be linked back to the release sweep run
     expect(metadata.commit).toBe('26df582d99a660af0fa1e42a4761e6781b6f557f');
     expect(metadata.commitDate).toBe('2026-08-31T07:41:50Z');
+  });
+
+  it('refuses the canonical release gate until complete telemetry is available', () => {
+    const metadata = getCanonicalBaselineMetadata();
+    const summary = {
+      revision: metadata.revision,
+      floor1RunCount: metadata.expectedRunCounts.floor1,
+      floor2RunCount: metadata.expectedRunCounts.floor2,
+      chainedRunCount: metadata.expectedRunCounts.chained,
+      meanFloor1CompletionLevel: 7,
+      meanFloor3EntryLevel: 10,
+      floor1P90CombatSkillLevel: null,
+      floor2P90CombatSkillLevel: null,
+      completedBossFightCount: 0,
+      incompleteBossFightCount: 0,
+      meanCompletedBossFightMs: null,
+    };
+
+    expect(() => assertReleaseBalanceSummary(summary)).toThrow(/complete observations|telemetry/i);
   });
 });
