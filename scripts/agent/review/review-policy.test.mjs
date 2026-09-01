@@ -26,6 +26,7 @@ const scannedExtensions = new Set(['.json', '.md', '.mjs', '.sh', '.ts', '.yaml'
 const allowedRetirementDocs = new Set([
   '.github/skills/review-harness/SKILL.md',
   'docs/agent-os/policies/review-harness-policy.md',
+  'scripts/agent/docs/check-adr-consistency.ts',
   'scripts/agent/review/review-policy.test.mjs',
 ]);
 

@@ -90,7 +90,6 @@ Artifacts land at:
 - `files/visual-review/before/<state>/<scenario>.png` (+ `.review.json`)
 - `files/visual-review/after/<state>/<scenario>.png` (+ `.review.json`)
 - `files/visual-review/feedback/*.jsonl`
-- `files/visual-review/reviews/*.review.json`
 
 Open the `screenshot-viewer` canvas after capture. It pairs matching lineage
 states under `before/` and `after/`, shows each pair beside the individual
