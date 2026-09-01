@@ -2,7 +2,8 @@ type: character
 name: crawler-male-north-west-neutral
 description: |
   EXACTLY TWELVE review candidates of one neutral full-body NORTH-WEST-facing
-  sprite, arranged three across and four down in a clean 3x4 grid. Every filled
+  sprite, arranged in the first three rows of a clean 4x4 grid; leave the entire
+  final row empty. Every filled
   cell is the same male Crawler
   contestant from the immutable identity reference: cropped brown hair, square
   head and jaw, warm tan skin, navy hooded sweatshirt, dark waistband,
@@ -20,9 +21,10 @@ description: |
   head turn, shoulder overlap, hoodie planes, waistband, and shoe axes, never
   direct NORTH or WEST.
 
-  CRITICAL SHEET OCCUPANCY: preserve the attached 3x4 occupancy guide exactly:
-  draw three complete candidates in each of four rows, 12 filled cells total.
-  Every one of the 3x4 cells must contain one complete
+  CRITICAL SHEET OCCUPANCY: preserve the attached 4x3 occupancy guide as the
+  twelve filled cells, with a fourth row of empty transparent canvas below it:
+  draw four complete candidates in each of the first three rows, 12 filled cells
+  total. Every one of those cells must contain one complete
   figure with background margin below the shoes; never omit, crop, merge, or
   leave a cell empty.
 
@@ -38,8 +40,8 @@ seedFrames:
   - path: briefs/characters/seeds/crawler-male-south-neutral-var-8.png
     note: Immutable identity, scale, height, stance, palette, clothing, transparency, and floor-line baseline.
     role: identity
-  - path: briefs/characters/seeds/crawler-male-north-west-neutral-3x4-guide.png
-    note: 12-slot NORTH-WEST occupancy and direction guide mirrored from the accepted NORTH-EAST anchor; preserve every cell, scale, stance, and floor line.
+  - path: briefs/characters/seeds/crawler-male-south-neutral-var-8-4x3-guide.png
+    note: Immutable 12-slot occupancy, scale, stance, and floor-line guide; rotate every depicted copy without changing its cell.
     role: identity
   - path: briefs/characters/seeds/player-male-north-west-skeleton.png
     note: NORTH-WEST rotation and bone placement only; ignore its identity, scale, palette, and clothing.
@@ -47,11 +49,9 @@ seedFrames:
 generation:
   sheet:
     rows: 4
-    cols: 3
-    emptyCells: []
+    cols: 4
+    emptyCells: [[3, 0], [3, 1], [3, 2], [3, 3]]
     nativeCanvas: 1024
-    nativeWidth: 1024
-    nativeHeight: 1536
 postprocessing: { trimAndFit: false, paletteMode: strict }
 sensors:
   anchor: { mode: static }
