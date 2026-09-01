@@ -135,13 +135,9 @@ const workflowRunUrl =
 // are advisory: the `merge-gate` job's `needs` list deliberately omits them, so their
 // failure can never block or unblock the merge gate. Treating one as a `ci-failure`
 // blocker gives the recovery agent nothing it can fix that changes the PR's mergeable
-// state, so the loop spins without making progress (e.g. PR #3032, a transient 429
-// downloading `davelosert/vitest-coverage-report-action` inside `Advisory coverage`).
+// state, so the loop spins without making progress (e.g. PR #3032, a transient report-only job failure).
 // Keep entries lowercase: isAdvisoryCheck() lowercases incoming check names.
-const ADVISORY_CHECK_NAMES = new Set([
-  'advisory coverage',
-  'headless multi-floor legs (report-only)',
-]);
+const ADVISORY_CHECK_NAMES = new Set(['headless multi-floor legs (report-only)']);
 const AGGREGATE_CI_CHECK_NAMES = new Set(['ci', 'merge gate']);
 // Only this explicit, standalone PR-description status line can request a
 // replacement session. Do not derive continuation work from prose, diffs, or comments.
