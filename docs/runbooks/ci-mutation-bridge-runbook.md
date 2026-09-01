@@ -2,18 +2,18 @@
 
 ## Purpose
 
-This runbook documents the bounded emergency bridge for legacy CI lifecycle mutation paths. The steady-state contract is: PR lifecycle orchestration runs through Goobers. Legacy `ci-recovery` and `merge-train` mutation paths remain available only when explicitly enabled for emergency recovery or a controlled rollback drill.
+This runbook documents the rollback bridge for legacy CI lifecycle mutation paths during the Goobers migration. The repository currently keeps the bridge enabled because Goobers does not yet own all four reconciliation, review-thread, and merge-train mutation lanes. The bridge must remain enabled until those lanes pass Phase 3 soak criteria and the Phase 4 rollback drill and dependency gate are complete.
 
 ## Steady-state operation
 
-- `LEGACY_CI_MUTATION_BRIDGE_ENABLED` defaults to `false`.
-- In steady state, direct legacy lifecycle mutations in `.github/workflows/ci-recovery.yml`, `.github/workflows/merge-train.yml`, and `.github/workflows/auto-rebase-prs.yml` are skipped.
-- Goobers owns the lifecycle path: approval routing, PR mutation dispatch, label management, rebase coordination, and recovery queueing.
-- Operational signal: the workflow logs should say the bridge is disabled and explicitly skip direct mutation work.
+- `LEGACY_CI_MUTATION_BRIDGE_ENABLED` defaults to `false` in code, but the repository-level variable is currently `true` during migration.
+- While the repository-level variable is `true`, direct legacy lifecycle mutations remain available as the rollback path; Goobers is not yet the sole lifecycle owner.
+- Do not disable the bridge until all four Goobers mutation lanes pass Phase 3 soak criteria, the Phase 4 rollback drill is complete, and the Phase 4 dependency gate is unblocked.
+- After that gate, set the variable to `false` and confirm the workflows skip direct mutation work while Goobers owns the lifecycle path.
 
 ## When to activate the emergency bridge
 
-Enable the bridge only for a bounded incident when the steady-state Goobers mutation path is failing in a way that blocks recovery and the legacy code is the only known recovery path.
+The bridge is already enabled for the migration safety window. Keep it enabled until the Phase 4 exit gate is satisfied; after decommissioning, re-enable it only for a bounded incident or controlled rollback drill.
 
 Examples:
 
@@ -21,7 +21,7 @@ Examples:
 - a critical PR handoff requires an immediate legacy mutation while Goobers is under repair;
 - an explicit rollback drill requires a controlled fallback execution.
 
-Emergency bridge activation is not a normal operation. The default is to leave it disabled and investigate the Goobers path.
+Before the Phase 4 exit gate, disabling the bridge is not permitted because it would remove the only implemented fallback for lifecycle mutation lanes.
 
 ## How to enable the bridge
 
@@ -36,10 +36,9 @@ Then validate the workflow logs and confirm the legacy mutation path runs again 
 
 ## Expected behavior while active
 
-- Legacy mutation code executes as a fallback path.
-- Mutation throughput is slower than the normal Goobers path.
-- All direct mutation workflows remain on a bounded, emergency-only path.
-- Operators should treat the bridge as temporary and document the incident.
+- Legacy mutation code executes as the available rollback path.
+- Mutation throughput may be slower than the eventual Goobers-only path.
+- Operators must treat the bridge as temporary migration infrastructure and record any changes to its state.
 
 ## How to disable the bridge and resume steady state
 
@@ -50,7 +49,7 @@ gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED -R nalfeo/Crawler --body 'fals
 gh variable set CI_RECOVERY_MODE -R nalfeo/Crawler --body 'dry-run'
 ```
 
-After disabling, confirm the workflows resume their default skip behavior and that Goobers owns the lifecycle path again.
+Only run this after the Phase 4 exit gate is satisfied. Confirm the workflows resume their default skip behavior and that all four Goobers mutation lanes own the lifecycle path.
 
 ## Monitoring and operational checks
 
@@ -65,14 +64,14 @@ If the bridge stays active beyond a short incident window, investigate the Goobe
 
 ## Rollback drill sequence
 
-1. Confirm the bridge is currently disabled.
+1. Confirm the bridge is currently enabled for the migration safety window, or record the incident that requires re-enabling it.
 2. Enable the bridge with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'true'`.
 3. Set recovery mode live with `gh variable set CI_RECOVERY_MODE ... 'live'`.
 4. Trigger a representative PR lifecycle mutation under the legacy path.
 5. Verify the mutation succeeds and workflow logs show both active bridge routing and `CI_RECOVERY_MODE=live`.
 6. Disable the bridge again with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'false'`.
 7. Restore dry-run mode with `gh variable set CI_RECOVERY_MODE ... 'dry-run'`.
-8. Validate the system returns to the Goobers steady-state behavior without incident.
+8. If the Phase 4 exit gate is complete, disable the bridge and validate the system returns to Goobers-only steady-state behavior; otherwise leave it enabled.
 
 Document the run IDs, timestamps, and the exact mutated PR in the incident or drill record.
 
