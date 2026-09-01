@@ -154,6 +154,15 @@ jobs:
             echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; use workflow_dispatch issue_number with an integer." >&2
             exit 1
           fi
+          blocked_by="$(
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/dependencies/blocked_by" \
+              --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
+          )"
+          if [ -n "${blocked_by}" ]; then
+            echo "::warning::Issue #${ISSUE_NUMBER} is blocked by open prerequisite issue(s): ${blocked_by}. Skipping before Goobers claim or repository mutation."
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
           echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}" >> "${GITHUB_ENV}"
 
           pr_number="$(
