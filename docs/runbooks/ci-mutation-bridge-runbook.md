@@ -16,6 +16,7 @@ This runbook documents the bounded emergency bridge for legacy CI lifecycle muta
 Enable the bridge only for a bounded incident when the steady-state Goobers mutation path is failing in a way that blocks recovery and the legacy code is the only known recovery path.
 
 Examples:
+
 - direct PR lifecycle mutation stalls while Goobers is offline or misrouted;
 - a critical PR handoff requires an immediate legacy mutation while Goobers is under repair;
 - an explicit rollback drill requires a controlled fallback execution.
@@ -28,9 +29,10 @@ Run:
 
 ```bash
 gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED -R nalfeo/Crawler --body 'true'
+gh variable set CI_RECOVERY_MODE -R nalfeo/Crawler --body 'live'
 ```
 
-Then validate the workflow logs and confirm the legacy mutation path runs again.
+Then validate the workflow logs and confirm the legacy mutation path runs again (with `CI_RECOVERY_MODE=live` for representative mutation coverage).
 
 ## Expected behavior while active
 
@@ -45,6 +47,7 @@ Run:
 
 ```bash
 gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED -R nalfeo/Crawler --body 'false'
+gh variable set CI_RECOVERY_MODE -R nalfeo/Crawler --body 'dry-run'
 ```
 
 After disabling, confirm the workflows resume their default skip behavior and that Goobers owns the lifecycle path again.
@@ -52,6 +55,7 @@ After disabling, confirm the workflows resume their default skip behavior and th
 ## Monitoring and operational checks
 
 Monitor these signals during active incidents:
+
 - merge-train and ci-recovery workflow success rate;
 - PR mutation latencies;
 - branch update or label application failures;
@@ -62,11 +66,13 @@ If the bridge stays active beyond a short incident window, investigate the Goobe
 ## Rollback drill sequence
 
 1. Confirm the bridge is currently disabled.
-2. Enable the bridge with `gh variable set ... 'true'`.
-3. Trigger a representative PR lifecycle mutation under the legacy path.
-4. Verify the mutation succeeds and the workflow logs show the legacy branch is active.
-5. Disable the bridge again with `gh variable set ... 'false'`.
-6. Validate the system returns to the Goobers steady-state behavior without incident.
+2. Enable the bridge with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'true'`.
+3. Set recovery mode live with `gh variable set CI_RECOVERY_MODE ... 'live'`.
+4. Trigger a representative PR lifecycle mutation under the legacy path.
+5. Verify the mutation succeeds and workflow logs show both active bridge routing and `CI_RECOVERY_MODE=live`.
+6. Disable the bridge again with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'false'`.
+7. Restore dry-run mode with `gh variable set CI_RECOVERY_MODE ... 'dry-run'`.
+8. Validate the system returns to the Goobers steady-state behavior without incident.
 
 Document the run IDs, timestamps, and the exact mutated PR in the incident or drill record.
 
