@@ -3,7 +3,10 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
 import {
   _getFloor6InitializationArtifact,
+  buildFloor6Tower,
   floor6DefenseDirectorSystem,
+  floor6TowerSystem,
+  getFloor6TowerRoster,
   getFloor6DefenseRunStats,
 } from '../../game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
@@ -29,6 +32,7 @@ function tickDirectorN(world: ReturnType<typeof createGameWorld>, ticks: number)
   for (let i = 0; i < ticks; i++) {
     world.frameCount += 1;
     world.elapsedMs += 16;
+    floor6TowerSystem(world);
     floor6DefenseDirectorSystem(world);
   }
 }
@@ -37,7 +41,7 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
   const gui = (controls as ControlsWithGui).__labGui;
   if (!(gui instanceof GUI)) throw new Error('Lab runner did not initialize lil-gui.');
 
-  const state = { seed: 606, tickCount: 0 };
+  const state = { seed: 606, tickCount: 0, siteIndex: 0, towerIndex: 0 };
   const panel = document.createElement('pre');
   panel.style.cssText =
     'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:12px;line-height:1.5;overflow:auto;max-height:640px;white-space:pre;';
@@ -52,6 +56,13 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
 
     // Build wave stats by ticking the director N times
     const worldForStats = initializeViaWindowedPath(state.seed);
+    const defense = worldForStats.floorExtendedState?.floor6Defense;
+    if (defense) {
+      defense.economy.balance = 99;
+      const site = defense.geometry.buildSites[state.siteIndex];
+      const tower = getFloor6TowerRoster()[state.towerIndex];
+      if (site && tower) buildFloor6Tower(worldForStats, site.id, tower.id);
+    }
     tickDirectorN(worldForStats, state.tickCount);
     const stats = getFloor6DefenseRunStats(worldForStats);
 
@@ -72,6 +83,7 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
       `live enemy count=${stats?.liveEnemyCount ?? 0}`,
       `stalled count=${stats?.stalledCount ?? 0}`,
       `relay HP=${stats?.relayHp ?? 'n/a'} / ${stats?.relayMaxHp ?? 'n/a'}`,
+      `built towers=${stats?.towers.map((tower) => `${tower.siteId}:${tower.towerId}`).join(', ') || '(none)'}`,
       ``,
       `── Geometry ──`,
       `routes=${geometry?.routes.map((route) => route.id).join(', ') ?? '(none)'}`,
@@ -85,6 +97,11 @@ function createFloor6DefenseParityLab(canvasHost: HTMLElement, controls: HTMLEle
 
   gui.add(state, 'seed').name('Seed').onFinishChange(render);
   gui.add(state, 'tickCount', 0, 2000, 1).name('Tick count').onFinishChange(render);
+  gui.add(state, 'siteIndex', 0, 4, 1).name('Build site').onFinishChange(render);
+  gui
+    .add(state, 'towerIndex', 0, Math.max(0, getFloor6TowerRoster().length - 1), 1)
+    .name('Tower roster index')
+    .onFinishChange(render);
   gui.add({ render }, 'render').name('Rebuild parity artifacts');
   render();
 

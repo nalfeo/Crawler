@@ -62,6 +62,7 @@ import {
   SiegeMinion,
   SiegeStructure,
   BroadcastRelayRaider,
+  Floor6Tower,
   Lifetime,
   AreaDamage,
   AoeOnImpact,
@@ -1060,6 +1061,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, SiegeStructure, stores.siegeStructure);
   wireStore(ecs, SiegeHero, stores.siegeHero);
   wireStore(ecs, BroadcastRelayRaider, stores.broadcastRelayRaider);
+  wireStore(ecs, Floor6Tower, stores.floor6Tower);
   wireStore(ecs, Lifetime, stores.lifetime);
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);

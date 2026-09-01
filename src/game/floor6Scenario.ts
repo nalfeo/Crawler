@@ -14,6 +14,7 @@ import {
   BuildCurrencyPickup,
   Damage,
   Enemy,
+  Floor6Tower,
   Health,
   Player,
   Position,
@@ -24,7 +25,12 @@ import {
   Weight,
   type GameWorld,
 } from '../core/index.js';
-import { clearEntityStores, createEntity, spawnBuildCurrencyPickup } from '../core/helpers.js';
+import {
+  applyDamage,
+  clearEntityStores,
+  createEntity,
+  spawnBuildCurrencyPickup,
+} from '../core/helpers.js';
 import {
   broadcastRelaySetOptionsFromConfig,
   computeBroadcastRelaySetLayout,
@@ -35,6 +41,9 @@ import { floor6Manifest } from '../shared/floor-manifest.js';
 import type {
   Floor6DefenseRunStats,
   Floor6DefenseState,
+  Floor6TowerBuildResult,
+  Floor6TowerDef,
+  Floor6TowerSellResult,
   Floor6UpgradeOfferManifestEntry,
   Floor6UpgradeSelectionResult,
   Floor6WaveManifestEntry,
@@ -120,6 +129,8 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     totalReleased: 0,
     lastReleaseFrame: 0,
     economy: createFloor6EconomyState(),
+    towerInstances: [],
+    towersTornDown: 0,
   };
 }
 
@@ -365,7 +376,118 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
 
 function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
   clearFloor6Raiders(world, state);
+  teardownFloor6Towers(world);
   clearFloor6EconomyForTerminal(world, state);
+}
+
+function selectedFloor6UpgradeValue(state: Floor6DefenseState, kind: string): number {
+  return (state.upgradeOfferManifest ?? [])
+    .filter(
+      (offer) =>
+        state.economy.selectedOfferIds.includes(offer.offerId) && offer.effect.kind === kind,
+    )
+    .reduce((total, offer) => total + offer.effect.value, 0);
+}
+
+function floor6RelayMaxHp(state: Floor6DefenseState): number {
+  return (
+    (getFloor6Config().tuning?.relayMaxHp ?? 100) +
+    selectedFloor6UpgradeValue(state, 'relayMaxHpBonus')
+  );
+}
+
+function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
+  return getFloor6Config().towers?.find((tower) => tower.id === towerId);
+}
+
+export function getFloor6TowerRoster(): readonly Floor6TowerDef[] {
+  return getFloor6Config().towers ?? [];
+}
+
+export function buildFloor6Tower(
+  world: GameWorld,
+  siteId: string,
+  towerId: string,
+): Floor6TowerBuildResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const site = state.geometry.buildSites.find((candidate) => candidate.id === siteId);
+  if (!site) return { ok: false, reason: 'invalid-site' };
+  if (state.towerInstances.some((instance) => instance.siteId === siteId)) {
+    return { ok: false, reason: 'occupied' };
+  }
+  const tower = getFloor6TowerDef(towerId);
+  if (!tower) return { ok: false, reason: 'unknown-tower' };
+  const footprint = state.geometry.supportedFootprints.find(
+    (candidate) => candidate.id === tower.footprintId,
+  );
+  if (
+    !footprint ||
+    footprint.widthTiles > site.bounds.width ||
+    footprint.heightTiles > site.bounds.height
+  ) {
+    return { ok: false, reason: 'invalid-site' };
+  }
+  if (state.economy.balance < tower.cost) return { ok: false, reason: 'unaffordable' };
+
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  const eid = createEntity(world);
+  addComponent(
+    world.ecs,
+    eid,
+    set(Position, {
+      x: (site.bounds.x + site.bounds.width / 2) * tileSizeFt,
+      y: (site.bounds.y + site.bounds.height / 2) * tileSizeFt,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Team, { id: TeamId.PLAYER }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: 0.5, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Floor6Tower, {
+      towerIndex: getFloor6TowerRoster().findIndex((candidate) => candidate.id === towerId),
+      lastAttackMs: -tower.attackCooldownMs,
+    }),
+  );
+  state.economy.balance -= tower.cost;
+  state.economy.totalSpent += tower.cost;
+  state.towerInstances.push({ siteId, towerId, eid });
+  return { ok: true, reason: 'built', eid };
+}
+
+export function sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSellResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const index = state.towerInstances.findIndex((instance) => instance.siteId === siteId);
+  if (index < 0) return { ok: false, reason: 'vacant' };
+  const [instance] = state.towerInstances.splice(index, 1);
+  const tower = instance ? getFloor6TowerDef(instance.towerId) : undefined;
+  if (instance && entityExists(world.ecs, instance.eid)) {
+    removeEntity(world.ecs, instance.eid);
+    clearEntityStores(world, instance.eid);
+  }
+  state.economy.balance += tower?.sellRefund ?? 0;
+  state.towersTornDown += 1;
+  return { ok: true, reason: 'sold' };
+}
+
+/** Idempotently removes every Floor 6 tower without changing the authored map. */
+export function teardownFloor6Towers(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state) return;
+  for (const instance of state.towerInstances) {
+    if (entityExists(world.ecs, instance.eid)) {
+      removeEntity(world.ecs, instance.eid);
+      clearEntityStores(world, instance.eid);
+      state.towersTornDown += 1;
+    }
+  }
+  state.towerInstances.length = 0;
 }
 
 function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
@@ -449,6 +571,9 @@ export function purchaseFloor6UpgradeOffer(
     state.economy.balance = balanceBefore - offer.cost;
     state.economy.totalSpent += offer.cost;
     state.economy.selectedOfferIds.push(offerId);
+    if (offer.effect.kind === 'relayRepair') {
+      state.relayHp = Math.min(floor6RelayMaxHp(state), state.relayHp + offer.effect.value);
+    }
   }
 
   refreshFloor6UnlockedOffers(state);
@@ -594,7 +719,9 @@ export function floor6RaiderSystem(world: GameWorld): void {
 
   const config = getFloor6Config();
   const tuning = config.tuning;
-  const speedFt = tuning?.raiderSpeedFtPerFrame ?? 0.15;
+  const speedFt =
+    (tuning?.raiderSpeedFtPerFrame ?? 0.15) *
+    Math.max(0, 1 - selectedFloor6UpgradeValue(state, 'raiderSlowBonus'));
   const arriveThreshold = tuning?.waypointArriveThresholdFt ?? 1.5;
   const attackRange = tuning?.raiderAttackRangeFt ?? 2.5;
   const relayDamage = tuning?.raiderRelayDamage ?? 8;
@@ -628,6 +755,7 @@ export function floor6RaiderSystem(world: GameWorld): void {
         world.stores.broadcastRelayRaider.lastRelayAttackMs[eid] = world.elapsedMs;
         state.relayHp = Math.max(0, state.relayHp - relayDamage);
       }
+
       // Stop moving
       setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
       continue;
@@ -695,6 +823,72 @@ export function floor6RaiderSystem(world: GameWorld): void {
 }
 
 /**
+ * Deterministically choose the nearest legal raider. Equal distances resolve
+ * to the lower EID, which is stable for equal seed and transaction traces.
+ */
+export function selectFloor6TowerTarget(
+  world: GameWorld,
+  towerEid: number,
+  rangeFt: number,
+): number | null {
+  const x = world.stores.position.x[towerEid] ?? 0;
+  const y = world.stores.position.y[towerEid] ?? 0;
+  let target: number | null = null;
+  let targetDistance = Number.POSITIVE_INFINITY;
+  for (const eid of query(world.ecs, [BroadcastRelayRaider, Health, Position])) {
+    if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+    const targetX = world.stores.position.x[eid] ?? 0;
+    const targetY = world.stores.position.y[eid] ?? 0;
+    const distance = Math.hypot(targetX - x, targetY - y);
+    if (
+      distance > rangeFt ||
+      (world.floorMap && !world.floorMap.hasLineOfSight(x, y, targetX, targetY)) ||
+      distance > targetDistance ||
+      (distance === targetDistance && (target === null || eid > target))
+    ) {
+      continue;
+    }
+    target = eid;
+    targetDistance = distance;
+  }
+  return target;
+}
+
+/** Floor 6 tower attacks run in the real shared scenario pipeline. */
+export function floor6TowerSystem(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state || state.phase.kind !== 'DEFEND') return;
+  const damageBonus = selectedFloor6UpgradeValue(state, 'towerDamageBonus');
+  const fireRateBonus = selectedFloor6UpgradeValue(state, 'towerFireRateBonus');
+  for (const instance of state.towerInstances) {
+    if (!entityExists(world.ecs, instance.eid)) continue;
+    const tower = getFloor6TowerDef(instance.towerId);
+    if (!tower) continue;
+    const cooldown = Math.max(1, tower.attackCooldownMs * Math.max(0, 1 - fireRateBonus));
+    if (world.elapsedMs - (world.stores.floor6Tower.lastAttackMs[instance.eid] ?? 0) < cooldown) {
+      continue;
+    }
+    const target = selectFloor6TowerTarget(world, instance.eid, tower.attackRangeFt);
+    if (target === null) continue;
+    world.stores.floor6Tower.lastAttackMs[instance.eid] = world.elapsedMs;
+    applyDamage(
+      world,
+      target,
+      tower.attackDamage + damageBonus,
+      world.stores.position.x[target] ?? 0,
+      world.stores.position.y[target] ?? 0,
+      {
+        origin: 'environment',
+        affinity: 'unscaled',
+        scaleWithPrimary: false,
+        canCrit: false,
+        sourceEid: instance.eid,
+      },
+    );
+  }
+}
+
+/**
  * `floor6DefenseDirectorSystem` — sole writer of Floor 6 phase, phase trace,
  * wave manifests, and terminal transitions (ADR 0097 D1, spec FR2.1–FR2.4).
  *
@@ -732,7 +926,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     // would reuse the stale defeated entry, skip reconciliation, award wave
     // currency instantly, and never spawn their death pickup.
     state.liveEnemies.length = 0;
-    state.relayHp = tuning?.relayMaxHp ?? 100;
+    state.relayHp = floor6RelayMaxHp(state);
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
     state.totalReleased = 0;
@@ -813,8 +1007,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
 export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStats | undefined {
   const state = floor6DefenseState(world);
   if (!state) return undefined;
-  const config = getFloor6Config();
-  const relayMaxHp = config.tuning?.relayMaxHp ?? 100;
+  const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
   const stalledCount = state.liveEnemies.filter((r) => r.stallResolved && r.eid > 0).length;
   return {
@@ -843,6 +1036,8 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     selectedOfferIds: [...state.economy.selectedOfferIds],
     upgradeSelectionTrace: state.economy.selectionTrace.map((entry) => ({ ...entry })),
     terminalResetCount: state.economy.terminalResetCount,
+    towers: state.towerInstances.map(({ siteId, towerId }) => ({ siteId, towerId })),
+    towersTornDown: state.towersTornDown,
   };
 }
 
