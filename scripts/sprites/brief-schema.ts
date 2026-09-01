@@ -74,17 +74,19 @@ const referenceSchema = z
  * 4-ways yields 256x256 cells, which resample cleanly by an integer factor
  * to the default 64x64 output (and any larger integer multiples); 16 variants per call gives the
  * scoring loop enough headroom to reject low-quality candidates without
- * paying for a second provider round-trip. The slicer requires `nativeCanvas`
- * to be evenly divisible by both `rows` and `cols`, which the defaults
- * satisfy by construction.
+ * paying for a second provider round-trip. Square sheets divide evenly; a
+ * rectangular provider sheet may distribute a one-pixel remainder across cells.
  *
  * - `rows` x `cols` defines the grid. Variant count equals `rows * cols` minus
  *   the number of declared `emptyCells`.
  * - `emptyCells` lists `[row, col]` coordinates (0-based) the model should
  *   leave deliberately empty — useful when a brief wants 8 variants in a 3x3.
  *   Defaults to none.
- * - `nativeCanvas` is the requested square pixel side of the *whole sheet*
- *   sent to the provider. Defaults to 1024.
+ * - `nativeCanvas` is the legacy square pixel side of the *whole sheet* sent
+ *   to the provider. Defaults to 1024.
+ * - `nativeWidth` and `nativeHeight` opt into a rectangular provider canvas.
+ *   They must be supplied together and override `nativeCanvas`. Rectangular
+ *   layouts may distribute a one-pixel remainder across cells.
  */
 const sheetSchema = z
   .object({
@@ -92,6 +94,8 @@ const sheetSchema = z
     cols: z.number().int().min(1).max(8).default(4),
     emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
     nativeCanvas: z.number().int().min(256).max(2048).default(1024),
+    nativeWidth: z.number().int().min(256).max(2048).optional(),
+    nativeHeight: z.number().int().min(256).max(2048).optional(),
   })
   .strict()
   .default({ rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 });
@@ -102,6 +106,17 @@ const generationSchema = z
   })
   .strict()
   .default({ sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } });
+
+export function sheetPixelDimensions(sheet: {
+  readonly nativeCanvas: number;
+  readonly nativeWidth?: number;
+  readonly nativeHeight?: number;
+}): { readonly width: number; readonly height: number } {
+  return {
+    width: sheet.nativeWidth ?? sheet.nativeCanvas,
+    height: sheet.nativeHeight ?? sheet.nativeCanvas,
+  };
+}
 
 /**
  * Optional per-brief sensor threshold overrides. Defaults are baked into
@@ -476,8 +491,8 @@ export const briefSchema = z
     frameSequence: z
       .object({
         enabled: z.boolean().default(false),
-        /** Ordered pose-frame count. Target for a walk cycle: 3. */
-        frameCount: z.number().int().min(2).max(8).default(3),
+        /** Ordered pose-frame count. Directional atlases use 8 rows × 4 frames. */
+        frameCount: z.number().int().min(2).max(32).default(3),
         /** Intended playback rate (frames per second) for the packed strip. */
         frameRate: z.number().positive().default(8),
         /** Whether playback should loop. */
@@ -535,16 +550,28 @@ export const briefSchema = z
         message: `grid produces ${variantCount} variants — must be at least 1`,
       });
     }
-    // The slicer requires nativeCanvas to be evenly divisible by both rows
-    // and cols so every cell is an integer pixel grid. We catch this at
-    // brief-load time so we fail before a (slow, expensive) provider call.
-    const { nativeCanvas } = brief.generation.sheet;
-    if (nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0) {
+    const { nativeCanvas, nativeWidth, nativeHeight } = brief.generation.sheet;
+    if ((nativeWidth === undefined) !== (nativeHeight === undefined)) {
       ctx.addIssue({
         code: 'custom',
         path: ['generation', 'sheet'],
-        message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
+        message: 'nativeWidth and nativeHeight must be supplied together',
       });
+    } else {
+      // Integer cell bounds keep both fixed-grid providers and the data-driven
+      // slicer from inheriting one-pixel seams from fractional divisions.
+      const { width, height } = sheetPixelDimensions(brief.generation.sheet);
+      const maxRemainder = nativeWidth === undefined ? 0 : 1;
+      if (width % cols > maxRemainder || height % rows > maxRemainder) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet'],
+          message:
+            nativeWidth === undefined
+              ? `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${width / cols}x${height / rows})`
+              : `native sheet ${width}x${height} cannot be divided into a ${rows}x${cols} grid with at most a one-pixel remainder (cells would be ${width / cols}x${height / rows})`,
+        });
+      }
     }
     // iconBatch mode: each cell is a DIFFERENT icon concept. The iconBatch
     // array length must match the total cell count (rows × cols − emptyCells).

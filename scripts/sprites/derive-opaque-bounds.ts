@@ -88,6 +88,41 @@ export function deriveOpaqueBounds(png: {
   };
 }
 
+/** Derive frame-local bounds from a packed animation atlas. */
+export function deriveFrameOpaqueBounds(
+  png: {
+    width: number;
+    height: number;
+    data: Uint8Array | Buffer;
+  },
+  frameWidth: number,
+  frameHeight: number,
+  frameIndex = 0,
+): DerivedBounds {
+  if (
+    !Number.isInteger(frameWidth) ||
+    !Number.isInteger(frameHeight) ||
+    !Number.isInteger(frameIndex) ||
+    frameWidth < 1 ||
+    frameHeight < 1 ||
+    frameIndex < 0 ||
+    png.width % frameWidth !== 0 ||
+    png.height % frameHeight !== 0 ||
+    frameIndex >= (png.width / frameWidth) * (png.height / frameHeight)
+  ) {
+    throw new RangeError('Animation frame dimensions and index must fit the atlas exactly.');
+  }
+  const columns = Math.floor(png.width / frameWidth);
+  const sourceX = (frameIndex % columns) * frameWidth;
+  const sourceY = Math.floor(frameIndex / columns) * frameHeight;
+  const data = new Uint8Array(frameWidth * frameHeight * 4);
+  for (let y = 0; y < frameHeight; y += 1) {
+    const sourceStart = ((sourceY + y) * png.width + sourceX) * 4;
+    data.set(png.data.subarray(sourceStart, sourceStart + frameWidth * 4), y * frameWidth * 4);
+  }
+  return deriveOpaqueBounds({ width: frameWidth, height: frameHeight, data });
+}
+
 function same(a: DerivedBounds | undefined, b: DerivedBounds): boolean {
   return (
     a !== undefined &&
@@ -119,7 +154,14 @@ function main(): void {
       missingArt += 1;
       continue;
     }
-    const bounds = deriveOpaqueBounds(PNG.sync.read(fs.readFileSync(file)));
+    const png = PNG.sync.read(fs.readFileSync(file));
+    const animation = entry.animation as
+      | { readonly frameWidth?: unknown; readonly frameHeight?: unknown }
+      | undefined;
+    const bounds =
+      typeof animation?.frameWidth === 'number' && typeof animation.frameHeight === 'number'
+        ? deriveFrameOpaqueBounds(png, animation.frameWidth, animation.frameHeight)
+        : deriveOpaqueBounds(png);
     if (same(entry.opaqueBounds as DerivedBounds | undefined, bounds)) continue;
     stale.push(key);
     entry.opaqueBounds = bounds;

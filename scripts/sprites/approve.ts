@@ -54,7 +54,12 @@
 
 import { createHash } from 'node:crypto';
 import { PNG } from 'pngjs';
-import { deriveOpaqueBounds, type DerivedBounds } from './derive-opaque-bounds.js';
+import {
+  deriveFrameOpaqueBounds,
+  deriveOpaqueBounds,
+  type DerivedBounds,
+} from './derive-opaque-bounds.js';
+import { packFrameAtlas } from './pack-frame-atlas.js';
 import { packFrameStrip } from './pack-frame-strip.js';
 import { checkFrameCoherence, type FrameCoherenceOptions } from './sensors/frame-coherence.js';
 import {
@@ -117,6 +122,21 @@ export interface ManifestAnchor {
   readonly y: number;
   readonly source: 'manual' | 'derived' | 'brief';
 }
+
+const DIRECTION_KEYS = [
+  'north',
+  'northEast',
+  'east',
+  'southEast',
+  'south',
+  'southWest',
+  'west',
+  'northWest',
+] as const;
+type DirectionKey = (typeof DIRECTION_KEYS)[number];
+type DirectionalClips = Readonly<
+  Record<DirectionKey, { readonly start: number; readonly end: number }>
+>;
 
 /** Shape of one entry in `manifest.json`. */
 export interface ManifestEntry {
@@ -184,6 +204,16 @@ export interface ManifestEntry {
    * existed omit it, and the guard falls back to hashing the on-disk asset.
    */
   readonly contentHash?: string;
+  readonly sourceAssets?: ReadonlyArray<{
+    readonly direction: DirectionKey;
+    readonly assetPath: string;
+    readonly contentHash: string;
+    readonly sourceRun: string;
+    readonly originalContentHash?: string;
+    readonly variantIndex?: number;
+    readonly transform?: 'identity' | 'mirror-x';
+    readonly derivedFrom?: DirectionKey;
+  }>;
   /**
    * Bounding box of the sprite's non-transparent pixels, plus the canvas it was
    * measured against. Lets consumers anchor and scale by the art the player can
@@ -209,6 +239,7 @@ export interface ManifestEntry {
     readonly frameCount: number;
     readonly frameRate: number;
     readonly loop: boolean;
+    readonly directions?: DirectionalClips;
   };
   /**
    * True when this entry is a placeholder stand-in (not real generated art).
@@ -334,6 +365,12 @@ interface RunSummaryShape {
     readonly frameCount?: number;
     readonly frameRate?: number;
     readonly loop?: boolean;
+    readonly layout?: {
+      readonly columns?: number;
+      readonly rows?: number;
+    };
+    readonly directions?: Partial<DirectionalClips>;
+    readonly sourceAssets?: ManifestEntry['sourceAssets'];
   } | null;
 }
 
@@ -732,6 +769,7 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
       `summary.json's "frameSequence" field is missing frameRate/loop: ${summaryPath}`,
     );
   }
+  const directional = validateDirectionalSequence(frameSequence, frameCount);
 
   // Ordered frames 0..frameCount-1 — cycle order, NOT sensor-score rank.
   const candidatesByIndex = new Map((summary.candidates ?? []).map((c) => [c.index, c]));
@@ -779,19 +817,37 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
   // a lucky generation through — regenerate instead. See frame-coherence.ts.
   // Pass `loop` so the wrap-around seam (final→first) is checked when the
   // animation loops — a drifted loop seam plays on every cycle iteration.
-  const coherence = checkFrameCoherence(frameBuffers, { ...options.coherence, loop });
-  if (!coherence.ok) {
-    throw new ApproveError(
-      'frame-incoherent',
-      `Frame sequence for brief "${briefId}" failed the cross-frame coherence gate: ${coherence.reason ?? 'unknown reason'}`,
-    );
+  const coherenceGroups = directional
+    ? DIRECTION_KEYS.map((direction) => {
+        const clip = directional.directions[direction];
+        return {
+          label: direction,
+          frames: frameBuffers.slice(clip.start, clip.end + 1),
+        };
+      })
+    : [{ label: 'sequence', frames: frameBuffers }];
+  for (const group of coherenceGroups) {
+    const coherence = checkFrameCoherence(group.frames, { ...options.coherence, loop });
+    if (!coherence.ok) {
+      throw new ApproveError(
+        'frame-incoherent',
+        `Frame sequence for brief "${briefId}" failed the ${group.label} coherence gate: ${coherence.reason ?? 'unknown reason'}`,
+      );
+    }
   }
 
-  const strip = packFrameStrip(frameBuffers);
+  const strip = directional
+    ? packFrameAtlas(frameBuffers, directional.columns)
+    : packFrameStrip(frameBuffers);
 
   const generatedDir = path.join(options.publicAssetsDir, 'generated');
   const assetAbsPath = path.join(generatedDir, `${briefId}.png`);
   const contentHash = createHash('sha256').update(strip.buffer).digest('hex');
+  const opaqueBounds = deriveFrameOpaqueBounds(
+    PNG.sync.read(strip.buffer),
+    strip.frameWidth,
+    strip.frameHeight,
+  );
 
   if (!options.allowReapprove) {
     const existing = readManifestEntry(fs, options.manifestPath, briefId);
@@ -836,17 +892,83 @@ export function approveFrameSequence(options: ApproveFrameSequenceOptions): Mani
     judgeScorecard: null,
     type,
     contentHash,
+    opaqueBounds,
+    ...(frameSequence.sourceAssets ? { sourceAssets: frameSequence.sourceAssets } : {}),
     animation: {
       frameWidth: strip.frameWidth,
       frameHeight: strip.frameHeight,
       frameCount: strip.frameCount,
       frameRate,
       loop,
+      ...(directional ? { directions: directional.directions } : {}),
     },
   };
 
   upsertManifest(fs, options.manifestPath, entry, briefId);
   return entry;
+}
+
+function validateDirectionalSequence(
+  frameSequence: NonNullable<RunSummaryShape['frameSequence']>,
+  frameCount: number,
+): { readonly columns: number; readonly directions: DirectionalClips } | null {
+  if (frameSequence.directions === undefined && frameSequence.layout === undefined) return null;
+  const columns = frameSequence.layout?.columns;
+  const rows = frameSequence.layout?.rows;
+  if (
+    !Number.isInteger(columns) ||
+    !Number.isInteger(rows) ||
+    (columns ?? 0) < 1 ||
+    (rows ?? 0) < 1 ||
+    (columns ?? 0) * (rows ?? 0) !== frameCount
+  ) {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `Directional frame sequence layout must be positive integers whose product is ${frameCount}.`,
+    );
+  }
+  if (!frameSequence.directions) {
+    throw new ApproveError(
+      'not-frame-sequence',
+      'Directional frame sequence layout requires all eight direction clips.',
+    );
+  }
+
+  const clips = frameSequence.directions;
+  const occupied = new Set<number>();
+  for (const direction of DIRECTION_KEYS) {
+    const clip = clips[direction];
+    if (
+      !clip ||
+      !Number.isInteger(clip.start) ||
+      !Number.isInteger(clip.end) ||
+      clip.start < 0 ||
+      clip.end < clip.start ||
+      clip.end >= frameCount
+    ) {
+      throw new ApproveError(
+        'not-frame-sequence',
+        `Direction "${direction}" has an invalid frame range.`,
+      );
+    }
+    for (let frame = clip.start; frame <= clip.end; frame += 1) {
+      if (occupied.has(frame)) {
+        throw new ApproveError(
+          'not-frame-sequence',
+          `Directional frame ${frame} belongs to more than one clip.`,
+        );
+      }
+      occupied.add(frame);
+    }
+  }
+  if (occupied.size !== frameCount) {
+    throw new ApproveError(
+      'not-frame-sequence',
+      `Directional clips cover ${occupied.size} of ${frameCount} frames.`,
+    );
+  }
+
+  return { columns: columns!, directions: clips as DirectionalClips };
 }
 
 /** Deterministic identity + content hash for one run variant, resolved WITHOUT mutating anything. */

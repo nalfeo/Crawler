@@ -207,6 +207,35 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
     expect(form.has('response_format')).toBe(false);
     expect(form.getAll('image[]')).toHaveLength(2);
   });
+
+  it('requests brief-declared rectangular sheet dimensions', async () => {
+    const png = encodeSolidPng(8, 8);
+    let body: BodyInit | null | undefined;
+    const stubFetch: typeof fetch = async (_url, init) => {
+      body = init?.body;
+      return jsonResponse(200, { data: [{ b64_json: png.toString('base64') }] });
+    };
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      generation: {
+        sheet: {
+          rows: 4,
+          cols: 3,
+          emptyCells: [],
+          nativeCanvas: 1024,
+          nativeWidth: 1024,
+          nativeHeight: 1536,
+        },
+      },
+    });
+    await provider(stubFetch).generateSheet({
+      brief,
+      prompt: 'A rectangular sheet prompt',
+      referencePngs: [encodeSolidPng(2, 2)],
+      variants: 12,
+    });
+    expect((body as FormData).get('size')).toBe('1024x1536');
+  });
 });
 
 describe('createImageProvider (factory)', () => {

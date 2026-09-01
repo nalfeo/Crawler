@@ -83,6 +83,43 @@ function buildTestRegistryWithLoop(loop: boolean) {
   });
 }
 
+function buildDirectionalTestRegistry(loop = true) {
+  const clips = {
+    north: { start: 0, end: 3 },
+    northEast: { start: 4, end: 7 },
+    east: { start: 8, end: 11 },
+    southEast: { start: 12, end: 15 },
+    south: { start: 16, end: 19 },
+    southWest: { start: 20, end: 23 },
+    west: { start: 24, end: 27 },
+    northWest: { start: 28, end: 31 },
+  } as const;
+  return buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      [PLAYER_WALK_TEXTURE_KEY]: {
+        briefId: PLAYER_WALK_TEXTURE_KEY,
+        spriteName: PLAYER_WALK_TEXTURE_KEY,
+        assetPath: `generated/${PLAYER_WALK_TEXTURE_KEY}.png`,
+        approvedAt: '2026-01-01T00:00:00.000Z',
+        sourceRun: 'test-fixture',
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: 'n/a',
+        judgeScore: null,
+        animation: {
+          frameWidth: 64,
+          frameHeight: 64,
+          frameCount: 32,
+          frameRate: 6,
+          loop,
+          directions: clips,
+        },
+      },
+    },
+  });
+}
+
 /** Drives one bridge render tick, then advances the mock animation clock. */
 function stepFrame(
   bridge: ReturnType<typeof createPhaserBridge>,
@@ -174,6 +211,26 @@ describe('player walk-cycle animation (hard success gate)', () => {
     expect(images).toHaveLength(1);
   });
 
+  it('stops on the idle frame for the last directional clip', () => {
+    const { scene, sprites } = createSceneStub({
+      generatedRegistry: buildDirectionalTestRegistry(),
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: -3, y: 0 }));
+
+    bridge.sync(world);
+    const player = sprites[0]!;
+    addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+    bridge.sync(world);
+
+    expect(player.frame).toBe(24);
+  });
+
   it('preserves horizontal facing when moving vertically or at rest, and mirrors when moving left', () => {
     const generatedRegistry = buildTestRegistry();
     const { scene, sprites } = createSceneStub({ generatedRegistry });
@@ -244,5 +301,35 @@ describe('player walk-cycle animation (hard success gate)', () => {
     addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
     bridge.sync(world);
     expect(player.anims.isPlaying).toBe(true);
+  });
+
+  it('replays a non-looping directional clip only when movement direction changes', () => {
+    const { scene, sprites } = createSceneStub({
+      generatedRegistry: buildDirectionalTestRegistry(false),
+    });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Player, {}));
+    addComponent(world.ecs, eid, set(Position, { x: 1, y: 1 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+
+    bridge.sync(world);
+    const player = sprites[0]!;
+    for (let i = 0; i < 8; i += 1) {
+      stepFrame(bridge, world, sprites, 1000 / 6);
+    }
+    expect(player.anims.isPlaying).toBe(false);
+    expect(player.anims.currentFrame.index).toBe(3);
+
+    bridge.sync(world);
+    expect(player.anims.isPlaying).toBe(false);
+    expect(player.anims.currentFrame.index).toBe(3);
+
+    addComponent(world.ecs, eid, set(Velocity, { x: 0, y: -3 }));
+    bridge.sync(world);
+    expect(player.anims.isPlaying).toBe(true);
+    expect(player.anims.currentFrame.index).toBe(0);
   });
 });

@@ -248,6 +248,39 @@ describe('briefSchema', () => {
     }
   });
 
+  it('accepts rectangular sheet dimensions with at most a one-pixel cell remainder', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 4,
+          cols: 3,
+          emptyCells: [],
+          nativeCanvas: 1024,
+          nativeWidth: 1024,
+          nativeHeight: 1536,
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('requires rectangular sheet dimensions to be supplied as a pair', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 2,
+          cols: 6,
+          emptyCells: [],
+          nativeCanvas: 1024,
+          nativeWidth: 1536,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects empty-cell coordinates outside the declared grid', () => {
     const result = briefSchema.safeParse({
       ...validBrief,
@@ -399,7 +432,7 @@ describe('briefSchema', () => {
       expect(result.success).toBe(true);
     });
 
-    it('rejects frameCount outside the documented [2, 8] range', () => {
+    it('accepts a 32-frame directional atlas and rejects counts outside [2, 32]', () => {
       expect(
         briefSchema.safeParse({
           ...validBrief,
@@ -409,7 +442,14 @@ describe('briefSchema', () => {
       expect(
         briefSchema.safeParse({
           ...validBrief,
-          frameSequence: { enabled: false, frameCount: 9, frameRate: 8, loop: true },
+          generation: { sheet: { rows: 8, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
+          frameSequence: { enabled: true, frameCount: 32, frameRate: 8, loop: true },
+        }).success,
+      ).toBe(true);
+      expect(
+        briefSchema.safeParse({
+          ...validBrief,
+          frameSequence: { enabled: false, frameCount: 33, frameRate: 8, loop: true },
         }).success,
       ).toBe(false);
     });

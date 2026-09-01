@@ -117,26 +117,25 @@ describe('entity-sprite-mappings generated art wiring', () => {
           (candidate) => candidate.textureKey === variant?.pinnedTextureKey,
         );
         expect(entry, `no shipped manifest entry for gender "${gender}"`).toBeDefined();
-        // Each gender's walk art is a 4-frame, 256x256 strip: it must carry an
-        // animation descriptor, else `preloadGeneratedSprites` loads the sheet
-        // as a single flat image and the player renders as squashed copies.
+        // Every walk asset must carry an animation descriptor, otherwise
+        // `preloadGeneratedSprites` loads the atlas as one squashed flat image.
         expect(entry?.animation).toMatchObject({
           frameWidth: 256,
-          frameHeight: 256,
-          frameCount: 4,
+          frameHeight: gender === 'male' ? 390 : 256,
+          frameCount: gender === 'male' ? 32 : 4,
           frameRate: 8,
           loop: true,
         });
         if (gender === 'male') {
           expect(entry?.animation?.directions).toEqual({
             north: { start: 0, end: 3 },
-            northEast: { start: 0, end: 3 },
-            east: { start: 0, end: 3 },
-            southEast: { start: 0, end: 3 },
-            south: { start: 0, end: 3 },
-            southWest: { start: 0, end: 3 },
-            west: { start: 0, end: 3 },
-            northWest: { start: 0, end: 3 },
+            northEast: { start: 4, end: 7 },
+            east: { start: 8, end: 11 },
+            southEast: { start: 12, end: 15 },
+            south: { start: 16, end: 19 },
+            southWest: { start: 20, end: 23 },
+            west: { start: 24, end: 27 },
+            northWest: { start: 28, end: 31 },
           });
         }
 

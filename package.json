@@ -58,6 +58,7 @@
     "velocity:experiment": "tsx scripts/agent/velocity/experiment.ts",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
+    "sprites:compose-directional-player": "tsx scripts/sprites/compose-directional-player.ts",
     "sprites:theme-equipment": "tsx scripts/sprites/theme-equipment-cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
     "sprites:sidecar:ensure": "tsx scripts/sprites/sidecar/service-cli.ts ensure",

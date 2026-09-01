@@ -2,8 +2,8 @@
   "briefId": "player-walk-cycle-male",
   "spriteName": "player-walk-cycle-male",
   "assetPath": "generated/player-walk-cycle-male.png",
-  "approvedAt": "2026-07-30T03:00:39.913Z",
-  "sourceRun": "generated/runs/player-walk-cycle-male/2026-07-30T02-53-56-d6c3b5c8",
+  "approvedAt": "2026-09-01T08:55:35.153Z",
+  "sourceRun": "generated/runs/player-walk-cycle-male/directional-v8-accepted-2026-09-01",
   "variantIndex": 0,
   "anchor": null,
   "anchors": {
@@ -41,8 +41,8 @@
       "ok": true,
       "sensor": "anchor-center-of-mass",
       "anchor": {
-        "x": 110,
-        "y": 129
+        "x": 129,
+        "y": 198
       }
     },
     {
@@ -52,22 +52,128 @@
   ],
   "judgeScorecard": null,
   "type": "character",
-  "contentHash": "be3f6691854ae66f7613ede7ec7d086fc69c472f18c223b469ce6bf7c6d1072d",
+  "contentHash": "7b405d1b8c76a84c9ad02e7dda43095c8c3d40fe99a88afc792e061da91afb2b",
+  "opaqueBounds": {
+    "x": 24,
+    "y": 21,
+    "width": 208,
+    "height": 352,
+    "canvasWidth": 256,
+    "canvasHeight": 390
+  },
+  "sourceAssets": [
+    {
+      "direction": "north",
+      "assetPath": "public/assets/generated/crawler-male-north-neutral-var-0.png",
+      "contentHash": "4d1ae3e803dbe31f4a73f8ba0ca6b6feba84025c0f76d578575ef20d97b765b9",
+      "originalContentHash": "1bb664d5da1e3c4ee4f77ff2541c3c6c7a24f0e1feec063b538f97f9edec894b",
+      "sourceRun": "generated/runs/crawler-male-north-neutral/2026-09-01T03-57-52-850add11",
+      "variantIndex": 0,
+      "transform": "identity"
+    },
+    {
+      "direction": "northEast",
+      "assetPath": "public/assets/generated/crawler-male-north-east-neutral-var-0.png",
+      "contentHash": "ded83ce3eb3a737f167de4c88710cc12c26c956df98ecd984588e0445df788f1",
+      "originalContentHash": "4a0a7324e76d55d056bbe871c87ae90ff09995f1b261a7e2542b647f0474ab43",
+      "sourceRun": "generated/runs/crawler-male-north-east-neutral/2026-09-01T04-58-04-65df1199",
+      "variantIndex": 0,
+      "transform": "identity"
+    },
+    {
+      "direction": "east",
+      "assetPath": "public/assets/generated/crawler-male-east-neutral-var-0.png",
+      "contentHash": "3614910b820b688df756678c79e42cf2c96025c61b330a95e2f1e41cbf26cd22",
+      "originalContentHash": "4061081bf60ceb4f245519e557c82898b870b457852ab85c82703df63a83a058",
+      "sourceRun": "generated/runs/crawler-male-east-neutral/2026-09-01T05-05-31-b37e280e",
+      "variantIndex": 0,
+      "transform": "identity"
+    },
+    {
+      "direction": "southEast",
+      "assetPath": "public/assets/generated/crawler-male-south-east-neutral-var-0.png",
+      "contentHash": "c9d39f1bdf061eefc8b834545c77ab0f17fe20de3ec1953d7c76290bf03501ec",
+      "originalContentHash": "c21a53c5b2f023207adfccae56b1d9f71e279aba4e347eead2ace7565a3284f9",
+      "sourceRun": "generated/runs/crawler-male-south-east-neutral/2026-09-01T05-17-05-0415a115",
+      "variantIndex": 0,
+      "transform": "identity"
+    },
+    {
+      "direction": "south",
+      "assetPath": "public/assets/generated/crawler-male-south-neutral-var-8.png",
+      "contentHash": "0bcf170a13c8b2febeec3c04dd21f7db99813d6933fbff705351fd7894e2d93b",
+      "originalContentHash": "0bcf170a13c8b2febeec3c04dd21f7db99813d6933fbff705351fd7894e2d93b",
+      "sourceRun": "generated/runs/crawler-male-south-neutral/external-2026-08-27T06-29-54-7511eaf0",
+      "variantIndex": 8,
+      "transform": "identity"
+    },
+    {
+      "direction": "southWest",
+      "assetPath": "public/assets/generated/crawler-male-south-west-neutral-var-3.png",
+      "contentHash": "559b7c8ec7040019b3335356b5f10328155ec1fa0f4c99b04f2977edfd9cd96e",
+      "originalContentHash": "4f9e1bec251ea3f36e8f5cde7e6938c2d548489a6790ff55988f353a45223c2f",
+      "sourceRun": "generated/runs/crawler-male-south-west-neutral/2026-09-01T05-05-31-5bb9c83c",
+      "variantIndex": 3,
+      "transform": "identity"
+    },
+    {
+      "direction": "west",
+      "assetPath": "public/assets/generated/crawler-male-west-neutral-var-8.png",
+      "contentHash": "ae32ea38514863f523cf64cdeae9cf5ed668a858c60682fd903864b75c02f0ab",
+      "originalContentHash": "97387af24ddfe5bc8f2f9c9ea373533a64b0576cae1021abe47b39f384e066b9",
+      "sourceRun": "generated/runs/crawler-male-west-neutral/2026-09-01T04-12-28-61faa0d0",
+      "variantIndex": 8,
+      "transform": "identity"
+    },
+    {
+      "direction": "northWest",
+      "assetPath": "public/assets/generated/crawler-male-north-west-neutral-var-2.png",
+      "contentHash": "1b79dba855ea716e1902e56932db7e27d2ebc4e50072095e2c52fd3ad4118578",
+      "originalContentHash": "754fbe8e56a2076e01071c0b27c2c0cef27e3bedc9a160cfc1d122226f83c8c2",
+      "sourceRun": "generated/runs/crawler-male-north-west-neutral/2026-09-01T05-25-22-0b6e052a",
+      "variantIndex": 2,
+      "transform": "identity"
+    }
+  ],
   "animation": {
     "frameWidth": 256,
-    "frameHeight": 256,
-    "frameCount": 4,
+    "frameHeight": 390,
+    "frameCount": 32,
     "frameRate": 8,
     "loop": true,
     "directions": {
-      "north": { "start": 0, "end": 3 },
-      "northEast": { "start": 0, "end": 3 },
-      "east": { "start": 0, "end": 3 },
-      "southEast": { "start": 0, "end": 3 },
-      "south": { "start": 0, "end": 3 },
-      "southWest": { "start": 0, "end": 3 },
-      "west": { "start": 0, "end": 3 },
-      "northWest": { "start": 0, "end": 3 }
+      "north": {
+        "start": 0,
+        "end": 3
+      },
+      "northEast": {
+        "start": 4,
+        "end": 7
+      },
+      "east": {
+        "start": 8,
+        "end": 11
+      },
+      "southEast": {
+        "start": 12,
+        "end": 15
+      },
+      "south": {
+        "start": 16,
+        "end": 19
+      },
+      "southWest": {
+        "start": 20,
+        "end": 23
+      },
+      "west": {
+        "start": 24,
+        "end": 27
+      },
+      "northWest": {
+        "start": 28,
+        "end": 31
+      }
     }
   }
 }

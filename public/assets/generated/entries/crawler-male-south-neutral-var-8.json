@@ -1,0 +1,74 @@
+{
+  "briefId": "crawler-male-south-neutral",
+  "spriteName": "crawler-male-south-neutral-var-8",
+  "assetPath": "generated/crawler-male-south-neutral-var-8.png",
+  "approvedAt": "2026-08-31T20:06:24.481Z",
+  "sourceRun": "generated/runs/crawler-male-south-neutral/external-2026-08-27T06-29-54-7511eaf0",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 128,
+    "y": 255,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 128,
+      "y": 255,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 129,
+      "y": 200,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": null,
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": null,
+  "type": "character",
+  "contentHash": "0bcf170a13c8b2febeec3c04dd21f7db99813d6933fbff705351fd7894e2d93b",
+  "opaqueBounds": {
+    "x": 21,
+    "y": 21,
+    "width": 218,
+    "height": 352,
+    "canvasWidth": 256,
+    "canvasHeight": 390
+  },
+  "effectiveAnchorSource": "brief",
+  "facingDirection": "right"
+}

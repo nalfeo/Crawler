@@ -215,6 +215,23 @@ describe('manifest entry animation descriptor', () => {
       loop: true,
     },
   };
+  const directionalAnimation = {
+    frameWidth: 16,
+    frameHeight: 16,
+    frameCount: 32,
+    frameRate: 6,
+    loop: true,
+    directions: {
+      north: { start: 0, end: 3 },
+      northEast: { start: 4, end: 7 },
+      east: { start: 8, end: 11 },
+      southEast: { start: 12, end: 15 },
+      south: { start: 16, end: 19 },
+      southWest: { start: 20, end: 23 },
+      west: { start: 24, end: 27 },
+      northWest: { start: 28, end: 31 },
+    },
+  };
 
   it('parses an entry with an animation descriptor', () => {
     const manifest = parseGeneratedManifest({
@@ -306,6 +323,47 @@ describe('manifest entry animation descriptor', () => {
           'player-walk-v1-var-0': {
             ...animatedEntry,
             animation: { ...animatedEntry.animation, frameWidth: 0 },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('parses directional clips that cover every frame exactly once', () => {
+    const manifest = parseGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'player-walk-v1-var-0': {
+          ...animatedEntry,
+          animation: directionalAnimation,
+        },
+      },
+    });
+    expect(manifest.entries['player-walk-v1-var-0']?.animation?.directions?.northWest).toEqual({
+      start: 28,
+      end: 31,
+    });
+  });
+
+  it.each([
+    ['reversed', { north: { start: 3, end: 2 } }],
+    ['out of bounds', { northWest: { start: 28, end: 32 } }],
+    ['overlapping', { northWest: { start: 27, end: 31 } }],
+    ['incomplete', { northWest: { start: 29, end: 31 } }],
+  ])('rejects %s directional clips', (_label, changedDirections) => {
+    expect(() =>
+      parseGeneratedManifest({
+        version: GENERATED_MANIFEST_VERSION,
+        entries: {
+          'player-walk-v1-var-0': {
+            ...animatedEntry,
+            animation: {
+              ...directionalAnimation,
+              directions: {
+                ...directionalAnimation.directions,
+                ...changedDirections,
+              },
+            },
           },
         },
       }),

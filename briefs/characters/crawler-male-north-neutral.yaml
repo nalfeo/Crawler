@@ -1,0 +1,47 @@
+type: character
+name: crawler-male-north-neutral
+description: |
+  EXACTLY TWELVE review candidates of one neutral full-body NORTH-facing sprite,
+  arranged in the first three rows of a clean 4x4 grid; leave the entire final
+  row empty. Every filled cell is the same male Crawler contestant
+  from the immutable identity reference: cropped brown hair, square head and
+  jaw, warm tan skin, navy hooded sweatshirt, dark waistband, distressed blue
+  jeans, gray sneakers, bobblehead proportions, palette, outline weight, pixel
+  scale, transparent canvas, center pivot, body height, and planted floor line.
+  Candidates may differ only in tiny pixel-cluster execution; never redesign,
+  restyle, age, equip, recolor, resize, or change his stance.
+
+  Rotate that exact contestant 180 degrees to face directly NORTH, away from the
+  camera, in classic RPG orthographic presentation. Hide the face, eyes, nose,
+  mouth, chest, drawstrings, palms, and front waistband completely. Show the
+  rear hair, back of the hood and sweatshirt, rear jeans seams/pockets, and both
+  rear sneaker heels. Keep shoulders, hips, and feet centered and bilaterally
+  balanced so every candidate reads direct NORTH, never diagonal.
+
+  Keep the complete figure at the same apparent height and scale as the identity
+  reference. Both soles share its exact floor line. No stride, gesture, weapon,
+  armor, cast shadow, floor, text, border, extra subject, detached pixels,
+  transparent holes, crop, foreshortening, or perspective shrink. Flat crisp
+  pixel art only. Separate all cells with continuous empty gutters.
+size: { width: 256, height: 390 }
+anchor: { x: 128, y: 255 }
+palette: { id: kenney-roguelike }
+seedFrames:
+  - path: briefs/characters/seeds/crawler-male-south-neutral-var-8.png
+    note: Immutable identity, scale, height, stance, palette, clothing, transparency, and floor-line baseline.
+    role: identity
+  - path: briefs/characters/seeds/player-male-north-skeleton.png
+    note: NORTH rotation and bone placement only; ignore its identity, scale, palette, and clothing.
+    role: pose-guide
+generation:
+  sheet:
+    rows: 4
+    cols: 4
+    emptyCells: [[3, 0], [3, 1], [3, 2], [3, 3]]
+    nativeCanvas: 1024
+postprocessing: { trimAndFit: false, paletteMode: strict }
+sensors:
+  anchor: { mode: static }
+judge: { enabled: true, maxVariants: 12 }
+minVariations: 0
+tags: [player, contestant, male, neutral, north, directional-rig, identity-seed]

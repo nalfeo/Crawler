@@ -60,6 +60,7 @@ interface FakeSequenceRunOptions {
    * here — exercises the run-local fallback (round-2 multi-model finding).
    */
   readonly staleProcessedPath?: boolean;
+  readonly directional?: boolean;
 }
 
 const DEFAULT_FRAMES: ReadonlyArray<{
@@ -129,6 +130,21 @@ function writeFakeSequenceRun(
               frameCount: frames.length,
               frameRate: options.frameRate ?? 8,
               loop: options.loop ?? true,
+              ...(options.directional
+                ? {
+                    layout: { columns: 1, rows: 8 },
+                    directions: {
+                      north: { start: 0, end: 0 },
+                      northEast: { start: 1, end: 1 },
+                      east: { start: 2, end: 2 },
+                      southEast: { start: 3, end: 3 },
+                      south: { start: 4, end: 4 },
+                      southWest: { start: 5, end: 5 },
+                      west: { start: 6, end: 6 },
+                      northWest: { start: 7, end: 7 },
+                    },
+                  }
+                : {}),
             },
           }),
     }),
@@ -197,6 +213,32 @@ describe('approveFrameSequence', () => {
     const manifest = readManifest(manifestPath);
     expect(Object.keys(manifest.entries)).toEqual([briefId]);
     expect(manifest.entries[briefId]).toEqual(entry);
+  });
+
+  it('packs directional clips into a row-major atlas and preserves clip ranges', () => {
+    const frames = Array.from({ length: 8 }, (_, index) => ({
+      rgb: [200 - index, 40, 40] as const,
+      opaqueCols: 6,
+    }));
+    const { runDir, briefId } = writeFakeSequenceRun(repoRoot, {
+      frames,
+      directional: true,
+    });
+    const entry = approveFrameSequence({
+      runDir,
+      manifestPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    expect(entry.animation?.directions?.south).toEqual({ start: 4, end: 4 });
+    expect(entry.opaqueBounds).toMatchObject({ canvasWidth: 8, canvasHeight: 8 });
+    const atlas = PNG.sync.read(
+      readFileSync(path.join(publicAssetsDir, 'generated', `${briefId}.png`)),
+    );
+    expect(atlas.width).toBe(8);
+    expect(atlas.height).toBe(64);
   });
 
   it('rejects a malformed nested lineage brief before writing animation art', () => {

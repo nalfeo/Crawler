@@ -30,6 +30,7 @@ import { MeleeSpriteId } from '../shared/constants.js';
 import {
   GENERATED_SPRITE_REGISTRY_KEY,
   registerGeneratedSpriteAnimations,
+  type WalkDirection,
   walkAnimationKey,
   walkDirectionFromVelocity,
 } from './generatedAssets/index.js';
@@ -725,6 +726,7 @@ export function createPhaserBridge(
    */
   const generatedBoundsByTexture = new Map<string, OpaqueBounds>();
   const playerWalkMovingByEid = new Map<number, boolean>();
+  const playerWalkDirectionByEid = new Map<number, WalkDirection>();
   const acceptedStepDisplacementByEid = new Map<
     number,
     {
@@ -859,17 +861,20 @@ export function createPhaserBridge(
         const anims = animatable.anims;
         if (!anims || typeof anims.play !== 'function') {
           playerWalkMovingByEid.delete(eid);
+          playerWalkDirectionByEid.delete(eid);
           return;
         }
         const walkAnimation = generatedAnimationByTexture.get(obj.texture.key);
         if (!walkAnimation) {
           playerWalkMovingByEid.delete(eid);
+          playerWalkDirectionByEid.delete(eid);
           return;
         }
         const vx = velocity.x[eid] ?? 0;
         const vy = velocity.y[eid] ?? 0;
         const isMoving = vx * vx + vy * vy > PLAYER_WALK_SPEED_EPSILON_SQ;
         const wasMoving = playerWalkMovingByEid.get(eid) ?? false;
+        const previousDirection = playerWalkDirectionByEid.get(eid);
         if (isMoving) {
           // `true` (ignoreIfPlaying) avoids restarting looped cycles from frame 0
           // every render tick while the player keeps moving. For one-shot
@@ -879,17 +884,20 @@ export function createPhaserBridge(
           const direction = walkAnimation.directions
             ? walkDirectionFromVelocity(vx, vy)
             : undefined;
-          if (walkAnimation.loop || !wasMoving || direction !== undefined) {
+          if (direction !== undefined) {
+            playerWalkDirectionByEid.set(eid, direction);
+          }
+          if (walkAnimation.loop || !wasMoving || direction !== previousDirection) {
             anims.play(walkAnimationKey(obj.texture.key, direction), true);
           }
         } else if (wasMoving && typeof anims.stop === 'function') {
           anims.stop();
           // `stop()` freezes on whatever mid-stride frame the cycle was on —
-          // explicitly snap back to frame 0, the sheet's designated idle
-          // pose, so resting always reads as a clean standing frame rather
-          // than a frozen stride. See `GeneratedSpriteAnimation` contract.
+          const direction = playerWalkDirectionByEid.get(eid);
+          const idleFrame =
+            direction && walkAnimation.directions ? walkAnimation.directions[direction].start : 0;
           if (typeof (animatable as Partial<Phaser.GameObjects.Sprite>).setFrame === 'function') {
-            (animatable as Phaser.GameObjects.Sprite).setFrame(0);
+            (animatable as Phaser.GameObjects.Sprite).setFrame(idleFrame);
           }
         }
         playerWalkMovingByEid.set(eid, isMoving);
@@ -2581,6 +2589,7 @@ export function createPhaserBridge(
         visual.obj.destroy();
         visuals.delete(eid);
         playerWalkMovingByEid.delete(eid);
+        playerWalkDirectionByEid.delete(eid);
         acceptedStepDisplacementByEid.delete(eid);
         playerFacingRightByEid.delete(eid);
         const carriedWeapon = carriedWeaponVisuals.get(eid);
@@ -2739,6 +2748,7 @@ export function createPhaserBridge(
       }
       visuals.clear();
       playerWalkMovingByEid.clear();
+      playerWalkDirectionByEid.clear();
       acceptedStepDisplacementByEid.clear();
       for (const img of carriedWeaponVisuals.values()) {
         img.destroy();

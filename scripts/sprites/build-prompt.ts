@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
-import { variantCount } from './brief-schema.js';
+import { sheetPixelDimensions, variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
 import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
@@ -207,9 +207,9 @@ function aspectRatioText(width: number, height: number): string {
 
 /** Pixel dimensions of one source cell on the generated sheet. */
 function cellDims(brief: Brief): { cellW: number; cellH: number } {
-  const native = brief.generation.sheet.nativeCanvas;
   const { rows, cols } = brief.generation.sheet;
-  return { cellW: Math.round(native / cols), cellH: Math.round(native / rows) };
+  const { width, height } = sheetPixelDimensions(brief.generation.sheet);
+  return { cellW: Math.round(width / cols), cellH: Math.round(height / rows) };
 }
 
 /**

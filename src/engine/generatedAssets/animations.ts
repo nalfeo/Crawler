@@ -57,7 +57,7 @@ export function walkAnimationKey(textureKey: string, direction?: WalkDirection):
 export function walkDirectionFromVelocity(vx: number, vy: number): WalkDirection {
   if (vx === 0 && vy === 0) return 'south';
   const angle = Math.atan2(vy, vx);
-  const index = Math.round((angle / (Math.PI / 4) + 8) % 8);
+  const index = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
   return VELOCITY_DIRECTIONS[index]!;
 }
 

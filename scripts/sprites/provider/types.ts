@@ -37,9 +37,8 @@ export interface GenerateSheetRequest {
    */
   readonly variants: number;
   /**
-   * Square pixel side of the *whole sheet* to request from the provider.
-   * Defaults to `brief.generation.sheet.nativeCanvas` (1024 unless the
-   * brief overrides it).
+   * Optional square pixel side override for the *whole sheet*. Without this
+   * override, providers use the brief's square or rectangular sheet dimensions.
    */
   readonly size?: number;
 }

@@ -58,7 +58,9 @@ describe('walkAnimationKey', () => {
   it.each([
     [0, -1, 'north'],
     [1, -1, 'northEast'],
+    [1, -0.1, 'east'],
     [1, 0, 'east'],
+    [1, 0.1, 'east'],
     [1, 1, 'southEast'],
     [0, 1, 'south'],
     [-1, 1, 'southWest'],

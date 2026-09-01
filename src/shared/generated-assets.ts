@@ -86,6 +86,87 @@ const opaqueBoundsSchema = z
 
 export type OpaqueBounds = z.infer<typeof opaqueBoundsSchema>;
 
+const GENERATED_ANIMATION_DIRECTIONS = [
+  'north',
+  'northEast',
+  'east',
+  'southEast',
+  'south',
+  'southWest',
+  'west',
+  'northWest',
+] as const;
+
+const directionalClipSchema = z
+  .object({
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const animationSchema = z
+  .object({
+    frameWidth: z.number().int().positive(),
+    frameHeight: z.number().int().positive(),
+    frameCount: z.number().int().min(2),
+    frameRate: z.number().positive(),
+    loop: z.boolean().default(true),
+    directions: z
+      .object({
+        north: directionalClipSchema,
+        northEast: directionalClipSchema,
+        east: directionalClipSchema,
+        southEast: directionalClipSchema,
+        south: directionalClipSchema,
+        southWest: directionalClipSchema,
+        west: directionalClipSchema,
+        northWest: directionalClipSchema,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .superRefine((animation, ctx) => {
+    if (!animation.directions) return;
+    const occupied = new Set<number>();
+    for (const direction of GENERATED_ANIMATION_DIRECTIONS) {
+      const clip = animation.directions[direction];
+      if (clip.end < clip.start) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['directions', direction],
+          message: 'direction start must not exceed end',
+        });
+        continue;
+      }
+      if (clip.end >= animation.frameCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['directions', direction, 'end'],
+          message: 'direction end must be within frameCount',
+        });
+        continue;
+      }
+      for (let frame = clip.start; frame <= clip.end; frame += 1) {
+        if (occupied.has(frame)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['directions', direction],
+            message: `frame ${frame} belongs to more than one direction`,
+          });
+        }
+        occupied.add(frame);
+      }
+    }
+    if (occupied.size !== animation.frameCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['directions'],
+        message: `directions must cover all ${animation.frameCount} frames exactly once`,
+      });
+    }
+  });
+
 /**
  * Manifest entry schema. Mirrors `ManifestEntry` from
  * `scripts/sprites/approve.ts`. Kept loose (`.passthrough()`) on unknown
@@ -160,44 +241,7 @@ export const manifestEntrySchema = z
      *   freezing on whatever mid-stride frame the loop was on — there is no
      *   separate "idle" field; frame 0 of this same strip doubles as idle.
      */
-    animation: z
-      .object({
-        frameWidth: z.number().int().positive(),
-        frameHeight: z.number().int().positive(),
-        frameCount: z.number().int().min(2),
-        frameRate: z.number().positive(),
-        loop: z.boolean().default(true),
-        directions: z
-          .object({
-            north: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            northEast: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            east: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            southEast: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            south: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            southWest: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            west: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-            northWest: z
-              .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
-              .strict(),
-          })
-          .strict()
-          .optional(),
-      })
-      .optional(),
+    animation: animationSchema.optional(),
     /**
      * True when this entry is a placeholder stand-in (not real generated art).
      * Placeholder entries are excluded from the derived sprite-catalog rows.

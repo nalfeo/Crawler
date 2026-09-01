@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { deriveOpaqueBounds } from '../../scripts/sprites/derive-opaque-bounds.js';
+import {
+  deriveFrameOpaqueBounds,
+  deriveOpaqueBounds,
+} from '../../scripts/sprites/derive-opaque-bounds.js';
 
 function canvas(
   w: number,
@@ -56,6 +59,24 @@ describe('deriveOpaqueBounds', () => {
       height: 6,
       canvasWidth: 8,
       canvasHeight: 6,
+    });
+  });
+
+  describe('deriveFrameOpaqueBounds', () => {
+    it('returns frame-local bounds from the first atlas cell', () => {
+      const atlas = canvas(8, 4, (x, y) => {
+        if (x >= 1 && x <= 2 && y >= 1 && y <= 3) return 255;
+        if (x >= 5 && x <= 7) return 255;
+        return 0;
+      });
+      expect(deriveFrameOpaqueBounds(atlas, 4, 4)).toEqual({
+        x: 1,
+        y: 1,
+        width: 2,
+        height: 3,
+        canvasWidth: 4,
+        canvasHeight: 4,
+      });
     });
   });
 

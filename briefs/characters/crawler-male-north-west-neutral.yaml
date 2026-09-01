@@ -1,0 +1,60 @@
+type: character
+name: crawler-male-north-west-neutral
+description: |
+  EXACTLY TWELVE review candidates of one neutral full-body NORTH-WEST-facing
+  sprite, arranged three across and four down in a clean 3x4 grid. Every filled
+  cell is the same male Crawler
+  contestant from the immutable identity reference: cropped brown hair, square
+  head and jaw, warm tan skin, navy hooded sweatshirt, dark waistband,
+  distressed blue jeans, gray sneakers, bobblehead proportions, palette,
+  outline weight, pixel scale, transparent canvas, center pivot, body height,
+  and planted floor line. Candidates may differ only in tiny pixel-cluster
+  execution; never redesign, restyle, age, equip, recolor, resize, or change his
+  stance.
+
+  Rotate that exact contestant 135 degrees toward screen-left into an
+  unmistakable NORTH-WEST back-left three-quarter view in classic RPG
+  orthographic presentation. Rear hair and the back of the hood/sweatshirt
+  dominate; the screen-left side plane is visible and the far side is compressed.
+  Hide both eyes and all frontal expression. Direction must read up-left from
+  head turn, shoulder overlap, hoodie planes, waistband, and shoe axes, never
+  direct NORTH or WEST.
+
+  CRITICAL SHEET OCCUPANCY: preserve the attached 3x4 occupancy guide exactly:
+  draw three complete candidates in each of four rows, 12 filled cells total.
+  Every one of the 3x4 cells must contain one complete
+  figure with background margin below the shoes; never omit, crop, merge, or
+  leave a cell empty.
+
+  Keep the complete figure at the same apparent height and scale as the identity
+  reference. Both soles share its exact floor line. No stride, gesture, weapon,
+  armor, cast shadow, floor, text, border, extra subject, detached pixels,
+  transparent holes, crop, foreshortening, or perspective shrink. Flat crisp
+  pixel art only. Separate all cells with continuous empty gutters.
+size: { width: 256, height: 390 }
+anchor: { x: 128, y: 255 }
+palette: { id: kenney-roguelike }
+seedFrames:
+  - path: briefs/characters/seeds/crawler-male-south-neutral-var-8.png
+    note: Immutable identity, scale, height, stance, palette, clothing, transparency, and floor-line baseline.
+    role: identity
+  - path: briefs/characters/seeds/crawler-male-north-west-neutral-3x4-guide.png
+    note: 12-slot NORTH-WEST occupancy and direction guide mirrored from the accepted NORTH-EAST anchor; preserve every cell, scale, stance, and floor line.
+    role: identity
+  - path: briefs/characters/seeds/player-male-north-west-skeleton.png
+    note: NORTH-WEST rotation and bone placement only; ignore its identity, scale, palette, and clothing.
+    role: pose-guide
+generation:
+  sheet:
+    rows: 4
+    cols: 3
+    emptyCells: []
+    nativeCanvas: 1024
+    nativeWidth: 1024
+    nativeHeight: 1536
+postprocessing: { trimAndFit: false, paletteMode: strict }
+sensors:
+  anchor: { mode: static }
+judge: { enabled: true, maxVariants: 12 }
+minVariations: 0
+tags: [player, contestant, male, neutral, north-west, directional-rig, identity-seed]
