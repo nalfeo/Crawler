@@ -230,12 +230,22 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryStep?.run).toContain(
       '-- \'-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"\'',
     );
-    expect(recoveryStep?.run).toContain('--sort created --order asc');
+    expect(recoveryStep?.run).toContain('--sort created --order asc --limit 1000');
     expect(recoveryStep?.run).not.toContain('"repo:${GITHUB_REPOSITORY} is:issue');
-    expect(recoveryStep?.run).toContain('gh api --paginate');
-    expect(recoveryStep?.run).toContain('Scheduled recovery skipped blocked issue');
-    expect(recoveryStep?.run).toContain('--limit 50');
-    expect(recoveryStep?.run).toContain('issues/$1/dependencies/blocked_by');
+    expect(recoveryStep?.run).toContain(
+      '"repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by"',
+    );
+    expect(recoveryStep?.run).toMatch(
+      /gh api --paginate \\\n\s+"repos\/\$\{GITHUB_REPOSITORY\}\/issues\/\$1\/dependencies\/blocked_by"/,
+    );
+    expect(recoveryStep?.run).toContain('find_open_dependency_blockers "${candidate_issue}"');
+    expect(recoveryStep?.run).toMatch(
+      /Scheduled recovery skipped blocked issue #\$\{candidate_issue\}.*continue/s,
+    );
+    expect(recoveryStep?.run).toMatch(
+      /for candidate_issue in \$\([\s\S]*gh search issues[\s\S]*find_open_dependency_blockers "\$\{candidate_issue\}"[\s\S]*continue[\s\S]*ISSUE_NUMBER="\$\{candidate_issue\}"/,
+    );
+    expect(recoveryStep?.run).toContain('find_open_dependency_blockers "${ISSUE_NUMBER}"');
     expect(recoveryStep?.run).toContain('Skipping before Goobers claim or repository mutation.');
     expect(recoveryStep?.run).toContain('should_run=false');
     expect(runStep?.if).toBe("steps.recovery.outputs.should_run != 'false'");
