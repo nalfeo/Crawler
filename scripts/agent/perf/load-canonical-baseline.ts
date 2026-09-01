@@ -67,9 +67,17 @@ export function getCanonicalBaselineMetadata(): {
   revision: number;
   expectedRunCounts: { floor1: number; floor2: number; chained: number };
 } {
+  // Path from scripts/agent/perf/ to tests/fixtures/:
+  // ../../tests/fixtures/canonical-release-baseline-summary.json
   const fixture = JSON.parse(
     readFileSync(
-      path.join(__dirname, '../../tests/fixtures/canonical-release-baseline-summary.json'),
+      path.resolve(
+        __dirname,
+        '../../..',
+        'tests',
+        'fixtures',
+        'canonical-release-baseline-summary.json',
+      ),
       'utf8',
     ),
   ) as {
