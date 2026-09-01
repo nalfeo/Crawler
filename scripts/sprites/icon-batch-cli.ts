@@ -32,6 +32,12 @@ import {
   createVisionProvider,
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
+import {
+  ensureRunDurable,
+  parseSourceRun,
+  resolveGenerationRunStore,
+  type GenerationRunStoreResolution,
+} from './run-durability.js';
 import { loadEnvLocal } from './sidecar/env-local.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -118,7 +124,7 @@ function isBriefFullyApproved(iconBatch: IconBatchEntry[]): boolean {
 }
 
 /** Run one brief through generate → approve → queue-commit. */
-async function runBrief(briefPath: string): Promise<void> {
+async function runBrief(briefPath: string, runStore: GenerationRunStoreResolution): Promise<void> {
   const briefId = path.basename(briefPath, '.yaml');
   process.stdout.write(`\n── icon-batch: ${briefId} ─────────────────────────\n`);
 
@@ -134,6 +140,7 @@ async function runBrief(briefPath: string): Promise<void> {
       textProvider,
       visionProvider,
       repoRoot: REPO_ROOT,
+      store: runStore.store,
     });
     runDir = result.runDir;
     process.stdout.write(`run dir : ${runDir}\n`);
@@ -147,6 +154,11 @@ async function runBrief(briefPath: string): Promise<void> {
   }
 
   // 2. Approve.
+  const coords = parseSourceRun(runDir);
+  if (!coords) {
+    throw new Error(`Cannot derive <briefId>/<runId> from generated run directory '${runDir}'.`);
+  }
+  await ensureRunDurable({ ...coords, durable: runStore.durable, localRunDir: runDir });
   const iconBatch = await readIconBatch(briefPath);
   const manifestPath = path.join(GENERATED_DIR, 'manifest.json');
   const publicAssetsDir = path.join(REPO_ROOT, 'public', 'assets');
@@ -266,20 +278,22 @@ async function printStatus(): Promise<void> {
   );
 }
 
-async function main(): Promise<void> {
+export async function main(argv: ReadonlyArray<string> = process.argv.slice(2)): Promise<number> {
   let parsed: ParsedArgs;
   try {
-    parsed = parseArgs(process.argv.slice(2));
+    parsed = parseArgs(argv);
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(1);
+    return 1;
   }
 
   try {
     switch (parsed.action) {
       case 'run': {
+        const runStore = resolveGenerationRunStore({ repoRoot: REPO_ROOT });
+        process.stdout.write(`${runStore.description}\n`);
         for (const brief of parsed.briefPaths) {
-          await runBrief(brief);
+          await runBrief(brief, runStore);
         }
         break;
       }
@@ -289,7 +303,7 @@ async function main(): Promise<void> {
           process.stderr.write(
             'No icon briefs found under briefs/icons/ — run generate-briefs first.\n',
           );
-          process.exit(1);
+          return 1;
         }
         // Skip briefs where every icon already has an approved shard — re-running
         // them wastes provider credits and produces duplicate content.
@@ -313,8 +327,10 @@ async function main(): Promise<void> {
         process.stdout.write(
           `icon-batch run-all: ${pending.length}/${briefs.length} brief(s) pending\n`,
         );
+        const runStore = resolveGenerationRunStore({ repoRoot: REPO_ROOT });
+        process.stdout.write(`${runStore.description}\n`);
         for (const brief of pending) {
-          await runBrief(brief);
+          await runBrief(brief, runStore);
         }
         break;
       }
@@ -323,12 +339,17 @@ async function main(): Promise<void> {
         break;
       }
     }
+    return 0;
   } catch (err) {
     process.stderr.write(
       `icon-batch: fatal: ${err instanceof Error ? err.message : String(err)}\n`,
     );
-    process.exit(1);
+    return 1;
   }
 }
 
-await main();
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const thisPath = path.resolve(__filename);
+if (invokedPath === thisPath) {
+  process.exit(await main());
+}

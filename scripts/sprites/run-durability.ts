@@ -34,7 +34,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createRunStore } from './store/index.js';
 import { LocalRunStore } from './store/local-store.js';
@@ -129,7 +129,8 @@ export function resolveGenerationRunStore(
       mode: 'ephemeral-explicit',
       description:
         `run store: LOCAL ONLY (${RUN_STORE_ENV}=local) — artifacts live at ${localRoot} ` +
-        `and are NOT durably persisted. Approvals from this run cannot be published to git.`,
+        `and are NOT durably persisted. Approvals from this run cannot be published to git ` +
+        `until they are durably backfilled.`,
     };
   }
 
@@ -143,7 +144,7 @@ export function resolveGenerationRunStore(
           'Fix one of these:\n' +
           '  • Refresh Azure credentials:  npm run setup:azure:env\n' +
           `  • Or opt explicitly into offline mode:  ${RUN_STORE_ENV}=local ` +
-          '(runs are then NOT publishable to git)\n',
+          '(runs must be durably backfilled before publication)\n',
       );
     }
   }
@@ -386,11 +387,18 @@ function walkFiles(root: string): readonly string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, entry.name);
       const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-      // `withFileTypes` reports symlinks separately; stat them so a linked
-      // artifact directory is still captured rather than silently skipped.
-      const isDir = entry.isDirectory() || (entry.isSymbolicLink() && statSync(abs).isDirectory());
-      if (isDir) visit(abs, rel);
-      else out.push(rel);
+      if (entry.isSymbolicLink()) {
+        throw new RunDurabilityError(
+          `Refusing to backfill ${root}: symbolic link '${rel}' escapes the run-directory trust boundary.`,
+        );
+      }
+      if (entry.isDirectory()) visit(abs, rel);
+      else if (entry.isFile()) out.push(rel);
+      else {
+        throw new RunDurabilityError(
+          `Refusing to backfill ${root}: unsupported filesystem entry '${rel}'.`,
+        );
+      }
     }
   };
   visit(root, '');

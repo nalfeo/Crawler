@@ -158,12 +158,12 @@ Direct generation CLIs follow the **same** Azure-first policy as the sidecar.
 `sprites:run` and `sprites:batch` resolve their run store through
 `scripts/sprites/run-durability.ts`:
 
-| `SPRITES_RUN_STORE` | Azure credentials | Result                                                                 |
-| ------------------- | ----------------- | ---------------------------------------------------------------------- |
-| unset               | present           | **durable** — Azure, mirrored to `generated/runs/` for local review    |
-| unset               | missing           | **fails closed** with setup guidance (no silent local-only generation) |
-| `local`             | (any)             | explicit offline mode — clearly labelled `LOCAL ONLY`, not publishable |
-| `azure-blob`        | present           | durable, mirrored                                                      |
+| `SPRITES_RUN_STORE` | Azure credentials | Result                                                                                |
+| ------------------- | ----------------- | ------------------------------------------------------------------------------------- |
+| unset               | present           | **durable** — Azure, mirrored to `generated/runs/` for local review                   |
+| unset               | missing           | **fails closed** with setup guidance (no silent local-only generation)                |
+| `local`             | (any)             | explicit offline mode — clearly labelled `LOCAL ONLY`; publish after durable backfill |
+| `azure-blob`        | present           | durable, mirrored                                                                     |
 
 Every run additionally persists a `provenance/` record — the authored brief
 verbatim (`provenance/brief.yaml`) plus the exact prompt, expanded effective
@@ -178,7 +178,7 @@ the required artifact set. If verification fails it exits **5** and publishes
 nothing. The backfill is `has`-gated, so re-running a failed approve is
 idempotent.
 
-To generate offline (nothing generated this way can be approved into git):
+To generate offline (backfill to durable storage before approval into git):
 
 ```bash
 SPRITES_RUN_STORE=local npm run sprites:run -- --brief <path>

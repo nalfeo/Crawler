@@ -279,7 +279,8 @@ sidecar binds 127.0.0.1 only - it is never reachable from the LAN.)
 > sliced candidates before any art can be approved into git, and `sprites:approve`
 > refuses to publish (exit 5) when that content is missing.
 > Do not switch to `SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop` unless a human
-> explicitly requests local/offline mode; runs generated that way are not publishable.
+> explicitly requests local/offline mode; runs generated that way must be durably
+> backfilled before publication.
 
 What the gallery shows, per candidate:
 

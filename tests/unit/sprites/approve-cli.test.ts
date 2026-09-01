@@ -203,6 +203,16 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
+  it('treats an ordinary durable-store error as a fail-closed exit 5', async () => {
+    durability.ensureRunDurable.mockRejectedValueOnce(new Error('Azure unavailable'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(5);
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
   it('skips the gate on CI, where the CLI approves locally and never pushes', async () => {
     process.env.CI = 'true';
 

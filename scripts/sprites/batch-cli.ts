@@ -34,6 +34,7 @@ import {
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 import { resolveGenerationRunStore } from './run-durability.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 
 interface BatchCliArgs {
   readonly briefs: ReadonlyArray<string>;
@@ -163,7 +164,8 @@ function printHelp(): void {
       '  ever existed in this worktree. Requires AZURE_STORAGE_ACCOUNT +',
       '  AZURE_STORAGE_KEY (or AZURE_STORAGE_CONNECTION_STRING).',
       '  SPRITES_RUN_STORE=local    Explicit offline mode. Artifacts are NOT durably',
-      '                             persisted and CANNOT be approved into git.',
+      '                             persisted and cannot be approved into git until',
+      '                             they are durably backfilled.',
       '  Without credentials and without SPRITES_RUN_STORE this command fails closed;',
       '  run `npm run setup:azure:env` to refresh credentials.',
       '',
@@ -243,6 +245,7 @@ function formatLine(result: BatchBriefResult, index: number, total: number): str
 }
 
 async function main(): Promise<number> {
+  loadEnvLocal(process.cwd());
   let args: BatchCliArgs;
   try {
     args = parseArgs(process.argv.slice(2));

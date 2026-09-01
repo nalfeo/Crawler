@@ -33,13 +33,13 @@ import {
   ensureRunDurable,
   parseSourceRun,
   resolvePublicationDurableStore,
-  RunDurabilityError,
 } from './run-durability.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
 import { writeShard } from './generated-shards.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -188,11 +188,10 @@ async function ensureApprovalDurable(repoRoot: string, runDir: string): Promise<
     );
     return 0;
   } catch (err) {
-    if (err instanceof RunDurabilityError) {
-      process.stderr.write(`approve failed (not durable): ${err.message}\n`);
-      return 5;
-    }
-    throw err;
+    process.stderr.write(
+      `approve failed (not durable): ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return 5;
   }
 }
 
@@ -250,6 +249,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   }
 
   const repoRoot = cwd;
+  loadEnvLocal(repoRoot);
   const publicAssetsDir = path.join(repoRoot, 'public', 'assets');
   const manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
   const catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');

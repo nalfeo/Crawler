@@ -17,7 +17,7 @@
  *     local storage; offline mode must be opted into explicitly.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -29,6 +29,7 @@ import {
   PROVENANCE_BRIEF_KEY,
   PROVENANCE_PROMPT_KEY,
   resolveGenerationRunStore,
+  resolvePublicationDurableStore,
   RUN_PROVENANCE_VERSION,
   RunDurabilityError,
 } from '../../../scripts/sprites/run-durability.js';
@@ -130,6 +131,28 @@ describe('resolveGenerationRunStore', () => {
     expect(() => resolveGenerationRunStore({ repoRoot: REPO_ROOT, env: {} })).toThrow(
       /setup:azure:env/,
     );
+  });
+
+  describe('resolvePublicationDurableStore', () => {
+    it('backfills an explicitly local run through Azure when credentials are available', () => {
+      const durable = new FakeStore();
+      expect(
+        resolvePublicationDurableStore({
+          repoRoot: REPO_ROOT,
+          env: { SPRITES_RUN_STORE: 'local', ...AZURE_ENV },
+          createStore: () => durable,
+        }),
+      ).toBe(durable);
+    });
+
+    it('refuses publication of an explicitly local run without Azure credentials', () => {
+      expect(
+        resolvePublicationDurableStore({
+          repoRoot: REPO_ROOT,
+          env: { SPRITES_RUN_STORE: 'local' },
+        }),
+      ).toBeNull();
+    });
   });
 
   it('names the explicit offline opt-out in the failure message', () => {
@@ -356,6 +379,23 @@ describe('ensureRunDurable', () => {
     expect(retry.backfilled).toContain('iron-sword/r1/summary.json');
     // Nothing already uploaded got written twice.
     expect(new Set(durable.puts).size).toBe(durable.puts.length);
+  });
+
+  it('rejects symbolic links instead of uploading content outside the run directory', async () => {
+    const runDir = path.join(makeTempDir(), 'iron-sword', 'r1');
+    seedLocalRun(runDir);
+    const outside = path.join(makeTempDir(), 'outside.png');
+    writeFileSync(outside, 'outside');
+    symlinkSync(outside, path.join(runDir, 'linked.png'));
+
+    await expect(
+      ensureRunDurable({
+        durable: new FakeStore(),
+        briefId: 'iron-sword',
+        runId: 'r1',
+        localRunDir: runDir,
+      }),
+    ).rejects.toThrow(/symbolic link/);
   });
 
   it('fails closed, naming the missing keys, when content is unrecoverable', async () => {

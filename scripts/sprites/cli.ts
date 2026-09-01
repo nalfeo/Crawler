@@ -35,6 +35,7 @@ import {
 } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 import { resolveGenerationRunStore } from './run-durability.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 import { ensureSidecarService } from './sidecar/service-manager.js';
 
 // The baseline `DEFAULT_AZURE_DEPLOYMENT` (provider/factory.ts) is listed first
@@ -208,7 +209,8 @@ function printHelp(): void {
       '  content that only ever existed in this worktree.',
       '  AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_KEY, or AZURE_STORAGE_CONNECTION_STRING',
       '  SPRITES_RUN_STORE=local    Explicit offline mode. Artifacts are NOT durably',
-      '                             persisted and CANNOT be approved into git.',
+      '                             persisted and cannot be approved into git until',
+      '                             they are durably backfilled.',
       '  Without credentials and without SPRITES_RUN_STORE this command fails closed;',
       '  run `npm run setup:azure:env` to refresh credentials.',
       '',
@@ -487,6 +489,7 @@ async function runOne(
 }
 
 async function main(): Promise<number> {
+  loadEnvLocal(process.cwd());
   let args: CliArgs;
   try {
     args = parseArgs(process.argv.slice(2));
