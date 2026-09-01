@@ -2448,6 +2448,144 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     expect(landed?.prNumber).toBe(first.prNumber);
   });
 
+  it(
+    'LANDED-FIX AMNESTY: converges instead of re-opening a duplicate PR forever ' +
+      '(regression: PR #4043 duplicating merged PR #4031)',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+
+      // `main` already has the good bytes for this asset (a prior, unrelated
+      // approval). Push directly onto main so it predates the queue mutation.
+      const goodWt = mkdtempSync(path.join(tmpdir(), 'rq-good-'));
+      try {
+        gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+        gitSync(liveDir, 'worktree', 'add', goodWt, '--detach', 'origin/main');
+        const genDir = path.join(goodWt, 'public', 'assets', 'generated');
+        const entriesDir = path.join(genDir, 'entries');
+        mkdirSync(entriesDir, { recursive: true });
+        writeFileSync(path.join(genDir, 'player-walk.png'), PNG_BYTES);
+        writeJson(path.join(entriesDir, 'player-walk.json'), {
+          assetPath: 'generated/player-walk.png',
+          spriteName: 'player-walk',
+          contentHash: TEST_CONTENT_HASH,
+        });
+        gitSync(goodWt, 'add', '--', 'public/assets/generated');
+        gitSync(goodWt, 'commit', '--no-verify', '-m', 'approve player-walk (good)');
+        gitSync(goodWt, 'push', 'origin', 'HEAD:refs/heads/main');
+      } finally {
+        gitSync(liveDir, 'worktree', 'remove', '--force', goodWt);
+        rmSync(goodWt, { recursive: true, force: true });
+      }
+
+      // The queue only ever gets the BAD bytes for the same path — main's
+      // history never carries them. Branch queue from main-with-the-good-bytes,
+      // then overwrite with the bad bytes in a separate commit.
+      const queueWt = mkdtempSync(path.join(tmpdir(), 'rq-bad-'));
+      try {
+        gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+        gitSync(liveDir, 'worktree', 'add', queueWt, '--detach', 'origin/main');
+        writeFileSync(
+          path.join(queueWt, 'public', 'assets', 'generated', 'player-walk.png'),
+          SUPERSEDING_PNG_BYTES,
+        );
+        gitSync(queueWt, 'add', '--', 'public/assets/generated');
+        gitSync(queueWt, 'commit', '--no-verify', '-m', 'approve player-walk (bad)');
+        gitSync(queueWt, 'push', 'origin', 'HEAD:refs/heads/assets/queue');
+      } finally {
+        gitSync(liveDir, 'worktree', 'remove', '--force', queueWt);
+        rmSync(queueWt, { recursive: true, force: true });
+      }
+
+      const gh = new FakeGh();
+      const first = await runReconcile(liveDir, realDeps(gh));
+      expect(first.status).toBe('pr-open');
+      expect(first.changedPaths).toContain('public/assets/generated/player-walk.png');
+
+      // Fix applied ON THE PROMOTE BRANCH before merge (restoring the bytes
+      // main already had) — the scenario that produced PR #4031/#4043.
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+      const fixWt = mkdtempSync(path.join(tmpdir(), 'rq-fix-'));
+      let fixedHead: string;
+      try {
+        gitSync(liveDir, 'worktree', 'add', fixWt, '--detach', 'origin/assets/promote');
+        writeFileSync(
+          path.join(fixWt, 'public', 'assets', 'generated', 'player-walk.png'),
+          PNG_BYTES,
+        );
+        gitSync(fixWt, 'add', '--', 'public/assets/generated');
+        gitSync(fixWt, 'commit', '--no-verify', '-m', 'restore player-walk before merge');
+        fixedHead = gitSync(fixWt, 'rev-parse', 'HEAD').trim();
+        gitSync(liveDir, 'push', 'origin', `${fixedHead}:refs/heads/assets/promote`);
+      } finally {
+        gitSync(liveDir, 'worktree', 'remove', '--force', fixWt);
+        rmSync(fixWt, { recursive: true, force: true });
+      }
+
+      // Squash-merge: `main`'s new commit carries the FIXED tree, so its own
+      // history never records the bad bytes queue still holds.
+      landPromotion(liveDir, gh, first.prNumber!, fixedHead);
+      expect(remoteSha(liveDir, 'main')).not.toBeNull();
+
+      const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+      // Without landed-fix amnesty this stays `false` forever (queue's bad
+      // bytes never equal main's current bytes) and the next cycle re-opens a
+      // duplicate promotion PR every hour.
+      expect(tidy.queueReset).toBe(true);
+      expect(remoteSha(liveDir, 'assets/queue')).toBe(remoteSha(liveDir, 'main'));
+
+      const second = await runReconcile(liveDir, realDeps(gh));
+      expect(second.status).toBe('noop');
+      expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+    },
+  );
+
+  it('LANDED-FIX AMNESTY: does not discard withheld queue paths untouched by the landed PR', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+
+    // Establish the path that will be amended on the promote branch before merge.
+    addArtDirectlyToMain(liveDir, ['player-walk']);
+    seedQueueWithArt(liveDir, ['player-walk', 'skull-mace-var-2']);
+    // Force a withheld queue path by moving main forward after the queue snapshot.
+    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+    // Queue-only bad bytes: promotable now, then fixed on promote before merge.
+    editQueuedArt(liveDir, 'player-walk', SUPERSEDING_PNG_BYTES);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    expect(first.changedPaths).toContain('public/assets/generated/player-walk.png');
+    expect(first.changedPaths).not.toContain('public/assets/generated/skull-mace-var-2.png');
+    expect(first.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const fixWt = mkdtempSync(path.join(tmpdir(), 'rq-fix-mixed-'));
+    let fixedHead: string;
+    try {
+      gitSync(liveDir, 'worktree', 'add', fixWt, '--detach', 'origin/assets/promote');
+      writeFileSync(
+        path.join(fixWt, 'public', 'assets', 'generated', 'player-walk.png'),
+        PNG_BYTES,
+      );
+      gitSync(fixWt, 'add', '--', 'public/assets/generated');
+      gitSync(fixWt, 'commit', '--no-verify', '-m', 'restore player-walk before merge');
+      fixedHead = gitSync(fixWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${fixedHead}:refs/heads/assets/promote`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', fixWt);
+      rmSync(fixWt, { recursive: true, force: true });
+    }
+
+    const queueBeforeTidy = remoteSha(liveDir, 'assets/queue');
+    landPromotion(liveDir, gh, first.prNumber!, fixedHead);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy.queueReset).toBe(false);
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueBeforeTidy);
+    expect(remoteSha(liveDir, 'assets/queue')).not.toBe(remoteSha(liveDir, 'main'));
+  });
+
   it('rejects non-integer merged PR numbers', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
