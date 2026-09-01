@@ -44,6 +44,8 @@ export async function aggregate(filter) {
         maxParallelism: summary.totals.maxParallelism,
         peakContextTokens: summary.totals.peakContextTokens || 0,
         compactions: summary.totals.compactions,
+        compactionsPerHour: summary.totals.compactionsPerHour || 0,
+        compactionStorm: !!summary.totals.compactionStorm,
         skillInvocations: summary.totals.skillInvocations,
         subagentSpawns: summary.totals.subagentSpawns,
         errors: summary.totals.errors,
@@ -130,6 +132,7 @@ export function sumSessionTotals(perSession) {
       acc.inputTokens += s.inputTokens;
       acc.cacheReadTokens += s.cacheReadTokens;
       acc.compactions += s.compactions;
+      acc.compactionStormSessions += s.compactionStorm ? 1 : 0;
       acc.skillInvocations += s.skillInvocations;
       acc.subagentSpawns += s.subagentSpawns;
       acc.errors += s.errors;
@@ -150,6 +153,7 @@ export function sumSessionTotals(perSession) {
       inputTokens: 0,
       cacheReadTokens: 0,
       compactions: 0,
+      compactionStormSessions: 0,
       skillInvocations: 0,
       subagentSpawns: 0,
       errors: 0,
