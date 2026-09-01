@@ -960,6 +960,19 @@ export function synchronizeAbilityPassives(
   }
 }
 
+/**
+ * Floor 3 Wranglers never operate active abilities either — only the
+ * Companion fights, and `restorePlayerCarryover` deliberately keeps the
+ * player's equipped actives intact for Floor 4, so this suppresses
+ * *activation* only. Without this, an auto-triggering active (e.g. an
+ * enemy-cluster spell) would still deal player-origin damage every frame it
+ * qualifies, even with the active weapon cleared by
+ * `floor3NonCombatantSystem`.
+ */
+function isPlayerActiveAbilitySuppressed(world: GameWorld, holderEid: number): boolean {
+  return world.floorId === 'floor3' && hasComponent(world.ecs, holderEid, Player);
+}
+
 export function abilitySystem(world: GameWorld): void {
   for (const holderEid of world.abilityStatesByEntity.keys()) {
     synchronizeAbilityPassives(world, holderEid);
@@ -968,6 +981,7 @@ export function abilitySystem(world: GameWorld): void {
   for (const event of world.abilityTriggerEvents) {
     const holderEid = event.holderEid;
     if (holderEid === undefined) continue;
+    if (isPlayerActiveAbilitySuppressed(world, holderEid)) continue;
 
     const stateLike = world.abilityStatesByEntity.get(holderEid);
     if (stateLike === undefined) continue;
@@ -984,6 +998,7 @@ export function abilitySystem(world: GameWorld): void {
   }
 
   for (const holderEid of world.abilityStatesByEntity.keys()) {
+    if (isPlayerActiveAbilitySuppressed(world, holderEid)) continue;
     const state = getOrCreateAbilityState(world, holderEid);
     for (const abilityId of state.equippedActiveAbilityIds) {
       const def = getAbilityDefinition(abilityId);

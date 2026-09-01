@@ -2,6 +2,7 @@ import { addComponent, hasComponent, query, setComponent } from 'bitecs';
 import {
   DeathTimer,
   Damage,
+  Companion,
   DoorState,
   Enemy,
   EnemyBehavior,
@@ -243,13 +244,34 @@ function deterministicLeapDuration(
   return min + ((h >>> 0) % range);
 }
 
+/**
+ * Every movement-decision helper below refuses to step an `Enemy` entity into
+ * the player's invincibility zone. Companions also carry `Enemy` (for query
+ * convenience — see companionKOSystem.ts) but are the player's own ally:
+ * without this exemption a Companion that spawns or idles inside a safe room
+ * (e.g. Floor 3's starter-pet entrance) can never take a single step, since
+ * every candidate destination from inside the zone is itself still "in the
+ * safe space" and gets rejected forever.
+ */
+function isSafeSpaceBlockedForMovement(
+  world: GameWorld,
+  eid: number,
+  x: number,
+  y: number,
+): boolean {
+  if (hasComponent(world.ecs, eid, Companion)) {
+    return false;
+  }
+  return isPointInSafeSpace(world, x, y);
+}
+
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   if (Math.hypot(x, y) > EPSILON) {
     const enemyX = world.stores.position.x[eid] ?? 0;
     const enemyY = world.stores.position.y[eid] ?? 0;
     const nextX = enemyX + x;
     const nextY = enemyY + y;
-    if (isPointInSafeSpace(world, nextX, nextY)) {
+    if (isSafeSpaceBlockedForMovement(world, eid, nextX, nextY)) {
       setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
       return;
     }
@@ -388,7 +410,7 @@ function applyIdleWander(
     const sampleY = py + dirY * WANDER_LOOKAHEAD_FT;
     return (
       !floorMap.isPassableAt(sampleX, sampleY) ||
-      isPointInSafeSpace(world, sampleX, sampleY) ||
+      isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY) ||
       (avoidDoors && isNearDoor(world, sampleX, sampleY))
     );
   };
@@ -407,7 +429,7 @@ function applyIdleWander(
       const clear =
         floorMap !== null &&
         floorMap.isPassableAt(aheadX, aheadY) &&
-        !isPointInSafeSpace(world, aheadX, aheadY);
+        !isSafeSpaceBlockedForMovement(world, eid, aheadX, aheadY);
       if (clear) {
         wanderMap.delete(eid);
         setNavigatingVelocity(world, eid, flee.x, flee.y, Math.max(0.025, speed * 0.7));
@@ -638,7 +660,10 @@ function setNavigatingVelocity(
     const candidate = rotate(desired.x, desired.y, offset);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -674,7 +699,10 @@ function tryUnstuckVelocity(
     const candidate = rotate(desired.x, desired.y, angle);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -2243,6 +2271,7 @@ export function enemyAISystem(world: GameWorld): void {
     // Floor 3 slice 4: SUPPORT is movement-only; remove this exclusion when
     // the Kindler support-ability slice wires its actual attack/buff payload.
     if (
+      !hasComponent(world.ecs, eid, Companion) &&
       behaviorType !== AI_TYPE.SUPPORT &&
       attackRange > EPSILON &&
       distanceToPlayer <= attackRange

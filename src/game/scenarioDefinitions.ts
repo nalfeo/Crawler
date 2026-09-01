@@ -79,6 +79,9 @@ import {
 } from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
+import { companionCombatSystem } from './systems/companionCombatSystem.js';
+import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
+import { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
@@ -792,7 +795,12 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       selectKeptCompanion: selectFloor3KeptCompanion,
       autoSelectKeptCompanion: autoDefaultFloor3KeptCompanion,
       onStairDescend: confirmFloor3StairDescend,
-      beforeEnemyAISystems: [companionAISystem],
+      beforeWeaponSystems: [floor3NonCombatantSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        floor3WildTargetRedirectSystem,
+        companionCombatSystem,
+      ],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       director: FLOOR_3_DIRECTOR,
       getRunOutcome: getFloor3RunOutcome,
