@@ -776,6 +776,55 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Floor 3 slice 8: authored Final Four candidate pool read only by selectFloor3FinalFour in the same file; exported so roster-authoring tests validate the full pool shape and id uniqueness.',
     expiresOn: '2026-11-22',
   },
+  {
+    file: 'src/engine/phaser-bridge/sprite-kind.ts',
+    name: 'PLACEHOLDER_SPAWNER_TINT',
+    reason:
+      'Red multiply-tint constant for art-less spawner structures, consumed only by placeholderSpawnerTint/enemyAppearanceTint in the same file; exported so tint unit tests assert the exact hex value.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/engine/phaser-bridge/sprite-kind.ts',
+    name: 'RAT_BRUTE_TINT',
+    reason:
+      'Rat Brute variant tint constant, consumed only by enemyAppearanceTint in the same file; exported so tint unit tests assert the exact hex value.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/engine/phaser-bridge/sprite-kind.ts',
+    name: 'placeholderSpawnerTint',
+    reason:
+      'Pure spawner-tint resolver split out of enemyAppearanceTint for isolated testing without a Phaser scene; production reaches it only through enemyAppearanceTint in the same file.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/engine/phaser-bridge/sprite-kind.ts',
+    name: 'generatedBriefIdForHarvestable',
+    reason:
+      'Pure harvestable-node briefId lookup split out of pickGeneratedHarvestableTextureKey for isolated testing; production reaches it only through pickGeneratedHarvestableTextureKey in the same file. The only external src/ importer is src/labs/main-scene-probe-lab (excluded from production evidence).',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/engine/phaser-bridge/sprite-kind.ts',
+    name: 'GENERATED_KEY_BY_NPC_DEF',
+    reason:
+      'Pinned NPC def-id -> generated texture key map, consumed only by pickGeneratedNpcTextureKey in the same file; exported so unit tests can assert the mapping directly against src/shared/data/npc-sprite-map.json.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor6Scenario.ts',
+    name: 'getFloor6UpgradeOffers',
+    reason:
+      'Public read accessor for the Floor 6 run-scoped upgrade offer manifest, part of the atomic purchase API (see purchaseFloor6UpgradeOffer). The Floor 6 upgrade-picker UI that drives it lands in a follow-up slice; unit and headless observability tests read the manifest directly in the interim.',
+    expiresOn: '2026-11-22',
+  },
+  {
+    file: 'src/game/floor6Scenario.ts',
+    name: 'purchaseFloor6UpgradeOffer',
+    reason:
+      'Atomic purchase transaction for a Floor 6 run-scoped upgrade offer (no-op for unknown/duplicate/unaffordable/non-Floor-6 requests). The Floor 6 upgrade-picker UI that calls it lands in a follow-up slice; unit tests exercise every branch of the transaction directly in the interim.',
+    expiresOn: '2026-11-22',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {

@@ -50,6 +50,7 @@ import {
   Damage,
   Projectile,
   XpGem,
+  BuildCurrencyPickup,
   Sprite,
   EnemyBehavior,
   Spawner,
@@ -1047,6 +1048,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Damage, stores.damage);
   wireStore(ecs, Projectile, stores.projectile);
   wireStore(ecs, XpGem, stores.xpGem);
+  wireStore(ecs, BuildCurrencyPickup, stores.buildCurrencyPickup);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, Spawner, stores.spawner);

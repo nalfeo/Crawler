@@ -690,6 +690,10 @@ export function createPhaserBridge(
   const goldSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each gold entity. */
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
+  /** Tracks first-seen render time for Floor 6 build-currency drops so the bob phase is per-token. */
+  const buildCurrencySpawnMs = new Map<number, number>();
+  /** Ground shadow ellipses for each Floor 6 build-currency entity. */
+  const buildCurrencyShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   /** Rendered visuals for Prop entities (sprite when wired, rectangle placeholder otherwise). */
   const propVisuals = new Map<number, PropVisual>();
   /**
@@ -2036,6 +2040,30 @@ export function createPhaserBridge(
             break;
           }
 
+          case 'build_currency': {
+            // Same bobbing-drop treatment as gold so Floor 6 construction
+            // tokens read as a collectible, not ammunition.
+            if (!buildCurrencySpawnMs.has(eid)) {
+              buildCurrencySpawnMs.set(eid, renderElapsedMs);
+              if (typeof scene.add.ellipse === 'function') {
+                const shadow = scene.add.ellipse(x, y + 9, 14, 5, 0x000000, 0.25);
+                shadow.setDepth(img.depth - 1);
+                buildCurrencyShadows.set(eid, shadow);
+              }
+            }
+            const phaseOffset = (eid % 11) * 0.57;
+            const elapsed = renderElapsedMs - (buildCurrencySpawnMs.get(eid) ?? renderElapsedMs);
+            const bob = Math.sin(elapsed * 0.009 + phaseOffset) * 4;
+            img.setPosition(x, y + bob);
+            img.setAlpha(1);
+            img.setScale(visual.baseScale);
+            const buildCurrencyShadow = buildCurrencyShadows.get(eid);
+            if (buildCurrencyShadow) {
+              buildCurrencyShadow.setPosition(x, y + 9);
+            }
+            break;
+          }
+
           default:
             img.setAlpha(1);
             img.setRotation(0);
@@ -2733,6 +2761,15 @@ export function createPhaserBridge(
         goldSpawnMs.delete(eid);
       }
 
+      for (const [eid] of buildCurrencySpawnMs) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        buildCurrencyShadows.get(eid)?.destroy();
+        buildCurrencyShadows.delete(eid);
+        buildCurrencySpawnMs.delete(eid);
+      }
+
       const deltaMs =
         lastRenderMs === null ? 16 : Math.max(1, Math.min(50, renderElapsedMs - lastRenderMs));
       lastRenderMs = renderElapsedMs;
@@ -2842,6 +2879,12 @@ export function createPhaserBridge(
       }
       goldShadows.clear();
       goldSpawnMs.clear();
+
+      for (const shadow of buildCurrencyShadows.values()) {
+        shadow.destroy();
+      }
+      buildCurrencyShadows.clear();
+      buildCurrencySpawnMs.clear();
 
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
