@@ -29,11 +29,17 @@ import {
   type ManifestEntry,
 } from './approve.js';
 import { runQueueCommit } from './queue-commit.js';
+import {
+  ensureRunDurable,
+  parseSourceRun,
+  resolvePublicationDurableStore,
+} from './run-durability.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
 import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
 import { writeShard } from './generated-shards.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
+import { loadEnvLocal } from './sidecar/env-local.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -154,6 +160,42 @@ function exitCodeForError(kind: ApproveError['kind']): number {
 }
 
 /**
+ * FAIL-CLOSED pre-publication durability gate.
+ *
+ * Backfills anything the durable run store is missing from the local run
+ * directory (covering both pre-contract runs and a partially-failed upload),
+ * then verifies the required artifact set. Returns `0` to proceed, or a
+ * non-zero exit code that must abort the approval BEFORE any manifest entry or
+ * queue commit is written. Idempotent: uploads are `has`-gated, so re-running a
+ * failed approve converges instead of duplicating anything.
+ */
+async function ensureApprovalDurable(repoRoot: string, runDir: string): Promise<number> {
+  try {
+    const coords = parseSourceRun(runDir);
+    if (!coords) {
+      process.stderr.write(
+        `approve failed (not durable): cannot derive <briefId>/<runId> from run dir '${runDir}'. ` +
+          `Expected a path ending in runs/<briefId>/<runId>.\n`,
+      );
+      return 5;
+    }
+    const durable = resolvePublicationDurableStore({ repoRoot });
+    const result = await ensureRunDurable({ ...coords, durable, localRunDir: runDir });
+    process.stdout.write(
+      result.backfilled.length > 0
+        ? `  durability: backfilled ${result.backfilled.length} artifact(s) to the durable run store\n`
+        : `  durability: run already persisted (${result.verified.length} artifacts)\n`,
+    );
+    return 0;
+  } catch (err) {
+    process.stderr.write(
+      `approve failed (not durable): ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return 5;
+  }
+}
+
+/**
  * Best-effort LLM tag enrichment after a successful approval.
  * Never throws or blocks the approval result — enrichment is optional.
  */
@@ -207,12 +249,26 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   }
 
   const repoRoot = cwd;
+  loadEnvLocal(repoRoot);
   const publicAssetsDir = path.join(repoRoot, 'public', 'assets');
   const manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
   const catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
   const runDir = path.isAbsolute(parsed.runDir)
     ? parsed.runDir
     : path.join(repoRoot, parsed.runDir);
+
+  // FAIL-CLOSED durability gate (see run-durability.ts). Approving writes a
+  // manifest entry whose `sourceRun` pointer — and a commit on the assets/queue
+  // branch — both promise that the generating run still exists somewhere
+  // recoverable. Before this gate they could promise a run that lived only
+  // inside one gitignored worktree directory, which is exactly how seven
+  // finished directional runs were lost. Skipped under CI, where this CLI
+  // intentionally approves locally and never pushes (see the queue-commit
+  // blocks below): with no git publication there is nothing to fail closed on.
+  if (process.env.CI === undefined) {
+    const durabilityExit = await ensureApprovalDurable(repoRoot, runDir);
+    if (durabilityExit !== 0) return durabilityExit;
+  }
 
   try {
     // ── Icon-batch path ──────────────────────────────────────────────────────
