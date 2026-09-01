@@ -11,6 +11,7 @@ import { attachBarriersToFloorMap } from '../core/barriers/index.js';
 import {
   BroadcastRelayRaider,
   BroadcastScore,
+  BuildCurrencyPickup,
   Damage,
   Enemy,
   Health,
@@ -23,7 +24,7 @@ import {
   Weight,
   type GameWorld,
 } from '../core/index.js';
-import { clearEntityStores, createEntity } from '../core/helpers.js';
+import { clearEntityStores, createEntity, spawnBuildCurrencyPickup } from '../core/helpers.js';
 import {
   broadcastRelaySetOptionsFromConfig,
   computeBroadcastRelaySetLayout,
@@ -34,6 +35,8 @@ import { floor6Manifest } from '../shared/floor-manifest.js';
 import type {
   Floor6DefenseRunStats,
   Floor6DefenseState,
+  Floor6UpgradeOfferManifestEntry,
+  Floor6UpgradeSelectionResult,
   Floor6WaveManifestEntry,
 } from '../shared/floor-types.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
@@ -53,6 +56,23 @@ function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
     throw new Error('Floor 6 manifest is missing floor6 configuration');
   }
   return config;
+}
+
+function createFloor6EconomyState(): Floor6DefenseState['economy'] {
+  return {
+    balance: 0,
+    totalEarned: 0,
+    totalSpent: 0,
+    earnedFromPickups: 0,
+    earnedFromWaves: 0,
+    pickupsSpawned: 0,
+    pickupsCollected: 0,
+    rewardedWaveIndexes: [],
+    unlockedOfferIds: [],
+    selectedOfferIds: [],
+    selectionTrace: [],
+    terminalResetCount: 0,
+  };
 }
 
 export function _buildFloor6MapConfig(): MapConfig {
@@ -91,6 +111,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     rngStreamKeys,
     geometry: computeBroadcastRelaySetLayout(broadcastRelaySetOptionsFromConfig(mapConfig)),
     waveManifest: null,
+    upgradeOfferManifest: null,
     liveEnemies: [],
     nextReleaseIndex: 0,
     spawnDebt: 0,
@@ -98,6 +119,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     stallFrames: 0,
     totalReleased: 0,
     lastReleaseFrame: 0,
+    economy: createFloor6EconomyState(),
   };
 }
 
@@ -207,11 +229,41 @@ function buildFloor6WaveManifest(
         entranceId: route.entranceId,
         archetypeId,
         releaseTick: entry.releaseTick,
+        buildCurrencyReward:
+          config.economy?.enemyRewards.find((reward) => reward.archetypeId === archetypeId)
+            ?.buildCurrency ?? 0,
       });
       manifestIndex += 1;
     }
   }
   return Object.freeze(entries);
+}
+
+function buildFloor6UpgradeOfferManifest(
+  state: Floor6DefenseState,
+  config: NonNullable<typeof floor6Manifest.floor6>,
+): readonly Floor6UpgradeOfferManifestEntry[] {
+  const offers = config.upgrades?.offers ?? [];
+  const offerCount = Math.min(config.upgrades?.offerCount ?? 0, offers.length);
+  const rng = new SeededRandom(hashStringToSeed(state.rngStreamKeys.upgrades));
+  const pool = offers
+    .map((offer, stableIndex) => ({ offer, stableIndex }))
+    .sort((a, b) => a.offer.id.localeCompare(b.offer.id));
+  const selected: Floor6UpgradeOfferManifestEntry[] = [];
+
+  while (selected.length < offerCount && pool.length > 0) {
+    const index = Math.floor(rng.next() * pool.length);
+    const [entry] = pool.splice(index, 1);
+    if (!entry) continue;
+    selected.push({
+      offerId: entry.offer.id,
+      stableIndex: entry.stableIndex,
+      cost: entry.offer.cost,
+      effect: { ...entry.offer.effect },
+    });
+  }
+
+  return Object.freeze(selected.sort((a, b) => a.stableIndex - b.stableIndex));
 }
 
 /**
@@ -297,6 +349,112 @@ function clearFloor6Raiders(world: GameWorld, state: Floor6DefenseState): void {
   state.spawnDebt = 0;
 }
 
+function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseState): void {
+  for (const eid of query(world.ecs, [BuildCurrencyPickup])) {
+    if (entityExists(world.ecs, eid)) {
+      removeEntity(world.ecs, eid);
+      clearEntityStores(world, eid);
+    }
+  }
+  const resetCount = state.economy.terminalResetCount + 1;
+  state.economy = createFloor6EconomyState();
+  state.economy.terminalResetCount = resetCount;
+  state.upgradeOfferManifest = [];
+}
+
+function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
+  clearFloor6Raiders(world, state);
+  clearFloor6EconomyForTerminal(world, state);
+}
+
+function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
+  const offers = state.upgradeOfferManifest ?? [];
+  state.economy.unlockedOfferIds = offers
+    .filter(
+      (offer) =>
+        offer.cost <= state.economy.balance &&
+        !state.economy.selectedOfferIds.includes(offer.offerId),
+    )
+    .map((offer) => offer.offerId);
+}
+
+function creditFloor6WaveRewards(state: Floor6DefenseState): void {
+  const config = getFloor6Config();
+  const manifest = state.waveManifest;
+  if (!manifest || !config.economy) return;
+
+  for (const reward of config.economy.waveRewards) {
+    if (state.economy.rewardedWaveIndexes.includes(reward.waveIndex)) continue;
+    const waveEntries = manifest.filter((entry) => entry.waveIndex === reward.waveIndex);
+    if (waveEntries.length === 0) continue;
+    const waveResolved = waveEntries.every((entry) => {
+      const record = state.liveEnemies[entry.manifestIndex];
+      return record?.stallResolved === true;
+    });
+    if (!waveResolved) continue;
+
+    state.economy.rewardedWaveIndexes.push(reward.waveIndex);
+    state.economy.balance += reward.buildCurrency;
+    state.economy.totalEarned += reward.buildCurrency;
+    state.economy.earnedFromWaves += reward.buildCurrency;
+  }
+}
+
+function spawnFloor6BuildCurrencyReward(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  entry: Floor6WaveManifestEntry,
+  eid: number,
+): void {
+  if (entry.buildCurrencyReward <= 0) return;
+  const x = world.stores.position.x[eid] ?? 0;
+  const y = world.stores.position.y[eid] ?? 0;
+  spawnBuildCurrencyPickup(world, x, y, entry.buildCurrencyReward);
+  state.economy.pickupsSpawned += 1;
+}
+
+export function getFloor6UpgradeOffers(
+  world: GameWorld,
+): readonly Floor6UpgradeOfferManifestEntry[] {
+  return world.floorExtendedState?.floor6Defense?.upgradeOfferManifest ?? [];
+}
+
+export function purchaseFloor6UpgradeOffer(
+  world: GameWorld,
+  offerId: string,
+): Floor6UpgradeSelectionResult {
+  const state = floor6DefenseState(world);
+  if (!state) return { ok: false, reason: 'not-floor6' };
+  const balanceBefore = state.economy.balance;
+  const offer = state.upgradeOfferManifest?.find((candidate) => candidate.offerId === offerId);
+  let reason: Floor6UpgradeSelectionResult['reason'] = 'purchased';
+  let ok = false;
+
+  if (!offer) {
+    reason = 'unknown-offer';
+  } else if (state.economy.selectedOfferIds.includes(offerId)) {
+    reason = 'duplicate';
+  } else if (balanceBefore < offer.cost) {
+    reason = 'unaffordable';
+  } else {
+    ok = true;
+    state.economy.balance = balanceBefore - offer.cost;
+    state.economy.totalSpent += offer.cost;
+    state.economy.selectedOfferIds.push(offerId);
+  }
+
+  refreshFloor6UnlockedOffers(state);
+  state.economy.selectionTrace.push({
+    frame: world.frameCount,
+    offerId,
+    ok,
+    reason,
+    balanceBefore,
+    balanceAfter: state.economy.balance,
+  });
+  return { ok, reason };
+}
+
 /**
  * Count live raider entities currently in world (health > 0 and entity exists).
  */
@@ -315,13 +473,24 @@ function countLiveFloor6Raiders(world: GameWorld): number {
 function reconcileFloor6LiveEnemies(world: GameWorld, state: Floor6DefenseState): void {
   for (const record of state.liveEnemies) {
     if (record.eid <= 0 || record.stallResolved) continue;
+    const eid = record.eid;
     const alive =
       entityExists(world.ecs, record.eid) && (world.stores.health.current[record.eid] ?? 0) > 0;
     if (!alive) {
+      const manifestEntry = state.waveManifest?.find((candidate) => {
+        const rec = state.liveEnemies[candidate.manifestIndex];
+        return rec === record;
+      });
+      if (manifestEntry && !record.rewardSpawned && entityExists(world.ecs, eid)) {
+        spawnFloor6BuildCurrencyReward(world, state, manifestEntry, eid);
+        record.rewardSpawned = true;
+      }
       record.eid = -1;
       record.stallResolved = true;
     }
   }
+  creditFloor6WaveRewards(state);
+  refreshFloor6UnlockedOffers(state);
 }
 
 /**
@@ -369,7 +538,13 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
 
     // Ensure liveEnemies record exists
     while (state.liveEnemies.length <= entry.manifestIndex) {
-      state.liveEnemies.push({ eid: 0, waypointIndex: 0, stillFrames: 0, stallResolved: false });
+      state.liveEnemies.push({
+        eid: 0,
+        waypointIndex: 0,
+        stillFrames: 0,
+        stallResolved: false,
+        rewardSpawned: false,
+      });
     }
     const rec = state.liveEnemies[entry.manifestIndex]!;
 
@@ -529,6 +704,8 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   if (state.phase.kind === 'SETUP') {
     const manifest = buildFloor6WaveManifest(state, config);
     state.waveManifest = manifest;
+    state.upgradeOfferManifest = buildFloor6UpgradeOfferManifest(state, config);
+    state.economy = createFloor6EconomyState();
     state.relayHp = tuning?.relayMaxHp ?? 100;
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
@@ -548,14 +725,14 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     }
   }
   if (playerDead) {
-    clearFloor6Raiders(world, state);
+    clearFloor6TerminalState(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'player-death');
     return;
   }
 
   // ── Terminal precedence check 2: relay destroyed ──────────────────────────
   if (state.relayHp <= 0) {
-    clearFloor6Raiders(world, state);
+    clearFloor6TerminalState(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'relay-destroyed');
     return;
   }
@@ -589,7 +766,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 
   if (state.stallFrames >= backstopFrames) {
-    clearFloor6Raiders(world, state);
+    clearFloor6TerminalState(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'stall-backstop');
     return;
   }
@@ -625,6 +802,21 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     liveEnemyCount: liveCount,
     stalledCount,
     waveManifestLength: state.waveManifest?.length ?? 0,
+    buildCurrencyBalance: state.economy.balance,
+    buildCurrencyEarned: state.economy.totalEarned,
+    buildCurrencySpent: state.economy.totalSpent,
+    buildCurrencyEarnedFromPickups: state.economy.earnedFromPickups,
+    buildCurrencyEarnedFromWaves: state.economy.earnedFromWaves,
+    buildCurrencyPickupsSpawned: state.economy.pickupsSpawned,
+    buildCurrencyPickupsCollected: state.economy.pickupsCollected,
+    upgradeOffers: (state.upgradeOfferManifest ?? []).map((offer) => ({
+      ...offer,
+      effect: { ...offer.effect },
+    })),
+    unlockedOfferIds: [...state.economy.unlockedOfferIds],
+    selectedOfferIds: [...state.economy.selectedOfferIds],
+    upgradeSelectionTrace: state.economy.selectionTrace.map((entry) => ({ ...entry })),
+    terminalResetCount: state.economy.terminalResetCount,
   };
 }
 

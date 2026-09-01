@@ -991,6 +991,8 @@ export interface Floor6DefenseState {
   readonly geometry: Floor6DefenseGeometry;
   /** Immutable wave schedule built at SETUP→DEFEND. Null before first transition. */
   waveManifest: readonly Floor6WaveManifestEntry[] | null;
+  /** Seeded without-replacement upgrade offer manifest. Null before first transition. */
+  upgradeOfferManifest: readonly Floor6UpgradeOfferManifestEntry[] | null;
   /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
   readonly liveEnemies: Floor6LiveEnemyRecord[];
   /** Index into waveManifest of next entry to release. */
@@ -1005,6 +1007,55 @@ export interface Floor6DefenseState {
   totalReleased: number;
   /** Frame on which the last enemy was released (used for stall tracking). */
   lastReleaseFrame: number;
+  /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
+  economy: Floor6EconomyState;
+}
+
+export interface Floor6EconomyState {
+  balance: number;
+  totalEarned: number;
+  totalSpent: number;
+  earnedFromPickups: number;
+  earnedFromWaves: number;
+  pickupsSpawned: number;
+  pickupsCollected: number;
+  rewardedWaveIndexes: number[];
+  unlockedOfferIds: string[];
+  selectedOfferIds: string[];
+  selectionTrace: Floor6UpgradeSelectionTraceEntry[];
+  terminalResetCount: number;
+}
+
+export interface Floor6UpgradeSelectionTraceEntry {
+  readonly frame: number;
+  readonly offerId: string;
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+  readonly balanceBefore: number;
+  readonly balanceAfter: number;
+}
+
+export type Floor6UpgradeSelectionFailureReason =
+  | 'not-floor6'
+  | 'unknown-offer'
+  | 'duplicate'
+  | 'unaffordable';
+
+export interface Floor6UpgradeSelectionResult {
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+}
+
+export interface Floor6UpgradeEffect {
+  readonly kind: string;
+  readonly value: number;
+}
+
+export interface Floor6UpgradeOfferManifestEntry {
+  readonly offerId: string;
+  readonly stableIndex: number;
+  readonly cost: number;
+  readonly effect: Floor6UpgradeEffect;
 }
 
 /**
@@ -1020,6 +1071,8 @@ export interface Floor6WaveManifestEntry {
   readonly archetypeId: string;
   /** Absolute frame at which this entry is eligible to release. */
   readonly releaseTick: number;
+  /** Collectible floor-scoped build currency spawned when this raider dies. */
+  readonly buildCurrencyReward: number;
 }
 
 /** Per-entry mutable runtime tracking. Index mirrors manifestIndex. */
@@ -1032,6 +1085,8 @@ export interface Floor6LiveEnemyRecord {
   stillFrames: number;
   /** True once the stall was detected and logged — prevents repeated telemetry. */
   stallResolved: boolean;
+  /** True once this manifest entry has spawned its Floor 6 build-currency reward. */
+  rewardSpawned: boolean;
 }
 
 /** Telemetry snapshot emitted by the director at every phase transition. */
@@ -1046,6 +1101,18 @@ export interface Floor6DefenseRunStats {
   readonly liveEnemyCount: number;
   readonly stalledCount: number;
   readonly waveManifestLength: number;
+  readonly buildCurrencyBalance: number;
+  readonly buildCurrencyEarned: number;
+  readonly buildCurrencySpent: number;
+  readonly buildCurrencyEarnedFromPickups: number;
+  readonly buildCurrencyEarnedFromWaves: number;
+  readonly buildCurrencyPickupsSpawned: number;
+  readonly buildCurrencyPickupsCollected: number;
+  readonly upgradeOffers: readonly Floor6UpgradeOfferManifestEntry[];
+  readonly unlockedOfferIds: readonly string[];
+  readonly selectedOfferIds: readonly string[];
+  readonly upgradeSelectionTrace: readonly Floor6UpgradeSelectionTraceEntry[];
+  readonly terminalResetCount: number;
 }
 
 /**

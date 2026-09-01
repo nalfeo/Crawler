@@ -1104,6 +1104,54 @@ export const floorManifestDefSchema = z
               .strict(),
           )
           .optional(),
+        economy: z
+          .object({
+            buildCurrencyId: z.string().min(1),
+            enemyRewards: z
+              .array(
+                z
+                  .object({
+                    archetypeId: z.string().min(1),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+            waveRewards: z
+              .array(
+                z
+                  .object({
+                    waveIndex: z.number().int().nonnegative(),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        upgrades: z
+          .object({
+            offerCount: z.number().int().positive(),
+            offers: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    cost: z.number().int().nonnegative(),
+                    effect: z
+                      .object({
+                        kind: z.string().min(1),
+                        value: z.number(),
+                      })
+                      .strict(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .superRefine((floor6, ctx) => {
@@ -1126,6 +1174,77 @@ export const floorManifestDefSchema = z
               path: ['supportedFootprints', index],
               message: `supported footprint "${footprint.id}" exceeds route width`,
             });
+          }
+        }
+        const waveIndexes = new Set<number>();
+        for (const [index, wave] of (floor6.waves ?? []).entries()) {
+          if (waveIndexes.has(wave.waveIndex)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['waves', index, 'waveIndex'],
+              message: `duplicate waveIndex ${wave.waveIndex}`,
+            });
+          }
+          waveIndexes.add(wave.waveIndex);
+        }
+        if (floor6.economy) {
+          const pack = getFloorEnemyPack('floor6-renovation-crew');
+          const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
+          const rewardArchetypeIds = new Set<string>();
+          for (const [index, reward] of floor6.economy.enemyRewards.entries()) {
+            if (rewardArchetypeIds.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `duplicate enemy reward archetype "${reward.archetypeId}"`,
+              });
+            }
+            rewardArchetypeIds.add(reward.archetypeId);
+            if (!knownArchetypes.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `unknown Floor 6 reward archetype "${reward.archetypeId}"`,
+              });
+            }
+          }
+          const rewardedWaveIndexes = new Set<number>();
+          for (const [index, reward] of floor6.economy.waveRewards.entries()) {
+            if (rewardedWaveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `duplicate wave reward index ${reward.waveIndex}`,
+              });
+            }
+            rewardedWaveIndexes.add(reward.waveIndex);
+            if (!waveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `wave reward references unknown waveIndex ${reward.waveIndex}`,
+              });
+            }
+          }
+        }
+        if (floor6.upgrades) {
+          if (floor6.upgrades.offerCount > floor6.upgrades.offers.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offerCount'],
+              message: `offerCount ${floor6.upgrades.offerCount} exceeds ${floor6.upgrades.offers.length} authored offers`,
+            });
+          }
+          const offerIds = new Set<string>();
+          for (const [index, offer] of floor6.upgrades.offers.entries()) {
+            if (offerIds.has(offer.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['upgrades', 'offers', index, 'id'],
+                message: `duplicate upgrade offer id "${offer.id}"`,
+              });
+            }
+            offerIds.add(offer.id);
           }
         }
       })

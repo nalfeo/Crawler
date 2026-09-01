@@ -34,6 +34,8 @@ export const Projectile = {};
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
 export const XpGem = {};
+/** Floor-scoped build currency pickup; never mutates persistent player gold. */
+export const BuildCurrencyPickup = {};
 export const DroppedItem = {};
 export const Inventory = {};
 export const Sprite = {};
@@ -229,6 +231,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       lastFireMs: new Float32Array(maxEntities),
     },
     xpGem: { value: new Float32Array(maxEntities) },
+    buildCurrencyPickup: { value: new Float32Array(maxEntities) },
     projectile: {
       pierce: new Uint8Array(maxEntities),
       hitCount: new Uint8Array(maxEntities),
