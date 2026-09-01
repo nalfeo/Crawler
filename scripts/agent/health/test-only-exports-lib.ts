@@ -815,7 +815,7 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/game/floor6Scenario.ts',
     name: 'getFloor6UpgradeOffers',
     reason:
-      'Public read accessor for the Floor 6 run-scoped upgrade offer manifest, part of the atomic purchase API (see purchaseFloor6UpgradeOffer). The Floor 6 upgrade-picker UI that drives it lands in a follow-up slice; an eager headless auto-buyer was tried and reverted because it emptied the very offers this API exposes before a run stats snapshot could observe them (tests/headless/floor6-economy-obs.test.ts).',
+      'Public read accessor for the Floor 6 run-scoped upgrade offer manifest, part of the atomic purchase API (see purchaseFloor6UpgradeOffer). The Floor 6 upgrade-picker UI that drives it lands in a follow-up slice; unit and headless observability tests read the manifest directly in the interim.',
     expiresOn: '2026-11-22',
   },
   {
