@@ -85,8 +85,7 @@ function makeMockPaginate(port) {
 }
 
 test('canaryAlertTitle is a fixed, stable string', () => {
-  assert.equal(canaryAlertTitle(), canaryAlertTitle());
-  assert.match(canaryAlertTitle(), /canary/i);
+  assert.equal(canaryAlertTitle(), 'Dev-build ingest canary: GitHub issue-filing check is failing');
 });
 
 test('buildCanaryAlertBody embeds error, timestamps, repetition count, and run url', () => {

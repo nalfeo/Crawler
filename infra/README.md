@@ -292,10 +292,15 @@ the credential without a full redeployment, you can still update the app
 setting directly:
 
 ```powershell
+# Store the new value in a local env-var first — never pass the raw token
+# as a positional argument because command-line arguments land in shell
+# history, process listings, and audit logs.
+$env:CRAWLER_CI_PAT = '<repository-owner-PAT-with-issues-write>'   # populate securely (e.g. Read-Host -AsSecureString, a vault CLI, or a CI secret)
+
 az functionapp config appsettings set `
   --name <function-app-name> `
   --resource-group crawler-sprites-rg `
-  --settings CRAWLER_CI_PAT=<repository-owner-PAT-with-issues-write>
+  --settings CRAWLER_CI_PAT=$env:CRAWLER_CI_PAT
 ```
 
 Note this is an **out-of-band** rotation path only — the next Bicep
@@ -490,10 +495,7 @@ real end-to-end check of the `file_issue:true` path
   own alert. The alert issue is reused/updated across repeated failures
   rather than creating a new one every 6 hours.
 
-This does not make the token self-refresh, but it bounds the detection
-window to at most 6 hours and guarantees a human is notified via a GitHub
-issue rather than discovering the break only when a real player's report
-silently fails.
+This does not make the token self-refresh, but the six-hour schedule is the intended detection cadence — a failure will open a GitHub issue when the canary job completes successfully and the alert-filing step runs. Note that an API or network failure can make the job exit non-zero without ever reaching the issue-filing step, so issue delivery is not guaranteed on every failure; the canary exists to surface broken credentials promptly under normal operating conditions rather than to provide a hard SLA.
 
 ### Idempotency & re-creating resources
 

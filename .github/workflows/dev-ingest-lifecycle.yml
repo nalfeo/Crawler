@@ -50,6 +50,7 @@ on:
 concurrency:
   group: dev-ingest-lifecycle
   cancel-in-progress: false
+  queue: max
 
 # Least-privilege default; each job declares the write scopes it actually
 # needs (mirrors .github/workflows/deploy.yml's convention).

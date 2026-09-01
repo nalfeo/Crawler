@@ -41,7 +41,8 @@ interface WorkflowDoc {
   // when parsed with `merge`/schema options we don't set, so read via a
   // small helper that checks both to stay robust either way.
   on?: unknown;
-  concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
+  concurrency?: { group?: string; 'cancel-in-progress'?: boolean; queue?: string };
+  permissions?: Record<string, string>;
   jobs: Record<string, WorkflowJob>;
 }
 
@@ -98,6 +99,12 @@ describe('dev-ingest-lifecycle.yml credential + trigger wiring', () => {
 
   it('grants id-token: write only to the OIDC-authenticating deploy job', () => {
     const doc = loadWorkflow();
+    // The top-level permissions block must not grant id-token: write — if it
+    // did, every job would inherit the OIDC mint capability, not just deploy.
+    expect(
+      doc.permissions?.['id-token'],
+      'top-level permissions must not grant id-token: write (it must be scoped to the deploy job only)',
+    ).not.toBe('write');
     expect(doc.jobs.deploy, 'expected a "deploy" job').toBeTruthy();
     expect(doc.jobs.deploy?.permissions?.['id-token']).toBe('write');
     // The top-level default and every other job must stay least-privilege —
@@ -178,6 +185,12 @@ describe('dev-ingest-lifecycle.yml credential + trigger wiring', () => {
     // treats as false) — cancelling an in-flight deploy because a scheduled
     // canary queued up would be worse than waiting for it.
     expect(doc.concurrency?.['cancel-in-progress']).not.toBe(true);
+    // queue: max ensures no pending run is silently dropped when more than
+    // one trigger is waiting — without it GitHub keeps only one queued run.
+    expect(
+      doc.concurrency?.queue,
+      'concurrency.queue must be "max" so pending runs are never silently dropped',
+    ).toBe('max');
   });
 
   it('every `run:` shell block in the workflow has balanced if/fi (and for/done, while/done) blocks', () => {
