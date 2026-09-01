@@ -523,6 +523,7 @@ function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
 }
 
 function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseState): void {
+  const floor6RaiderEids = new Set(state.liveEnemies.map((record) => record.eid));
   for (
     let eventIndex = state.combatEventCursor;
     eventIndex < world.combatEvents.length;
@@ -534,7 +535,7 @@ function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseS
       event.targetType !== 'enemy' ||
       event.targetEid === undefined ||
       (!hasComponent(world.ecs, event.targetEid, BroadcastRelayRaider) &&
-        !state.liveEnemies.some((record) => record.eid === event.targetEid))
+        !floor6RaiderEids.has(event.targetEid))
     ) {
       continue;
     }

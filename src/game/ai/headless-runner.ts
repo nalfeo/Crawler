@@ -657,10 +657,6 @@ function runFloor6HeadlessStrategy(world: GameWorld, playerEid: number, enabled:
   const defense = world.floorExtendedState?.floor6Defense;
   if (!enabled || world.floorId !== 'floor6' || defense?.phase.kind !== 'DEFEND') return;
 
-  if (defense.towerInstances.length === 0) {
-    tryBuildFloor6StrategyTower(world, playerEid);
-  }
-
   const affordableOffers = [...(defense.upgradeOfferManifest ?? [])]
     .filter(
       (offer) =>
