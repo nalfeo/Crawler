@@ -2540,6 +2540,52 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     },
   );
 
+  it('LANDED-FIX AMNESTY: does not discard withheld queue paths untouched by the landed PR', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+
+    // Establish the path that will be amended on the promote branch before merge.
+    addArtDirectlyToMain(liveDir, ['player-walk']);
+    seedQueueWithArt(liveDir, ['player-walk', 'skull-mace-var-2']);
+    // Force a withheld queue path by moving main forward after the queue snapshot.
+    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+    // Queue-only bad bytes: promotable now, then fixed on promote before merge.
+    editQueuedArt(liveDir, 'player-walk', SUPERSEDING_PNG_BYTES);
+
+    const gh = new FakeGh();
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    expect(first.changedPaths).toContain('public/assets/generated/player-walk.png');
+    expect(first.changedPaths).not.toContain('public/assets/generated/skull-mace-var-2.png');
+    expect(first.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    const fixWt = mkdtempSync(path.join(tmpdir(), 'rq-fix-mixed-'));
+    let fixedHead: string;
+    try {
+      gitSync(liveDir, 'worktree', 'add', fixWt, '--detach', 'origin/assets/promote');
+      writeFileSync(
+        path.join(fixWt, 'public', 'assets', 'generated', 'player-walk.png'),
+        PNG_BYTES,
+      );
+      gitSync(fixWt, 'add', '--', 'public/assets/generated');
+      gitSync(fixWt, 'commit', '--no-verify', '-m', 'restore player-walk before merge');
+      fixedHead = gitSync(fixWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${fixedHead}:refs/heads/assets/promote`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', fixWt);
+      rmSync(fixWt, { recursive: true, force: true });
+    }
+
+    const queueBeforeTidy = remoteSha(liveDir, 'assets/queue');
+    landPromotion(liveDir, gh, first.prNumber!, fixedHead);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+    expect(tidy.queueReset).toBe(false);
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueBeforeTidy);
+    expect(remoteSha(liveDir, 'assets/queue')).not.toBe(remoteSha(liveDir, 'main'));
+  });
+
   it('rejects non-integer merged PR numbers', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
