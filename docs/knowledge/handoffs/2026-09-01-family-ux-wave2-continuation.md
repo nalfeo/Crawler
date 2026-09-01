@@ -14,7 +14,8 @@ hud-ux
 
 ## Apples
 
-4🍎 estimated, 4🍎 actual
+4🍎 estimated, 4🍎 actual; maintainer feedback follow-up 3🍎 estimated,
+3🍎 actual
 
 ## Starting point
 
@@ -48,19 +49,28 @@ hud-ux
    caught title/header overlap and `HOSTILE`/`NEUTRAL` escaping 66px pills.
    Added six vertical pixels, widened the panel to 292px, and widened status
    pills to 76px. The next observation passed all 54 regions in all scenarios.
+5. **Maintainer A|B correction.** The maintainer identified escaped family
+   swatches, inconsistent row centering, an unnecessary column legend,
+   ambiguous text-only boss state, and an illegible body face. Insets now keep
+   every swatch visibly inside its row; family names, swatches, status pills,
+   and boss tiles share one measured centerline; bars and values share a second;
+   the legend was removed; `UP`/`OUT` became heart/skull icons; and row content
+   moved to the approved readable UI face. The `v1.8.0` observation passed all
+   50 remaining regions with zero blockers in every scenario.
 
 ## Final visual contract
 
 - Complete real family identities; no ellipsis in the registered stress roster.
-- Explicit standing and boss columns.
 - Three threshold markers per relation bar.
 - Prominent numeric standing values.
 - Redundant text and color for `HATE`, `HOSTILE`, `NEUTRAL`, and `ALLY`.
-- Explicit `UP`/`OUT` labels whose values match defeated-boss state.
+- Heart/skull boss icons whose values match defeated-boss state.
+- Shared identity and metric centerlines within every row.
+- Swatches inset inside their family row bounds.
 - Nested containment for swatches, ticks, status text/pills, and boss text/tiles.
 - Scenario-specific defeated-boss counts.
 
-Tracked final lineage under `files/visual-review/after/v1.7.1/`:
+Tracked final lineage under `files/visual-review/after/v1.8.0/`:
 
 | Scenario                              | Score | Deterministic blockers | Evidence-backed blockers |
 | ------------------------------------- | ----: | ---------------------: | -----------------------: |
@@ -68,8 +78,8 @@ Tracked final lineage under `files/visual-review/after/v1.7.1/`:
 | `family-relationships-boss-aftermath` |  80.0 |                      0 |                        0 |
 | `family-relationships-compact-stress` |  80.0 |                      0 |                        0 |
 
-The Screenshot Viewer was refreshed with all final pairs. Judge suggestions for
-blanket five-pixel padding, larger boss emphasis, and larger headers were
+The A|B UX Testing viewer was refreshed with all final pairs. Judge suggestions
+for blanket five-pixel padding, larger boss emphasis, and title centering were
 classified as task-specific taste advisories: they were inconsistent across
 scenarios, unsupported by measured containment, and would reduce compact
 comparison density at 960x540.
@@ -92,22 +102,22 @@ Floor 2 bootstrap at 1280x720 and 960x540. Evidence is under
 
 ## Why this is done
 
-The surface is complete because every remaining improvement hypothesis was
-tested against the real rendered hierarchy, the compact viewport, or expanded
-geometry—not because the score reached 80. The panel now answers the player's
-three questions in one scan: which family, how it feels about the player, and
-whether its boss remains active. The full roster, extremes, defeated-boss mix,
-and compact viewport all satisfy the same 54-region contract. Further proposed
-changes are unsupported spacing/emphasis taste churn or would trade away the
-compact four-family comparison that the real-game observation confirms is
-clear.
+The surface is complete because maintainer feedback and every remaining
+improvement hypothesis were tested against the real rendered hierarchy, the
+compact viewport, or expanded geometry—not because the score reached 80. The
+panel now answers the player's three questions in one scan: which family, how
+it feels about the player, and whether its boss remains active. The full roster,
+extremes, defeated-boss mix, and compact viewport all satisfy the same 50-region
+contract. Further proposed changes are unsupported spacing/emphasis taste churn
+or would trade away the compact four-family comparison that the real-game
+observation confirms is clear.
 
 ## Validation
 
 - Typecheck plus focused Family unit and e2e tests: 30 tests passed.
 - Real `MainGameScene` Family/map integration: 4 tests passed.
 - `npm run verify:fast`.
-- Three tracked visual-review scenarios at `v1.7.1`.
+- Three tracked visual-review scenarios at `v1.8.0`.
 
 ## Constraints preserved
 

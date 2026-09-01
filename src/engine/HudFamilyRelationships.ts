@@ -17,7 +17,13 @@ import { GAME } from '../shared/constants.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
 import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
-import { BLUE_STEEL, MIN_TEXT_RESOLUTION, hex } from './ui-theme.js';
+import {
+  BLUE_STEEL,
+  HUD_FONT_FAMILY,
+  MIN_TEXT_RESOLUTION,
+  UI_FONT_FAMILY,
+  hex,
+} from './ui-theme.js';
 import {
   resolveFamilyRows,
   shouldShowFamilyRelationships,
@@ -26,7 +32,7 @@ import {
 } from './family-relationships-state.js';
 
 const PANEL_WIDTH = 292;
-const TITLE_H = 44;
+const TITLE_H = 30;
 const ROW_H = 42;
 const ROW_GAP = 2;
 const MAX_ROWS = 4;
@@ -36,7 +42,8 @@ const SWATCH_SIZE = 12;
 const BAR_WIDTH = 142;
 const BAR_HEIGHT = 8;
 const CLEARANCE = 8;
-const FONT_FAMILY = '"Press Start 2P", "Courier New", monospace';
+const IDENTITY_CENTER_Y = 11;
+const METRIC_CENTER_Y = 33;
 
 /** Panel anchored bottom-right so it doesn't collide with the top-right radar. */
 const PANEL_MARGIN_RIGHT = 12;
@@ -57,19 +64,15 @@ export interface FamilyRelationshipRowLayout {
   readonly relation: number;
   readonly band: FamilyRow['band'];
   readonly bossDefeated: boolean;
-  readonly bossStateLabel: 'UP' | 'OUT';
+  readonly bossStateLabel: '♥' | '☠️';
 }
 
 export interface FamilyRelationshipsLayout {
   readonly visible: boolean;
   readonly panel: ScreenBounds | null;
   readonly title: ScreenBounds | null;
-  readonly columnHeader: ScreenBounds | null;
-  readonly columnLabels: {
-    readonly family: ScreenBounds;
-    readonly standing: ScreenBounds;
-    readonly boss: ScreenBounds;
-  } | null;
+  readonly columnHeader: null;
+  readonly columnLabels: null;
   readonly rows: readonly FamilyRelationshipRowLayout[];
 }
 
@@ -145,7 +148,7 @@ export function createHudFamilyRelationships(
 
   const title = scene.add
     .text(PANEL_PAD + 3, 7, 'FAMILY RELATIONS', {
-      fontFamily: FONT_FAMILY,
+      fontFamily: HUD_FONT_FAMILY,
       fontSize: '10px',
       fontStyle: 'bold',
       color: hex(PIXEL_UI.gold),
@@ -168,41 +171,6 @@ export function createHudFamilyRelationships(
     .setDepth(PIXEL_UI_DEPTH.content);
   root.add(titleAccent);
 
-  const familyColumn = scene.add
-    .text(PANEL_PAD + 3, 31, 'FAMILY', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      fontStyle: 'bold',
-      color: hex(BLUE_STEEL.textSecondary),
-      stroke: '#02040a',
-      strokeThickness: 2,
-    })
-    .setOrigin(0, 0)
-    .setDepth(PIXEL_UI_DEPTH.content);
-  const standingColumn = scene.add
-    .text(166, 31, 'STANDING', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      fontStyle: 'bold',
-      color: hex(BLUE_STEEL.textSecondary),
-      stroke: '#02040a',
-      strokeThickness: 2,
-    })
-    .setOrigin(0, 0)
-    .setDepth(PIXEL_UI_DEPTH.content);
-  const bossColumn = scene.add
-    .text(245, 31, 'BOSS', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      fontStyle: 'bold',
-      color: hex(BLUE_STEEL.textSecondary),
-      stroke: '#02040a',
-      strokeThickness: 2,
-    })
-    .setOrigin(0, 0)
-    .setDepth(PIXEL_UI_DEPTH.content);
-  root.add([familyColumn, standingColumn, bossColumn]);
-
   const rowStartY = PANEL_PAD + TITLE_H;
   const rowVisuals: RowVisuals[] = [];
 
@@ -218,25 +186,24 @@ export function createHudFamilyRelationships(
       .setOrigin(0, 0)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const swatch = scene.add
-      .rectangle(0, 10, SWATCH_SIZE, SWATCH_SIZE, 0x64748b)
+      .rectangle(4, IDENTITY_CENTER_Y, SWATCH_SIZE, SWATCH_SIZE, 0x64748b)
       .setOrigin(0, 0.5)
       .setStrokeStyle(1, PIXEL_UI.border);
 
-    const nameX = SWATCH_SIZE + 6;
+    const nameX = 4 + SWATCH_SIZE + 6;
     const name = scene.add
-      .text(nameX, 1, '', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '9px',
+      .text(nameX, IDENTITY_CENTER_Y, '', {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: '12px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textPrimary),
         stroke: '#02040a',
-        strokeThickness: 2,
-        padding: { top: 4, bottom: 4 },
+        strokeThickness: 1,
       })
-      .setOrigin(0, 0);
+      .setOrigin(0, 0.5);
 
     const barX = nameX;
-    const barY = 30;
+    const barY = METRIC_CENTER_Y - BAR_HEIGHT / 2;
     const barTrack = scene.add
       .rectangle(barX, barY, BAR_WIDTH, BAR_HEIGHT, PIXEL_UI.trackFill)
       .setOrigin(0, 0)
@@ -258,36 +225,33 @@ export function createHudFamilyRelationships(
     );
 
     const relationText = scene.add
-      .text(barX + BAR_WIDTH + 3, barY - 4, '', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '10px',
+      .text(barX + BAR_WIDTH + 5, METRIC_CENTER_Y, '', {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: '12px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
-        strokeThickness: 2,
-        padding: { top: 1, bottom: 1 },
+        strokeThickness: 1,
       })
-      .setOrigin(0, 0);
+      .setOrigin(0, 0.5);
 
-    const bossTileX = 258;
-    const bossTileY = 9;
+    const bossTileX = 260;
+    const bossTileY = IDENTITY_CENTER_Y;
     const bossTile = scene.add
-      .rectangle(bossTileX, bossTileY, 32, 16, 0x2b3c61)
+      .rectangle(bossTileX, bossTileY, 28, 18, 0x2b3c61)
       .setOrigin(0.5, 0.5)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const bossIcon = scene.add
-      .text(bossTileX, bossTileY, 'UP', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '7px',
+      .text(bossTileX, bossTileY, '♥', {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: '14px',
         fontStyle: 'bold',
         color: '#f87171',
-        stroke: '#02040a',
-        strokeThickness: 2,
       })
       .setOrigin(0.5, 0.5);
 
     const statusPillX = 160;
-    const statusPillY = 0;
+    const statusPillY = IDENTITY_CENTER_Y - 9;
     const statusPillWidth = 76;
     const statusPill = scene.add
       .rectangle(statusPillX, statusPillY, statusPillWidth, 18, PIXEL_UI.trackFill)
@@ -295,13 +259,13 @@ export function createHudFamilyRelationships(
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
 
     const statusText = scene.add
-      .text(statusPillX + statusPillWidth / 2, statusPillY + 9, '', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '10px',
+      .text(statusPillX + statusPillWidth / 2, IDENTITY_CENTER_Y, '', {
+        fontFamily: UI_FONT_FAMILY,
+        fontSize: '11px',
         fontStyle: 'bold',
         color: hex(BLUE_STEEL.textSecondary),
         stroke: '#02040a',
-        strokeThickness: 2,
+        strokeThickness: 1,
       })
       .setOrigin(0.5, 0.5);
 
@@ -338,9 +302,6 @@ export function createHudFamilyRelationships(
 
   const allTexts = [
     title,
-    familyColumn,
-    standingColumn,
-    bossColumn,
     ...rowVisuals.flatMap((r) => [r.name, r.relationText, r.bossIcon, r.statusText]),
   ];
   const detachCrispText = applyCrispText(scene, allTexts, MIN_TEXT_RESOLUTION + 2);
@@ -364,9 +325,6 @@ export function createHudFamilyRelationships(
     titleFrame.setVisible(effectiveVisible);
     titleAccent.setVisible(effectiveVisible);
     title.setVisible(effectiveVisible);
-    familyColumn.setVisible(effectiveVisible);
-    standingColumn.setVisible(effectiveVisible);
-    bossColumn.setVisible(effectiveVisible);
     for (const r of rowVisuals) r.container.setVisible(effectiveVisible);
   }
 
@@ -396,11 +354,11 @@ export function createHudFamilyRelationships(
     rv.relationText.setText(String(Math.round(row.relation)).padStart(3, ' '));
 
     if (row.bossDefeated) {
-      rv.bossIcon.setText('OUT');
+      rv.bossIcon.setText('☠️');
       rv.bossIcon.setColor('#94a3b8');
       rv.bossTile.setStrokeStyle(1, 0x94a3b8);
     } else {
-      rv.bossIcon.setText('UP');
+      rv.bossIcon.setText('♥');
       rv.bossIcon.setColor('#f87171');
       rv.bossTile.setStrokeStyle(1, 0xf87171);
     }
@@ -545,14 +503,6 @@ export function createHudFamilyRelationships(
     return { x: b.x, y: b.y, width: b.width, height: b.height };
   }
 
-  function unionBounds(bounds: readonly ScreenBounds[]): ScreenBounds {
-    const left = Math.min(...bounds.map((box) => box.x));
-    const top = Math.min(...bounds.map((box) => box.y));
-    const right = Math.max(...bounds.map((box) => box.x + box.width));
-    const bottom = Math.max(...bounds.map((box) => box.y + box.height));
-    return { x: left, y: top, width: right - left, height: bottom - top };
-  }
-
   function getLayout(): FamilyRelationshipsLayout {
     const parentVisible = parent?.visible ?? true;
     if (!lastVisible || !masterVisible || !parentVisible || !root.visible) {
@@ -565,17 +515,12 @@ export function createHudFamilyRelationships(
         rows: [],
       };
     }
-    const columnLabels = {
-      family: screenBounds(familyColumn),
-      standing: screenBounds(standingColumn),
-      boss: screenBounds(bossColumn),
-    };
     return {
       visible: true,
       panel: panelScreenBounds(),
       title: screenBounds(title),
-      columnHeader: unionBounds(Object.values(columnLabels)),
-      columnLabels,
+      columnHeader: null,
+      columnLabels: null,
       rows: rowVisuals.flatMap((rv) => {
         if (!rv.container.visible || !rv.row) return [];
         return [
@@ -594,7 +539,7 @@ export function createHudFamilyRelationships(
             relation: rv.row.relation,
             band: rv.row.band,
             bossDefeated: rv.row.bossDefeated,
-            bossStateLabel: rv.row.bossDefeated ? 'OUT' : 'UP',
+            bossStateLabel: rv.row.bossDefeated ? '☠️' : '♥',
           },
         ];
       }),
@@ -608,9 +553,6 @@ export function createHudFamilyRelationships(
     title.destroy();
     titleFrame.destroy();
     titleAccent.destroy();
-    familyColumn.destroy();
-    standingColumn.destroy();
-    bossColumn.destroy();
     panel.destroy();
     root.destroy();
   }

@@ -180,7 +180,7 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Floor-2 Family Relations comparison contract: four complete family identities, all standing bands, visible 25/50/75 thresholds, and explicit UP/OUT boss labels with no collisions."
+    "description": "Floor-2 Family Relations comparison contract: four complete family identities, all standing bands, visible 25/50/75 thresholds, centered row content, and heart/skull boss icons with no collisions."
   },
   {
     "id": "family-relationships-boss-aftermath",
@@ -190,7 +190,7 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Boss-aftermath contract: every family remains independently scannable while four repeated OUT tiles are explicit, contained, and subordinate to the standing values."
+    "description": "Boss-aftermath contract: every family remains independently scannable while four repeated skull tiles are contained, centered, and subordinate to the standing values."
   },
   {
     "id": "family-relationships-compact-stress",
@@ -200,6 +200,6 @@
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Compact 960x540 contract: complete widest-rendered identities, zero/threshold/max relation values, three threshold notches per bar, alternating UP/OUT bosses, and no HUD collision."
+    "description": "Compact 960x540 contract: complete widest-rendered identities, readable centered row content, zero/threshold/max relation values, three threshold notches per bar, alternating heart/skull bosses, and no HUD collision."
   }
 ]

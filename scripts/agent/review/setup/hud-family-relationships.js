@@ -53,8 +53,8 @@
   if (layout.family.rows.some((row) => row.displayedName.includes('…'))) {
     throw new Error(`${scenario} must render every real family identity without truncation`);
   }
-  if (layout.family.rows.some((row) => row.bossStateLabel !== (row.bossDefeated ? 'OUT' : 'UP'))) {
-    throw new Error(`${scenario} boss state labels must read UP or OUT`);
+  if (layout.family.rows.some((row) => row.bossStateLabel !== (row.bossDefeated ? '☠️' : '♥'))) {
+    throw new Error(`${scenario} boss state icons must show a skull or heart`);
   }
   if (layout.family.rows.some((row) => row.relationTicks.length !== 3)) {
     throw new Error(`${scenario} must expose the 25/50/75 standing thresholds`);
@@ -81,22 +81,6 @@
       kind: 'text',
       parentId: 'family-panel',
     });
-  }
-  if (layout.family.columnHeader && layout.family.columnLabels) {
-    regions.push({
-      id: 'family-column-header',
-      box: toScreen(layout.family.columnHeader),
-      kind: 'content',
-      parentId: 'family-panel',
-    });
-    for (const [id, box] of Object.entries(layout.family.columnLabels)) {
-      regions.push({
-        id: `family-column-${id}`,
-        box: toScreen(box),
-        kind: 'text',
-        parentId: 'family-column-header',
-      });
-    }
   }
   layout.family.rows.forEach((row, index) => {
     const rowId = `family-row-${index}`;

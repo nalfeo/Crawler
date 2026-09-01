@@ -115,6 +115,10 @@ function contains(parent: Bounds, child: Bounds, tolerance = 0.5): boolean {
   );
 }
 
+function centerY(bounds: Bounds): number {
+  return bounds.y + bounds.height / 2;
+}
+
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
   return page.evaluate(() => {
     const canvas = document.querySelector('#lab-canvas canvas') as HTMLCanvasElement | null;
@@ -451,10 +455,8 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
         new Set(['hate', 'hostile', 'neutral', 'friendly']),
       );
       expect(layout.family.rows.map((row) => row.bossDefeated)).toEqual([false, true, false, true]);
-      expect(
-        layout.family.rows[0]!.name.width / layout.family.rows[0]!.displayedName.length,
-        `family names must rerasterize in Press Start 2P at ${viewport.width}x${viewport.height}`,
-      ).toBeGreaterThan(7);
+      expect(layout.family.columnHeader).toBeNull();
+      expect(layout.family.columnLabels).toBeNull();
       for (const [index, row] of layout.family.rows.entries()) {
         expect(
           contains(panel, row.row),
@@ -494,7 +496,24 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           }
         }
         expect(row.displayedName).not.toContain('…');
-        expect(row.bossStateLabel).toBe(row.bossDefeated ? 'OUT' : 'UP');
+        expect(row.bossStateLabel).toBe(row.bossDefeated ? '☠️' : '♥');
+        for (const [name, bounds] of Object.entries({
+          name: row.name,
+          swatch: row.swatch,
+          statusPill: row.statusPill,
+          status: row.status,
+          bossTile: row.bossTile,
+          bossLabel: row.bossLabel,
+        })) {
+          expect(
+            Math.abs(centerY(bounds) - centerY(row.name)),
+            `${name} must share the identity center line in row ${index}`,
+          ).toBeLessThanOrEqual(0.5);
+        }
+        expect(
+          Math.abs(centerY(row.value) - centerY(row.bar)),
+          `standing value must align with the bar in row ${index}`,
+        ).toBeLessThanOrEqual(0.5);
         expect(row.relationTicks).toHaveLength(3);
         for (const [tickIndex, tick] of row.relationTicks.entries()) {
           expect(
