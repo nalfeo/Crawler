@@ -94,20 +94,22 @@ describe('familyRowFromRelation', () => {
 });
 
 describe('displayNameForRow', () => {
+  it('keeps the pixel-font label within the 108px name column', () => {
+    expect(FAMILY_NAME_MAX_CHARS * 9).toBeLessThanOrEqual(108);
+  });
+
   it('returns the full name when it fits within the column', () => {
-    // "The Bamboo Triad" is 16 chars, "The Snaggle Cartel" is exactly 18.
-    expect(displayNameForRow({ name: 'The Bamboo Triad', shortLabel: 'Pandas' })).toBe(
-      'The Bamboo Triad',
-    );
-    expect(displayNameForRow({ name: 'The Snaggle Cartel', shortLabel: 'Goblins' })).toBe(
-      'The Snaggle Cartel',
-    );
+    expect(displayNameForRow({ name: 'The Honk', shortLabel: 'Geese' })).toBe('The Honk');
+    expect(displayNameForRow({ name: 'Nightwings', shortLabel: 'Batfolk' })).toBe('Nightwings');
   });
 
   it('falls back to the short species label when the full name is too wide', () => {
-    // Real roster case: "The Thornbloom Growers" (22) → "Cactusfolk" (10).
+    // Real roster cases must fit the 108px name column in the 9px pixel face.
     expect(displayNameForRow({ name: 'The Thornbloom Growers', shortLabel: 'Cactusfolk' })).toBe(
       'Cactusfolk',
+    );
+    expect(displayNameForRow({ name: 'The Snaggle Cartel', shortLabel: 'Goblins' })).toBe(
+      'Goblins',
     );
     expect(displayNameForRow({ name: 'The Trash Panda Family', shortLabel: 'Raccoons' })).toBe(
       'Raccoons',

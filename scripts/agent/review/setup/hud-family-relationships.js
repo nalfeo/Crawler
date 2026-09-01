@@ -1,9 +1,4 @@
-// Tracked A|B scenario for the Floor-2 Family Relationships HUD panel
-// (Wave 2 slice 4). Drives the real `createHudFamilyRelationships` widget via
-// `hud-family-relationships-lab`'s `__familyRelProbe`, using the
-// "representative" spread (one ally / two neutral / one hate band, with one
-// boss already defeated) so every band color, the boss-icon toggle, and the
-// new gold-accent title + status-pill chrome are all exercised in one frame.
+// Tracked A|B scenarios for the Floor-2 Family Relationships HUD panel.
 (async () => {
   if (document.fonts?.ready) await document.fonts.ready;
   let probe = window.__familyRelProbe;
@@ -13,7 +8,20 @@
   }
   if (!probe?.ready?.()) throw new Error('__familyRelProbe not ready');
 
-  probe.setStressState('representative');
+  const scenario =
+    new URLSearchParams(window.location.search).get('uxScenario') ??
+    'family-relationships-band-spectrum';
+  if (scenario === 'family-relationships-band-spectrum') {
+    probe.setStressState('representative');
+    probe.setBossDefeated(1, true);
+  } else if (scenario === 'family-relationships-boss-aftermath') {
+    probe.setStressState('representative');
+    for (let index = 0; index < 4; index += 1) probe.setBossDefeated(index, true);
+  } else if (scenario === 'family-relationships-compact-stress') {
+    probe.setStressState('worst-case');
+  } else {
+    throw new Error(`Unknown Family Relationships UX scenario: ${scenario}`);
+  }
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   // Hide lab chrome and let the canvas resize BEFORE measuring geometry, so
@@ -22,12 +30,26 @@
   if (header) header.style.display = 'none';
   const controls = document.getElementById('lab-controls');
   if (controls) controls.style.display = 'none';
+  const controlsToggle = document.getElementById('controls-toggle');
+  if (controlsToggle) controlsToggle.style.display = 'none';
   window.dispatchEvent(new Event('resize'));
   await new Promise((resolve) => setTimeout(resolve, 300));
 
   const layout = probe.getLayout();
   const panel = layout.family.panel;
   if (!panel) throw new Error('family panel did not render');
+  const defeatedCount = layout.family.rows.filter((row) => row.bossDefeated).length;
+  const expectedDefeated =
+    scenario === 'family-relationships-band-spectrum'
+      ? 1
+      : scenario === 'family-relationships-boss-aftermath'
+        ? 4
+        : 2;
+  if (defeatedCount !== expectedDefeated) {
+    throw new Error(
+      `${scenario} expected ${expectedDefeated} defeated bosses, got ${defeatedCount}`,
+    );
+  }
 
   // Canvas (design space, GAME_W x GAME_H) -> CSS pixel space for the capture.
   const canvas = document.querySelector('canvas');
@@ -64,7 +86,7 @@
   });
 
   window.__visualReview = {
-    surface: 'Family Relationships (HUD panel)',
+    surface: `Family Relationships (HUD panel, ${scenario})`,
     regions,
     expect: {},
   };

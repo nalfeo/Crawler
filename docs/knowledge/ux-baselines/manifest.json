@@ -173,13 +173,33 @@
     "description": "Hover a two-hand Bag weapon while Main Hand and Off Hand are occupied. The paired comparison must preserve both targets and avoid misleading duplicate deltas."
   },
   {
-    "id": "family-relationships",
-    "label": "Family Relationships (HUD panel)",
+    "id": "family-relationships-band-spectrum",
+    "label": "Family Relationships (Band Spectrum)",
     "viewport": { "width": 1280, "height": 800 },
     "captureSource": "ui-probe-lab",
     "labId": "hud-family-relationships-lab",
     "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
     "enabled": true,
-    "description": "Floor-2 Family Relations panel with a representative relation spread (ally/neutral/hostile/hate bands, one boss already defeated), refreshed with the Wave-1 gold-accent title and beveled status pill."
+    "description": "Floor-2 Family Relations panel covering ally, neutral, hostile, and hate bands together with both alive and defeated boss glyphs."
+  },
+  {
+    "id": "family-relationships-boss-aftermath",
+    "label": "Family Relationships (Boss Aftermath)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Floor-2 Family Relations panel after every present family boss is defeated, proving repeated skull glyphs and desaturated boss tiles remain readable."
+  },
+  {
+    "id": "family-relationships-compact-stress",
+    "label": "Family Relationships (Compact Stress)",
+    "viewport": { "width": 960, "height": 540 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Compact supported viewport with zero/threshold/max relations, alternating defeated bosses, and the widest rendered family labels."
   }
 ]

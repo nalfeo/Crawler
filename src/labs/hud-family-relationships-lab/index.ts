@@ -25,7 +25,10 @@ import { FloorMap } from '../../core/map/FloorMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { loadFamilies, type FamilyDef } from '../../shared/data/families.js';
-import { bossDefeatedGoalFlag } from '../../engine/family-relationships-state.js';
+import {
+  bossDefeatedGoalFlag,
+  displayNameForRow,
+} from '../../engine/family-relationships-state.js';
 import {
   SETTLEMENT_TINT,
   RESOURCE_HEART_TINT,
@@ -165,7 +168,8 @@ function createHudFamilyRelationshipsLab(
   const present: FamilyDef[] = [...families]
     .sort(
       (a, b) =>
-        Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
+        displayNameForRow({ name: b.name, shortLabel: b.species }).length -
+        displayNameForRow({ name: a.name, shortLabel: a.species }).length,
     )
     .slice(0, PRESENT_COUNT);
   const settingsById = new Map<string, FamilySettings>(

@@ -4,7 +4,7 @@ import { parsePng, readPixel, regionContainsColor, colorDist } from './helpers/p
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
-import { parseHexColor } from '../../src/engine/family-relationships-state.js';
+import { displayNameForRow, parseHexColor } from '../../src/engine/family-relationships-state.js';
 import { TERRITORY_OVERLAY_ALPHA, toGrayscale } from '../../src/engine/minimap-family-tint.js';
 import type { FamilyRelProbeApi } from '../../src/labs/hud-family-relationships-lab/index.js';
 
@@ -23,7 +23,9 @@ const OVERLAY_CENTER = { x: GAME_W / 2, y: 364 };
 
 const PRESENT_FAMILIES = [...loadFamilies()]
   .sort(
-    (a, b) => Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
+    (a, b) =>
+      displayNameForRow({ name: b.name, shortLabel: b.species }).length -
+      displayNameForRow({ name: a.name, shortLabel: a.species }).length,
   )
   .slice(0, 4);
 
@@ -127,6 +129,21 @@ function gameToScreen(rect: CanvasRect, gx: number, gy: number): { x: number; y:
     x: Math.round(rect.x + gx * (rect.width / GAME_W)),
     y: Math.round(rect.y + gy * (rect.height / GAME_H)),
   };
+}
+
+async function getFamilyPanelRect(
+  page: Page,
+  canvas: CanvasRect,
+): Promise<{ x: number; y: number; w: number; h: number }> {
+  const panel = await page.evaluate(() => {
+    const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+    if (!probe) throw new Error('__familyRelProbe missing');
+    return probe.getLayout().family.panel;
+  });
+  if (!panel) throw new Error('family panel must be visible');
+  const tl = gameToScreen(canvas, panel.x, panel.y);
+  const br = gameToScreen(canvas, panel.x + panel.width, panel.y + panel.height);
+  return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
 }
 
 function territoryMarkerPoint(rect: CanvasRect, roomIndex: number): { x: number; y: number } {
@@ -237,21 +254,18 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     const canvas = await getCanvasRect(page);
     const buf = await page.screenshot({ type: 'png' });
     const png = parsePng(buf);
-
-    // The panel is anchored bottom-right in the HUD design space:
-    //   right edge at GAME_W - 12, bottom edge at GAME_H - 160,
-    //   width 232, height ≈ 8 + 22 + 4*(30+4) + 8 = 174.
-    const tl = gameToScreen(canvas, GAME_W - 244, GAME_H - 334);
-    const br = gameToScreen(canvas, GAME_W - 12, GAME_H - 160);
-    const panelRect = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+    const panelRect = await getFamilyPanelRect(page, canvas);
 
     // Below the panel (toward the bottom-center ability bar area) should be
     // mostly empty in the bottom-right column.
     const belowRect = {
-      x: tl.x,
-      y: br.y + 4,
-      w: br.x - tl.x,
-      h: Math.max(4, gameToScreen(canvas, GAME_W - 12, GAME_H - 20).y - (br.y + 4)),
+      x: panelRect.x,
+      y: panelRect.y + panelRect.h + 4,
+      w: panelRect.w,
+      h: Math.max(
+        4,
+        gameToScreen(canvas, GAME_W - 12, GAME_H - 20).y - (panelRect.y + panelRect.h + 4),
+      ),
     };
 
     const panelRatio = nonBackgroundRatio(png, panelRect);
@@ -269,9 +283,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
 
   it('re-renders when relation changes (dirty-flag path repaints the panel)', async () => {
     const canvas = await getCanvasRect(page);
-    const tl = gameToScreen(canvas, GAME_W - 244, GAME_H - 334);
-    const br = gameToScreen(canvas, GAME_W - 12, GAME_H - 160);
-    const panelRect = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+    const panelRect = await getFamilyPanelRect(page, canvas);
 
     // Establish a known, high-relation baseline (friendly green bars, bosses
     // alive) via the probe, then capture it. Self-contained: no dependence on
@@ -396,6 +408,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     await page.keyboard.press('m');
   });
   it('contains every label and avoids the minimap and adjacent HUD at target viewports', async () => {
+    await page.evaluate(() => document.fonts.ready);
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 960, height: 540 },
@@ -438,6 +451,10 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
         new Set(['hate', 'hostile', 'neutral', 'friendly']),
       );
       expect(layout.family.rows.map((row) => row.bossDefeated)).toEqual([false, true, false, true]);
+      expect(
+        layout.family.rows[0]!.name.width / layout.family.rows[0]!.displayedName.length,
+        `family names must rerasterize in Press Start 2P at ${viewport.width}x${viewport.height}`,
+      ).toBeGreaterThan(7);
       for (const [index, row] of layout.family.rows.entries()) {
         expect(
           contains(panel, row.row),

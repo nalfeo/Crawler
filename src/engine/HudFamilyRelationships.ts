@@ -170,7 +170,7 @@ export function createHudFamilyRelationships(
       .setOrigin(0, 0)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
     const swatch = scene.add
-      .rectangle(0, ROW_H / 2, SWATCH_SIZE, SWATCH_SIZE, 0x64748b)
+      .rectangle(0, 10, SWATCH_SIZE, SWATCH_SIZE, 0x64748b)
       .setOrigin(0, 0.5)
       .setStrokeStyle(1, PIXEL_UI.border);
 
@@ -208,8 +208,8 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0, 0);
 
-    const bossTileX = 220;
-    const bossTileY = 12;
+    const bossTileX = 216;
+    const bossTileY = 9;
     const bossTile = scene.add
       .rectangle(bossTileX, bossTileY, 16, 16, 0x2b3c61)
       .setOrigin(0.5, 0.5)
@@ -225,15 +225,16 @@ export function createHudFamilyRelationships(
       })
       .setOrigin(0.5, 0.5);
 
-    const statusPillX = 140;
-    const statusPillY = -1;
+    const statusPillX = 126;
+    const statusPillY = 0;
+    const statusPillWidth = 78;
     const statusPill = scene.add
-      .rectangle(statusPillX, statusPillY, 68, 18, PIXEL_UI.trackFill)
+      .rectangle(statusPillX, statusPillY, statusPillWidth, 18, PIXEL_UI.trackFill)
       .setOrigin(0, 0)
       .setStrokeStyle(1, BLUE_STEEL.panelBorder);
 
     const statusText = scene.add
-      .text(statusPillX + 34, statusPillY + 9, '', {
+      .text(statusPillX + statusPillWidth / 2, statusPillY + 9, '', {
         fontFamily: FONT_FAMILY,
         fontSize: '10px',
         fontStyle: 'bold',
@@ -281,6 +282,15 @@ export function createHudFamilyRelationships(
   let lastFingerprint = '';
   let lastVisible = true;
   let masterVisible = true;
+  let destroyed = false;
+
+  if (typeof document !== 'undefined' && document.fonts) {
+    void document.fonts.ready.then(() => {
+      if (destroyed) return;
+      for (const text of allTexts) text.updateText();
+      lastFingerprint = '';
+    });
+  }
 
   function setPanelVisible(visible: boolean): void {
     const effectiveVisible = visible && masterVisible;
@@ -495,6 +505,7 @@ export function createHudFamilyRelationships(
   }
 
   function destroy(): void {
+    destroyed = true;
     detachCrispText();
     for (const r of rowVisuals) r.container.destroy();
     title.destroy();

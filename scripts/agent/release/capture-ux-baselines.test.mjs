@@ -92,6 +92,28 @@ describe('Release UX Baselines', () => {
         );
       }
     });
+
+    test('manifest includes all required Family Relationships scenarios', () => {
+      const manifestPath = resolve('docs/knowledge/ux-baselines/manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const required = [
+        ['family-relationships-band-spectrum', 1280, 800],
+        ['family-relationships-boss-aftermath', 1280, 800],
+        ['family-relationships-compact-stress', 960, 540],
+      ];
+      for (const [id, width, height] of required) {
+        const surface = manifest.find((entry) => entry.id === id);
+        assert.ok(surface, `${id} should be in manifest`);
+        assert.strictEqual(surface.enabled, true, `${id} should be enabled`);
+        assert.strictEqual(surface.viewport.width, width, `${id} width should match`);
+        assert.strictEqual(surface.viewport.height, height, `${id} height should match`);
+        assert.match(
+          surface.setupFile,
+          /hud-family-relationships\.js$/,
+          `${id} should use the Family Relationships scenario setup`,
+        );
+      }
+    });
   });
 
   describe('baseline-manifest.schema.json', () => {
