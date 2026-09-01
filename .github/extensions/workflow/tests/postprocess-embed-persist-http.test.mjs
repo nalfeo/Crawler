@@ -229,7 +229,7 @@ test('a fully-authorized replace relays a clamped, rebuilt payload with variantI
   assert.equal(sent.runId, 'run-2');
   assert.equal(sent.payload.mode, 'replace');
   assert.equal(sent.payload.facing.variantIndex, 3);
-  assert.equal(sent.payload.facing.direction, 'left');
+  assert.equal(sent.payload.facing.direction, 'west');
   assert.deepEqual(sent.payload.variantIndexes, [3]);
   // Clamped to [0, MAX] — never the raw out-of-range client values.
   assert.equal(sent.payload.options.background.colorToleranceSq, 0);

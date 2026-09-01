@@ -498,6 +498,32 @@ test('the run cards expose every current judge axis', () => {
   assert.match(html, /if \(!score\) continue;/);
 });
 
+test('variant thumbnails preserve the source sprite aspect ratio', () => {
+  const html = renderHtml('x');
+  assert.match(
+    html,
+    /\.card \.thumb \{ max-width: 100%; width: auto; height: auto; max-height: 160px;/,
+  );
+  assert.match(html, /object-fit: contain/);
+  assert.doesNotMatch(html, /\.card \.thumb \{ width: 96px; height: 96px;/);
+});
+
+test('the Sprites tab exposes force reprocess and displayed-run judge controls', () => {
+  const html = renderHtml('x');
+  const forcePost =
+    /text: 'Force reprocess from raw'[\s\S]*?workflowPost\('\/api\/workflow\/postprocess', \{\s*briefId: sel\.briefId,\s*runId: sel\.runId,\s*force: true,\s*reset: true\s*\}/g;
+  assert.equal([...html.matchAll(forcePost)].length, 2);
+  assert.match(
+    html,
+    /text: 'Judge variants for this run'[\s\S]*?workflowPost\('\/api\/workflow\/judge', \{\s*briefId: sel\.briefId,\s*runId: sel\.runId,\s*force: true\s*\}/,
+  );
+  assert.doesNotMatch(
+    html,
+    /itemId: state\.workflow\.selectedId,\s+briefId: sel\.briefId/,
+    'displayed-run actions must not mutate an unrelated selected workflow item',
+  );
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));

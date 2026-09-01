@@ -128,6 +128,43 @@ test('invalid Author request input returns the established bad-request error typ
   );
 });
 
+test('displayed-run force actions bypass item validation without mutating workflow items', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  const selectStart = source.indexOf("path: '/api/workflow/select'");
+  const editStart = source.indexOf("path: '/api/workflow/edit'", selectStart);
+  const postprocessStart = source.indexOf("path: '/api/workflow/postprocess'", editStart);
+  const judgeStart = source.indexOf("path: '/api/workflow/judge'", postprocessStart);
+  const approveStart = source.indexOf("path: '/api/workflow/approve'", judgeStart);
+  assert.ok(
+    selectStart >= 0 &&
+      editStart > selectStart &&
+      postprocessStart > editStart &&
+      judgeStart > postprocessStart &&
+      approveStart > judgeStart,
+  );
+  const selectRoute = source.slice(selectStart, editStart);
+  const postprocessRoute = source.slice(postprocessStart, judgeStart);
+  const judgeRoute = source.slice(judgeStart, approveStart);
+
+  assert.doesNotMatch(selectRoute, /postprocessRun\(/);
+  for (const [route, clientCall] of [
+    [postprocessRoute, 'postprocessRun'],
+    [judgeRoute, 'judgeRun'],
+  ]) {
+    assert.match(route, /if \(body\.force === true\)/);
+    assert.match(
+      route,
+      new RegExp(`entry\\.client\\.${clientCall}\\(body\\.briefId, body\\.runId, \\{`),
+    );
+    assert.match(route, /invalidateRunView\(runViewKey\(body\.briefId, body\.runId\)\)/);
+    const forceIndex = route.indexOf('if (body.force === true)');
+    const itemIdIndex = route.indexOf("if (typeof body.itemId !== 'string')");
+    assert.ok(forceIndex >= 0 && itemIdIndex > forceIndex, 'force must bypass itemId validation');
+    const forceBranch = route.slice(forceIndex, itemIdIndex);
+    assert.doesNotMatch(forceBranch, /replaceWorkflowItem\(/);
+  }
+});
+
 test('invalid request edits return the established bad-request error type', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   const start = source.indexOf("path: '/api/workflow/edit'");

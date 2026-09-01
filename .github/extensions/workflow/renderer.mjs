@@ -116,7 +116,8 @@ const STYLES = `
   .chosen-brief-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     color: #86efac; border: 1px solid rgba(134,239,172,0.5); background: rgba(22,101,52,0.3);
     border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
-  .card .thumb { width: 96px; height: 96px; image-rendering: pixelated; align-self: center;
+  .card .thumb { max-width: 100%; width: auto; height: auto; max-height: 160px;
+    image-rendering: pixelated; align-self: center; object-fit: contain;
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; }
@@ -1557,11 +1558,62 @@ const CLIENT_SCRIPT = String.raw`
     ]);
     if (!sel || cands.length === 0) {
       wrap.appendChild(h('div', { class: 'muted', text: 'No variant traces recorded for this run.' }));
+      if (sel) {
+        wrap.appendChild(h('button', {
+          class: 'accept-button',
+          style: { marginTop: '8px' },
+          text: 'Force reprocess from raw',
+          title: 'Re-slice the stored sheet, clear stale post-process settings, and regenerate variants',
+          onclick: function () {
+            if (!window.confirm('Force reprocess will discard all post-process customizations for this sprite sheet and restore every setting to its default. Continue?')) {
+              return;
+            }
+            workflowPost('/api/workflow/postprocess', {
+              briefId: sel.briefId,
+              runId: sel.runId,
+              force: true,
+              reset: true
+            }, 'Force post-processing sheet…');
+          }
+        }));
+      }
       return wrap;
     }
     var grid = h('div', { class: 'cards' }, []);
     for (var i = 0; i < cands.length; i++) {
       grid.appendChild(renderCandidateCard(state, sel, cands[i]));
+    }
+    if (sel) {
+      wrap.appendChild(h('button', {
+        class: 'accept-button',
+        style: { marginBottom: '8px' },
+        text: 'Force reprocess from raw',
+        title: 'Re-slice the stored sheet, clear stale post-process settings, and regenerate variants',
+        onclick: function () {
+          if (!window.confirm('Force reprocess will discard all post-process customizations for this sprite sheet and restore every setting to its default. Continue?')) {
+            return;
+          }
+          workflowPost('/api/workflow/postprocess', {
+            briefId: sel.briefId,
+            runId: sel.runId,
+            force: true,
+            reset: true
+          }, 'Force reprocessing from raw…');
+        }
+      }));
+      wrap.appendChild(h('button', {
+        class: 'accept-button',
+        style: { marginBottom: '8px' },
+        text: 'Judge variants for this run',
+        title: 'Re-run the advisory judge over every variant in the displayed run',
+        onclick: function () {
+          workflowPost('/api/workflow/judge', {
+            briefId: sel.briefId,
+            runId: sel.runId,
+            force: true
+          }, 'Judging variants…');
+        }
+      }));
     }
     wrap.appendChild(grid);
     return wrap;

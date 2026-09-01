@@ -238,6 +238,33 @@ test('listRuns throws on a non-OK response', async () => {
   await assert.rejects(() => client.listRuns(), /Failed to load sidecar runs/);
 });
 
+test('postprocessRun and judgeRun forward displayed-run force options', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return jsonResponse({ status: 'completed' });
+    },
+  });
+
+  await client.postprocessRun('crawler male', 'run/1', {
+    force: true,
+    reset: true,
+    mode: 'reset',
+  });
+  await client.judgeRun('crawler male', 'run/1', { force: true });
+
+  assert.equal(calls[0].url, `${BASE}/api/runs/crawler%20male/run%2F1/postprocess`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    force: true,
+    reset: true,
+    mode: 'reset',
+  });
+  assert.equal(calls[1].url, `${BASE}/api/runs/crawler%20male/run%2F1/judge`);
+  assert.deepEqual(JSON.parse(calls[1].options.body), { force: true });
+});
+
 test('judge normalization exposes every current axis', () => {
   const raw = Object.fromEntries(
     JUDGE_AXES.map(({ key }, index) => [key, { score: (index % 5) + 1 }]),

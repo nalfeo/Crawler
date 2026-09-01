@@ -444,6 +444,8 @@ interface LatestRunQuery {
 
 interface RunPostprocessBody {
   readonly options?: unknown;
+  readonly force?: unknown;
+  readonly reset?: unknown;
   readonly sheet?: unknown;
   readonly mode?: unknown;
   readonly manualAnchor?: unknown;
@@ -1804,6 +1806,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           ? { manualWeaponAnchor: persistedWeaponAnchor }
           : {}),
         ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
+        ...(body.force === true ? { allowGridDrift: true } : {}),
+        ...(body.force === true ? { forceRecovery: true } : {}),
+        ...(body.reset === true ? { optionsMode: 'reset' as const } : {}),
         ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });

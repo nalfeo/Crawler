@@ -74,6 +74,52 @@ wrong-facing poses, enclosed-transparency failures, or identity/scale drift.
 West's first ranked candidates faced the wrong way; variant 8 was selected only
 after reviewing the complete sheet.
 
+## Durable source-sheet recovery
+
+The original accepted winners remained durable, but the direct generation path
+had stored the seven source review sheets only under the generating worktree.
+The sheets were regenerated without replacing any accepted asset, using the
+Azure-backed sidecar route so each raw sheet, brief, prompt/reference metadata,
+slice map, and summary remains available after this session.
+
+| Direction | Durable recovery run           | Raw sheet SHA-256                                                  |
+| --------- | ------------------------------ | ------------------------------------------------------------------ |
+| N         | `2026-09-01T15-39-24-850add11` | `b7e9a756e39d77f885e8c41905c607704f6e4aab144ec571faec214b35669097` |
+| NE        | `2026-09-01T15-41-42-65df1199` | `7242f9ad910a8f649ecc4d2d7446d6d72c375a46f0c68127314e24bb44e76f9e` |
+| E         | `2026-09-01T15-43-03-b37e280e` | `cdb3fe36ca7da9443a0ad05a19c9b15559aeff951aaf5f86dd53b7960e956f8c` |
+| SE        | `2026-09-01T15-44-22-0415a115` | `2fd70428de896f16d38591b2d12dbbb6ef8de44a67fbe9d909512d63f0772420` |
+| SW        | `2026-09-01T15-46-14-5bb9c83c` | `819150ca61515bcdfb96297d91999c56b27021b75e0c1771959981a210fbbb68` |
+| W         | `2026-09-01T15-47-51-61faa0d0` | `6e3b223031fdf877eef17ddf30ae10b5fa0469a2f3bf5dc2c5ec3a7974b27210` |
+| NW        | `2026-09-01T16-36-29-dbbae735` | `6ab88c046c727ed813468d269657d03ab86325b593ef0cccb41b93a1f582479f` |
+
+South's original source run remains
+`crawler-male-south-neutral-v2/2026-08-27T06-29-54-7511eaf0`. All eight sheets
+were downloaded into the session Screenshot Viewer gallery under
+`directional-neutral-sheets`. N, NE, and E re-sliced to 12 candidates. W and the
+final NW retry visibly contain 12 candidates. SE and SW raw sheets remain the
+authority because internal transparent seams confused the content-aware slicer;
+no malformed auto-slice was approved.
+
+The durability root cause was fixed separately in ready-for-review PR #4036:
+direct generation now mirrors run data to Azure, persists exact brief and prompt
+provenance before provider execution, and fails approval closed if durable run
+artifacts cannot be verified.
+
+## Parent workflow inheritance
+
+This child branch was rebased onto parent PR #3234 at `85b29f953`. The parent
+worktree's still-uncommitted workflow behavior was then ported surgically:
+
+- raw-only and processed runs expose **Force reprocess from raw**;
+- forced recovery resets stale postprocess customization, permits intentional
+  grid replacement, and binds to the run displayed in the Sprites tab;
+- processed variants expose an explicit displayed-run judge action;
+- variant thumbnails retain their natural aspect ratio instead of being forced
+  into 96×96 squares.
+
+The live workflow canvas showed the force control for a raw-only run and measured
+an East 256×390 candidate at 105×160 with `object-fit: contain`.
+
 ## Runtime wiring and observation
 
 `player-walk-cycle-male` remains the male player mapping. The generated manifest
@@ -98,7 +144,10 @@ opaque figure at about 63 screen pixels and remained readable.
 - Enforced in-bounds, non-overlapping, complete directional clip coverage in the
   runtime manifest schema.
 - Recorded frame-local rather than whole-atlas opaque bounds for animations.
-- Isolated the exact remote-main queue CAS fix in commit `1ff490bd6`.
+- Inherited the exact remote-main queue CAS fix at commit `bd9dc90cf`.
+- Kept displayed-run force actions run-scoped: they bypass workflow-item
+  mutation, call the sidecar with explicit brief/run IDs, and invalidate only
+  the selected run view.
 
 ## Verification
 
@@ -113,6 +162,8 @@ opaque figure at about 63 screen pixels and remained readable.
 - Physics, AI parity, registry, asset-integrity, and allowlist guards passed.
 - Real-game observation covered all eight movement and idle directions.
 - Task-scoped code review and adjudicated multi-model review are clean.
+- Parent workflow inheritance: 320 extension tests and 15 sidecar re-run
+  integration tests passed; `typecheck` and `verify:fast` passed.
 
 Review ledger:
 `docs/knowledge/review-ledgers/2026-08-31-directional-player-walk.review-ledger.json`
