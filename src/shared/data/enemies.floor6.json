@@ -1,0 +1,52 @@
+{
+  "id": "floor6-renovation-crew",
+  "name": "Floor 6 Renovation Crew",
+  "archetypes": [
+    {
+      "id": "floor6-site-prep",
+      "name": "Site Prep Worker",
+      "hp": 18,
+      "speed": 0.17,
+      "detectRange": 60.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.8,
+      "spriteHeight": 1.8,
+      "aiType": "chase",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor6-demo-lead",
+      "name": "Demo Lead",
+      "hp": 32,
+      "speed": 0.14,
+      "detectRange": 64.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.0,
+      "spriteHeight": 2.0,
+      "aiType": "chase",
+      "spawnWeight": 0.0
+    },
+    {
+      "id": "floor6-cable-crew",
+      "name": "Cable Crew",
+      "hp": 24,
+      "speed": 0.13,
+      "detectRange": 72.0,
+      "spriteTexture": 1,
+      "spriteWidth": 1.9,
+      "spriteHeight": 1.9,
+      "aiType": "ranged",
+      "spawnWeight": 0.0
+    }
+  ],
+  "enemyCap": 6,
+  "spawnIntervalMs": 0,
+  "spawnRadiusMin": 0,
+  "despawnDistanceFt": 0,
+  "engageRadiusFt": 1,
+  "engageTarget": 1,
+  "maxSpawnsPerTick": 1,
+  "roomWaveChance": 0,
+  "roomWaveMin": 0,
+  "roomWaveMax": 0
+}

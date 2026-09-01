@@ -31,6 +31,7 @@ import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipme
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
+import { getFloor6DefenseRunStats } from '../floor6Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -1894,6 +1895,7 @@ export async function runHeadless(
       ),
       floor4Arena: getFloor4ArenaRunStats(world),
       floor5Siege: getFloor5SiegeRunStats(world),
+      floor6Defense: getFloor6DefenseRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -2006,6 +2008,7 @@ export async function runHeadless(
     ),
     floor4Arena: getFloor4ArenaRunStats(world),
     floor5Siege: getFloor5SiegeRunStats(world),
+    floor6Defense: getFloor6DefenseRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
