@@ -217,6 +217,7 @@ export function initializeFloor6Scenario(
 
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
 const FLOOR6_SELECTION_TRACE_LIMIT = 64;
+const FLOOR6_TOWER_EFFECT_LIFETIME_MS = 120;
 
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
@@ -872,7 +873,11 @@ function spawnFloor6TowerEffect(
     eid,
     set(Floor6TowerEffect, { towerIndex: tower.stableIndex, targetEid }),
   );
-  addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + 120 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Lifetime, { expiresAtMs: world.elapsedMs + FLOOR6_TOWER_EFFECT_LIFETIME_MS }),
+  );
   state.towers.activeEffectEids.push(eid);
   state.towers.effectsSpawned += 1;
 }
