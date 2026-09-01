@@ -1,4 +1,4 @@
-/* global console, process */
+/* global process */
 
 import fs from 'node:fs';
 
@@ -26,6 +26,6 @@ try {
     `\n📊 Coverage: lines ${pct(total, 'lines')}, branches ${pct(total, 'branches')}, functions ${pct(total, 'functions')}, statements ${pct(total, 'statements')} ([summary artifact](${runUrl}))`,
   );
 } catch (error) {
-  console.log(`::warning::Failed to format coverage summary: ${error.message}`);
+  process.stderr.write(`::warning::Failed to format coverage summary: ${error.message}\n`);
   process.stdout.write(unavailable());
 }
