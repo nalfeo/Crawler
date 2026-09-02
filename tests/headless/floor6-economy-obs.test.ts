@@ -9,7 +9,7 @@ describe('Floor 6 economy real headless pipeline', () => {
       ({
         floorId: 'floor6',
         seed: 606,
-        maxFrames: 2000,
+        maxFrames: 7000,
         maxWallTimeMs: 30_000,
         questStallFrames: 0,
       }) as const;
@@ -19,9 +19,17 @@ describe('Floor 6 economy real headless pipeline', () => {
     expect(stats.combat.totalKills).toBeGreaterThan(0);
     expect(stats.lootEfficiency?.xpCollected).toBeGreaterThan(0);
     expect(stats.lootEfficiency?.goldCollected).toBeGreaterThan(0);
-    expect(stats.floor6Defense?.buildCurrencyPickupsCollected).toBeGreaterThan(0);
-    expect(stats.floor6Defense?.towers.length).toBeGreaterThanOrEqual(1);
-    expect(stats.floor6Defense?.selectedOfferIds.length).toBeGreaterThanOrEqual(1);
+    expect(stats.outcome).toBe('victory');
+    expect(stats.floor6Defense?.phase.kind).toBe('VICTORY');
+    expect(stats.floor6Defense?.breaksEntered).toBe(2);
+    expect(stats.floor6Defense?.breaksExited).toBe(2);
+    expect(stats.floor6Defense?.hostileActivityDuringBreak).toBe(0);
+    expect(stats.floor6Defense?.finaleBossDefeated).toBe(true);
+    expect(stats.floor6Defense?.terminalOutcome).toBe('victory');
+    expect(stats.floor6Defense?.terminalOutcomeCount).toBe(1);
+    expect(stats.floor6Defense?.victoryPayoutCount).toBe(1);
+    expect(stats.floor6Defense?.exitOpenCount).toBe(1);
+    expect(stats.floor6Defense?.towersTornDown).toBeGreaterThanOrEqual(1);
     expect(stats.floor6Defense?.heroDamageDealt).toBeGreaterThan(0);
     expect(stats.floor6Defense?.towerDamageDealt).toBeGreaterThan(0);
     expect(stats.floor6Defense).toEqual(replay.floor6Defense);

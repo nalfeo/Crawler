@@ -83,4 +83,22 @@ describe('floor6 manifest economy schema validation', () => {
     offers[1] = { ...offers[1]!, id: offers[0]!.id };
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
+
+  it('rejects a finale boss referencing an unknown archetype', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.finale!.boss = {
+      ...bad.floor6.finale!.boss,
+      archetypeId: 'not-a-real-deadline',
+    };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a finale add referencing an unknown route', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.finale!.adds[0] = {
+      ...bad.floor6.finale!.adds[0]!,
+      routeIndex: 99,
+    };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
 });

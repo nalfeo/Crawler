@@ -1021,6 +1021,26 @@ export interface Floor6DefenseState {
   heroDamageDealt: number;
   /** Damage dealt to Floor 6 raiders by Floor 6 towers. */
   towerDamageDealt: number;
+  /** Zero-based authored defense act currently being resolved. */
+  currentActIndex: number;
+  /** Frame the current break started, or null outside BREAK. */
+  breakStartedFrame: number | null;
+  /** Bounded build breaks entered after cleared defense acts. */
+  breaksEntered: number;
+  /** Bounded build breaks exited back to pressure/finale. */
+  breaksExited: number;
+  /** Hostile raider count observed during BREAK; must remain zero. */
+  hostileActivityDuringBreak: number;
+  /** Finale boss/add release state and authoritative defeat latch. */
+  finale: Floor6FinaleState;
+  /** Terminal outcome latch; written once by the defense director. */
+  terminalOutcome: 'victory' | 'defeat' | null;
+  /** Count of terminal outcome writes; should never exceed one. */
+  terminalOutcomeCount: number;
+  /** Victory payout transaction state; never inferred from presentation. */
+  victoryPayout: Floor6VictoryPayoutState;
+  /** Exit-open transaction state; separate from boss entity absence. */
+  exit: Floor6ExitState;
 }
 
 export interface Floor6TowerDef {
@@ -1041,6 +1061,7 @@ export interface Floor6TowerInstance {
 
 export type Floor6TowerBuildFailureReason =
   | 'not-floor6'
+  | 'phase-locked'
   | 'invalid-site'
   | 'unknown-tower'
   | 'occupied'
@@ -1054,7 +1075,7 @@ export interface Floor6TowerBuildResult {
 
 export interface Floor6TowerSellResult {
   readonly ok: boolean;
-  readonly reason: 'not-floor6' | 'vacant' | 'sold';
+  readonly reason: 'not-floor6' | 'phase-locked' | 'vacant' | 'sold';
 }
 
 export interface Floor6EconomyState {
@@ -1083,6 +1104,7 @@ export interface Floor6UpgradeSelectionTraceEntry {
 
 export type Floor6UpgradeSelectionFailureReason =
   | 'not-floor6'
+  | 'phase-locked'
   | 'unknown-offer'
   | 'duplicate'
   | 'unaffordable';
@@ -1090,6 +1112,53 @@ export type Floor6UpgradeSelectionFailureReason =
 export interface Floor6UpgradeSelectionResult {
   readonly ok: boolean;
   readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+}
+
+export interface Floor6FinaleBossManifestEntry {
+  readonly bossId: string;
+  readonly displayName: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly hp: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleAddManifestEntry {
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleState {
+  bossManifest: Floor6FinaleBossManifestEntry | null;
+  addManifest: readonly Floor6FinaleAddManifestEntry[];
+  bossEid: number;
+  bossDefeated: boolean;
+  startedFrame: number | null;
+  bossDefeatedFrame: number | null;
+  timeoutFrames: number;
+}
+
+export interface Floor6VictoryPayoutState {
+  awarded: boolean;
+  count: number;
+  gold: number;
+  broadcastScore: number;
+}
+
+export interface Floor6ExitState {
+  opened: boolean;
+  openCount: number;
 }
 
 export type Floor6UpgradeEffectKind =
@@ -1116,6 +1185,7 @@ export interface Floor6UpgradeOfferManifestEntry {
  * Stable by `manifestIndex`; reordering is seed-breaking (FR3.4).
  */
 export interface Floor6WaveManifestEntry {
+  readonly kind: 'wave' | 'finale-boss' | 'finale-add';
   readonly manifestIndex: number;
   readonly waveIndex: number;
   readonly waveLabel: string;
@@ -1172,6 +1242,22 @@ export interface Floor6DefenseRunStats {
   readonly towersTornDown: number;
   readonly heroDamageDealt: number;
   readonly towerDamageDealt: number;
+  readonly currentActIndex: number;
+  readonly breaksEntered: number;
+  readonly breaksExited: number;
+  readonly hostileActivityDuringBreak: number;
+  readonly finaleBossDefeated: boolean;
+  readonly finaleBossEid: number;
+  readonly finaleBossManifest: Floor6FinaleBossManifestEntry | null;
+  readonly finaleAddManifestLength: number;
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutAwarded: boolean;
+  readonly victoryPayoutCount: number;
+  readonly victoryPayoutGold: number;
+  readonly victoryPayoutBroadcastScore: number;
+  readonly exitOpened: boolean;
+  readonly exitOpenCount: number;
 }
 
 /**

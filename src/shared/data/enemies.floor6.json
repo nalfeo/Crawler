@@ -37,6 +37,18 @@
       "spriteHeight": 1.9,
       "aiType": "ranged",
       "spawnWeight": 0.0
+    },
+    {
+      "id": "floor6-broadcast-deadline",
+      "name": "Broadcast Deadline",
+      "hp": 60,
+      "speed": 0.12,
+      "detectRange": 80.0,
+      "spriteTexture": 1,
+      "spriteWidth": 2.4,
+      "spriteHeight": 2.4,
+      "aiType": "chase",
+      "spawnWeight": 0.0
     }
   ],
   "enemyCap": 6,

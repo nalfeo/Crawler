@@ -5,15 +5,19 @@
  * FR3.3 (missing entity recovery), FR3.4 (stable ordering), FR2.2 (terminal
  * precedence), and FR9.6 (no soft lock).
  */
-import { query, setComponent } from 'bitecs';
+import { addComponent, query, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { BroadcastRelayRaider, Health, Position } from '../../src/core/index.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
 import {
+  buildFloor6Tower,
+  confirmFloor6StairDescend,
   floor6DefenseDirectorSystem,
   floor6RaiderSystem,
   getFloor6DefenseRunStats,
+  getFloor6RunOutcome,
+  purchaseFloor6UpgradeOffer,
   _getFloor6InitializationArtifact,
 } from '../../src/game/floor6Scenario.js';
 import { floor6Manifest } from '../../src/shared/floor-manifest.js';
@@ -40,6 +44,46 @@ function tickDirector(world: ReturnType<typeof createTestWorld>, ticks = 1) {
     world.elapsedMs += 16;
     floor6DefenseDirectorSystem(world);
   }
+}
+
+function completeCurrentFloor6Act(world: ReturnType<typeof createTestWorld>) {
+  const state = getDefenseState(world);
+  const wave = floor6Manifest.floor6?.waves?.[state.currentActIndex];
+  if (!wave || !state.waveManifest) throw new Error('No current Floor 6 act');
+  const entries = state.waveManifest.filter(
+    (entry) => entry.kind === 'wave' && entry.waveIndex === wave.waveIndex,
+  );
+  for (const entry of entries) {
+    while (state.liveEnemies.length <= entry.manifestIndex) {
+      state.liveEnemies.push({
+        eid: -1,
+        waypointIndex: 0,
+        stillFrames: 0,
+        stallResolved: true,
+        defeated: true,
+        rewardSpawned: true,
+      });
+    }
+    state.liveEnemies[entry.manifestIndex] = {
+      eid: -1,
+      waypointIndex: 0,
+      stillFrames: 0,
+      stallResolved: true,
+      defeated: true,
+      rewardSpawned: true,
+    };
+    state.nextReleaseIndex = Math.max(state.nextReleaseIndex, entry.manifestIndex + 1);
+  }
+  tickDirector(world);
+}
+
+function enterFinaleByCompletingActs(world: ReturnType<typeof createTestWorld>) {
+  tickDirector(world);
+  completeCurrentFloor6Act(world);
+  tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+  completeCurrentFloor6Act(world);
+  tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+  completeCurrentFloor6Act(world);
 }
 
 function tickBoth(world: ReturnType<typeof createTestWorld>, ticks = 1) {
@@ -119,6 +163,108 @@ describe('Floor 6 wave manifest determinism', () => {
     const authored = floor6Manifest.floor6?.waves ?? [];
     const expectedTotal = authored.reduce((sum, w) => sum + w.entries.length, 0);
     expect(state.waveManifest?.length).toBe(expectedTotal);
+  });
+});
+
+describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
+  it('survives each authored act and enters/exits bounded hostile-free build breaks', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+
+    completeCurrentFloor6Act(world);
+    expect(state.phase.kind).toBe('BREAK');
+    expect(query(world.ecs, [BroadcastRelayRaider, Health])).toHaveLength(0);
+
+    const stray = createEntity(world);
+    addComponent(world.ecs, stray, set(BroadcastRelayRaider, { manifestIndex: 0 }));
+    addComponent(world.ecs, stray, set(Health, { current: 1, max: 1 }));
+    addComponent(world.ecs, stray, set(Position, { x: 0, y: 0 }));
+    tickDirector(world);
+    expect(query(world.ecs, [BroadcastRelayRaider, Health])).toHaveLength(0);
+
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    expect(state.phase.kind).toBe('DEFEND');
+    expect(state.breaksEntered).toBe(1);
+    expect(state.breaksExited).toBe(1);
+    expect(state.hostileActivityDuringBreak).toBe(1);
+
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    expect(state.phase.kind).toBe('FINALE');
+    expect(state.breaksEntered).toBe(2);
+    expect(state.breaksExited).toBe(2);
+    expect(state.finale.bossManifest?.displayName).toBe('Broadcast Deadline');
+  });
+
+  it('keeps build and upgrade transactions legal only during defense breaks', () => {
+    const { world } = initFloor6();
+    enterFinaleByCompletingActs(world);
+    const state = getDefenseState(world);
+    state.economy.balance = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger')).toEqual({
+      ok: false,
+      reason: 'phase-locked',
+    });
+    expect(purchaseFloor6UpgradeOffer(world, state.upgradeOfferManifest![0]!.offerId)).toEqual({
+      ok: false,
+      reason: 'phase-locked',
+    });
+  });
+
+  it('same-tick defeat precedence beats an otherwise defeated Deadline', () => {
+    const { world } = initFloor6();
+    enterFinaleByCompletingActs(world);
+    const state = getDefenseState(world);
+    state.finale.bossDefeated = true;
+    state.relayHp = 0;
+
+    tickDirector(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.terminalOutcome).toBe('defeat');
+    expect(state.terminalOutcomeCount).toBe(1);
+    expect(state.victoryPayout.count).toBe(0);
+    expect(getFloor6RunOutcome(world)).toBe('failed_timeout');
+  });
+
+  it('boss timeout backstop records one terminal defeat and cleans up', () => {
+    const { world } = initFloor6();
+    enterFinaleByCompletingActs(world);
+    const state = getDefenseState(world);
+    state.finale.startedFrame = world.frameCount - state.finale.timeoutFrames;
+
+    tickDirector(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.terminalOutcome).toBe('defeat');
+    expect(state.terminalOutcomeCount).toBe(1);
+    expect(getFloor6DefenseRunStats(world)?.terminalResetCount).toBe(1);
+  });
+
+  it('Deadline defeat awards payout and opens the exit exactly once', () => {
+    const { world } = initFloor6();
+    enterFinaleByCompletingActs(world);
+    const state = getDefenseState(world);
+    const goldBefore = world.playerGold;
+    state.finale.bossDefeated = true;
+
+    tickDirector(world);
+    const statsAfterVictory = getFloor6DefenseRunStats(world);
+    tickDirector(world, 3);
+
+    expect(state.phase.kind).toBe('VICTORY');
+    expect(state.terminalOutcome).toBe('victory');
+    expect(state.terminalOutcomeCount).toBe(1);
+    expect(state.victoryPayout.count).toBe(1);
+    expect(state.exit.openCount).toBe(1);
+    expect(world.playerGold).toBe(
+      goldBefore + (floor6Manifest.floor6?.finale?.victoryPayoutGold ?? 0),
+    );
+    expect(getFloor6DefenseRunStats(world)).toEqual(statsAfterVictory);
+    expect(confirmFloor6StairDescend(world)).toBe(true);
+    expect(getFloor6RunOutcome(world)).toBe('cleared_floor');
   });
 });
 
@@ -281,8 +427,8 @@ describe('Floor 6 missing entity recovery (FR3.3)', () => {
     tickDirector(world);
     tickDirector(world);
     tickDirector(world);
-    // Without player death or relay loss, phase stays DEFEND (Victory deferred to later slices)
-    expect(state.phase.kind).toBe('DEFEND');
+    // Without player death or relay loss, clearing an act now advances to the safe build break.
+    expect(state.phase.kind).toBe('BREAK');
   });
 });
 
