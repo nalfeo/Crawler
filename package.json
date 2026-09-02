@@ -145,6 +145,7 @@
     "producer": "tsx scripts/agent/producer.ts",
     "epic:status": "tsx scripts/agent/epics/epic-status.ts",
     "epic:materialize": "tsx scripts/agent/epics/epic-materialize.ts",
+    "epics:lint-floor": "tsx scripts/agent/epics/floor-epic-lint.ts",
     "verify:core": "npm run typecheck:src && npm run lint:core && vitest run tests/ecs tests/property --reporter=dot",
     "verify:game": "npm run typecheck:src && npm run lint:game && vitest run tests/game --reporter=dot",
     "verify:engine": "npm run typecheck:src && npm run lint:engine && vitest run tests/unit --reporter=dot",
