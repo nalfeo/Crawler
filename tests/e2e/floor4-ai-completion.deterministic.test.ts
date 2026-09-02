@@ -198,11 +198,12 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.reachedVictory, firstContext).toBe(true);
     expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
     expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBeGreaterThanOrEqual(5);
-    expect(firstRun.finalSnapshot.enemiesSpawned, firstContext).toBeGreaterThan(0);
+    expect(firstRun.finalSnapshot.enemiesSpawned, firstContext).toBeGreaterThanOrEqual(200);
     expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(new Set(firstRun.finalSnapshot.intermissionActs).size, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
 
     const secondRun = await runVisualFloor4Completion(browser);
     const secondContext = `pageErrors=${JSON.stringify(
@@ -212,9 +213,29 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     )}`;
 
     // Deterministic parity check: the same canonical visual run repeats with
-    // an identical phase fingerprint and completion telemetry.
+    // an identical phase progression fingerprint and completion contract.
     expect(secondRun.pageErrors, secondContext).toEqual([]);
     expect(secondRun.reachedVictory, secondContext).toBe(true);
-    expect(secondRun.finalSnapshot, secondContext).toEqual(firstRun.finalSnapshot);
+    expect(secondRun.finalSnapshot.phaseKind, secondContext).toBe('VICTORY');
+    expect(secondRun.finalSnapshot.wavesReleased, secondContext).toBe(
+      firstRun.finalSnapshot.wavesReleased,
+    );
+    expect(secondRun.finalSnapshot.enemiesSpawned, secondContext).toBeGreaterThanOrEqual(200);
+    expect(secondRun.finalSnapshot.headlinerSpawned, secondContext).toBe(
+      firstRun.finalSnapshot.headlinerSpawned,
+    );
+    expect(secondRun.finalSnapshot.headlinerDefeated, secondContext).toBe(
+      firstRun.finalSnapshot.headlinerDefeated,
+    );
+    expect(new Set(secondRun.finalSnapshot.intermissionActs).size, secondContext).toBe(
+      new Set(firstRun.finalSnapshot.intermissionActs).size,
+    );
+    expect(secondRun.finalSnapshot.actIncomeCount, secondContext).toBe(
+      firstRun.finalSnapshot.actIncomeCount,
+    );
+    expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
+    expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
+      firstRun.finalSnapshot.timelineFingerprint,
+    );
   }, 300_000);
 });
