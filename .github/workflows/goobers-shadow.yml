@@ -1,0 +1,182 @@
+name: Goobers Shadow
+
+on:
+  workflow_dispatch:
+    inputs:
+      shadow_scope:
+        description: 'Comma-separated legacy workflows to replay'
+        type: string
+        required: true
+        default: 'ci-recovery,merge-train'
+      report_day:
+        description: 'Deterministic report date stamp (YYYY-MM-DD)'
+        type: string
+        required: false
+        default: ''
+  schedule:
+    - cron: '15 6 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  shadow:
+    name: Shadow parity report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOBERS_SHADOW_SCOPE: ${{ inputs.shadow_scope || 'ci-recovery,merge-train' }}
+      GOOBERS_SHADOW_REPORT_DAY: ${{ inputs.report_day }}
+      GOOBERS_VERSION: v0.3.3
+      GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
+      GOOBERS_INSTANCE: ${{ runner.temp }}/goobers-shadow-instance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read bounded immutable legacy lifecycle outcomes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+
+            const names = new Map([
+              ['ci-recovery', 'ci-recovery.yml'],
+              ['merge-train', 'merge-train.yml'],
+            ]);
+            const requested = process.env.GOOBERS_SHADOW_SCOPE.split(',').map(name => name.trim()).filter(Boolean);
+            if (requested.some(name => !names.has(name))) {
+              throw new Error(`Unknown shadow scope: ${requested.filter(name => !names.has(name)).join(', ')}`);
+            }
+
+            const currentRun = (await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            })).data;
+            const reportDay = process.env.GOOBERS_SHADOW_REPORT_DAY || currentRun.created_at.slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDay)) {
+              throw new Error(`Invalid report_day: ${reportDay}`);
+            }
+            core.exportVariable('GOOBERS_SHADOW_REPORT_DAY', reportDay);
+            const created = `${reportDay}T00:00:00Z..${reportDay}T23:59:59Z`;
+
+            const runs = [];
+            for (const scope of requested) {
+              const laneRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: names.get(scope),
+                status: 'completed',
+                created,
+                per_page: 100,
+              });
+              runs.push(...laneRuns);
+            }
+            runs.sort((left, right) => left.id - right.id);
+
+            const triggers = [];
+            for (const run of runs) {
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+                per_page: 100,
+              });
+              const artifact = artifacts.find(entry => entry.name === `legacy-lifecycle-${run.id}`);
+              if (!artifact) continue;
+              const archive = await github.request(
+                'GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}',
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                  archive_format: 'zip',
+                },
+              );
+              const directory = path.join(process.env.RUNNER_TEMP, `legacy-lifecycle-${run.id}`);
+              fs.mkdirSync(directory, { recursive: true });
+              const zipPath = `${directory}.zip`;
+              fs.writeFileSync(zipPath, Buffer.from(archive.data));
+              await exec.exec('unzip', ['-q', zipPath, '-d', directory]);
+              const payload = JSON.parse(fs.readFileSync(path.join(directory, 'records.json'), 'utf8'));
+              triggers.push(...(payload.records || []));
+            }
+
+            fs.mkdirSync('.goobers-shadow', { recursive: true });
+            fs.writeFileSync(
+              '.goobers-shadow/legacy-triggers.json',
+              `${JSON.stringify({ triggers }, null, 2)}\n`,
+            );
+            fs.writeFileSync('.goobers-shadow/report-day.txt', `${reportDay}\n`);
+
+      - name: Download pinned Goobers release
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/goobers-shadow-bin"
+          curl -fsSL -o "$RUNNER_TEMP/goobers-shadow.tar.gz" \
+            "https://github.com/Agent-Clubhouse/Goobers/releases/download/${GOOBERS_VERSION}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+          echo "${GOOBERS_SHA256}  $RUNNER_TEMP/goobers-shadow.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/goobers-shadow.tar.gz" -C "$RUNNER_TEMP/goobers-shadow-bin" goobers
+          chmod +x "$RUNNER_TEMP/goobers-shadow-bin/goobers"
+          echo "$RUNNER_TEMP/goobers-shadow-bin" >> "$GITHUB_PATH"
+
+      - name: Materialize read-only Goobers instance
+        run: |
+          set -euo pipefail
+          mkdir -p "$GOOBERS_INSTANCE"
+          cat > "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${GITHUB_REPOSITORY_OWNER}
+              name: ${GITHUB_REPOSITORY#*/}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          workflowSource:
+            kind: local-dir
+            path: ${GITHUB_WORKSPACE}/.goobers
+          runner:
+            envPassthrough:
+              - GOOBERS_SHADOW_INPUT_FILE
+          runConditions:
+            maxParallelRuns: 1
+          EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
+          goobers validate "$GOOBERS_INSTANCE"
+
+      - name: Run Goobers read-only decision workflow
+        env:
+          GOOBERS_GITHUB_TOKEN: ${{ github.token }}
+          GOOBERS_SHADOW_INPUT_FILE: ${{ github.workspace }}/.goobers-shadow/legacy-triggers.json
+        run: goobers run crawler-lifecycle-shadow "$GOOBERS_INSTANCE"
+
+      - name: Extract Goobers decisions
+        run: |
+          set -euo pipefail
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
+          cp "$events_file" .goobers-shadow/goobers-events.jsonl
+          jq -r 'select(.type == "stage.finished" and .stage == "decide") | .outputs.decisions' \
+            "$events_file" | tail -n 1 | jq '{ decisions: . }' > .goobers-shadow/goobers-decisions.json
+
+      - name: Compare legacy and Goobers decisions
+        run: >-
+          node .github/scripts/goobers-shadow.mjs
+          --input .goobers-shadow/legacy-triggers.json
+          --shadowInput .goobers-shadow/goobers-decisions.json
+          --scope "$GOOBERS_SHADOW_SCOPE"
+          --reportDay "$GOOBERS_SHADOW_REPORT_DAY"
+          --output .goobers-shadow/report.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goobers-shadow-${{ env.GOOBERS_SHADOW_REPORT_DAY }}
+          path: .goobers-shadow/
+          if-no-files-found: error
