@@ -43,6 +43,7 @@ const FLOOR6_UPGRADE_EFFECT_KINDS = [
   'relayRepair',
   'raiderSlowBonus',
 ] as const;
+const FLOOR6_BREAK_ACTIONS = ['tower-build', 'tower-sell', 'upgrade-purchase'] as const;
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -1175,6 +1176,38 @@ export const floorManifestDefSchema = z
           })
           .strict()
           .optional(),
+        finale: z
+          .object({
+            breakDurationFrames: z.number().int().nonnegative(),
+            bossTimeoutFrames: z.number().int().positive(),
+            victoryPayoutGold: z.number().int().nonnegative(),
+            victoryBroadcastScore: z.number().int().nonnegative(),
+            breakAllowedActions: z.array(z.enum(FLOOR6_BREAK_ACTIONS)).min(1),
+            boss: z
+              .object({
+                id: z.string().min(1),
+                displayName: z.string().min(1),
+                routeIndex: z.number().int().nonnegative(),
+                archetypeId: z.string().min(1),
+                releaseTick: z.number().int().nonnegative(),
+                hp: z.number().int().positive(),
+                buildCurrencyReward: z.number().int().nonnegative(),
+              })
+              .strict(),
+            adds: z.array(
+              z
+                .object({
+                  id: z.string().min(1),
+                  routeIndex: z.number().int().nonnegative(),
+                  archetypeId: z.string().min(1),
+                  releaseTick: z.number().int().nonnegative(),
+                  buildCurrencyReward: z.number().int().nonnegative(),
+                })
+                .strict(),
+            ),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .superRefine((floor6, ctx) => {
@@ -1239,6 +1272,8 @@ export const floorManifestDefSchema = z
           }
         }
         const waveIndexes = new Set<number>();
+        const pack = getFloorEnemyPack('floor6-renovation-crew');
+        const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
         for (const [index, wave] of (floor6.waves ?? []).entries()) {
           if (waveIndexes.has(wave.waveIndex)) {
             ctx.addIssue({
@@ -1248,10 +1283,17 @@ export const floorManifestDefSchema = z
             });
           }
           waveIndexes.add(wave.waveIndex);
+          for (const [entryIndex, entry] of wave.entries.entries()) {
+            if (!knownArchetypes.has(entry.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['waves', index, 'entries', entryIndex, 'archetypeId'],
+                message: `unknown Floor 6 wave archetype "${entry.archetypeId}"`,
+              });
+            }
+          }
         }
         if (floor6.economy) {
-          const pack = getFloorEnemyPack('floor6-renovation-crew');
-          const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
           const rewardArchetypeIds = new Set<string>();
           for (const [index, reward] of floor6.economy.enemyRewards.entries()) {
             if (rewardArchetypeIds.has(reward.archetypeId)) {
@@ -1307,6 +1349,49 @@ export const floorManifestDefSchema = z
               });
             }
             offerIds.add(offer.id);
+          }
+        }
+        if (floor6.finale) {
+          // Must match BroadcastRelaySetGenerator's fixed two-route authored layout.
+          const routeCount = 2;
+          const addIds = new Set<string>();
+          if (!knownArchetypes.has(floor6.finale.boss.archetypeId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'archetypeId'],
+              message: `unknown Floor 6 finale boss archetype "${floor6.finale.boss.archetypeId}"`,
+            });
+          }
+          if (floor6.finale.boss.routeIndex >= routeCount) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'routeIndex'],
+              message: `finale boss routeIndex ${floor6.finale.boss.routeIndex} exceeds authored routes`,
+            });
+          }
+          for (const [index, add] of floor6.finale.adds.entries()) {
+            if (addIds.has(add.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'id'],
+                message: `duplicate finale add id "${add.id}"`,
+              });
+            }
+            addIds.add(add.id);
+            if (!knownArchetypes.has(add.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'archetypeId'],
+                message: `unknown Floor 6 finale add archetype "${add.archetypeId}"`,
+              });
+            }
+            if (add.routeIndex >= routeCount) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'routeIndex'],
+                message: `finale add routeIndex ${add.routeIndex} exceeds authored routes`,
+              });
+            }
           }
         }
       })
