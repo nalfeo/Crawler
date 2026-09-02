@@ -1176,6 +1176,59 @@ export interface Floor6ExitState {
   openCount: number;
 }
 
+export interface Floor6QuestProjectionSnapshot {
+  readonly 'floor6.defense.briefed': boolean;
+  readonly 'floor6.defense.firstWaveCleared': boolean;
+  readonly 'floor6.defense.firstBuildPlaced': boolean;
+  readonly 'floor6.defense.firstUpgradeChosen': boolean;
+  readonly 'floor6.defense.breakCleared': boolean;
+  readonly 'floor6.defense.deadlineDefeated': boolean;
+  readonly 'floor6.defense.relaySecured': boolean;
+}
+
+export interface Floor6HudCue {
+  readonly id: string;
+  readonly kind: 'audio' | 'vfx' | 'hud';
+  readonly label: string;
+}
+
+export interface Floor6HudRouteSnapshot {
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly directionLabel: string;
+  readonly nextReleaseTick: number | null;
+}
+
+export interface Floor6HudBuildSiteSnapshot {
+  readonly siteId: string;
+  readonly occupied: boolean;
+  readonly label: string;
+  readonly towerId: string | null;
+}
+
+export interface Floor6HudTowerSnapshot {
+  readonly siteId: string;
+  readonly towerId: string;
+  readonly rangeFt: number;
+  readonly tierLabel: string;
+}
+
+export interface Floor6PresentationSnapshot {
+  readonly objectiveLabel: string;
+  readonly phaseLabel: string;
+  readonly relayDangerLabel: string;
+  readonly questGoals: Floor6QuestProjectionSnapshot;
+  readonly routes: readonly Floor6HudRouteSnapshot[];
+  readonly buildSites: readonly Floor6HudBuildSiteSnapshot[];
+  readonly towers: readonly Floor6HudTowerSnapshot[];
+  readonly buildCurrencyLabel: string;
+  readonly lootLabel: string;
+  readonly upgradeChoiceLabel: string;
+  readonly breakSafetyLabel: string;
+  readonly deadlineLabel: string;
+  readonly cues: readonly Floor6HudCue[];
+}
+
 export type Floor6UpgradeEffectKind =
   | 'relayMaxHpBonus'
   | 'towerFireRateBonus'
@@ -1274,6 +1327,7 @@ export interface Floor6DefenseRunStats {
   readonly victoryPayoutBroadcastScore: number;
   readonly exitOpened: boolean;
   readonly exitOpenCount: number;
+  readonly presentation: Floor6PresentationSnapshot;
 }
 
 /**

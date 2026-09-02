@@ -43,6 +43,9 @@ import type {
   Floor6DefenseState,
   Floor6FinaleAddManifestEntry,
   Floor6FinaleBossManifestEntry,
+  Floor6HudCue,
+  Floor6PresentationSnapshot,
+  Floor6QuestProjectionSnapshot,
   Floor6TowerBuildResult,
   Floor6TowerDef,
   Floor6TowerSellResult,
@@ -60,6 +63,8 @@ import { initializePlayerWeaponSkills } from './floorScenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
+import { acceptQuest } from '../core/systems/questSystem.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../shared/quest-types.js';
 
 function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
   const config = floor6Manifest.floor6;
@@ -220,6 +225,7 @@ export function initializeFloor6Scenario(
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  acceptQuest(world, FLOOR6_DEFENSE_QUEST_ID);
   world.state = 'playing';
 }
 
@@ -228,6 +234,15 @@ export function initializeFloor6Scenario(
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
 const FLOOR6_SELECTION_TRACE_LIMIT = 64;
 const FLOOR6_MAX_FIRE_RATE_BONUS = 0.9;
+export const FLOOR6_DEFENSE_GOAL_IDS = Object.freeze([
+  'floor6.defense.briefed',
+  'floor6.defense.firstWaveCleared',
+  'floor6.defense.firstBuildPlaced',
+  'floor6.defense.firstUpgradeChosen',
+  'floor6.defense.breakCleared',
+  'floor6.defense.deadlineDefeated',
+  'floor6.defense.relaySecured',
+] as const);
 
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
@@ -255,6 +270,35 @@ function recordFloor6PhaseTransition(
     terminalOutcome: state.terminalOutcome,
   });
   state.phase = newPhase;
+  updateFloor6QuestGoalFlags(world, state);
+}
+
+function setProjectedFloor6Goal(world: GameWorld, goalId: string, reached: boolean): void {
+  if (reached || world.goalFlags.get(goalId) === true) {
+    world.goalFlags.set(goalId, true);
+  }
+}
+
+function getFloor6QuestProjection(state: Floor6DefenseState): Floor6QuestProjectionSnapshot {
+  const firstWaveIndex = getFloor6Config().waves?.[0]?.waveIndex;
+  return {
+    'floor6.defense.briefed': state.phaseTrace.some((entry) => entry.reason === 'setup-complete'),
+    'floor6.defense.firstWaveCleared':
+      firstWaveIndex !== undefined && state.economy.rewardedWaveIndexes.includes(firstWaveIndex),
+    'floor6.defense.firstBuildPlaced': state.towerInstances.length > 0 || state.towersTornDown > 0,
+    'floor6.defense.firstUpgradeChosen': state.economy.selectedOfferIds.length > 0,
+    'floor6.defense.breakCleared': state.breaksExited > 0,
+    'floor6.defense.deadlineDefeated': state.finale.bossDefeated,
+    'floor6.defense.relaySecured':
+      state.terminalOutcome === 'victory' && state.exit.opened === true,
+  };
+}
+
+function updateFloor6QuestGoalFlags(world: GameWorld, state: Floor6DefenseState): void {
+  const projection = getFloor6QuestProjection(state);
+  for (const goalId of FLOOR6_DEFENSE_GOAL_IDS) {
+    setProjectedFloor6Goal(world, goalId, projection[goalId]);
+  }
 }
 
 /**
@@ -616,6 +660,157 @@ function floor6RelayMaxHp(state: Floor6DefenseState): number {
   );
 }
 
+function floor6QuestGoalFlagSnapshot(
+  world: GameWorld,
+  state: Floor6DefenseState,
+): Floor6QuestProjectionSnapshot {
+  const projected = getFloor6QuestProjection(state);
+  return {
+    'floor6.defense.briefed':
+      world.goalFlags.get('floor6.defense.briefed') === true || projected['floor6.defense.briefed'],
+    'floor6.defense.firstWaveCleared':
+      world.goalFlags.get('floor6.defense.firstWaveCleared') === true ||
+      projected['floor6.defense.firstWaveCleared'],
+    'floor6.defense.firstBuildPlaced':
+      world.goalFlags.get('floor6.defense.firstBuildPlaced') === true ||
+      projected['floor6.defense.firstBuildPlaced'],
+    'floor6.defense.firstUpgradeChosen':
+      world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true ||
+      projected['floor6.defense.firstUpgradeChosen'],
+    'floor6.defense.breakCleared':
+      world.goalFlags.get('floor6.defense.breakCleared') === true ||
+      projected['floor6.defense.breakCleared'],
+    'floor6.defense.deadlineDefeated':
+      world.goalFlags.get('floor6.defense.deadlineDefeated') === true ||
+      projected['floor6.defense.deadlineDefeated'],
+    'floor6.defense.relaySecured':
+      world.goalFlags.get('floor6.defense.relaySecured') === true ||
+      projected['floor6.defense.relaySecured'],
+  };
+}
+
+function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState): string {
+  const entrance = state.geometry.entrances.find((candidate) => candidate.id === from.entranceId);
+  const target = state.geometry.broadcastRelay.target;
+  const spawn = entrance?.spawn ?? target;
+  const dx = target.x - spawn.x;
+  const dy = target.y - spawn.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? 'incoming from west route → Relay' : 'incoming from east route ← Relay';
+  }
+  return dy >= 0 ? 'incoming from north route ↓ Relay' : 'incoming from south route ↑ Relay';
+}
+
+function buildFloor6PresentationSnapshot(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  relayMaxHp: number,
+): Floor6PresentationSnapshot {
+  const manifest = state.waveManifest ?? [];
+  const towerRoster = new Map(_getFloor6TowerRoster().map((tower) => [tower.id, tower]));
+  const nextByRoute = new Map<string, Floor6WaveManifestEntry>();
+  for (const entry of manifest.slice(state.nextReleaseIndex)) {
+    if (!isFloor6EntryReleasableInCurrentPhase(state, entry) || nextByRoute.has(entry.routeId)) {
+      continue;
+    }
+    nextByRoute.set(entry.routeId, entry);
+  }
+  const selectedOffers = new Set(state.economy.selectedOfferIds);
+  const towerTierLabel =
+    selectedOffers.size > 0 ? `upgraded tier +${selectedOffers.size}` : 'base tier';
+  const relayPct = relayMaxHp > 0 ? state.relayHp / relayMaxHp : 0;
+  const relayDangerLabel =
+    relayPct <= 0.25
+      ? `CRITICAL Relay danger: ${state.relayHp}/${relayMaxHp} HP`
+      : relayPct <= 0.5
+        ? `WARNING Relay under pressure: ${state.relayHp}/${relayMaxHp} HP`
+        : `SAFE Relay holding: ${state.relayHp}/${relayMaxHp} HP`;
+  const cues: Floor6HudCue[] = [
+    {
+      id: `floor6-phase-${state.phase.kind}`,
+      kind: 'hud',
+      label: `Phase cue: ${state.phase.kind}`,
+    },
+  ];
+  if (state.phase.kind === 'BREAK') {
+    cues.push({
+      id: 'floor6-break-safe',
+      kind: 'audio',
+      label: 'Service break cue: hostiles cleared; build, sell, and upgrade actions are safe',
+    });
+  }
+  if (state.phase.kind === 'FINALE') {
+    cues.push({
+      id: 'floor6-deadline-finale',
+      kind: 'vfx',
+      label: 'Deadline cue: boss pressure active on authored routes',
+    });
+  }
+  if (relayPct <= 0.5) {
+    cues.push({
+      id: 'floor6-relay-danger',
+      kind: 'audio',
+      label: relayDangerLabel,
+    });
+  }
+
+  return {
+    objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
+    phaseLabel: `${state.phase.kind} phase`,
+    relayDangerLabel,
+    questGoals: floor6QuestGoalFlagSnapshot(world, state),
+    routes: state.geometry.routes.map((route) => {
+      const next = nextByRoute.get(route.id);
+      const sample = next ?? manifest.find((entry) => entry.routeId === route.id);
+      return {
+        routeId: route.id,
+        entranceId: route.entranceId,
+        directionLabel: sample
+          ? directionLabel(sample, state)
+          : 'route clear; no incoming wave queued',
+        nextReleaseTick: next?.releaseTick ?? null,
+      };
+    }),
+    buildSites: state.geometry.buildSites.map((site) => {
+      const tower = state.towerInstances.find((instance) => instance.siteId === site.id);
+      return {
+        siteId: site.id,
+        occupied: tower !== undefined,
+        label: tower
+          ? `OCCUPIED ${site.id}: ${tower.towerId}`
+          : `VACANT ${site.id}: buildable maintenance plinth`,
+        towerId: tower?.towerId ?? null,
+      };
+    }),
+    towers: state.towerInstances.map((instance) => {
+      const tower = towerRoster.get(instance.towerId);
+      return {
+        siteId: instance.siteId,
+        towerId: instance.towerId,
+        rangeFt: tower?.attackRangeFt ?? 0,
+        tierLabel: towerTierLabel,
+      };
+    }),
+    buildCurrencyLabel: `Requisitions ${state.economy.balance} available; ${state.economy.totalSpent} spent`,
+    lootLabel: `Loot visible: ${state.economy.pickupsSpawned} requisition drops, ${state.economy.pickupsCollected} collected`,
+    upgradeChoiceLabel:
+      state.upgradeOfferManifest && state.upgradeOfferManifest.length > 0
+        ? `${state.economy.selectedOfferIds.length}/${state.upgradeOfferManifest.length} upgrade offers chosen`
+        : 'No upgrade offers active',
+    breakSafetyLabel:
+      state.phase.kind === 'BREAK'
+        ? `Break safe: ${countLiveFloor6Raiders(world)} live hostiles, ${state.spawnDebt} spawn debt`
+        : `Breaks cleared: ${state.breaksExited}; hostile break activity ${state.hostileActivityDuringBreak}`,
+    deadlineLabel:
+      state.phase.kind === 'FINALE'
+        ? `Deadline active: ${state.finale.bossManifest?.displayName ?? 'Broadcast Deadline'} on ${state.finale.bossManifest?.routeId ?? 'route'}`
+        : state.finale.bossDefeated
+          ? 'Deadline defeated; Relay secured'
+          : 'Deadline pending',
+    cues,
+  };
+}
+
 function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
   return getFloor6Config().towers?.find((tower) => tower.id === towerId);
 }
@@ -705,6 +900,7 @@ export function buildFloor6Tower(
   state.economy.totalSpent += tower.cost;
   state.towerInstances.push({ siteId, towerId, eid });
   sortFloor6TowerInstancesBySite(state);
+  updateFloor6QuestGoalFlags(world, state);
   return { ok: true, reason: 'built', eid };
 }
 
@@ -865,6 +1061,7 @@ export function purchaseFloor6UpgradeOffer(
     if (offer.effect.kind === 'relayRepair') {
       state.relayHp = Math.min(floor6RelayMaxHp(state), state.relayHp + offer.effect.value);
     }
+    updateFloor6QuestGoalFlags(world, state);
   }
 
   refreshFloor6UnlockedOffers(state);
@@ -1469,6 +1666,7 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     victoryPayoutBroadcastScore: state.victoryPayout.broadcastScore,
     exitOpened: state.exit.opened,
     exitOpenCount: state.exit.openCount,
+    presentation: buildFloor6PresentationSnapshot(world, state, relayMaxHp),
   };
 }
 

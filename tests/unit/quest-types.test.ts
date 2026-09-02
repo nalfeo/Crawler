@@ -5,6 +5,7 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   FLOOR2_FIND_SETTLEMENT_QUEST_ID,
   FLOOR2_LEAVE_FLOOR_QUEST_ID,
+  FLOOR6_DEFENSE_QUEST_ID,
   getQuestDef,
   getAllQuestDefs,
   getQuestPacks,
@@ -24,6 +25,7 @@ describe('quest content packs', () => {
       'floor1',
       'floor2',
       'floor5-siege',
+      'floor6-defense',
     ]);
 
     expect(getQuestDef(FLOOR1_TUTORIAL_QUEST_ID)?.objectives).toEqual([
@@ -72,6 +74,15 @@ describe('quest content packs', () => {
         kind: 'goal',
         goalId: 'floor2.objective.staircaseDiscovered',
       },
+    ]);
+    expect(getQuestDef(FLOOR6_DEFENSE_QUEST_ID)?.objectives.map((o) => o.goalId)).toEqual([
+      'floor6.defense.briefed',
+      'floor6.defense.firstWaveCleared',
+      'floor6.defense.firstBuildPlaced',
+      'floor6.defense.firstUpgradeChosen',
+      'floor6.defense.breakCleared',
+      'floor6.defense.deadlineDefeated',
+      'floor6.defense.relaySecured',
     ]);
   });
 
@@ -140,6 +151,7 @@ describe('quest content packs', () => {
     expect(ids).toContain(FLOOR1_BOSS_UNLOCK_QUEST_ID);
     expect(ids).toContain(FLOOR2_FIND_SETTLEMENT_QUEST_ID);
     expect(ids).toContain(FLOOR2_LEAVE_FLOOR_QUEST_ID);
+    expect(ids).toContain(FLOOR6_DEFENSE_QUEST_ID);
   });
 
   it('rejects a quest source that provides both objectives and a template', () => {
