@@ -146,6 +146,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Visual review (equip.)      | `npm run review:visual:equipment`                                                                                                           |
 | Producer agent              | `npm run producer`                                                                                                                          |
 | Epic status                 | `npm run epic:status`                                                                                                                       |
+| Floor epic lint             | `npm run epics:lint-floor` (pass `-- <path-to-epic.json>`)                                                                                  |
 | Perf find baseline          | `npm run perf:find-baseline`                                                                                                                |
 | Merge train protection      | `npm run train:protection`                                                                                                                  |
 | Train protection status     | `npm run train:protection:status`                                                                                                           |
