@@ -47,6 +47,7 @@ jobs:
       GOOBERS_VERSION: v0.3.3
       GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
       GOOBERS_INSTANCE: ${{ runner.temp }}/goobers-lifecycle-instance
+      LIFECYCLE_LEASE_TTL_SECONDS: ${{ vars.LIFECYCLE_LEASE_TTL_SECONDS || '300' }}
     steps:
       - name: Checkout trusted ownership implementation
         uses: actions/checkout@v4
@@ -115,6 +116,7 @@ jobs:
               leaseId,
               operation,
               now: run.created_at,
+              ttlSeconds: process.env.LIFECYCLE_LEASE_TTL_SECONDS,
               markerComments,
             };
             fs.mkdirSync('.goobers-lifecycle', { recursive: true });

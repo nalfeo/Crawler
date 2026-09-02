@@ -5,8 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const { decideLifecycleLease, lifecycleWriterEnabled, parseLifecycleLease, renderLifecycleLease } =
-  await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
+const {
+  decideLifecycleLease,
+  lifecycleLeaseTtlSeconds,
+  lifecycleWriterEnabled,
+  parseLifecycleLease,
+  renderLifecycleLease,
+} = await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
 
 const headSha = 'a'.repeat(40);
 const base = {
@@ -19,6 +24,7 @@ const base = {
   leaseId: 'goobers:100:1',
   operation: 'acquire',
   now: '2026-09-02T03:00:00.000Z',
+  ttlSeconds: '300',
   markerComments: [],
 };
 
@@ -44,6 +50,14 @@ function markerComment(
 }
 
 describe('Goobers lifecycle ownership', () => {
+  it('bounds the operational lease TTL and defaults invalid values', () => {
+    expect(lifecycleLeaseTtlSeconds('30')).toBe(30);
+    expect(lifecycleLeaseTtlSeconds('3600')).toBe(3600);
+    expect(lifecycleLeaseTtlSeconds('29')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('3601')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('invalid')).toBe(300);
+  });
+
   it('keeps the Goobers task decision-only', () => {
     const workflow = parse(
       fs.readFileSync(

@@ -37,7 +37,8 @@ The legacy implementation remains checked in as the fallback until Phase 4.
 
 - Scope: one lower-cased `repository#PR@headSHA` key.
 - Operations: acquire, heartbeat, and release.
-- TTL: five minutes from the GitHub workflow run's server timestamp.
+- TTL: `LIFECYCLE_LEASE_TTL_SECONDS` (default five minutes) from the GitHub
+  workflow run's server timestamp.
 - Persistence: one `<!-- crawler-lifecycle-lease:v1 -->` PR comment.
 - Contention: an unexpired different lease wins; the contender emits
   `status=contended` and does not write.

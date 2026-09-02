@@ -4,7 +4,14 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const LIFECYCLE_LEASE_MARKER = '<!-- crawler-lifecycle-lease:v1 -->';
-export const LIFECYCLE_LEASE_TTL_MS = 5 * 60 * 1000;
+export const DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS = 300;
+
+export function lifecycleLeaseTtlSeconds(value = process.env.LIFECYCLE_LEASE_TTL_SECONDS) {
+  const seconds = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(seconds) && seconds >= 30 && seconds <= 3600
+    ? seconds
+    : DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS;
+}
 
 export function lifecycleMutationOwner(value) {
   const owner = String(value ?? '')
@@ -155,7 +162,9 @@ export function decideLifecycleLease(input) {
     headSha,
     leaseId,
     acquiredAt,
-    expiresAt: new Date(Date.parse(now) + LIFECYCLE_LEASE_TTL_MS).toISOString(),
+    expiresAt: new Date(
+      Date.parse(now) + lifecycleLeaseTtlSeconds(input.ttlSeconds) * 1000,
+    ).toISOString(),
   };
   const status =
     operation === 'heartbeat' || (sameScope && currentLease?.leaseId === leaseId)

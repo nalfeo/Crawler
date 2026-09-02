@@ -50,6 +50,9 @@ service before a cross-repository lock is required.
 - `node .github/scripts/validate-goobers-contracts.mjs` — 8/8 workflows and 19/19 fixtures passed.
 - Direct `lifecycle-ownership.mjs` CLI acquire exercise — `status=acquired`, `writeAction=create`.
 - `npm run typecheck` — passed after converting the test to the repository's dynamic `.mjs` import pattern.
+- `tests/unit/ci-knobs-guard.test.ts` — operational lease TTL registered and
+  documented after the first `verify:fast` correctly rejected an unregistered
+  file-scope constant.
 
 ## Unresolved issues
 
