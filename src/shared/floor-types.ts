@@ -1175,6 +1175,13 @@ export interface Floor6VictoryPayoutState {
 export interface Floor6ExitState {
   opened: boolean;
   openCount: number;
+  /**
+   * True only after the player has actually confirmed descent through the
+   * Relay exit marker's confirmation modal. `opened` alone means the exit
+   * transaction fired (Deadline defeated); `confirmed` gates the terminal
+   * completion screen so it does not preempt the marker/confirmation flow.
+   */
+  confirmed: boolean;
 }
 
 export interface Floor6QuestProjectionSnapshot {

@@ -11,10 +11,10 @@ describe('Floor 6 scenario presentation wiring', () => {
       'readonly getHudSnapshot?: (world: TWorld) => ScenarioHudSnapshot | null;',
     );
     expect(definitions).toContain('getHudSnapshot: getFloor6HudSnapshot');
-    expect(definitions).toContain('getFloor6DefenseRunStats(world)');
+    expect(definitions).toContain('getFloor6HudPresentation(world)');
     expect(scene).toContain('this.options.scenarioPresentation?.getHudSnapshot?.(this.world)');
     expect(scene).toContain('private updateScenarioHudSnapshot(panelOpen: boolean): void');
     expect(scene).toContain('this.rewardAudioEngine?.play({');
-    expect(scene).toContain('this.scenarioHudVfx?.setVisible(hasVfxCue)');
+    expect(scene).toContain('private flashScenarioHudVfx(): void {');
   });
 });

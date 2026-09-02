@@ -66,6 +66,7 @@ Implemented the Floor 6 Slice 8 declarative objective and presentation layer on 
 ## Unresolved issues
 
 - This slice projects deterministic presentation state and authored copy. It does not add new generated sprite artifacts; the pre-existing Floor 6 enemy/tower/map data remains the runtime art/content source from the earlier Floor 6 slices.
+- **Issue linkage correction**: this PR's description previously declared `Fixes #3980`, but #3980 is the full Slice 8 epic and additionally requires original enemy/tower/production-set assets and set-piece dressing (via the asset-forge and set-piece-designer pipelines), neither of which this PR delivers. Closing #3980 from this PR would leave it marked done while those deliverables are outstanding. The PR description has been corrected to `Related to #3980` (not a closing keyword); #3980 remains open and should be closed only by the PR that lands the outstanding art/set-piece work and its deterministic real-game visual captures.
 
 ## Recommended next steps
 

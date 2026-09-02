@@ -281,6 +281,14 @@ const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
 const FLOOR_SUMMARY_ACK_ARM_MS = 450;
 
 /**
+ * How long a scenario `vfx` HUD cue stays visible before hiding again. Cues
+ * are one-shot (latched by id in `playedScenarioCueIds`), so the strip must
+ * hide itself after a bounded duration rather than staying visible for as
+ * long as the cue remains present in the scenario's snapshot.
+ */
+const SCENARIO_HUD_VFX_FLASH_MS = 600;
+
+/**
  * Acknowledgement prompt on the between-floor summary. The screen blocks the
  * descent, and it accepts touch (the summary owns its own pointer latch), so
  * the copy must name the tap affordance too — otherwise a touch-only player is
@@ -577,6 +585,20 @@ export interface _CornerButtonProbe {
   readonly label: string;
   readonly visible: boolean;
   readonly bounds: ScreenBounds;
+}
+
+/**
+ * Real rendered state of the generic scenario HUD strip (`getHudSnapshot`
+ * presentation). Underscore-prefixed: test/automation scaffolding consumed by
+ * the probe lab and e2e helpers, with no production caller outside this file.
+ */
+export interface _ScenarioHudProbe {
+  readonly visible: boolean;
+  readonly text: string | null;
+  readonly bounds: ScreenBounds | null;
+  /** Whether the one-shot `vfx` cue flash is currently showing. */
+  readonly vfxVisible: boolean;
+  readonly cueLabels: readonly string[];
 }
 
 declare global {
@@ -1686,6 +1708,25 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Real rendered state of the generic scenario HUD strip: visibility, text,
+   * screen bounds, whether the one-shot `vfx` cue flash is currently showing,
+   * and the cue labels dispatched this frame. Test/automation affordance so
+   * e2e probes can assert the shipped HUD surface actually renders (bounds,
+   * clipping, one-shot cue behavior) in the real scene, not merely that its
+   * source wiring string is present.
+   */
+  getScenarioHudState(): _ScenarioHudProbe {
+    const visible = this.scenarioHudText?.visible === true;
+    return {
+      visible,
+      text: visible ? (this.scenarioHudText?.text ?? null) : null,
+      bounds: toScreenBounds(this.scenarioHudText),
+      vfxVisible: this.scenarioHudVfx?.visible === true,
+      cueLabels: [...this.scenarioHudCueLabels],
+    };
   }
 
   /**
@@ -4932,11 +4973,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private playScenarioHudCues(snapshot: ScenarioHudSnapshot): void {
-    let hasVfxCue = false;
     for (const cue of snapshot.cues) {
-      if (cue.kind === 'vfx') {
-        hasVfxCue = true;
-      }
       if (this.playedScenarioCueIds.has(cue.id)) {
         continue;
       }
@@ -4949,9 +4986,26 @@ export class MainGameScene extends Phaser.Scene {
           durationMs: 180,
           gain: 0.04,
         });
+      } else if (cue.kind === 'vfx') {
+        this.flashScenarioHudVfx();
       }
     }
-    this.scenarioHudVfx?.setVisible(hasVfxCue);
+  }
+
+  /**
+   * One-shot flash for a newly-seen `vfx` scenario cue: shows the strip and
+   * hides it again after {@link SCENARIO_HUD_VFX_FLASH_MS}, instead of
+   * staying visible for as long as the cue remains present in the snapshot.
+   */
+  private flashScenarioHudVfx(): void {
+    const vfx = this.scenarioHudVfx;
+    if (!vfx) {
+      return;
+    }
+    vfx.setVisible(true);
+    this.time.delayedCall(SCENARIO_HUD_VFX_FLASH_MS, () => {
+      vfx.setVisible(false);
+    });
   }
 
   private updateOverlayText(): void {

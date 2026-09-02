@@ -241,7 +241,7 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
       towerId: 'signal-slinger',
       rangeFt: 36,
     });
-    expect(defendPresentation.towers[0]!.tierLabel).toContain('tier');
+    expect(defendPresentation.towers[0]!.tierLabel).toContain('tower modifier');
     expect(defendPresentation.buildCurrencyLabel).toContain('Requisitions');
     expect(defendPresentation.lootLabel).toContain('requisition drops');
     expect(defendPresentation.upgradeChoiceLabel).toContain('upgrade offers chosen');
@@ -261,6 +261,37 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
 
     state.relayHp = 20;
     expect(getFloor6DefenseRunStats(world)!.presentation.relayDangerLabel).toMatch(/CRITICAL/);
+  });
+
+  it('tower tier label counts only tower-affecting upgrade offers, not relay/raider-only ones', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    tickDirector(world);
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+
+    // A relay-only offer (no tower effect) must NOT invent a per-tower tier.
+    const relayOnlyOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'relayRepair',
+    );
+    expect(relayOnlyOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, relayOnlyOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe('base tier');
+
+    // A tower-affecting offer is the only thing that should move the label,
+    // and it must count exactly the tower-affecting offers selected (one),
+    // not every selected offer (two).
+    const towerOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'towerDamageBonus',
+    );
+    expect(towerOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, towerOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe(
+      '+1 global tower modifier',
+    );
   });
 
   it('same-world restart clears prior Floor 6 quest projection and reaccepts the quest', () => {

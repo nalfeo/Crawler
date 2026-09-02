@@ -170,6 +170,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     exit: {
       opened: false,
       openCount: 0,
+      confirmed: false,
     },
   };
 }
@@ -662,6 +663,26 @@ function selectedFloor6UpgradeValue(state: Floor6DefenseState, kind: string): nu
     .reduce((total, offer) => total + offer.effect.value, 0);
 }
 
+/**
+ * Count of selected upgrade offers whose effect actually modifies towers
+ * (`towerFireRateBonus`/`towerDamageBonus`). The Floor 6 manifest also has
+ * relay-only (`relayMaxHpBonus`, `relayRepair`) and raider-only
+ * (`raiderSlowBonus`) offers that must NOT inflate a per-tower tier label —
+ * those effects are global run-wide modifiers, not a tower upgrade.
+ */
+const FLOOR6_TOWER_AFFECTING_EFFECT_KINDS: ReadonlySet<string> = new Set([
+  'towerFireRateBonus',
+  'towerDamageBonus',
+]);
+
+function selectedFloor6TowerModifierCount(state: Floor6DefenseState): number {
+  return (state.upgradeOfferManifest ?? []).filter(
+    (offer) =>
+      state.economy.selectedOfferIds.includes(offer.offerId) &&
+      FLOOR6_TOWER_AFFECTING_EFFECT_KINDS.has(offer.effect.kind),
+  ).length;
+}
+
 function floor6RelayMaxHp(state: Floor6DefenseState): number {
   return (
     (getFloor6Config().tuning?.relayMaxHp ?? 100) +
@@ -669,11 +690,18 @@ function floor6RelayMaxHp(state: Floor6DefenseState): number {
   );
 }
 
+/**
+ * Pure read of the current quest-goal projection. Goal flags are latched by
+ * the sim-side mutations that actually change state (tower builds, upgrade
+ * purchases, phase transitions — see the `updateFloor6QuestGoalFlags` calls
+ * beside each), so a presentation read must never recompute or write them:
+ * doing so from a per-frame HUD read would silently advance quest state
+ * outside the sim-side systems that own it.
+ */
 function floor6QuestGoalFlagSnapshot(
   world: GameWorld,
-  state: Floor6DefenseState,
+  _state: Floor6DefenseState,
 ): Floor6QuestProjectionSnapshot {
-  updateFloor6QuestGoalFlags(world, state);
   return {
     'floor6.defense.briefed': world.goalFlags.get('floor6.defense.briefed') === true,
     'floor6.defense.firstWaveCleared':
@@ -721,9 +749,11 @@ function buildFloor6PresentationSnapshot(
     }
     nextByRoute.set(entry.routeId, entry);
   }
-  const selectedOffers = new Set(state.economy.selectedOfferIds);
+  const selectedTowerModifierCount = selectedFloor6TowerModifierCount(state);
   const towerTierLabel =
-    selectedOffers.size > 0 ? `upgraded tier +${selectedOffers.size}` : 'base tier';
+    selectedTowerModifierCount > 0
+      ? `+${selectedTowerModifierCount} global tower modifier${selectedTowerModifierCount === 1 ? '' : 's'}`
+      : 'base tier';
   const relayPct = relayMaxHp > 0 ? state.relayHp / relayMaxHp : 0;
   const relayDangerLabel =
     relayPct <= 0.25
@@ -1520,6 +1550,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.exit = {
       opened: false,
       openCount: 0,
+      confirmed: false,
     };
     recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'setup-complete');
     return;
@@ -1617,6 +1648,20 @@ export function floor6CombatContributionSystem(world: GameWorld): void {
 }
 
 /**
+ * Lightweight, pure per-frame HUD projection: builds only the presentation
+ * snapshot the renderer actually needs (lines/cues), without the full
+ * telemetry clone (`phaseTrace`, `upgradeOffers`, `selectionTrace`, etc.)
+ * that {@link getFloor6DefenseRunStats} allocates for run-summary/AI
+ * telemetry consumers. Safe to call every frame from the scenario HUD hook;
+ * has no side effects (does not write goal flags).
+ */
+export function getFloor6HudPresentation(world: GameWorld): Floor6PresentationSnapshot | undefined {
+  const state = floor6DefenseState(world);
+  if (!state) return undefined;
+  return buildFloor6PresentationSnapshot(world, state, floor6RelayMaxHp(state));
+}
+
+/**
  * Collect a telemetry snapshot from the current defense state.
  * Safe to call from any floor, returns undefined when not on floor 6.
  */
@@ -1676,15 +1721,41 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
   };
 }
 
-/** Floor 6 exit opens only after the authoritative victory transaction. */
-export function confirmFloor6StairDescend(world: GameWorld): boolean {
+/**
+ * Pure predicate for whether the Relay exit is currently descendable — the
+ * authoritative victory transaction fired (`exit.opened`). Has no side
+ * effects, so it is safe for the stair marker's per-frame `locked` check;
+ * it must NOT be used to latch the actual descent confirmation (see
+ * {@link confirmFloor6StairDescend}).
+ */
+export function isFloor6ExitDescendable(world: GameWorld): boolean {
   const state = world.floorExtendedState?.floor6Defense;
   return state?.phase.kind === 'VICTORY' && state.exit.opened === true;
 }
 
+/**
+ * Called when the player confirms descent through the Relay exit marker's
+ * confirmation modal. The Deadline defeat opens the exit (`exit.opened`) but
+ * must NOT by itself end the run: `getFloor6RunOutcome` only reports
+ * `cleared_floor` once this confirmation has actually latched, so the
+ * terminal completion screen cannot preempt the marker/confirmation
+ * affordance. Returns `false` (no-op) if the exit isn't open yet or descent
+ * was already confirmed.
+ */
+export function confirmFloor6StairDescend(world: GameWorld): boolean {
+  const state = world.floorExtendedState?.floor6Defense;
+  if (!state || !isFloor6ExitDescendable(world) || state.exit.confirmed) return false;
+  state.exit.confirmed = true;
+  return true;
+}
+
 export function getFloor6RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
   const state = world.floorExtendedState?.floor6Defense;
-  if (state?.terminalOutcome === 'victory' && state.phase.kind === 'VICTORY')
+  if (
+    state?.terminalOutcome === 'victory' &&
+    state.phase.kind === 'VICTORY' &&
+    state.exit.confirmed === true
+  )
     return 'cleared_floor';
   if (state?.terminalOutcome === 'defeat' && state.phase.kind === 'DEFEAT') return 'failed_timeout';
   return null;

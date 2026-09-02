@@ -373,6 +373,12 @@ describe('scenario definitions', () => {
       expect(scenario.getRunOutcome(world)).toBeNull();
 
       defense.phase = { kind: 'VICTORY' };
+      expect(scenario.getRunOutcome(world)).toBeNull();
+
+      defense.exit.opened = true;
+      expect(scenario.getRunOutcome(world)).toBeNull();
+
+      defense.exit.confirmed = true;
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
       expect(scenario.director.isVictoryReached(world)).toBe(true);
       expect(scenario.getCompletionCopy('terminal_victory')).toEqual({

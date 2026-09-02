@@ -74,12 +74,13 @@ import {
 import {
   confirmFloor6StairDescend,
   floor6CombatContributionSystem,
+  getFloor6HudPresentation,
   getFloor6RunOutcome,
   initializeFloor6Scenario,
+  isFloor6ExitDescendable,
   floor6RaiderSystem,
   floor6TowerSystem,
   floor6DefenseDirectorSystem,
-  getFloor6DefenseRunStats,
 } from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -428,7 +429,7 @@ function getFloor6StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     },
     radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
     visible: defense.exit.opened === true && defense.phase.kind === 'VICTORY',
-    locked: !confirmFloor6StairDescend(world),
+    locked: !isFloor6ExitDescendable(world),
     label: '▼ RELAY EXIT',
   };
 }
@@ -692,13 +693,21 @@ const FLOOR_6_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
 ];
 
 function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
-  const stats = getFloor6DefenseRunStats(world);
-  const presentation = stats?.presentation;
+  // Pure per-frame HUD projection: NOT `getFloor6DefenseRunStats`, which
+  // clones the entire telemetry object (phaseTrace, upgradeOffers,
+  // selectionTrace, ...) every call — wasted allocation for a HUD hook that
+  // only needs the presentation lines/cues, and it must never write goal
+  // flags as a side effect of merely being rendered.
+  const presentation = getFloor6HudPresentation(world);
   if (!presentation) {
     return null;
   }
+  const state = world.floorExtendedState?.floor6Defense;
+  const id = state
+    ? `floor6-${state.phase.kind}-${state.nextReleaseIndex}-${state.relayHp}-${state.economy.selectedOfferIds.join('-')}`
+    : 'floor6';
   return {
-    id: `floor6-${stats.phase.kind}-${stats.nextReleaseIndex}-${stats.relayHp}-${stats.selectedOfferIds.join('-')}`,
+    id,
     lines: [
       presentation.objectiveLabel,
       `${presentation.phaseLabel} · ${presentation.relayDangerLabel}`,
