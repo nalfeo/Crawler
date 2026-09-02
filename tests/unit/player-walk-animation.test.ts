@@ -245,4 +245,64 @@ describe('player walk-cycle animation (hard success gate)', () => {
     bridge.sync(world);
     expect(player.anims.isPlaying).toBe(true);
   });
+
+  it('regression: retries and eventually plays the walk animation when the texture is not loaded on the first sync (e.g. right after a scene restart)', () => {
+    // Reproduces the real crash root cause: right after `phaserScene.scene.restart()`,
+    // `PhaserBridge`'s first `sync()` can run before the generated-sprite
+    // texture has finished loading into the `TextureManager`. Real Phaser's
+    // `AnimationManager#generateFrameNumbers` returns `[]` (not a throw) for
+    // an unregistered texture key, and the OLD code unconditionally created
+    // an `Animation` from that empty list — permanently caching a
+    // zero-frame animation under the key (since `anims.exists` never
+    // resets), which crashed on the first `.play()` with
+    // "Cannot read properties of undefined (reading 'duration')" inside
+    // Phaser's `Animation#getFirstTick`, freezing the entire render loop.
+    // The fix must skip creating on an empty frame array and retry on a
+    // later `sync()` call within the SAME scene lifetime (no restart)
+    // until the texture becomes available — this is exactly what a scene
+    // restart needs, since `registerGeneratedSpriteAnimations` only runs
+    // once per registry identity.
+    const generatedRegistry = buildTestRegistry();
+    const { scene, sprites, animationManager } = createSceneStub({ generatedRegistry });
+    expect(animationManager).not.toBeNull();
+    animationManager!.markTextureNotReady(PLAYER_WALK_TEXTURE_KEY);
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+
+    // First sync: texture not ready yet. Must not crash, must not register
+    // a broken animation, and playing must simply no-op (never started).
+    expect(() => bridge.sync(world)).not.toThrow();
+    const player = sprites[0]!;
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(false);
+    expect(player.anims.isPlaying).toBe(false);
+
+    // A few more syncs while still not ready: still no crash, still no
+    // broken registration — proves this isn't a one-shot lucky pass.
+    for (let i = 0; i < 3; i += 1) {
+      expect(() => bridge.sync(world)).not.toThrow();
+    }
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(false);
+
+    // Texture finishes loading — the NEXT sync (same scene, no restart)
+    // must retry and succeed.
+    animationManager!.markTextureReady(PLAYER_WALK_TEXTURE_KEY);
+    expect(() => bridge.sync(world)).not.toThrow();
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(true);
+    expect(player.anims.isPlaying).toBe(true);
+
+    // Confirm it's a genuinely working animation, not just "registered":
+    // the frame index must actually advance under ticks.
+    const seenFrames = new Set<number>([player.anims.currentFrame.index]);
+    for (let i = 0; i < 6; i += 1) {
+      stepFrame(bridge, world, sprites, 1000 / 6);
+      seenFrames.add(player.anims.currentFrame.index);
+    }
+    expect(seenFrames.size).toBeGreaterThan(1);
+  });
 });

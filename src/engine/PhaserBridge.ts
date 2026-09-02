@@ -35,6 +35,7 @@ import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
 import {
+  confirmGeneratedSpriteAnimation,
   GENERATED_SPRITE_REGISTRY_KEY,
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
@@ -734,6 +735,20 @@ export function createPhaserBridge(
    */
   const generatedAnimationByTexture = new Map<string, GeneratedSpriteAnimation>();
   /**
+   * Texture keys whose walk-cycle animation is still un-registered because
+   * their texture had not finished loading into the `TextureManager` the
+   * last time registration was attempted (see `confirmGeneratedSpriteAnimation`
+   * in `generatedAssets/animations.ts`). Retried on every `sync()` call below
+   * — cheap, since this set is normally empty or holds at most the handful
+   * of animated textures the registry defines — until each key succeeds,
+   * rather than only on registry-identity change. Without this retry, a
+   * texture that is still loading at the moment of the FIRST registration
+   * attempt (most likely right after a scene restart) would never get a
+   * second chance within that scene's lifetime, and the player would simply
+   * never animate.
+   */
+  const pendingAnimationTextures = new Map<string, GeneratedSpriteAnimation>();
+  /**
    * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
    * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
    * `generatedFacingByTexture` whenever the registry identity changes.
@@ -789,6 +804,7 @@ export function createPhaserBridge(
         generatedFacingByTexture.clear();
         generatedBoundsByTexture.clear();
         generatedAnimationByTexture.clear();
+        pendingAnimationTextures.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
@@ -800,6 +816,18 @@ export function createPhaserBridge(
             }
           }
           registerGeneratedSpriteAnimations(scene, generatedRegistry);
+          // `registerGeneratedSpriteAnimations` silently skips any texture
+          // that isn't loaded yet rather than registering a broken
+          // zero-frame animation. Track those here so they get retried
+          // below on every subsequent frame (not just the next
+          // registry-identity change) until the texture is ready.
+          if (scene.anims) {
+            for (const [textureKey, animation] of generatedAnimationByTexture) {
+              if (!scene.anims.exists(walkAnimationKey(textureKey))) {
+                pendingAnimationTextures.set(textureKey, animation);
+              }
+            }
+          }
         }
         cachedGeneratedRegistry = generatedRegistry;
         registryRevision++;
@@ -809,6 +837,12 @@ export function createPhaserBridge(
         // Invalidate per-entity cached anchors so the next consumer access
         // recomputes from the updated registry.
         world.entityWeaponAnchors.clear();
+      } else if (pendingAnimationTextures.size > 0 && scene.anims) {
+        for (const [textureKey, animation] of pendingAnimationTextures) {
+          if (confirmGeneratedSpriteAnimation(scene.anims, textureKey, animation)) {
+            pendingAnimationTextures.delete(textureKey);
+          }
+        }
       }
       const resolvePreferredTexture = (
         type: string,

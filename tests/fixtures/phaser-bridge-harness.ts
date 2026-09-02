@@ -220,6 +220,15 @@ class MockAnimationManager {
     string,
     { frameCount: number; frameRate: number; repeat: number }
   >();
+  /**
+   * Texture keys deliberately simulating "not yet loaded into the
+   * TextureManager" (see real Phaser's `AnimationManager#generateFrameNumbers`,
+   * which returns `[]` — not a throw — for an unknown texture key). Tests use
+   * {@link markTextureNotReady}/{@link markTextureReady} to reproduce the race
+   * that used to permanently poison `PhaserBridge`'s generated-sprite walk
+   * animation on a fast scene restart.
+   */
+  private readonly notReadyTextureKeys = new Set<string>();
 
   exists(key: string): boolean {
     return this.configs.has(key);
@@ -235,9 +244,22 @@ class MockAnimationManager {
     });
   }
 
-  generateFrameNumbers(_textureKey: string, config: { start: number; end: number }): number[] {
+  generateFrameNumbers(textureKey: string, config: { start: number; end: number }): number[] {
+    if (this.notReadyTextureKeys.has(textureKey)) {
+      return [];
+    }
     const count = config.end - config.start + 1;
     return Array.from({ length: count }, (_, i) => config.start + i);
+  }
+
+  /** Simulate `textureKey` not yet being loaded — the next `generateFrameNumbers` call returns `[]`. */
+  markTextureNotReady(textureKey: string): void {
+    this.notReadyTextureKeys.add(textureKey);
+  }
+
+  /** Simulate `textureKey` finishing its load — subsequent `generateFrameNumbers` calls behave normally. */
+  markTextureReady(textureKey: string): void {
+    this.notReadyTextureKeys.delete(textureKey);
   }
 
   getConfig(key: string): { frameCount: number; frameRate: number; repeat: number } | undefined {
@@ -262,6 +284,16 @@ class MockAnimationState {
   constructor(private readonly manager: MockAnimationManager) {}
 
   play(key: string, ignoreIfPlaying = false): this {
+    if (!this.manager.exists(key)) {
+      // Faithful to real Phaser: `AnimationState#startAnimation` calls
+      // `load(key)` first, and if the key isn't registered in the
+      // `AnimationManager`, `currentAnim` stays unset and it early-returns
+      // without ever flipping `isPlaying` — a silent no-op, not a crash and
+      // not a state change. This matters for testing the "texture not
+      // loaded yet" race: the bridge may call `.play()` on a key that
+      // hasn't been registered yet, and that must never start playback.
+      return this;
+    }
     if (ignoreIfPlaying && this.playing && this.currentKey === key) {
       return this;
     }
