@@ -265,6 +265,8 @@ export const mainSceneProbe = {
         ),
       state,
     ),
+  pressGameOverKey: (page: Page, code: string): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.pressGameOverKey(value), code),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
   tapFloor3RosterButton: (page: Page): Promise<boolean> =>

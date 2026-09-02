@@ -57,12 +57,22 @@ const showRunSurveyIfNeeded = new Function(
   ) => Promise<{ ok: boolean; used: 'fetch'; status?: number }>,
 ) => (this: unknown, endReason: 'death' | 'victory') => void;
 
+const isTerminalRunSurveyActive = new Function(
+  `return function canResetRunFromTerminalSurvey() {${extractMethodBody(
+    source,
+    'private isTerminalRunSurveyActive(): boolean',
+  )}};`,
+)() as (this: {
+  runSurveyUI?: { isVisible: () => boolean };
+  runSurveySubmitted: boolean;
+}) => boolean;
+
 const canResetRunFromTerminalSurvey = new Function(
   `return function canResetRunFromTerminalSurvey() {${extractMethodBody(
     source,
     'private canResetRunFromTerminalSurvey(): boolean',
   )}};`,
-)() as (this: { runSurveyShown: boolean; runSurveySubmitted: boolean }) => boolean;
+)() as (this: { isTerminalRunSurveyActive: () => boolean }) => boolean;
 
 const flashActionStatus = new Function(
   `return function flashActionStatus(message) {${extractMethodBody(
@@ -216,11 +226,40 @@ describe('MainGameScene terminal run bundle emission', () => {
   });
 
   it('blocks terminal reset actions while the end-of-run survey is still open', () => {
-    const scene = { runSurveyShown: true, runSurveySubmitted: false };
+    const scene = { isTerminalRunSurveyActive: () => true };
     expect(canResetRunFromTerminalSurvey.call(scene)).toBe(false);
 
-    scene.runSurveySubmitted = true;
+    scene.isTerminalRunSurveyActive = () => false;
     expect(canResetRunFromTerminalSurvey.call(scene)).toBe(true);
+  });
+
+  it('keeps terminal reset actions available after the survey closes', () => {
+    const visibleSurvey = {
+      runSurveyUI: { isVisible: () => true },
+      runSurveySubmitted: false,
+    };
+    expect(isTerminalRunSurveyActive.call(visibleSurvey)).toBe(true);
+
+    const submittedSurvey = {
+      runSurveyUI: { isVisible: () => true },
+      runSurveySubmitted: true,
+    };
+    expect(isTerminalRunSurveyActive.call(submittedSurvey)).toBe(false);
+
+    const hiddenSurvey = {
+      runSurveyUI: { isVisible: () => false },
+      runSurveySubmitted: false,
+    };
+    expect(isTerminalRunSurveyActive.call(hiddenSurvey)).toBe(false);
+  });
+
+  it('makes game-over restart and quit confirmation rejectable while the survey is active', () => {
+    expect(source).toMatch(
+      /onRestart: \(\) => \{[\s\S]*if \(!this\.canResetRunFromTerminalSurvey\(\)\) \{[\s\S]*return false;[\s\S]*window\.location\.reload\(\);[\s\S]*return true;[\s\S]*\},/,
+    );
+    expect(source).toMatch(
+      /onQuit: \(\) => \{[\s\S]*if \(!this\.canResetRunFromTerminalSurvey\(\)\) \{[\s\S]*return false;[\s\S]*this\.emitRunBundle\('quit'\);[\s\S]*window\.location\.reload\(\);[\s\S]*return true;[\s\S]*\},/,
+    );
   });
 });
 

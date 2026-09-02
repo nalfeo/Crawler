@@ -13,8 +13,8 @@ import type { ModalPickerConfig } from '../shared/modal-picker.js';
 export type GameOverOption = 'restart' | 'quit';
 
 export interface GameOverUIHooks {
-  onRestart: () => void;
-  onQuit: () => void;
+  onRestart: () => boolean | void;
+  onQuit: () => boolean | void;
 }
 
 export function createGameOverUI(
@@ -22,6 +22,7 @@ export function createGameOverUI(
   hooks: GameOverUIHooks,
 ): {
   show(config?: ModalPickerConfig): void;
+  handleKeyDown(event: KeyboardEvent): void;
   hide(): void;
   isVisible(): boolean;
   destroy(): void;
@@ -56,15 +57,22 @@ export function createGameOverUI(
         },
         {
           onConfirm: ({ option }) => {
-            visible = false;
+            let shouldClose = true;
             if (option.id === 'restart') {
-              hooks.onRestart();
+              shouldClose = hooks.onRestart() !== false;
             } else if (option.id === 'quit') {
-              hooks.onQuit();
+              shouldClose = hooks.onQuit() !== false;
             }
+            if (shouldClose) {
+              visible = false;
+            }
+            return shouldClose;
           },
         },
       );
+    },
+    handleKeyDown(event: KeyboardEvent): void {
+      picker.handleKeyDown(event);
     },
     hide(): void {
       if (!visible) {
