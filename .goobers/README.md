@@ -23,8 +23,22 @@ head branch to Goobers. The workflow's claim stage emits Goobers'
 `workspaceBranch` output, rebinding every subsequent managed worktree to that
 branch instead of creating a duplicate. Manual dispatches can set
 `issue_number` to select the issue, or `abandon_existing` to close the attached
-open PR and intentionally start over. Runtime journals remain outside this
-source tree; only retries within one Actions job share its throwaway instance.
+open PR and intentionally start over.
+
+Shadow mode is a read-only parity path used during Goobers Phase 1. Its
+scheduled workflow reads only the resolved UTC report day's completed CI
+Recovery and Merge Train runs, then downloads the immutable PR/head decision
+records captured by those legacy runs. Each record includes the actual legacy
+outcome plus the contemporaneous lifecycle and review-thread inputs loaded
+through CI Recovery's authoritative paginated reader. A capability-empty
+`crawler-lifecycle-shadow` Goobers workflow produces the independent dry-run
+decisions. The comparison emits stable per-run decisions plus a
+`daily-report.json` artifact with an idempotency key. Missing requested workflow
+coverage and marker-resolution differences are explicit parity divergences.
+The workflow has no write-capable permissions and makes no repository, issue,
+or PR mutation call.
+Runtime journals remain outside this source tree; only retries within one
+Actions job share its throwaway instance.
 
 ## Contract Versions
 
