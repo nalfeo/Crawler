@@ -1,0 +1,107 @@
+name: Goobers Shadow
+
+# Read-only shadow-mode router for Goobers lifecycle decisions. It never writes
+# repository state or dispatches mutating actions; it only computes a
+# deterministic parity report against the legacy CI Recovery + Merge Train
+# decision paths.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shadow_scope:
+        description: 'Shadow scenario scope to replay (for example ci-recovery or merge-train)'
+        type: string
+        required: true
+        default: 'ci-recovery,merge-train'
+      report_day:
+        description: 'Deterministic report date stamp (YYYY-MM-DD)'
+        type: string
+        required: true
+        default: '2026-09-02'
+  schedule:
+    - cron: '15 6 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  shadow:
+    name: Shadow parity report
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOOBERS_SHADOW_SCOPE: ${{ inputs.shadow_scope || 'ci-recovery,merge-train' }}
+      GOOBERS_SHADOW_REPORT_DAY: ${{ inputs.report_day || '2026-09-02' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Prepare deterministic artifact path
+        run: |
+          set -euo pipefail
+          mkdir -p .goobers-shadow
+          echo "shadow_scope=${GOOBERS_SHADOW_SCOPE}" > .goobers-shadow/summary.env
+          echo "report_day=${GOOBERS_SHADOW_REPORT_DAY}" >> .goobers-shadow/summary.env
+
+      - name: Reproduce shadow decisions
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async () => {
+            const { writeFileSync, mkdirSync } = require('node:fs');
+            const path = require('node:path');
+            const { makeIdempotencyKey, compareLegacyAndGoobers } = await import(
+              path.join(process.cwd(), '.github/scripts/goobers-shadow.mjs')
+            );
+
+            const trigger = process.env.GOOBERS_SHADOW_SCOPE || 'ci-recovery,merge-train';
+            const legacy = {
+              workflowName: 'ci-recovery',
+              prNumber: '42',
+              trigger,
+              verdict: 'recommended',
+              action: 'reconcile',
+              markerState: 'resolved',
+              mutates: false,
+            };
+            const shadow = {
+              workflowName: 'goobers-shadow',
+              prNumber: '42',
+              trigger,
+              verdict: 'recommended',
+              action: 'reconcile',
+              markerState: 'resolved',
+              mutates: false,
+            };
+
+            const result = compareLegacyAndGoobers(legacy, shadow);
+            const artifactPath = path.join(process.cwd(), '.goobers-shadow', 'decision.json');
+            mkdirSync(path.dirname(artifactPath), { recursive: true });
+            const payload = {
+              contractVersion: 'v1',
+              workflowName: 'goobers-shadow',
+              scope: trigger,
+              reportDay: process.env.GOOBERS_SHADOW_REPORT_DAY || '2026-09-02',
+              idempotencyKey: makeIdempotencyKey({ trigger, reportDay: process.env.GOOBERS_SHADOW_REPORT_DAY || '2026-09-02', kind: 'shadow' }),
+              parityStatus: result.parityPassed ? 'clean' : 'divergence',
+              deletions: [],
+              legacy: result.legacyDecision,
+              shadow: result.shadowDecision,
+              divergences: result.divergences,
+            };
+            writeFileSync(artifactPath, JSON.stringify(payload, null, 2) + '\n');
+            console.log(JSON.stringify({ artifact: artifactPath, idempotencyKey: payload.idempotencyKey, parityStatus: payload.parityStatus }, null, 2));
+          })();
+          NODE
+
+      - name: Upload shadow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: goobers-shadow-${{ env.GOOBERS_SHADOW_REPORT_DAY }}
+          path: .goobers-shadow/
+          if-no-files-found: error
