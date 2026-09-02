@@ -25,6 +25,7 @@ import { Companion, DoorState, Player, Position } from '../components.js';
 import { evaluateDoorConditionGroup, getDoorLockConfig } from '../door-lock.js';
 import { isPointInSafeSpace } from '../safe-space.js';
 import { getWorldFloorBehavior } from '../floor-behavior.js';
+import { TeamId } from '../../shared/constants.js';
 import type { GameWorld } from '../world.js';
 
 const AUTO_OPEN_RADIUS_TILES = 1;
@@ -33,7 +34,13 @@ function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-function getSafeRoomApproachers(world: GameWorld): Array<{ x: number; y: number }> {
+/**
+ * Positions of every actor that may be transitioning through a doorway: the
+ * player plus each conscious player-owned companion. Rival roster companions
+ * (`spawnRosterCompanion`, e.g. Floor 3 Trainer/Studio teams) are excluded —
+ * they must not auto-open doors or block a safe-room seal.
+ */
+function getDoorTransitionActors(world: GameWorld): Array<{ x: number; y: number }> {
   const positions: Array<{ x: number; y: number }> = [];
 
   for (const eid of query(world.ecs, [Player, Position])) {
@@ -44,6 +51,7 @@ function getSafeRoomApproachers(world: GameWorld): Array<{ x: number; y: number 
   }
 
   for (const eid of query(world.ecs, [Companion, Position])) {
+    if ((world.stores.companion.ownerTeam[eid] ?? TeamId.PLAYER) !== TeamId.PLAYER) continue;
     if ((world.stores.companion.knockedOut[eid] ?? 0) !== 0) continue;
     positions.push({
       x: world.stores.position.x[eid] ?? 0,
@@ -102,11 +110,11 @@ export function doorSystem(world: GameWorld): void {
   // connections. The safe-room seal is allowed to close a door only when no
   // relevant actor remains adjacent to it: every player-owned companion on the
   // threshold counts as still transitioning through the doorway.
-  const approvers = getSafeRoomApproachers(world);
+  const actors = getDoorTransitionActors(world);
   if (safeRoomDoorsAutoClose && safeRoom) {
-    const safeRoomActors = approvers.filter((actor) => isPointInSafeSpace(world, actor.x, actor.y));
+    const safeRoomActors = actors.filter((actor) => isPointInSafeSpace(world, actor.x, actor.y));
     if (safeRoomActors.length > 0) {
-      const anyDoorTransitionOpen = approvers.some((actor) => {
+      const anyDoorTransitionOpen = actors.some((actor) => {
         const actorTile = floorMap.worldToTile(actor.x, actor.y);
         return safeRoom.doors.some(
           (door) => Math.abs(actorTile.x - door.x) + Math.abs(actorTile.y - door.y) <= 1,
@@ -121,7 +129,7 @@ export function doorSystem(world: GameWorld): void {
     }
   }
 
-  for (const actor of approvers) {
+  for (const actor of actors) {
     const px = actor.x;
     const py = actor.y;
     const tile = floorMap.worldToTile(px, py);

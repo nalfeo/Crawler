@@ -10,7 +10,7 @@ Producer
 
 ## Systems touched
 
-ai-pathfinding, ai-behavior-tree
+mapgen
 
 ## Apples
 
@@ -18,13 +18,14 @@ ai-pathfinding, ai-behavior-tree
 
 ## What Was Done
 
-Fixed the safe-room door seal so it does not close while a player-owned companion is still adjacent to the doorway. The door-system logic now treats both the player and any companion as transition actors when deciding whether a safe-room door may be forced shut, and the nearby door auto-open pass now opens closed doors for companion positions as well as player positions. Observed in the deterministic ECS reproduction: before, a companion standing adjacent to the safe-room door could still trigger a forced close; after the fix, the same path keeps the door passable and the `doorSystem` regression test passes.
+Fixed the safe-room door seal so it does not close while a player-owned companion is still adjacent to the doorway. The door-system logic now treats the player and every conscious player-owned companion (rival Floor 3 rosters excluded) as doorway-transition actors when deciding whether a safe-room door may be forced shut, and the nearby door auto-open pass now opens closed doors for companion positions as well as player positions. Observed in the deterministic ECS reproduction: before, a companion standing adjacent to the safe-room door could still trigger a forced close; after the fix, the same path keeps the door passable. On Floor 3 (safe-room auto-close disabled) the companion auto-open pass is what unblocks the doorway; the regression suite covers that Floor 3 path plus rival-roster and knocked-out control cases.
 
 ## Key Decisions Made
 
 - Keep the safe-room seal behavior player-safe by preserving the decoupled latch/effectiveOpen model while broadening the doorway occupancy check.
 - Treat any allied companion in the doorway transition band as a valid actor for door passability so the door cannot seal on a companion half in/out of the room.
 - Keep the fix narrow to the door authority and regression tests rather than adding a special-case companion rule elsewhere in AI logic.
+- Restrict the new doorway actors to conscious, player-owned companions (`Companion.ownerTeam === TeamId.PLAYER`) so Floor 3 rival roster companions never auto-open doors or suppress a safe-room seal.
 
 ## What's Next / Blockers
 
@@ -34,7 +35,7 @@ No blockers; the targeted regression is covered in `tests/ecs/door-system-safe-r
 
 ### Lessons Learned
 
-The regression was not in companion pathfinding itself but in the shared safe-room authority: a door that was valid for the player could still be sealed while a companion remained in the transition band. The safest fix is to widen the occupancy predicate rather than adding a companion-specific exception in the AI navigator.
+The regression was not in companion pathfinding itself but in `doorSystem`, the shared door/safe-room authority (`mapgen`): a door that was valid for the player could still be sealed while a companion remained in the transition band. The safest fix is to widen the occupancy predicate rather than adding a companion-specific exception in the AI navigator.
 
 ### Mistakes Made
 
