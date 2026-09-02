@@ -1,23 +1,18 @@
 name: Goobers Shadow
 
-# Read-only shadow-mode router for Goobers lifecycle decisions. It never writes
-# repository state or dispatches mutating actions; it only computes a
-# deterministic parity report against the legacy CI Recovery + Merge Train
-# decision paths.
-
 on:
   workflow_dispatch:
     inputs:
       shadow_scope:
-        description: 'Shadow scenario scope to replay (for example ci-recovery or merge-train)'
+        description: 'Comma-separated legacy workflows to replay'
         type: string
         required: true
         default: 'ci-recovery,merge-train'
       report_day:
         description: 'Deterministic report date stamp (YYYY-MM-DD)'
         type: string
-        required: true
-        default: '2026-09-02'
+        required: false
+        default: ''
   schedule:
     - cron: '15 6 * * *'
 
@@ -34,73 +29,69 @@ jobs:
     timeout-minutes: 15
     env:
       GOOBERS_SHADOW_SCOPE: ${{ inputs.shadow_scope || 'ci-recovery,merge-train' }}
-      GOOBERS_SHADOW_REPORT_DAY: ${{ inputs.report_day || '2026-09-02' }}
+      GOOBERS_SHADOW_REPORT_DAY: ${{ inputs.report_day }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Prepare deterministic artifact path
-        run: |
-          set -euo pipefail
-          mkdir -p .goobers-shadow
-          echo "shadow_scope=${GOOBERS_SHADOW_SCOPE}" > .goobers-shadow/summary.env
-          echo "report_day=${GOOBERS_SHADOW_REPORT_DAY}" >> .goobers-shadow/summary.env
-
-      - name: Reproduce shadow decisions
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          (async () => {
-            const { writeFileSync, mkdirSync } = require('node:fs');
-            const path = require('node:path');
-            const { makeIdempotencyKey, compareLegacyAndGoobers } = await import(
-              path.join(process.cwd(), '.github/scripts/goobers-shadow.mjs')
+      - name: Read legacy lifecycle outcomes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const names = new Map([
+              ['ci-recovery', 'CI Recovery'],
+              ['merge-train', 'Merge Train'],
+            ]);
+            const requested = process.env.GOOBERS_SHADOW_SCOPE.split(',').map(name => name.trim());
+            if (requested.some(name => !names.has(name))) {
+              throw new Error(`Unknown shadow scope: ${requested.filter(name => !names.has(name)).join(', ')}`);
+            }
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo, status: 'completed', per_page: 100,
+            });
+            const selected = runs
+              .filter(run => requested.some(scope => names.get(scope) === run.name))
+              .sort((a, b) => a.id - b.id);
+            const triggers = [];
+            for (const run of selected) {
+              for (const pull of run.pull_requests ?? []) {
+                const result = await github.graphql(`
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        reviewThreads(first: 100) {
+                          nodes { isResolved comments(first: 100) { nodes { body } } }
+                        }
+                      }
+                    }
+                  }`,
+                  { owner: context.repo.owner, repo: context.repo.repo, number: pull.number },
+                );
+                triggers.push({
+                  workflowName: run.name === 'CI Recovery' ? 'ci-recovery' : 'merge-train',
+                  runId: String(run.id), prNumber: String(pull.number), trigger: run.event,
+                  conclusion: run.conclusion, reviewThreads: result.repository.pullRequest.reviewThreads.nodes
+                    .map(thread => ({ isResolved: thread.isResolved, comments: thread.comments.nodes })),
+                });
+              }
+            }
+            require('fs').mkdirSync('.goobers-shadow', { recursive: true });
+            require('fs').writeFileSync('.goobers-shadow/legacy-triggers.json', JSON.stringify({ triggers }, null, 2) + '\n');
+            require('fs').writeFileSync(
+              '.goobers-shadow/report-day.txt',
+              `${process.env.GOOBERS_SHADOW_REPORT_DAY || context.payload.repository.updated_at.slice(0, 10)}\n`,
             );
 
-            const trigger = process.env.GOOBERS_SHADOW_SCOPE || 'ci-recovery,merge-train';
-            const legacy = {
-              workflowName: 'ci-recovery',
-              prNumber: '42',
-              trigger,
-              verdict: 'recommended',
-              action: 'reconcile',
-              markerState: 'resolved',
-              mutates: false,
-            };
-            const shadow = {
-              workflowName: 'goobers-shadow',
-              prNumber: '42',
-              trigger,
-              verdict: 'recommended',
-              action: 'reconcile',
-              markerState: 'resolved',
-              mutates: false,
-            };
+      - name: Replay Goobers read-only decisions
+        run: >-
+          node .github/scripts/goobers-shadow.mjs
+          --input .goobers-shadow/legacy-triggers.json
+          --scope "$GOOBERS_SHADOW_SCOPE"
+          --reportDay "$(cat .goobers-shadow/report-day.txt)"
+          --output .goobers-shadow/report.json
 
-            const result = compareLegacyAndGoobers(legacy, shadow);
-            const artifactPath = path.join(process.cwd(), '.goobers-shadow', 'decision.json');
-            mkdirSync(path.dirname(artifactPath), { recursive: true });
-            const payload = {
-              contractVersion: 'v1',
-              workflowName: 'goobers-shadow',
-              scope: trigger,
-              reportDay: process.env.GOOBERS_SHADOW_REPORT_DAY || '2026-09-02',
-              idempotencyKey: makeIdempotencyKey({ trigger, reportDay: process.env.GOOBERS_SHADOW_REPORT_DAY || '2026-09-02', kind: 'shadow' }),
-              parityStatus: result.parityPassed ? 'clean' : 'divergence',
-              deletions: [],
-              legacy: result.legacyDecision,
-              shadow: result.shadowDecision,
-              divergences: result.divergences,
-            };
-            writeFileSync(artifactPath, JSON.stringify(payload, null, 2) + '\n');
-            console.log(JSON.stringify({ artifact: artifactPath, idempotencyKey: payload.idempotencyKey, parityStatus: payload.parityStatus }, null, 2));
-          })();
-          NODE
-
-      - name: Upload shadow artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: goobers-shadow-${{ env.GOOBERS_SHADOW_REPORT_DAY }}
           path: .goobers-shadow/

@@ -25,11 +25,13 @@ branch instead of creating a duplicate. Manual dispatches can set
 `issue_number` to select the issue, or `abandon_existing` to close the attached
 open PR and intentionally start over.
 
-Shadow mode is a read-only parity path used during Goobers Phase 1. It emits a
-stable JSON decision artifact with an idempotency key and compares the legacy
-reconcile/train outcome to the Goobers decision without calling any repository
-write or issue/PR mutation endpoint. The report is deterministic and can be
-stored under `.goobers-shadow/` as a daily artifact for parity review.
+Shadow mode is a read-only parity path used during Goobers Phase 1. Its
+scheduled workflow reads completed CI Recovery and Merge Train runs, then reads
+the associated PR review-thread state to replay normalized lifecycle decisions.
+It emits stable per-run decisions plus a `daily-report.json` artifact with an
+idempotency key. Missing requested workflow coverage and invalid or quoted
+resolution markers are explicit parity divergences. The workflow has no
+write-capable permissions and makes no repository, issue, or PR mutation call.
 Runtime journals remain outside this source tree; only retries within one
 Actions job share its throwaway instance.
 
