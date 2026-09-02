@@ -20,7 +20,7 @@
       "title": "Floor 3 AI completion: visual dialog autonomy",
       "body": "Owner: UX Designer.\n\nMake the auto-driven AI Runner Lab operate every blocking Floor 3 presentation surface through the same public confirmation/selection callbacks available to a player: Professor Thistle intro, starter selection, Studio versus cards, poach choices, all four Final Four versus cards, and kept-Companion selection. Use explicit modal identities or authoritative scene state so automation cannot close the wrong picker. Do not close a modal without invoking its gameplay callback.\n\nAcceptance: deterministic real-scene E2E coverage boots Floor 3 in the AI Runner Lab, observes each surface open and resolve in order without manual input or direct world mutation, and proves simulation resumes after every surface. The run leaves the protected starting room and remains alive and actively simulating outside it for at least 10 consecutive simulated seconds. Source-string wiring tests may supplement but cannot replace the runtime E2E test. Do not change balance.",
       "labels": ["ux", "floor-3"],
-      "depends_on": []
+      "depends_on": ["shared-objective-navigation"]
     },
     {
       "id": "dual-runner-acceptance",

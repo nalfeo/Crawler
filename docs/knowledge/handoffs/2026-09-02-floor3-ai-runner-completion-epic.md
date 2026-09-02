@@ -40,8 +40,13 @@ The generic Producer decomposition proposed unrelated floor-generation,
 graphics, and core slices and failed to recognize the confirmed hard gate.
 Repository inspection narrowed the graph to the actual seams: shared
 BehaviorTreeAI objective navigation, AI Runner Lab modal automation, and
-runtime acceptance coverage. The two implementation roots can proceed in
-parallel; the QA gate waits for both.
+runtime acceptance coverage. Review feedback caught that the visual-dialog
+slice's own acceptance requires a natural real-scene run through every Studio,
+all Final Four rounds, and the kept-Companion picker — progress the current
+visual runner cannot reliably make without the navigation slice. The visual
+slice now depends on `shared-objective-navigation`; only that navigation slice
+starts as an independent root, and both the visual slice and the QA gate wait
+on it.
 
 ## Verification
 
