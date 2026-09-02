@@ -8,7 +8,7 @@ export const DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS = 300;
 
 export function lifecycleLeaseTtlSeconds(value = process.env.LIFECYCLE_LEASE_TTL_SECONDS) {
   const seconds = Number.parseInt(String(value ?? ''), 10);
-  return Number.isInteger(seconds) && seconds >= 30 && seconds <= 3600
+  return Number.isInteger(seconds) && seconds >= 120 && seconds <= 3600
     ? seconds
     : DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS;
 }

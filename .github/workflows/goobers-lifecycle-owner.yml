@@ -97,11 +97,6 @@ jobs:
             const currentLease = markerComments.length === 1
               ? ownership.parseLifecycleLease(markerComments[0].body)
               : null;
-            const run = (await github.rest.actions.getWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            })).data;
             const operation = process.env.REQUESTED_OPERATION;
             const leaseId = process.env.REQUESTED_LEASE ||
               (operation === 'release' ? currentLease?.leaseId : '') ||
@@ -115,7 +110,7 @@ jobs:
               headSha: process.env.REQUESTED_HEAD,
               leaseId,
               operation,
-              now: run.created_at,
+              now: '',
               ttlSeconds: process.env.LIFECYCLE_LEASE_TTL_SECONDS,
               markerComments,
             };
@@ -163,6 +158,25 @@ jobs:
           goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
 
+      - name: Refresh lease clock from GitHub server
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const response = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const serverDate = response.headers.date;
+            if (!serverDate || !Number.isFinite(Date.parse(serverDate))) {
+              throw new Error('GitHub API response did not include a valid Date header.');
+            }
+            const inputPath = '.goobers-lifecycle/input.json';
+            const input = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+            input.now = new Date(serverDate).toISOString();
+            fs.writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
+
       - name: Run authoritative Goobers ownership decision
         env:
           GOOBERS_GITHUB_TOKEN: ${{ github.token }}
@@ -175,6 +189,15 @@ jobs:
           events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
           jq -r 'select(.type == "stage.finished" and .stage == "decide-ownership") | .outputs.decision' \
             "$events_file" | tail -n 1 | jq '{ decision: . }' > .goobers-lifecycle/decision.json
+          if [ ! -s .goobers-lifecycle/decision.json ]; then
+            echo "::error::No stage.finished/decide-ownership event found in ${events_file}."
+            exit 1
+          fi
+          if ! jq -e '.decision | type == "object" and (.status | type == "string")' \
+            .goobers-lifecycle/decision.json >/dev/null; then
+            echo "::error::The decide-ownership event did not contain a valid decision object."
+            exit 1
+          fi
 
       - name: Apply fenced ownership lease
         uses: actions/github-script@v7

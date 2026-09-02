@@ -102,4 +102,7 @@ test('Goobers ownership uses the shared PR lifecycle queue and rechecks trust be
   assert.match(goobersLifecycleOwner, /lifecycleWriterEnabled/);
   assert.match(goobersLifecycleOwner, /pull\.head\.sha/);
   assert.match(goobersLifecycleOwner, /markers\.length !== 1/);
+  assert.match(goobersLifecycleOwner, /Refresh lease clock from GitHub server/);
+  assert.match(goobersLifecycleOwner, /response\.headers\.date/);
+  assert.match(goobersLifecycleOwner, /No stage\.finished\/decide-ownership event found/);
 });

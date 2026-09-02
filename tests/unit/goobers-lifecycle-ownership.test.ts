@@ -51,9 +51,9 @@ function markerComment(
 
 describe('Goobers lifecycle ownership', () => {
   it('bounds the operational lease TTL and defaults invalid values', () => {
-    expect(lifecycleLeaseTtlSeconds('30')).toBe(30);
+    expect(lifecycleLeaseTtlSeconds('120')).toBe(120);
     expect(lifecycleLeaseTtlSeconds('3600')).toBe(3600);
-    expect(lifecycleLeaseTtlSeconds('29')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('119')).toBe(300);
     expect(lifecycleLeaseTtlSeconds('3601')).toBe(300);
     expect(lifecycleLeaseTtlSeconds('invalid')).toBe(300);
   });
