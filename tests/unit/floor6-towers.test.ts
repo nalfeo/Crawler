@@ -1,8 +1,8 @@
 import { addComponent, entityExists, hasComponent, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
-import { BroadcastRelayRaider, Floor6Tower, Health, Position } from '../../src/core/index.js';
-import { applyDamage, createEntity, spawnPlayer } from '../../src/core/helpers.js';
+import { BroadcastRelayRaider, Floor6Tower, Health, Position, Team } from '../../src/core/index.js';
+import { applyDamage, createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   _getFloor6TowerRoster,
   _sellFloor6Tower,
@@ -13,7 +13,9 @@ import {
   getFloor6DefenseRunStats,
   purchaseFloor6UpgradeOffer,
 } from '../../src/game/floor6Scenario.js';
+import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -125,6 +127,34 @@ describe('Floor 6 authored tower construction', () => {
     expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(4);
   });
 
+  it('records same-frame ability damage after abilitySystem runs', () => {
+    const { world, player, defense } = initFloor6();
+    defense.phase = { kind: 'DEFEND' };
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'fireball');
+    world.frameCount = 100;
+    const playerX = world.stores.position.x[player] ?? 0;
+    const playerY = world.stores.position.y[player] ?? 0;
+
+    for (const [index, offset] of [1, 1.5, 1.75].entries()) {
+      const raider = spawnEnemy(
+        world,
+        playerX + offset,
+        playerY + (index === 2 ? -0.5 : 0.5 * index),
+        100,
+      );
+      addComponent(world.ecs, raider, set(BroadcastRelayRaider, { manifestIndex: index }));
+      addComponent(world.ecs, raider, set(Team, { id: TeamId.ENEMY }));
+    }
+
+    for (const system of createFloorMainSceneOptions('floor6').postSystems ?? []) {
+      system(world);
+    }
+    world.combatEvents.length = 0;
+
+    expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBeGreaterThan(0);
+  });
+
   it('sells and terminally tears down all tower entities exactly once', () => {
     const { world, player, defense } = initFloor6();
     defense.economy.balance = 20;
@@ -139,6 +169,27 @@ describe('Floor 6 authored tower construction', () => {
     expect(entityExists(world.ecs, b)).toBe(false);
     expect(defense.towerInstances).toEqual([]);
     expect(defense.towersTornDown).toBe(2);
+  });
+
+  it('keeps same-step tower hits attributed when terminal teardown removes towers', () => {
+    const { world, player, defense } = initFloor6();
+    defense.phase = { kind: 'DEFEND' };
+    defense.economy.balance = 10;
+    expect(buildFloor6Tower(world, defense.geometry.buildSites[4]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+    const raider = createEntity(world);
+    addComponent(world.ecs, raider, set(BroadcastRelayRaider, { manifestIndex: 0 }));
+    addComponent(world.ecs, raider, set(Health, { current: 20, max: 20 }));
+    addComponent(world.ecs, raider, set(Position, { x: 178, y: 102 }));
+
+    floor6TowerSystem(world);
+    setComponent(world.ecs, player, Health, { current: 0, max: 100 });
+    floor6DefenseDirectorSystem(world);
+    floor6CombatContributionSystem(world);
+
+    expect(getFloor6DefenseRunStats(world)?.towerDamageDealt).toBeGreaterThan(0);
+    expect(getFloor6DefenseRunStats(world)?.heroDamageDealt).toBe(0);
   });
 
   it('applies each selected upgrade once and preserves an identical tower combat trace', () => {

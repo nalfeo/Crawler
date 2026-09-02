@@ -40,6 +40,8 @@ import {
 } from '../../src/game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
+import { abilitySystem } from '../../src/game/systems/abilitySystem.js';
+import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -180,7 +182,14 @@ describe('createFloor1MainSceneOptions', () => {
       ).toEqual(beforeEnemyAISystems);
       expect(preSystems.slice(preSystems.indexOf(spawnerSystem) + 1)).toEqual(afterSpawnerSystems);
       expect(preSystems.indexOf(spawnerSystem)).toBe(preSystems.indexOf(spawnerArenaSystem) + 1);
-      expect(postSystems.slice(0, afterCoreSystems?.length ?? 0)).toEqual(afterCoreSystems ?? []);
+      const floorSpecificPostStart = postSystems.indexOf(abilitySystem) + 1;
+      expect(
+        postSystems.slice(
+          floorSpecificPostStart,
+          floorSpecificPostStart + (afterCoreSystems?.length ?? 0),
+        ),
+      ).toEqual(afterCoreSystems ?? []);
+      expect(postSystems.indexOf(skillSystem)).toBeLessThan(postSystems.indexOf(abilitySystem));
     },
   );
 

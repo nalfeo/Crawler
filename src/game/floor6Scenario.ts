@@ -379,6 +379,7 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
 }
 
 function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
+  recordFloor6CombatContributions(world, state);
   clearFloor6Raiders(world, state);
   teardownFloor6Towers(world);
   clearFloor6EconomyForTerminal(world, state);
