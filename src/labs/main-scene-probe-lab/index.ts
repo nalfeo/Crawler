@@ -355,6 +355,7 @@ interface MainSceneInternals {
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
     getContentSnapshot(): ModalPickerContentSnapshot | null;
   };
+  gameOverUI?: { isVisible(): boolean; handleKeyDown(event: KeyboardEvent): void };
   bossIntroUI?: {
     isOpen(): boolean;
     dismiss(): void;
@@ -557,6 +558,8 @@ export interface MainSceneState {
   readonly bridgePresent: boolean;
   /** True while the loadout / modal picker overlay is open. */
   readonly modalOpen: boolean;
+  /** True while the terminal game-over picker is open. */
+  readonly gameOverOpen: boolean;
   /** True while the dedicated abilities management surface is open. */
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
@@ -1210,6 +1213,8 @@ export interface MainSceneProbeApi {
   }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
+  /** Drive the real game-over picker keyboard path with a synthetic key event. */
+  pressGameOverKey(code: string): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Floor-3 roster corner button. */
@@ -1586,6 +1591,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         hudPresent: scene?.hudUi != null,
         bridgePresent: scene?.bridge != null,
         modalOpen,
+        gameOverOpen: scene?.gameOverUI?.isVisible() ?? false,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
         abilityLoadoutRowLayouts,
@@ -1823,6 +1829,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (world) {
         world.state = state;
       }
+    },
+    pressGameOverKey: (code: string) => {
+      getScene()?.gameOverUI?.handleKeyDown(new KeyboardEvent('keydown', { code }));
     },
     unlockSafeRoomSurfaces: () => {
       const scene = getScene();
