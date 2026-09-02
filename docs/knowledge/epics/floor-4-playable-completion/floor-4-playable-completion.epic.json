@@ -1,0 +1,40 @@
+{
+  "epic_id": "floor-4-playable-completion",
+  "title": "Make Floor 4 completable by headless and visual AI",
+  "description": "Close the Floor 4 playability gap without turning this into a balance pass. One canonical deterministic seed must traverse the real Floor 4 scenario, encounter physical wave enemies and Headliners, resolve every intermission, and reach victory under both the normal headless BehaviorTreeAI runner and the visual AI runner in MainGameScene.",
+  "review": {
+    "title_prefix": "[Epic Review]",
+    "body": "This is a focused completion epic, separate from the already-materialized floor-4-arena epic. Hard gate: seed 404 completes Floor 4 in both real AI artifacts with no direct world-state mutation, invulnerability, forced enemy death, phase skipping, test-only spawn path, or runner-only gameplay shortcut. Balance, representative win rate, economy tuning, achievements, new content, and visual polish are explicitly out of scope. Existing act-1 headless coverage reports physical spawns, while the reported windowed behavior is empty; the first slice must reproduce and document that discrepancy rather than assume its root cause."
+  },
+  "labels": ["floor-4", "ai", "playability"],
+  "nodes": [
+    {
+      "id": "slice-1-acceptance-contract",
+      "title": "Floor 4 completion Slice 1: acceptance contract and dual-runner baseline",
+      "body": "Author `.specify/specs/floor4-playable-completion.md` as the acceptance-criteria document and capture a deterministic baseline for seed 404 in both artifacts. Define completion as: the standard Floor 4 scenario initializes; at least one physical hostile wave enemy spawns through the authored feed-gate path; all five wave windows release enemies; all five Headliners physically spawn and are defeated through ordinary combat; each intermission resolves through its public scenario/UI interaction; the phase trace reaches `VICTORY`; `RunStats.outcome` is `victory`; and execution terminates under the existing Floor 4 stall backstop. Define the executable tests `tests/headless/floor4-arena-completion.test.ts` and `tests/e2e/floor4-ai-completion.deterministic.test.ts`, including shared assertions and evidence fields. Tests must use the production `BehaviorTreeAI`, scenario definition, simulation steps, MainGameScene, and AI-runner lab controls. They may accelerate deterministic simulation but may not mutate health/phase/objective state, grant invulnerability, force kills, inject enemies, skip interactions, or add test-only gameplay hooks. Record the first failed criterion and telemetry for each runner. Done when the contract maps every criterion to an assertion, the two baseline commands are reproducible, and the observed spawn discrepancy is localized to a runtime seam or corrected as an invalid report. No implementation or tuning belongs in this slice.",
+      "labels": ["qa", "specification", "floor-4"],
+      "depends_on": []
+    },
+    {
+      "id": "slice-2-runtime-parity",
+      "title": "Floor 4 completion Slice 2: restore physical spawning and scenario parity",
+      "body": "Fix the smallest verified runtime-wiring or lifecycle defects from slice 1 that prevent Floor 4's real scenario from spawning and advancing identically in windowed and headless simulation. Preserve `ScenarioDefinition` as the shared authority; do not create visual-only or headless-only spawn, phase, combat, reward, or intermission behavior. Add focused unit/integration regressions for each confirmed defect and retain the existing wave-manifest, cap, debt, cut, Headliner, Green Room, and HUD contracts. Done when seed 404 produces matching ordered phase/spawn/Headliner/intermission traces through both real pipelines up to the first AI decision blocker, at least one physical hostile is observed in MainGameScene and headless telemetry, no phase advances because an expected entity was silently absent, and all pre-existing Floor 4 tests remain green.",
+      "labels": ["gameplay", "systems", "floor-4"],
+      "depends_on": ["slice-1-acceptance-contract"]
+    },
+    {
+      "id": "slice-3-headless-completion",
+      "title": "Floor 4 completion Slice 3: production BehaviorTreeAI victory regression",
+      "body": "Implement only the Floor 4 strategy and public interaction support needed for the production `BehaviorTreeAI` to finish seed 404: survive and fight waves, acquire and defeat each Headliner, resolve rewards and Green Room choices, leave intermissions, and complete the terminal victory interaction. Decisions must use player-observable/public scenario state and existing interaction contracts, with no omniscient target injection or Floor 4 gameplay shortcut in `runHeadless`. Add `tests/headless/floor4-arena-completion.test.ts` as a bounded deterministic regression that runs the normal AI and asserts the full slice-1 contract, including nonzero physical spawns, five completed act cycles, five defeated Headliners, `VICTORY`, `outcome === 'victory'`, and identical completion telemetry on a repeated seed-404 run. Done when the test fails against the pre-fix behavior, passes after the fix, and the real headless artifact completes without health/phase mutation, forced kills, invulnerability, or balance changes.",
+      "labels": ["ai", "qa", "floor-4"],
+      "depends_on": ["slice-2-runtime-parity"]
+    },
+    {
+      "id": "slice-4-visual-completion",
+      "title": "Floor 4 completion Slice 4: visual AI full-floor parity gate",
+      "body": "Make the AI-runner lab's real MainGameScene path expose and execute the same Floor 4 decisions proven headlessly, including any modal or scene-owned public interaction that the visual runner must perform. Add `tests/e2e/floor4-ai-completion.deterministic.test.ts`: select Floor 4 and seed 404 through the lab's public controls, run the production AI at deterministic accelerated speed, observe at least one rendered physical hostile, and wait for the real scene to report the complete five-act trace and `victory`. Assert no page error, stall-backstop failure, manual takeover, runner-only phase skip, or mismatch from the headless acceptance fingerprint fields. Save deterministic checkpoints showing a live wave and the terminal victory surface. Done when both named completion tests pass from clean starts on seed 404, the acceptance document contains the exact commands and evidence, and no claim relies on the isolated Floor 4 lab.",
+      "labels": ["ai", "e2e", "ux", "floor-4"],
+      "depends_on": ["slice-3-headless-completion"]
+    }
+  ]
+}
