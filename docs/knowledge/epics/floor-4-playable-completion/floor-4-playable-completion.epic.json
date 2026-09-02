@@ -32,9 +32,16 @@
     {
       "id": "slice-4-visual-completion",
       "title": "Floor 4 completion Slice 4: visual AI full-floor parity gate",
-      "body": "Make the AI-runner lab's real MainGameScene path expose and execute the same Floor 4 decisions proven headlessly, including any modal or scene-owned public interaction that the visual runner must perform. Add `tests/e2e/floor4-ai-completion.deterministic.test.ts`: select Floor 4 and seed 404 through the lab's public controls, run the production AI at deterministic accelerated speed, observe at least one rendered physical hostile, and wait for the real scene to report the complete five-act trace and `victory`. Assert no page error, stall-backstop failure, manual takeover, runner-only phase skip, or mismatch from the headless acceptance fingerprint fields. Save deterministic checkpoints showing a live wave and the terminal victory surface. Done when both named completion tests pass from clean starts on seed 404, the acceptance document contains the exact commands and evidence, and no claim relies on the isolated Floor 4 lab.",
+      "body": "In parallel with the headless strategy slice, make the AI-runner lab's real MainGameScene path execute Floor 4 through public player/UI interactions, including modal or scene-owned interactions unavailable to sim-only code. Add `tests/e2e/floor4-ai-completion.deterministic.test.ts`: select Floor 4 and seed 404 through the lab's public controls, run the production AI at deterministic accelerated speed, observe at least one rendered physical hostile, and wait for the real scene to report the complete five-act trace and `victory`. Assert no page error, stall-backstop failure, manual takeover, runner-only phase skip, direct health/phase mutation, forced kill, or test-only spawn hook. Save deterministic checkpoints showing a live wave and the terminal victory surface. This slice owns visual-runner and scene/UI seams only; shared AI policy changes belong in slice 3 and cross-runner reconciliation belongs in slice 5. Done when the visual test fails against the baseline, passes through the real MainGameScene artifact, and no claim relies on the isolated Floor 4 lab.",
       "labels": ["ai", "e2e", "ux", "floor-4"],
-      "depends_on": ["slice-3-headless-completion"]
+      "depends_on": ["slice-2-runtime-parity"]
+    },
+    {
+      "id": "slice-5-dual-runner-convergence",
+      "title": "Floor 4 completion Slice 5: converge headless and visual acceptance",
+      "body": "Integrate the independently completed headless and visual slices without moving gameplay authority into either runner. Reconcile only genuine shared-policy or public-interaction differences, keep `ScenarioDefinition` and the real simulation pipeline authoritative, and update `.specify/specs/floor4-playable-completion.md` with final commands and evidence. Done when clean seed-404 runs pass both `tests/headless/floor4-arena-completion.test.ts` and `tests/e2e/floor4-ai-completion.deterministic.test.ts`; both record nonzero physical wave spawns, five released wave windows, five physically spawned and ordinarily defeated Headliners, five resolved intermissions, the ordered terminal phase `VICTORY`, and `RunStats.outcome === 'victory'`; their shared phase/spawn/Headliner/intermission fingerprint fields match; repeated runs are deterministic; the existing stall backstop is not reached; and all pre-existing Floor 4 tests remain green. Do not add a seed sweep or make balance, economy, achievement, content, or polish changes.",
+      "labels": ["qa", "integration", "floor-4"],
+      "depends_on": ["slice-3-headless-completion", "slice-4-visual-completion"]
     }
   ]
 }

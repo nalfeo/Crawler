@@ -22,10 +22,13 @@ balance gate: canonical seed 404 must be able to complete Floor 4 with the produ
 AI in both the real headless pipeline and the visual AI-runner `MainGameScene` path.
 
 The epic first requires an acceptance-criteria document and reproducible baseline,
-then orders runtime parity, headless AI completion, and visual AI completion. The
-contract forbids direct state mutation, invulnerability, forced kills, injected
-spawns, phase skipping, and runner-only gameplay shortcuts. Balance, win-rate sweeps,
-economy tuning, achievements, content expansion, and polish are out of scope.
+then a shared runtime-parity repair. It deliberately fans out after that foundation:
+the Game AI owner handles headless completion while the UX/E2E owner handles the real
+visual runner in parallel. A final QA convergence slice joins both branches and
+requires matching acceptance fingerprints. The contract forbids direct state
+mutation, invulnerability, forced kills, injected spawns, phase skipping, and
+runner-only gameplay shortcuts. Balance, win-rate sweeps, economy tuning,
+achievements, content expansion, and polish are out of scope.
 
 Repository evidence already shows that the act-1 headless wave test observes physical
 spawns, despite the reported empty visual run. The baseline slice therefore treats
