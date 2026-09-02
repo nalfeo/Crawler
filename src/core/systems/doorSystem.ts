@@ -21,7 +21,7 @@
  */
 
 import { query } from 'bitecs';
-import { DoorState, Player, Position } from '../components.js';
+import { Companion, DoorState, Player, Position } from '../components.js';
 import { evaluateDoorConditionGroup, getDoorLockConfig } from '../door-lock.js';
 import { isPointInSafeSpace } from '../safe-space.js';
 import { getWorldFloorBehavior } from '../floor-behavior.js';
@@ -31,6 +31,27 @@ const AUTO_OPEN_RADIUS_TILES = 1;
 
 function tileKey(x: number, y: number): string {
   return `${x},${y}`;
+}
+
+function getSafeRoomApproachers(world: GameWorld): Array<{ x: number; y: number }> {
+  const positions: Array<{ x: number; y: number }> = [];
+
+  for (const eid of query(world.ecs, [Player, Position])) {
+    positions.push({
+      x: world.stores.position.x[eid] ?? 0,
+      y: world.stores.position.y[eid] ?? 0,
+    });
+  }
+
+  for (const eid of query(world.ecs, [Companion, Position])) {
+    if ((world.stores.companion.knockedOut[eid] ?? 0) !== 0) continue;
+    positions.push({
+      x: world.stores.position.x[eid] ?? 0,
+      y: world.stores.position.y[eid] ?? 0,
+    });
+  }
+
+  return positions;
 }
 
 export function doorSystem(world: GameWorld): void {
@@ -77,29 +98,32 @@ export function doorSystem(world: GameWorld): void {
     }
   }
 
-  // Auto-open nearby closed doors so players can traverse room connections.
-  const players = query(world.ecs, [Player, Position]);
-  for (const player of players) {
-    const px = world.stores.position.x[player] ?? 0;
-    const py = world.stores.position.y[player] ?? 0;
-    if (safeRoomDoorsAutoClose && safeRoom && isPointInSafeSpace(world, px, py)) {
-      const playerTile = floorMap.worldToTile(px, py);
-      let closeSafeDoors = true;
-      for (const door of safeRoom.doors) {
-        const manhattan = Math.abs(playerTile.x - door.x) + Math.abs(playerTile.y - door.y);
-        // Keep doorway passable while the player is still transitioning through it.
-        if (manhattan <= 1) {
-          closeSafeDoors = false;
-          break;
-        }
-      }
-      if (closeSafeDoors) {
+  // Auto-open nearby closed doors so players and companions can traverse room
+  // connections. The safe-room seal is allowed to close a door only when no
+  // relevant actor remains adjacent to it: every player-owned companion on the
+  // threshold counts as still transitioning through the doorway.
+  const approvers = getSafeRoomApproachers(world);
+  if (safeRoomDoorsAutoClose && safeRoom) {
+    const safeRoomActors = approvers.filter((actor) => isPointInSafeSpace(world, actor.x, actor.y));
+    if (safeRoomActors.length > 0) {
+      const anyDoorTransitionOpen = approvers.some((actor) => {
+        const actorTile = floorMap.worldToTile(actor.x, actor.y);
+        return safeRoom.doors.some(
+          (door) => Math.abs(actorTile.x - door.x) + Math.abs(actorTile.y - door.y) <= 1,
+        );
+      });
+      if (!anyDoorTransitionOpen) {
         for (const door of safeRoom.doors) {
           forcedClosedDoorTiles.add(tileKey(door.x, door.y));
           floorMap.tileMap.closeDoor(door.x, door.y);
         }
       }
     }
+  }
+
+  for (const actor of approvers) {
+    const px = actor.x;
+    const py = actor.y;
     const tile = floorMap.worldToTile(px, py);
 
     for (let dy = -AUTO_OPEN_RADIUS_TILES; dy <= AUTO_OPEN_RADIUS_TILES; dy += 1) {

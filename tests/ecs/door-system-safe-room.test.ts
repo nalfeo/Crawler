@@ -2,7 +2,7 @@ import { addComponent, addEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { DoorState } from '../../src/core/components.js';
+import { Companion, DoorState, Position } from '../../src/core/components.js';
 import { makeMapWithSafeRoomDoor } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -47,6 +47,39 @@ describe('doorSystem safe-room forced-close behaviour', () => {
     doorSystem(world);
 
     // The doorway guard keeps the safe-room door open (not forced closed).
+    expect(world.floorMap!.tileMap.isPassable(3, 3)).toBe(true);
+    expect(world.stores.doorState.effectiveOpen[door]).toBe(1);
+  });
+
+  it('keeps the doorway open while a companion is adjacent to the safe-room door', () => {
+    const world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoomDoor();
+    spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
+
+    const companion = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        speciesToken: 1,
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: 0,
+        knockedOut: 0,
+      }),
+    );
+    addComponent(world.ecs, companion, set(Position, { x: 3 * 32 + 16, y: 2 * 32 + 16 }));
+
+    const door = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      door,
+      set(DoorState, { tileX: 3, tileY: 3, logicalOpen: 1, isLocked: 0 }),
+    );
+
+    doorSystem(world);
+
     expect(world.floorMap!.tileMap.isPassable(3, 3)).toBe(true);
     expect(world.stores.doorState.effectiveOpen[door]).toBe(1);
   });
