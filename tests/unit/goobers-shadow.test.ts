@@ -6,7 +6,13 @@ const modulePath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../.github/scripts/goobers-shadow.mjs',
 );
-const { buildShadowReport, makeIdempotencyKey, parseMarkerState } = await import(modulePath);
+const {
+  buildShadowReport,
+  legacyMarkerState,
+  makeIdempotencyKey,
+  parseMarkerState,
+  shadowMarkerState,
+} = await import(modulePath);
 
 const resolvedThread = {
   isResolved: true,
@@ -58,10 +64,18 @@ describe('Goobers shadow-mode parity', () => {
     expect(report.writesAllowed).toBe(false);
   });
 
-  it('rejects malformed or quoted resolution markers and records the marker divergence', () => {
+  it('rejects malformed or quoted resolution markers without false resolved state', () => {
     expect(parseMarkerState('> ✅ Addressed in abc1234: quoted evidence')).toBe('unresolved');
     expect(parseMarkerState('✅ Addressed in not-a-sha: invalid')).toBe('unresolved');
     expect(parseMarkerState('✅ Not applicable: deterministic reason')).toBe('resolved');
+    expect(
+      legacyMarkerState([{ isResolved: true, comments: [{ body: '✅ Addressed in not-a-sha' }] }]),
+    ).toBe('unresolved');
+    expect(
+      shadowMarkerState([
+        { isResolved: true, comments: [{ body: '> ✅ Addressed in abc1234: quoted' }] },
+      ]),
+    ).toBe('unresolved');
 
     const report = buildShadowReport({
       scope: 'ci-recovery',
@@ -80,10 +94,8 @@ describe('Goobers shadow-mode parity', () => {
       ],
     });
 
-    expect(report.parityStatus).toBe('divergence');
-    expect(report.divergences).toContain(
-      'run=11 marker mismatch legacy=resolved shadow=unresolved',
-    );
+    expect(report.parityStatus).toBe('clean');
+    expect(report.divergences).toEqual([]);
   });
 
   it('fails closed when a requested legacy workflow has no captured runs', () => {

@@ -33,28 +33,38 @@ export function normalizeVerdict(value, fallback = 'unknown') {
  */
 export function parseMarkerState(body) {
   const text = normalizeText(body, '');
-  if (!text || text.startsWith('>')) return 'unresolved';
-  if (/^✅ Not applicable:\s+\S/m.test(text)) return 'resolved';
-  if (
-    /^✅ Addressed in\s+(?:`)?(?:[0-9a-f]{7,40}|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/commit\/[0-9a-f]{7,40})(?:`)?(?:\s*:|\s|$)/im.test(
-      text,
-    )
-  ) {
-    return 'resolved';
+  if (!text) return 'unresolved';
+
+  const trimmed = text.replace(/^\s+/, '');
+  if (!trimmed || /^>/.test(trimmed) || /^["'`]/.test(trimmed)) {
+    return 'unresolved';
   }
+
+  if (/^✅\s+Not applicable:\s+\S.*$/i.test(trimmed)) return 'resolved';
+
+  const addressedIn =
+    /^✅\s+Addressed in\s+(?:`)?(?:[0-9a-f]{7,40}|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/commit\/[0-9a-f]{7,40})(?:`)?(?:\s*:\s*|\s+|$)/i;
+  if (addressedIn.test(trimmed)) return 'resolved';
+
   return 'unresolved';
 }
 
-function legacyMarkerState(reviewThreads = []) {
-  if (!reviewThreads.length) return 'none';
-  return reviewThreads.every((thread) => thread.isResolved === true) ? 'resolved' : 'unresolved';
+function hasResolvedMarker(thread = {}) {
+  return (thread.comments ?? []).some((comment) => parseMarkerState(comment.body) === 'resolved');
 }
 
-function shadowMarkerState(reviewThreads = []) {
+export function legacyMarkerState(reviewThreads = []) {
+  if (!reviewThreads.length) return 'none';
+  const allResolved = reviewThreads.every((thread) => thread.isResolved === true);
+  if (!allResolved) return 'unresolved';
+  return reviewThreads.some((thread) => hasResolvedMarker(thread)) ? 'resolved' : 'unresolved';
+}
+
+export function shadowMarkerState(reviewThreads = []) {
   if (!reviewThreads.length) return 'none';
   return reviewThreads.every((thread) => {
     if (thread.isResolved !== true) return false;
-    return (thread.comments ?? []).some((comment) => parseMarkerState(comment.body) === 'resolved');
+    return hasResolvedMarker(thread);
   })
     ? 'resolved'
     : 'unresolved';
