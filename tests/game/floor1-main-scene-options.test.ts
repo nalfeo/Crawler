@@ -32,8 +32,16 @@ import {
   siegeHeroSystem,
   siegeMinionSystem,
 } from '../../src/game/floor5Scenario.js';
+import {
+  floor6DefenseDirectorSystem,
+  floor6CombatContributionSystem,
+  floor6RaiderSystem,
+  floor6TowerSystem,
+} from '../../src/game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
+import { abilitySystem } from '../../src/game/systems/abilitySystem.js';
+import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -102,6 +110,23 @@ describe('createFloor1MainSceneOptions', () => {
         arenaDirectorSystem,
       ],
     },
+    {
+      floorId: 'floor6',
+      beforeWeaponSystems: [],
+      beforeEnemyAISystems: [floor6RaiderSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
+      foreignSystems: [
+        floor1PlayerStatSystem,
+        floor1EnemyDirectorSystem,
+        floor2VictorySystem,
+        emergentEventSystem,
+        familyFeudSystem,
+        floor3WildDirectorSystem,
+        arenaDirectorSystem,
+        siegeDirectorSystem,
+      ],
+    },
   ])(
     'assembles only $floorId scenario systems at their canonical slots',
     ({
@@ -109,6 +134,7 @@ describe('createFloor1MainSceneOptions', () => {
       beforeWeaponSystems,
       beforeEnemyAISystems,
       afterSpawnerSystems,
+      afterCoreSystems,
       foreignSystems,
     }) => {
       // The expected slot contents below are hardcoded independently of
@@ -118,8 +144,10 @@ describe('createFloor1MainSceneOptions', () => {
       expect(scenario.beforeWeaponSystems ?? []).toEqual(beforeWeaponSystems);
       expect(scenario.beforeEnemyAISystems ?? []).toEqual(beforeEnemyAISystems);
       expect(scenario.afterSpawnerSystems ?? []).toEqual(afterSpawnerSystems);
+      expect(scenario.afterCoreSystems ?? []).toEqual(afterCoreSystems ?? []);
 
       const preSystems = createFloorMainSceneOptions(floorId).preSystems ?? [];
+      const postSystems = createFloorMainSceneOptions(floorId).postSystems ?? [];
       const localSystems = [
         ...beforeWeaponSystems,
         ...beforeEnemyAISystems,
@@ -154,6 +182,14 @@ describe('createFloor1MainSceneOptions', () => {
       ).toEqual(beforeEnemyAISystems);
       expect(preSystems.slice(preSystems.indexOf(spawnerSystem) + 1)).toEqual(afterSpawnerSystems);
       expect(preSystems.indexOf(spawnerSystem)).toBe(preSystems.indexOf(spawnerArenaSystem) + 1);
+      const floorSpecificPostStart = postSystems.indexOf(abilitySystem) + 1;
+      expect(
+        postSystems.slice(
+          floorSpecificPostStart,
+          floorSpecificPostStart + (afterCoreSystems?.length ?? 0),
+        ),
+      ).toEqual(afterCoreSystems ?? []);
+      expect(postSystems.indexOf(skillSystem)).toBeLessThan(postSystems.indexOf(abilitySystem));
     },
   );
 
