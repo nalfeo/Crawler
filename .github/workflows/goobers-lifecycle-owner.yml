@@ -236,6 +236,9 @@ jobs:
               variable('LIFECYCLE_MUTATION_OWNER'),
               variable('LEGACY_CI_MUTATION_BRIDGE_ENABLED'),
             ]);
+            // Mirrors the `vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false'`
+            // default used when the decision input was captured, so both trust
+            // checks read an unset variable identically (bridge disabled).
             if (!ownership.lifecycleWriterEnabled({
               owner: selectedOwner,
               legacyBridgeEnabled: bridgeEnabled || 'false',

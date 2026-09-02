@@ -72,6 +72,11 @@ export function renderLifecycleLease(lease) {
   ].join('\n');
 }
 
+/** Registry-defined data prefix, escaped so it is matched literally. */
+const LEASE_DATA_PATTERN = new RegExp(
+  `${LIFECYCLE_LEASE_DATA_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([A-Za-z0-9_-]+) -->`,
+);
+
 export function parseLifecycleLease(body) {
   if (
     !String(body ?? '')
@@ -79,9 +84,7 @@ export function parseLifecycleLease(body) {
       .startsWith(LIFECYCLE_LEASE_MARKER)
   )
     return null;
-  const encoded = String(body).match(
-    new RegExp(`${LIFECYCLE_LEASE_DATA_PREFIX}([A-Za-z0-9_-]+) -->`),
-  )?.[1];
+  const encoded = String(body).match(LEASE_DATA_PATTERN)?.[1];
   if (!encoded) return null;
   try {
     const lease = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
