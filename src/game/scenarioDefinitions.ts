@@ -854,7 +854,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       afterCoreSystems: [floor6CombatContributionSystem],
       director: FLOOR_6_DIRECTOR,
       getRunOutcome: getFloor6RunOutcome,
-      isTerminalRunVictory: false,
+      isTerminalRunVictory: true,
       getCompletionCopy: getFloor6CompletionCopy,
     },
   ],

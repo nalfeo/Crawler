@@ -50,6 +50,15 @@ describe('floor6 manifest economy schema validation', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects a wave entry referencing an unknown archetype', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.waves![0]!.entries[0] = {
+      ...bad.floor6.waves![0]!.entries[0]!,
+      archetypeId: 'not-a-real-wave-raider',
+    };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects a duplicate wave reward waveIndex', () => {
     const bad = cloneFloor6Manifest();
     const waveRewards = bad.floor6.economy!.waveRewards;
@@ -81,6 +90,36 @@ describe('floor6 manifest economy schema validation', () => {
       throw new Error('authored floor6 manifest must have at least 2 upgrade offers for this test');
     }
     offers[1] = { ...offers[1]!, id: offers[0]!.id };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a finale boss referencing an unknown archetype', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.finale!.boss = {
+      ...bad.floor6.finale!.boss,
+      archetypeId: 'not-a-real-deadline',
+    };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a finale add referencing an unknown route', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.finale!.adds[0] = {
+      ...bad.floor6.finale!.adds[0]!,
+      routeIndex: 99,
+    };
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a duplicate finale add id', () => {
+    const bad = cloneFloor6Manifest();
+    if (bad.floor6.finale!.adds.length < 2) {
+      throw new Error('authored floor6 manifest must have at least 2 finale adds for this test');
+    }
+    bad.floor6.finale!.adds[1] = {
+      ...bad.floor6.finale!.adds[1]!,
+      id: bad.floor6.finale!.adds[0]!.id,
+    };
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 });
