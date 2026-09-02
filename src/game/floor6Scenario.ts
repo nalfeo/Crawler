@@ -620,6 +620,21 @@ function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
   return getFloor6Config().towers?.find((tower) => tower.id === towerId);
 }
 
+type Floor6BreakAction = NonNullable<
+  NonNullable<typeof floor6Manifest.floor6>['finale']
+>['breakAllowedActions'][number];
+
+function isFloor6TransactionAllowed(
+  state: Floor6DefenseState,
+  breakAction: Floor6BreakAction,
+): boolean {
+  return (
+    state.phase.kind === 'DEFEND' ||
+    (state.phase.kind === 'BREAK' &&
+      (getFloor6Config().finale?.breakAllowedActions.includes(breakAction) ?? false))
+  );
+}
+
 export function _getFloor6TowerRoster(): readonly Floor6TowerDef[] {
   return getFloor6Config().towers ?? [];
 }
@@ -640,7 +655,7 @@ export function buildFloor6Tower(
 ): Floor6TowerBuildResult {
   const state = floor6DefenseState(world);
   if (!state) return { ok: false, reason: 'not-floor6' };
-  if (state.phase.kind !== 'DEFEND' && state.phase.kind !== 'BREAK') {
+  if (!isFloor6TransactionAllowed(state, 'tower-build')) {
     return { ok: false, reason: 'phase-locked' };
   }
   const site = state.geometry.buildSites.find((candidate) => candidate.id === siteId);
@@ -696,7 +711,7 @@ export function buildFloor6Tower(
 export function _sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSellResult {
   const state = floor6DefenseState(world);
   if (!state) return { ok: false, reason: 'not-floor6' };
-  if (state.phase.kind !== 'DEFEND' && state.phase.kind !== 'BREAK') {
+  if (!isFloor6TransactionAllowed(state, 'tower-sell')) {
     return { ok: false, reason: 'phase-locked' };
   }
   const index = state.towerInstances.findIndex((instance) => instance.siteId === siteId);
@@ -834,7 +849,7 @@ export function purchaseFloor6UpgradeOffer(
   let reason: Floor6UpgradeSelectionResult['reason'] = 'purchased';
   let ok = false;
 
-  if (state.phase.kind !== 'DEFEND' && state.phase.kind !== 'BREAK') {
+  if (!isFloor6TransactionAllowed(state, 'upgrade-purchase')) {
     reason = 'phase-locked';
   } else if (!offer) {
     reason = 'unknown-offer';

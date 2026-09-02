@@ -16,9 +16,10 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 - Cleared acts enter bounded `BREAK` phases that clear hostile Floor 6 raiders/debt while preserving legal build/upgrade state.
 - Added an authored `finale` manifest block with fixed Broadcast Deadline boss data, bounded add entries, break duration, boss timeout, and one-shot payout values.
 - Added explicit Floor 6 runtime latches for finale boss defeat, terminal outcome count, victory payout count, and exit-open count; `getFloor6RunOutcome()` reads those latches rather than entity absence.
-- Allowed existing Floor 6 towers to fight during `FINALE`; build/sell/upgrade transactions remain phase-locked to `DEFEND`/`BREAK` and headless tower requests retry while phase-locked.
+- Allowed existing Floor 6 towers to fight during `FINALE`; build/sell/upgrade transactions remain phase-locked to `DEFEND` or their manifest-authorized `BREAK` actions, and headless tower requests retry while phase-locked.
 - Marked Floor 6 as a terminal run victory in the scenario presentation contract.
 - Post-review fixes added post-core Floor 6 terminal reconciliation, stable finale add IDs, richer transition trace context, Floor 6 headless stall progress scoring, and manifest validation for normal wave archetype references.
+- Review recovery wired the validated `breakAllowedActions` contract into all three Floor 6 transaction APIs and added a subset-allowlist regression.
 
 ## Files touched
 
@@ -30,6 +31,7 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 - `src/shared/data/floors/floor6.manifest.json`
 - `src/shared/data/enemies.floor6.json`
 - `tests/unit/floor6-wave-director.test.ts`
+- `tests/unit/floor6-towers.test.ts`
 - `tests/unit/floor6-manifest-economy-schema.test.ts`
 - `tests/headless/floor6-wave-director-obs.test.ts`
 - `tests/headless/floor6-economy-obs.test.ts`
@@ -51,6 +53,7 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 - `npm run format:check && npm run typecheck && npm run test:unit -- tests/unit/floor6-wave-director.test.ts tests/unit/floor6-manifest-economy-schema.test.ts && npm run test:headless -- tests/headless/floor6-economy-obs.test.ts tests/headless/floor6-wave-director-obs.test.ts` — passed after review fixes.
 - `npm run test:headless -- tests/headless/floor6-economy-obs.test.ts` — passed with `questStallFrames: 3000`, covering the Floor 6 progress-score branch instead of disabling the watchdog.
 - `bash scripts/agent/verify-fast.sh` — passed after review fixes (806 test files / 11,377 tests plus data-contract and integrity checks; shallow-clone silent-revert guard skipped locally as expected).
+- Review recovery: `npx vitest run tests/unit/floor6-towers.test.ts` (8/8), `npm run typecheck`, `bash scripts/agent/verify-fast.sh`, and `npm run verify:pr-prereqs` passed.
 
 ## Runtime observation
 
