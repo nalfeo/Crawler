@@ -301,7 +301,7 @@ export interface ScenarioDefinition {
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
   /** Optional live floor-status panel and cue stream, derived by the scenario. */
-  readonly getHudSnapshot?: (world: GameWorld) => ScenarioHudSnapshot | null;
+  readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,

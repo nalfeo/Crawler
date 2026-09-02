@@ -4,6 +4,7 @@ import type {
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
 import type { CombatEvent } from './combat-events.js';
+import type { ScenarioHudCue } from './scenario-presentation.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -1186,11 +1187,7 @@ export interface Floor6QuestProjectionSnapshot {
   readonly 'floor6.defense.relaySecured': boolean;
 }
 
-export interface Floor6HudCue {
-  readonly id: string;
-  readonly kind: 'audio' | 'vfx' | 'hud';
-  readonly label: string;
-}
+export type Floor6HudCue = ScenarioHudCue;
 
 export interface Floor6HudRouteSnapshot {
   readonly routeId: string;

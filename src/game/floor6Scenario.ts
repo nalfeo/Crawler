@@ -673,28 +673,19 @@ function floor6QuestGoalFlagSnapshot(
   world: GameWorld,
   state: Floor6DefenseState,
 ): Floor6QuestProjectionSnapshot {
-  const projected = getFloor6QuestProjection(state);
+  updateFloor6QuestGoalFlags(world, state);
   return {
-    'floor6.defense.briefed':
-      world.goalFlags.get('floor6.defense.briefed') === true || projected['floor6.defense.briefed'],
+    'floor6.defense.briefed': world.goalFlags.get('floor6.defense.briefed') === true,
     'floor6.defense.firstWaveCleared':
-      world.goalFlags.get('floor6.defense.firstWaveCleared') === true ||
-      projected['floor6.defense.firstWaveCleared'],
+      world.goalFlags.get('floor6.defense.firstWaveCleared') === true,
     'floor6.defense.firstBuildPlaced':
-      world.goalFlags.get('floor6.defense.firstBuildPlaced') === true ||
-      projected['floor6.defense.firstBuildPlaced'],
+      world.goalFlags.get('floor6.defense.firstBuildPlaced') === true,
     'floor6.defense.firstUpgradeChosen':
-      world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true ||
-      projected['floor6.defense.firstUpgradeChosen'],
-    'floor6.defense.breakCleared':
-      world.goalFlags.get('floor6.defense.breakCleared') === true ||
-      projected['floor6.defense.breakCleared'],
+      world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true,
+    'floor6.defense.breakCleared': world.goalFlags.get('floor6.defense.breakCleared') === true,
     'floor6.defense.deadlineDefeated':
-      world.goalFlags.get('floor6.defense.deadlineDefeated') === true ||
-      projected['floor6.defense.deadlineDefeated'],
-    'floor6.defense.relaySecured':
-      world.goalFlags.get('floor6.defense.relaySecured') === true ||
-      projected['floor6.defense.relaySecured'],
+      world.goalFlags.get('floor6.defense.deadlineDefeated') === true,
+    'floor6.defense.relaySecured': world.goalFlags.get('floor6.defense.relaySecured') === true,
   };
 }
 
