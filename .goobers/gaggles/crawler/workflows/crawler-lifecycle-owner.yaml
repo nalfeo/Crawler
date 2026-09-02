@@ -1,0 +1,27 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Workflow
+dslVersion: '2.0'
+metadata:
+  name: crawler-lifecycle-owner
+spec:
+  gaggle: crawler
+  displayName: Crawler lifecycle ownership lease
+  triggers:
+    - type: manual
+  readiness:
+    maxConcurrentRuns: 1
+  start: decide-ownership
+  tasks:
+    - name: decide-ownership
+      type: deterministic
+      goal: Decide the single lifecycle lease owner without directly mutating GitHub.
+      run:
+        script: |
+          set -eu
+          node .github/scripts/lifecycle-ownership.mjs \
+            --input "${GOOBERS_LIFECYCLE_INPUT_FILE:?}" \
+            --output lifecycle-ownership-result.json
+      inputs:
+        resultFile: lifecycle-ownership-result.json
+      expectedOutputs:
+        - decision

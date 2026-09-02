@@ -17,6 +17,7 @@ const mergeTrain = read('merge-train.yml');
 const ciRecovery = read('ci-recovery.yml');
 const autoRebase = read('auto-rebase-prs.yml');
 const ciRecoveryRouter = read('ci-recovery-router.yml');
+const goobersLifecycleOwner = read('goobers-lifecycle-owner.yml');
 
 test('ci.yml runs the full-CI backstop daily, not hourly', () => {
   const crons = [...ci.matchAll(/-\s*cron:\s*'([^']+)'/g)].map((m) => m[1]);
@@ -68,25 +69,37 @@ test('ci-recovery-incidents.yml routes scheduled CI regardless of MERGE_TRAIN_EN
   assert.doesNotMatch(routeIncident, /MERGE_TRAIN_ENABLED/);
 });
 
-test('legacy mutation workflows default to the disabled bridge and gate direct legacy mutations', () => {
+test('lifecycle ownership requires one exact owner and keeps legacy paths observe-only otherwise', () => {
   for (const content of [mergeTrain, ciRecovery, autoRebase, ciRecoveryRouter]) {
+    assert.match(content, /LIFECYCLE_MUTATION_OWNER/);
     assert.match(content, /LEGACY_CI_MUTATION_BRIDGE_ENABLED/);
-    assert.match(content, /== 'true'/);
-    assert.match(content, /false/);
+    assert.match(
+      content,
+      /LIFECYCLE_MUTATION_OWNER == 'legacy' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
+    );
+    assert.match(content, /observe-only/);
   }
 
-  assert.match(
-    mergeTrain,
-    /Legacy mutation bridge disabled; skipping direct merge-train mutations/,
-  );
-  assert.match(ciRecovery, /Legacy mutation bridge disabled; skipping direct legacy CI recovery/);
-  assert.match(autoRebase, /Bridge disabled; skip legacy rebase mutations/);
+  assert.match(mergeTrain, /Observe legacy merge-train triggers without mutation/);
+  assert.match(ciRecovery, /Observe legacy CI recovery without mutation/);
+  assert.match(autoRebase, /Observe legacy rebase triggers without mutation/);
+  assert.match(ciRecoveryRouter, /Observe legacy CI-recovery triggers without dispatch/);
   assert.match(
     ciRecoveryRouter,
-    /Legacy mutation bridge disabled; skip direct CI-recovery dispatches/,
+    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
   );
+});
+
+test('Goobers ownership uses the shared PR lifecycle queue and rechecks trust before writes', () => {
   assert.match(
-    ciRecoveryRouter,
-    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
+    goobersLifecycleOwner,
+    /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \|\| github\.event\.pull_request\.number/,
   );
+  assert.match(goobersLifecycleOwner, /cancel-in-progress: false/);
+  assert.match(ciRecovery, /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \}\}/);
+  assert.match(goobersLifecycleOwner, /headRepository: pull\.head\.repo\?\.full_name/);
+  assert.match(goobersLifecycleOwner, /getRepoVariable/);
+  assert.match(goobersLifecycleOwner, /lifecycleWriterEnabled/);
+  assert.match(goobersLifecycleOwner, /pull\.head\.sha/);
+  assert.match(goobersLifecycleOwner, /markers\.length !== 1/);
 });

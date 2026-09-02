@@ -46,7 +46,7 @@ on:
         type: string
 
 concurrency:
-  group: crawler-ci-pr-${{ inputs.pr_number }}
+  group: crawler-pr-lifecycle-${{ inputs.pr_number }}
   queue: max
 
 permissions:
@@ -83,14 +83,14 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Legacy mutation bridge disabled; skipping direct legacy CI recovery
-        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+      - name: Observe legacy CI recovery without mutation
+        if: vars.LIFECYCLE_MUTATION_OWNER != 'legacy' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
         run: |
-          echo "Legacy CI mutation bridge is disabled (default false). Skipping direct PR mutation in steady-state; Goobers is responsible for lifecycle orchestration."
+          echo "Legacy CI recovery is observe-only. LIFECYCLE_MUTATION_OWNER=${{ vars.LIFECYCLE_MUTATION_OWNER || 'off' }}; no direct PR mutation is permitted."
 
       - name: Reconcile PR or update shepherd lease
         id: legacy-reconcile
-        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
           LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -113,7 +113,7 @@ jobs:
 
       - name: Capture immutable CI Recovery decision
         id: capture-legacy-decision
-        if: always() && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: always() && vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         continue-on-error: true
         uses: actions/github-script@v7
         env:

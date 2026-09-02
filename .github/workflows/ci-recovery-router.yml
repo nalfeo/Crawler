@@ -82,13 +82,13 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Legacy mutation bridge disabled; skip direct CI-recovery dispatches
-        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+      - name: Observe legacy CI-recovery triggers without dispatch
+        if: vars.LIFECYCLE_MUTATION_OWNER != 'legacy' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
         run: |
-          echo "Legacy CI mutation bridge is disabled. Skipping ci-recovery workflow dispatches from the legacy router; Goobers owns steady-state lifecycle orchestration."
+          echo "Legacy CI Recovery Router is observe-only. Trigger=${{ github.event_name }}; no direct recovery dispatch is permitted."
 
       - name: Dispatch per-PR reconciliation
-        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}

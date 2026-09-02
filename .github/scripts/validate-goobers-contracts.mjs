@@ -30,6 +30,7 @@ const REQUIRED_WORKFLOWS = [
   'goobers-run.yml',
   'goobers-validate.yml',
   'goobers-shadow.yml',
+  'goobers-lifecycle-owner.yml',
 ];
 
 const REQUIRED_DISPATCH_INPUTS = new Map([
@@ -44,6 +45,7 @@ const REQUIRED_DISPATCH_INPUTS = new Map([
   ['goobers-run.yml', ['goobers_version', 'workflow', 'issue_number', 'abandon_existing']],
   ['goobers-validate.yml', ['goobers_version']],
   ['goobers-shadow.yml', ['shadow_scope', 'report_day']],
+  ['goobers-lifecycle-owner.yml', ['operation', 'pr_number', 'expected_head_sha', 'lease_id']],
 ]);
 function parseWorkflow(content) {
   const parsed = yaml.parse(content);
