@@ -221,6 +221,23 @@ describe('scenario definitions', () => {
       expect(deadlineDefeated!.isReached(world)).toBe(true);
     });
 
+    it('floor6 exposes a generic HUD snapshot for the real scene presenter', () => {
+      const scenario = getScenarioDefinition('floor6');
+      const world = createTestWorld({ seed: 606 });
+      const player = spawnPlayer(world, 0, 0);
+      scenario.configureWorld(world, player);
+      floor6DefenseDirectorSystem(world);
+
+      const hud = scenario.getHudSnapshot?.(world);
+
+      expect(hud).toBeDefined();
+      expect(hud?.lines.join('\n')).toContain('Protect the Broadcast Relay');
+      expect(hud?.lines.join('\n')).toContain('incoming from west route');
+      expect(hud?.lines.join('\n')).toContain('incoming from south route');
+      expect(hud?.lines.join('\n')).toContain('VACANT');
+      expect(hud?.cues.map((cue) => cue.kind)).toContain('hud');
+    });
+
     it('floor1 milestone predicates flip on as the real objective state advances', () => {
       const scenario = getScenarioDefinition('floor1');
       const world = createTestWorld({ seed: 42 });

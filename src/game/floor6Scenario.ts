@@ -225,6 +225,7 @@ export function initializeFloor6Scenario(
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  resetFloor6QuestProjection(world);
   acceptQuest(world, FLOOR6_DEFENSE_QUEST_ID);
   world.state = 'playing';
 }
@@ -247,6 +248,14 @@ export const FLOOR6_DEFENSE_GOAL_IDS = Object.freeze([
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
   return world.floorExtendedState?.floor6Defense ?? null;
+}
+
+function resetFloor6QuestProjection(world: GameWorld): void {
+  for (const goalId of FLOOR6_DEFENSE_GOAL_IDS) {
+    world.goalFlags.delete(goalId);
+  }
+  world.goalFlags.delete('floor6.defense.questComplete');
+  world.questLog.delete(FLOOR6_DEFENSE_QUEST_ID);
 }
 
 /** Record a phase transition and push to the trace. */
@@ -690,15 +699,21 @@ function floor6QuestGoalFlagSnapshot(
 }
 
 function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState): string {
-  const entrance = state.geometry.entrances.find((candidate) => candidate.id === from.entranceId);
-  const target = state.geometry.broadcastRelay.target;
-  const spawn = entrance?.spawn ?? target;
-  const dx = target.x - spawn.x;
-  const dy = target.y - spawn.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? 'incoming from west route → Relay' : 'incoming from east route ← Relay';
+  const route = state.geometry.routes.find((candidate) => candidate.id === from.routeId);
+  const routeName = route?.id ?? from.routeId;
+  if (routeName.startsWith('west-')) {
+    return 'incoming from west route → Relay';
   }
-  return dy >= 0 ? 'incoming from north route ↓ Relay' : 'incoming from south route ↑ Relay';
+  if (routeName.startsWith('east-')) {
+    return 'incoming from east route ← Relay';
+  }
+  if (routeName.startsWith('north-')) {
+    return 'incoming from north route ↓ Relay';
+  }
+  if (routeName.startsWith('south-')) {
+    return 'incoming from south route ↑ Relay';
+  }
+  return `incoming from ${route?.entranceId ?? from.entranceId} route to Relay`;
 }
 
 function buildFloor6PresentationSnapshot(

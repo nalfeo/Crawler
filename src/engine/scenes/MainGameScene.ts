@@ -18,6 +18,7 @@ import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
   selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
+  type ScenarioHudSnapshot,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
 import {
@@ -596,6 +597,8 @@ declare global {
         | { playerName: string; playerGender: 'female' | 'male' | 'other' }
         | undefined;
       getDirectorCommentaryText?: () => string | null;
+      getScenarioHudText?: () => string | null;
+      getScenarioHudCueLabels?: () => readonly string[];
       /**
        * Dev-only: which art each door tile rendered from on the last overlay
        * pass, in the REAL game (the probe lab has its own copy of this seam).
@@ -991,6 +994,12 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space temporary commentary text for scenario callouts. */
   private directorCommentaryText?: Phaser.GameObjects.Text;
 
+  /** Screen-space floor-owned status panel driven through ScenarioPresentationContract. */
+  private scenarioHudText?: Phaser.GameObjects.Text;
+  private scenarioHudVfx?: Phaser.GameObjects.Rectangle;
+  private readonly playedScenarioCueIds = new Set<string>();
+  private scenarioHudCueLabels: string[] = [];
+
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
   /** Panel behind the completion copy; grown when the summary is shown. */
@@ -1227,6 +1236,8 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
+    this.playedScenarioCueIds.clear();
+    this.scenarioHudCueLabels = [];
     this.floor3IntroAcknowledged = false;
     this.announcedFloor3Studios.clear();
     this.announcedFloor3FinalFourRounds.clear();
@@ -1455,6 +1466,9 @@ export class MainGameScene extends Phaser.Scene {
                   | { playerName: string; playerGender: 'female' | 'male' | 'other' }
                   | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
+              getScenarioHudText: () =>
+                this.scenarioHudText?.visible === true ? this.scenarioHudText.text : null,
+              getScenarioHudCueLabels: () => [...this.scenarioHudCueLabels],
               // Door-art provenance for the REAL game, not just the probe lab.
               // Without this the only instrument for "which door art actually
               // rendered" lived in main-scene-probe-lab, so a lab-green door
@@ -1536,6 +1550,10 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.npcQuestIndicators.clear();
       this.interactionHint?.destroy();
+      this.scenarioHudText?.destroy();
+      this.scenarioHudVfx?.destroy();
+      this.playedScenarioCueIds.clear();
+      this.scenarioHudCueLabels = [];
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
       this.offInteractionHintSafeArea?.();
@@ -1603,6 +1621,8 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseSprite = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
+      this.scenarioHudText = undefined;
+      this.scenarioHudVfx = undefined;
       this.actionStatusText?.destroy();
       this.actionStatusText = undefined;
       this.directorCommentaryText = undefined;
@@ -3175,6 +3195,28 @@ export class MainGameScene extends Phaser.Scene {
 
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
+
+    this.scenarioHudVfx = this.add
+      .rectangle(GAME.WIDTH / 2, 0, GAME.WIDTH, 8, 0xf59e0b, 0.75)
+      .setOrigin(0.5, 0)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.scenarioHudText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 112, '', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#e0f2fe',
+        backgroundColor: '#0f172add',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 120 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHintBaselineY =
@@ -4874,6 +4916,44 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  private updateScenarioHudSnapshot(panelOpen: boolean): void {
+    const snapshot = this.options.scenarioPresentation?.getHudSnapshot?.(this.world) ?? null;
+    const visible = snapshot !== null && !panelOpen && this.world.state === 'playing';
+    if (!visible) {
+      this.scenarioHudText?.setVisible(false);
+      this.scenarioHudVfx?.setVisible(false);
+      this.scenarioHudCueLabels = [];
+      return;
+    }
+
+    this.scenarioHudText?.setText(snapshot.lines.join('\n')).setVisible(true);
+    this.scenarioHudCueLabels = snapshot.cues.map((cue) => `${cue.kind}: ${cue.label}`);
+    this.playScenarioHudCues(snapshot);
+  }
+
+  private playScenarioHudCues(snapshot: ScenarioHudSnapshot): void {
+    let hasVfxCue = false;
+    for (const cue of snapshot.cues) {
+      if (cue.kind === 'vfx') {
+        hasVfxCue = true;
+      }
+      if (this.playedScenarioCueIds.has(cue.id)) {
+        continue;
+      }
+      this.playedScenarioCueIds.add(cue.id);
+      if (cue.kind === 'audio') {
+        this.rewardAudioEngine?.play({
+          waveform: 'triangle',
+          label: cue.label,
+          frequencyHz: cue.id.includes('danger') ? 220 : 440,
+          durationMs: 180,
+          gain: 0.04,
+        });
+      }
+    }
+    this.scenarioHudVfx?.setVisible(hasVfxCue);
+  }
+
   private updateOverlayText(): void {
     // Hide the whole HUD while a full-screen character panel is open so the
     // docked minimap (top-right, HUD_DEPTH..+8) never punches through the
@@ -4923,6 +5003,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    this.updateScenarioHudSnapshot(panelOpen);
     // The ability bar appears/disappears at runtime (spell unlock, modal open),
     // so restack the Talk/Descend hint above it right after the HUD syncs. Both
     // inputs (cached safe-area baseline, cached ability-bar top) are plain

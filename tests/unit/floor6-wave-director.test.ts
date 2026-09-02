@@ -227,8 +227,11 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
     );
 
     const defendPresentation = getFloor6DefenseRunStats(world)!.presentation;
-    expect(defendPresentation.routes.map((route) => route.directionLabel).join(' ')).toMatch(
-      /incoming from (west|east|north|south)/,
+    expect(defendPresentation.routes.map((route) => [route.routeId, route.directionLabel])).toEqual(
+      [
+        ['west-service-route', 'incoming from west route → Relay'],
+        ['south-loading-route', 'incoming from south route ↑ Relay'],
+      ],
     );
     expect(defendPresentation.buildSites.some((site) => site.label.includes('VACANT'))).toBe(true);
     expect(defendPresentation.buildSites.some((site) => site.label.includes('OCCUPIED'))).toBe(
@@ -258,6 +261,47 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
 
     state.relayHp = 20;
     expect(getFloor6DefenseRunStats(world)!.presentation.relayDangerLabel).toMatch(/CRITICAL/);
+  });
+
+  it('same-world restart clears prior Floor 6 quest projection and reaccepts the quest', () => {
+    const { world, player } = initFloor6();
+    const scenario = createFloorMainSceneOptions('floor6');
+    tickDirector(world);
+    const firstState = getDefenseState(world);
+    firstState.economy.balance = 100;
+    firstState.economy.totalEarned = 100;
+    expect(
+      buildFloor6Tower(world, firstState.geometry.buildSites[0]!.id, 'signal-slinger').ok,
+    ).toBe(true);
+    expect(purchaseFloor6UpgradeOffer(world, firstState.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    firstState.finale.bossDefeated = true;
+    tickDirector(world);
+    questSystem(world);
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('complete');
+
+    scenario.configureWorld!(world, player);
+
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('active');
+    expect(world.goalFlags.get('floor6.defense.questComplete')).toBeUndefined();
+    for (const goalId of [
+      'floor6.defense.briefed',
+      'floor6.defense.firstWaveCleared',
+      'floor6.defense.firstBuildPlaced',
+      'floor6.defense.firstUpgradeChosen',
+      'floor6.defense.breakCleared',
+      'floor6.defense.deadlineDefeated',
+      'floor6.defense.relaySecured',
+    ]) {
+      expect(world.goalFlags.get(goalId)).toBeUndefined();
+    }
+    expect(getDefenseState(world).towersTornDown).toBe(0);
   });
 
   it('survives each authored act and enters/exits bounded hostile-free build breaks', () => {

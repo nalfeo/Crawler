@@ -9,6 +9,7 @@ import type {
   ScenarioCompletionVariant,
   ScenarioDirectorContract,
   ScenarioDirectorMilestone,
+  ScenarioHudSnapshot,
   ScenarioPresentationContract,
   ScenarioRunOutcome,
   ScenarioStairConfirmationCopy,
@@ -78,6 +79,7 @@ import {
   floor6RaiderSystem,
   floor6TowerSystem,
   floor6DefenseDirectorSystem,
+  getFloor6DefenseRunStats,
 } from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
@@ -298,6 +300,8 @@ export interface ScenarioDefinition {
    * starter choice at all.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /** Optional live floor-status panel and cue stream, derived by the scenario. */
+  readonly getHudSnapshot?: (world: GameWorld) => ScenarioHudSnapshot | null;
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
@@ -320,6 +324,7 @@ export function getScenarioPresentationContract(
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
     starterLoadout: scenario.starterLoadout,
+    getHudSnapshot: scenario.getHudSnapshot,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -686,6 +691,37 @@ const FLOOR_6_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
   },
 ];
 
+function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
+  const stats = getFloor6DefenseRunStats(world);
+  const presentation = stats?.presentation;
+  if (!presentation) {
+    return null;
+  }
+  return {
+    id: `floor6-${stats.phase.kind}-${stats.nextReleaseIndex}-${stats.relayHp}-${stats.selectedOfferIds.join('-')}`,
+    lines: [
+      presentation.objectiveLabel,
+      `${presentation.phaseLabel} · ${presentation.relayDangerLabel}`,
+      `Routes: ${presentation.routes.map((route) => route.directionLabel).join(' | ')}`,
+      `Sites: ${presentation.buildSites.map((site) => site.label).join(' | ')}`,
+      `Towers: ${
+        presentation.towers.length > 0
+          ? presentation.towers
+              .map(
+                (tower) =>
+                  `${tower.towerId} at ${tower.siteId}: ${tower.rangeFt}ft, ${tower.tierLabel}`,
+              )
+              .join(' | ')
+          : 'no towers built'
+      }`,
+      `${presentation.buildCurrencyLabel} · ${presentation.lootLabel}`,
+      `${presentation.upgradeChoiceLabel} · ${presentation.breakSafetyLabel}`,
+      presentation.deadlineLabel,
+    ],
+    cues: presentation.cues,
+  };
+}
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -929,6 +965,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor6CompletionCopy,
       getStairMarkerState: getFloor6StairMarkerState,
       stairConfirmation: FLOOR_6_STAIR_CONFIRMATION,
+      getHudSnapshot: getFloor6HudSnapshot,
     },
   ],
 ]);
