@@ -34,7 +34,7 @@ export interface ModalPickerSelectionChangeEvent<TId extends string = string> {
 }
 
 export interface ModalPickerOpenHooks<TId extends string = string> {
-  readonly onConfirm?: (event: ModalPickerConfirmEvent<TId>) => void;
+  readonly onConfirm?: (event: ModalPickerConfirmEvent<TId>) => boolean | void;
   readonly onCancel?: (event: ModalPickerCancelEvent) => void;
   readonly onSelectionChange?: (event: ModalPickerSelectionChangeEvent<TId>) => void;
 }
@@ -453,14 +453,18 @@ export function createModalPickerUI(
         const confirmed = confirmModalPickerSelection(next);
         if (confirmed.status === 'confirmed' && confirmed.selectedIndex !== null) {
           const selectedOption = confirmed.options[confirmed.selectedIndex];
+          let shouldClose = true;
           if (selectedOption) {
-            hooks?.onConfirm?.({
-              option: selectedOption,
-              optionIndex: confirmed.selectedIndex,
-              source: 'pointer',
-            });
+            shouldClose =
+              hooks?.onConfirm?.({
+                option: selectedOption,
+                optionIndex: confirmed.selectedIndex,
+                source: 'pointer',
+              }) !== false;
           }
-          close();
+          if (shouldClose) {
+            close();
+          }
           return;
         }
         rerender();
@@ -544,14 +548,18 @@ export function createModalPickerUI(
         const next = confirmModalPickerSelection(state);
         if (next.status === 'confirmed' && next.selectedIndex !== null) {
           const option = next.options[next.selectedIndex];
+          let shouldClose = true;
           if (option) {
-            hooks?.onConfirm?.({
-              option,
-              optionIndex: next.selectedIndex,
-              source: 'keyboard',
-            });
+            shouldClose =
+              hooks?.onConfirm?.({
+                option,
+                optionIndex: next.selectedIndex,
+                source: 'keyboard',
+              }) !== false;
           }
-          close();
+          if (shouldClose) {
+            close();
+          }
         }
         break;
       }
