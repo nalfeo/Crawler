@@ -178,6 +178,19 @@ export const outputV1 = {
           maximum: 5,
           description: "Apple complexity estimate; only non-null when task='plan'",
         },
+        idempotencyKey: {
+          type: ['string', 'null'],
+          description: 'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
+        },
+        parityStatus: {
+          type: ['string', 'null'],
+          enum: ['clean', 'divergence', null],
+          description: 'Shadow-mode parity verdict for legacy-vs-Goobers comparison',
+        },
+        decisionArtifact: {
+          type: ['string', 'null'],
+          description: 'Path or pointer to the deterministic shadow decision artifact',
+        },
         hardGate: {
           type: ['string', 'null'],
           description:

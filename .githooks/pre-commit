@@ -32,4 +32,4 @@ if [ ! -f "$prettier_entry" ]; then
   exit 1
 fi
 git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 node "$prettier_entry" --ignore-unknown --write --
-git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 git add --
+git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 git add -f --
