@@ -1368,9 +1368,15 @@ export class MainGameScene extends Phaser.Scene {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
       onRestart: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return;
+        }
         window.location.reload();
       },
       onQuit: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return;
+        }
         // Death/victory/timeout already emitted the terminal bundle before
         // showing this UI. A future active-run quit screen can use this same
         // path to emit the distinct quit outcome.
@@ -5297,6 +5303,10 @@ export class MainGameScene extends Phaser.Scene {
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
+  }
+
+  private canResetRunFromTerminalSurvey(): boolean {
+    return !this.runSurveyShown || this.runSurveySubmitted;
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
