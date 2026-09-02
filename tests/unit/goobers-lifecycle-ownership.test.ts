@@ -4,12 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
-import {
-  decideLifecycleLease,
-  lifecycleWriterEnabled,
-  parseLifecycleLease,
-  renderLifecycleLease,
-} from '../../.github/scripts/lifecycle-ownership.mjs';
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const { decideLifecycleLease, lifecycleWriterEnabled, parseLifecycleLease, renderLifecycleLease } =
+  await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
 
 const headSha = 'a'.repeat(40);
 const base = {
@@ -48,7 +45,6 @@ function markerComment(
 
 describe('Goobers lifecycle ownership', () => {
   it('keeps the Goobers task decision-only', () => {
-    const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
     const workflow = parse(
       fs.readFileSync(
         path.join(
