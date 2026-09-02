@@ -258,5 +258,16 @@ describe('floor3 Trainer-poach loadout pause (headless pipeline)', () => {
     expect(victoryLatched).toBe(true);
     expect(keptCompanionEid).toBeDefined();
     expect(stats.outcome).toBe('victory');
+    expect(stats.floor3Progression?.studioVictories).toSatisfy(
+      (victories) =>
+        victories !== undefined && Object.values(victories).every((victory) => victory !== null),
+    );
+    expect(stats.floor3Progression?.finalFourRounds.map((round) => round.handlerId)).toEqual(
+      selectedHandlerOrder,
+    );
+    expect(stats.floor3Progression?.finalFourRounds.every((round) => round.victory !== null)).toBe(
+      true,
+    );
+    expect(stats.floor3Progression?.keptCompanionSelected).not.toBeNull();
   });
 });

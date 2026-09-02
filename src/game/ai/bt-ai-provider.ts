@@ -7674,6 +7674,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   ): ProgressTarget | null {
     const state = world.floorExtendedState?.floor3Studios;
     if (!state) return null;
+    if (world.frameCount < this.progressGoalSuppressedUntilFrame) return null;
 
     const companions = query(world.ecs, [Companion, PartySlot, Team]);
     let partyCount = 0;

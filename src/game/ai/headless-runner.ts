@@ -21,7 +21,7 @@ import {
   statSystem,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
-import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
@@ -43,6 +43,8 @@ import {
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
   type GoldEconomyMetrics,
+  type Floor3ProgressionMetrics,
+  type Floor3ProgressionMilestone,
   type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
@@ -1028,6 +1030,12 @@ export async function runHeadless(
   const floor1BossStartedHealthFraction = new Map<string, number>();
   const floor1BossDefeatedFrame = new Map<string, number>();
   const floor1BossDefeatedMs = new Map<string, number>();
+  let floor3LeftEntrance: Floor3ProgressionMetrics['leftEntrance'] = null;
+  const floor3StudioVictories = new Map<string, Floor3ProgressionMilestone>();
+  const floor3FinalFourVictories = new Map<number, Floor3ProgressionMilestone>();
+  let floor3KeptCompanionSelected: Floor3ProgressionMetrics['keptCompanionSelected'] = null;
+  let floor3ExitArrived: Floor3ProgressionMetrics['exitArrived'] = null;
+  let floor3ExitCompleted: Floor3ProgressionMetrics['exitCompleted'] = null;
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
   // Latches the Floor 1 boss encounter transitions for the frame that just ran.
@@ -1058,6 +1066,66 @@ export async function runHeadless(
         recordRewardEvent(runData, 'boss_kill', bossId, world.elapsedMs, currentActiveTimeMs());
       }
     }
+  };
+
+  const floor3Milestone = (): Floor3ProgressionMilestone => ({
+    frame: frameCount,
+    gameTimeMs: world.elapsedMs,
+  });
+  const captureFloor3Progression = (): void => {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (world.floorId !== 'floor3' || !state) return;
+
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    const floorMap = world.floorMap;
+    if (floor3LeftEntrance === null && floorMap?.spawnRoom) {
+      const tile = floorMap.worldToTile(playerX, playerY);
+      if (floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== floorMap.spawnRoom.id) {
+        floor3LeftEntrance = floor3Milestone();
+      }
+    }
+    for (const studio of state.studios) {
+      if (studio.defeated && !floor3StudioVictories.has(studio.id)) {
+        floor3StudioVictories.set(studio.id, floor3Milestone());
+      }
+    }
+    state.finalFourRounds.forEach((round, index) => {
+      if (round.defeated && !floor3FinalFourVictories.has(index)) {
+        floor3FinalFourVictories.set(index, floor3Milestone());
+      }
+    });
+    if (state.keptCompanionEid !== undefined && floor3KeptCompanionSelected === null) {
+      floor3KeptCompanionSelected = floor3Milestone();
+    }
+    if (
+      state.staircasePos &&
+      Math.hypot(playerX - state.staircasePos.x, playerY - state.staircasePos.y) <=
+        FLOOR2_STAIR_MARKER_RADIUS_FT &&
+      floor3ExitArrived === null
+    ) {
+      floor3ExitArrived = floor3Milestone();
+    }
+    if (state.staircaseDiscovered && floor3ExitCompleted === null) {
+      floor3ExitCompleted = floor3Milestone();
+    }
+  };
+  const buildFloor3Progression = (): Floor3ProgressionMetrics | undefined => {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (world.floorId !== 'floor3' || !state) return undefined;
+    return {
+      leftEntrance: floor3LeftEntrance,
+      studioVictories: Object.fromEntries(
+        state.studios.map((studio) => [studio.id, floor3StudioVictories.get(studio.id) ?? null]),
+      ),
+      finalFourRounds: state.finalFourRounds.map((round, index) => ({
+        handlerId: round.handlerId,
+        victory: floor3FinalFourVictories.get(index) ?? null,
+      })),
+      keptCompanionSelected: floor3KeptCompanionSelected,
+      exitArrived: floor3ExitArrived,
+      exitCompleted: floor3ExitCompleted,
+    };
   };
 
   // NPC interaction tracking
@@ -1424,6 +1492,7 @@ export async function runHeadless(
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
+      captureFloor3Progression();
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1950,6 +2019,7 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      floor3Progression: buildFloor3Progression(),
       floor4Arena: getFloor4ArenaRunStats(world),
       floor5Siege: getFloor5SiegeRunStats(world),
       floor6Defense: getFloor6DefenseRunStats(world),
@@ -2063,6 +2133,7 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    floor3Progression: buildFloor3Progression(),
     floor4Arena: getFloor4ArenaRunStats(world),
     floor5Siege: getFloor5SiegeRunStats(world),
     floor6Defense: getFloor6DefenseRunStats(world),
