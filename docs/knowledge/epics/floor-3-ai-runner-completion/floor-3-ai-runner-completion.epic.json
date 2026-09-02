@@ -1,0 +1,33 @@
+{
+  "epic_id": "floor-3-ai-runner-completion",
+  "title": "Floor 3 headless and visual AI completion",
+  "description": "Make Floor 3 end-to-end completable by both the headless AI runner and the visual AI Runner Lab through the same shipped mechanics. This epic proves possibility on one deterministic seed; it does not tune balance or establish a win-rate target.",
+  "review": {
+    "title_prefix": "[Epic Review]",
+    "body": "Hard gate: one committed deterministic seed completes Floor 3 in both the real headless runner and the real visual AI Runner Lab, including every blocking Floor 3 dialog encountered, without test-authored combat outcomes, direct world-state mutation, manual intervention after launch, or runner-specific gameplay bypasses.\n\nAcceptance criteria:\n1. Both acceptance tests use the same fixed seed and start Floor 3 through their production entry paths.\n2. The headless test drives `runHeadless` with the production BehaviorTreeAI and reaches the production Floor 3 victory/exit outcome without `stopWhen`, `onFinish`, or another hook mutating combatants, goals, progression, position, or world state.\n3. The visual E2E test boots the actual AI Runner Lab, starts the fixed seed, then supplies no gameplay keys, clicks, or direct scene/world mutations. It observes the AI acknowledge the intro, choose its starter, resolve every Studio versus and poach surface, resolve all four Final Four versus surfaces, choose a kept Companion, and complete the production exit flow.\n4. The visual run leaves the protected starting room and remains alive and actively simulating outside it for at least 10 consecutive simulated seconds before eventual completion.\n5. Both paths use the same shared Floor 3 objective/navigation policy and scenario callbacks. Any existing headless-only shortcut, including exit confirmation without navigating to the real exit interaction range, is removed rather than copied into the visual runner.\n6. Deterministic assertions record enough progress evidence to identify the last objective and blocking surface on failure; source-string assertions alone are insufficient.\n7. Existing Floor 1 and Floor 2 runner tests remain green.\n\nNon-goals: balance tuning, timer/stat/reward/spawn-pressure changes, broad seed sweeps, a win-rate threshold, release/MVP flag changes, art changes, and Floors 1, 2, or 4+ feature work."
+  },
+  "labels": ["floor-3", "ai-runner"],
+  "nodes": [
+    {
+      "id": "shared-objective-navigation",
+      "title": "Floor 3 AI completion: shared objective navigation",
+      "body": "Owner: Game AI Engineer.\n\nGive the production BehaviorTreeAI a deterministic Floor 3 objective route that leaves the protected entrance, survives normal play, finds and completes each unlocked Studio, advances through the ordered Final Four, navigates back to the spawned exit, selects a valid kept Companion through the scenario contract, and confirms the exit only from the real interaction range. The policy must be shared by headless and visual execution; remove the documented headless-only Floor 3 exit shortcut instead of adding a second visual workaround.\n\nAcceptance: a focused real-headless-pipeline test on the epic seed reaches the production Floor 3 victory/exit outcome with no test-authored KOs, teleports, goal/store mutation, or runner-only progression bypass. Deterministic progress telemetry identifies entrance departure, Studio victories, four ordered Final Four victories, kept-Companion selection, exit arrival, and completion. Preserve existing Floor 1/2 behavior. Do not tune combat balance, stats, timers, rewards, or spawn pressure.",
+      "labels": ["game-ai", "floor-3"],
+      "depends_on": []
+    },
+    {
+      "id": "visual-dialog-autonomy",
+      "title": "Floor 3 AI completion: visual dialog autonomy",
+      "body": "Owner: UX Designer.\n\nMake the auto-driven AI Runner Lab operate every blocking Floor 3 presentation surface through the same public confirmation/selection callbacks available to a player: Professor Thistle intro, starter selection, Studio versus cards, poach choices, all four Final Four versus cards, and kept-Companion selection. Use explicit modal identities or authoritative scene state so automation cannot close the wrong picker. Do not close a modal without invoking its gameplay callback.\n\nAcceptance: deterministic real-scene E2E coverage boots Floor 3 in the AI Runner Lab, observes each surface open and resolve in order without manual input or direct world mutation, and proves simulation resumes after every surface. The run leaves the protected starting room and remains alive and actively simulating outside it for at least 10 consecutive simulated seconds. Source-string wiring tests may supplement but cannot replace the runtime E2E test. Do not change balance.",
+      "labels": ["ux", "floor-3"],
+      "depends_on": []
+    },
+    {
+      "id": "dual-runner-acceptance",
+      "title": "Floor 3 AI completion: dual-runner acceptance gate",
+      "body": "Owner: QA Engineer.\n\nLand the durable Floor 3 completion acceptance suite using one committed deterministic seed shared by both runners. The headless case must exercise `runHeadless` with the production BehaviorTreeAI. The visual case must exercise the real AI Runner Lab and shipped MainGameScene, with no gameplay intervention after starting the run. Capture objective and modal history in assertion output so a regression reports where the run stopped.\n\nAcceptance: both tests independently reach the production Floor 3 victory/exit outcome; the visual test verifies every encountered blocking Floor 3 surface was acknowledged through its real callback and verifies at least 10 consecutive simulated seconds alive outside the starting room. The tests must fail if objective navigation, any required dialog callback, kept-Companion selection, real exit proximity, or final completion is removed. They must not use direct ECS/store/goal mutation, forced KOs, teleports, mocked completion, or runner-specific shortcuts. Run focused headless/E2E suites plus existing Floor 1/2 runner regressions. Passing one seed proves possibility only and must not be presented as balance or win-rate evidence.",
+      "labels": ["qa", "floor-3"],
+      "depends_on": ["shared-objective-navigation", "visual-dialog-autonomy"]
+    }
+  ]
+}
