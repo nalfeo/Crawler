@@ -82,6 +82,7 @@ import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
+  autoFloor3ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import {
@@ -1422,6 +1423,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      autoFloor3ProgressionSystem(world, playerEid);
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1771,24 +1773,6 @@ export async function runHeadless(
       if (world.floor >= 10) {
         outcome = 'victory';
         break;
-      }
-      // Non-interactive runs must still satisfy Floor 3's required keep-one
-      // reward before their carryover snapshot is captured, and Floor 3 only
-      // reports `cleared_floor` once the descend is confirmed. Unlike Floors
-      // 1-2 (`autoFloor1/2ProgressionSystem`) this deliberately does NOT gate
-      // on stair proximity: the BT AI has no Floor 3 exit navigation yet
-      // (`isFloorClearedAwaitingSweep` covers Floors 1-2 only), so a proximity
-      // gate here would stall every headless Floor 3 run at the win instead of
-      // completing it. Replace this with a proximity-gated
-      // `autoFloor3ProgressionSystem` once the AI can path to the Floor 3
-      // exit. Headless-only: real play still walks to the stairs.
-      if (scenario.autoSelectKeptCompanion) {
-        // Note the sequencing: `autoSelectKeptCompanion` returns false when
-        // there is nothing left to pick (a post-victory party wipe, which the
-        // descend gate explicitly allows), so the descend attempt must not be
-        // conditional on it or those runs would stall instead of completing.
-        scenario.autoSelectKeptCompanion(world);
-        scenario.onStairDescend?.(world, playerEid);
       }
       const scenarioOutcome = scenario.getRunOutcome(world);
       if (
