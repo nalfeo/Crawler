@@ -325,7 +325,11 @@ function buildFloor6FinaleManifestEntries(
   const finale = config.finale;
   if (!finale) return { boss: null, adds: [], waveEntries: [] };
   const routes = state.geometry.routes;
-  const finaleWaveIndex = Math.max(-1, ...(config.waves ?? []).map((wave) => wave.waveIndex)) + 1;
+  const finaleWaveIndex =
+    (config.waves ?? []).reduce(
+      (maxWaveIndex, wave) => Math.max(maxWaveIndex, wave.waveIndex),
+      -1,
+    ) + 1;
   const baseManifestIndex = state.waveManifest?.length ?? 0;
   const bossRoute = routes[finale.boss.routeIndex % Math.max(routes.length, 1)];
   if (!bossRoute) return { boss: null, adds: [], waveEntries: [] };
@@ -1316,6 +1320,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 
   if (state.phase.kind === 'BREAK') {
+    // Entry clears normal act hostiles; this guarded path removes only illegal/stray break hostiles.
     if (countLiveFloor6Raiders(world) > 0) {
       clearFloor6BreakState(world, state);
     }
@@ -1453,8 +1458,8 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
 }
 
 /** Floor 6 exit opens only after the authoritative victory transaction. */
-export function confirmFloor6StairDescend(world?: GameWorld): boolean {
-  const state = world?.floorExtendedState?.floor6Defense;
+export function confirmFloor6StairDescend(world: GameWorld): boolean {
+  const state = world.floorExtendedState?.floor6Defense;
   return state?.phase.kind === 'VICTORY' && state.exit.opened === true;
 }
 
