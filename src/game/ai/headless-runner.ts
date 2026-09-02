@@ -31,7 +31,11 @@ import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipme
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
-import { buildFloor6Tower, getFloor6DefenseRunStats } from '../floor6Scenario.js';
+import {
+  buildFloor6Tower,
+  getFloor6DefenseRunStats,
+  purchaseFloor6UpgradeOffer,
+} from '../floor6Scenario.js';
 import {
   AIDecisionDebugState,
   AIState,
@@ -117,6 +121,7 @@ import {
   weaponPrerequisiteMet,
 } from '../systems/abilitySystem.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, learnedAbilityGrantSourceId } from '../../shared/abilities.js';
+import { floor6Manifest } from '../../shared/floor-manifest.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -614,6 +619,58 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
   return Math.max(1, configuredMultiplier);
 }
 
+function tryBuildFloor6StrategyTower(world: GameWorld, playerEid: number): boolean {
+  const defense = world.floorExtendedState?.floor6Defense;
+  const config = floor6Manifest.floor6;
+  if (!defense || !config) return false;
+
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const occupiedSites = new Set(defense.towerInstances.map((instance) => instance.siteId));
+  const sites = [...defense.geometry.buildSites]
+    .filter((site) => !occupiedSites.has(site.id))
+    .sort((a, b) => {
+      const ax = (a.bounds.x + a.bounds.width / 2) * tileSizeFt;
+      const ay = (a.bounds.y + a.bounds.height / 2) * tileSizeFt;
+      const bx = (b.bounds.x + b.bounds.width / 2) * tileSizeFt;
+      const by = (b.bounds.y + b.bounds.height / 2) * tileSizeFt;
+      const distanceDelta =
+        Math.hypot(ax - playerX, ay - playerY) - Math.hypot(bx - playerX, by - playerY);
+      return distanceDelta !== 0 ? distanceDelta : a.id.localeCompare(b.id);
+    });
+  const towers = [...(config.towers ?? [])].sort(
+    (a, b) => a.cost - b.cost || a.id.localeCompare(b.id),
+  );
+
+  for (const site of sites) {
+    for (const tower of towers) {
+      if (defense.economy.balance < tower.cost) continue;
+      const result = buildFloor6Tower(world, site.id, tower.id);
+      if (result.ok) return true;
+    }
+  }
+  return false;
+}
+
+function runFloor6HeadlessStrategy(world: GameWorld, playerEid: number, enabled: boolean): void {
+  const defense = world.floorExtendedState?.floor6Defense;
+  if (!enabled || world.floorId !== 'floor6' || defense?.phase.kind !== 'DEFEND') return;
+
+  const affordableOffers = [...(defense.upgradeOfferManifest ?? [])]
+    .filter(
+      (offer) =>
+        defense.economy.balance >= offer.cost &&
+        !defense.economy.selectedOfferIds.includes(offer.offerId),
+    )
+    .sort((a, b) => a.stableIndex - b.stableIndex || a.offerId.localeCompare(b.offerId));
+  for (const offer of affordableOffers) {
+    purchaseFloor6UpgradeOffer(world, offer.offerId);
+  }
+
+  tryBuildFloor6StrategyTower(world, playerEid);
+}
+
 function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): number | undefined {
   if (configuredTelegraphMs === undefined) {
     return undefined;
@@ -1059,6 +1116,7 @@ export async function runHeadless(
   // frame while a status is held).
   let lastSettlementReturnStatus: string | null = null;
   const pendingFloor6TowerBuilds = [...(mergedConfig.floor6TowerBuildRequests ?? [])];
+  const floor6AutoStrategyEnabled = pendingFloor6TowerBuilds.length === 0;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
@@ -1364,6 +1422,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
       // `restockFloor2Quartermaster`, so a human run only ever sees the stock

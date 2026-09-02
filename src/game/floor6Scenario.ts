@@ -131,6 +131,9 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     economy: createFloor6EconomyState(),
     towerInstances: [],
     towersTornDown: 0,
+    combatEventCursor: 0,
+    heroDamageDealt: 0,
+    towerDamageDealt: 0,
   };
 }
 
@@ -376,6 +379,7 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
 }
 
 function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
+  recordFloor6CombatContributions(world, state);
   clearFloor6Raiders(world, state);
   teardownFloor6Towers(world);
   clearFloor6EconomyForTerminal(world, state);
@@ -517,6 +521,44 @@ function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
     return;
   }
   state.economy.unlockedOfferIds = nextUnlockedOfferIds;
+}
+
+function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseState): void {
+  const combatEvents = world.combatEvents;
+  if (
+    state.combatEventCursor > combatEvents.length ||
+    (state.combatEventCursor > 0 &&
+      combatEvents[state.combatEventCursor - 1] !== state.lastCombatEvent)
+  ) {
+    state.combatEventCursor = 0;
+  }
+  const floor6RaiderEids = new Set<number>();
+  for (const record of state.liveEnemies) {
+    floor6RaiderEids.add(record.eid);
+  }
+  for (
+    let eventIndex = state.combatEventCursor;
+    eventIndex < combatEvents.length;
+    eventIndex += 1
+  ) {
+    const event = combatEvents[eventIndex];
+    if (
+      event?.type !== 'hit' ||
+      event.targetType !== 'enemy' ||
+      event.targetEid === undefined ||
+      (!hasComponent(world.ecs, event.targetEid, BroadcastRelayRaider) &&
+        !floor6RaiderEids.has(event.targetEid))
+    ) {
+      continue;
+    }
+    if (event.sourceEid !== undefined && hasComponent(world.ecs, event.sourceEid, Floor6Tower)) {
+      state.towerDamageDealt += event.amount;
+    } else {
+      state.heroDamageDealt += event.amount;
+    }
+  }
+  state.combatEventCursor = combatEvents.length;
+  state.lastCombatEvent = combatEvents.at(-1);
 }
 
 function creditFloor6WaveRewards(state: Floor6DefenseState): void {
@@ -906,9 +948,9 @@ export function floor6TowerSystem(world: GameWorld): void {
  * `floor6DefenseDirectorSystem` — sole writer of Floor 6 phase, phase trace,
  * wave manifests, and terminal transitions (ADR 0097 D1, spec FR2.1–FR2.4).
  *
- * Runs as `afterSpawnerSystems` so combat resolution (damage / death) has
- * already occurred for this tick, giving terminal-precedence checks a
- * consistent view of player and relay HP.
+ * Runs as `afterSpawnerSystems` to release waves and advance defense phase
+ * before this tick's core combat systems. Same-frame combat contribution
+ * telemetry is drained by `floor6CombatContributionSystem` in postSystems.
  *
  * Terminal ordering within a single tick (FR2.2):
  *   1. Player death → DEFEAT
@@ -946,6 +988,10 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.totalReleased = 0;
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
+    state.combatEventCursor = world.combatEvents.length;
+    state.lastCombatEvent = world.combatEvents.at(-1);
+    state.heroDamageDealt = 0;
+    state.towerDamageDealt = 0;
     recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'setup-complete');
     return;
   }
@@ -958,6 +1004,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
       break;
     }
   }
+
   if (playerDead) {
     clearFloor6TerminalState(world, state);
     recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'player-death');
@@ -1014,6 +1061,12 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 }
 
+export function floor6CombatContributionSystem(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state) return;
+  recordFloor6CombatContributions(world, state);
+}
+
 /**
  * Collect a telemetry snapshot from the current defense state.
  * Safe to call from any floor, returns undefined when not on floor 6.
@@ -1052,6 +1105,8 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     terminalResetCount: state.economy.terminalResetCount,
     towers: state.towerInstances.map(({ siteId, towerId }) => ({ siteId, towerId })),
     towersTornDown: state.towersTornDown,
+    heroDamageDealt: state.heroDamageDealt,
+    towerDamageDealt: state.towerDamageDealt,
   };
 }
 

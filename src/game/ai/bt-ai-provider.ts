@@ -13,6 +13,7 @@ import {
   Enemy,
   EnemyProjectile,
   AoeOnImpact,
+  BuildCurrencyPickup,
   FamilyMembership,
   Velocity,
   XpGem,
@@ -537,7 +538,7 @@ const TACTICAL_OPPORTUNITY_PARAMS: TacticalOpportunityParams = {
 // (or its existing unit test) needs to change.
 export { computeFloorProgressScore };
 
-type LootKind = 'xp' | 'gold' | 'item' | 'harvest';
+type LootKind = 'xp' | 'gold' | 'item' | 'buildCurrency' | 'harvest';
 
 interface WorldTarget {
   eid: number;
@@ -2821,6 +2822,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
         { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
         { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        { kind: 'buildCurrency', entities: query(ctx.world.ecs, [BuildCurrencyPickup, Position]) },
         { kind: 'chest', entities: query(ctx.world.ecs, [BossChestEntity, Position]) },
       ];
       for (const candidate of candidates) {
@@ -3520,6 +3522,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       ...query(world.ecs, [XpGem, Position]),
       ...query(world.ecs, [Gold, Position]),
       ...query(world.ecs, [DroppedItem, Position]),
+      ...query(world.ecs, [BuildCurrencyPickup, Position]),
     ];
     for (const eid of lootEntities) {
       if (eid === undefined) continue;
@@ -5165,6 +5168,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         return TACTICAL_OPPORTUNITY_GOLD_VALUE;
       case 'item':
         return TACTICAL_OPPORTUNITY_ITEM_VALUE;
+      case 'buildCurrency':
+        return Math.max(1, world.stores.buildCurrencyPickup.value[eid] ?? 1);
     }
   }
 
@@ -5219,6 +5224,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
     ];
 
     for (const source of lootSources) {
@@ -8282,7 +8288,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? 'xp'
           : hasComponent(world.ecs, eid, Gold)
             ? 'gold'
-            : null;
+            : hasComponent(world.ecs, eid, BuildCurrencyPickup)
+              ? 'buildCurrency'
+              : null;
       if (kind !== null) {
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil === undefined || ignoredUntil <= world.frameCount) {
@@ -8303,6 +8311,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const sources: ReadonlyArray<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
     ];
     for (const source of sources) {
       for (const eid of source.entities) {
@@ -8422,6 +8431,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
       { kind: 'harvest', entities: query(world.ecs, [Harvestable, Position]) },
     ];
 
@@ -8507,8 +8517,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     const isXp = hasComponent(world.ecs, stickyEid, XpGem);
     const isGold = hasComponent(world.ecs, stickyEid, Gold);
     const isItem = hasComponent(world.ecs, stickyEid, DroppedItem);
+    const isBuildCurrency = hasComponent(world.ecs, stickyEid, BuildCurrencyPickup);
     const isHarvest = hasComponent(world.ecs, stickyEid, Harvestable);
-    if (!isXp && !isGold && !isItem && !isHarvest) {
+    if (!isXp && !isGold && !isItem && !isBuildCurrency && !isHarvest) {
       return null;
     }
 
@@ -8527,7 +8538,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       x,
       y,
       distance,
-      kind: isXp ? 'xp' : isGold ? 'gold' : isItem ? 'item' : 'harvest',
+      kind: isXp
+        ? 'xp'
+        : isGold
+          ? 'gold'
+          : isItem
+            ? 'item'
+            : isBuildCurrency
+              ? 'buildCurrency'
+              : 'harvest',
     };
   }
 
