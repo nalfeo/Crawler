@@ -28,7 +28,9 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 import { loadPersonaRouting } from '../shared/persona-routing.js';
 
@@ -90,10 +92,30 @@ export function canonicalFloorEpicPath(epicId: string): string {
 
 const MAX_SLICES_WITHOUT_EXCEPTION = 8;
 const OWNER_LINE = /^Owner:\s*([^.\n]+)\./;
-const FLOOR_BRANCH_SMELL = /\bfloor(id)?\s*===?\s*['"`]/i;
+/**
+ * Matches the common floor-ID branch forms the doctrine rejects in shared
+ * runtime paths: string/numeric equality or inequality comparisons
+ * (`floorId === 'floor9'`, `world.floor !== 'floor3'`, `world.floor === 9`)
+ * and `switch (floorId)` dispatch.
+ */
+const FLOOR_BRANCH_SMELL =
+  /\bfloor(id)?\s*(?:===|!==|==|!=)\s*(['"`]|\d)|\bswitch\s*\([^)]*\bfloor(id)?\b[^)]*\)/i;
+/**
+ * The doctrine's only carve-out for a floor-ID branch: "unless a documented
+ * ADR proves no composable alternative exists" — require a concrete
+ * reference to a real ADR file, not just the word "ADR".
+ */
+const ADR_REFERENCE = /docs\/knowledge\/adr\/\d{4}-\d{2}-\d{2}-[\w-]+\.md/;
 const BALANCE_OWNERSHIP_SMELL =
   /\b(tune|tunes|tuning|balance|balancing|nerf|buff)\b[^.]{0,60}\b(damage|economy|difficulty|spawn[- ]rate|pacing|win[- ]rate)\b/i;
-const PLAYABILITY_STAGE_WORDS = ['bootable', 'playable', 'completable', 'mvp', 'released'];
+const PLAYABILITY_STAGE_WORDS = [
+  'scaffolded',
+  'bootable',
+  'playable',
+  'completable',
+  'mvp',
+  'released',
+];
 
 function nodeBodies(epic: FloorEpic): ReadonlyArray<{ node: FloorEpicNode; body: string }> {
   return epic.nodes.map((node) => ({ node, body: node.body ?? '' }));
@@ -120,9 +142,82 @@ function terminalNodes(nodes: ReadonlyArray<FloorEpicNode>): ReadonlyArray<Floor
 
 function isDualRunnerProofNode(body: string): boolean {
   const mentionsHeadless = /\bheadless\b/i.test(body);
-  const mentionsVisual = /\b(ai runner|visual)\b/i.test(body);
-  const mentionsProof = /\b(acceptance|proof|completion)\b/i.test(body);
-  return mentionsHeadless && mentionsVisual && mentionsProof;
+  const mentionsVisual = /\bvisual\b/i.test(body);
+  const mentionsAiRunner = /\bai runner\b/i.test(body);
+  const mentionsSpawn = /\bspawn\b/i.test(body);
+  const mentionsWinVictory = /\b(win|victory)\b/i.test(body);
+  return (
+    mentionsHeadless && mentionsVisual && mentionsAiRunner && mentionsSpawn && mentionsWinVictory
+  );
+}
+
+/**
+ * True when `text` contains a floor-ID branch smell that is NOT excused by
+ * a documented ADR reference (the doctrine's only permitted exception).
+ */
+function hasUnexcusedFloorBranchSmell(text: string): boolean {
+  return FLOOR_BRANCH_SMELL.test(text) && !ADR_REFERENCE.test(text);
+}
+
+/**
+ * Validates the additive floor-epic fields are the expected primitive
+ * shapes before any check reads them. The generic `validateEpicFile` schema
+ * does not know about these fields, so a malformed value (e.g.
+ * `hard_gate: 42`) would otherwise reach `.trim()`/`.some()`/spread and
+ * throw instead of producing a deterministic violation.
+ */
+function additiveFieldTypeErrors(epic: FloorEpic): string[] {
+  const errors: string[] = [];
+  const isStringArray = (value: unknown): value is ReadonlyArray<string> =>
+    Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+  if (epic.hard_gate !== undefined && typeof epic.hard_gate !== 'string') {
+    errors.push('epic.hard_gate must be a string when present.');
+  }
+  if (epic.non_goals !== undefined && !isStringArray(epic.non_goals)) {
+    errors.push('epic.non_goals must be an array of strings when present.');
+  }
+  if (epic.human_gates !== undefined && !isStringArray(epic.human_gates)) {
+    errors.push('epic.human_gates must be an array of strings when present.');
+  }
+  if (
+    epic.human_approved_exception_reason !== undefined &&
+    typeof epic.human_approved_exception_reason !== 'string'
+  ) {
+    errors.push('epic.human_approved_exception_reason must be a string when present.');
+  }
+  if (epic.labels !== undefined && !isStringArray(epic.labels)) {
+    errors.push('epic.labels must be an array of strings when present.');
+  }
+  return errors;
+}
+
+/**
+ * The Floor Factory agent's output contract requires the epic file to live
+ * exactly at `canonicalFloorEpicPath(epic.epic_id)`. Returns `null` when
+ * `filePath` matches (or `epic.epic_id` isn't validatable, which
+ * `validateEpicFile`'s schema check already covers) and a violation
+ * otherwise.
+ *
+ * Both `filePath` and the canonical path are resolved with `node:path`'s
+ * `resolve()`, which anchors a relative path to `process.cwd()`. Because
+ * both resolutions happen within the same CLI invocation, they always share
+ * the same `cwd` — so a relative `filePath` given on the command line is
+ * compared against the canonical path interpreted relative to that exact
+ * same working directory, matching how `readFileSync(filePath, ...)`
+ * already interprets the argument. This intentionally does NOT hardcode a
+ * repo-root anchor, so the check keeps working when the CLI is exercised
+ * against a repo checked out somewhere other than this module's own path
+ * (e.g. from a fixture directory in a test).
+ */
+export function outputPathViolation(filePath: string, epic: FloorEpic): FloorEpicViolation | null {
+  if (typeof epic.epic_id !== 'string' || epic.epic_id.trim().length === 0) return null;
+  const expected = canonicalFloorEpicPath(epic.epic_id);
+  if (resolve(filePath) === resolve(expected)) return null;
+  return {
+    code: 'output-path-mismatch',
+    message: `epic must be saved at ${expected} (got ${filePath}).`,
+  };
 }
 
 /**
@@ -143,6 +238,16 @@ export function lintFloorEpic(
     for (const message of schemaErrors) push('schema', message);
     // The remaining checks assume a structurally valid, acyclic node array;
     // bail out early rather than reporting confusing derived failures.
+    return violations;
+  }
+
+  // The generic schema doesn't know about the Floor-Factory-additive fields
+  // (hard_gate/non_goals/human_gates/...); validate their primitive shapes
+  // before any check below reads them, or a malformed value would throw
+  // instead of producing a deterministic violation.
+  const typeErrors = additiveFieldTypeErrors(epic);
+  if (typeErrors.length > 0) {
+    for (const message of typeErrors) push('schema', message);
     return violations;
   }
 
@@ -223,15 +328,18 @@ export function lintFloorEpic(
         `node "${node.id}" reads as owning numeric balance/pacing directly; defer that decision to human_gates instead.`,
       );
     }
-    if (FLOOR_BRANCH_SMELL.test(body)) {
+    if (hasUnexcusedFloorBranchSmell(body)) {
       push(
         'floor-branch-smell',
-        `node "${node.id}" body contains a floor-ID branch smell; require config-driven/manifest composition instead.`,
+        `node "${node.id}" body contains a floor-ID branch smell with no documented ADR reference (docs/knowledge/adr/<date>-<slug>.md) proving no composable alternative exists; require config-driven/manifest composition instead.`,
       );
     }
   }
-  if (FLOOR_BRANCH_SMELL.test(epic.description ?? '')) {
-    push('floor-branch-smell', 'epic.description contains a floor-ID branch smell.');
+  if (hasUnexcusedFloorBranchSmell(epic.description ?? '')) {
+    push(
+      'floor-branch-smell',
+      'epic.description contains a floor-ID branch smell with no documented ADR reference.',
+    );
   }
 
   // Config-driven composition: at least one mention of the generic seam.
@@ -247,7 +355,7 @@ export function lintFloorEpic(
   if (proofNodes.length === 0) {
     push(
       'dual-runner-proof-missing',
-      'no node body proves headless + visual AI Runner completion together (mention "headless", "AI Runner"/"visual", and "acceptance"/"proof"/"completion").',
+      'no node body proves headless + visual AI Runner completion together (must mention "headless", "visual", "AI Runner", "spawn", and "win"/"victory").',
     );
   }
 
@@ -274,13 +382,16 @@ export function lintFloorEpic(
   }
 
   // Progressive playability stages (scaffolded/bootable/playable/completable/
-  // MVP/released) — require the plan to name at least three distinct stages.
+  // MVP/released) — the doctrine requires the plan to explicitly distinguish
+  // ALL SIX stages, not merely a subset, or completable/MVP conflation (a
+  // named regression lesson) can slip through unflagged.
   const text = allText(epic).toLowerCase();
   const stagesMentioned = PLAYABILITY_STAGE_WORDS.filter((word) => text.includes(word));
-  if (stagesMentioned.length < 3) {
+  if (stagesMentioned.length < PLAYABILITY_STAGE_WORDS.length) {
+    const missing = PLAYABILITY_STAGE_WORDS.filter((word) => !stagesMentioned.includes(word));
     push(
       'playability-stages-underspecified',
-      `epic must distinguish at least 3 of: ${PLAYABILITY_STAGE_WORDS.join(', ')} (found: ${stagesMentioned.join(', ') || 'none'}).`,
+      `epic must distinguish every stage: ${PLAYABILITY_STAGE_WORDS.join(', ')} (missing: ${missing.join(', ')}).`,
     );
   }
 
@@ -300,6 +411,10 @@ function main(): void {
   // a schema error — so lintFloorEpic (which re-derives this same check and
   // bails out early on schema errors) is the single source of truth here.
   const violations = lintFloorEpic(epic);
+  // The output-path check is CLI-only (it needs the actual file path, which
+  // lintFloorEpic's pure-document signature deliberately does not take).
+  const pathViolation = outputPathViolation(file, epic);
+  if (pathViolation) violations.unshift(pathViolation);
   if (violations.length === 0) {
     process.stdout.write(`${file}: OK\n`);
     return;
@@ -310,5 +425,10 @@ function main(): void {
   process.exitCode = 1;
 }
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// `import.meta.url` is always a normalized `file:///...` URL, while
+// `process.argv[1]` is a raw filesystem path (`C:\...` on Windows). Comparing
+// them directly is false on Windows, so the CLI would import this module but
+// never call `main()`. Convert argv[1] through `pathToFileURL` first.
+const isMain =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) main();

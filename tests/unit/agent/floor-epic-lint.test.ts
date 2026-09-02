@@ -1,8 +1,14 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   canonicalFloorEpicPath,
   lintFloorEpic,
+  outputPathViolation,
   type FloorEpic,
   type FloorEpicNode,
 } from '../../../scripts/agent/epics/floor-epic-lint.js';
@@ -51,8 +57,8 @@ function goodFloorEpic(): FloorEpic {
         title: 'Floor 9 slice 1: contract and foundation',
         body:
           'Owner: Systems Engineer.\n\n' +
-          'Establish the floor manifest and ScenarioDefinition contract needed before any ' +
-          'mechanic is bootable.',
+          'Establish the floor manifest and ScenarioDefinition contract needed to move the ' +
+          'floor from scaffolded to bootable before any mechanic is bootable.',
       },
       {
         id: 'ai-mechanics',
@@ -226,6 +232,49 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('floor-branch-smell');
   });
 
+  it('flags a floor-ID inequality branch smell (!==)', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'ai-mechanics', (n) => ({
+      ...n,
+      body: `${n.body}\n\nGuard via \`if (world.floorId !== 'floor9') return;\` in the shared runner.`,
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('floor-branch-smell');
+  });
+
+  it('flags a numeric floor-ID equality branch smell (world.floor === 9)', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'ai-mechanics', (n) => ({
+      ...n,
+      body: `${n.body}\n\nGuard via \`if (world.floor === 9) { ... }\` in the shared runner.`,
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('floor-branch-smell');
+  });
+
+  it('flags a switch(floorId) dispatch branch smell', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'ai-mechanics', (n) => ({
+      ...n,
+      body: `${n.body}\n\nDispatch via \`switch (floorId) { case 'floor9': ... }\` in the shared runner.`,
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('floor-branch-smell');
+  });
+
+  it('does not flag a floor-ID branch smell excused by a documented ADR reference', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'ai-mechanics', (n) => ({
+      ...n,
+      body:
+        `${n.body}\n\nImplement via \`if (floorId === 'floor9')\` in the shared runner, per ` +
+        'docs/knowledge/adr/2026-08-25-floor9-no-composable-alternative.md, which documents ' +
+        'that no composable alternative exists.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).not.toContain('floor-branch-smell');
+  });
+
   it('flags a plan with no config-driven (ScenarioDefinition/manifest) composition', () => {
     const epic = cloneEpic(goodFloorEpic());
     let mutated = withNode(epic, 'contract-and-foundation', (n) => ({
@@ -248,6 +297,16 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     const mutated = withNode(epic, 'dual-runner-acceptance', (n) => ({
       ...n,
       body: 'Owner: QA Engineer.\n\nProve headless completion on one shared seed.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('dual-runner-proof-missing');
+  });
+
+  it('flags a boot-only smoke-test node as a false positive for dual-runner proof', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'dual-runner-acceptance', (n) => ({
+      ...n,
+      body: 'Owner: QA Engineer.\n\nHeadless and visual smoke-test acceptance on boot.',
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('dual-runner-proof-missing');
@@ -371,5 +430,114 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('playability-stages-underspecified');
+  });
+
+  it('flags a plan missing only the "scaffolded" stage (does not conflate it with the other 5)', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'contract-and-foundation', (n) => ({
+      ...n,
+      body:
+        'Owner: Systems Engineer.\n\n' +
+        'Establish the floor manifest and ScenarioDefinition contract needed before any ' +
+        'mechanic is bootable.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('playability-stages-underspecified');
+    const stageViolation = violations.find((v) => v.code === 'playability-stages-underspecified');
+    expect(stageViolation?.message).toContain('scaffolded');
+  });
+});
+
+describe('lintFloorEpic — additive field type validation', () => {
+  it('flags a non-string hard_gate as a schema violation instead of throwing', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    (epic as { hard_gate?: unknown }).hard_gate = 42;
+    expect(() => lintFloorEpic(epic, PERSONA_NAMES)).not.toThrow();
+    const violations = lintFloorEpic(epic, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('schema');
+  });
+
+  it('flags a non-array human_gates as a schema violation instead of throwing', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    (epic as { human_gates?: unknown }).human_gates = 'defer to playtester';
+    expect(() => lintFloorEpic(epic, PERSONA_NAMES)).not.toThrow();
+    const violations = lintFloorEpic(epic, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('schema');
+  });
+
+  it('flags a non-array non_goals as a schema violation instead of throwing', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    (epic as { non_goals?: unknown }).non_goals = { note: 'not an array' };
+    expect(() => lintFloorEpic(epic, PERSONA_NAMES)).not.toThrow();
+    const violations = lintFloorEpic(epic, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('schema');
+  });
+
+  it('flags a non_goals array containing a non-string element as a schema violation', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    (epic as { non_goals?: unknown }).non_goals = [42];
+    expect(() => lintFloorEpic(epic, PERSONA_NAMES)).not.toThrow();
+    const violations = lintFloorEpic(epic, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('schema');
+  });
+});
+
+describe('outputPathViolation', () => {
+  it('returns null when the file lives at the canonical path for its epic_id', () => {
+    const epic = goodFloorEpic();
+    expect(
+      outputPathViolation(
+        'docs/knowledge/epics/floor-9-example-completion/floor-9-example-completion.epic.json',
+        epic,
+      ),
+    ).toBeNull();
+  });
+
+  it('returns a violation when the file lives outside its canonical epic_id path', () => {
+    const epic = goodFloorEpic();
+    const violation = outputPathViolation('docs/knowledge/epics/wrong-location.epic.json', epic);
+    expect(violation?.code).toBe('output-path-mismatch');
+  });
+});
+
+describe('floor-epic-lint.ts CLI (direct execution)', () => {
+  // Spawn the local tsx binary directly (not via `npx`) — `spawnSync('npx', ...)`
+  // throws ENOENT on Windows because `npx` resolves to `npx.cmd` there, and
+  // `npx tsx` can also silently fetch a different tsx version than the pinned
+  // devDependency. See tests/unit/aggregate-report-body-limit.test.ts for the
+  // same tsx-binary resolution pattern.
+  const isWindows = process.platform === 'win32';
+  const repoRoot = path.resolve(process.cwd());
+  const tsxBin = path.join(repoRoot, 'node_modules', '.bin', isWindows ? 'tsx.cmd' : 'tsx');
+  const scriptPath = path.join(repoRoot, 'scripts/agent/epics/floor-epic-lint.ts');
+
+  it('actually runs main() when invoked directly, printing OK for a compliant epic at its canonical path', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'floor-epic-lint-'));
+    const epicId = 'floor-9-example-completion';
+    const epicDir = path.join(dir, 'docs', 'knowledge', 'epics', epicId);
+    mkdirSync(epicDir, { recursive: true });
+    const epicPath = path.join(epicDir, `${epicId}.epic.json`);
+    writeFileSync(epicPath, JSON.stringify(goodFloorEpic(), null, 2));
+    const relativePath = path.join('docs', 'knowledge', 'epics', epicId, `${epicId}.epic.json`);
+    const result = spawnSync(tsxBin, [scriptPath, relativePath], {
+      cwd: dir,
+      encoding: 'utf8',
+      shell: isWindows,
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe(`${relativePath}: OK`);
+  });
+
+  it('exits non-zero and reports output-path-mismatch when invoked on a non-canonical path', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'floor-epic-lint-'));
+    const epicPath = path.join(dir, 'wrong-location.epic.json');
+    writeFileSync(epicPath, JSON.stringify(goodFloorEpic(), null, 2));
+    const result = spawnSync(tsxBin, [scriptPath, epicPath], {
+      cwd: dir,
+      encoding: 'utf8',
+      shell: isWindows,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('output-path-mismatch');
   });
 });
