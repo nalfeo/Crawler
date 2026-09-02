@@ -9,6 +9,7 @@ export {
 } from './preload.js';
 
 export {
+  confirmGeneratedSpriteAnimation,
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
   type AnimatableSceneLike,
