@@ -96,12 +96,19 @@ test('Goobers ownership uses the shared PR lifecycle queue and rechecks trust be
     /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \|\| github\.event\.pull_request\.number/,
   );
   assert.match(goobersLifecycleOwner, /cancel-in-progress: false/);
+  assert.match(goobersLifecycleOwner, /queue: max/);
   assert.match(ciRecovery, /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \}\}/);
+  assert.match(ciRecovery, /queue: max/);
   assert.match(goobersLifecycleOwner, /headRepository: pull\.head\.repo\?\.full_name/);
+  assert.match(goobersLifecycleOwner, /liveHeadSha: pull\.head\.sha/);
   assert.match(goobersLifecycleOwner, /getRepoVariable/);
   assert.match(goobersLifecycleOwner, /lifecycleWriterEnabled/);
   assert.match(goobersLifecycleOwner, /pull\.head\.sha/);
   assert.match(goobersLifecycleOwner, /markers\.length !== 1/);
+  // Both marker scans must go through the trusted-author filter so an external
+  // commenter cannot forge or poison the lease state.
+  assert.equal(goobersLifecycleOwner.match(/selectLifecycleLeaseComments\(comments\)/g)?.length, 2);
+  assert.doesNotMatch(goobersLifecycleOwner, /startsWith\(ownership\.LIFECYCLE_LEASE_MARKER/);
   assert.match(goobersLifecycleOwner, /Refresh lease clock from GitHub server/);
   assert.match(goobersLifecycleOwner, /response\.headers\.date/);
   assert.match(goobersLifecycleOwner, /No stage\.finished\/decide-ownership event found/);

@@ -39,12 +39,22 @@ The legacy implementation remains checked in as the fallback until Phase 4.
 - Operations: acquire, heartbeat, and release.
 - TTL: `LIFECYCLE_LEASE_TTL_SECONDS` (120–3600, default 300) from the GitHub
   API server timestamp refreshed immediately before the Goobers decision.
-- Persistence: one `<!-- crawler-lifecycle-lease:v1 -->` PR comment.
+- Persistence: one `<!-- crawler-lifecycle-lease:v1 -->` PR comment, registered
+  in `.github/scripts/ci-recovery/markers.mjs` with every other managed marker.
+- Trust boundary: only lease comments written by trusted authors (GitHub App /
+  automation bots, owners, members, collaborators) are counted, so a drive-by
+  comment can neither forge an active lease nor poison the lease state.
 - Contention: an unexpired different lease wins; the contender emits
   `status=contended` and does not write.
 - Takeover: an expired lease or a superseded head is replaced deterministically.
 - Corruption: malformed or duplicate managed comments disable writes.
-- Trust: fork heads and stale live heads are rejected before persistence.
+- Trust: fork heads are rejected with `reason=fork`, and a caller head that no
+  longer matches the live PR head is rejected with `reason=stale-head` in the
+  decision artifact itself, before persistence; the apply step keeps its own
+  head fence.
+- Configuration: `LIFECYCLE_MUTATION_OWNER` must be exactly `goobers` or
+  `legacy` and `LEGACY_CI_MUTATION_BRIDGE_ENABLED` exactly `true` or `false`;
+  any other spelling, case, or padding disables both writers.
 
 Each run uploads its input and Goobers decision artifact. The apply step logs a
 `LIFECYCLE_OWNERSHIP_DECISION` JSON record containing the status, reason, and

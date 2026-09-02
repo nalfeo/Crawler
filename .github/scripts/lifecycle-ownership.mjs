@@ -3,29 +3,55 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const LIFECYCLE_LEASE_MARKER = '<!-- crawler-lifecycle-lease:v1 -->';
+import { LIFECYCLE_LEASE_DATA_PREFIX, LIFECYCLE_LEASE_MARKER } from './ci-recovery/markers.mjs';
+import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './ci-recovery/state.mjs';
+
+export { LIFECYCLE_LEASE_DATA_PREFIX, LIFECYCLE_LEASE_MARKER };
 export const DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS = 300;
 
 export function lifecycleLeaseTtlSeconds(value = process.env.LIFECYCLE_LEASE_TTL_SECONDS) {
-  const seconds = Number.parseInt(String(value ?? ''), 10);
+  const raw = String(value ?? '');
+  if (!/^\d+$/.test(raw)) return DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS;
+  const seconds = Number(raw);
   return Number.isInteger(seconds) && seconds >= 120 && seconds <= 3600
     ? seconds
     : DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS;
 }
 
 export function lifecycleMutationOwner(value) {
-  const owner = String(value ?? '')
-    .trim()
-    .toLowerCase();
-  return owner === 'goobers' || owner === 'legacy' ? owner : 'off';
+  return value === 'goobers' || value === 'legacy' ? value : 'off';
 }
 
 export function lifecycleWriterEnabled({ owner, legacyBridgeEnabled }, actor) {
   const selected = lifecycleMutationOwner(owner);
-  const bridgeEnabled = String(legacyBridgeEnabled ?? '').trim() === 'true';
-  if (selected === 'goobers') return actor === 'goobers' && !bridgeEnabled;
-  if (selected === 'legacy') return actor === 'legacy' && bridgeEnabled;
+  if (legacyBridgeEnabled !== 'true' && legacyBridgeEnabled !== 'false') return false;
+  if (selected === 'goobers') return actor === 'goobers' && legacyBridgeEnabled === 'false';
+  if (selected === 'legacy') return actor === 'legacy' && legacyBridgeEnabled === 'true';
   return false;
+}
+
+/**
+ * Trust boundary for lease marker comments: only GitHub Apps/bots the recovery
+ * automation already trusts, org owners, members, and collaborators may write
+ * an authoritative lease comment. Anyone can comment on a public PR, so an
+ * unfiltered marker scan would let an external commenter forge or permanently
+ * poison the lease state.
+ */
+export function isTrustedLifecycleLeaseComment(comment) {
+  if (!comment) return false;
+  const login = String(comment.user?.login ?? comment.author?.login ?? '').toLowerCase();
+  const association = String(comment.author_association ?? '').toUpperCase();
+  return TRUSTED_ASSOCIATIONS.has(association) || TRUSTED_BOT_LOGINS.has(login);
+}
+
+/** Trusted lease marker comments, in API order. */
+export function selectLifecycleLeaseComments(comments) {
+  return (Array.isArray(comments) ? comments : []).filter(
+    (comment) =>
+      String(comment?.body || '')
+        .trimStart()
+        .startsWith(LIFECYCLE_LEASE_MARKER) && isTrustedLifecycleLeaseComment(comment),
+  );
 }
 
 export function lifecycleLeaseKey({ repository, prNumber, headSha }) {
@@ -36,7 +62,7 @@ export function renderLifecycleLease(lease) {
   const encoded = Buffer.from(JSON.stringify(lease), 'utf8').toString('base64url');
   return [
     LIFECYCLE_LEASE_MARKER,
-    `<!-- crawler-lifecycle-lease-data:${encoded} -->`,
+    `${LIFECYCLE_LEASE_DATA_PREFIX}${encoded} -->`,
     '## Lifecycle ownership lease',
     '',
     `- Owner: \`${lease.owner}\``,
@@ -53,7 +79,9 @@ export function parseLifecycleLease(body) {
       .startsWith(LIFECYCLE_LEASE_MARKER)
   )
     return null;
-  const encoded = String(body).match(/<!-- crawler-lifecycle-lease-data:([A-Za-z0-9_-]+) -->/)?.[1];
+  const encoded = String(body).match(
+    new RegExp(`${LIFECYCLE_LEASE_DATA_PREFIX}([A-Za-z0-9_-]+) -->`),
+  )?.[1];
   if (!encoded) return null;
   try {
     const lease = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
@@ -92,6 +120,9 @@ export function decideLifecycleLease(input) {
   const headSha = String(input.headSha ?? '')
     .trim()
     .toLowerCase();
+  const liveHeadSha = String(input.liveHeadSha ?? '')
+    .trim()
+    .toLowerCase();
   const prNumber = Number(input.prNumber);
   const leaseId = String(input.leaseId ?? '').trim();
   const operation = String(input.operation ?? '').trim();
@@ -108,11 +139,15 @@ export function decideLifecycleLease(input) {
     !Number.isInteger(prNumber) ||
     prNumber < 1 ||
     !/^[0-9a-f]{40}$/.test(headSha) ||
+    !/^[0-9a-f]{40}$/.test(liveHeadSha) ||
     !leaseId ||
     !['acquire', 'heartbeat', 'release'].includes(operation) ||
     !Number.isFinite(Date.parse(now))
   ) {
     return result('rejected', 'invalid-input', scope);
+  }
+  if (liveHeadSha !== headSha) {
+    return result('rejected', 'stale-head', scope);
   }
 
   const markerComments = Array.isArray(input.markerComments) ? input.markerComments : [];

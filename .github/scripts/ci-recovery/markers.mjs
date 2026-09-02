@@ -79,6 +79,16 @@ export const LIFECYCLE_MARKER = '<!-- crawler-pr-lifecycle:v1 -->';
 export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
 
 // ---------------------------------------------------------------------------
+// Lifecycle-ownership lease comment
+// ---------------------------------------------------------------------------
+
+/** Leading marker for the authoritative lifecycle-ownership lease comment. */
+export const LIFECYCLE_LEASE_MARKER = '<!-- crawler-lifecycle-lease:v1 -->';
+
+/** Inline data prefix embedded in lifecycle-ownership lease comments. */
+export const LIFECYCLE_LEASE_DATA_PREFIX = '<!-- crawler-lifecycle-lease-data:';
+
+// ---------------------------------------------------------------------------
 // Issue-intake / recovery-plan comments
 // ---------------------------------------------------------------------------
 
@@ -241,6 +251,8 @@ export const MANAGED_COMMENT_MARKERS = [
   REVIEW_CONFLICT_MARKER,
   LIFECYCLE_MARKER,
   LIFECYCLE_DATA_PREFIX,
+  LIFECYCLE_LEASE_MARKER,
+  LIFECYCLE_LEASE_DATA_PREFIX,
   COORDINATOR_MARKER,
   COORDINATOR_DATA_PREFIX,
   ISSUE_INTAKE_MARKER,

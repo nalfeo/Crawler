@@ -32,6 +32,7 @@ on:
 concurrency:
   group: crawler-pr-lifecycle-${{ inputs.pr_number || github.event.pull_request.number || 'invalid' }}
   cancel-in-progress: false
+  queue: max
 
 permissions:
   actions: read
@@ -89,10 +90,8 @@ jobs:
               issue_number: prNumber,
               per_page: 100,
             });
-            const markerComments = comments
-              .filter(comment => String(comment.body || '').trimStart().startsWith(
-                ownership.LIFECYCLE_LEASE_MARKER,
-              ))
+            const markerComments = ownership
+              .selectLifecycleLeaseComments(comments)
               .map(comment => ({ id: comment.id, body: comment.body }));
             const currentLease = markerComments.length === 1
               ? ownership.parseLifecycleLease(markerComments[0].body)
@@ -108,6 +107,7 @@ jobs:
               headRepository: pull.head.repo?.full_name || '',
               prNumber,
               headSha: process.env.REQUESTED_HEAD,
+              liveHeadSha: pull.head.sha || '',
               leaseId,
               operation,
               now: '',
@@ -238,7 +238,7 @@ jobs:
             ]);
             if (!ownership.lifecycleWriterEnabled({
               owner: selectedOwner,
-              legacyBridgeEnabled: bridgeEnabled,
+              legacyBridgeEnabled: bridgeEnabled || 'false',
             }, 'goobers')) {
               core.warning('Ownership changed before lease write; skipping mutation.');
               return;
@@ -266,9 +266,7 @@ jobs:
               issue_number: prNumber,
               per_page: 100,
             });
-            const markers = comments.filter(comment =>
-              String(comment.body || '').trimStart().startsWith(ownership.LIFECYCLE_LEASE_MARKER),
-            );
+            const markers = ownership.selectLifecycleLeaseComments(comments);
             if (decision.writeAction === 'create') {
               if (markers.length !== 0) {
                 core.warning('Lease marker changed after decision; acquisition is contended.');

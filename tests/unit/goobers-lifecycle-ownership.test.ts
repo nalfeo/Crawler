@@ -7,11 +7,15 @@ import { parse } from 'yaml';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const {
   decideLifecycleLease,
+  isTrustedLifecycleLeaseComment,
+  LIFECYCLE_LEASE_MARKER,
   lifecycleLeaseTtlSeconds,
   lifecycleWriterEnabled,
   parseLifecycleLease,
   renderLifecycleLease,
+  selectLifecycleLeaseComments,
 } = await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
+const markers = await import(path.join(repositoryRoot, '.github/scripts/ci-recovery/markers.mjs'));
 
 const headSha = 'a'.repeat(40);
 const base = {
@@ -21,6 +25,7 @@ const base = {
   headRepository: 'nalfeo/Crawler',
   prNumber: 42,
   headSha,
+  liveHeadSha: headSha,
   leaseId: 'goobers:100:1',
   operation: 'acquire',
   now: '2026-09-02T03:00:00.000Z',
@@ -56,6 +61,21 @@ describe('Goobers lifecycle ownership', () => {
     expect(lifecycleLeaseTtlSeconds('119')).toBe(300);
     expect(lifecycleLeaseTtlSeconds('3601')).toBe(300);
     expect(lifecycleLeaseTtlSeconds('invalid')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('120junk')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('120.9')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds(' 600 ')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('-300')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds('')).toBe(300);
+    expect(lifecycleLeaseTtlSeconds(undefined)).toBe(300);
+  });
+
+  it('sources the managed lease marker from the marker registry', () => {
+    expect(LIFECYCLE_LEASE_MARKER).toBe(markers.LIFECYCLE_LEASE_MARKER);
+    expect(markers.MANAGED_COMMENT_MARKERS).toContain(markers.LIFECYCLE_LEASE_MARKER);
+    expect(markers.MANAGED_COMMENT_MARKERS).toContain(markers.LIFECYCLE_LEASE_DATA_PREFIX);
+    expect(renderLifecycleLease({ ...base, owner: 'goobers', version: 1 })).toContain(
+      markers.LIFECYCLE_LEASE_DATA_PREFIX,
+    );
   });
 
   it('keeps the Goobers task decision-only', () => {
@@ -96,6 +116,16 @@ describe('Goobers lifecycle ownership', () => {
       { owner: 'typo', legacyBridgeEnabled: 'true' },
       { owner: 'goobers', legacyBridgeEnabled: 'true' },
       { owner: 'legacy', legacyBridgeEnabled: 'false' },
+      { owner: 'Goobers', legacyBridgeEnabled: 'false' },
+      { owner: ' goobers', legacyBridgeEnabled: 'false' },
+      { owner: 'goobers', legacyBridgeEnabled: 'tru' },
+      { owner: 'goobers', legacyBridgeEnabled: 'FALSE' },
+      { owner: 'goobers', legacyBridgeEnabled: ' false ' },
+      { owner: 'goobers', legacyBridgeEnabled: '' },
+      { owner: 'goobers', legacyBridgeEnabled: undefined },
+      { owner: 'LEGACY', legacyBridgeEnabled: 'true' },
+      { owner: 'legacy', legacyBridgeEnabled: 'True' },
+      { owner: undefined, legacyBridgeEnabled: 'false' },
     ]) {
       expect(lifecycleWriterEnabled(config, 'goobers')).toBe(false);
       expect(lifecycleWriterEnabled(config, 'legacy')).toBe(false);
@@ -168,12 +198,64 @@ describe('Goobers lifecycle ownership', () => {
       writeAction: 'none',
       observable: true,
     });
-    expect(decideLifecycleLease({ ...base, headSha: 'short' })).toMatchObject({
+    expect(decideLifecycleLease({ ...base, headSha: 'short', liveHeadSha: 'short' })).toMatchObject(
+      {
+        status: 'rejected',
+        reason: 'invalid-input',
+        writeAction: 'none',
+        observable: true,
+      },
+    );
+  });
+
+  it('rejects a stale caller head against the live PR head before deciding a lease', () => {
+    expect(decideLifecycleLease({ ...base, liveHeadSha: 'b'.repeat(40) })).toMatchObject({
+      status: 'rejected',
+      reason: 'stale-head',
+      writeAction: 'none',
+      lease: null,
+      observable: true,
+    });
+    expect(decideLifecycleLease({ ...base, liveHeadSha: '' })).toMatchObject({
       status: 'rejected',
       reason: 'invalid-input',
       writeAction: 'none',
-      observable: true,
     });
+  });
+
+  it('counts only trusted authors when reading lease marker comments', () => {
+    const trusted = { ...markerComment(base.leaseId), user: { login: 'github-actions[bot]' } };
+    const forged = {
+      id: 9,
+      body: markerComment('forged').body,
+      user: { login: 'drive-by' },
+      author_association: 'NONE',
+    };
+    const poisoned = {
+      id: 10,
+      body: `${LIFECYCLE_LEASE_MARKER} malformed`,
+      user: { login: 'drive-by' },
+      author_association: 'CONTRIBUTOR',
+    };
+
+    expect(isTrustedLifecycleLeaseComment(trusted)).toBe(true);
+    expect(isTrustedLifecycleLeaseComment(forged)).toBe(false);
+    expect(isTrustedLifecycleLeaseComment({ ...forged, author_association: 'COLLABORATOR' })).toBe(
+      true,
+    );
+    expect(selectLifecycleLeaseComments([trusted, forged, poisoned])).toEqual([trusted]);
+    expect(selectLifecycleLeaseComments([forged, poisoned])).toEqual([]);
+    expect(
+      decideLifecycleLease({
+        ...base,
+        markerComments: selectLifecycleLeaseComments([forged, poisoned]).map(
+          (comment: { id: number; body: string }) => ({
+            id: comment.id,
+            body: comment.body,
+          }),
+        ),
+      }),
+    ).toMatchObject({ status: 'acquired', reason: 'lease-created' });
   });
 
   it('fails closed on malformed or duplicate marker state', () => {

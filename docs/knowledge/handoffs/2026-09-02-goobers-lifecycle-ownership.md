@@ -37,6 +37,12 @@ legacy workflows retain explicit observe-only paths.
   before persistence.
 - Kept merge-train promotion, review-thread closure, CI Recovery state
   mutation, and auto-rebase lane migration out of Phase 2.
+- Counted only trusted-author lease comments (registry-defined marker) so a
+  drive-by comment cannot forge or permanently poison lease state, and made the
+  owner/bridge and TTL parsers reject any non-literal value.
+- Made the live PR head part of the decision input so a stale caller head emits
+  an observable `reason=stale-head` rejection in the artifact instead of only
+  being dropped by the apply-time fence.
 
 Alternatives rejected were coupling the lease to CI Recovery's larger legacy
 state machine, using labels without lease metadata, relying on workflow
@@ -47,6 +53,8 @@ service before a cross-repository lock is required.
 
 - `npm run test:unit -- tests/unit/goobers-lifecycle-ownership.test.ts tests/unit/goobers-run-workflow.test.ts tests/unit/goobers-shadow.test.ts` — 25 passed before the type-boundary fix; the ownership suite then passed 7/7.
 - `node --test .github/scripts/merge-train/workflow-gating.test.mjs` — 7 passed.
+- `node --test .github/scripts/ci-recovery/router.test.mjs` — 149 passed
+  (managed-marker inventory covers the lease marker and its data prefix).
 - `node .github/scripts/validate-goobers-contracts.mjs` — 8/8 workflows and 19/19 fixtures passed.
 - Direct `lifecycle-ownership.mjs` CLI acquire exercise — `status=acquired`, `writeAction=create`.
 - `npm run typecheck` — passed after converting the test to the repository's dynamic `.mjs` import pattern.
