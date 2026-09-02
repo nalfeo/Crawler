@@ -1203,6 +1203,7 @@ export class MainGameScene extends Phaser.Scene {
       };
     } else {
       this.inputCapture = createInputCapture(this, {
+        shouldIgnoreKeyboardEvent: () => this.isTerminalRunSurveyActive(),
         getFollowOrigin: () =>
           this.playerEid < 0
             ? undefined
@@ -1368,14 +1369,22 @@ export class MainGameScene extends Phaser.Scene {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
       onRestart: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return false;
+        }
         window.location.reload();
+        return true;
       },
       onQuit: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return false;
+        }
         // Death/victory/timeout already emitted the terminal bundle before
         // showing this UI. A future active-run quit screen can use this same
         // path to emit the distinct quit outcome.
         this.emitRunBundle('quit');
         window.location.reload();
+        return true;
       },
     });
     this.levelUpUI = createLevelUpUI(this, {
@@ -1870,6 +1879,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleWindowKeyDown = (event: KeyboardEvent): void => {
+    if (this.isTerminalRunSurveyActive()) {
+      return;
+    }
     if (this.isTextEntryTarget(event)) {
       return;
     }
@@ -5297,6 +5309,14 @@ export class MainGameScene extends Phaser.Scene {
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
+  }
+
+  private canResetRunFromTerminalSurvey(): boolean {
+    return !this.isTerminalRunSurveyActive();
+  }
+
+  private isTerminalRunSurveyActive(): boolean {
+    return (this.runSurveyUI?.isVisible() ?? false) && !this.runSurveySubmitted;
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
