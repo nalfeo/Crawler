@@ -196,6 +196,17 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.laneTelemetry.waveCyclesCompleted
     );
   }
+  const floor6Defense = getFloor6DefenseRunStats(world);
+  if (floor6Defense) {
+    return (
+      floor6Defense.totalReleased +
+      floor6Defense.breaksEntered +
+      floor6Defense.breaksExited +
+      floor6Defense.terminalOutcomeCount +
+      floor6Defense.heroDamageDealt +
+      floor6Defense.towerDamageDealt
+    );
+  }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
 

@@ -1197,6 +1197,7 @@ export const floorManifestDefSchema = z
             adds: z.array(
               z
                 .object({
+                  id: z.string().min(1),
                   routeIndex: z.number().int().nonnegative(),
                   archetypeId: z.string().min(1),
                   releaseTick: z.number().int().nonnegative(),
@@ -1271,6 +1272,8 @@ export const floorManifestDefSchema = z
           }
         }
         const waveIndexes = new Set<number>();
+        const pack = getFloorEnemyPack('floor6-renovation-crew');
+        const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
         for (const [index, wave] of (floor6.waves ?? []).entries()) {
           if (waveIndexes.has(wave.waveIndex)) {
             ctx.addIssue({
@@ -1280,10 +1283,17 @@ export const floorManifestDefSchema = z
             });
           }
           waveIndexes.add(wave.waveIndex);
+          for (const [entryIndex, entry] of wave.entries.entries()) {
+            if (!knownArchetypes.has(entry.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['waves', index, 'entries', entryIndex, 'archetypeId'],
+                message: `unknown Floor 6 wave archetype "${entry.archetypeId}"`,
+              });
+            }
+          }
         }
         if (floor6.economy) {
-          const pack = getFloorEnemyPack('floor6-renovation-crew');
-          const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
           const rewardArchetypeIds = new Set<string>();
           for (const [index, reward] of floor6.economy.enemyRewards.entries()) {
             if (rewardArchetypeIds.has(reward.archetypeId)) {
@@ -1342,9 +1352,9 @@ export const floorManifestDefSchema = z
           }
         }
         if (floor6.finale) {
-          const pack = getFloorEnemyPack('floor6-renovation-crew');
-          const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
+          // Must match BroadcastRelaySetGenerator's fixed two-route authored layout.
           const routeCount = 2;
+          const addIds = new Set<string>();
           if (!knownArchetypes.has(floor6.finale.boss.archetypeId)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -1360,6 +1370,14 @@ export const floorManifestDefSchema = z
             });
           }
           for (const [index, add] of floor6.finale.adds.entries()) {
+            if (addIds.has(add.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'id'],
+                message: `duplicate finale add id "${add.id}"`,
+              });
+            }
+            addIds.add(add.id);
             if (!knownArchetypes.has(add.archetypeId)) {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,

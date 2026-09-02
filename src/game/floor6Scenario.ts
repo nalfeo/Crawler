@@ -236,11 +236,24 @@ function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
 
 /** Record a phase transition and push to the trace. */
 function recordFloor6PhaseTransition(
+  world: GameWorld,
   state: Floor6DefenseState,
   newPhase: Floor6DefenseState['phase'],
-  _reason: string,
+  reason: string,
 ): void {
-  state.phaseTrace.push({ kind: state.phase.kind });
+  state.phaseTrace.push({
+    kind: state.phase.kind,
+    toKind: newPhase.kind,
+    reason,
+    frame: world.frameCount,
+    worldElapsedMs: world.elapsedMs,
+    relayHp: state.relayHp,
+    manifestIndex: state.nextReleaseIndex,
+    activeSites: state.towerInstances.map((instance) => instance.siteId),
+    buildCurrencyBalance: state.economy.balance,
+    selectedOfferIds: [...state.economy.selectedOfferIds],
+    terminalOutcome: state.terminalOutcome,
+  });
   state.phase = newPhase;
 }
 
@@ -256,8 +269,6 @@ function buildFloor6WaveManifest(
 ): readonly Floor6WaveManifestEntry[] {
   const waves = config.waves ?? [];
   const routes = state.geometry.routes;
-  const pack = getFloorEnemyPack(FLOOR6_ENEMY_PACK_ID);
-  const knownArchetypes = new Set(pack?.archetypes.map((a) => a.id) ?? []);
 
   const entries: Floor6WaveManifestEntry[] = [];
   let manifestIndex = 0;
@@ -266,9 +277,7 @@ function buildFloor6WaveManifest(
       const routeIndex = entry.routeIndex % Math.max(routes.length, 1);
       const route = routes[routeIndex];
       if (!route) continue;
-      const archetypeId = knownArchetypes.has(entry.archetypeId)
-        ? entry.archetypeId
-        : (pack?.archetypes[0]?.id ?? 'floor6-site-prep');
+      const archetypeId = entry.archetypeId;
       entries.push({
         kind: 'wave',
         manifestIndex,
@@ -336,6 +345,7 @@ function buildFloor6FinaleManifestEntries(
   const adds = finale.adds.map((add, index): Floor6FinaleAddManifestEntry => {
     const route = routes[add.routeIndex % Math.max(routes.length, 1)] ?? bossRoute;
     return {
+      addId: add.id,
       manifestIndex: baseManifestIndex + index + 1,
       waveIndex: finaleWaveIndex,
       waveLabel: 'deadline-adds',
@@ -348,7 +358,7 @@ function buildFloor6FinaleManifestEntries(
   });
   const waveEntries: Floor6WaveManifestEntry[] = [
     { ...boss, kind: 'finale-boss' },
-    ...adds.map((add) => ({ ...add, kind: 'finale-add' as const })),
+    ...adds.map((add) => ({ ...add, kind: 'finale-add' as const, addId: add.addId })),
   ];
   return { boss, adds: Object.freeze(adds), waveEntries: Object.freeze(waveEntries) };
 }
@@ -500,12 +510,16 @@ function clearFloor6BreakState(world: GameWorld, state: Floor6DefenseState): voi
   clearFloor6Raiders(world, state);
 }
 
-function setFloor6Defeat(world: GameWorld, state: Floor6DefenseState): void {
+function setFloor6Defeat(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  reason = 'terminal-defeat',
+): void {
   if (state.terminalOutcome !== null) return;
   clearFloor6TerminalState(world, state);
   state.terminalOutcome = 'defeat';
   state.terminalOutcomeCount += 1;
-  recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'terminal-defeat');
+  recordFloor6PhaseTransition(world, state, { kind: 'DEFEAT' }, reason);
 }
 
 function awardFloor6VictoryPayout(world: GameWorld, state: Floor6DefenseState): void {
@@ -539,7 +553,47 @@ function setFloor6Victory(world: GameWorld, state: Floor6DefenseState): void {
   clearFloor6TerminalState(world, state);
   state.terminalOutcome = 'victory';
   state.terminalOutcomeCount += 1;
-  recordFloor6PhaseTransition(state, { kind: 'VICTORY' }, 'deadline-defeated');
+  recordFloor6PhaseTransition(world, state, { kind: 'VICTORY' }, 'deadline-defeated');
+}
+
+function isFloor6PlayerDefeated(world: GameWorld): boolean {
+  for (const eid of query(world.ecs, [Player, Health])) {
+    if ((world.stores.health.current[eid] ?? 1) <= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function reconcileFloor6TerminalAfterCore(world: GameWorld, state: Floor6DefenseState): void {
+  if (
+    state.terminalOutcome !== null ||
+    state.phase.kind === 'VICTORY' ||
+    state.phase.kind === 'DEFEAT'
+  ) {
+    return;
+  }
+  if (isFloor6PlayerDefeated(world)) {
+    setFloor6Defeat(world, state, 'player-defeated');
+    return;
+  }
+  if (state.relayHp <= 0) {
+    setFloor6Defeat(world, state, 'relay-destroyed');
+    return;
+  }
+  reconcileFloor6LiveEnemies(world, state);
+  if (
+    state.phase.kind === 'FINALE' &&
+    state.finale.startedFrame !== null &&
+    world.frameCount - state.finale.startedFrame >= state.finale.timeoutFrames &&
+    !state.finale.bossDefeated
+  ) {
+    setFloor6Defeat(world, state, 'deadline-timeout');
+    return;
+  }
+  if (state.phase.kind === 'FINALE' && state.finale.bossDefeated) {
+    setFloor6Victory(world, state);
+  }
 }
 
 function selectedFloor6UpgradeValue(state: Floor6DefenseState, kind: string): number {
@@ -945,14 +999,14 @@ function enterFloor6Break(world: GameWorld, state: Floor6DefenseState): void {
   clearFloor6BreakState(world, state);
   state.breakStartedFrame = world.frameCount;
   state.breaksEntered += 1;
-  recordFloor6PhaseTransition(state, { kind: 'BREAK' }, 'act-cleared');
+  recordFloor6PhaseTransition(world, state, { kind: 'BREAK' }, 'act-cleared');
 }
 
-function exitFloor6Break(state: Floor6DefenseState): void {
+function exitFloor6Break(world: GameWorld, state: Floor6DefenseState): void {
   state.breakStartedFrame = null;
   state.breaksExited += 1;
   state.currentActIndex += 1;
-  recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'break-complete');
+  recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'break-complete');
 }
 
 function enterFloor6Finale(world: GameWorld, state: Floor6DefenseState): void {
@@ -976,7 +1030,7 @@ function enterFloor6Finale(world: GameWorld, state: Floor6DefenseState): void {
   state.finale.bossDefeated = false;
   state.finale.bossDefeatedFrame = null;
   state.breakStartedFrame = null;
-  recordFloor6PhaseTransition(state, { kind: 'FINALE' }, 'deadline-start');
+  recordFloor6PhaseTransition(world, state, { kind: 'FINALE' }, 'deadline-start');
 }
 
 function progressFloor6DefensePhase(world: GameWorld, state: Floor6DefenseState): void {
@@ -1245,36 +1299,30 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
       opened: false,
       openCount: 0,
     };
-    recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'setup-complete');
+    recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'setup-complete');
     return;
   }
 
   // ── Terminal precedence check 1: player death ─────────────────────────────
-  let playerDead = false;
-  for (const eid of query(world.ecs, [Player, Health])) {
-    if ((world.stores.health.current[eid] ?? 1) <= 0) {
-      playerDead = true;
-      break;
-    }
-  }
-
-  if (playerDead) {
-    setFloor6Defeat(world, state);
+  if (isFloor6PlayerDefeated(world)) {
+    setFloor6Defeat(world, state, 'player-defeated');
     return;
   }
 
   // ── Terminal precedence check 2: relay destroyed ──────────────────────────
   if (state.relayHp <= 0) {
-    setFloor6Defeat(world, state);
+    setFloor6Defeat(world, state, 'relay-destroyed');
     return;
   }
 
   if (state.phase.kind === 'BREAK') {
-    clearFloor6BreakState(world, state);
+    if (countLiveFloor6Raiders(world) > 0) {
+      clearFloor6BreakState(world, state);
+    }
     const duration = config.finale?.breakDurationFrames ?? 0;
     const startedFrame = state.breakStartedFrame ?? world.frameCount;
     if (world.frameCount - startedFrame >= duration) {
-      exitFloor6Break(state);
+      exitFloor6Break(world, state);
     }
     return;
   }
@@ -1285,7 +1333,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     world.frameCount - state.finale.startedFrame >= state.finale.timeoutFrames &&
     !state.finale.bossDefeated
   ) {
-    setFloor6Defeat(world, state);
+    setFloor6Defeat(world, state, 'deadline-timeout');
     return;
   }
 
@@ -1318,7 +1366,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 
   if (state.stallFrames >= backstopFrames) {
-    setFloor6Defeat(world, state);
+    setFloor6Defeat(world, state, 'wave-backstop');
     return;
   }
 
@@ -1342,6 +1390,7 @@ export function floor6CombatContributionSystem(world: GameWorld): void {
   const state = floor6DefenseState(world);
   if (!state) return;
   recordFloor6CombatContributions(world, state);
+  reconcileFloor6TerminalAfterCore(world, state);
 }
 
 /**

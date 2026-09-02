@@ -933,6 +933,20 @@ export interface Floor6DefensePhase {
   readonly kind: Floor6DefensePhaseKind;
 }
 
+export interface Floor6DefensePhaseTraceEntry {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly toKind: Floor6DefensePhaseKind;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly relayHp: number;
+  readonly manifestIndex: number;
+  readonly activeSites: readonly string[];
+  readonly buildCurrencyBalance: number;
+  readonly selectedOfferIds: readonly string[];
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+}
+
 export interface Floor6TilePoint {
   readonly x: number;
   readonly y: number;
@@ -979,7 +993,7 @@ export interface Floor6DefenseGeometry {
 
 export interface Floor6DefenseState {
   phase: Floor6DefensePhase;
-  readonly phaseTrace: Floor6DefensePhase[];
+  readonly phaseTrace: Floor6DefensePhaseTraceEntry[];
   readonly rngStreamKeys: {
     readonly waves: string;
     readonly routes: string;
@@ -1129,6 +1143,7 @@ export interface Floor6FinaleBossManifestEntry {
 }
 
 export interface Floor6FinaleAddManifestEntry {
+  readonly addId: string;
   readonly manifestIndex: number;
   readonly waveIndex: number;
   readonly waveLabel: string;
@@ -1186,6 +1201,7 @@ export interface Floor6UpgradeOfferManifestEntry {
  */
 export interface Floor6WaveManifestEntry {
   readonly kind: 'wave' | 'finale-boss' | 'finale-add';
+  readonly addId?: string;
   readonly manifestIndex: number;
   readonly waveIndex: number;
   readonly waveLabel: string;
@@ -1217,7 +1233,7 @@ export interface Floor6LiveEnemyRecord {
 /** Telemetry snapshot emitted by the director at every phase transition. */
 export interface Floor6DefenseRunStats {
   readonly phase: Floor6DefensePhase;
-  readonly phaseTrace: readonly Floor6DefensePhase[];
+  readonly phaseTrace: readonly Floor6DefensePhaseTraceEntry[];
   readonly relayHp: number;
   readonly relayMaxHp: number;
   readonly nextReleaseIndex: number;

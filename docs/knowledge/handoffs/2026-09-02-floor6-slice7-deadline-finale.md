@@ -18,6 +18,7 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 - Added explicit Floor 6 runtime latches for finale boss defeat, terminal outcome count, victory payout count, and exit-open count; `getFloor6RunOutcome()` reads those latches rather than entity absence.
 - Allowed existing Floor 6 towers to fight during `FINALE`; build/sell/upgrade transactions remain phase-locked to `DEFEND`/`BREAK` and headless tower requests retry while phase-locked.
 - Marked Floor 6 as a terminal run victory in the scenario presentation contract.
+- Post-review fixes added post-core Floor 6 terminal reconciliation, stable finale add IDs, richer transition trace context, Floor 6 headless stall progress scoring, and manifest validation for normal wave archetype references.
 
 ## Files touched
 
@@ -45,11 +46,16 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 - `npm run typecheck` — passed.
 - `npx vitest run --project unit tests/unit/floor6-*.test.ts tests/unit/scenario-definitions.test.ts && npx vitest run --project headless tests/headless/floor6-*.test.ts` — passed.
 - `bash scripts/agent/verify-fast.sh` — passed.
+- Review harness for the 4-apple change ran two independent post-diff reviews; their actionable findings were batched into one fix pass.
+- `npm run format:check` — initially flagged `src/game/floor6Scenario.ts`; `npx prettier --write src/game/floor6Scenario.ts` fixed it.
+- `npm run format:check && npm run typecheck && npm run test:unit -- tests/unit/floor6-wave-director.test.ts tests/unit/floor6-manifest-economy-schema.test.ts && npm run test:headless -- tests/headless/floor6-economy-obs.test.ts tests/headless/floor6-wave-director-obs.test.ts` — passed after review fixes.
+- `npm run test:headless -- tests/headless/floor6-economy-obs.test.ts` — passed with `questStallFrames: 3000`, covering the Floor 6 progress-score branch instead of disabling the watchdog.
+- `bash scripts/agent/verify-fast.sh` — passed after review fixes (806 test files / 11,377 tests plus data-contract and integrity checks; shallow-clone silent-revert guard skipped locally as expected).
 
 ## Runtime observation
 
 - Before: the real Floor 6 headless pipeline with seed 606 could collect loot, build, upgrade, and fight, but Slice 6 left the floor in `DEFEND` with no terminal victory path.
-- After: a real `runHeadless(new BehaviorTreeAI({ seed: 606 }), { floorId: 'floor6', seed: 606, maxFrames: 7000 })` run reaches `VICTORY`, enters and exits two breaks, records `hostileActivityDuringBreak=0`, defeats the Broadcast Deadline, records `terminalOutcome='victory'` and `terminalOutcomeCount=1`, awards `victoryPayoutCount=1`, opens `exitOpenCount=1`, and reports both hero and tower damage contributions.
+- After: a real `runHeadless(new BehaviorTreeAI({ seed: 606 }), { floorId: 'floor6', seed: 606, maxFrames: 7000, questStallFrames: 3000 })` run reaches `VICTORY`, enters and exits two breaks, records `hostileActivityDuringBreak=0`, defeats the Broadcast Deadline, records `terminalOutcome='victory'` and `terminalOutcomeCount=1`, awards `victoryPayoutCount=1`, opens `exitOpenCount=1`, and reports both hero and tower damage contributions.
 
 ## Unresolved issues
 
@@ -58,6 +64,6 @@ Implemented Floor 6 Slice 7's terminal phase arc inside the existing `floor6Defe
 
 ## Recommended next steps
 
-- Run `npm run verify:pr-prereqs` after this handoff and apple metric are committed.
-- Run the 4-apple post-diff review process (two independent reviews), automated code review, CodeQL checker, and final secret scan before closeout.
+- Run `npm run verify:pr-prereqs` after the review-fix commit.
+- Run automated code review, CodeQL checker, and final secret scan before closeout.
 - Let S8 consume the new `Floor6DefenseRunStats` fields for HUD/cue presentation rather than re-deriving phase or terminal state.

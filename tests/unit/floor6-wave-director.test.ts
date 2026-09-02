@@ -13,6 +13,7 @@ import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scen
 import {
   buildFloor6Tower,
   confirmFloor6StairDescend,
+  floor6CombatContributionSystem,
   floor6DefenseDirectorSystem,
   floor6RaiderSystem,
   getFloor6DefenseRunStats,
@@ -20,7 +21,9 @@ import {
   purchaseFloor6UpgradeOffer,
   _getFloor6InitializationArtifact,
 } from '../../src/game/floor6Scenario.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { floor6Manifest } from '../../src/shared/floor-manifest.js';
+import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -266,6 +269,56 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
     expect(confirmFloor6StairDescend(world)).toBe(true);
     expect(getFloor6RunOutcome(world)).toBe('cleared_floor');
   });
+
+  it('post-core reconciliation latches player defeat authoritatively', () => {
+    const { world, player } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+
+    runSimulationStep(world, createInputState(), 16, {
+      preSystems: [
+        floor6DefenseDirectorSystem,
+        (w) => {
+          setComponent(w.ecs, player, Health, { current: 0, max: 100 });
+        },
+      ],
+      postSystems: [floor6CombatContributionSystem],
+    });
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.terminalOutcome).toBe('defeat');
+    expect(state.terminalOutcomeCount).toBe(1);
+    expect(state.phaseTrace.at(-1)).toMatchObject({
+      kind: 'DEFEND',
+      toKind: 'DEFEAT',
+      reason: 'player-defeated',
+      terminalOutcome: 'defeat',
+    });
+  });
+
+  it('post-core reconciliation latches Deadline defeat on the final legal combat tick', () => {
+    const { world } = initFloor6();
+    enterFinaleByCompletingActs(world);
+    const state = getDefenseState(world);
+
+    runSimulationStep(world, createInputState(), 16, {
+      preSystems: [
+        floor6DefenseDirectorSystem,
+        (w) => {
+          const bossEid = getDefenseState(w).finale.bossEid;
+          expect(bossEid).toBeGreaterThan(0);
+          setComponent(w.ecs, bossEid, Health, { current: 0, max: 60 });
+        },
+      ],
+      postSystems: [floor6CombatContributionSystem],
+    });
+
+    expect(state.phase.kind).toBe('VICTORY');
+    expect(state.terminalOutcome).toBe('victory');
+    expect(state.terminalOutcomeCount).toBe(1);
+    expect(state.victoryPayout.count).toBe(1);
+    expect(state.exit.openCount).toBe(1);
+  });
 });
 
 describe('Floor 6 phase transitions', () => {
@@ -281,6 +334,12 @@ describe('Floor 6 phase transitions', () => {
     tickDirector(world);
     const trace = getDefenseState(world).phaseTrace;
     expect(trace[0]?.kind).toBe('SETUP');
+    expect(trace[0]).toMatchObject({
+      toKind: 'DEFEND',
+      reason: 'setup-complete',
+      frame: 1,
+      terminalOutcome: null,
+    });
   });
 
   it('terminal phases are idempotent — further ticks do not change state', () => {

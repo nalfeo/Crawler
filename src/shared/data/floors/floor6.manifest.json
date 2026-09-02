@@ -189,12 +189,14 @@
       },
       "adds": [
         {
+          "id": "deadline-demo-lead",
           "routeIndex": 1,
           "archetypeId": "floor6-demo-lead",
           "releaseTick": 60,
           "buildCurrencyReward": 0
         },
         {
+          "id": "deadline-site-prep",
           "routeIndex": 0,
           "archetypeId": "floor6-site-prep",
           "releaseTick": 120,

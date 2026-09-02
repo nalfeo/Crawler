@@ -11,7 +11,7 @@ describe('Floor 6 economy real headless pipeline', () => {
         seed: 606,
         maxFrames: 7000,
         maxWallTimeMs: 30_000,
-        questStallFrames: 0,
+        questStallFrames: 3000,
       }) as const;
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
     const replay = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
