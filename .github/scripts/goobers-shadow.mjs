@@ -2,6 +2,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  extractAddressedMarkerSha,
+  hasNotApplicableMarker,
+  shouldResolveThread,
+} from './ci-recovery/state.mjs';
 
 function normalizeText(value, fallback = 'unknown') {
   const text = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
@@ -27,45 +32,23 @@ export function normalizeVerdict(value, fallback = 'unknown') {
     : fallback;
 }
 
-/**
- * Recognizes only an unquoted, top-level thread-resolution marker. A marker
- * quoted as evidence or with an invalid SHA must not resolve a thread.
- */
 export function parseMarkerState(body) {
-  const text = normalizeText(body, '');
-  if (!text) return 'unresolved';
-
-  const trimmed = text.replace(/^\s+/, '');
-  if (!trimmed || /^>/.test(trimmed) || /^["'`]/.test(trimmed)) {
-    return 'unresolved';
-  }
-
-  if (/^✅\s+Not applicable:\s+\S.*$/i.test(trimmed)) return 'resolved';
-
-  const addressedIn =
-    /^✅\s+Addressed in\s+(?:`)?(?:[0-9a-f]{7,40}|https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/commit\/[0-9a-f]{7,40})(?:`)?(?:\s*:\s*|\s+|$)/i;
-  if (addressedIn.test(trimmed)) return 'resolved';
-
-  return 'unresolved';
-}
-
-function hasResolvedMarker(thread = {}) {
-  return (thread.comments ?? []).some((comment) => parseMarkerState(comment.body) === 'resolved');
+  return extractAddressedMarkerSha(body) || hasNotApplicableMarker(body)
+    ? 'resolved'
+    : 'unresolved';
 }
 
 export function legacyMarkerState(reviewThreads = []) {
   if (!reviewThreads.length) return 'none';
-  const allResolved = reviewThreads.every((thread) => thread.isResolved === true);
-  if (!allResolved) return 'unresolved';
-  return reviewThreads.some((thread) => hasResolvedMarker(thread)) ? 'resolved' : 'unresolved';
+  return reviewThreads.every((thread) => thread.isResolved === true) ? 'resolved' : 'unresolved';
 }
 
-export function shadowMarkerState(reviewThreads = []) {
+export function shadowMarkerState(reviewThreads = [], headSha = '', reachableCommitShas = []) {
   if (!reviewThreads.length) return 'none';
-  return reviewThreads.every((thread) => {
-    if (thread.isResolved !== true) return false;
-    return hasResolvedMarker(thread);
-  })
+  const reachable = new Set(reachableCommitShas);
+  return reviewThreads.every(
+    (thread) => thread.isResolved === true || shouldResolveThread(thread, headSha, reachable),
+  )
     ? 'resolved'
     : 'unresolved';
 }
@@ -102,28 +85,55 @@ export function makeIdempotencyKey(input = {}) {
 }
 
 export function replayLegacyDecision(trigger) {
-  const reviewThreads = Array.isArray(trigger.reviewThreads) ? trigger.reviewThreads : [];
-  return normalizeDecision({
-    workflowName: trigger.workflowName,
-    prNumber: trigger.prNumber,
-    trigger: trigger.trigger,
-    verdict: trigger.conclusion === 'success' ? 'recommended' : 'risky',
-    action: trigger.workflowName === 'merge-train' ? 'reconcile-train' : 'reconcile',
-    markerState: legacyMarkerState(reviewThreads),
-    mutates: false,
-    noOp: true,
-  });
+  return normalizeDecision(trigger.legacyDecision);
+}
+
+const CI_RECOVERY_ACTION_BY_ROW = Object.freeze({
+  R03: 'skip-active-shepherd',
+  R04: 'release-expired-shepherd',
+  R05: 'release-stale-automation-conflict',
+  R06: 'skip-merge-train-owned',
+  R07: 'skip-ci-conflict-order-wait',
+  R08: 'dispatch-conflict-rebase',
+  R09: 'wait-conflict-rebase-pending',
+  R10: 'wait-conflict-rebase-backoff',
+  R11: 'retry-conflict-rebase',
+  R26: 'wait-admission',
+  R27: 'queue-merge-train',
+  R28: 'arm-auto-merge',
+  'GC-EXHAUSTED-SKIP': 'skip-stale-automation-exhausted',
+  R34: 'release-stale-automation-exhausted',
+  'GC-DUPLICATE-WAIT': 'skip-duplicate-fingerprint',
+  R33: 'release-stale-automation-retry',
+  'GC-COPILOT-PROGRESS': 'skip-active-copilot-progress',
+  DISPATCH: 'dispatch-copilot',
+});
+
+export function decideGoobersLifecycle(lifecycle = {}) {
+  if (lifecycle.kind === 'ci-recovery') {
+    const decision = lifecycle.decision ?? {};
+    return {
+      action: CI_RECOVERY_ACTION_BY_ROW[decision.row] ?? 'unknown',
+      blocked: Number(decision.blockerCount) > 0,
+    };
+  }
+  if (lifecycle.kind === 'merge-train') {
+    const action = normalizeText(lifecycle.state);
+    return { action, blocked: action === 'blocked' || action === 'failure' };
+  }
+  return { action: 'unknown', blocked: true };
 }
 
 export function replayGoobersDecision(trigger) {
   const reviewThreads = Array.isArray(trigger.reviewThreads) ? trigger.reviewThreads : [];
+  const lifecycle = decideGoobersLifecycle(trigger.lifecycle);
   return normalizeDecision({
     workflowName: 'goobers-shadow',
     prNumber: trigger.prNumber,
     trigger: trigger.trigger,
-    verdict: trigger.conclusion === 'success' ? 'recommended' : 'risky',
-    action: trigger.workflowName === 'merge-train' ? 'reconcile-train' : 'reconcile',
-    markerState: shadowMarkerState(reviewThreads),
+    verdict: lifecycle.blocked ? 'risky' : 'recommended',
+    action: lifecycle.action,
+    markerState: shadowMarkerState(reviewThreads, trigger.headSha, trigger.reachableCommitShas),
     mutates: false,
     noOp: true,
   });
@@ -148,7 +158,15 @@ export function compareLegacyAndGoobers(legacyDecision, shadowDecision) {
   };
 }
 
-export function buildShadowReport({ scope, reportDay, triggers }) {
+export function emitGoobersShadowDecisions(triggers) {
+  return triggers.map((trigger) => ({
+    sourceRunId: normalizeText(trigger.runId),
+    prNumber: normalizeText(trigger.prNumber),
+    shadowDecision: replayGoobersDecision(trigger),
+  }));
+}
+
+export function buildShadowReport({ scope, reportDay, triggers, shadowDecisions = [] }) {
   const requestedWorkflows = scope
     .split(',')
     .map((entry) => entry.trim())
@@ -164,12 +182,20 @@ export function buildShadowReport({ scope, reportDay, triggers }) {
   const missingCoverage = requestedWorkflows.filter(
     (workflow) => !coveredWorkflows.includes(workflow),
   );
+  const shadowBySource = new Map(
+    shadowDecisions.map((decision) => [
+      `${normalizeText(decision.sourceRunId)}:${normalizeText(decision.prNumber)}`,
+      decision.shadowDecision,
+    ]),
+  );
   const decisions = selected.map((trigger) => {
-    const comparison = compareLegacyAndGoobers(
-      replayLegacyDecision(trigger),
-      replayGoobersDecision(trigger),
+    const shadowDecision = shadowBySource.get(
+      `${normalizeText(trigger.runId)}:${normalizeText(trigger.prNumber)}`,
     );
-    return { sourceRunId: trigger.runId, ...comparison };
+    const comparison = compareLegacyAndGoobers(replayLegacyDecision(trigger), shadowDecision ?? {});
+    if (!shadowDecision) comparison.divergences.unshift('missing Goobers dry-run decision');
+    comparison.parityPassed = comparison.divergences.length === 0;
+    return { sourceRunId: trigger.runId, prNumber: trigger.prNumber, ...comparison };
   });
   const divergences = decisions.flatMap((decision) =>
     decision.divergences.map((message) => `run=${decision.sourceRunId} ${message}`),
@@ -212,6 +238,17 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const args = parseArgs(process.argv.slice(2));
   if (typeof args.input !== 'string') throw new Error('--input is required');
   const input = JSON.parse(fs.readFileSync(args.input, 'utf8'));
+  if (args.emitShadow === true) {
+    const payload = {
+      decisions: JSON.stringify(emitGoobersShadowDecisions(input.triggers ?? [])),
+      writesAllowed: false,
+    };
+    writeJson(normalizeText(args.output ?? 'lifecycle-shadow-result.json'), payload);
+    console.log(JSON.stringify({ decisionCount: input.triggers?.length ?? 0 }));
+    process.exit(0);
+  }
+  if (typeof args.shadowInput !== 'string') throw new Error('--shadowInput is required');
+  const shadowInput = JSON.parse(fs.readFileSync(args.shadowInput, 'utf8'));
   const scope = normalizeText(
     args.scope ?? process.env.GOOBERS_SHADOW_SCOPE,
     'ci-recovery,merge-train',
@@ -220,7 +257,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     args.reportDay ?? process.env.GOOBERS_SHADOW_REPORT_DAY,
     'unknown',
   );
-  const report = buildShadowReport({ scope, reportDay, triggers: input.triggers ?? [] });
+  const report = buildShadowReport({
+    scope,
+    reportDay,
+    triggers: input.triggers ?? [],
+    shadowDecisions: shadowInput.decisions ?? [],
+  });
   const outputPath = normalizeText(args.output ?? '.goobers-shadow/report.json');
   writeJson(outputPath, report);
   writeJson(path.join(path.dirname(outputPath), 'daily-report.json'), report);
