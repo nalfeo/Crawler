@@ -1,5 +1,39 @@
 [
   {
+    "commit": "f0af1f1c724eae3aa1563a76556555d4b9dd3223",
+    "commitDate": "2026-09-02T14:57:40Z",
+    "commitSubject": "Complete Floor 6 Broadcast Deadline finale (#4106)",
+    "capturedAt": "2026-09-02T16:17:08.317Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33648027934",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/f0af1f1c724eae3aa1563a76556555d4b9dd3223.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.94,
+        "totalWins": 141,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.96,
+        "totalWins": 144,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 35.96,
+      "gatePass": false,
+      "path": "by-sha/f0af1f1c724eae3aa1563a76556555d4b9dd3223.fun-report.json"
+    }
+  },
+  {
     "commit": "099b6068b8c3f0157dbb376372a1e6144bd6680f",
     "commitDate": "2026-09-01T09:25:18Z",
     "commitSubject": "Define Floor 3 pet-combat completion gate (#4016)",
