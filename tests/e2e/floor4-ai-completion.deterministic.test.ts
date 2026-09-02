@@ -188,16 +188,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
 
   it('completes: production BehaviorTreeAI drives the real MainGameScene to VICTORY with deterministic visual-run parity', async () => {
     const firstRun = await runVisualFloor4Completion(browser);
-    const secondRun = await runVisualFloor4Completion(browser);
-
     const firstContext = `pageErrors=${JSON.stringify(firstRun.pageErrors)} lastSnapshot=${JSON.stringify(
       firstRun.lastSnapshot,
     )} finalSnapshot=${JSON.stringify(firstRun.finalSnapshot)}`;
-    const secondContext = `pageErrors=${JSON.stringify(
-      secondRun.pageErrors,
-    )} lastSnapshot=${JSON.stringify(secondRun.lastSnapshot)} finalSnapshot=${JSON.stringify(
-      secondRun.finalSnapshot,
-    )}`;
 
     // The core regression proof: the fast-restart race that used to
     // freeze the render loop with a TypeError must not recur.
@@ -210,6 +203,13 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(new Set(firstRun.finalSnapshot.intermissionActs).size, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
+
+    const secondRun = await runVisualFloor4Completion(browser);
+    const secondContext = `pageErrors=${JSON.stringify(
+      secondRun.pageErrors,
+    )} lastSnapshot=${JSON.stringify(secondRun.lastSnapshot)} finalSnapshot=${JSON.stringify(
+      secondRun.finalSnapshot,
+    )}`;
 
     // Deterministic parity check: the same canonical visual run repeats with
     // an identical phase fingerprint and completion telemetry.
