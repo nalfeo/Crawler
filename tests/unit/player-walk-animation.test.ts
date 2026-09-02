@@ -289,10 +289,12 @@ describe('player walk-cycle animation (hard success gate)', () => {
     }
     expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(false);
 
-    // Texture finishes loading — the NEXT sync (same scene, no restart)
-    // must retry and succeed.
+    // Texture finishes loading — a later bounded retry (same scene, no
+    // restart) must succeed.
     animationManager!.markTextureReady(PLAYER_WALK_TEXTURE_KEY);
-    expect(() => bridge.sync(world)).not.toThrow();
+    for (let i = 0; i < 4 && !animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`); i += 1) {
+      expect(() => bridge.sync(world)).not.toThrow();
+    }
     expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(true);
     expect(player.anims.isPlaying).toBe(true);
 
@@ -304,5 +306,59 @@ describe('player walk-cycle animation (hard success gate)', () => {
       seenFrames.add(player.anims.currentFrame.index);
     }
     expect(seenFrames.size).toBeGreaterThan(1);
+  });
+
+  it('regression: deferred non-loop walk strips still start once registration succeeds mid-movement', () => {
+    const generatedRegistry = buildTestRegistryWithLoop(false);
+    const { scene, sprites, animationManager } = createSceneStub({ generatedRegistry });
+    expect(animationManager).not.toBeNull();
+    animationManager!.markTextureNotReady(PLAYER_WALK_TEXTURE_KEY);
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+
+    // Initial moving sync while texture is still unavailable: play() no-ops.
+    bridge.sync(world);
+    const player = sprites[0]!;
+    expect(player.anims.isPlaying).toBe(false);
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(false);
+
+    // Texture appears while movement continues; retry registration should
+    // clear the stale movement latch so one-shot playback actually starts.
+    animationManager!.markTextureReady(PLAYER_WALK_TEXTURE_KEY);
+    for (let i = 0; i < 4 && !player.anims.isPlaying; i += 1) {
+      bridge.sync(world);
+    }
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(true);
+    expect(player.anims.isPlaying).toBe(true);
+  });
+
+  it('regression: missing generated walk textures stop retrying after a bounded budget', () => {
+    const generatedRegistry = buildTestRegistry();
+    const { scene, animationManager } = createSceneStub({ generatedRegistry });
+    expect(animationManager).not.toBeNull();
+    animationManager!.markTextureNotReady(PLAYER_WALK_TEXTURE_KEY);
+
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    addComponent(world.ecs, eid, set(Velocity, { x: 3, y: 0 }));
+
+    // Exercise many sync ticks. The retry budget is bounded, so
+    // generateFrameNumbers must not be called once per sync forever.
+    for (let i = 0; i < 200; i += 1) {
+      bridge.sync(world);
+    }
+
+    expect(animationManager!.exists(`${PLAYER_WALK_TEXTURE_KEY}:walk`)).toBe(false);
+    expect(animationManager!.getGenerateFrameNumbersCallCount()).toBeLessThanOrEqual(8);
   });
 });

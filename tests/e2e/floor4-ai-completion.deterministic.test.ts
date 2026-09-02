@@ -74,26 +74,37 @@ async function loadAiRunner(page: Page): Promise<void> {
   await page.waitForSelector('#ai-playback-dock', { timeout: 45_000 });
 }
 
-describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
-  let browser: Browser;
+interface Floor4RunSnapshot {
+  phaseKind: string | null;
+  wavesReleased: number | undefined;
+  enemiesSpawned: number | undefined;
+  headlinerSpawned: number | undefined;
+  headlinerDefeated: number | undefined;
+  intermissionActs: number[];
+  actIncomeCount: number;
+  timelineFingerprint: string;
+}
 
-  beforeAll(async () => {
-    browser = await chromium.launch({ headless: true });
-  });
+interface Floor4VisualRunResult {
+  reachedVictory: boolean;
+  pageErrors: string[];
+  lastSnapshot: {
+    frame: number;
+    phase: unknown;
+    wavesReleased: number | undefined;
+    headlinerSpawned: number | undefined;
+    headlinerDefeated: number | undefined;
+  } | null;
+  finalSnapshot: Floor4RunSnapshot;
+}
 
-  afterAll(async () => {
-    await closeQuietly(browser);
-  });
+async function runVisualFloor4Completion(browser: Browser): Promise<Floor4VisualRunResult> {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
 
-  it('completes: production BehaviorTreeAI drives the real MainGameScene to VICTORY with no page errors', async () => {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-    const pageErrors: string[] = [];
-    page.on('pageerror', (err) => pageErrors.push(err.message));
-
+  try {
     await loadAiRunner(page);
-
-    // Open the run-setup panel and select Floor 4 + the canonical seed
-    // through the SAME public controls a human operator uses.
     await page.evaluate(() => {
       const details = document.getElementById('ai-run-setup');
       if (details instanceof HTMLDetailsElement) details.open = true;
@@ -101,29 +112,15 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     await page.selectOption('#ai-run-target-select', 'floor:floor4');
     await page.fill('#ai-seed-input', CANONICAL_SEED);
     await page.click('#ai-run-apply');
-
-    // Restart fast on purpose -- see file doc comment on why this timing
-    // is the regression proof, not an incidental detail.
     await page.waitForTimeout(FAST_RESTART_SETTLE_MS);
-
     await page.click('#ai-speed-16');
     await page.click('#ai-toggle-run');
 
     let reachedVictory = false;
-    let lastSnapshot: {
-      frame: number;
-      phase: unknown;
-      wavesReleased: number | undefined;
-      headlinerSpawned: number | undefined;
-      headlinerDefeated: number | undefined;
-    } | null = null;
-
+    let lastSnapshot: Floor4VisualRunResult['lastSnapshot'] = null;
     for (let poll = 0; poll < MAX_POLLS; poll += 1) {
       await page.waitForTimeout(POLL_INTERVAL_MS);
-      // Bail out early if the animation crash regressed -- no point
-      // burning the remaining poll budget on a permanently frozen page.
       if (pageErrors.length > 0) break;
-
       const snapshot = await page.evaluate(() => {
         const snap = window.__aiRunnerDebug?.();
         const arena = snap?.floor4Arena;
@@ -146,18 +143,78 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
       }
     }
 
-    const failureContext = `pageErrors=${JSON.stringify(pageErrors)} lastSnapshot=${JSON.stringify(
-      lastSnapshot,
+    const finalSnapshot = await page.evaluate(() => {
+      const arena = window.__aiRunnerDebug?.().floor4Arena;
+      const timeline = Array.isArray(arena?.timeline) ? arena.timeline : [];
+      const intermissionActs = timeline
+        .filter(
+          (entry) => entry?.phase?.kind === 'INTERMISSION' && typeof entry?.phase?.act === 'number',
+        )
+        .map((entry) => entry.phase.act);
+      return {
+        phaseKind: typeof arena?.phase?.kind === 'string' ? arena.phase.kind : null,
+        wavesReleased: arena?.waveTelemetry?.wavesReleased,
+        enemiesSpawned: arena?.waveTelemetry?.enemiesSpawned,
+        headlinerSpawned: arena?.headlinerTelemetry?.spawned,
+        headlinerDefeated: arena?.headlinerTelemetry?.defeated,
+        intermissionActs,
+        actIncomeCount: Array.isArray(arena?.actIncome) ? arena.actIncome.length : 0,
+        timelineFingerprint: timeline
+          .map((entry) => {
+            const kind = typeof entry?.phase?.kind === 'string' ? entry.phase.kind : 'unknown';
+            const act = typeof entry?.phase?.act === 'number' ? `:${String(entry.phase.act)}` : '';
+            return `${kind}${act}`;
+          })
+          .join('|'),
+      };
+    });
+
+    return { reachedVictory, pageErrors, lastSnapshot, finalSnapshot };
+  } finally {
+    await closeQuietly(page);
+  }
+}
+
+describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
+  let browser: Browser;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  it('completes: production BehaviorTreeAI drives the real MainGameScene to VICTORY with deterministic visual-run parity', async () => {
+    const firstRun = await runVisualFloor4Completion(browser);
+    const secondRun = await runVisualFloor4Completion(browser);
+
+    const firstContext = `pageErrors=${JSON.stringify(firstRun.pageErrors)} lastSnapshot=${JSON.stringify(
+      firstRun.lastSnapshot,
+    )} finalSnapshot=${JSON.stringify(firstRun.finalSnapshot)}`;
+    const secondContext = `pageErrors=${JSON.stringify(
+      secondRun.pageErrors,
+    )} lastSnapshot=${JSON.stringify(secondRun.lastSnapshot)} finalSnapshot=${JSON.stringify(
+      secondRun.finalSnapshot,
     )}`;
 
     // The core regression proof: the fast-restart race that used to
     // freeze the render loop with a TypeError must not recur.
-    expect(pageErrors, failureContext).toEqual([]);
-    expect(reachedVictory, failureContext).toBe(true);
-    expect(lastSnapshot?.wavesReleased, failureContext).toBeGreaterThanOrEqual(5);
-    expect(lastSnapshot?.headlinerSpawned, failureContext).toBe(5);
-    expect(lastSnapshot?.headlinerDefeated, failureContext).toBe(5);
+    expect(firstRun.pageErrors, firstContext).toEqual([]);
+    expect(firstRun.reachedVictory, firstContext).toBe(true);
+    expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
+    expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBeGreaterThanOrEqual(5);
+    expect(firstRun.finalSnapshot.enemiesSpawned, firstContext).toBeGreaterThan(0);
+    expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
+    expect(new Set(firstRun.finalSnapshot.intermissionActs).size, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
 
-    await closeQuietly(page);
-  }, 180_000);
+    // Deterministic parity check: the same canonical visual run repeats with
+    // an identical phase fingerprint and completion telemetry.
+    expect(secondRun.pageErrors, secondContext).toEqual([]);
+    expect(secondRun.reachedVictory, secondContext).toBe(true);
+    expect(secondRun.finalSnapshot, secondContext).toEqual(firstRun.finalSnapshot);
+  }, 300_000);
 });

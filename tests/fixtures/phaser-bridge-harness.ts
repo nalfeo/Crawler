@@ -220,6 +220,7 @@ class MockAnimationManager {
     string,
     { frameCount: number; frameRate: number; repeat: number }
   >();
+  private generateFrameNumbersCalls = 0;
   /**
    * Texture keys deliberately simulating "not yet loaded into the
    * TextureManager" (see real Phaser's `AnimationManager#generateFrameNumbers`,
@@ -245,6 +246,7 @@ class MockAnimationManager {
   }
 
   generateFrameNumbers(textureKey: string, config: { start: number; end: number }): number[] {
+    this.generateFrameNumbersCalls += 1;
     if (this.notReadyTextureKeys.has(textureKey)) {
       return [];
     }
@@ -264,6 +266,10 @@ class MockAnimationManager {
 
   getConfig(key: string): { frameCount: number; frameRate: number; repeat: number } | undefined {
     return this.configs.get(key);
+  }
+
+  getGenerateFrameNumbersCallCount(): number {
+    return this.generateFrameNumbersCalls;
   }
 }
 
