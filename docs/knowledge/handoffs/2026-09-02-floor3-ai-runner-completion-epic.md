@@ -45,7 +45,11 @@ parallel; the QA gate waits for both.
 
 ## Verification
 
-- JSON parsing and epic validation.
-- Documentation checks.
-- `npm run verify:fast`.
-- `npm run verify:pr-prereqs`.
+- `node --test .github/scripts/epics/epic-create.test.mjs` — 39/39 passed,
+  including validation of every committed epic file and unique epic ID.
+- `npm run docs:check` — passed.
+- `npm run verify:fast` — passed.
+- `npm run verify:pr-prereqs` — passed.
+- Secret scan — no secrets detected.
+- Automated code review — no findings.
+- CodeQL — skipped as a declared docs/metadata-only trivial change.
