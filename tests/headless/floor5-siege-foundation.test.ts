@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { query } from 'bitecs';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
+import { SiegeHero, SiegeMinion } from '../../src/core/components.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import {
@@ -131,13 +134,52 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(world.rng.next()).toBe(untouched.rng.next());
   });
 
-  it('uses a readable floor-5 startup announcement and a concrete terrain pack in the real pipeline', () => {
-    const world = createTestWorld({ seed: 505 });
-    const player = spawnPlayer(world, 0, 0);
-    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+  it('spawns visible opposing startup waves with the readable banner and concrete terrain pack', async () => {
+    let startupMinionSnapshot:
+      | {
+          minionAllied: number;
+          minionEnemy: number;
+          renderKinds: string[];
+          announcements: GameWorld['announcements'];
+        }
+      | undefined;
+    await runHeadless(new IdleFloor5Provider(), {
+      floorId: 'floor5',
+      seed: 505,
+      maxFrames: 2,
+      questStallFrames: 0,
+      onFinish: (world) => {
+        const minionEids = Array.from(query(world.ecs, [SiegeMinion]));
+        const heroEids = Array.from(query(world.ecs, [SiegeHero]));
+        const startupCombatantEids = Array.from(new Set([...minionEids, ...heroEids])).sort(
+          (a, b) => a - b,
+        );
+        const minionCounts = minionEids.reduce(
+          (counts, eid) => {
+            const team = world.stores.siegeMinion.team[eid] ?? 0;
+            if (team === 1) counts.minionAllied += 1;
+            if (team === 2) counts.minionEnemy += 1;
+            return counts;
+          },
+          { minionAllied: 0, minionEnemy: 0 },
+        );
+        startupMinionSnapshot = {
+          ...minionCounts,
+          renderKinds: startupCombatantEids.map((eid) => resolveRenderKind(world, eid)),
+          announcements: [...world.announcements],
+        };
+      },
+    });
 
+    expect(startupMinionSnapshot).toBeDefined();
+    expect(startupMinionSnapshot!.minionAllied).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.minionEnemy).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.renderKinds.length).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.renderKinds).toEqual(
+      Array(startupMinionSnapshot!.renderKinds.length).fill('enemy'),
+    );
     expect(getFloorManifest('floor5')?.terrainPackId).toBe('floor1-dungeon');
-    expect(world.announcements).toEqual(
+    expect(startupMinionSnapshot!.announcements).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'bossAbilityCast',
