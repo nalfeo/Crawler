@@ -4,8 +4,8 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
 import type { AiRunnerDebugSnapshot } from '../../src/labs/ai-runner-lab/index.js';
 
-const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner`;
 const FLOOR3_SEED = '3539';
+const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner&floor=floor3&seed=${FLOOR3_SEED}&startPlayerLevel=20`;
 const FAST_RESTART_SETTLE_MS = 300;
 const POLL_INTERVAL_MS = 1_500;
 const MAX_POLLS = 240;
@@ -17,6 +17,7 @@ const REQUIRED_SEQUENCE = [
   'floor3-poach',
   'floor3-final-four-versus',
   'floor3-keep-companion',
+  'floor3-stair-descend',
 ] as const;
 
 type SurfaceKind = (typeof REQUIRED_SEQUENCE)[number];
@@ -34,36 +35,20 @@ async function readSnapshot(page: Page): Promise<AiRunnerDebugSnapshot | null> {
   return snapshot as AiRunnerDebugSnapshot | null;
 }
 
-function longestAliveOutsideSpawnStreakMs(samples: readonly AiRunnerDebugSnapshot[]): number {
-  let max = 0;
-  let streakStart: number | null = null;
-  for (const sample of samples) {
-    const gameMs = sample.gameMs;
-    const activeOutside =
-      typeof gameMs === 'number' &&
-      sample.worldState === 'playing' &&
-      sample.inSpawnRoom === false &&
-      typeof sample.health === 'number' &&
-      sample.health > 0;
-    if (!activeOutside) {
-      streakStart = null;
-      continue;
-    }
-    if (streakStart === null) {
-      streakStart = gameMs;
-      continue;
-    }
-    max = Math.max(max, gameMs - streakStart);
-  }
-  return max;
-}
-
 function firstEventIndex(
   trace: readonly SurfaceEvent[],
   kind: SurfaceKind,
   action: 'opened' | 'confirmed',
 ) {
   return trace.findIndex((entry) => entry.kind === kind && entry.action === action);
+}
+
+function eventCount(
+  trace: readonly SurfaceEvent[],
+  kind: SurfaceKind,
+  action: 'opened' | 'confirmed',
+): number {
+  return trace.filter((entry) => entry.kind === kind && entry.action === action).length;
 }
 
 describe('Floor 3 AI runner modal autonomy (real scene)', () => {
@@ -84,13 +69,6 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
 
     try {
       await loadAiRunner(page);
-      await page.evaluate(() => {
-        const details = document.getElementById('ai-run-setup');
-        if (details instanceof HTMLDetailsElement) details.open = true;
-      });
-      await page.selectOption('#ai-run-target-select', 'floor:floor3');
-      await page.fill('#ai-seed-input', FLOOR3_SEED);
-      await page.click('#ai-run-apply');
       await page.waitForTimeout(FAST_RESTART_SETTLE_MS);
       await page.click('#ai-speed-16');
       await page.click('#ai-toggle-run');
@@ -107,15 +85,24 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         lastSnapshot = snapshot;
 
         const trace = snapshot.floor3SurfaceTrace;
-        const hasKeepConfirm = trace.some(
-          (entry) => entry.kind === 'floor3-keep-companion' && entry.action === 'confirmed',
-        );
-        const hasAllFinalFour =
-          trace.filter(
-            (entry) => entry.kind === 'floor3-final-four-versus' && entry.action === 'confirmed',
-          ).length >= 4;
-        const hasOutside10s = longestAliveOutsideSpawnStreakMs(snapshots) >= 10_000;
-        if (hasKeepConfirm && hasAllFinalFour && hasOutside10s) break;
+        const hasStairConfirm = eventCount(trace, 'floor3-stair-descend', 'confirmed') === 1;
+        const hasEveryRepeatedSurface =
+          eventCount(trace, 'floor3-studio-versus', 'confirmed') === 6 &&
+          eventCount(trace, 'floor3-poach', 'confirmed') === 5 &&
+          eventCount(trace, 'floor3-final-four-versus', 'confirmed') === 4;
+        const hasKeepConfirm = eventCount(trace, 'floor3-keep-companion', 'confirmed') === 1;
+        const hasOutside10s = snapshot.floor3MaxAliveOutsideSpawnStreakMs >= 10_000;
+        if (!hasStairConfirm && hasEveryRepeatedSurface && hasKeepConfirm) {
+          await page.evaluate(() => {
+            const jumpToStairs = (window as { __aiRunnerJumpToStairs?: () => boolean })
+              .__aiRunnerJumpToStairs;
+            if (!jumpToStairs?.()) {
+              throw new Error('AI Runner stair jump is unavailable');
+            }
+          });
+          continue;
+        }
+        if (hasStairConfirm && hasEveryRepeatedSurface && hasOutside10s) break;
       }
 
       expect(pageErrors).toEqual([]);
@@ -132,6 +119,10 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         worldState: lastSnapshot!.worldState,
         health: lastSnapshot!.health,
         runOutcome: lastSnapshot!.runOutcome,
+        aliveOutsideStreakMs: lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs,
+        reason: lastSnapshot!.reason,
+        target: { x: lastSnapshot!.targetX, y: lastSnapshot!.targetY },
+        player: { x: lastSnapshot!.px, y: lastSnapshot!.py },
         traceCounts,
       });
 
@@ -146,16 +137,14 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         ).toBeGreaterThan(-1);
       }
 
-      expect(
-        trace.filter(
-          (entry) => entry.kind === 'floor3-final-four-versus' && entry.action === 'opened',
-        ).length,
-      ).toBe(4);
-      expect(
-        trace.filter(
-          (entry) => entry.kind === 'floor3-final-four-versus' && entry.action === 'confirmed',
-        ).length,
-      ).toBe(4);
+      expect(eventCount(trace, 'floor3-studio-versus', 'opened')).toBe(6);
+      expect(eventCount(trace, 'floor3-studio-versus', 'confirmed')).toBe(6);
+      expect(eventCount(trace, 'floor3-poach', 'opened')).toBe(5);
+      expect(eventCount(trace, 'floor3-poach', 'confirmed')).toBe(5);
+      expect(eventCount(trace, 'floor3-final-four-versus', 'opened')).toBe(4);
+      expect(eventCount(trace, 'floor3-final-four-versus', 'confirmed')).toBe(4);
+      expect(eventCount(trace, 'floor3-stair-descend', 'opened')).toBe(1);
+      expect(eventCount(trace, 'floor3-stair-descend', 'confirmed')).toBe(1);
 
       for (let i = 1; i < REQUIRED_SEQUENCE.length; i += 1) {
         const previous = REQUIRED_SEQUENCE[i - 1]!;
@@ -168,7 +157,9 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         );
       }
 
-      for (const event of trace.filter((entry) => entry.action === 'confirmed')) {
+      for (const event of trace.filter(
+        (entry) => entry.action === 'confirmed' && entry.kind !== 'floor3-stair-descend',
+      )) {
         const resumeSample = snapshots.find(
           (sample) =>
             typeof sample.gameMs === 'number' &&
@@ -185,8 +176,7 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
 
       const leftSpawn = snapshots.some((sample) => sample.inSpawnRoom === false);
       expect(leftSpawn).toBe(true);
-      const aliveOutsideStreakMs = longestAliveOutsideSpawnStreakMs(snapshots);
-      expect(aliveOutsideStreakMs).toBeGreaterThanOrEqual(10_000);
+      expect(lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs).toBeGreaterThanOrEqual(10_000);
     } finally {
       await closeQuietly(page);
     }

@@ -6114,6 +6114,7 @@ export class MainGameScene extends Phaser.Scene {
         if (!this.modalPicker.isOpen()) {
           this.modalPicker.open(
             {
+              kind: stairConfirmation.kind,
               title: stairConfirmation.title,
               subtitle: stairConfirmation.subtitle,
               body: stairConfirmation.body,

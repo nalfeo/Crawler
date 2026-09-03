@@ -61,6 +61,7 @@ import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
 import {
   GAME,
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
   TeamId,
   WeaponType,
   PLAYER_SPEED,
@@ -119,6 +120,7 @@ import {
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
   denUnlockGoalId,
 } from '../floor2Scenario.js';
+import { floor3KeptCompanionDescendGateSatisfied } from '../floor3Scenario.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import {
   getActiveWeapon,
@@ -3870,6 +3872,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.questProgressStallFrames = 0;
       return;
     }
+    const floor3State = world.floorExtendedState?.floor3Studios;
+    if (
+      floor3State?.staircaseUnlocked === true &&
+      floor3State.staircaseSpawned === true &&
+      floor3State.staircaseDiscovered !== true &&
+      floor3KeptCompanionDescendGateSatisfied(world)
+    ) {
+      this.questProgressActive = false;
+      this.questProgressStallFrames = 0;
+      return;
+    }
 
     const score = this.computeFloorProgressFingerprint(world);
     const nearbyEnemyHpByEid = this.collectNearbyEnemyHpByEid(
@@ -5624,9 +5637,22 @@ export class BehaviorTreeAI implements AIInputProvider {
         targetX - floor1Objective.staircasePos.x,
         targetY - floor1Objective.staircasePos.y,
       ) <= TARGET_POSITION_EPSILON_FT;
-    const directApproachFt = floor1UnlockedStairTarget
-      ? Math.max(CLOSE_APPROACH_DIRECT_FT, floor1Objective.markerRadiusFt)
-      : CLOSE_APPROACH_DIRECT_FT;
+    const floor3State = world.floorExtendedState?.floor3Studios;
+    const floor3UnlockedStairTarget =
+      floor3State?.staircaseUnlocked === true &&
+      floor3State.staircaseDiscovered !== true &&
+      floor3State.staircasePos !== undefined &&
+      Math.hypot(targetX - floor3State.staircasePos.x, targetY - floor3State.staircasePos.y) <=
+        TARGET_POSITION_EPSILON_FT;
+    const directApproachFt =
+      floor1UnlockedStairTarget || floor3UnlockedStairTarget
+        ? Math.max(
+            CLOSE_APPROACH_DIRECT_FT,
+            floor1UnlockedStairTarget
+              ? floor1Objective.markerRadiusFt
+              : FLOOR2_STAIR_MARKER_RADIUS_FT,
+          )
+        : CLOSE_APPROACH_DIRECT_FT;
 
     // Close-range direct approach. Tile-granular A* targets tile centers and
     // cannot step the 24px player body onto a small (8px) pickup; worse,
@@ -7686,6 +7712,22 @@ export class BehaviorTreeAI implements AIInputProvider {
         knockedOutPartyCount += 1;
       }
     }
+    if (
+      state.staircaseUnlocked === true &&
+      state.staircaseSpawned === true &&
+      state.staircaseDiscovered !== true &&
+      state.staircasePos &&
+      floor3KeptCompanionDescendGateSatisfied(world)
+    ) {
+      return this.createProgressTarget(
+        state.staircasePos.x,
+        state.staircasePos.y,
+        playerX,
+        playerY,
+        'Heading to the Floor 3 exit stairs',
+      );
+    }
+
     if (partyCount > 1 && knockedOutPartyCount > 0 && knockedOutPartyCount < partyCount) {
       const rallyAnchor = resolveNearestSafeAnchor(world, playerX, playerY);
       if (rallyAnchor) {
@@ -7697,21 +7739,6 @@ export class BehaviorTreeAI implements AIInputProvider {
           'Regrouping at a rally point to recover Companions',
         );
       }
-    }
-
-    if (
-      state.staircaseUnlocked === true &&
-      state.staircaseSpawned === true &&
-      state.staircaseDiscovered !== true &&
-      state.staircasePos
-    ) {
-      return this.createProgressTarget(
-        state.staircasePos.x,
-        state.staircasePos.y,
-        playerX,
-        playerY,
-        'Heading to the Floor 3 exit stairs',
-      );
     }
 
     if (state.finalFour.unlocked && !state.finalFour.defeated) {

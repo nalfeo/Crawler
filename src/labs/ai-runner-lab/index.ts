@@ -539,6 +539,37 @@ function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
     : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
 }
 
+function floorIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('floor');
+  if (!requested) return null;
+  if (hasFloorManifest(requested)) return requested;
+  console.warn(`AI Runner lab: unknown ?floor="${requested}" — falling back to floor1.`);
+  return 'floor1';
+}
+
+function seedFromUrl(): number | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('seed');
+  if (!requested) return null;
+  const parsed = Number(requested);
+  if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  console.warn(`AI Runner lab: invalid ?seed="${requested}" — falling back to the saved seed.`);
+  return null;
+}
+
+function startPlayerLevelFromUrl(): number {
+  if (typeof window === 'undefined') return 1;
+  const requested = new URLSearchParams(window.location.search).get('startPlayerLevel');
+  if (!requested) return 1;
+  const parsed = Number(requested);
+  if (Number.isInteger(parsed) && parsed >= 1) return parsed;
+  console.warn(
+    `AI Runner lab: invalid ?startPlayerLevel="${requested}" — falling back to level 1.`,
+  );
+  return 1;
+}
+
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
@@ -624,6 +655,8 @@ export interface AiRunnerDebugSnapshot {
   modalOpen: boolean;
   modalKind: string | null;
   inSpawnRoom: boolean | null;
+  floor3AliveOutsideSpawnStreakMs: number;
+  floor3MaxAliveOutsideSpawnStreakMs: number;
   floor3SurfaceTrace: ReadonlyArray<{
     kind: string;
     action: 'opened' | 'confirmed';
@@ -658,6 +691,7 @@ export interface AiRunnerDebugSnapshot {
 declare global {
   interface Window {
     __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
+    __aiRunnerJumpToStairs?: () => boolean;
   }
 }
 
@@ -719,7 +753,6 @@ const QUEST_DEBUG_TARGETS = {
   'Boss battle: floor1-boss-battle': FLOOR1_BOSS_BATTLE_QUEST_ID,
   'Shopkeeper errand: floor1-shopkeeper-errand': FLOOR1_SHOP_QUEST_ID,
 } as const;
-const FLOOR3_AUTONOMY_START_LEVEL = 40;
 
 function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -757,15 +790,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // tab that last ran Floor 2 with a different seed doesn't contaminate the
   // inspection scene with the wrong floor or the wrong RNG state.
   const urlScenario = scenarioPresetIdFromUrl();
+  const urlFloor = floorIdFromUrl();
+  const urlSeed = seedFromUrl();
   let selectedScenarioPresetId =
     urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
   let currentSeed =
-    urlScenario != null
+    urlSeed ??
+    (urlScenario != null
       ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
-      : (persisted?.seed ?? INITIAL_SEED);
+      : (persisted?.seed ?? INITIAL_SEED));
   // Declared ahead of `featureFlags` (below) so its context can reflect the
   // real starting floor rather than re-deriving the same expression twice.
-  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
+  let currentFloor = urlScenario != null ? 'floor1' : (urlFloor ?? persisted?.floorId ?? 'floor1');
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
@@ -776,6 +812,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // lab constructs.
   const urlPersona = playerPersonaFromUrl();
   const persistedPersona = persisted?.aiConfig?.playerPersona;
+  const configuredStartPlayerLevel = startPlayerLevelFromUrl();
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
@@ -889,6 +926,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   let previousFloor3ModalKind: string | null = null;
+  let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
+  let floor3AliveOutsideSpawnStreakMs = 0;
+  let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
     kind: string;
     action: 'opened' | 'confirmed';
@@ -903,6 +943,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     'floor3-studio-versus',
     'floor3-final-four-versus',
     'floor3-keep-companion',
+    'floor3-stair-descend',
   ]);
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -956,6 +997,52 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   applyScenarioVisualProfile(selectedScenarioPresetId);
 
+  const isPlayerInSpawnRoom = (world: GameWorld, playerEid: number): boolean | null => {
+    if (!world.floorMap || world.floorMap.spawnRoom === null) {
+      return null;
+    }
+    const tile = world.floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    return world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === world.floorMap.spawnRoom.id;
+  };
+
+  const updateFloor3AliveOutsideSpawnStreak = (
+    world: GameWorld,
+    playerEid: number,
+    playerHealth: number | null,
+  ): void => {
+    if (world.floorId !== 'floor3') {
+      floor3AliveOutsideSpawnStreakStartMs = null;
+      floor3AliveOutsideSpawnStreakMs = 0;
+      return;
+    }
+    const inSpawnRoom = isPlayerInSpawnRoom(world, playerEid);
+    const activeOutside =
+      typeof world.elapsedMs === 'number' &&
+      world.state === 'playing' &&
+      inSpawnRoom === false &&
+      playerHealth !== null &&
+      playerHealth > 0;
+    if (!activeOutside) {
+      floor3AliveOutsideSpawnStreakStartMs = null;
+      floor3AliveOutsideSpawnStreakMs = 0;
+      return;
+    }
+    if (floor3AliveOutsideSpawnStreakStartMs === null) {
+      floor3AliveOutsideSpawnStreakStartMs = world.elapsedMs;
+    }
+    floor3AliveOutsideSpawnStreakMs = Math.max(
+      0,
+      world.elapsedMs - floor3AliveOutsideSpawnStreakStartMs,
+    );
+    floor3MaxAliveOutsideSpawnStreakMs = Math.max(
+      floor3MaxAliveOutsideSpawnStreakMs,
+      floor3AliveOutsideSpawnStreakMs,
+    );
+  };
+
   const aiInputProvider = {
     poll(state: {
       moveX: number;
@@ -987,6 +1074,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
+        if (typeof playerEid === 'number' && playerEid >= 0) {
+          updateFloor3AliveOutsideSpawnStreak(world, playerEid, playerHealth);
+        } else {
+          floor3AliveOutsideSpawnStreakStartMs = null;
+          floor3AliveOutsideSpawnStreakMs = 0;
+        }
         syncAiRunnerSettlementReturnRouting(
           world,
           !manualControl,
@@ -1080,9 +1173,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       base.configureWorld(world, playerEid);
       const scenarioPreset = getAiRunnerScenarioPreset(selectedScenarioPresetId);
       scenarioPreset?.configureWorld?.(world, playerEid);
-      if (world.floorId === 'floor3') {
-        applyStartPlayerLevel(world, FLOOR3_AUTONOMY_START_LEVEL);
-      }
+      applyStartPlayerLevel(world, configuredStartPlayerLevel);
     },
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
@@ -1156,6 +1247,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     target: Exclude<JumpTarget, 'boss-encounter'>,
   ): { x: number; y: number } | null => {
+    if (target === 'staircase-room') {
+      const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world);
+      if (stairMarker?.visible) {
+        return stairMarker.positionFt;
+      }
+      const floor3Stairs = world.floorExtendedState?.floor3Studios?.staircasePos;
+      if (floor3Stairs) {
+        return floor3Stairs;
+      }
+    }
     const objective = world.floorScenario?.objective;
     if (!objective) {
       return null;
@@ -1226,6 +1327,24 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     movePlayerTo(pos.x, pos.y);
+  };
+
+  const jumpToStairsForDebug = (): boolean => {
+    const scene = getScene();
+    const world = scene?.world;
+    const playerEid = findPlayerEid();
+    if (!scene || !world || playerEid === undefined) {
+      return false;
+    }
+    const pos = resolveJumpPosition(world, 'staircase-room');
+    if (!pos) {
+      return false;
+    }
+    const moved = movePlayerTo(pos.x, pos.y);
+    if (moved) {
+      scene.queuedInteraction = true;
+    }
+    return moved;
   };
 
   const applyQuestDebug = (): void => {
@@ -1659,6 +1778,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
     previousFloor3ModalKind = null;
+    floor3AliveOutsideSpawnStreakStartMs = null;
+    floor3AliveOutsideSpawnStreakMs = 0;
+    floor3MaxAliveOutsideSpawnStreakMs = 0;
     floor3SurfaceTrace.length = 0;
     pathGraphics?.destroy();
     pathGraphics = null;
@@ -1758,9 +1880,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     modalKind: string | null,
   ): void => {
-    if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
-      recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
-    }
+    const wasOpen = modalPicker.isOpen();
     modalPicker.handleKeyDown(
       new KeyboardEvent('keydown', {
         code: 'Enter',
@@ -1769,6 +1889,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         cancelable: true,
       }),
     );
+    if (wasOpen && !modalPicker.isOpen()) {
+      if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+        recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+      }
+      if (world.floorId === 'floor3') {
+        previousFloor3ModalKind = null;
+      }
+    }
   };
 
   const autoAdvanceSceneUi = (): void => {
@@ -1785,7 +1913,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const modalPicker = scene.modalPicker;
-    const objective = world.floorScenario?.objective;
+    const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world) ?? null;
     const activeModalKind =
       modalPicker?.isOpen() === true ? (modalPicker.getKind() ?? '__anonymous__') : null;
     if (world.floorId === 'floor3' && activeModalKind !== previousFloor3ModalKind) {
@@ -1837,12 +1965,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         return;
       }
       if (
-        objective?.staircaseUnlocked &&
-        !objective.staircaseDiscovered &&
+        stairMarker !== null &&
+        stairMarker.visible &&
+        !stairMarker.locked &&
         Math.hypot(
-          (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
-          (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-        ) <= objective.markerRadiusFt
+          (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
+          (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
+        ) <= stairMarker.radiusFt
       ) {
         confirmModalSelection(modalPicker, world, modalKind);
         return;
@@ -1905,13 +2034,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       decision.targetEid >= 0 &&
       (world.npcs.get(decision.targetEid)?.nearbyPlayer ?? false);
     const nearStairs =
-      objective?.staircaseUnlocked === true &&
-      objective.staircaseSpawned === true &&
-      !objective.staircaseDiscovered &&
+      stairMarker !== null &&
+      stairMarker.visible &&
+      !stairMarker.locked &&
       Math.hypot(
-        (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
-        (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-      ) <= objective.markerRadiusFt;
+        (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
+        (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
+      ) <= stairMarker.radiusFt;
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -2955,18 +3084,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       px !== null && py !== null && decision.targetX !== null && decision.targetY !== null
         ? Math.round(Math.hypot(decision.targetX - px, decision.targetY - py))
         : null;
-    const inSpawnRoom =
-      hasPlayer && world?.floorMap && world.floorMap.spawnRoom !== null
-        ? (() => {
-            const tile = world.floorMap.worldToTile(
-              world.stores.position.x[playerEid] ?? 0,
-              world.stores.position.y[playerEid] ?? 0,
-            );
-            return (
-              world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === world.floorMap.spawnRoom.id
-            );
-          })()
-        : null;
+    const inSpawnRoom = hasPlayer ? isPlayerInSpawnRoom(world, playerEid) : null;
     const quests: AiRunnerDebugSnapshot['quests'] = {};
     if (world) {
       for (const [questId, quest] of world.questLog.entries()) {
@@ -3023,6 +3141,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         ? (scene.modalPicker.getKind() ?? '__anonymous__')
         : null,
       inSpawnRoom,
+      floor3AliveOutsideSpawnStreakMs,
+      floor3MaxAliveOutsideSpawnStreakMs,
       floor3SurfaceTrace,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
@@ -3035,6 +3155,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   if (typeof window !== 'undefined') {
     window.__aiRunnerDebug = buildDebugSnapshot;
+    window.__aiRunnerJumpToStairs = jumpToStairsForDebug;
   }
 
   const updateInterval = setInterval(() => {
@@ -3140,6 +3261,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     window.removeEventListener('keydown', onKeyDown);
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
+      delete window.__aiRunnerJumpToStairs;
     }
     recorderControls.destroy();
     disposeHardwareInput();
