@@ -31,9 +31,9 @@ describe('AI playthrough shopkeeper UX wiring', () => {
     const brokerIntent = source.indexOf('isSpellBrokerPurchaseActive(spellBrokerIntent)');
     expect(brokerModalKind).toBeGreaterThan(-1);
     expect(brokerIntent).toBeGreaterThan(brokerModalKind);
-    const brokerReturn = source.indexOf('return;', brokerIntent);
-    expect(brokerReturn).toBeGreaterThan(brokerIntent);
-    expect(source.slice(brokerModalKind, brokerReturn)).not.toContain('modalPicker.close()');
+    const brokerPurchaseMark = source.indexOf('markSpellBrokerPurchased(world)', brokerIntent);
+    expect(brokerPurchaseMark).toBeGreaterThan(brokerIntent);
+    expect(source.slice(brokerModalKind, brokerPurchaseMark)).not.toContain('modalPicker.close()');
     expect(source).toMatch(
       /if \(manualControl\) \{[\s\S]{0,180}return;[\s\S]{0,120}const scene = getScene\(\);/,
     );
