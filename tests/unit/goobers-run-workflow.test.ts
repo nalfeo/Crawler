@@ -32,6 +32,7 @@ interface GoobersActionsWorkflow {
       concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
       steps?: Array<{
         name?: string;
+        id?: string;
         if?: string;
         uses?: string;
         env?: Record<string, string>;
@@ -91,6 +92,19 @@ interface CiRecoveryWorkflow {
     reconcile?: {
       steps?: Array<{ name?: string; env?: Record<string, string> }>;
     };
+  };
+}
+
+interface CompositeAction {
+  inputs?: Record<string, { default?: string }>;
+  runs: {
+    steps: Array<{
+      name?: string;
+      if?: string;
+      uses?: string;
+      run?: string;
+      with?: Record<string, string | boolean>;
+    }>;
   };
 }
 
@@ -418,6 +432,53 @@ describe('Goobers automatic dispatch and recovery', () => {
     });
   });
 
+  it('profiles every real Goobers run without profiling no-work sweeps', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const installIndex = steps.findIndex((step) => step.name === 'Install project dependencies');
+    const runSteps = steps.filter((step) => /^\s*goobers run(?:\s|$)/m.test(step.run ?? ''));
+    const runIndex = steps.findIndex((step) => step === runSteps[0]);
+    const startIndex = steps.findIndex((step) => step.name === 'Start Goobers host profile');
+    const reportIndex = steps.findIndex((step) => step.name === 'Report Goobers host profile');
+    const start = steps[startIndex];
+    const report = steps[reportIndex];
+
+    expect(runSteps).toHaveLength(1);
+    expect(installIndex).toBeGreaterThanOrEqual(0);
+    expect(startIndex).toBeGreaterThan(installIndex);
+    expect(startIndex + 1).toBe(runIndex);
+    expect(runIndex + 1).toBe(reportIndex);
+    expect(start).toMatchObject({
+      id: 'host-profile-start',
+      if: "steps.recovery.outputs.should_run != 'false'",
+      uses: './.github/actions/host-profile',
+      with: { mode: 'start', label: 'goobers-run' },
+    });
+    expect(report).toMatchObject({
+      if: "always() && steps.host-profile-start.outcome == 'success'",
+      uses: './.github/actions/host-profile',
+      with: { mode: 'report', label: 'goobers-run' },
+    });
+  });
+
+  it('inherits summary publication and the labeled JSON artifact from host-profile', () => {
+    const action = loadYaml<CompositeAction>('.github', 'actions', 'host-profile', 'action.yml');
+    const publish = action.runs.steps.find((step) => step.name === 'Publish host resource profile');
+    const upload = action.runs.steps.find((step) => step.name === 'Upload host resource profile');
+
+    expect(action.inputs?.['upload-artifact']?.default).toBe('true');
+    expect(publish?.run).toContain('--step-summary');
+    expect(upload).toMatchObject({
+      if: "${{ inputs.mode == 'report' && inputs.upload-artifact == 'true' }}",
+      uses: 'actions/upload-artifact@v4',
+      with: {
+        name: 'host-profile-${{ inputs.label }}-${{ github.run_attempt }}',
+        path: 'files/host-resources.json',
+        'if-no-files-found': 'ignore',
+      },
+    });
+  });
+
   it('rebinds recovered runs inside Goobers-managed worktrees', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const recoveryCheckout = workflow.jobs.run?.steps?.find(
@@ -491,7 +552,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       ISSUE_NUMBER: '${{ inputs.issue_number || github.event.issue.number }}',
       ABANDON_EXISTING: "${{ inputs.abandon_existing || 'false' }}",
     });
-    expect(recovery?.run).toContain('issues/${ISSUE_NUMBER}/timeline');
+    expect(recovery?.run).toContain('issues/${issue_number}/timeline');
     expect(recovery?.run).toContain('cross-referenced');
     expect(recovery?.run).toContain('GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required');
     expect(recovery?.run).toContain('goobers/status:in-review');
@@ -535,6 +596,26 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Validate .goobers source tree')?.run,
     ).toContain('"$GOOBERS_SOURCE"');
+  });
+
+  it('filters external PR cross-references and fails closed when every candidate is unreadable', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const scripts = [
+      steps.find((step) => step.name === 'Resolve Goobers recovery target')?.run ?? '',
+      steps.find((step) => step.name === 'Handle no-work disposition')?.run ?? '',
+      steps.find((step) => step.name === 'Comment on Goobers run result')?.run ?? '',
+    ].join('\n');
+
+    expect(scripts.match(/\.source\.issue\.repository_url == \$repo_url/g)).toHaveLength(3);
+    expect(scripts.match(/if ! details="\$\(gh pr view /g)).toHaveLength(3);
+    expect(scripts.match(/unreadable_candidate=true/g)).toHaveLength(3);
+    expect(scripts.match(/return 2/g)).toHaveLength(3);
+    expect(scripts).toContain('candidate_pr="$(find_open_goobers_pr "$candidate_issue")"');
+    expect(scripts).toContain('pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")"');
+    expect(scripts).toContain('open_pr="$(find_open_goobers_pr "$issue_number")"');
+    expect(scripts).toContain('pr_number="$(find_open_goobers_pr "$issue_number")"');
+    expect(scripts).toContain('if [ "$lookup_status" -ne 0 ]');
   });
 
   it('posts separate durable start and result comments with explicit run and PR links', () => {
@@ -591,6 +672,90 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(result?.run).toContain('gh api --silent --method PATCH');
     expect(result?.run).toContain('gh issue comment "$issue_number"');
     expect(result?.run).toContain('no PR number could be recovered');
+  });
+
+  it('posts a terminal result for a numeric recovery issue even when no journal exists', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const result = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Comment on Goobers run result',
+    );
+    const script = result?.run ?? '';
+    const issueResolutionIndex = script.indexOf('issue_number="${GOOBERS_RECOVERY_ISSUE:-}"');
+    const journalLookupIndex = script.indexOf('events_file=""');
+
+    expect(issueResolutionIndex).toBeGreaterThanOrEqual(0);
+    expect(issueResolutionIndex).toBeLessThan(journalLookupIndex);
+    expect(script).toContain('events_input="/dev/null"');
+    expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');
+    expect(script).toContain('if ! [[ "$issue_number" =~ ^[0-9]+$ ]]');
+    expect(script).toContain('Goobers run id(s): \\`${run_ids:-unknown}\\`');
+    expect(script).toContain('Terminal journal events: none recorded.');
+    expect(script).toContain('gh issue comment "$issue_number"');
+  });
+
+  it('tolerates malformed trailing journal lines while retaining valid terminal events', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const disposition = steps.find((step) => step.name === 'Handle no-work disposition')?.run ?? '';
+    const result = steps.find((step) => step.name === 'Comment on Goobers run result')?.run ?? '';
+
+    for (const script of [disposition, result]) {
+      expect(script).toContain('jq -Rrc \'try fromjson catch empty\' "$events_file"');
+      expect(script).toContain('source_line_count="$(awk');
+      expect(script).toContain('valid_line_count="$(awk');
+      expect(script).toContain('malformed Goobers journal line(s)');
+      expect(script).toContain('"$events_input" | tail');
+    }
+  });
+
+  it('renders PR resolution errors as terminal failures before failing the result step', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const result = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Comment on Goobers run result',
+    );
+    const script = result?.run ?? '';
+    const postIndex = script.indexOf('gh issue comment "$issue_number"');
+    const failIndex = script.lastIndexOf('if [ -n "$pr_resolution_error" ]');
+
+    expect(script).toContain('display_status="failure"');
+    expect(script).toContain('finished with **${display_status}**');
+    expect(script).toContain('### PR resolution failure');
+    expect(script).toContain('echo "$pr_resolution_error"');
+    expect(script).toContain('echo "::error::${pr_resolution_error}"');
+    expect(postIndex).toBeGreaterThanOrEqual(0);
+    expect(failIndex).toBeGreaterThan(postIndex);
+    expect(script.match(/marker="<!-- goobers:github-run /g)).toHaveLength(1);
+    expect(script).toContain('echo "$marker"');
+  });
+
+  it('releases failed claims without a PR while preserving resumable PR ownership', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const disposition = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Handle no-work disposition',
+    );
+    const script = disposition?.run ?? '';
+    const openPrCheckIndex = script.indexOf('if [ -n "$open_pr" ]');
+    const releaseIndex = script.indexOf(
+      'gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \\\n' +
+        "    --remove-label 'goobers/status:in-review'",
+      openPrCheckIndex,
+    );
+
+    expect(disposition?.env?.JOB_STATUS).toBe('${{ job.status }}');
+    expect(script).toContain('[ "$JOB_STATUS" = "failure" ]');
+    expect(script).toContain('[ "$JOB_STATUS" = "cancelled" ]');
+    expect(script).toContain('issues/${issue_number}/timeline');
+    expect(script).toContain('[[ "$branch" == goobers/crawler/* ]]');
+    expect(script).toContain('open Goobers PR #${open_pr} preserves resumable work');
+    expect(script).toContain('if [ -n "${GOOBERS_RESUME_PR:-}" ]');
+    expect(script).toContain('open_pr="$(find_open_goobers_pr "$issue_number")"');
+    expect(script).toContain('resume PR #${GOOBERS_RESUME_PR} is no longer open');
+    expect(script).toContain('stale_resume=true');
+    expect(script).toContain('no replacement PR or no-work disposition was recorded');
+    expect(openPrCheckIndex).toBeGreaterThanOrEqual(0);
+    expect(releaseIndex).toBeGreaterThan(openPrCheckIndex);
+    expect(script).toContain('without an open Goobers PR. Restored retry eligibility');
+    expect(script).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
   });
 
   it('does not strand claimed issues when an implementer incorrectly returns no-work', () => {
