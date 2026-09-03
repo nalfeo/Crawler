@@ -1409,6 +1409,16 @@ export const floorManifestDefSchema = z
           })
           .strict()
           .optional(),
+        releaseGate: z
+          .object({
+            completionRateTarget: z.number().min(0).max(1),
+            minimumRelayHealthPct: z.number().min(0).max(1),
+            maxLiveEnemies: z.number().int().nonnegative(),
+            maxStalledRaiders: z.number().int().nonnegative(),
+            maxFrameCostMs: z.number().positive(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .superRefine((floor6, ctx) => {

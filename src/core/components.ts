@@ -401,7 +401,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       /** Strikes landed on the outer wall by THIS ram instance. */
       strikes: new Uint16Array(maxEntities),
       /** `world.elapsedMs` of the last landed strike (0 = never). */
-      lastStrikeMs: new Float32Array(maxEntities),
+      lastStrikeMs: new Float64Array(maxEntities),
     },
     /**
      * Floor 5 · Ratings Ram escort-route waypoint marker. Carries no `Team`

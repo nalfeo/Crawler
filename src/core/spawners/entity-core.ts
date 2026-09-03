@@ -16,6 +16,7 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
     for (const arr of Object.values(group as Record<string, ArrayLike<number>>)) {
       if (
         arr instanceof Float32Array ||
+        arr instanceof Float64Array ||
         arr instanceof Uint32Array ||
         arr instanceof Uint16Array ||
         arr instanceof Uint8Array

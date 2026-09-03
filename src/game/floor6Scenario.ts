@@ -56,7 +56,7 @@ import type {
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 import type { ScenarioRunOutcome } from '../shared/scenario-presentation.js';
-import { TeamId } from '../shared/constants.js';
+import { GAME, TeamId } from '../shared/constants.js';
 import { getFloorEnemyPack } from '../shared/enemy-packs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
@@ -64,6 +64,7 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { acceptQuest } from '../core/systems/questSystem.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import { FLOOR6_DEFENSE_QUEST_ID } from '../shared/quest-types.js';
 
 function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
@@ -141,6 +142,9 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     waveManifest: null,
     upgradeOfferManifest: null,
     liveEnemies: [],
+    stalledRaiderCount: 0,
+    routeStallCounts: {},
+    routeReleaseCounts: {},
     nextReleaseIndex: 0,
     spawnDebt: 0,
     relayHp: tuning?.relayMaxHp ?? 100,
@@ -521,6 +525,7 @@ function spawnFloor6Raider(
     }),
   );
 
+  state.routeReleaseCounts[entry.routeId] = (state.routeReleaseCounts[entry.routeId] ?? 0) + 1;
   return eid;
 }
 
@@ -1381,10 +1386,14 @@ export function floor6RaiderSystem(world: GameWorld): void {
       continue;
     }
 
-    // Move toward current waypoint
-    const vx = ((tx - cx) / dist) * speedFt;
-    const vy = ((ty - cy) / dist) * speedFt;
-    setComponent(world.ecs, eid, Velocity, { x: vx, y: vy });
+    // Move along the authored route directly. Floor 6 raiders follow validated
+    // route waypoints and must not rely on generic collision response to make
+    // forward progress, because a wall snag can otherwise soft-lock the wave.
+    const step = Math.min(speedFt, dist);
+    const nx = cx + ((tx - cx) / dist) * step;
+    const ny = cy + ((ty - cy) / dist) * step;
+    setComponent(world.ecs, eid, Position, { x: nx, y: ny });
+    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
 
     // Stall detection: compare actual position to stored previous position.
     // prevX/prevY are written at the end of the last tick, so a full frame
@@ -1400,6 +1409,12 @@ export function floor6RaiderSystem(world: GameWorld): void {
         rec.stillFrames = sf;
         if (sf >= stalledThreshold && !rec.stallResolved) {
           rec.stallResolved = true; // director will reconcile
+          state.stalledRaiderCount += 1;
+          const entry = state.waveManifest?.[mIdx];
+          if (entry) {
+            state.routeStallCounts[entry.routeId] =
+              (state.routeStallCounts[entry.routeId] ?? 0) + 1;
+          }
         }
       }
     } else {
@@ -1524,6 +1539,9 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
     state.totalReleased = 0;
+    state.stalledRaiderCount = 0;
+    state.routeStallCounts = {};
+    state.routeReleaseCounts = {};
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
     state.combatEventCursor = world.combatEvents.length;
@@ -1658,16 +1676,86 @@ export function getFloor6HudPresentation(world: GameWorld): Floor6PresentationSn
   return buildFloor6PresentationSnapshot(world, state, floor6RelayMaxHp(state));
 }
 
+function buildFloor6PhaseDurations(
+  state: Floor6DefenseState,
+  currentFrame: number,
+): Floor6DefenseRunStats['releaseGate']['phaseDurations'] {
+  const durations: Floor6DefenseRunStats['releaseGate']['phaseDurations'][number][] = [];
+  for (const [index, entry] of state.phaseTrace.entries()) {
+    const next = state.phaseTrace[index + 1];
+    const exitedFrame =
+      next?.frame ??
+      (entry.toKind === 'VICTORY' || entry.toKind === 'DEFEAT' ? entry.frame : currentFrame);
+    durations.push({
+      kind: entry.toKind,
+      enteredFrame: entry.frame,
+      exitedFrame,
+      durationFrames: Math.max(0, exitedFrame - entry.frame),
+    });
+  }
+  return durations;
+}
+
+function buildFloor6RoutePressure(
+  state: Floor6DefenseState,
+): Floor6DefenseRunStats['releaseGate']['routePressure'] {
+  return state.geometry.routes.map((route) => ({
+    routeId: route.id,
+    released: state.routeReleaseCounts[route.id] ?? 0,
+    stalled: state.routeStallCounts[route.id] ?? 0,
+  }));
+}
+
+function buildFloor6ReleaseGateStats(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  liveEnemyCount: number,
+  observedFrameCostMs: number | null,
+): Floor6DefenseRunStats['releaseGate'] {
+  const config = getFloor6Config();
+  const gate = config.releaseGate;
+  const activeTimeBudgetMs = floor6Manifest.implemented.winBudgetMs ?? null;
+  const frameBudget =
+    activeTimeBudgetMs === null ? null : Math.ceil((activeTimeBudgetMs * 1.1) / GAME.DELTA_MS);
+  return {
+    activeTimeBudgetMs,
+    frameBudget,
+    completionRateTarget: gate?.completionRateTarget ?? 0.9,
+    minimumRelayHealthPct: gate?.minimumRelayHealthPct ?? 0,
+    maxLiveEnemies: gate?.maxLiveEnemies ?? 0,
+    maxStalledRaiders: gate?.maxStalledRaiders ?? 0,
+    maxFrameCostMs: gate?.maxFrameCostMs ?? GAME.DELTA_MS,
+    observedFrameCostMs,
+    phaseDurations: buildFloor6PhaseDurations(state, world.frameCount),
+    routePressure: buildFloor6RoutePressure(state),
+    cleanup: {
+      liveEnemyCount,
+      spawnDebt: state.spawnDebt,
+      terminalResetCount: state.economy.terminalResetCount,
+      towersTornDown: state.towersTornDown,
+    },
+    terminalIntegrity: {
+      terminal: state.terminalOutcome !== null,
+      terminalOutcomeCount: state.terminalOutcomeCount,
+      victoryPayoutCount: state.victoryPayout.count,
+      exitOpenCount: state.exit.openCount,
+    },
+  };
+}
+
 /**
  * Collect a telemetry snapshot from the current defense state.
  * Safe to call from any floor, returns undefined when not on floor 6.
  */
-export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStats | undefined {
+export function getFloor6DefenseRunStats(
+  world: GameWorld,
+  observedFrameCostMs: number | null = null,
+): Floor6DefenseRunStats | undefined {
   const state = floor6DefenseState(world);
   if (!state) return undefined;
   const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
-  const stalledCount = state.liveEnemies.filter((r) => r.stallResolved && r.eid > 0).length;
+  const stalledCount = state.stalledRaiderCount;
   return {
     phase: { ...state.phase },
     phaseTrace: state.phaseTrace.map((p) => ({ ...p })),
@@ -1714,6 +1802,7 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     victoryPayoutBroadcastScore: state.victoryPayout.broadcastScore,
     exitOpened: state.exit.opened,
     exitOpenCount: state.exit.openCount,
+    releaseGate: buildFloor6ReleaseGateStats(world, state, liveCount, observedFrameCostMs),
     presentation: buildFloor6PresentationSnapshot(world, state, relayMaxHp),
   };
 }
@@ -1743,6 +1832,7 @@ export function confirmFloor6StairDescend(world: GameWorld): boolean {
   const state = world.floorExtendedState?.floor6Defense;
   if (!state || !isFloor6ExitDescendable(world) || state.exit.confirmed) return false;
   state.exit.confirmed = true;
+  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
   return true;
 }
 

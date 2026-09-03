@@ -642,6 +642,7 @@ jobs:
   #   * floor1-chain — Floor 1 → Floor 2 with a carried-over player, the ONLY
   #     leg that exercises the floor transition at all.
   #   * floor2       — Floor 2 standalone.
+  #   * floor6       — Floor 6 standalone Relay-defense release telemetry.
   #
   # Deliberately `continue-on-error` and excluded from merge-gate: neither leg
   # has a measured, trustworthy win-rate threshold yet, and inventing one would
@@ -668,6 +669,8 @@ jobs:
             args: --floor floor1 --seeds 1-10 --no-force-weapon --chain
           - leg: floor2
             args: --floor floor2 --seeds 1-15 --no-force-weapon
+          - leg: floor6
+            args: --floor floor6 --seeds 1-15 --no-force-weapon
     steps:
       - uses: actions/checkout@v4
 

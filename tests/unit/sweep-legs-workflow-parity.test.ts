@@ -129,7 +129,9 @@ describe('release sweep leg matrix parity with deploy.yml', () => {
     const reportJob = doc.jobs['release-report-sweep'];
     const reportScript =
       reportJob?.steps?.find((candidate) => candidate.name === 'Run report shard')?.run ?? '';
-    expect(reportScript, 'report shard script').toContain('--floor floor2');
+    expect(reportScript, 'report shard script').toContain('[ "$LEG" = "floor2" ]');
+    expect(reportScript, 'report shard script').toContain('[ "$LEG" = "floor6" ]');
+    expect(reportScript, 'report shard script').toContain('--floor "$LEG"');
     expect(reportScript, 'report shard script').toContain('--floor floor1');
     expect(reportScript, 'report shard script').toContain('--no-force-weapon');
     expect(reportScript, 'report shard script').toContain('--chain');
