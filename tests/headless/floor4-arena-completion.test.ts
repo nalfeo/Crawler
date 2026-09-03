@@ -42,7 +42,7 @@
  * advance on a shared timer) rather than a stronger claim this session did
  * not implement. See the handoff for the full gap analysis.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { getPersonaConfig } from '../../src/game/ai/personas.js';
@@ -99,8 +99,16 @@ async function runFloor4(seed: number): Promise<RunStats> {
 }
 
 describe('Floor 4 headless completion gate (seed 404)', () => {
-  it('completes: production BehaviorTreeAI reaches VICTORY with genuine wave/Headliner combat', async () => {
-    const stats = await runFloor4(CANONICAL_SEED);
+  // Shared across the "completes" test and the isolated C5 characterization
+  // below so the second test doesn't need to pay for another ~36.5k-frame
+  // headless run of the same canonical seed.
+  let stats: RunStats;
+
+  beforeAll(async () => {
+    stats = await runFloor4(CANONICAL_SEED);
+  });
+
+  it('completes: production BehaviorTreeAI reaches VICTORY with genuine wave/Headliner combat', () => {
     const arena = stats.floor4Arena;
 
     expect(arena, 'run produced no floor4Arena telemetry at all').toBeDefined();
@@ -183,11 +191,11 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
   // interaction, the inner assertion starts passing, which flips `it.fails`
   // into an *unexpected* pass and breaks this test — forcing whoever ships
   // that slice to drop `.fails` here and flip the C5 row in the spec table
-  // to "met" in the same change.
+  // to "met" in the same change. Reuses the same shared `stats` from
+  // `beforeAll` rather than driving a second full headless run.
   it.fails(
     'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
-    async () => {
-      const stats = await runFloor4(CANONICAL_SEED);
+    () => {
       const timeline = stats.floor4Arena!.timeline;
       const intermissionExitReasons = timeline
         .map((entry, index) =>
