@@ -23,12 +23,14 @@ skills, abilities, hud-ux
 - Added a shared presentation entry for `bow-shot-base` using the player-facing
   name `Steady Aim`, the bow prerequisite, and the concrete effect
   `+0.1 accuracy with bows`.
+- Aligned the registered ability effect with that advertised behavior by applying
+  the existing intended `+0.1` accuracy modifier while a bow is equipped.
 - Made the game ability registry consume that shared presentation instead of
   exposing the internal ability's generic `Bow Shot` copy.
 - Added passive effect summaries to skill unlock announcements, so the Bow L5
   announcement reads `Passive Unlocked: Steady Aim — +0.1 accuracy with bows`.
-- Kept the skill milestone's `abilityId`, grant flow, and numeric balance
-  unchanged.
+- Kept the skill milestone's `abilityId` and grant flow unchanged; the Bow L5
+  modifier now matches the milestone's existing documented numeric reward.
 
 ## Evidence
 
@@ -37,7 +39,7 @@ skills, abilities, hud-ux
   generic ability name.
 - After: the real `MainGameScene` deterministic HUD probe showed `Steady Aim`,
   `+0.1 accuracy with bows`, and no `bow-shot-base`.
-- Focused game and registry tests: 47 passed.
+- Focused Bow skill/ability regression tests: 33 passed.
 - `npm run verify:fast`: passed.
 - `npm run typecheck`: passed.
 - Focused real-HUD e2e observation: passed.

@@ -208,6 +208,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     kind: 'passive',
     passiveEffectSummary: '+0.1 accuracy with bows',
     passiveRequirementSummary: 'a bow',
+    weaponPrerequisite: 'bow',
   },
   'precision-bolts': {
     id: 'precision-bolts',

@@ -709,7 +709,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   // Bow type abilities
   {
     ...ABILITY_PRESENTATION_BY_ID['bow-shot-base'],
-    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
   },
   {
     id: 'bow-piercing',

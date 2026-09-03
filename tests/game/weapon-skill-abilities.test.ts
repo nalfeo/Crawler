@@ -86,12 +86,15 @@ describe('skill L5 milestone ability grants', () => {
     const bow = getSkillDefinition('bow')!;
     const milestone = bow.milestones.find((entry) => entry.level === 5)!;
     const presentation = getAbilityPresentation(milestone.abilityId!);
+    const definition = getAbilityDefinition(milestone.abilityId!);
 
     expect(milestone.name).toBe('Steady Aim');
     expect(milestone.description).toContain('+0.1 accuracy with bows');
     expect(presentation?.name).toBe('Steady Aim');
     expect(presentation?.passiveEffectSummary).toBe('+0.1 accuracy with bows');
     expect(presentation?.name).not.toBe('bow-shot-base');
+    expect(definition?.weaponPrerequisite).toBe('bow');
+    expect(definition?.effects).toEqual([{ type: 'stat_add', stat: 'accuracy', value: 0.1 }]);
   });
 
   it('announces the Bow L5 reward without exposing its internal ability ID', () => {
