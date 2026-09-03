@@ -32,6 +32,7 @@ describe('companionCombatSystem', () => {
 
   it('damages a nearby opposing trash mob without involving the player', () => {
     const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
     spawnPlayer(world, 20, 0);
     const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
     addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
@@ -53,10 +54,37 @@ describe('companionCombatSystem', () => {
     companionAISystem(world);
     companionCombatSystem(world);
 
-    expect(world.stores.health.current[trash]).toBeLessThan(100);
+    expect(world.stores.health.current[trash]).toBe(70);
     expect(world.combatEvents).toContainEqual(
       expect.objectContaining({ type: 'hit', sourceEid: companion, targetEid: trash }),
     );
+  });
+
+  it('does not apply the Floor 3 player-Companion buff on another floor', () => {
+    const world = createTestWorld({ floor: 2 });
+    world.floorId = 'floor2';
+    spawnPlayer(world, 20, 0);
+    const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        speciesToken: speciesTokenForId('ember-charger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    const trash = spawnBehaviorEnemy(world, 2, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, trash, set(Team, { id: TeamId.ENEMY }));
+
+    companionAISystem(world);
+    companionCombatSystem(world);
+
+    expect(world.stores.health.current[trash]).toBe(90);
   });
 
   it('redirects trash mobs to the selected companion instead of the player', () => {

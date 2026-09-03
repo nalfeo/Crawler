@@ -11,6 +11,7 @@ import {
   Position,
   Health,
   Enemy,
+  Companion,
   EnemyProjectile,
   AoeOnImpact,
   BuildCurrencyPickup,
@@ -22,6 +23,8 @@ import {
   DroppedItem,
   Harvestable,
   Npc,
+  PartySlot,
+  Team,
   HARVEST_RANGE_FT,
   computeMoveSpeed,
   type FamilyId,
@@ -58,6 +61,7 @@ import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
 import {
   GAME,
+  TeamId,
   WeaponType,
   PLAYER_SPEED,
   ENEMY_PROJECTILE,
@@ -74,6 +78,7 @@ import {
 } from '../../shared/quest-types.js';
 import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../shared/npc-types.js';
+import type { Floor3EncounterState } from '../../shared/floor-types.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
@@ -7553,6 +7558,226 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
   }
 
+  private findNearestFloor3EncounterEnemy(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    teamIds: readonly number[],
+    maxRadius: number = Number.POSITIVE_INFINITY,
+  ): WorldTarget | null {
+    const teamIdSet = new Set(teamIds);
+    const enemies = query(world.ecs, [Enemy, Position, Health, Team]);
+    const candidates: WorldTarget[] = [];
+    for (const eid of enemies) {
+      if (!teamIdSet.has(world.stores.team.id[eid] ?? -1)) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      if (
+        hasComponent(world.ecs, eid, Companion) &&
+        (world.stores.companion.knockedOut[eid] ?? 0) === 1
+      ) {
+        continue;
+      }
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
+      const distance = Math.hypot(x - playerX, y - playerY);
+      if (distance <= maxRadius) {
+        candidates.push({ eid, x, y, distance });
+      }
+    }
+    candidates.sort((a, b) => a.distance - b.distance || a.eid - b.eid);
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private resolveFloor3EncounterAnchor(
+    world: GameWorld,
+    encounter: Floor3EncounterState,
+  ): { x: number; y: number } | null {
+    const floorMap = world.floorMap;
+    if (!floorMap) return null;
+    const room = floorMap.roomGraph.get(encounter.roomId);
+    if (!room) return null;
+    if (room.interiorCells && room.interiorCells.length > 0) {
+      const cx = room.bounds.x + Math.floor(room.bounds.width / 2);
+      const cy = room.bounds.y + Math.floor(room.bounds.height / 2);
+      let best = room.interiorCells[0]!;
+      let bestDist = (best.x - cx) ** 2 + (best.y - cy) ** 2;
+      for (let i = 1; i < room.interiorCells.length; i += 1) {
+        const candidate = room.interiorCells[i]!;
+        const dist = (candidate.x - cx) ** 2 + (candidate.y - cy) ** 2;
+        if (
+          dist < bestDist ||
+          (dist === bestDist &&
+            (candidate.x < best.x || (candidate.x === best.x && candidate.y < best.y)))
+        ) {
+          best = candidate;
+          bestDist = dist;
+        }
+      }
+      return floorMap.tileToWorld(best.x, best.y);
+    }
+    const centerX = room.bounds.x + Math.floor(room.bounds.width / 2);
+    const centerY = room.bounds.y + Math.floor(room.bounds.height / 2);
+    return floorMap.tileToWorld(centerX, centerY);
+  }
+
+  private resolveFloor3EncounterProgressTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    encounter: Floor3EncounterState,
+    reason: string,
+  ): ProgressTarget | null {
+    const anchor = this.resolveFloor3EncounterAnchor(world, encounter);
+    if (anchor) {
+      const target = this.createProgressTarget(anchor.x, anchor.y, playerX, playerY, reason);
+      if (
+        target.distance <= DIRECT_MOVE_EPSILON_FT ||
+        this.isTargetReachable(world, playerX, playerY, target)
+      ) {
+        return target;
+      }
+    }
+    const activeEnemy = this.findNearestFloor3EncounterEnemy(
+      world,
+      playerX,
+      playerY,
+      encounter.teamIds,
+    );
+    if (activeEnemy) {
+      return this.createProgressTarget(
+        activeEnemy.x,
+        activeEnemy.y,
+        playerX,
+        playerY,
+        reason,
+        activeEnemy.eid,
+      );
+    }
+    return null;
+  }
+
+  private findFloor3ProgressObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (!state) return null;
+    if (world.frameCount < this.progressGoalSuppressedUntilFrame) return null;
+
+    const companions = query(world.ecs, [Companion, PartySlot, Team]);
+    let partyCount = 0;
+    let knockedOutPartyCount = 0;
+    for (const eid of companions) {
+      if ((world.stores.team.id[eid] ?? -1) !== TeamId.PLAYER) continue;
+      partyCount += 1;
+      if ((world.stores.companion.knockedOut[eid] ?? 0) === 1) {
+        knockedOutPartyCount += 1;
+      }
+    }
+    if (partyCount > 1 && knockedOutPartyCount > 0 && knockedOutPartyCount < partyCount) {
+      const rallyAnchor = resolveNearestSafeAnchor(world, playerX, playerY);
+      if (rallyAnchor) {
+        return this.createProgressTarget(
+          rallyAnchor.x,
+          rallyAnchor.y,
+          playerX,
+          playerY,
+          'Regrouping at a rally point to recover Companions',
+        );
+      }
+    }
+
+    if (
+      state.staircaseUnlocked === true &&
+      state.staircaseSpawned === true &&
+      state.staircaseDiscovered !== true &&
+      state.staircasePos
+    ) {
+      return this.createProgressTarget(
+        state.staircasePos.x,
+        state.staircasePos.y,
+        playerX,
+        playerY,
+        'Heading to the Floor 3 exit stairs',
+      );
+    }
+
+    if (state.finalFour.unlocked && !state.finalFour.defeated) {
+      const round = state.finalFourRounds[state.finalFourRoundIndex];
+      const roundLabel =
+        round !== undefined
+          ? `Engaging Final Four ${state.finalFourRoundIndex + 1}/4: ${round.handlerName}`
+          : 'Engaging the Final Four';
+      const finalFourTarget = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        state.finalFour,
+        roundLabel,
+      );
+      if (finalFourTarget) {
+        return finalFourTarget;
+      }
+    }
+
+    const unlockedStudios = state.studios
+      .filter((studio) => studio.unlocked && !studio.defeated)
+      .sort((a, b) => a.unlockLevel - b.unlockLevel || a.id.localeCompare(b.id));
+    for (const studio of unlockedStudios) {
+      const target = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        studio,
+        `Engaging Studio ${studio.name}`,
+      );
+      if (target) {
+        return target;
+      }
+    }
+
+    const nextStudio = state.studios
+      .filter((studio) => !studio.defeated)
+      .sort((a, b) => a.unlockLevel - b.unlockLevel || a.id.localeCompare(b.id))[0];
+    if (nextStudio) {
+      const stagingTarget = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        nextStudio,
+        `Staging for Studio ${nextStudio.name} (unlock level ${nextStudio.unlockLevel})`,
+      );
+      if (stagingTarget) {
+        return stagingTarget;
+      }
+    }
+
+    const fallbackEnemy = this.findNearestEnemy(world, playerX, playerY, Number.POSITIVE_INFINITY);
+    if (!fallbackEnemy) {
+      return null;
+    }
+    return this.createProgressTarget(
+      fallbackEnemy.x,
+      fallbackEnemy.y,
+      playerX,
+      playerY,
+      'Hunting ambient threats while staging Floor 3 objectives',
+      fallbackEnemy.eid,
+    );
+  }
+
   private findProgressObjective(
     world: GameWorld,
     playerEid: number,
@@ -7570,6 +7795,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? floor2Target
           : maybeDetourToQuestGiver(floor2Target);
       }
+    }
+    if (world.floorExtendedState?.floor3Studios) {
+      return this.findFloor3ProgressObjective(world, playerX, playerY);
     }
     const objective = floorScenario?.objective;
     if (!floorScenario || !objective) {
