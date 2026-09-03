@@ -33,7 +33,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Iterate on HUD and menu flows with resolution-aware layouts and input testing.
 - Validate controller, keyboard, and pause interactions under common gameplay stress cases.
 - Use labs and quick gameplay passes to confirm feedback timing and legibility.

@@ -32,6 +32,11 @@ import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scen
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
 import {
+  buildFloor6Tower,
+  getFloor6DefenseRunStats,
+  purchaseFloor6UpgradeOffer,
+} from '../floor6Scenario.js';
+import {
   AIDecisionDebugState,
   AIState,
   type AIInputProvider,
@@ -64,11 +69,15 @@ import {
   denBossTransitionPayload,
 } from './den-boss-telemetry.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
-import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import {
+  getScenarioDefinition,
+  type ScenarioInitializationOptions,
+} from '../scenarioDefinitions.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { configureAttackWaves } from '../attack-wave-system.js';
 import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
@@ -112,6 +121,7 @@ import {
   weaponPrerequisiteMet,
 } from '../systems/abilitySystem.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT, learnedAbilityGrantSourceId } from '../../shared/abilities.js';
+import { floor6Manifest } from '../../shared/floor-manifest.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -189,6 +199,17 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.ram.strikes +
       floor5Siege.ram.advanceFrames +
       (floor5Siege.breach.latched ? 1 : 0)
+    );
+  }
+  const floor6Defense = getFloor6DefenseRunStats(world);
+  if (floor6Defense) {
+    return (
+      floor6Defense.totalReleased +
+      floor6Defense.breaksEntered +
+      floor6Defense.breaksExited +
+      floor6Defense.terminalOutcomeCount +
+      floor6Defense.heroDamageDealt +
+      floor6Defense.towerDamageDealt
     );
   }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);
@@ -329,6 +350,11 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Deterministic player construction intents for Floor 6. They use the same
+   * transaction API as presentation code and are retried while unaffordable.
+   */
+  floor6TowerBuildRequests?: readonly { readonly siteId: string; readonly towerId: string }[];
+  /**
    * Player state carried in from a previous floor, applied during scenario
    * configuration exactly as the visual runner does when descending stairs
    * (`src/bootstrap/floor-main-scene-options.ts`). Omitted starts a fresh run.
@@ -451,6 +477,21 @@ export interface HeadlessRunnerConfig {
    * serviced inventory outcome.
    */
   enforcePlayabilityInvariants?: boolean;
+  /**
+   * Enable the default-off periodic rat attack-wave system. Applied to
+   * `world.attackWaveFlags.attackWaves` before scenario configuration runs.
+   * Only fires on a floor whose manifest declares the `trashAttackWaves`
+   * behavior flag (Floor 1 only, as of writing) — inert elsewhere. Default
+   * `false`.
+   */
+  attackWaves?: boolean;
+  /**
+   * Enable Floor 1's static spawners (two `rats-nest` + two `slime-pool`
+   * spawner archetypes). Only consulted when `floorId` is `'floor1'`; every
+   * other floor ignores this field. Default `false` (Floor 1 stays
+   * spawner-free per ADR 0049 unless explicitly enabled here).
+   */
+  floor1Spawners?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -485,6 +526,7 @@ const DEFAULT_CONFIG: Required<
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   enforcePlayabilityInvariants: true,
+  floor6TowerBuildRequests: [],
 };
 
 function uniqueInFirstSeenOrder(values: readonly string[]): string[] {
@@ -591,6 +633,64 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+function tryBuildFloor6StrategyTower(world: GameWorld, playerEid: number): boolean {
+  const defense = world.floorExtendedState?.floor6Defense;
+  const config = floor6Manifest.floor6;
+  if (!defense || !config) return false;
+
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const occupiedSites = new Set(defense.towerInstances.map((instance) => instance.siteId));
+  const sites = [...defense.geometry.buildSites]
+    .filter((site) => !occupiedSites.has(site.id))
+    .sort((a, b) => {
+      const ax = (a.bounds.x + a.bounds.width / 2) * tileSizeFt;
+      const ay = (a.bounds.y + a.bounds.height / 2) * tileSizeFt;
+      const bx = (b.bounds.x + b.bounds.width / 2) * tileSizeFt;
+      const by = (b.bounds.y + b.bounds.height / 2) * tileSizeFt;
+      const distanceDelta =
+        Math.hypot(ax - playerX, ay - playerY) - Math.hypot(bx - playerX, by - playerY);
+      return distanceDelta !== 0 ? distanceDelta : a.id.localeCompare(b.id);
+    });
+  const towers = [...(config.towers ?? [])].sort(
+    (a, b) => a.cost - b.cost || a.id.localeCompare(b.id),
+  );
+
+  for (const site of sites) {
+    for (const tower of towers) {
+      if (defense.economy.balance < tower.cost) continue;
+      const result = buildFloor6Tower(world, site.id, tower.id);
+      if (result.ok) return true;
+    }
+  }
+  return false;
+}
+
+function runFloor6HeadlessStrategy(world: GameWorld, playerEid: number, enabled: boolean): void {
+  const defense = world.floorExtendedState?.floor6Defense;
+  if (
+    !enabled ||
+    world.floorId !== 'floor6' ||
+    (defense?.phase.kind !== 'DEFEND' && defense?.phase.kind !== 'BREAK')
+  ) {
+    return;
+  }
+
+  const affordableOffers = [...(defense.upgradeOfferManifest ?? [])]
+    .filter(
+      (offer) =>
+        defense.economy.balance >= offer.cost &&
+        !defense.economy.selectedOfferIds.includes(offer.offerId),
+    )
+    .sort((a, b) => a.stableIndex - b.stableIndex || a.offerId.localeCompare(b.offerId));
+  for (const offer of affordableOffers) {
+    purchaseFloor6UpgradeOffer(world, offer.offerId);
+  }
+
+  tryBuildFloor6StrategyTower(world, playerEid);
 }
 
 function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): number | undefined {
@@ -804,6 +904,10 @@ export async function runHeadless(
   configureMerchantWeaponPurchase(world, featureFlags.optionalPurchases);
   configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
   configureSettlementReturnRouting(world, featureFlags.settlementReturnRouting);
+  // "Before play": applied ahead of scenario configuration below, mirroring
+  // the visual pipeline's `createFloorMainSceneOptions` wrapper. Inert on any
+  // floor whose manifest doesn't declare `trashAttackWaves`.
+  configureAttackWaves(world, featureFlags.attackWaves);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
   }
@@ -822,11 +926,13 @@ export async function runHeadless(
 
   // Initialize selected scenario (map/objective/NPC wiring).
   const scenario = getScenarioDefinition(mergedConfig.floorId);
-  scenario.configureWorld(
-    world,
-    playerEid,
-    config.playerCarryover ? { playerCarryover: config.playerCarryover } : undefined,
-  );
+  const scenarioInitOptions: ScenarioInitializationOptions = {
+    ...(config.playerCarryover ? { playerCarryover: config.playerCarryover } : {}),
+    // Only consulted by Floor 1's `initializeFloor1Scenario`; every other
+    // floor ignores this field, so it's always safe to forward.
+    floor1Spawners: featureFlags.floor1Spawners,
+  };
+  scenario.configureWorld(world, playerEid, scenarioInitOptions);
   applyConfiguredHostileDamageMultiplier(world, hostileDamageMultiplier);
 
   // Select starter weapon when the scenario exposes a loadout phase.
@@ -1031,6 +1137,8 @@ export async function runHeadless(
   // event, so only genuine transitions are recorded (not one event per
   // frame while a status is held).
   let lastSettlementReturnStatus: string | null = null;
+  const pendingFloor6TowerBuilds = [...(mergedConfig.floor6TowerBuildRequests ?? [])];
+  const floor6AutoStrategyEnabled = pendingFloor6TowerBuilds.length === 0;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
@@ -1078,7 +1186,11 @@ export async function runHeadless(
     for (const g of grants) {
       (milestonesReached[g.skillId] ??= []).push(g.milestoneLevel);
     }
-    return { grants, uniqueAbilityCount, milestonesReached };
+    const maxCombatSkillLevel = [...world.playerSkills.values()].reduce(
+      (maximum, skill) => Math.max(maximum, skill.level),
+      0,
+    );
+    return { grants, uniqueAbilityCount, milestonesReached, maxCombatSkillLevel };
   };
 
   const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
@@ -1208,6 +1320,13 @@ export async function runHeadless(
 
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
+      if (world.floorId === 'floor6' && pendingFloor6TowerBuilds.length > 0) {
+        const request = pendingFloor6TowerBuilds[0]!;
+        const result = buildFloor6Tower(world, request.siteId, request.towerId);
+        if (result.ok || (result.reason !== 'unaffordable' && result.reason !== 'phase-locked')) {
+          pendingFloor6TowerBuilds.shift();
+        }
+      }
       // Check wall-clock timeout
       const elapsed = Date.now() - startTime;
       if (elapsed > mergedConfig.maxWallTimeMs) {
@@ -1325,6 +1444,7 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
       // `restockFloor2Quartermaster`, so a human run only ever sees the stock
@@ -1870,6 +1990,7 @@ export async function runHeadless(
       ),
       floor4Arena: getFloor4ArenaRunStats(world),
       floor5Siege: getFloor5SiegeRunStats(world),
+      floor6Defense: getFloor6DefenseRunStats(world),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -1982,6 +2103,7 @@ export async function runHeadless(
     ),
     floor4Arena: getFloor4ArenaRunStats(world),
     floor5Siege: getFloor5SiegeRunStats(world),
+    floor6Defense: getFloor6DefenseRunStats(world),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),

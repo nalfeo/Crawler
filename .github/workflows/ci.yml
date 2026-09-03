@@ -40,7 +40,6 @@ jobs:
   #                         gating logic.
   # visual_touched=true   → change may affect rendered output; E2E visual regression runs.
   # sim_touched=true      → change may affect the deterministic sim; headless gate runs.
-  # coverage_touched=true → change may affect unit coverage; coverage advisory runs.
   # dependencies_touched=true → package.json or lock file changed; npm audit runs.
   # The merge-gate treats skipped jobs as PASS for all scope flags.
   changes:
@@ -55,7 +54,6 @@ jobs:
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
       visual_touched: ${{ steps.scope.outputs.visual_touched }}
       sim_touched: ${{ steps.scope.outputs.sim_touched }}
-      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
       sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       # Visual surface outputs (#1688/#1698): route E2E to the affected surface only.
@@ -87,7 +85,6 @@ jobs:
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
           visual_touched='${{ steps.detect.outputs.visual_touched }}'
           sim_touched='${{ steps.detect.outputs.sim_touched }}'
-          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
           sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
           dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           game_visual_touched='${{ steps.detect.outputs.game_visual_touched }}'
@@ -103,7 +100,6 @@ jobs:
             sprites_touched=true
             visual_touched=true
             sim_touched=true
-            coverage_touched=true
             sprite_pipeline_touched=true
             dependencies_touched=true
             # Schedule runs always execute the full visual suite.
@@ -160,7 +156,6 @@ jobs:
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
           echo "visual_touched=$visual_touched" >>"$GITHUB_OUTPUT"
           echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
-          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
           echo "sprite_pipeline_touched=$sprite_pipeline_touched" >>"$GITHUB_OUTPUT"
           echo "dependencies_touched=$dependencies_touched" >>"$GITHUB_OUTPUT"
           echo "game_visual_touched=$game_visual_touched" >>"$GITHUB_OUTPUT"
@@ -424,16 +419,14 @@ jobs:
           npm_config_registry: https://registry.npmjs.org/
         run: npm run security:lock-integrity
 
-      # copilot-guards + review-ledger validator tests (node:test). These run
-      # nowhere else in CI; this is their merge-gate home.
-      - name: Guard + review-ledger tests
+      # copilot-guards and agent-tooling tests (node:test). These run nowhere
+      # else in CI; this is their merge-gate home.
+      - name: Guard and agent-tooling tests
         if: env.DOCS_ONLY != 'true'
         env:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          npm run test:guards
-          npm run review:ledger:branch
+        run: npm run test:guards
 
       # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
       # typecheck:src covers src/ only (~340 files, strict). The full typecheck
@@ -526,9 +519,9 @@ jobs:
         run: npm run check:silent-reverts
 
   # Job 3: Unit tests (critical path, must pass)
-  # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
-  # v8 coverage adds ~5× overhead (~140 s); it runs separately in the advisory
-  # test-unit-coverage job which posts the PR comment but does not block merge.
+  # Runs WITHOUT coverage instrumentation so the PR gate stays fast (~27 s).
+  # Release-time deploy reporting owns v8 coverage and posts it with the release
+  # comment after the change actually ships.
   # Skipped for sprites_only changes — only the sprites test project is relevant.
   test-unit:
     name: Unit Tests
@@ -555,47 +548,6 @@ jobs:
         with:
           mode: report
           label: test-unit
-
-  # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
-  # does not block or serialize other checks. Scoped: on PRs, skipped when
-  # coverage_touched=false (labs/e2e/docs/scripts-only diffs cannot change unit
-  # coverage numbers). Fail-closed: only an explicit 'false' skips — a missing/blank
-  # value keeps it running. Push/schedule always run.
-  ci-coverage:
-    name: Advisory coverage
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: >-
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.sprites_only != 'true' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
-    continue-on-error: true
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-node
-
-      - name: Unit tests with coverage
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json --coverage.reporter=json-summary --coverage.reporter=text
-
-      - name: Upload coverage summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage/coverage-summary.json
-          retention-days: 7
-
-      - name: Coverage report comment
-        if: github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@v2
-        with:
-          json-summary-path: coverage/coverage-summary.json
 
   # Job 4: Integration tests (critical path, must pass)
   # Promoted from advisory to a blocking gate: the sprite/judge integration

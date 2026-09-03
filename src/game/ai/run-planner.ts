@@ -188,8 +188,8 @@ export interface Floor1RunPlan {
    * {@link routeHeadId} at present — the planner has no notion of "partially
    * committed to the head goal" yet — kept as a distinct field so BT wiring
    * (`findProgressObjective`) and telemetry can evolve independently of the
-   * route's own identity. See ADR discussion in the unlock-aware planner
-   * review ledger for why these are separate fields.
+   * route's own identity. Keeping them separate also keeps route planning
+   * independent from progress-objective selection and telemetry.
    */
   readonly nextActionableGoalId: string | null;
   /** Optional bundles selected or rejected by the same route calculation. */

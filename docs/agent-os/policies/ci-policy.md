@@ -118,26 +118,26 @@ squash auto-merge:
   [`docs/guides/merge-train.md`](../../guides/merge-train.md) and ADR
   [`0060-repository-managed-speculative-merge-train`](../../knowledge/adr/0060-repository-managed-speculative-merge-train.md).
 
-## Looping Automation Workflows
+## Automation Workflows
 
-In addition to the per-PR `ci.yml` gate stack, three scheduled workflows run
-deterministic, self-driving health checks:
+In addition to the per-PR `ci.yml` gate stack, the repository runs these
+deterministic automation workflows:
 
-| Workflow                                | Cadence                | Purpose                                                                 |
-| --------------------------------------- | ---------------------- | ----------------------------------------------------------------------- |
-| `.github/workflows/docs-update.yml`     | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync                     |
-| `.github/workflows/security-review.yml` | Daily 06:00 UTC + PR   | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection   |
-| `.github/workflows/test-health.yml`     | Weekly (Mon 09:30 UTC) | Coverage trend, untested systems, extended property, balance regression |
+| Workflow                                 | Cadence                | Purpose                                                               |
+| ---------------------------------------- | ---------------------- | --------------------------------------------------------------------- |
+| `.github/workflows/docs-update.yml`      | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync                   |
+| `.github/workflows/nightly-mutation.yml` | Nightly (02:00 UTC)    | Mutation testing, baseline scoring, and regression reporting          |
+| `.github/workflows/security-review.yml`  | Every PR               | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection |
 
-Rules for these loops:
+Rules for this automation:
 
 - Every check is a script with an exit code under `scripts/agent/{docs,security,health}/`.
-- Side-effects (handoff archive, metrics file updates) ship as auto-PRs, never
-  as direct pushes to `main`.
-- Findings are aggregated into a single tracking issue per scheduled run via
-  `scripts/agent/shared/aggregate-report.ts`.
-- `security-review.yml` is a **required check on PRs** (hard fail). On scheduled
-  runs it files an issue instead so the loop never silently swallows a finding.
+- Handoff archive and metrics updates ship as auto-PRs, never as direct pushes
+  to `main`; nightly mutation findings use the workflow's issue reports.
+- `security-review.yml` is a **required check on PRs** (hard fail).
+- The retired security-review and test-health scheduled loops do not file
+  tracking issues. Their underlying scripts remain available through
+  `npm run security:check` and `npm run health:check`.
 
 See ADR `docs/knowledge/adr/0007-automation-loops.md` for rationale.
 
@@ -234,10 +234,9 @@ produces workflows that "run green" but do nothing.
   or inconsistent state fails closed.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
-- Recovery treats missing policy artifacts as ordinary fix work. Invalid added
-  review ledgers are native `review-ledger` lifecycle blockers; review threads
-  and guard output may also identify a missing ADR, apple record, handoff, or
-  ledger evidence. The assigned agent should create or repair that
+- Recovery treats missing policy artifacts as ordinary fix work. Review threads
+  and guard output may identify a missing ADR, apple record, or handoff. The
+  assigned agent should create or repair that
   artifact from PR/review context and validate it. It should escalate to a human
   only when the artifact requires a decision that is not inferable from the PR.
 - Shepherd leases are acquired, heartbeated, and released through the same
@@ -290,8 +289,8 @@ canceling an in-flight run leaves the PR in a broken state.
 explicitly set `cancel-in-progress: true` for `pull_request` events so that
 stale builds triggered by superseded pushes are preempted. This is safe because
 each new push triggers a fresh run and the old run's result is no longer
-meaningful. Non-PR events (`push`, `schedule`, `workflow_dispatch`) use
-`cancel-in-progress: false` via the same expression.
+meaningful. CI's non-PR events use `cancel-in-progress: false` via the same
+expression.
 
 The concurrency group for these full workflows uses a hardcoded, immutable
 workflow-specific prefix (e.g. `crawler-ci-`) rather than `github.workflow`

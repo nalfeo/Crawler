@@ -12,6 +12,7 @@ import { ArenaGenerator } from './ArenaGenerator';
 import { CaveSystemGenerator } from './cave-system';
 import { ShowcaseArenaGenerator } from './ShowcaseArenaGenerator';
 import { SiegeCastleGenerator } from './SiegeCastleGenerator';
+import { BroadcastRelaySetGenerator } from './BroadcastRelaySetGenerator';
 
 const registry = new Map<BiomeType, MapGenerator>();
 
@@ -84,3 +85,6 @@ registerGenerator(BiomeType.SHOWCASE_ARENA, new ShowcaseArenaGenerator());
 
 // Floor 5 — authored Command Post-to-throne siege battlefield.
 registerGenerator(BiomeType.SIEGE_CASTLE, new SiegeCastleGenerator());
+
+// Floor 6 — compact authored Broadcast Relay defense set.
+registerGenerator(BiomeType.BROADCAST_RELAY_SET, new BroadcastRelaySetGenerator());

@@ -1,0 +1,16 @@
+{
+  "surface": "hud-dungeon",
+  "release": "nalfeo-hud-refresh-57c",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "captureSource": "ui-probe-lab",
+  "sourceCommit": "cc8a393acf4e1758c84567caa519f0aec4b83d70",
+  "capturedAt": "2026-08-28T18:17:52.795Z",
+  "screenshotPath": "before/live-dev/hud-dungeon.png",
+  "reviewPath": "before/live-dev/hud-dungeon.review.json",
+  "screenshotHash": "870c8c96ba2749b787b76f38d016e7c08059ec0929c062564cef910111b010b6",
+  "determinismCheck": "passed",
+  "llmReviewed": false
+}

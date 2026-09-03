@@ -191,6 +191,22 @@ export function epicNodeMarker(epicId, hash, nodeId) {
   return `${EPIC_NODE_MARKER_PREFIX}${epicId}:${hash}:${nodeId} -->`;
 }
 
+/**
+ * Leading prefix for the epic-create summary comment posted on the pull
+ * request that introduced a `*.epic.json` file, listing the issue numbers it
+ * produced. Full format:
+ * `<!-- crawler-epic-issues:<epicId>:<hash>:<issue numbers> -->`.
+ *
+ * The issue-number set is part of the marker so the review-only phase and the
+ * later materialized-nodes phase each post exactly one comment, while repeated
+ * (hourly/dispatch) runs that produce the same set never post a duplicate.
+ */
+export const EPIC_ISSUES_COMMENT_MARKER_PREFIX = '<!-- crawler-epic-issues:';
+
+export function epicIssuesCommentMarker(epicId, hash, issueNumbers) {
+  return `${EPIC_ISSUES_COMMENT_MARKER_PREFIX}${epicId}:${hash}:${[...issueNumbers].join(',')} -->`;
+}
+
 // ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
@@ -239,4 +255,5 @@ export const MANAGED_COMMENT_MARKERS = [
   LEGACY_QUARANTINE_REPAIR_NOTICE_MARKER_PREFIX,
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
+  EPIC_ISSUES_COMMENT_MARKER_PREFIX,
 ];

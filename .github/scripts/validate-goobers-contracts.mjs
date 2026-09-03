@@ -29,6 +29,7 @@ const REQUIRED_WORKFLOWS = [
   'merge-train-validate.yml',
   'goobers-run.yml',
   'goobers-validate.yml',
+  'goobers-shadow.yml',
 ];
 
 const REQUIRED_DISPATCH_INPUTS = new Map([
@@ -42,8 +43,8 @@ const REQUIRED_DISPATCH_INPUTS = new Map([
   ],
   ['goobers-run.yml', ['goobers_version', 'workflow', 'issue_number', 'abandon_existing']],
   ['goobers-validate.yml', ['goobers_version']],
+  ['goobers-shadow.yml', ['shadow_scope', 'report_day']],
 ]);
-
 function parseWorkflow(content) {
   const parsed = yaml.parse(content);
   const on = parsed?.on ?? parsed?.['on'] ?? parsed?.true;
@@ -123,6 +124,24 @@ export function outputSemanticErrors(payload) {
       `outputs.hardGate is only valid for gate-bearing tasks (${[...GATE_TASKS].join(', ')}); got task=${task}`,
     );
   }
+  if (outputs.disposition !== undefined && outputs.disposition !== null && status !== 'no-work') {
+    errors.push(`outputs.disposition is only valid when status='no-work' (got status=${status})`);
+  }
+  if (
+    outputs.idempotencyKey !== undefined &&
+    outputs.idempotencyKey !== null &&
+    typeof outputs.idempotencyKey !== 'string'
+  ) {
+    errors.push('outputs.idempotencyKey must be a string when present');
+  }
+  if (
+    outputs.parityStatus !== undefined &&
+    outputs.parityStatus !== null &&
+    !['clean', 'divergence'].includes(outputs.parityStatus)
+  ) {
+    errors.push("outputs.parityStatus must be either 'clean' or 'divergence'");
+  }
+
   return errors;
 }
 

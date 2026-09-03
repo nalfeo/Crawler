@@ -1,7 +1,6 @@
 # Metrics
 
-Machine-written, machine-read JSON trend files maintained by the looping
-automation workflows (primarily `.github/workflows/test-health.yml`) and by
+Machine-written, machine-read JSON trend files maintained by workflows and
 in-session scripts under `scripts/agent/`.
 
 | File / directory         | Owner                                                                   | Purpose                                                                                     |

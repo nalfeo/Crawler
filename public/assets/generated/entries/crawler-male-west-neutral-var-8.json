@@ -1,0 +1,115 @@
+{
+  "briefId": "crawler-male-west-neutral",
+  "spriteName": "crawler-male-west-neutral-var-8",
+  "assetPath": "generated/crawler-male-west-neutral-var-8.png",
+  "approvedAt": "2026-09-01T04:28:04.228Z",
+  "sourceRun": "generated/runs/crawler-male-west-neutral/2026-09-01T04-12-28-61faa0d0",
+  "variantIndex": 8,
+  "anchor": {
+    "x": 128,
+    "y": 255,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 128,
+      "y": 255,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 136,
+      "y": 180,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 8,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-09-01T04:14:49.013Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite adheres to the Crawler design language with a clear identity and contradiction-free execution. The neutral west-facing profile matches the grounded baseline for Floor 1."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The pixel art style is consistent with the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The pixel art style is consistent with the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously matches the brief, depicting the exact male contestant in a west-facing profile with all specified features intact and correctly rendered."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale on a dark floor tile. The figure is instantly recognizable, with no transparency holes or detached pixels."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The full body is visible, including the head, torso, and feet, with no cropping or missing elements. The figure is properly framed and aligned to the floor line."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4496,
+      "completionTokens": 317,
+      "totalTokens": 4813
+    }
+  },
+  "type": "character",
+  "contentHash": "97387af24ddfe5bc8f2f9c9ea373533a64b0576cae1021abe47b39f384e066b9",
+  "opaqueBounds": {
+    "x": 41,
+    "y": 24,
+    "width": 173,
+    "height": 342,
+    "canvasWidth": 256,
+    "canvasHeight": 390
+  },
+  "effectiveAnchorSource": "brief",
+  "facingDirection": "right"
+}

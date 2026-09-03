@@ -198,7 +198,8 @@ describe('merge-train workflow wake-ups', () => {
       (step) => step.name === 'Repair merge-train-quarantined restricted-branch PRs',
     );
     expect(repairStep).toBeDefined();
-    expect(repairStep?.if).toBe("steps.train-gate.outputs.enabled == 'true'");
+    expect(repairStep?.if).toContain("vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'");
+    expect(repairStep?.if).toContain("steps.train-gate.outputs.enabled == 'true'");
     expect(repairStep?.run).toBe('node .github/scripts/merge-train/quarantine-repair.mjs');
     expect(repairStep?.env?.MERGE_TRAIN_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
     // Must run after reconcile so a PR quarantined earlier in the SAME pass is
@@ -355,7 +356,8 @@ describe('merge-train workflow wake-ups', () => {
     // Downstream steps must be gated on the action output so they are skipped
     // when the train is disabled on a schedule event.
     const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
-    expect(reconcileStep?.if).toBe("steps.train-gate.outputs.enabled == 'true'");
+    expect(reconcileStep?.if).toContain("vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'");
+    expect(reconcileStep?.if).toContain("steps.train-gate.outputs.enabled == 'true'");
     // Checkout must precede the train-gate step (local composite actions
     // require the repo to be checked out before they can be resolved).
     const gateIdx = steps.indexOf(gateStep!);

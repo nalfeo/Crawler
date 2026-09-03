@@ -390,6 +390,16 @@ function spawnWavePack(world: GameWorld): void {
 }
 
 /**
+ * Set the default-off attack-wave flag on `world.attackWaveFlags`. The system
+ * reads the flag live each frame, so changing it affects subsequent frames.
+ * Scenario configuration normally sets it before play via
+ * `ScenarioInitializationOptions.attackWaves`.
+ */
+export function configureAttackWaves(world: GameWorld, enabled: boolean): void {
+  world.attackWaveFlags.attackWaves = enabled;
+}
+
+/**
  * System entry point. Checks flag, timer, and suppression; spawns pack if conditions met.
  */
 export function attackWaveSystem(world: GameWorld): void {

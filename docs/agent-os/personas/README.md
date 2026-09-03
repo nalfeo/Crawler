@@ -47,13 +47,10 @@ link back to this section instead of restating it.
   human explicitly asks for a file artifact.
 - **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
   actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).
-- **Run the apple-scaled review harness** and record a **review ledger**: a
-  separate-model **plan review** at ≥3🍎 (**adversarial** at >3🍎 — enumerate ≥2
-  alternatives and argue against the chosen design, recording `plan_divergence`),
-  a **code-review loop** until no concerns _or_ a 2-round cap then human
-  escalation at ≥3🍎, and **multi-model review + adjudication** at >3🍎. The
-  PR publication is never blocked by ledger state; required CI and CI Recovery
-  validate and repair present ledgers before merge. See the
+- **Run apple-scaled post-diff review:** 1–2🍎 use tests/CI only, 3🍎 requires one
+  independent post-diff code review, and 4–5🍎 requires two. Adversarial design
+  review runs only for architectural changes. GitHub PR reviews and threads are
+  the only audit trail. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
   [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is
@@ -175,14 +172,15 @@ Every persona above has an agent. These additional agents are **specialist
 siblings** — they narrow a persona's doctrine to one repeatable workflow and are
 selected directly rather than by routing:
 
-| Agent                                                                             | Inherits from     | Use when                                            |
-| --------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------- |
-| [`perf-optimizer`](../../../.github/agents/perf-optimizer.agent.md)               | Systems Engineer  | Gameplay-neutral speed/memory work only             |
-| [`velocity-engineer`](../../../.github/agents/velocity-engineer.agent.md)         | DevOps Engineer   | Measuring and removing agent-delivery bottlenecks   |
-| [`pr-shepherd`](../../../.github/agents/pr-shepherd.agent.md)                     | DevOps Engineer   | Driving open PRs to a clean squash-merge            |
-| [`docs-update`](../../../.github/agents/docs-update.agent.md)                     | DevOps Engineer   | Extracting and validating provenance-backed lore    |
-| [`ci-review-validator`](../../../.github/agents/ci-review-validator.agent.md)     | Reviewer          | Validating exact review threads with a second model |
-| [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md) | Graphics Designer | Building a full themed equipment collection         |
+| Agent                                                                             | Inherits from     | Use when                                              |
+| --------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------- |
+| [`perf-optimizer`](../../../.github/agents/perf-optimizer.agent.md)               | Systems Engineer  | Gameplay-neutral speed/memory work only               |
+| [`velocity-engineer`](../../../.github/agents/velocity-engineer.agent.md)         | DevOps Engineer   | Measuring and removing agent-delivery bottlenecks     |
+| [`pr-shepherd`](../../../.github/agents/pr-shepherd.agent.md)                     | DevOps Engineer   | Driving open PRs to a clean squash-merge              |
+| [`docs-update`](../../../.github/agents/docs-update.agent.md)                     | DevOps Engineer   | Extracting and validating provenance-backed lore      |
+| [`ci-review-validator`](../../../.github/agents/ci-review-validator.agent.md)     | Reviewer          | Validating exact review threads with a second model   |
+| [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md) | Graphics Designer | Building a full themed equipment collection           |
+| [`floor-factory`](../../../.github/agents/floor-factory.agent.md)                 | Producer          | Planning a floor concept into an epic completion plan |
 
 ## Retired personas
 

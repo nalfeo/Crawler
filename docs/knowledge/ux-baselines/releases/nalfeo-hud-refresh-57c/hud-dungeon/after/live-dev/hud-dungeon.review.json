@@ -1,0 +1,33 @@
+{
+  "overall": {
+    "verdict": "pass",
+    "summary": "Deterministic-only capture (--deterministic-only): no LLM review was run, so this result carries no score or LLM findings."
+  },
+  "blocking_findings": [],
+  "deterministic_blocking_findings": [],
+  "deterministic_status": "pass",
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "capture_hash": "b2f6c7ebfc998b4d9e758f84e4f5db2ec3a837ee60ee91b88d15323aa42b0fdb",
+  "surface": "in-game HUD (dungeon)",
+  "regions_declared": [
+    "abilitiesPanel",
+    "hud-health-panel-bounds",
+    "hud-loot-gold-value-bounds",
+    "hud-loot-gold-text",
+    "hud-loot-junk-value-bounds",
+    "hud-loot-junk-text",
+    "hud-skill-panel-bounds",
+    "hud-skill-title-strip",
+    "hud-skill-title-text",
+    "hud-skill-class-bar-bg",
+    "hud-skill-type-bar-bg",
+    "timerPanel",
+    "timerText",
+    "minimap"
+  ]
+}

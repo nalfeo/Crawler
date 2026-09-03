@@ -1,0 +1,208 @@
+{
+  "id": "floor6",
+  "name": "Floor 6 - Hold for Renovation",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "implemented": {
+    "mvp": false,
+    "released": false
+  },
+  "timer": {
+    "durationMs": 3600000,
+    "stairSpawnCountdownMs": 0
+  },
+  "objectives": {
+    "requiredRats": 0,
+    "requiredSlimes": 0,
+    "requiredTotalKills": 0,
+    "requiredGold": 0,
+    "requiredJunk": 0,
+    "markerRadiusFt": 8.0
+  },
+  "map": {
+    "widthTiles": 72,
+    "heightTiles": 48,
+    "biome": "broadcast_relay_set",
+    "seed": 606,
+    "roomWidthRange": [4, 12],
+    "roomHeightRange": [4, 12],
+    "maxRooms": 6,
+    "floorDensity": 1.0,
+    "tileSizeFt": 4.0
+  },
+  "player": {
+    "hpBonus": 0,
+    "moveSpeedBonus": 0,
+    "pickupRangeBonus": 0
+  },
+  "camera": {
+    "zoom": 2.0
+  },
+  "behavior": {
+    "spawnRoomIsSafe": false,
+    "safeRoomPausesFloorTimer": false,
+    "safeRoomWeaponImmunity": false,
+    "safeRoomDoorsAutoClose": false,
+    "lineOfSightAggro": true,
+    "equipmentEconomy": true,
+    "bossChests": true
+  },
+  "lighting": {
+    "ambient": 0.45
+  },
+  "floor6": {
+    "geometry": {
+      "routeWidthTiles": 5,
+      "buildSiteSizeTiles": 3,
+      "borderThicknessTiles": 2
+    },
+    "supportedFootprints": [
+      { "id": "standard", "widthTiles": 1, "heightTiles": 1 },
+      { "id": "large", "widthTiles": 2, "heightTiles": 2 }
+    ],
+    "phase": {
+      "initial": "SETUP",
+      "terminal": ["VICTORY", "DEFEAT"]
+    },
+    "rngStreams": ["waves", "routes", "rewards", "upgrades", "dressing", "bosses"],
+    "tuning": {
+      "relayMaxHp": 100,
+      "liveCap": 6,
+      "spawnDebtCap": 12,
+      "stallBackstopFrames": 3600,
+      "raiderSpeedFtPerFrame": 0.15,
+      "raiderAttackRangeFt": 2.5,
+      "raiderRelayDamage": 8,
+      "raiderAttackCooldownMs": 800,
+      "waypointArriveThresholdFt": 1.5,
+      "stalledFramesThreshold": 90
+    },
+    "waves": [
+      {
+        "waveIndex": 0,
+        "label": "opening-crew",
+        "startTick": 120,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 120 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 150 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 180 }
+        ]
+      },
+      {
+        "waveIndex": 1,
+        "label": "mid-push",
+        "startTick": 600,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-demo-lead", "releaseTick": 600 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 610 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 620 },
+          { "routeIndex": 1, "archetypeId": "floor6-demo-lead", "releaseTick": 660 }
+        ]
+      },
+      {
+        "waveIndex": 2,
+        "label": "escalation",
+        "startTick": 1200,
+        "entries": [
+          { "routeIndex": 0, "archetypeId": "floor6-demo-lead", "releaseTick": 1200 },
+          { "routeIndex": 1, "archetypeId": "floor6-demo-lead", "releaseTick": 1210 },
+          { "routeIndex": 0, "archetypeId": "floor6-cable-crew", "releaseTick": 1240 },
+          { "routeIndex": 1, "archetypeId": "floor6-site-prep", "releaseTick": 1250 },
+          { "routeIndex": 0, "archetypeId": "floor6-site-prep", "releaseTick": 1260 }
+        ]
+      }
+    ],
+    "economy": {
+      "buildCurrencyId": "requisition",
+      "enemyRewards": [
+        { "archetypeId": "floor6-site-prep", "buildCurrency": 1 },
+        { "archetypeId": "floor6-demo-lead", "buildCurrency": 2 },
+        { "archetypeId": "floor6-cable-crew", "buildCurrency": 3 }
+      ],
+      "waveRewards": [
+        { "waveIndex": 0, "buildCurrency": 4 },
+        { "waveIndex": 1, "buildCurrency": 4 },
+        { "waveIndex": 2, "buildCurrency": 5 }
+      ]
+    },
+    "towers": [
+      {
+        "id": "signal-slinger",
+        "footprintId": "standard",
+        "cost": 4,
+        "sellRefund": 2,
+        "attackRangeFt": 36,
+        "attackDamage": 4,
+        "attackCooldownMs": 500
+      },
+      {
+        "id": "relay-riveter",
+        "footprintId": "standard",
+        "cost": 5,
+        "sellRefund": 2,
+        "attackRangeFt": 28,
+        "attackDamage": 7,
+        "attackCooldownMs": 800
+      },
+      {
+        "id": "crane-caster",
+        "footprintId": "large",
+        "cost": 7,
+        "sellRefund": 3,
+        "attackRangeFt": 44,
+        "attackDamage": 3,
+        "attackCooldownMs": 350
+      }
+    ],
+    "upgrades": {
+      "offerCount": 3,
+      "offers": [
+        { "id": "relay-bracing", "cost": 3, "effect": { "kind": "relayMaxHpBonus", "value": 10 } },
+        {
+          "id": "faster-loader",
+          "cost": 4,
+          "effect": { "kind": "towerFireRateBonus", "value": 0.1 }
+        },
+        { "id": "route-sweeper", "cost": 5, "effect": { "kind": "towerDamageBonus", "value": 1 } },
+        { "id": "spare-batteries", "cost": 6, "effect": { "kind": "relayRepair", "value": 8 } },
+        {
+          "id": "contractor-decoys",
+          "cost": 7,
+          "effect": { "kind": "raiderSlowBonus", "value": 0.08 }
+        }
+      ]
+    },
+    "finale": {
+      "breakDurationFrames": 120,
+      "bossTimeoutFrames": 1800,
+      "victoryPayoutGold": 25,
+      "victoryBroadcastScore": 10,
+      "breakAllowedActions": ["tower-build", "tower-sell", "upgrade-purchase"],
+      "boss": {
+        "id": "broadcast-deadline",
+        "displayName": "Broadcast Deadline",
+        "routeIndex": 0,
+        "archetypeId": "floor6-broadcast-deadline",
+        "releaseTick": 0,
+        "hp": 60,
+        "buildCurrencyReward": 0
+      },
+      "adds": [
+        {
+          "id": "deadline-demo-lead",
+          "routeIndex": 1,
+          "archetypeId": "floor6-demo-lead",
+          "releaseTick": 60,
+          "buildCurrencyReward": 0
+        },
+        {
+          "id": "deadline-site-prep",
+          "routeIndex": 0,
+          "archetypeId": "floor6-site-prep",
+          "releaseTick": 120,
+          "buildCurrencyReward": 0
+        }
+      ]
+    }
+  }
+}

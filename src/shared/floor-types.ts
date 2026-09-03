@@ -1064,6 +1064,355 @@ export interface Floor5SiegeRunStats {
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
 }
 
+export type Floor6DefensePhaseKind = 'SETUP' | 'DEFEND' | 'BREAK' | 'FINALE' | 'VICTORY' | 'DEFEAT';
+
+export interface Floor6DefensePhase {
+  readonly kind: Floor6DefensePhaseKind;
+}
+
+export interface Floor6DefensePhaseTraceEntry {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly toKind: Floor6DefensePhaseKind;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly relayHp: number;
+  readonly manifestIndex: number;
+  readonly activeSites: readonly string[];
+  readonly buildCurrencyBalance: number;
+  readonly selectedOfferIds: readonly string[];
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+}
+
+export interface Floor6TilePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface Floor6SemanticArea {
+  readonly id: string;
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+export interface Floor6Route {
+  readonly id: string;
+  readonly entranceId: string;
+  readonly widthTiles: number;
+  readonly waypoints: readonly Floor6TilePoint[];
+}
+
+export interface Floor6SupportedFootprint {
+  readonly id: string;
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+}
+
+/** Immutable authored geometry consumed by later Floor 6 systems. */
+export interface Floor6DefenseGeometry {
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+  readonly playerIngress: Floor6SemanticArea;
+  readonly broadcastRelay: Floor6SemanticArea & { readonly target: Floor6TilePoint };
+  readonly entrances: readonly (Floor6SemanticArea & { readonly spawn: Floor6TilePoint })[];
+  readonly routes: readonly Floor6Route[];
+  readonly buildSites: readonly Floor6SemanticArea[];
+  readonly pickupAccess: Floor6SemanticArea;
+  readonly breakAccess: Floor6SemanticArea;
+  readonly breakEnclosure: Floor6SemanticArea;
+  readonly victoryExit: Floor6SemanticArea;
+  readonly supportedFootprints: readonly Floor6SupportedFootprint[];
+}
+
+export interface Floor6DefenseState {
+  phase: Floor6DefensePhase;
+  readonly phaseTrace: Floor6DefensePhaseTraceEntry[];
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly routes: string;
+    readonly rewards: string;
+    readonly upgrades: string;
+    readonly dressing: string;
+    readonly bosses: string;
+  };
+  readonly geometry: Floor6DefenseGeometry;
+  /** Immutable wave schedule built at SETUP→DEFEND. Null before first transition. */
+  waveManifest: readonly Floor6WaveManifestEntry[] | null;
+  /** Seeded without-replacement upgrade offer manifest. Null before first transition. */
+  upgradeOfferManifest: readonly Floor6UpgradeOfferManifestEntry[] | null;
+  /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
+  readonly liveEnemies: Floor6LiveEnemyRecord[];
+  /** Index into waveManifest of next entry to release. */
+  nextReleaseIndex: number;
+  /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
+  spawnDebt: number;
+  /** Authoritative relay HP — decremented when raiders reach the relay target. */
+  relayHp: number;
+  /** Consecutive frames of zero wave-release progress used for stall backstop. */
+  stallFrames: number;
+  /** Total enemies released across all waves. */
+  totalReleased: number;
+  /** Frame on which the last enemy was released (used for stall tracking). */
+  lastReleaseFrame: number;
+  /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
+  economy: Floor6EconomyState;
+  /** Built towers, ordered by authored build site. Never changes map topology. */
+  towerInstances: Floor6TowerInstance[];
+  /** Number of tower entities removed through sell or terminal teardown. */
+  towersTornDown: number;
+  /** Cursor into world.combatEvents for Floor 6 hero/tower contribution telemetry. */
+  combatEventCursor: number;
+  /** Last combat event observed at combatEventCursor - 1; detects render-queue drains. */
+  lastCombatEvent?: CombatEvent;
+  /** Damage dealt to Floor 6 raiders by normal non-tower combat paths. */
+  heroDamageDealt: number;
+  /** Damage dealt to Floor 6 raiders by Floor 6 towers. */
+  towerDamageDealt: number;
+  /** Zero-based authored defense act currently being resolved. */
+  currentActIndex: number;
+  /** Frame the current break started, or null outside BREAK. */
+  breakStartedFrame: number | null;
+  /** Bounded build breaks entered after cleared defense acts. */
+  breaksEntered: number;
+  /** Bounded build breaks exited back to pressure/finale. */
+  breaksExited: number;
+  /** Hostile raider count observed during BREAK; must remain zero. */
+  hostileActivityDuringBreak: number;
+  /** Finale boss/add release state and authoritative defeat latch. */
+  finale: Floor6FinaleState;
+  /** Terminal outcome latch; written once by the defense director. */
+  terminalOutcome: 'victory' | 'defeat' | null;
+  /** Count of terminal outcome writes; should never exceed one. */
+  terminalOutcomeCount: number;
+  /** Victory payout transaction state; never inferred from presentation. */
+  victoryPayout: Floor6VictoryPayoutState;
+  /** Exit-open transaction state; separate from boss entity absence. */
+  exit: Floor6ExitState;
+}
+
+export interface Floor6TowerDef {
+  readonly id: string;
+  readonly footprintId: string;
+  readonly cost: number;
+  readonly sellRefund: number;
+  readonly attackRangeFt: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+}
+
+export interface Floor6TowerInstance {
+  readonly siteId: string;
+  readonly towerId: string;
+  readonly eid: number;
+}
+
+export type Floor6TowerBuildFailureReason =
+  | 'not-floor6'
+  | 'phase-locked'
+  | 'invalid-site'
+  | 'unknown-tower'
+  | 'occupied'
+  | 'unaffordable';
+
+export interface Floor6TowerBuildResult {
+  readonly ok: boolean;
+  readonly reason: Floor6TowerBuildFailureReason | 'built';
+  readonly eid?: number;
+}
+
+export interface Floor6TowerSellResult {
+  readonly ok: boolean;
+  readonly reason: 'not-floor6' | 'phase-locked' | 'vacant' | 'sold';
+}
+
+export interface Floor6EconomyState {
+  balance: number;
+  totalEarned: number;
+  totalSpent: number;
+  earnedFromPickups: number;
+  earnedFromWaves: number;
+  pickupsSpawned: number;
+  pickupsCollected: number;
+  rewardedWaveIndexes: number[];
+  unlockedOfferIds: string[];
+  selectedOfferIds: string[];
+  selectionTrace: Floor6UpgradeSelectionTraceEntry[];
+  terminalResetCount: number;
+}
+
+export interface Floor6UpgradeSelectionTraceEntry {
+  readonly frame: number;
+  readonly offerId: string;
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+  readonly balanceBefore: number;
+  readonly balanceAfter: number;
+}
+
+export type Floor6UpgradeSelectionFailureReason =
+  | 'not-floor6'
+  | 'phase-locked'
+  | 'unknown-offer'
+  | 'duplicate'
+  | 'unaffordable';
+
+export interface Floor6UpgradeSelectionResult {
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+}
+
+export interface Floor6FinaleBossManifestEntry {
+  readonly bossId: string;
+  readonly displayName: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly hp: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleAddManifestEntry {
+  readonly addId: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleState {
+  bossManifest: Floor6FinaleBossManifestEntry | null;
+  addManifest: readonly Floor6FinaleAddManifestEntry[];
+  bossEid: number;
+  bossDefeated: boolean;
+  startedFrame: number | null;
+  bossDefeatedFrame: number | null;
+  timeoutFrames: number;
+}
+
+export interface Floor6VictoryPayoutState {
+  awarded: boolean;
+  count: number;
+  gold: number;
+  broadcastScore: number;
+}
+
+export interface Floor6ExitState {
+  opened: boolean;
+  openCount: number;
+}
+
+export type Floor6UpgradeEffectKind =
+  | 'relayMaxHpBonus'
+  | 'towerFireRateBonus'
+  | 'towerDamageBonus'
+  | 'relayRepair'
+  | 'raiderSlowBonus';
+
+export interface Floor6UpgradeEffect {
+  readonly kind: Floor6UpgradeEffectKind;
+  readonly value: number;
+}
+
+export interface Floor6UpgradeOfferManifestEntry {
+  readonly offerId: string;
+  readonly stableIndex: number;
+  readonly cost: number;
+  readonly effect: Floor6UpgradeEffect;
+}
+
+/**
+ * One authored wave schedule entry — immutable once built at SETUP→DEFEND.
+ * Stable by `manifestIndex`; reordering is seed-breaking (FR3.4).
+ */
+export interface Floor6WaveManifestEntry {
+  readonly kind: 'wave' | 'finale-boss' | 'finale-add';
+  readonly addId?: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  /** Absolute frame at which this entry is eligible to release. */
+  readonly releaseTick: number;
+  /** Collectible floor-scoped build currency spawned when this raider dies. */
+  readonly buildCurrencyReward: number;
+}
+
+/** Per-entry mutable runtime tracking. Index mirrors manifestIndex. */
+export interface Floor6LiveEnemyRecord {
+  /** 0 = not yet spawned, -1 = stalled/missing, positive = live ECS eid. */
+  eid: number;
+  /** Current waypoint index in route.waypoints; incremented as raider advances. */
+  waypointIndex: number;
+  /** Consecutive frames the raider has not moved (for stall detection). */
+  stillFrames: number;
+  /** True once the stall was detected and logged — prevents repeated telemetry. */
+  stallResolved: boolean;
+  /** True once this entry is dead or missing and can count toward wave-clear rewards. */
+  defeated: boolean;
+  /** True once this manifest entry has spawned its Floor 6 build-currency reward. */
+  rewardSpawned: boolean;
+}
+
+/** Telemetry snapshot emitted by the director at every phase transition. */
+export interface Floor6DefenseRunStats {
+  readonly phase: Floor6DefensePhase;
+  readonly phaseTrace: readonly Floor6DefensePhaseTraceEntry[];
+  readonly relayHp: number;
+  readonly relayMaxHp: number;
+  readonly nextReleaseIndex: number;
+  readonly spawnDebt: number;
+  readonly totalReleased: number;
+  readonly liveEnemyCount: number;
+  readonly stalledCount: number;
+  readonly waveManifestLength: number;
+  readonly buildCurrencyBalance: number;
+  readonly buildCurrencyEarned: number;
+  readonly buildCurrencySpent: number;
+  readonly buildCurrencyEarnedFromPickups: number;
+  readonly buildCurrencyEarnedFromWaves: number;
+  readonly buildCurrencyPickupsSpawned: number;
+  readonly buildCurrencyPickupsCollected: number;
+  readonly upgradeOffers: readonly Floor6UpgradeOfferManifestEntry[];
+  readonly unlockedOfferIds: readonly string[];
+  readonly selectedOfferIds: readonly string[];
+  readonly upgradeSelectionTrace: readonly Floor6UpgradeSelectionTraceEntry[];
+  readonly terminalResetCount: number;
+  readonly towers: readonly Pick<Floor6TowerInstance, 'siteId' | 'towerId'>[];
+  readonly towersTornDown: number;
+  readonly heroDamageDealt: number;
+  readonly towerDamageDealt: number;
+  readonly currentActIndex: number;
+  readonly breaksEntered: number;
+  readonly breaksExited: number;
+  readonly hostileActivityDuringBreak: number;
+  readonly finaleBossDefeated: boolean;
+  readonly finaleBossEid: number;
+  readonly finaleBossManifest: Floor6FinaleBossManifestEntry | null;
+  readonly finaleAddManifestLength: number;
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutAwarded: boolean;
+  readonly victoryPayoutCount: number;
+  readonly victoryPayoutGold: number;
+  readonly victoryPayoutBroadcastScore: number;
+  readonly exitOpened: boolean;
+  readonly exitOpenCount: number;
+}
+
 /**
  * Floor 4 · Green Room (slice A) — a single rolled offer on one sponsor table.
  *

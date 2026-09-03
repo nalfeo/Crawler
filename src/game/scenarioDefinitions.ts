@@ -71,8 +71,20 @@ import {
   siegeMinionSystem,
   siegeRamSystem,
 } from './floor5Scenario.js';
+import {
+  confirmFloor6StairDescend,
+  floor6CombatContributionSystem,
+  getFloor6RunOutcome,
+  initializeFloor6Scenario,
+  floor6RaiderSystem,
+  floor6TowerSystem,
+  floor6DefenseDirectorSystem,
+} from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
+import { companionCombatSystem } from './systems/companionCombatSystem.js';
+import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
+import { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
@@ -81,6 +93,23 @@ import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+  /**
+   * Enable the default-off periodic rat attack-wave system. Applied to
+   * `world.attackWaveFlags.attackWaves` (via `configureAttackWaves`) before
+   * `configureWorld` runs, independent of which floor is active — a floor
+   * whose manifest doesn't declare the `trashAttackWaves` behavior flag (see
+   * `floor-behavior.ts`) stays inert regardless of this setting. Default
+   * `false`.
+   */
+  readonly attackWaves?: boolean;
+  /**
+   * Enable Floor 1's static spawners (two `rats-nest` + two `slime-pool`
+   * spawner archetypes, placed by `spawnFloor1StaticSpawners`). Only consulted
+   * by Floor 1's `initializeFloor1Scenario`; every other floor ignores this
+   * field. Default `false` — Floor 1 stays spawner-free per ADR 0049 unless
+   * explicitly enabled here.
+   */
+  readonly floor1Spawners?: boolean;
 }
 
 function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
@@ -91,10 +120,26 @@ function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
       body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
     };
   }
+
   return {
     title: 'Floor 5 Complete!',
     subtitle: 'Hostile Takeover complete!',
     body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
+}
+
+function getFloor6CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Relay Lost',
+      subtitle: 'Floor 6 went off-air',
+      body: 'The Broadcast Relay did not survive the renovation.',
+    };
+  }
+  return {
+    title: 'Floor 6 Complete!',
+    subtitle: 'Broadcast Relay secured',
+    body: 'The set survived its Deadline and the exit is clear.',
   };
 }
 
@@ -192,6 +237,7 @@ export interface ScenarioDefinition {
   readonly beforeWeaponSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly beforeEnemyAISystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly afterSpawnerSystems?: ReadonlyArray<CoreSimulationSystem>;
+  readonly afterCoreSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly configureWorld: (
     world: GameWorld,
     playerEid: number,
@@ -554,6 +600,22 @@ const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
   ],
 );
 
+const FLOOR_6_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 6 opens on the Hold for Renovation set; its defense foundation has no active schedule yet.',
+    'Floor 6 goes live around the Broadcast Relay; wave operations remain offline in this foundation.',
+    'Floor 6 starts inside a compact renovation set; the Broadcast Relay is present but pressure is not.',
+    'Floor 6 is on-air with fixed service routes converging on the Broadcast Relay; releases are not active yet.',
+    'Floor 6 begins at the player ingress beside the Relay defense set; the exit remains barred.',
+  ],
+  [
+    'First objective: inspect the Broadcast Relay and its two authored approach routes.',
+    'First objective: enter the set and identify the fixed maintenance plinths beside the routes.',
+    'First objective: locate the Broadcast Relay while the defense schedule remains in setup.',
+    'First objective: survey the ingress, route entrances, Relay, break enclosure, and barred exit.',
+  ],
+);
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -637,6 +699,18 @@ const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
     world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
   isTimeoutReached: (world: GameWorld) =>
     world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
+};
+
+const FLOOR_6_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: FLOOR_6_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_6_INTRO_VARIANTS,
+  victory: 'Floor 6 secured. The Broadcast Relay survived the Deadline.',
+  timeout: 'The Broadcast Relay went dark. The Director cuts the renovation feed.',
+  milestones: [],
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'VICTORY',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'DEFEAT',
 };
 
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
@@ -725,7 +799,12 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       selectKeptCompanion: selectFloor3KeptCompanion,
       autoSelectKeptCompanion: autoDefaultFloor3KeptCompanion,
       onStairDescend: confirmFloor3StairDescend,
-      beforeEnemyAISystems: [companionAISystem],
+      beforeWeaponSystems: [floor3NonCombatantSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        floor3WildTargetRedirectSystem,
+        companionCombatSystem,
+      ],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       director: FLOOR_3_DIRECTOR,
       getRunOutcome: getFloor3RunOutcome,
@@ -772,6 +851,21 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor5RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
+    },
+  ],
+  [
+    'floor6',
+    {
+      floorId: 'floor6',
+      configureWorld: initializeFloor6Scenario,
+      onStairDescend: confirmFloor6StairDescend,
+      beforeEnemyAISystems: [floor6RaiderSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
+      director: FLOOR_6_DIRECTOR,
+      getRunOutcome: getFloor6RunOutcome,
+      isTerminalRunVictory: true,
+      getCompletionCopy: getFloor6CompletionCopy,
     },
   ],
 ]);

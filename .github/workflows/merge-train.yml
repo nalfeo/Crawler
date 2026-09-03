@@ -94,9 +94,46 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      - name: Snapshot merge-train PRs for immutable decision capture
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              base: context.payload.repository.default_branch,
+              per_page: 100,
+            });
+            const trainLabels = new Set([
+              'merge-train',
+              'merge-train-blocked',
+              'merge-train-noop',
+              'merge-train-recovery-pending',
+            ]);
+            const prNumbers = pulls
+              .filter(pull => pull.labels.some(label => trainLabels.has(label.name)))
+              .map(pull => pull.number);
+            fs.mkdirSync('.legacy-lifecycle', { recursive: true });
+            fs.writeFileSync(
+              '.legacy-lifecycle/merge-train-input.json',
+              `${JSON.stringify({ prNumbers }, null, 2)}\n`,
+            );
+
+      - name: Legacy mutation bridge disabled; skipping direct merge-train mutations
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true' && steps.train-gate.outputs.enabled == 'true'
+        run: |
+          echo "Legacy CI mutation bridge is disabled. Skipping legacy merge-train PR mutations; Goobers handles lifecycle orchestration in steady-state."
+
       - name: Reconcile six-PR build-expiry train
-        if: steps.train-gate.outputs.enabled == 'true'
+        id: legacy-reconcile
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -107,13 +144,73 @@ jobs:
           # Must match the coordinator's setting: this gates whether promotion
           # re-derives coordinator slot ordering (which survives label removal).
           CI_CONFLICT_COORDINATION_ENFORCE: ${{ vars.CI_CONFLICT_COORDINATION_ENFORCE || '0' }}
-        run: node .github/scripts/merge-train/reconcile.mjs
+        run: |
+          set -o pipefail
+          mkdir -p .legacy-lifecycle
+          node .github/scripts/merge-train/reconcile.mjs | tee .legacy-lifecycle/reconcile.log
 
       - name: Repair merge-train-quarantined restricted-branch PRs
+        id: quarantine-repair
         # Runs after reconcile so a PR quarantined earlier in THIS pass (a
         # fresh third strike) is repaired the same cycle, not one cycle late.
-        if: steps.train-gate.outputs.enabled == 'true'
+        if: vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/scripts/merge-train/quarantine-repair.mjs
+
+      - name: Capture immutable Merge Train decisions
+        id: capture-legacy-decision
+        if: always() && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true' && steps.train-gate.outputs.enabled == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          READ_TOKEN: ${{ steps.app-token.outputs.token }}
+          RECONCILE_OUTCOME: ${{ steps.legacy-reconcile.outcome }}
+          REPAIR_OUTCOME: ${{ steps.quarantine-repair.outcome }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const inputPath = path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.legacy-lifecycle/merge-train-input.json',
+            );
+            if (!fs.existsSync(inputPath)) {
+              core.setOutput('record-count', '0');
+              return;
+            }
+            const { prNumbers } = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+            const capture = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/capture-legacy-lifecycle.mjs',
+            )));
+            const count = await capture.captureMergeTrain({
+              github,
+              token: process.env.READ_TOKEN,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              prNumbers,
+              runId: context.runId,
+              trigger: context.eventName,
+              outcome:
+                process.env.RECONCILE_OUTCOME === 'success' &&
+                process.env.REPAIR_OUTCOME === 'success'
+                  ? 'success'
+                  : 'failure',
+              outputPath: path.join(process.env.GITHUB_WORKSPACE, '.legacy-lifecycle/records.json'),
+            });
+            core.setOutput('record-count', String(count));
+
+      - name: Upload immutable Merge Train decisions
+        if: always() && steps.capture-legacy-decision.outcome == 'success' && steps.capture-legacy-decision.outputs.record-count != '0'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-lifecycle-${{ github.run_id }}
+          path: .legacy-lifecycle/records.json
+          if-no-files-found: error
+          retention-days: 14

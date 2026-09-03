@@ -718,12 +718,6 @@ export function createEquipmentUI(
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
   const slotBounds = new Map<EquipmentSlotId, ScreenBounds>();
   const slotIconBounds = new Map<EquipmentSlotId, ScreenBounds>();
-  /**
-   * Per-slot record of the placeholder actually drawn for an EMPTY slot: the
-   * glyph branch that ran plus whether the "Empty" caption was attached to the
-   * panel container. Deliberately NOT the slot id — echoing the key back would
-   * make every probe assertion pass even if the placeholder never rendered.
-   */
   const emptySlotCues = new Map<
     EquipmentSlotId,
     { readonly glyph: string; readonly caption: Phaser.GameObjects.Text }
@@ -974,8 +968,6 @@ export function createEquipmentUI(
     };
     icon.lineStyle(2, light, 0.82);
     useLight();
-    // Records which silhouette branch actually ran, so the empty-slot probe
-    // reports the glyph that was DRAWN rather than echoing the slot id back.
     let glyph = 'unknown';
     switch (slotId) {
       case 'head': // helm
@@ -1180,17 +1172,9 @@ export function createEquipmentUI(
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
 
-  /**
-   * Conservative advance width for 12px stats-column text.
-   *
-   * This estimate leaves room for the value column while retaining the full
-   * common stat names.
-   * fitted text leaves a small safety margin. The e2e gate measures real glyph
-   * boxes, so this remains intentionally conservative.
-   */
   function measureStatsText(text: string): number {
     // Arial's average glyph advance is materially narrower than its font size.
-    // Budgeting every character at 12px was needlessly truncating ordinary labels
+    // Budgeting every character at 12px needlessly truncates ordinary labels
     // such as "Cooldown Reduction" despite visibly available row space.
     return Math.ceil(text.length * 7.5);
   }
@@ -1914,7 +1898,10 @@ export function createEquipmentUI(
     // columns edge-to-edge reads as scattered floating boxes rather than a
     // figure, so cap the column pitch and centre the grid in the leftover
     // width instead of stretching into it.
-    const MAX_COL_PITCH = SLOT_W + BAG_GAP;
+    // 155px clears "Main Hand" at the pixel font's full 1em glyph advance —
+    // narrower pitches (e.g. SLOT_W + BAG_GAP) let adjacent column labels
+    // collide once every character is a full 12px wide.
+    const MAX_COL_PITCH = 155;
     const rawUsableW = dollW - SLOT_W - innerPadX * 2;
     const usableW = Math.min(rawUsableW, MAX_COL_PITCH * 2);
     const gridOffsetX = (rawUsableW - usableW) / 2;
@@ -2173,6 +2160,17 @@ export function createEquipmentUI(
       }
       container.add(iconObject);
       slotObjects.push(iconObject);
+      // The "Empty" cue must live in the panel container and the slot cleanup
+      // pool like every other per-slot object: otherwise it ignores the panel's
+      // visibility/scale and survives each rerender as an orphan.
+      if (emptyCue) {
+        container.add(emptyCue);
+        slotObjects.push(emptyCue);
+        emptySlotCues.set(slot.id, {
+          glyph: (iconObject.getData('placeholderGlyph') as string | undefined) ?? 'unknown',
+          caption: emptyCue,
+        });
+      }
       if ('getBounds' in iconObject && typeof iconObject.getBounds === 'function') {
         const ib = iconObject.getBounds();
         slotIconBounds.set(slot.id, { x: ib.x, y: ib.y, width: ib.width, height: ib.height });
@@ -2197,20 +2195,19 @@ export function createEquipmentUI(
         },
       );
       centerTextOnPixels(slotLabel, cx, cy + SLOT_H / 2 + SLOT_LABEL_BAND / 2);
+      // The pixel font's full 1em glyph advance can make an outer-column label
+      // (e.g. "Main Hand") wider than the half-pitch available around its slot
+      // centre. Clamp the centred label back inside the doll's own bounds so it
+      // can never bleed past the panel edge it is measured against.
+      const labelMinX = dollX + 4;
+      const labelMaxX = dollX + dollW - 4;
+      if (slotLabel.x < labelMinX) {
+        slotLabel.setPosition(labelMinX, slotLabel.y);
+      } else if (slotLabel.x + slotLabel.width > labelMaxX) {
+        slotLabel.setPosition(labelMaxX - slotLabel.width, slotLabel.y);
+      }
       container.add(slotLabel);
       slotObjects.push(slotLabel);
-
-      // The "Empty" cue must live in the panel container and the slot cleanup
-      // pool like every other per-slot object: otherwise it ignores the panel's
-      // visibility/scale and survives each rerender as an orphan.
-      if (emptyCue) {
-        container.add(emptyCue);
-        slotObjects.push(emptyCue);
-        emptySlotCues.set(slot.id, {
-          glyph: (iconObject.getData('placeholderGlyph') as string | undefined) ?? 'unknown',
-          caption: emptyCue,
-        });
-      }
     }
   }
 

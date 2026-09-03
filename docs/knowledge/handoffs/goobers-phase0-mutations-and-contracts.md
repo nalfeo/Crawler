@@ -203,7 +203,8 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
     "verdict": "string | null (enum: 'recommended', 'risky', 'not-recommended'); only non-null when task='plan'",
     "appleEstimate": "number | null (1–5); only non-null when task='plan'",
     "hardGate": "string | null (gate criteria); only non-null when task is one of 'plan', 'local-gate', 'pr-opened-gate', 'review'",
-    "blockedBy": "string | null (comma-separated issue numbers)"
+    "blockedBy": "string | null (comma-separated issue numbers)",
+    "disposition": "string | null (enum: 'completed-existing-work'); only non-null when status='no-work'"
   },
   "summary": "string (one-line summary for human)",
   "error": {
@@ -224,6 +225,7 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 - `outputs.verdict` only present/non-null when `task='plan'`; forbidden for every other task
 - `outputs.appleEstimate` only present/non-null when `task='plan'`; value must be 1–5
 - `outputs.hardGate` only present/non-null when `task` is one of `'plan'`, `'local-gate'`, `'pr-opened-gate'`, `'review'`; forbidden for every other task
+- `outputs.disposition` may be `'completed-existing-work'` only when `status='no-work'`; Goobers Run uses it to retire already-satisfied approved issues from scheduled selection
 - `summary` must be non-empty string for all states
 - Deterministic gates fail on schema violation (unknown status, missing required error, invalid enum value, task-gated field misuse)
 

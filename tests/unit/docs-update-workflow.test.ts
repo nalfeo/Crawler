@@ -99,8 +99,23 @@ describe('docs-update workflow', () => {
 
     expect(openPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(openPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(openPr?.with?.base).toBe('main');
     expect(retryPr?.uses).toBe('peter-evans/create-pull-request@v7');
     expect(retryPr?.with?.token).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(retryPr?.with?.base).toBe('main');
+  });
+
+  it('supplies an explicit base branch because the checkout is a detached SHA', () => {
+    const workflow = loadWorkflow();
+    const openPr = workflow.jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Open docs automation PR',
+    );
+    const retryPr = workflow.jobs['docs-update']?.steps?.find(
+      (step) => step.name === 'Retry docs automation PR after branch race',
+    );
+
+    expect(openPr?.with?.base).toBe('main');
+    expect(retryPr?.with?.base).toBe('main');
   });
 
   it('prunes stale remote refs before opening the automation PR', () => {

@@ -257,8 +257,18 @@ interface MainSceneInternals {
   };
   achievementsUI?: {
     isOpen(): boolean;
+    toggle(world: GameWorld): void;
     refresh(world: GameWorld): void;
     claimReward(achievementId: string): void;
+    setFilterForProbe(filter: 'all' | 'global' | `floor:${number}`): void;
+    setExpandedForProbe(achievementId: string, expanded: boolean): void;
+    setScrollIndexForProbe(index: number): void;
+    getLayoutRegions(): {
+      id: string;
+      box: { x: number; y: number; width: number; height: number };
+      kind: string;
+      parentId?: string;
+    }[];
     getScrollIndex(): number;
   };
   shopPanelUI?: { isOpen(): boolean; refresh(world: GameWorld): void };
@@ -325,7 +335,17 @@ interface MainSceneInternals {
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
-  issueReportPicker?: { isOpen(): boolean };
+  issueReportPicker?: {
+    isOpen(): boolean;
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+    getContentSnapshot(): ModalPickerContentSnapshot | null;
+  };
+  /**
+   * The shared transient hint text object (`flashHint()` target). For
+   * `submitIssueReport()` issue/run telemetry feedback, see the separate
+   * `actionStatusText` probe. Read-only probe surface.
+   */
+  interactionHint?: { readonly visible: boolean; readonly text: string };
   getIssueButtonBounds?(): ScreenBounds | null;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
   getAchievementsButtonBounds?(): ScreenBounds | null;
@@ -335,6 +355,7 @@ interface MainSceneInternals {
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
     getContentSnapshot(): ModalPickerContentSnapshot | null;
   };
+  gameOverUI?: { isVisible(): boolean; handleKeyDown(event: KeyboardEvent): void };
   bossIntroUI?: {
     isOpen(): boolean;
     dismiss(): void;
@@ -410,6 +431,21 @@ interface MainSceneInternals {
     renderableOpenCount: number;
   };
   getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean };
+  /**
+   * Last observed outcome of the terminal run-bundle (RunStats payload)
+   * upload kicked off by `emitRunBundle()`, or `undefined` before any
+   * terminal outcome has been reached. Public getter (not a raw field cast)
+   * because the underlying private field is otherwise write-only within
+   * `MainGameScene` and would trip `noUnusedLocals`. See
+   * `MainGameScene.reportRunBundleUploadResult`.
+   */
+  getRunBundleUploadStatus?(): 'ok' | 'failed' | 'disabled' | undefined;
+  /**
+   * The player-visible terminal action-status confirmation toast (shared by
+   * run-bundle upload completion AND issue-filing submission results). Read-only
+   * probe surface — real rendered projection, not internal upload state.
+   */
+  actionStatusText?: { readonly visible: boolean; readonly text: string };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -522,6 +558,8 @@ export interface MainSceneState {
   readonly bridgePresent: boolean;
   /** True while the loadout / modal picker overlay is open. */
   readonly modalOpen: boolean;
+  /** True while the terminal game-over picker is open. */
+  readonly gameOverOpen: boolean;
   /** True while the dedicated abilities management surface is open. */
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
@@ -588,6 +626,31 @@ export interface MainSceneState {
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
   readonly settlementShopArchetypeIds: readonly string[];
+  /**
+   * Outcome of the terminal run-bundle (RunStats payload) upload, or `null`
+   * before any terminal outcome (death/victory/timeout/quit) has emitted a
+   * run bundle. `'disabled'` means no ingest endpoint is configured for this
+   * build — not a failed upload attempt.
+   */
+  readonly runBundleUploadStatus: 'ok' | 'failed' | 'disabled' | null;
+  /**
+   * Whether the terminal action-status toast is currently visible. Shared by
+   * run-bundle upload completion AND issue-filing submission results — see
+   * `MainGameScene.flashActionStatus`.
+   */
+  readonly actionStatusToastVisible: boolean;
+  /** Exact text of the terminal action-status toast, or `null` when hidden/unset. */
+  readonly actionStatusToastText: string | null;
+  /**
+   * Whether the shared transient hint text (`flashHint()` target) is
+   * currently visible. NOT used by run-bundle/issue-filing feedback (see
+   * `actionStatusToastVisible`/`actionStatusToastText` instead) because
+   * `updateInteractions()` clobbers this slot every frame the player isn't
+   * near an NPC/staircase.
+   */
+  readonly interactionHintVisible: boolean;
+  /** Exact text of the shared transient hint, or `null` when hidden/unset. */
+  readonly interactionHintText: string | null;
 }
 
 /**
@@ -907,6 +970,24 @@ export interface MainSceneProbeApi {
   setSafeContext(enabled: boolean): void;
   /** Unlock inventory/equipment/abilities and seed one achievement for testing. */
   unlockSafeRoomSurfaces(): void;
+  /** Open the real Awards pane through the scene-owned UI toggle. */
+  openAchievements(): void;
+  /**
+   * Rendered Awards-pane geometry in design space, for visual-review setup
+   * files that need measured regions (and a real crop) instead of a
+   * hand-written panel rectangle.
+   */
+  getAchievementsLayoutRegions(): {
+    id: string;
+    box: { x: number; y: number; width: number; height: number };
+    kind: string;
+    parentId?: string;
+  }[];
+  /** Select an Awards scope filter through the scene-owned UI. */
+  setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
+  /** Expand or collapse an achievement through the scene-owned UI. */
+  setAchievementExpanded(achievementId: string, expanded: boolean): void;
+  setAchievementsScrollIndex(index: number): void;
   /**
    * Set the Gear-panel reveal latch (`featureUnlocks.equipmentPanel`)
    * independently of the equipment *capability* latch, so a test can observe
@@ -956,6 +1037,12 @@ export interface MainSceneProbeApi {
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Text currently rendered by the open real modal picker, else null. */
   getModalPickerContent(): ModalPickerContentSnapshot | null;
+  /**
+   * Text currently rendered by the F8 issue-report picker (a SEPARATE
+   * `ModalPickerUI` instance from the shared `modalPicker` above — see
+   * `MainGameScene.issueReportPicker`), else `null` when it is closed.
+   */
+  getIssueReportPickerContent(): ModalPickerContentSnapshot | null;
   /**
    * Arrange the live Floor-1 world so the shipped shopkeeper is at its
    * `ready-to-buy` stage with `gold` in the player's purse, and park the player
@@ -1126,6 +1213,8 @@ export interface MainSceneProbeApi {
   }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
+  /** Drive the real game-over picker keyboard path with a synthetic key event. */
+  pressGameOverKey(code: string): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Floor-3 roster corner button. */
@@ -1502,6 +1591,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         hudPresent: scene?.hudUi != null,
         bridgePresent: scene?.bridge != null,
         modalOpen,
+        gameOverOpen: scene?.gameOverUI?.isVisible() ?? false,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
         abilityLoadoutRowLayouts,
@@ -1547,6 +1637,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             : []),
           ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
         ],
+        runBundleUploadStatus: scene?.getRunBundleUploadStatus?.() ?? null,
+        actionStatusToastVisible: scene?.actionStatusText?.visible ?? false,
+        actionStatusToastText: scene?.actionStatusText?.text ?? null,
+        interactionHintVisible: scene?.interactionHint?.visible ?? false,
+        interactionHintText: scene?.interactionHint?.text ?? null,
       };
     },
 
@@ -1675,6 +1770,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
 
+    getIssueReportPickerContent: () => getScene()?.issueReportPicker?.getContentSnapshot() ?? null,
+
     getFloorSummaryState: (): FloorSummaryProbeState =>
       getScene()?.getFloorSummaryState?.() ?? {
         visible: false,
@@ -1732,6 +1829,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (world) {
         world.state = state;
       }
+    },
+    pressGameOverKey: (code: string) => {
+      getScene()?.gameOverUI?.handleKeyDown(new KeyboardEvent('keydown', { code }));
     },
     unlockSafeRoomSurfaces: () => {
       const scene = getScene();
@@ -2195,7 +2295,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
       return {
         skill: read('hud-skill-panel-bounds'),
-        loot: read('hud-loot-panel-bounds'),
+        loot: null,
         xp: read('hud-xp-panel-bounds'),
         health: read('hud-health-panel-bounds'),
       };
@@ -2774,6 +2874,26 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) return;
       unlockAchievement(world, achievementId);
       scene?.achievementsUI?.refresh(world);
+    },
+
+    openAchievements: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world || scene?.achievementsUI?.isOpen()) return;
+      scene.achievementsUI?.toggle(world);
+    },
+
+    getAchievementsLayoutRegions: () => getScene()?.achievementsUI?.getLayoutRegions() ?? [],
+
+    setAchievementsFilter: (filter: 'all' | 'global' | `floor:${number}`) => {
+      getScene()?.achievementsUI?.setFilterForProbe(filter);
+    },
+
+    setAchievementExpanded: (achievementId: string, expanded: boolean) => {
+      getScene()?.achievementsUI?.setExpandedForProbe(achievementId, expanded);
+    },
+    setAchievementsScrollIndex: (index: number) => {
+      getScene()?.achievementsUI?.setScrollIndexForProbe(index);
     },
 
     claimAchievementReward: (achievementId: string) => {

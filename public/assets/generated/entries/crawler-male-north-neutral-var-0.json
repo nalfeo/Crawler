@@ -1,0 +1,115 @@
+{
+  "briefId": "crawler-male-north-neutral",
+  "spriteName": "crawler-male-north-neutral-var-0",
+  "assetPath": "generated/crawler-male-north-neutral-var-0.png",
+  "approvedAt": "2026-09-01T04:06:08.750Z",
+  "sourceRun": "generated/runs/crawler-male-north-neutral/2026-09-01T03-57-52-850add11",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 128,
+    "y": 255,
+    "source": "brief"
+  },
+  "anchors": {
+    "hold": {
+      "x": 128,
+      "y": 255,
+      "source": "brief"
+    },
+    "centerOfGravity": {
+      "x": 134,
+      "y": 196,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-opaque"
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-09-01T03:59:27.405Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite adheres to the Crawler design language, presenting a clear identity as a male contestant with a neutral stance. The concept is grounded and consistent with the dark-fantasy theme of the game."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading stops, and pixel scale. The sprite feels like it belongs in the same family as the references."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in terms of outline weight, palette depth, shading stops, and pixel scale. The sprite feels like it belongs in the same family as the references."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite matches the brief perfectly, depicting the male contestant facing directly north with all specified features visible and correctly executed. No deviations from the prompt are observed."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and distinct at game scale, with no visual integrity defects. The sprite is easily recognizable against the dark floor tile."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The full body is visible and properly framed, with all required elements included and aligned to the floor line. The sprite maintains a stable and centered presentation."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4513,
+      "completionTokens": 322,
+      "totalTokens": 4835
+    }
+  },
+  "type": "character",
+  "contentHash": "1bb664d5da1e3c4ee4f77ff2541c3c6c7a24f0e1feec063b538f97f9edec894b",
+  "opaqueBounds": {
+    "x": 33,
+    "y": 25,
+    "width": 201,
+    "height": 340,
+    "canvasWidth": 256,
+    "canvasHeight": 390
+  },
+  "effectiveAnchorSource": "brief",
+  "facingDirection": "right"
+}

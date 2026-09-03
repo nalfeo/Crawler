@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
+import { existsSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { HANDOFFS_DIR, decideHandoff } from '../../scripts/agent/docs/archive-handoffs';
+import { fromRepo } from '../../scripts/agent/shared/report';
+import { loreCitedPaths, validateLoreCanon } from '../../scripts/agent/docs/check-lore-canon';
 
 describe('lore canon validation', () => {
   it('requires the canonical sections and rejects unresolved escalation records', () => {
@@ -89,5 +92,84 @@ describe('lore canon validation', () => {
     );
 
     expect(result.unresolvedContradictions).toBe(true);
+  });
+});
+
+describe('lore citation pinning', () => {
+  it('resolves cited handoff paths relative to the repository root', () => {
+    const cited = loreCitedPaths(
+      '**Sources:** [handoff](../handoffs/2026-07-24-example.md), [gdd](game-design-document.md)',
+    );
+
+    expect(cited).toContain('docs/knowledge/handoffs/2026-07-24-example.md');
+    expect(cited).toContain('docs/knowledge/game-design/game-design-document.md');
+  });
+
+  it('keeps the real Lore Bible citations inside the live handoffs directory', () => {
+    const cited = loreCitedPaths().filter((source) =>
+      source.startsWith('docs/knowledge/handoffs/'),
+    );
+
+    expect(cited.length).toBeGreaterThan(0);
+    for (const source of cited) {
+      expect(existsSync(fromRepo(source))).toBe(true);
+      expect(source.startsWith('docs/knowledge/handoffs/archive/')).toBe(false);
+    }
+  });
+
+  it('fails closed when the Lore Bible cannot be read', async () => {
+    vi.resetModules();
+    vi.doMock('node:fs', async (importOriginal) => {
+      const fs = await importOriginal<typeof import('node:fs')>();
+      return {
+        ...fs,
+        readFileSync: vi.fn((file) => {
+          expect(String(file)).toMatch(/lore-bible\.md$/);
+          throw new Error('missing lore bible');
+        }),
+      };
+    });
+
+    try {
+      const { loreCitedPaths: mockedLoreCitedPaths } =
+        await import('../../scripts/agent/docs/check-lore-canon');
+
+      expect(() => mockedLoreCitedPaths()).toThrow('missing lore bible');
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
+  });
+
+  it('archives an aged handoff but pins one the Lore Bible cites', () => {
+    const today = new Date('2026-08-31T00:00:00Z');
+    const cited = 'docs/knowledge/handoffs/2026-07-24-floor2-environmental-content.md';
+    const pinned = new Set([cited]);
+
+    expect(decideHandoff('2026-07-24-floor2-environmental-content.md', today, pinned)).toEqual({
+      kind: 'pinned',
+      age: 38,
+    });
+    expect(decideHandoff('2026-07-24-some-other-session.md', today, pinned)).toEqual({
+      kind: 'archive',
+      age: 38,
+    });
+    expect(decideHandoff('2026-08-20-recent-session.md', today, pinned)).toEqual({
+      kind: 'fresh',
+      age: 11,
+    });
+    expect(decideHandoff('INDEX.md', today, pinned)).toEqual({ kind: 'unnamed' });
+  });
+
+  it('pins every real Lore Bible handoff citation against the real archiver policy', () => {
+    const pinned = new Set(loreCitedPaths());
+    const cited = [...pinned].filter((source) => source.startsWith(`${HANDOFFS_DIR}/`));
+    const farFuture = new Date('2099-01-01T00:00:00Z');
+
+    expect(cited.length).toBeGreaterThan(0);
+    for (const source of cited) {
+      const entry = source.slice(`${HANDOFFS_DIR}/`.length);
+      expect(decideHandoff(entry, farFuture, pinned).kind).toBe('pinned');
+    }
   });
 });

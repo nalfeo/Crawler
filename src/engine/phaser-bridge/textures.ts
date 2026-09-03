@@ -34,6 +34,7 @@ const TEX_DEAD_SKULL = '__cw_dead_skull';
 export const TEX_WELCOME_SIGN = '__cw_welcome_sign';
 export const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
 const TEX_GOLD = '__cw_gold';
+const TEX_BUILD_CURRENCY = '__cw_build_currency';
 export const PROCEDURAL_TEXTURE_KEYS = {
   default: TEX_BULLET,
   player: TEX_PLAYER,
@@ -45,6 +46,7 @@ export const PROCEDURAL_TEXTURE_KEYS = {
   gem: TEX_GEM,
   boss_chest: TEX_BOSS_CHEST,
   gold: TEX_GOLD,
+  build_currency: TEX_BUILD_CURRENCY,
   proj: TEX_BULLET,
   enemy_proj: TEX_ENEMY_BULLET,
   aoe_proj: TEX_AOE_PROJ,
@@ -386,6 +388,19 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0xfff4c2, 1);
   g.fillRect(5, 4, 2, 2);
   g.generateTexture(TEX_GOLD, 16, 16);
+
+  // Floor 6 build-currency token — teal hex-cog disc, visually distinct from
+  // the gold coin so construction currency reads as a separate resource.
+  g.clear();
+  g.fillStyle(0x0d4a44, 1);
+  g.fillCircle(8, 8, 8);
+  g.fillStyle(0x3ddbc4, 1);
+  g.fillCircle(8, 8, 6);
+  g.fillStyle(0x0f8a78, 1);
+  g.fillCircle(9, 9, 3);
+  g.fillStyle(0xe4fff9, 1);
+  g.fillRect(5, 4, 2, 2);
+  g.generateTexture(TEX_BUILD_CURRENCY, 16, 16);
 
   g.destroy();
   logger.info('Generated procedural fallback textures');

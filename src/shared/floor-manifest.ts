@@ -20,6 +20,7 @@ import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
 import floor5ManifestJson from './data/floors/floor5.manifest.json';
+import floor6ManifestJson from './data/floors/floor6.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
@@ -28,6 +29,22 @@ import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
 import type { Floor5RamRouteLandmark } from './floor-types.js';
 
 const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
+const FLOOR6_RNG_STREAMS = [
+  'waves',
+  'routes',
+  'rewards',
+  'upgrades',
+  'dressing',
+  'bosses',
+] as const;
+const FLOOR6_UPGRADE_EFFECT_KINDS = [
+  'relayMaxHpBonus',
+  'towerFireRateBonus',
+  'towerDamageBonus',
+  'relayRepair',
+  'raiderSlowBonus',
+] as const;
+const FLOOR6_BREAK_ACTIONS = ['tower-build', 'tower-sell', 'upgrade-purchase'] as const;
 
 /**
  * Closed set of semantic Ratings-Ram escort landmarks (spec `FR5.2`).
@@ -1106,6 +1123,368 @@ export const floorManifestDefSchema = z
         }
       })
       .optional(),
+    /** Floor-6-specific authored defense geometry and phase skeleton config. */
+    floor6: z
+      .object({
+        geometry: z
+          .object({
+            routeWidthTiles: z.literal(5),
+            buildSiteSizeTiles: z.literal(3),
+            borderThicknessTiles: z.literal(2),
+          })
+          .strict(),
+        supportedFootprints: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                widthTiles: z.number().int().positive(),
+                heightTiles: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .min(1),
+        phase: z
+          .object({
+            initial: z.literal('SETUP'),
+            terminal: z.tuple([z.literal('VICTORY'), z.literal('DEFEAT')]),
+          })
+          .strict(),
+        rngStreams: z.tuple([
+          z.literal(FLOOR6_RNG_STREAMS[0]),
+          z.literal(FLOOR6_RNG_STREAMS[1]),
+          z.literal(FLOOR6_RNG_STREAMS[2]),
+          z.literal(FLOOR6_RNG_STREAMS[3]),
+          z.literal(FLOOR6_RNG_STREAMS[4]),
+          z.literal(FLOOR6_RNG_STREAMS[5]),
+        ]),
+        /**
+         * Slice-3 authored tuning values for wave director and raider AI.
+         * All numeric gates deferred to S9; these are operational defaults.
+         */
+        tuning: z
+          .object({
+            relayMaxHp: z.number().int().positive(),
+            liveCap: z.number().int().positive(),
+            spawnDebtCap: z.number().int().positive(),
+            stallBackstopFrames: z.number().int().positive(),
+            raiderSpeedFtPerFrame: z.number().positive(),
+            raiderAttackRangeFt: z.number().positive(),
+            raiderRelayDamage: z.number().int().positive(),
+            raiderAttackCooldownMs: z.number().int().positive(),
+            waypointArriveThresholdFt: z.number().positive(),
+            stalledFramesThreshold: z.number().int().positive(),
+          })
+          .strict()
+          .optional(),
+        towers: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                footprintId: z.string().min(1),
+                cost: z.number().int().nonnegative(),
+                sellRefund: z.number().int().nonnegative(),
+                attackRangeFt: z.number().positive(),
+                attackDamage: z.number().nonnegative(),
+                attackCooldownMs: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Authored wave schedule. Each wave is a named group of enemy
+         * releases; entries are stable-ID ordered (reordering is seed-breaking).
+         */
+        waves: z
+          .array(
+            z
+              .object({
+                waveIndex: z.number().int().nonnegative(),
+                label: z.string().min(1),
+                startTick: z.number().int().nonnegative(),
+                entries: z.array(
+                  z
+                    .object({
+                      routeIndex: z.number().int().nonnegative(),
+                      archetypeId: z.string().min(1),
+                      releaseTick: z.number().int().nonnegative(),
+                    })
+                    .strict(),
+                ),
+              })
+              .strict(),
+          )
+          .optional(),
+        economy: z
+          .object({
+            buildCurrencyId: z.string().min(1),
+            enemyRewards: z
+              .array(
+                z
+                  .object({
+                    archetypeId: z.string().min(1),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+            waveRewards: z
+              .array(
+                z
+                  .object({
+                    waveIndex: z.number().int().nonnegative(),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        upgrades: z
+          .object({
+            offerCount: z.number().int().positive(),
+            offers: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    cost: z.number().int().nonnegative(),
+                    effect: z
+                      .object({
+                        kind: z.enum(FLOOR6_UPGRADE_EFFECT_KINDS),
+                        value: z.number(),
+                      })
+                      .strict(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        finale: z
+          .object({
+            breakDurationFrames: z.number().int().nonnegative(),
+            bossTimeoutFrames: z.number().int().positive(),
+            victoryPayoutGold: z.number().int().nonnegative(),
+            victoryBroadcastScore: z.number().int().nonnegative(),
+            breakAllowedActions: z.array(z.enum(FLOOR6_BREAK_ACTIONS)).min(1),
+            boss: z
+              .object({
+                id: z.string().min(1),
+                displayName: z.string().min(1),
+                routeIndex: z.number().int().nonnegative(),
+                archetypeId: z.string().min(1),
+                releaseTick: z.number().int().nonnegative(),
+                hp: z.number().int().positive(),
+                buildCurrencyReward: z.number().int().nonnegative(),
+              })
+              .strict(),
+            adds: z.array(
+              z
+                .object({
+                  id: z.string().min(1),
+                  routeIndex: z.number().int().nonnegative(),
+                  archetypeId: z.string().min(1),
+                  releaseTick: z.number().int().nonnegative(),
+                  buildCurrencyReward: z.number().int().nonnegative(),
+                })
+                .strict(),
+            ),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .superRefine((floor6, ctx) => {
+        const ids = new Set<string>();
+        for (const [index, footprint] of floor6.supportedFootprints.entries()) {
+          if (ids.has(footprint.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index, 'id'],
+              message: `duplicate supported footprint id "${footprint.id}"`,
+            });
+          }
+          ids.add(footprint.id);
+          if (
+            footprint.widthTiles > floor6.geometry.routeWidthTiles ||
+            footprint.heightTiles > floor6.geometry.routeWidthTiles
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index],
+              message: `supported footprint "${footprint.id}" exceeds route width`,
+            });
+          }
+        }
+        const towerIds = new Set<string>();
+        const footprintIds = new Set(floor6.supportedFootprints.map((footprint) => footprint.id));
+        for (const [index, tower] of (floor6.towers ?? []).entries()) {
+          if (towerIds.has(tower.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'id'],
+              message: `duplicate tower id "${tower.id}"`,
+            });
+          }
+          towerIds.add(tower.id);
+          if (!footprintIds.has(tower.footprintId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'footprintId'],
+              message: `tower "${tower.id}" has unsupported footprint "${tower.footprintId}"`,
+            });
+          }
+          if (tower.sellRefund > tower.cost) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'sellRefund'],
+              message: `tower "${tower.id}" refund cannot exceed its cost`,
+            });
+          }
+        }
+        for (const [index, offer] of (floor6.upgrades?.offers ?? []).entries()) {
+          if (
+            (offer.effect.kind === 'towerFireRateBonus' ||
+              offer.effect.kind === 'raiderSlowBonus') &&
+            (offer.effect.value < 0 || offer.effect.value > 1)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offers', index, 'effect', 'value'],
+              message: `${offer.effect.kind} must be between 0 and 1`,
+            });
+          }
+        }
+        const waveIndexes = new Set<number>();
+        const pack = getFloorEnemyPack('floor6-renovation-crew');
+        const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
+        for (const [index, wave] of (floor6.waves ?? []).entries()) {
+          if (waveIndexes.has(wave.waveIndex)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['waves', index, 'waveIndex'],
+              message: `duplicate waveIndex ${wave.waveIndex}`,
+            });
+          }
+          waveIndexes.add(wave.waveIndex);
+          for (const [entryIndex, entry] of wave.entries.entries()) {
+            if (!knownArchetypes.has(entry.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['waves', index, 'entries', entryIndex, 'archetypeId'],
+                message: `unknown Floor 6 wave archetype "${entry.archetypeId}"`,
+              });
+            }
+          }
+        }
+        if (floor6.economy) {
+          const rewardArchetypeIds = new Set<string>();
+          for (const [index, reward] of floor6.economy.enemyRewards.entries()) {
+            if (rewardArchetypeIds.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `duplicate enemy reward archetype "${reward.archetypeId}"`,
+              });
+            }
+            rewardArchetypeIds.add(reward.archetypeId);
+            if (!knownArchetypes.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `unknown Floor 6 reward archetype "${reward.archetypeId}"`,
+              });
+            }
+          }
+          const rewardedWaveIndexes = new Set<number>();
+          for (const [index, reward] of floor6.economy.waveRewards.entries()) {
+            if (rewardedWaveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `duplicate wave reward index ${reward.waveIndex}`,
+              });
+            }
+            rewardedWaveIndexes.add(reward.waveIndex);
+            if (!waveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `wave reward references unknown waveIndex ${reward.waveIndex}`,
+              });
+            }
+          }
+        }
+        if (floor6.upgrades) {
+          if (floor6.upgrades.offerCount > floor6.upgrades.offers.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offerCount'],
+              message: `offerCount ${floor6.upgrades.offerCount} exceeds ${floor6.upgrades.offers.length} authored offers`,
+            });
+          }
+          const offerIds = new Set<string>();
+          for (const [index, offer] of floor6.upgrades.offers.entries()) {
+            if (offerIds.has(offer.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['upgrades', 'offers', index, 'id'],
+                message: `duplicate upgrade offer id "${offer.id}"`,
+              });
+            }
+            offerIds.add(offer.id);
+          }
+        }
+        if (floor6.finale) {
+          // Must match BroadcastRelaySetGenerator's fixed two-route authored layout.
+          const routeCount = 2;
+          const addIds = new Set<string>();
+          if (!knownArchetypes.has(floor6.finale.boss.archetypeId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'archetypeId'],
+              message: `unknown Floor 6 finale boss archetype "${floor6.finale.boss.archetypeId}"`,
+            });
+          }
+          if (floor6.finale.boss.routeIndex >= routeCount) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'routeIndex'],
+              message: `finale boss routeIndex ${floor6.finale.boss.routeIndex} exceeds authored routes`,
+            });
+          }
+          for (const [index, add] of floor6.finale.adds.entries()) {
+            if (addIds.has(add.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'id'],
+                message: `duplicate finale add id "${add.id}"`,
+              });
+            }
+            addIds.add(add.id);
+            if (!knownArchetypes.has(add.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'archetypeId'],
+                message: `unknown Floor 6 finale add archetype "${add.archetypeId}"`,
+              });
+            }
+            if (add.routeIndex >= routeCount) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'routeIndex'],
+                message: `finale add routeIndex ${add.routeIndex} exceeds authored routes`,
+              });
+            }
+          }
+        }
+      })
+      .optional(),
     /**
      * Optional terrain pack id (registry-backed, see `terrain-pack-types.ts`)
      * this floor's renderer should use for walls/floor-pool/corridor-pool/
@@ -1160,6 +1539,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor4ManifestJson;
   } else if (floorId === 'floor5') {
     manifestJson = floor5ManifestJson;
+  } else if (floorId === 'floor6') {
+    manifestJson = floor6ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -1177,3 +1558,4 @@ export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
 export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');
 export const floor5Manifest: FloorManifestDef = loadFloorManifest('floor5');
+export const floor6Manifest: FloorManifestDef = loadFloorManifest('floor6');

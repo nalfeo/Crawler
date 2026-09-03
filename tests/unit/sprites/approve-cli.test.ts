@@ -94,6 +94,24 @@ vi.mock('../../../scripts/sprites/queue-commit-runtime.js', () => ({
   createDefaultQueueCommitDeps: vi.fn(() => ({})),
 }));
 
+// The durability gate reaches for a real Azure store, so stub the two I/O
+// entry points. Everything else (RunDurabilityError, parseSourceRun) stays real
+// so the CLI's own error handling is genuinely exercised.
+const durability = vi.hoisted(() => ({
+  resolvePublicationDurableStore: vi.fn(() => ({ backend: 'fake-durable' })),
+  ensureRunDurable: vi.fn(() => Promise.resolve({ backfilled: [], verified: ['a', 'b'] })),
+}));
+
+vi.mock('../../../scripts/sprites/run-durability.js', async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import('../../../scripts/sprites/run-durability.js')>();
+  return {
+    ...original,
+    resolvePublicationDurableStore: durability.resolvePublicationDurableStore,
+    ensureRunDurable: durability.ensureRunDurable,
+  };
+});
+
 vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../../scripts/sprites/approve.js')>();
   return {
@@ -108,8 +126,102 @@ vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
 
 // ── import the subject under test AFTER mocks are registered ───────────────
 const { main } = await import('../../../scripts/sprites/approve-cli.js');
+const { RunDurabilityError } = await import('../../../scripts/sprites/run-durability.js');
 
 // ── tests ──────────────────────────────────────────────────────────────────
+
+/**
+ * The durability gate is the fix for the incident where seven finished sprite
+ * runs were approved into git while their briefs, prompts and sheets existed
+ * only inside a gitignored worktree that later vanished. Approving writes a
+ * manifest `sourceRun` pointer and pushes a commit to `assets/queue`; both are
+ * promises that the run still exists somewhere recoverable.
+ */
+describe('approve-cli durability gate (fail-closed before git publication)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.approveVariant.mockClear();
+    durability.ensureRunDurable.mockClear();
+    durability.resolvePublicationDurableStore.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) process.env.CI = savedCI;
+    else delete process.env.CI;
+  });
+
+  it('verifies durability BEFORE approving or committing to the queue', async () => {
+    await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(durability.ensureRunDurable).toHaveBeenCalledOnce();
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+    // Ordering is the whole contract: Azure writes must be verified complete
+    // before anything git-backed is emitted.
+    const durableOrder = durability.ensureRunDurable.mock.invocationCallOrder[0] ?? 0;
+    const approveOrder = mocks.approveVariant.mock.invocationCallOrder[0] ?? 0;
+    const commitOrder = mocks.runQueueCommit.mock.invocationCallOrder[0] ?? 0;
+    expect(durableOrder).toBeLessThan(approveOrder);
+    expect(durableOrder).toBeLessThan(commitOrder);
+  });
+
+  it('passes the run coordinates parsed from the run dir', async () => {
+    await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(durability.ensureRunDurable).toHaveBeenCalledWith(
+      expect.objectContaining({ briefId: 'iron-sword', runId: 'run-01' }),
+    );
+  });
+
+  it('fails closed with exit code 5 and never publishes when the run is not durable', async () => {
+    durability.ensureRunDurable.mockRejectedValueOnce(
+      new RunDurabilityError('missing artifacts', ['iron-sword/run-01/sheet-NN.png']),
+    );
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(5);
+    // No success-shaped git output whatsoever: no approval, no queue commit.
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when no durable store is configured at all', async () => {
+    durability.resolvePublicationDurableStore.mockReturnValueOnce(
+      null as unknown as { backend: string },
+    );
+    durability.ensureRunDurable.mockRejectedValueOnce(
+      new RunDurabilityError('no durable run store is configured'),
+    );
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(5);
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('treats an ordinary durable-store error as a fail-closed exit 5', async () => {
+    durability.ensureRunDurable.mockRejectedValueOnce(new Error('Azure unavailable'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(5);
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('skips the gate on CI, where the CLI approves locally and never pushes', async () => {
+    process.env.CI = 'true';
+
+    await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(durability.ensureRunDurable).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
 
 describe('approve-cli already-approved idempotent retry (concern #6)', () => {
   let savedCI: string | undefined;

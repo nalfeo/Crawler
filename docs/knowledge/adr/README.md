@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 150 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 43 date-prefixed
+- **Count:** 151 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 44 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -138,6 +138,7 @@ hundreds of inbound references.
 - [Floor 4 — The Main Event (timed survival arena floor)](0090-floor4-arena.md) — the first non-exploration floor: a dedicated arena clock running continuously through waves and bosses (additive to `world.elapsedMs`), a single `arenaDirectorSystem` phase authority, bounded overtime as the boss failure path, precomputed immutable wave manifests with capped spawn debt, a graded append-only Headliner draw keyed by act slot, isolated per-purpose RNG streams making per-visit shop stock path-independent, and a transactional safe-room hand-off.
 - [Floor 4 Slice 2 — Arena Director Rehearsal](0091-floor4-slice2-arena-director-rehearsal.md) — implements the first runtime phase authority as an empty broadcast rehearsal: real-pipeline `arenaDirectorSystem` wiring, exact arena-clock marks, deterministic timeline RunStats, and temporary auto-advanced intermissions until the Green Room transaction slice lands.
 - [Floor 5 — Hostile Takeover (castle siege floor)](0094-floor5-hostile-takeover.md) — a single-authority siege phase machine coordinating explicit-team minion lanes, field-task-gated Ratings Ram construction, boss-strength enemy Heroes, an atomic wall-breach transaction, Command Post defeat precedence, and a separate throne-capture finale.
+- [Floor 6 — Hold for Renovation (compact defense floor)](0097-floor6-hold-for-renovation.md) — a single-authority defense phase machine coordinating authored non-blocking sites, immutable route/wave manifests, floor-scoped upgrades, safe breaks, Relay-loss precedence, and a bounded Deadline finale.
 
 ### Quests & NPCs
 
@@ -175,6 +176,7 @@ hundreds of inbound references.
 - [Generic VFX effects pipeline](0025-vfx-effects-pipeline.md)
 - [Reward-opening audio as a reusable, deterministic cue layer](0071-reward-opening-audio-cues.md) — the first `AudioCueEngine`-based procedural synth cue layer.
 - [Combat/loot audio cues as a second reuse of the reward-opening cue pattern](2026-08-23-combat-loot-audio-cues.md) — weapon/spell/ability/damage/pickup SFX sourced from the existing `combatEvents`/`abilityActivations`/`vfxEvents` queues, no new core plumbing.
+- [Generated-sprite animation registration self-heals a texture-not-ready race](2026-09-02-generated-sprite-animation-self-healing.md) — skips (instead of poisoning) an animation key when the texture isn't loaded yet, retrying per-frame until it is; fixes a fast-scene-restart render-loop freeze that made the visual AI-runner lab unobservable.
 
 ### Process, CI & telemetry
 
@@ -301,3 +303,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0090 | [Floor 4 — The Main Event (timed survival arena floor)](0090-floor4-arena.md)                                                                      | Proposed                 | 2026-08-22 |
 | 0091 | [Floor 4 Slice 2 — Arena Director Rehearsal](0091-floor4-slice2-arena-director-rehearsal.md)                                                       | Accepted                 | 2026-08-24 |
 | 0094 | [Floor 5 — Hostile Takeover (castle siege floor)](0094-floor5-hostile-takeover.md)                                                                 | Proposed                 | 2026-08-30 |
+| 0097 | [Floor 6 — Hold for Renovation (compact defense floor)](0097-floor6-hold-for-renovation.md)                                                        | Proposed                 | 2026-08-31 |

@@ -4,19 +4,23 @@ import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { epicIssuesCommentMarker } from '../ci-recovery/markers.mjs';
 import {
   EPIC_LABEL,
   EPIC_REVIEW_LABEL,
   assertUniqueEpicIds,
+  commentEpicIssuesOnPullRequest,
   ensureLabelsExist,
   epicContentHash,
   epicLabel,
+  findEpicPullRequestNumber,
   nodeMarker,
   planAndCreateEpic,
   reviewMarker,
   topoSortNodes,
   validateEpicFile,
 } from './epic-create.mjs';
+import { blockedIssueNumbers } from './epic-reprocess.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -642,4 +646,282 @@ test('planAndCreateEpic does not try to recreate labels that already exist', asy
 
   const labelPosts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/labels'));
   assert.equal(labelPosts.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Mobile discoverability: maintainer assignment/@mention + PR summary comment
+// ---------------------------------------------------------------------------
+
+/**
+ * Harness for the PR-comment path: serves the epic file's commit history, the
+ * PRs associated with that commit, and the PR's existing comments.
+ */
+function prHarness({
+  commits = [{ sha: 'abc123' }],
+  pulls = [{ number: 42, merge_commit_sha: 'abc123', merged_at: '2026-01-01T00:00:00Z' }],
+  comments = [],
+} = {}) {
+  const calls = [];
+  const paginateFn = async (token, url) => {
+    calls.push(['paginate', token, url]);
+    if (url.includes('/comments')) return comments;
+    throw new Error(`unexpected paginate: ${url}`);
+  };
+  const requestFn = async (token, url, options = {}) => {
+    calls.push(['request', token, url, options]);
+    if (url.includes('/commits?path=')) return { data: commits };
+    if (/\/commits\/[^/]+\/pulls$/.test(url)) return { data: pulls };
+    if (options.method === 'POST' && url.includes('/comments')) {
+      comments.push({ id: comments.length + 1, body: options.body.body });
+      return { data: comments.at(-1) };
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  return { calls, paginateFn, requestFn, comments };
+}
+
+function reviewOnlyResult() {
+  return {
+    epicId: 'example-epic',
+    reviewIssueNumber: 100,
+    reviewApproved: false,
+    outcomes: [{ kind: 'review', action: 'created', issueNumber: 100 }],
+  };
+}
+
+function materializedResult() {
+  return {
+    epicId: 'example-epic',
+    reviewIssueNumber: 100,
+    reviewApproved: true,
+    outcomes: [
+      { kind: 'review', action: 'exists', issueNumber: 100 },
+      { kind: 'node', nodeId: 'slice-1', action: 'created', issueNumber: 101 },
+      { kind: 'node', nodeId: 'slice-2', action: 'created', issueNumber: 102 },
+    ],
+  };
+}
+
+test('the review issue is assigned to and @-mentions the maintainer', async () => {
+  const epic = exampleEpic();
+  const h = harness();
+  await planAndCreateEpic({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    maintainerLogin: 'nalfeo',
+  });
+
+  const post = h.calls.find((c) => c[0] === 'request' && c[2].endsWith('/issues'));
+  assert.deepEqual(post[3].body.assignees, ['nalfeo']);
+  assert.ok(post[3].body.body.includes('@nalfeo'));
+});
+
+test('node issues are assigned to and @-mention the maintainer without breaking Blocked-by parsing', async () => {
+  const epic = exampleEpic();
+  const h = harness([reviewIssueFor(epic, { state: 'closed', stateReason: 'completed' })]);
+  const result = await planAndCreateEpic({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    maintainerLogin: 'someone-else',
+  });
+
+  assert.equal(result.reviewApproved, true);
+  const posts = h.calls.filter((c) => c[0] === 'request' && c[2].endsWith('/issues'));
+  assert.equal(posts.length, 2);
+  for (const post of posts) {
+    assert.deepEqual(post[3].body.assignees, ['someone-else']);
+    assert.ok(post[3].body.body.includes('@someone-else'));
+  }
+  // epic-reprocess.mjs reads blockers from a line-anchored `^Blocked by ...$`
+  // match; the appended mention must not land on that line.
+  assert.deepEqual(blockedIssueNumbers({ body: posts[1][3].body.body }), [1, 100]);
+});
+
+test('commentEpicIssuesOnPullRequest lists the created issue numbers on the epic file PR', async () => {
+  const epic = exampleEpic();
+  const h = prHarness();
+  const result = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: './docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result: materializedResult(),
+    maintainerLogin: 'nalfeo',
+  });
+
+  assert.deepEqual(result, { posted: true, pullNumber: 42, issueNumbers: [100, 101, 102] });
+  const body = h.comments[0].body;
+  assert.ok(
+    body.startsWith(
+      epicIssuesCommentMarker('example-epic', epicContentHash(epic), [100, 101, 102]),
+    ),
+  );
+  assert.ok(body.includes('#100'));
+  assert.ok(body.includes('`slice-1`: #101'));
+  assert.ok(body.includes('`slice-2`: #102'));
+  assert.ok(body.includes('@nalfeo'));
+  // The path is normalized to the repo-relative form the commits API expects.
+  const commitsCall = h.calls.find((c) => String(c[2]).includes('/commits?path='));
+  assert.ok(
+    commitsCall[2].includes(
+      encodeURIComponent('docs/knowledge/epics/example-epic/example-epic.epic.json'),
+    ),
+  );
+});
+
+test('commentEpicIssuesOnPullRequest dedupes a review issue counted twice in outcomes', async () => {
+  // The non-human-close retry path can record the review issue via both an
+  // `exists` outcome and a `closed-by-non-human` outcome for the same run; the
+  // marker's issue-number set must not double-count it, or reopening the
+  // review issue would post a duplicate summary comment for an unchanged set.
+  const epic = exampleEpic();
+  const h = prHarness();
+  const result = {
+    epicId: 'example-epic',
+    reviewIssueNumber: 100,
+    reviewApproved: false,
+    outcomes: [
+      { kind: 'review', action: 'exists', issueNumber: 100 },
+      { kind: 'review', action: 'closed-by-non-human', issueNumber: 100 },
+    ],
+  };
+
+  const posted = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result,
+    maintainerLogin: 'nalfeo',
+  });
+  assert.deepEqual(posted, { posted: true, pullNumber: 42, issueNumbers: [100] });
+  assert.ok(
+    h.comments[0].body.startsWith(
+      epicIssuesCommentMarker('example-epic', epicContentHash(epic), [100]),
+    ),
+  );
+
+  const repeat = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result,
+    maintainerLogin: 'nalfeo',
+  });
+  assert.equal(repeat.posted, false);
+  assert.equal(h.comments.length, 1);
+});
+
+test('the PR summary comment is idempotent for the same issue set but posts again once nodes materialize', async () => {
+  const epic = exampleEpic();
+  const h = prHarness();
+  const args = {
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic,
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    maintainerLogin: 'nalfeo',
+  };
+
+  const first = await commentEpicIssuesOnPullRequest({ ...args, result: reviewOnlyResult() });
+  assert.equal(first.posted, true);
+  const repeat = await commentEpicIssuesOnPullRequest({ ...args, result: reviewOnlyResult() });
+  assert.equal(repeat.posted, false);
+  const afterMaterialize = await commentEpicIssuesOnPullRequest({
+    ...args,
+    result: materializedResult(),
+  });
+  assert.equal(afterMaterialize.posted, true);
+  assert.equal(h.comments.length, 2);
+  assert.ok(h.comments[0].body.includes('not created yet'));
+});
+
+test('no PR comment is attempted when the epic file has no associated pull request', async () => {
+  const h = prHarness({ pulls: [] });
+  const result = await commentEpicIssuesOnPullRequest({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    epic: exampleEpic(),
+    epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    result: materializedResult(),
+  });
+
+  assert.equal(result.posted, false);
+  assert.equal(h.comments.length, 0);
+});
+
+test('findEpicPullRequestNumber requires the PR whose own merge commit is this commit', async () => {
+  const h = prHarness({
+    commits: [{ sha: 'abc123' }],
+    pulls: [
+      { number: 7, merge_commit_sha: 'other-sha', merged_at: '2025-01-01T00:00:00Z' },
+      { number: 8, merge_commit_sha: 'abc123', merged_at: '2026-01-01T00:00:00Z' },
+    ],
+  });
+  assert.equal(
+    await findEpicPullRequestNumber({
+      requestFn: h.requestFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    }),
+    8,
+  );
+  assert.equal(
+    await findEpicPullRequestNumber({
+      requestFn: prHarness({ commits: [] }).requestFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    }),
+    null,
+  );
+});
+
+test('findEpicPullRequestNumber returns null when no associated PR has a matching merge commit', async () => {
+  // GitHub can associate a reusable commit SHA (e.g. an empty tree commit)
+  // with several old/merged PRs, none of which actually landed it.
+  const h = prHarness({
+    commits: [{ sha: 'abc123' }],
+    pulls: [
+      { number: 7, merge_commit_sha: 'other-sha-1', merged_at: '2025-01-01T00:00:00Z' },
+      { number: 9, merge_commit_sha: 'other-sha-2', merged_at: '2025-02-01T00:00:00Z' },
+    ],
+  });
+  assert.equal(
+    await findEpicPullRequestNumber({
+      requestFn: h.requestFn,
+      token: 'tok',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      epicPath: 'docs/knowledge/epics/example-epic/example-epic.epic.json',
+    }),
+    null,
+  );
 });

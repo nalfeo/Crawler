@@ -9,9 +9,10 @@
  * - DroppedItem: adds item to player's InventoryBag and removes the entity
  */
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
-import { DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';
+import { BuildCurrencyPickup, DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
+import { clearEntityStores } from '../helpers.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
 import { pushFloaterEvent } from '../../shared/floater-events.js';
@@ -65,6 +66,22 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       world.goldLedger.earnedFromDrops += goldValue;
       emitPickupSparkle(world, otherEid, 'gold', 'gold');
       removeEntity(world.ecs, otherEid);
+      continue;
+    }
+
+    // Floor-scoped build currency pickup
+    if (hasComponent(world.ecs, otherEid, BuildCurrencyPickup)) {
+      const value = world.stores.buildCurrencyPickup.value[otherEid] ?? 0;
+      const economy = world.floorExtendedState?.floor6Defense?.economy;
+      if (economy && value > 0) {
+        economy.balance += value;
+        economy.totalEarned += value;
+        economy.earnedFromPickups += value;
+        economy.pickupsCollected += 1;
+      }
+      emitPickupSparkle(world, otherEid, 'gold', 'gold');
+      removeEntity(world.ecs, otherEid);
+      clearEntityStores(world, otherEid);
       continue;
     }
 

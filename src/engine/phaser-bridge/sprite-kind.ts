@@ -4,6 +4,7 @@ import {
   AoeOnImpact,
   AreaDamage,
   BossChestEntity,
+  BuildCurrencyPickup,
   Enemy,
   EnemyProjectile,
   Gold,
@@ -83,6 +84,7 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';
+  if (hasComponent(world.ecs, eid, BuildCurrencyPickup)) return 'build_currency';
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
   if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';

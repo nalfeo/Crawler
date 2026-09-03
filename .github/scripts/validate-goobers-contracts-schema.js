@@ -178,6 +178,20 @@ export const outputV1 = {
           maximum: 5,
           description: "Apple complexity estimate; only non-null when task='plan'",
         },
+        idempotencyKey: {
+          type: ['string', 'null'],
+          description:
+            'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
+        },
+        parityStatus: {
+          type: ['string', 'null'],
+          enum: ['clean', 'divergence', null],
+          description: 'Shadow-mode parity verdict for legacy-vs-Goobers comparison',
+        },
+        decisionArtifact: {
+          type: ['string', 'null'],
+          description: 'Path or pointer to the deterministic shadow decision artifact',
+        },
         hardGate: {
           type: ['string', 'null'],
           description:
@@ -187,6 +201,12 @@ export const outputV1 = {
         blockedBy: {
           type: ['string', 'null'],
           description: "Comma-separated issue numbers (when status='blocked')",
+        },
+        disposition: {
+          type: ['string', 'null'],
+          enum: ['completed-existing-work', null],
+          description:
+            "Machine-readable no-work disposition; 'completed-existing-work' marks a claimed issue already satisfied by repository evidence",
         },
       },
       additionalProperties: false,
@@ -237,6 +257,7 @@ export const outputV1 = {
    * - outputs.verdict only non-null when task='plan'
    * - outputs.appleEstimate only non-null when task='plan'
    * - outputs.hardGate only non-null when task is 'plan', 'local-gate', 'pr-opened-gate', or 'review'
+   * - outputs.disposition='completed-existing-work' only when status='no-work'
    * - Deterministic gates fail on schema violation
    */
 };

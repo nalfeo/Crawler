@@ -1,0 +1,166 @@
+{
+  "overall": {
+    "score": 63,
+    "verdict": "needs-work",
+    "summary": "Deterministic contract is unscoped. 1 evidence-backed blocker(s); 2 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional but has several issues with spacing, alignment, and readability. Improvements are needed in visual hierarchy, spacing balance, and typography clarity to enhance usability and polish.",
+    "raw_score": 68
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 70,
+      "strengths": [
+        "The HUD elements are generally placed in expected locations (e.g., minimap in the top-right, health bar in the bottom-left).",
+        "The layout is clean and avoids excessive clutter."
+      ],
+      "issues": [
+        "The minimap is not optically centered within its container, appearing slightly off to the right.",
+        "The 'Floor 1' and timer panel is not aligned with the center of the screen, creating a visual imbalance."
+      ]
+    },
+    "spacing_balance": {
+      "score": 60,
+      "strengths": ["The spacing between ability slots is consistent."],
+      "issues": [
+        "The 'Auto Abilities' label is too close to the top of its container, leaving insufficient breathing room (approx. 2px gap).",
+        "The health bar text ('250 / 250') is cramped vertically, with minimal padding above and below the text."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 65,
+      "strengths": ["The minimap and health bar are visually distinct and easy to locate."],
+      "issues": [
+        "The 'Floor 1' and timer panel lacks emphasis and does not stand out as a key piece of information.",
+        "The 'Auto Abilities' section does not clearly differentiate between active and inactive abilities, making it harder to prioritize actions."
+      ]
+    },
+    "readability": {
+      "score": 62,
+      "strengths": [
+        "The pixel font is generally legible and consistent with the game's pixel art style."
+      ],
+      "issues": [
+        "The text in the health bar ('250 / 250') is small and could be difficult to read for some players.",
+        "The 'Auto Abilities' numbers (1-9) are small and lack contrast against their background."
+      ]
+    },
+    "icon_usage": {
+      "score": 70,
+      "strengths": ["Icons for currency and health are clear and recognizable."],
+      "issues": [
+        "The minimap lacks any markers or labels, reducing its utility.",
+        "The ability slots do not use icons, which could make them harder to identify at a glance."
+      ]
+    },
+    "typography_clarity": {
+      "score": 60,
+      "strengths": ["The pixel font is thematically appropriate and consistent across the HUD."],
+      "issues": [
+        "Text in the 'Auto Abilities' section is too small and lacks sufficient padding, reducing clarity.",
+        "The 'Floor 1' and timer text is not visually distinct enough to draw attention."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 75,
+      "strengths": [
+        "The pixel art style is consistent across the HUD elements.",
+        "The color palette aligns well with the game's aesthetic."
+      ],
+      "issues": [
+        "The 'Auto Abilities' section feels overly utilitarian and could benefit from more thematic embellishments."
+      ]
+    }
+  },
+  "blocking_findings": [
+    "The 'Auto Abilities' numbers (1-9) are too small and lack sufficient contrast, reducing readability."
+  ],
+  "recommended_fixes": [
+    "Increase the font size of the health bar text ('250 / 250') for better readability.",
+    "Add padding above and below the 'Auto Abilities' label to improve breathing room.",
+    "Increase the size and contrast of the numbers in the 'Auto Abilities' section.",
+    "Center the 'Floor 1' and timer panel horizontally to improve visual balance.",
+    "Add markers or labels to the minimap to enhance its utility."
+  ],
+  "precise_fixes": [
+    {
+      "element": "healthBar.text",
+      "action": "resize",
+      "dw": 0,
+      "dh": 4,
+      "reason": "Increase vertical padding to improve text readability."
+    },
+    {
+      "element": "autoAbilities.label",
+      "action": "pad",
+      "dx": 0,
+      "dy": 4,
+      "reason": "Add padding above the label to improve breathing room."
+    },
+    {
+      "element": "autoAbilities.numbers",
+      "action": "resize",
+      "dw": 2,
+      "dh": 2,
+      "reason": "Increase font size for better readability."
+    },
+    {
+      "element": "floorTimer.panel",
+      "action": "move",
+      "dx": -10,
+      "dy": 0,
+      "reason": "Center the panel horizontally for better visual balance."
+    },
+    {
+      "element": "minimap",
+      "action": "pad",
+      "dx": -5,
+      "dy": 0,
+      "reason": "Adjust padding to center the minimap within its container."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [
+    "The 'Auto Abilities' numbers (1-9) are too small and lack sufficient contrast, reducing readability."
+  ],
+  "advisory_taste_notes": [
+    "The text in the health bar ('250 / 250') is too small and cramped, making it difficult to read.",
+    "Add padding above and below the 'Auto Abilities' label to improve breathing room."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD (Safe Room, All Systems Unlocked)"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "5bc86b4302ce17f240d5bff6aa58a6e56fc7ee00971f07ab3565a8a2c2ef32d8",
+  "capture_unchanged_from_prior": false,
+  "score_derivation": {
+    "axis_mean": 66,
+    "penalty": 3,
+    "deterministic_blockers": 0,
+    "llm_blockers": 1,
+    "model_reported_score": 68,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": [
+      "The 'Auto Abilities' numbers (1-9) are too small and lack sufficient contrast, reducing readability."
+    ],
+    "recurring": []
+  }
+}

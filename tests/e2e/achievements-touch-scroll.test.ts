@@ -32,10 +32,20 @@ async function dragTouch(page: Page, from: { x: number; y: number }, to: { x: nu
       type: 'touchStart',
       touchPoints: [{ x: from.x, y: from.y, id: 1 }],
     });
-    await session.send('Input.dispatchTouchEvent', {
-      type: 'touchMove',
-      touchPoints: [{ x: to.x, y: to.y, id: 1 }],
-    });
+    for (let step = 1; step <= 6; step += 1) {
+      const progress = step / 6;
+      await session.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [
+          {
+            x: from.x + (to.x - from.x) * progress,
+            y: from.y + (to.y - from.y) * progress,
+            id: 1,
+          },
+        ],
+      });
+      await nextRenderedFrame(page);
+    }
     // Keep the moved touch active for at least one complete frame before
     // releasing it, otherwise `touchEnd` can remove the active touch before
     // gameplay's per-frame poll ever observes the drag.
@@ -85,7 +95,7 @@ describe('Achievements touch scrolling', () => {
     expect(opened.achievementsScrollIndex).toBe(0);
     expect(opened.playerFeet).not.toBeNull();
 
-    await dragTouch(page, { x: 640, y: 580 }, { x: 640, y: 280 });
+    await dragTouch(page, { x: 640, y: 430 }, { x: 640, y: 190 });
 
     const scrolled = await waitForState(page, (state) => state.achievementsScrollIndex > 0, {
       label: 'Awards panel scrolled by touch',

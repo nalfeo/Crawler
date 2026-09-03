@@ -673,8 +673,8 @@ A fresh Producer must be able to resume with zero conversation context:
 1. Read this plan, the schema, and `epic-state.json`.
 2. Run `npm run epic:status -- floor-2-equipment`.
 3. Query the parent/child issues, PRs, workflow runs, and referenced branches.
-4. Inspect every referenced handoff and review ledger; verify content hashes and
-   commits rather than trusting branch names.
+4. Inspect every referenced handoff; verify content hashes and commits rather
+   than trusting branch names.
 5. For any node with `stacked_work`, verify every recorded prerequisite PR/head,
    the one exact stack base, the dependent PR/branch/base identity, resync
    freshness, and any `rebase_to_main.pending` transition.

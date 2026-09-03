@@ -48,8 +48,8 @@ Good replay candidates:
 - Representative of the work you actually want to speed up. A pack of trivial PRs will
   show that nothing matters.
 
-The builder automatically drops `docs/**` from the recorded solution files — handoffs and
-review ledgers are not part of the engineering work being replayed.
+The builder automatically drops `docs/**` from the recorded solution files —
+handoffs are not part of the engineering work being replayed.
 
 ## Validation gates
 

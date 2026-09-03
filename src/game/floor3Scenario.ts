@@ -4,6 +4,7 @@ import {
   Companion,
   Enemy,
   Health,
+  Invincible,
   Player,
   PartySlot,
   Position,
@@ -52,7 +53,6 @@ import {
 } from '../shared/data/floor3/set-pieces.js';
 import { selectFloor3FinalFour, selectFloor3Studios } from '../shared/data/floor3/studios.js';
 import { getSetPieceDef, isStructuralSetPieceProp } from '../shared/set-piece-types.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import {
   BiomeType,
@@ -76,7 +76,6 @@ import {
   pruneAmbientOutOfRange,
   resolveAmbientSpawnPoint,
   scaleAmbientSpawnStats,
-  initializePlayerWeaponSkills,
 } from './floorScenario.js';
 import {
   mixSpawnZoneWeights,
@@ -93,7 +92,6 @@ import {
 } from './floor3Recruiting.js';
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
-import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
@@ -1302,32 +1300,8 @@ export function initializeFloor3Scenario(
   }
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
-    initializePlayerWeaponSkills(world, playerEid);
-  } else {
-    const starterWeaponPool = manifest.starterWeapons;
-    if (starterWeaponPool.length > 0) {
-      const weaponRng = new SeededRandomClass(
-        hashStringToSeed(`${world.seed}:floor3-starter-weapon`),
-      );
-      const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
-      if (picked) {
-        const weaponDef = getWeaponDef(picked);
-        if (weaponDef) {
-          equipStarterOrFallback(world, weaponDef.id, weaponDef);
-          initializePlayerWeaponSkills(world, playerEid);
-        } else {
-          const fallbackId = starterWeaponPool[0];
-          if (fallbackId) {
-            const fallbackDef = getWeaponDef(fallbackId);
-            if (fallbackDef) {
-              equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
-              initializePlayerWeaponSkills(world, playerEid);
-            }
-          }
-        }
-      }
-    }
   }
+  addComponent(world.ecs, playerEid, Invincible);
   if (manifest.props !== undefined) {
     const propsRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor3-props`));
     placePropsForFloor(world, world.floorMap!, manifest.props, propsRng);

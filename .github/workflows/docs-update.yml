@@ -173,6 +173,12 @@ jobs:
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
           branch: automation/docs-update
+          # The workflow_run path checks out a bare merge-train SHA, so HEAD is
+          # detached and the action cannot infer a base branch from it. Without
+          # an explicit base it hard-fails with "When the repository is checked
+          # out on a commit instead of a branch, the 'base' input must be
+          # supplied." The docs loop only ever targets main.
+          base: main
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
           commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
           # Restrict staging to the docs artifacts these steps mutate so the PR
@@ -215,6 +221,7 @@ jobs:
         with:
           token: ${{ secrets.CRAWLER_CI_PAT }}
           branch: automation/docs-update
+          base: main
           title: 'chore: archive handoffs, rebuild system index, promote mistakes'
           commit-message: 'chore: archive handoffs, rebuild system index, promote mistakes'
           add-paths: |

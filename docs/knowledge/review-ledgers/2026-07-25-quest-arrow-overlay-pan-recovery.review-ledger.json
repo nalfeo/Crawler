@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-25",
-  "session_slug": "quest-arrow-overlay-pan-recovery",
-  "task_title": "Recover quest arrow overlay pan regression",
-  "estimated_apples": 2,
-  "stages": {}
-}

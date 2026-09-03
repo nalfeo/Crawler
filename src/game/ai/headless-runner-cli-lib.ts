@@ -47,6 +47,17 @@ export interface CLIArgs {
   optionalPurchases: boolean | undefined;
   /** Explicit routing override; omitted inherits the selected floor's default. */
   settlementReturnRouting: boolean | undefined;
+  /**
+   * Explicit override for the default-off periodic rat attack-wave system;
+   * omitted inherits the registry default (`false`).
+   */
+  attackWaves: boolean | undefined;
+  /**
+   * Explicit override for Floor 1's default-off static spawners (two
+   * rats-nest + two slime-pool archetypes); omitted inherits the registry
+   * default (`false`). Only has effect with `--floor floor1`.
+   */
+  floor1Spawners: boolean | undefined;
   persona: PlayerPersona;
 }
 
@@ -93,6 +104,11 @@ function defaultCLIArgs(env: Readonly<Record<string, string | undefined>> = proc
         ? undefined
         : env.AI_SETTLEMENT_RETURN_ROUTING === '1' ||
           env.AI_SETTLEMENT_RETURN_ROUTING.toLowerCase() === 'true',
+    // `undefined` (not `false`): absent CLI overrides must fall through to the
+    // canonical registry default (`false`) instead of pinning a duplicate
+    // default here.
+    attackWaves: undefined,
+    floor1Spawners: undefined,
     persona: 'experienced_player',
   };
 }
@@ -203,6 +219,14 @@ export function parseArgs(
       args.settlementReturnRouting = true;
     } else if (arg === '--no-settlement-return-routing') {
       args.settlementReturnRouting = false;
+    } else if (arg === '--attack-waves') {
+      args.attackWaves = true;
+    } else if (arg === '--no-attack-waves') {
+      args.attackWaves = false;
+    } else if (arg === '--floor1-spawners') {
+      args.floor1Spawners = true;
+    } else if (arg === '--no-floor1-spawners') {
+      args.floor1Spawners = false;
     } else if (arg === '--persona') {
       // Handle unconditionally (no `&& next` guard) so a trailing `--persona`
       // fails fast instead of silently running as `experienced_player` and
@@ -247,19 +271,30 @@ export function parseArgs(
  * Collect the CLI's explicit feature-flag overrides. Flags the caller did not
  * set are omitted entirely (never passed as `undefined`) so the canonical
  * registry defaults in `feature-flags.ts` own the effective values.
+ *
+ * Deliberately does NOT special-case any `--floor` value (e.g. pinning
+ * `settlementReturnRouting` true on floor2): per-floor defaults are the
+ * registry's job (`resolveAiFeatureFlags` receives `floorId` as context), so
+ * duplicating that logic here would risk silently contradicting it.
  */
 export function resolveHeadlessRunnerOptions(
   args: Pick<
     CLIArgs,
-    'floorId' | 'settlementReturnRouting' | 'weaponPersonas' | 'optionalPurchases'
+    | 'settlementReturnRouting'
+    | 'weaponPersonas'
+    | 'optionalPurchases'
+    | 'attackWaves'
+    | 'floor1Spawners'
   >,
 ): Partial<AiFeatureFlags> {
-  const settlementReturnRouting =
-    args.settlementReturnRouting ?? (args.floorId === 'floor2' ? true : undefined);
   return {
     ...(args.weaponPersonas === undefined ? {} : { weaponPersonas: args.weaponPersonas }),
     ...(args.optionalPurchases === undefined ? {} : { optionalPurchases: args.optionalPurchases }),
-    ...(settlementReturnRouting === undefined ? {} : { settlementReturnRouting }),
+    ...(args.settlementReturnRouting === undefined
+      ? {}
+      : { settlementReturnRouting: args.settlementReturnRouting }),
+    ...(args.attackWaves === undefined ? {} : { attackWaves: args.attackWaves }),
+    ...(args.floor1Spawners === undefined ? {} : { floor1Spawners: args.floor1Spawners }),
   };
 }
 
@@ -303,9 +338,18 @@ Options:
                            (deterministic expected-gain-vs-travel/risk/opportunity
                            utility; periodically returns to settlement to run the
                            maintenance planner — equip/shop/claim/abilities;
-                           enabled by default for --floor floor2)
+                           default: on for --floor floor1, off elsewhere)
   --no-settlement-return-routing
                            Disable optional settlement-return route goal
+  --attack-waves           Enable the periodic rat attack-wave system (default: off).
+                           Only fires on a floor whose manifest declares the
+                           trashAttackWaves behavior flag (Floor 1, as of writing);
+                           inert elsewhere.
+  --no-attack-waves        Disable the periodic rat attack-wave system (default)
+  --floor1-spawners        Enable Floor 1's static spawners: two rats-nest + two
+                           slime-pool archetypes (default: off). Only has effect
+                           with --floor floor1.
+  --no-floor1-spawners     Disable Floor 1's static spawners (default)
   --pathing-mode <mode>   AI pathing A/B axis: ${PATHING_MODE_VALUES.join(', ')} (default: ${defaultPathingMode})
   --decision-mode <mode>  AI decision A/B axis: ${DECISION_MODE_VALUES.join(', ')} (default: ${AIDecisionMode.LEGACY})
   --persona <name>         Evaluator persona (default: experienced_player)

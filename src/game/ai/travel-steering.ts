@@ -13,7 +13,7 @@
  * That nudge oscillates (wasting path length) yet still eats contact hits, and
  * widening it trades win-rate for damage (proven by bisecting commit f4f538d7,
  * which widened the additive dodge and flipped winning seeds to deadline
- * timeouts). See `docs/knowledge/review-ledgers/2026-07-02-...`.
+ * timeouts). See `docs/knowledge/adr/2026-07-02-ai-travel-steering.md`.
  *
  * The fix is to replace the additive nudge with a proper *steering* controller:
  * each frame we fan out candidate headings around the objective direction, score
@@ -58,7 +58,7 @@ export interface TravelThreat {
 export interface TravelPickup {
   /** Stable entity id for debug / single-channel assertions. */
   eid?: number;
-  kind?: 'xp' | 'gold' | 'item';
+  kind?: 'xp' | 'gold' | 'item' | 'buildCurrency';
   x: number;
   y: number;
   /** Caller-precomputed desirability (item > xp > gold). */

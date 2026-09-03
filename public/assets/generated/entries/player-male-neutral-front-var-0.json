@@ -1,0 +1,133 @@
+{
+  "briefId": "player-male-neutral-front",
+  "spriteName": "player-male-neutral-front-var-0",
+  "assetPath": "generated/player-male-neutral-front-var-0.png",
+  "approvedAt": "2026-08-21T00:07:58.745Z",
+  "sourceRun": "generated/runs/player-male-neutral-front/2026-08-21T00-05-30-28138bc1",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 129,
+    "y": 189,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 129,
+      "y": 189,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 129,
+      "y": 189,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "8/8",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 129,
+        "y": 189
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-08-21T00:06:27.024Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The sprite captures the intended dark-fantasy dungeon-crawling contestant with a scrappy underdog vibe. The bobblehead proportions, muted green/brown tunic, and leather satchel strap align with the brief, and the design feels consistent with Crawler's authored style."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading stops, and production finish. The flat cel shading and clean dark outline are consistent with the approved style."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the references in terms of outline weight, palette depth, shading stops, and production finish. The flat cel shading and clean dark outline are consistent with the approved style."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite unambiguously depicts a male dungeon-crawling contestant in a neutral front-facing pose, with all specified attributes such as muted green/brown tunic, leather satchel strap, and sturdy boots accurately represented."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette reads clearly at game scale on a dark floor tile, with no visual integrity defects. The figure is instantly recognizable as a humanoid character in a neutral pose."
+    },
+    "figureFraming": {
+      "score": 5,
+      "rationale": "The character is fully framed, with the entire body visible from head to boot soles, centered on a strict vertical symmetry axis as required."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 4335,
+      "completionTokens": 355,
+      "totalTokens": 4690
+    }
+  },
+  "type": "character",
+  "contentHash": "0e5b3ac13c0efbb0381d96589ef77713214261b8e903e19841bd08f0d8960b7d",
+  "opaqueBounds": {
+    "x": 20,
+    "y": 20,
+    "width": 216,
+    "height": 335,
+    "canvasWidth": 256,
+    "canvasHeight": 375
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "character",
+      "player",
+      "male",
+      "neutral",
+      "fantasy",
+      "medieval",
+      "small",
+      "symmetrical",
+      "dungeon",
+      "arcane"
+    ]
+  }
+}

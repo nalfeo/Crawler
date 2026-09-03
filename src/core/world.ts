@@ -50,6 +50,7 @@ import {
   Damage,
   Projectile,
   XpGem,
+  BuildCurrencyPickup,
   Sprite,
   EnemyBehavior,
   Spawner,
@@ -60,6 +61,8 @@ import {
   SiegeHero,
   SiegeMinion,
   SiegeStructure,
+  BroadcastRelayRaider,
+  Floor6Tower,
   Lifetime,
   AreaDamage,
   AoeOnImpact,
@@ -105,6 +108,7 @@ import type {
   Floor3PoachOffer,
   Floor4ArenaState,
   Floor4GreenRoomState,
+  Floor6DefenseState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -170,6 +174,8 @@ export interface FloorExtendedState {
   floor4GreenRoom?: Floor4GreenRoomState;
   /** Floor 5 siege phase/latch skeleton state. */
   floor5Siege?: Floor5SiegeState;
+  /** Floor 6 authored defense geometry and phase skeleton. */
+  floor6Defense?: Floor6DefenseState;
 }
 
 /**
@@ -1043,6 +1049,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Damage, stores.damage);
   wireStore(ecs, Projectile, stores.projectile);
   wireStore(ecs, XpGem, stores.xpGem);
+  wireStore(ecs, BuildCurrencyPickup, stores.buildCurrencyPickup);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, Spawner, stores.spawner);
@@ -1053,6 +1060,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, SiegeMinion, stores.siegeMinion);
   wireStore(ecs, SiegeStructure, stores.siegeStructure);
   wireStore(ecs, SiegeHero, stores.siegeHero);
+  wireStore(ecs, BroadcastRelayRaider, stores.broadcastRelayRaider);
+  wireStore(ecs, Floor6Tower, stores.floor6Tower);
   wireStore(ecs, Lifetime, stores.lifetime);
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);

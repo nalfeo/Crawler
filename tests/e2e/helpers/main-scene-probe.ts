@@ -126,6 +126,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   getModalPickerContent: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
+  getIssueReportPickerContent: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getIssueReportPickerContent()),
   primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
     page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
   primeShopkeeperPostQuestStock: (
@@ -263,6 +265,8 @@ export const mainSceneProbe = {
         ),
       state,
     ),
+  pressGameOverKey: (page: Page, code: string): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.pressGameOverKey(value), code),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
   tapFloor3RosterButton: (page: Page): Promise<boolean> =>

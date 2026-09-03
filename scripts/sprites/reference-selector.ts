@@ -3,7 +3,7 @@
  * to Azure `images/edits` (gpt-image-1) as `image[]` reference parts, replacing
  * the retired Kenney placeholder spritesheets.
  *
- * Design goals (see plan + review ledger `2026-07-03-sprite-reference-selector`):
+ * Design goals:
  *   - **Our art only.** Candidates come from the generated manifest; Kenney is
  *     never a candidate, so it can never be selected.
  *   - **Favour same-`type` examples** (lamp → other `item`s) with injected

@@ -7,6 +7,7 @@ const logger = createLogger('engine:input-capture');
 
 interface InputCaptureOptions {
   getFollowOrigin?: () => { x: number; y: number } | undefined;
+  shouldIgnoreKeyboardEvent?: (event: KeyboardEvent) => boolean;
 }
 
 /**
@@ -58,12 +59,22 @@ export function createInputCapture(
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (options.shouldIgnoreKeyboardEvent?.(e)) {
+      keysDown.delete(e.code);
+      suppressedKeys.delete(e.code);
+      return;
+    }
     if (suppressedKeys.has(e.code)) {
       return;
     }
     keysDown.add(e.code);
   };
   const onKeyUp = (e: KeyboardEvent) => {
+    if (options.shouldIgnoreKeyboardEvent?.(e)) {
+      keysDown.delete(e.code);
+      suppressedKeys.delete(e.code);
+      return;
+    }
     keysDown.delete(e.code);
     suppressedKeys.delete(e.code);
   };

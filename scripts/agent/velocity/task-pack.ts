@@ -28,7 +28,7 @@ const DEFAULT_PACK_DIR = 'docs/knowledge/metrics/velocity/packs';
 const TEST_PATH_PATTERN = /^tests\//;
 
 /**
- * Documentation the PR happened to carry (handoffs, review ledgers). It is not
+ * Documentation the PR happened to carry (for example handoffs). It is not
  * something a replaying agent must reproduce, so it is excluded from the
  * solution-file list that gauges task difficulty.
  */

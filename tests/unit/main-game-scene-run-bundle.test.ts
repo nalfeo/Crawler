@@ -35,7 +35,7 @@ const emitRunBundle = new Function(
   `return function emitRunBundle(endReason) {${extractMethodBody(
     source,
     'private emitRunBundle(endReason: RunEndReason): void',
-  )}};`,
+  ).replace(/\(error: unknown\)/g, '(error)')}};`,
 )(createRunBundle, readLogsSince) as (this: unknown, endReason: RunEndReason) => void;
 
 const showRunSurveyIfNeeded = new Function(
@@ -56,6 +56,30 @@ const showRunSurveyIfNeeded = new Function(
     survey: unknown,
   ) => Promise<{ ok: boolean; used: 'fetch'; status?: number }>,
 ) => (this: unknown, endReason: 'death' | 'victory') => void;
+
+const isTerminalRunSurveyActive = new Function(
+  `return function canResetRunFromTerminalSurvey() {${extractMethodBody(
+    source,
+    'private isTerminalRunSurveyActive(): boolean',
+  )}};`,
+)() as (this: {
+  runSurveyUI?: { isVisible: () => boolean };
+  runSurveySubmitted: boolean;
+}) => boolean;
+
+const canResetRunFromTerminalSurvey = new Function(
+  `return function canResetRunFromTerminalSurvey() {${extractMethodBody(
+    source,
+    'private canResetRunFromTerminalSurvey(): boolean',
+  )}};`,
+)() as (this: { isTerminalRunSurveyActive: () => boolean }) => boolean;
+
+const flashActionStatus = new Function(
+  `return function flashActionStatus(message) {${extractMethodBody(
+    source,
+    'private flashActionStatus(message: string): void',
+  )}};`,
+)() as (this: unknown, message: string) => void;
 
 function makeSceneFixture() {
   const world = createTestWorld({ seed: 7 });
@@ -115,6 +139,24 @@ describe('MainGameScene terminal run bundle emission', () => {
       expect(onRunBundle).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('reports a synchronous onRunBundle throw through the upload failure path', async () => {
+    const { scene, onRunBundle } = makeSceneFixture();
+    const error = new Error('sync hook exploded');
+    onRunBundle.mockImplementationOnce(() => {
+      throw error;
+    });
+    const reportRunBundleUploadResult = vi.fn();
+    Object.assign(scene, { reportRunBundleUploadResult });
+
+    expect(() => emitRunBundle.call(scene, 'victory')).not.toThrow();
+    expect(onRunBundle).toHaveBeenCalledTimes(1);
+    await expect(
+      (scene as unknown as { lastRunBundleUpload?: Promise<unknown> }).lastRunBundleUpload,
+    ).rejects.toThrow('sync hook exploded');
+    await Promise.resolve();
+    expect(reportRunBundleUploadResult).toHaveBeenCalledWith(undefined, error);
+  });
 
   it('waits for the completion upload before appending survey feedback', async () => {
     let submitSurvey: ((survey: unknown) => Promise<boolean>) | undefined;
@@ -181,5 +223,84 @@ describe('MainGameScene terminal run bundle emission', () => {
     expect(source).toMatch(
       /onQuit: \(\) => \{[\s\S]*this\.emitRunBundle\('quit'\);[\s\S]*window\.location\.reload\(\);[\s\S]*\},/,
     );
+  });
+
+  it('blocks terminal reset actions while the end-of-run survey is still open', () => {
+    const scene = { isTerminalRunSurveyActive: () => true };
+    expect(canResetRunFromTerminalSurvey.call(scene)).toBe(false);
+
+    scene.isTerminalRunSurveyActive = () => false;
+    expect(canResetRunFromTerminalSurvey.call(scene)).toBe(true);
+  });
+
+  it('keeps terminal reset actions available after the survey closes', () => {
+    const visibleSurvey = {
+      runSurveyUI: { isVisible: () => true },
+      runSurveySubmitted: false,
+    };
+    expect(isTerminalRunSurveyActive.call(visibleSurvey)).toBe(true);
+
+    const submittedSurvey = {
+      runSurveyUI: { isVisible: () => true },
+      runSurveySubmitted: true,
+    };
+    expect(isTerminalRunSurveyActive.call(submittedSurvey)).toBe(false);
+
+    const hiddenSurvey = {
+      runSurveyUI: { isVisible: () => false },
+      runSurveySubmitted: false,
+    };
+    expect(isTerminalRunSurveyActive.call(hiddenSurvey)).toBe(false);
+  });
+
+  it('makes game-over restart and quit confirmation rejectable while the survey is active', () => {
+    expect(source).toMatch(
+      /onRestart: \(\) => \{[\s\S]*if \(!this\.canResetRunFromTerminalSurvey\(\)\) \{[\s\S]*return false;[\s\S]*window\.location\.reload\(\);[\s\S]*return true;[\s\S]*\},/,
+    );
+    expect(source).toMatch(
+      /onQuit: \(\) => \{[\s\S]*if \(!this\.canResetRunFromTerminalSurvey\(\)\) \{[\s\S]*return false;[\s\S]*this\.emitRunBundle\('quit'\);[\s\S]*window\.location\.reload\(\);[\s\S]*return true;[\s\S]*\},/,
+    );
+  });
+});
+
+describe('MainGameScene action status toast', () => {
+  it('does not let an older identical-message timer hide a newer display', () => {
+    interface MockActionStatusText {
+      text: string;
+      visible: boolean;
+      setText: (message: string) => MockActionStatusText;
+      setVisible: (visible: boolean) => MockActionStatusText;
+    }
+    const callbacks: Array<() => void> = [];
+    const actionStatusText: MockActionStatusText = {
+      text: '',
+      visible: false,
+      setText(message: string) {
+        this.text = message;
+        return this;
+      },
+      setVisible(visible: boolean) {
+        this.visible = visible;
+        return this;
+      },
+    };
+    const scene = {
+      actionStatusText,
+      actionStatusDisplayToken: 0,
+      time: {
+        delayedCall: vi.fn((_delayMs: number, callback: () => void) => {
+          callbacks.push(callback);
+        }),
+      },
+    };
+
+    flashActionStatus.call(scene, 'Issue submission failed');
+    flashActionStatus.call(scene, 'Issue submission failed');
+
+    callbacks[0]?.();
+    expect(actionStatusText.visible).toBe(true);
+
+    callbacks[1]?.();
+    expect(actionStatusText.visible).toBe(false);
   });
 });

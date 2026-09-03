@@ -46,12 +46,12 @@ threads with a second model, use
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, the apple-scaled review harness + ledger, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
 - Complement, don't duplicate, the existing automation:
   - **`parallel_validation`** (harness Code Review + CodeQL Security Scan) — run
     on PR changes; read its output before adding human-judgment findings.
-  - **`security-review.yml`** — npm audit, secret scan, CODEOWNERS, dependency
-    allowlist, dynamic-execution patterns, AI prompt-injection scan.
+  - **`security-review.yml`** — per-PR npm audit, secret scan, CODEOWNERS,
+    dependency allowlist, dynamic-execution patterns, AI prompt-injection scan.
   - **`nightly-mutation.yml`** — mutation score guards test effectiveness.
   - **`ci-recovery.yml`** — consolidates below-goal coverage, failed checks,
     merge conflicts, and exact review threads into one deduplicated Copilot task.
@@ -65,7 +65,7 @@ threads with a second model, use
   diff touching credentials, fetched content, dynamic execution, or prompt
   surfaces.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — the
-  apple-scaled stage requirements and the ledger schema you are checking against.
+  apple-scaled independent review requirements.
 
 ## Quality Criteria
 

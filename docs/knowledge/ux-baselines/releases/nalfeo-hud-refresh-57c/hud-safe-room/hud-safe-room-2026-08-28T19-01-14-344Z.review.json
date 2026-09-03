@@ -1,0 +1,142 @@
+{
+  "overall": {
+    "score": 63.1,
+    "verdict": "needs-work",
+    "summary": "Deterministic contract is unscoped. 1 evidence-backed blocker(s); 2 advisory taste note(s).",
+    "raw_verdict": "needs-work",
+    "raw_summary": "The HUD is functional but suffers from readability, spacing, and hierarchy issues. Improvements are needed in text clarity, alignment, and visual emphasis to meet shippable quality.",
+    "raw_score": 68
+  },
+  "axes": {
+    "layout_consistency": {
+      "score": 75,
+      "strengths": [
+        "Consistent panel styles and alignment across the HUD.",
+        "Minimap and ability bar are logically placed."
+      ],
+      "issues": ["The 'Floor 1' panel is slightly misaligned vertically compared to the minimap."]
+    },
+    "spacing_balance": {
+      "score": 65,
+      "strengths": [
+        "Adequate spacing between ability slots.",
+        "Minimap has sufficient breathing room."
+      ],
+      "issues": [
+        "The 'Floor 1' panel and the minimap feel disconnected due to excessive vertical spacing.",
+        "The health bar text is cramped within its container."
+      ]
+    },
+    "visual_hierarchy": {
+      "score": 60,
+      "strengths": ["Key elements like the minimap and ability bar are visually distinct."],
+      "issues": [
+        "The 'Floor 1' panel lacks emphasis and blends into the background.",
+        "The health bar and currency counters do not stand out enough."
+      ]
+    },
+    "readability": {
+      "score": 58,
+      "strengths": ["Pixel font is crisp and thematically appropriate."],
+      "issues": [
+        "The 'HUD Lab' text is too small and low-contrast, making it hard to read.",
+        "The health bar text is cramped and difficult to parse quickly."
+      ]
+    },
+    "icon_usage": {
+      "score": 70,
+      "strengths": ["Icons for currency and abilities are clear and recognizable."],
+      "issues": ["The minimap lacks any visible markers or context, reducing its utility."]
+    },
+    "typography_clarity": {
+      "score": 55,
+      "strengths": ["Font choice is consistent with the pixel art style."],
+      "issues": [
+        "Text in the health bar and 'HUD Lab' area is too small and lacks sufficient contrast.",
+        "The 'Floor 1' panel text could use more breathing room."
+      ]
+    },
+    "thematic_fidelity": {
+      "score": 80,
+      "strengths": [
+        "The pixel art style is cohesive and matches the game's theme.",
+        "Color palette is consistent and appropriate for the setting."
+      ],
+      "issues": [
+        "The 'HUD Lab' text feels out of place and does not match the rest of the HUD's style."
+      ]
+    }
+  },
+  "blocking_findings": ["The 'HUD Lab' text is unreadable due to low contrast and small size."],
+  "recommended_fixes": [
+    "Increase the size and contrast of the 'HUD Lab' text to improve readability.",
+    "Add more breathing room around the health bar text to make it easier to read.",
+    "Reduce the vertical spacing between the 'Floor 1' panel and the minimap to create a more cohesive layout.",
+    "Add markers or context to the minimap to make it more useful."
+  ],
+  "precise_fixes": [
+    {
+      "element": "HUD Lab text",
+      "action": "resize",
+      "dw": 0,
+      "dh": 4,
+      "reason": "Text is too small and difficult to read; increasing height will improve legibility."
+    },
+    {
+      "element": "health bar text",
+      "action": "pad",
+      "dx": 0,
+      "dy": 2,
+      "reason": "Text is cramped within the health bar; adding padding will improve readability."
+    },
+    {
+      "element": "Floor 1 panel",
+      "action": "move",
+      "dx": 0,
+      "dy": -10,
+      "reason": "Panel is too far from the minimap; reducing vertical spacing will improve layout cohesion."
+    }
+  ],
+  "suppressed_alignment_findings": 0,
+  "deterministic_blocking_findings": [],
+  "evidence_backed_blockers": [
+    "The 'HUD Lab' text is unreadable due to low contrast and small size."
+  ],
+  "advisory_taste_notes": [
+    "The health bar text is cramped and difficult to read.",
+    "Add more breathing room around the health bar text to make it easier to read."
+  ],
+  "deterministic_status": "unscoped",
+  "confidence": {
+    "level": "low",
+    "pixel_grounded": false,
+    "focused_interaction": false,
+    "basis": "Screenshot-only review without a valid measured geometry contract."
+  },
+  "capture_scope": {
+    "frame": "full",
+    "placement_context": "same-as-image",
+    "azure_images": ["HUD (Safe Room, All Systems Unlocked)"]
+  },
+  "geometry": {
+    "panel": null,
+    "tooltip": null,
+    "slots": []
+  },
+  "harvest_source": "declared",
+  "surface": "in-game HUD",
+  "capture_hash": "8a260b4f55281c17e965a4ccde55e4229388d7f154ec35d9720942e4313840ae",
+  "capture_unchanged_from_prior": false,
+  "score_derivation": {
+    "axis_mean": 66.1,
+    "penalty": 3,
+    "deterministic_blockers": 0,
+    "llm_blockers": 1,
+    "model_reported_score": 68,
+    "focused_hover_weights": false
+  },
+  "finding_trajectory": {
+    "new": ["The 'HUD Lab' text is unreadable due to low contrast and small size."],
+    "recurring": []
+  }
+}

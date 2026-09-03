@@ -4,7 +4,6 @@ import { execFileSync, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { evaluatePreflightChecks } from '../../../.github/extensions/copilot-guards/guards/pr-preflight.mjs';
-import { decideLedger } from '../../../.github/extensions/copilot-guards/guards/pr-review-ledger.mjs';
 import { mergeBaseWithMain } from '../../../.github/extensions/copilot-guards/lib/git.mjs';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -27,21 +26,13 @@ function handoffSlug(file) {
   return file.match(/^docs\/knowledge\/handoffs\/\d{4}-\d{2}-\d{2}-(.+)\.md$/)?.[1] ?? null;
 }
 
-function ledgerSlug(file) {
-  return (
-    file.match(
-      /^docs\/knowledge\/review-ledgers\/\d{4}-\d{2}-\d{2}-(.+)\.review-ledger\.json$/,
-    )?.[1] ?? null
-  );
-}
-
 function uniqueSlug(files, parser) {
   const slugs = [...new Set((files || []).map(parser).filter(Boolean))];
   return slugs.length === 1 ? slugs[0] : null;
 }
 
 export function inferTelemetrySessionSlug(_files, addedFiles = []) {
-  return uniqueSlug(addedFiles, handoffSlug) ?? uniqueSlug(addedFiles, ledgerSlug);
+  return uniqueSlug(addedFiles, handoffSlug);
 }
 
 function normalizeSlug(slug) {
@@ -102,7 +93,7 @@ function captureErrorDetail(err) {
   return 'telemetry:capture subprocess failed: unknown error';
 }
 
-export function summarizePrereqResult(preflightDecision, ledgerDecision) {
+export function summarizePrereqResult(preflightDecision) {
   const failures = [];
   const notes = [];
 
@@ -110,20 +101,6 @@ export function summarizePrereqResult(preflightDecision, ledgerDecision) {
     failures.push(section('pr-preflight', preflightDecision.reason || 'failed'));
   } else if (preflightDecision?.additionalContext) {
     notes.push(section('pr-preflight', preflightDecision.additionalContext));
-  }
-
-  if (ledgerDecision?.decision === 'deny') {
-    failures.push(section('pr-review-ledger', ledgerDecision.reason || 'failed'));
-  } else if (ledgerDecision?.decision === 'skip') {
-    notes.push(
-      section(
-        'pr-review-ledger',
-        ledgerDecision.additionalContext ||
-          'review ledger not required for docs/art/deps-only change.',
-      ),
-    );
-  } else if (ledgerDecision?.additionalContext) {
-    notes.push(section('pr-review-ledger', ledgerDecision.additionalContext));
   }
 
   return { ok: failures.length === 0, failures, notes };
@@ -139,11 +116,7 @@ export function evaluatePrereqs(files, addedFiles, cwd, opts = {}) {
     currentBranch: opts.currentBranch,
     mergeBase: opts.mergeBase,
   });
-  const ledgerDecision = decideLedger(files, addedFiles, {
-    cwd,
-    validateFile: opts.validateFile,
-  });
-  return summarizePrereqResult(preflightDecision, ledgerDecision);
+  return summarizePrereqResult(preflightDecision);
 }
 
 export function telemetryCaptureNote(cwd, files, addedFiles = [], opts = {}) {

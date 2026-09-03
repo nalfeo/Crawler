@@ -34,6 +34,8 @@ export const Projectile = {};
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
 export const XpGem = {};
+/** Floor-scoped build currency pickup; never mutates persistent player gold. */
+export const BuildCurrencyPickup = {};
 export const DroppedItem = {};
 export const Inventory = {};
 export const Sprite = {};
@@ -85,6 +87,15 @@ export const SiegeRam = {};
  * carries `Team` or `Health`, so it is untargetable and unkillable.
  */
 export const SiegeRouteMarker = {};
+/**
+ * Floor 6 route-following raider marker. Placed on demolition crew enemies that
+ * follow authored waypoint routes toward the Broadcast Relay. Distinct from
+ * `Enemy`/`EnemyBehavior` so normal AI systems skip them; `floor6RaiderSystem`
+ * owns their movement and `floor6DefenseDirectorSystem` owns their lifecycle.
+ */
+export const BroadcastRelayRaider = {};
+/** Floor 6 authored-site defensive tower. Combat is owned by floor6TowerSystem. */
+export const Floor6Tower = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -233,6 +244,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       lastFireMs: new Float32Array(maxEntities),
     },
     xpGem: { value: new Float32Array(maxEntities) },
+    buildCurrencyPickup: { value: new Float32Array(maxEntities) },
     projectile: {
       pierce: new Uint8Array(maxEntities),
       hitCount: new Uint8Array(maxEntities),
@@ -414,6 +426,40 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       /** World-space role anchor the Hero leashes to. */
       anchorX: new Float32Array(maxEntities),
       anchorY: new Float32Array(maxEntities),
+    },
+    broadcastRelayRaider: {
+      /**
+       * Index into the wave manifest; links this entity back to its authored
+       * release entry for telemetry and lifecycle tracking.
+       */
+      manifestIndex: new Uint16Array(maxEntities),
+      /**
+       * 0-based index of the current target waypoint in route.waypoints.
+       * Incremented as the raider passes each waypoint; clamped at
+       * waypoints.length to signal "reached relay".
+       */
+      waypointIndex: new Uint16Array(maxEntities),
+      /**
+       * Consecutive frames the raider has not moved (position compared to
+       * prevX/prevY). Reset on movement; used by floor6RaiderSystem for
+       * stall detection.
+       */
+      stillFrames: new Uint16Array(maxEntities),
+      /**
+       * Elapsed-ms timestamp of the last attack on the relay by this raider.
+       * Compared against raiderAttackCooldownMs to gate repeated hits.
+       */
+      lastRelayAttackMs: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevX: new Float32Array(maxEntities),
+      /** Position captured at end of previous tick, used to detect stalls. */
+      prevY: new Float32Array(maxEntities),
+    },
+    floor6Tower: {
+      /** Index into the immutable Floor 6 tower roster. */
+      towerIndex: new Uint16Array(maxEntities),
+      /** Elapsed-ms timestamp of this tower's most recent attack. */
+      lastAttackMs: new Float64Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),
