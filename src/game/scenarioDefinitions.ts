@@ -64,10 +64,12 @@ import {
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
-  confirmFloor5StairDescend,
+  getFloor5CaptureMarkerState,
   getFloor5RunOutcome,
   initializeFloor5Scenario,
+  requestFloor5ThroneCapture,
   siegeDirectorSystem,
+  siegeFinaleSystem,
   siegeHeroSystem,
   siegeMinionSystem,
   siegeRamSystem,
@@ -533,6 +535,18 @@ const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   confirmDescription: 'You win!',
 };
 
+/**
+ * Floor 5's exit prompt is the throne capture. The copy is deliberately explicit
+ * that this is a SEPARATE act from defeating Regent Emeritus (spec `FR7.4`).
+ */
+const FLOOR_5_CAPTURE_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  title: 'Claim the throne?',
+  subtitle: 'Regent Emeritus has been deposed.',
+  body: "Capturing the throne ends the siege and opens the Winner's Balcony.",
+  confirmLabel: 'Yes, capture the castle',
+  confirmDescription: 'Complete Floor 5.',
+};
+
 const FLOOR_6_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   title: 'Exit the renovated set?',
   subtitle: 'The Broadcast Relay is secured.',
@@ -951,7 +965,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor5',
       configureWorld: initializeFloor5Scenario,
-      onStairDescend: confirmFloor5StairDescend,
+      onStairDescend: (world: GameWorld) => requestFloor5ThroneCapture(world) === 'accepted',
       beforeEnemyAISystems: [
         companionAISystem,
         siegeMinionSystem,
@@ -961,12 +975,17 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
         // lane state, and BEFORE `enemyAISystem`/movement so the velocity it
         // sets is consumed the same tick.
         siegeRamSystem,
+        // Courtyard/throne stance runs last in the Floor 5 block: it reads the
+        // breach latch the ram system can still set this frame.
+        siegeFinaleSystem,
       ],
       afterSpawnerSystems: [siegeDirectorSystem],
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
+      getStairMarkerState: getFloor5CaptureMarkerState,
+      stairConfirmation: FLOOR_5_CAPTURE_CONFIRMATION,
     },
   ],
   [

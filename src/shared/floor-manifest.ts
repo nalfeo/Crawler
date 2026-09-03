@@ -60,6 +60,34 @@ const FLOOR5_RAM_ROUTE_LANDMARKS = [
   'breach-approach',
 ] as const satisfies readonly Floor5RamRouteLandmark[];
 
+/**
+ * Shared combat shape for every fixed Floor 5 finale actor (spec `R7`).
+ *
+ * Crown Auditor, courtyard defenders, Regent Emeritus and Regent summons are
+ * all authored with the same fields so the finale never grows a per-actor
+ * bespoke schema, and so the encounter can be retuned in one place during the
+ * balance slice.
+ */
+const floor5FinaleCombatantSchema = z
+  .object({
+    health: z.number().int().positive(),
+    attackDamage: z.number().int().positive(),
+    attackCooldownMs: z.number().int().positive(),
+    speedFtPerFrame: z.number().positive(),
+    /** Reach at which the actor stops closing and starts attacking. */
+    engageRangeFt: z.number().positive(),
+    /** How far the actor looks for a target from its own position. */
+    aggroRadiusFt: z.number().positive(),
+    /**
+     * How far from the actor's authored room anchor a target may be before the
+     * actor refuses to chase it. Matches the field-Hero leash convention: the
+     * gate is measured on the TARGET's position, not the actor's, so a leashed
+     * actor never oscillates on and off its own leash boundary while chasing.
+     */
+    leashRadiusFt: z.number().positive(),
+  })
+  .strict();
+
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
   readonly phase: {
@@ -1074,6 +1102,51 @@ export const floorManifestDefSchema = z
             recoveryDelayFrames: z.number().int().positive(),
           })
           .strict(),
+        /**
+         * Courtyard → throne finale (spec `R7`, `FR7.1`–`FR7.5`).
+         *
+         * Fixed authored encounters only: the Crown Auditor and Regent
+         * Emeritus are NEVER drawn from the field-Hero roster or its RNG
+         * stream (`FR6.5`), and every summon is bounded by `summons.maxTotal`.
+         * Spawn positions are derived from the authored castle layout, so
+         * nothing here is a world coordinate.
+         */
+        finale: z
+          .object({
+            crownAuditor: floor5FinaleCombatantSchema,
+            /** Authored courtyard defenders cleared alongside the Auditor (`FR7.2`). */
+            courtyardDefenders: floor5FinaleCombatantSchema
+              .extend({
+                count: z.number().int().positive(),
+              })
+              .strict(),
+            regentEmeritus: floor5FinaleCombatantSchema,
+            summons: floor5FinaleCombatantSchema
+              .extend({
+                /** Hard cap on summons for the whole encounter (`FR7.3`). */
+                maxTotal: z.number().int().positive(),
+                /** How many summons each telegraph releases. */
+                perTriggerCount: z.number().int().positive(),
+                /**
+                 * Regent health fractions that release a summon wave, in
+                 * strictly descending order. Fixed thresholds, never RNG.
+                 */
+                healthFractionTriggers: z.array(z.number().gt(0).lt(1)).min(1),
+                /**
+                 * Explicit telegraph window (`FR7.3`): frames between a wave
+                 * being announced and its summons appearing. Fixed, never RNG.
+                 */
+                telegraphFrames: z.number().int().positive(),
+              })
+              .strict(),
+            capture: z
+              .object({
+                /** Interaction reach around the throne capture point (`FR7.4`). */
+                interactionRadiusFt: z.number().positive(),
+              })
+              .strict(),
+          })
+          .strict(),
         rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
       })
       .strict()
@@ -1137,6 +1210,27 @@ export const floorManifestDefSchema = z
             path: ['ram', 'strike', 'wallCounterDamage'],
             message:
               'Floor 5 ram exchange must destroy exactly one ram before the outer wall breaches',
+          });
+        }
+        const summons = floor5.finale.summons;
+        const triggers = summons.healthFractionTriggers;
+        for (let index = 1; index < triggers.length; index += 1) {
+          if (triggers[index]! >= triggers[index - 1]!) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'summons', 'healthFractionTriggers', index],
+              message:
+                'Floor 5 Regent summon triggers must be strictly descending health fractions',
+            });
+            break;
+          }
+        }
+        if (summons.maxTotal < summons.perTriggerCount * triggers.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['finale', 'summons', 'maxTotal'],
+            message:
+              'Floor 5 Regent summon cap must admit every authored trigger wave (maxTotal >= perTriggerCount * triggers)',
           });
         }
       })

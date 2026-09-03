@@ -236,7 +236,7 @@ export function initializeFloor6Scenario(
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
 const FLOOR6_SELECTION_TRACE_LIMIT = 64;
 const FLOOR6_MAX_FIRE_RATE_BONUS = 0.9;
-export const FLOOR6_DEFENSE_GOAL_IDS = Object.freeze([
+const FLOOR6_DEFENSE_GOAL_IDS = Object.freeze([
   'floor6.defense.briefed',
   'floor6.defense.firstWaveCleared',
   'floor6.defense.firstBuildPlaced',

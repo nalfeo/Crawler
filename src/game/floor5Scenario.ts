@@ -17,8 +17,10 @@ import {
   applyDamage,
   BroadcastScore,
   Damage,
+  Enemy,
   Health,
   Immovable,
+  Player,
   Position,
   SiegeHero,
   SiegeMinion,
@@ -53,7 +55,11 @@ import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { TeamId } from '../shared/constants.js';
 import type {
+  Floor5CaptureAttemptResult,
   Floor5FieldHeroCardEntry,
+  Floor5FinaleActorKind,
+  Floor5FinaleActorState,
+  Floor5FinaleState,
   Floor5FieldHeroRole,
   Floor5RamComponentClass,
   Floor5RamRouteLandmark,
@@ -452,6 +458,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     engineState: 'LOCKED',
     breachState: 'SEALED',
     ram: createFloor5RamState(world, config),
+    finale: createFloor5FinaleState(),
     breach: {
       latched: false,
       committedFrame: null,
@@ -1582,8 +1589,12 @@ function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.checkpointCleared, state.tasks.checkpointCleared);
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.ramBuilt, state.engineState === 'READY');
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.wallBreached, state.breachState === 'BREACHED');
-  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.courtyardCleared, false);
-  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.regentDefeated, false);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.courtyardCleared, state.finale.courtyardCleared);
+  setGoalFlag(
+    world,
+    FLOOR5_SIEGE_GOAL_IDS.regentDefeated,
+    state.finale.regentDefeatedFrame !== null,
+  );
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.castleCaptured, state.phase.kind === 'CAPTURED');
 }
 
@@ -2195,6 +2206,718 @@ function sealFloor5BreachIngress(
   state.breach.barrierId = handle.id;
 }
 
+// ---------------------------------------------------------------------------
+// Courtyard → throne finale (spec `R7` / `FR7.1`–`FR7.5`)
+// ---------------------------------------------------------------------------
+
+function getFloor5FinaleConfig() {
+  return getFloor5Config().finale;
+}
+
+function floor5CastleLayout(): SiegeCastleLayout {
+  return computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+}
+
+function floor5TileSizeFt(world: GameWorld): number {
+  return world.floorMap?.config.tileSizeFt ?? buildFloor5MapConfig().tileSizeFt;
+}
+
+/** Tile coordinates → world feet, using the same centring rule as structures. */
+function floor5TileToWorld(tileX: number, tileY: number, tileSizeFt: number) {
+  return { x: tileX * tileSizeFt + tileSizeFt / 2, y: tileY * tileSizeFt + tileSizeFt / 2 };
+}
+
+function createFloor5FinaleState(): Floor5FinaleState {
+  return {
+    courtyardEnteredFrame: null,
+    courtyardActors: [],
+    courtyardCleared: false,
+    courtyardClearedFrame: null,
+    auditorDefeatedFrame: null,
+    defendersDefeated: 0,
+    throneDoorBarrierId: null,
+    throneDoorOpenedFrame: null,
+    throneActors: [],
+    regentSpawnedFrame: null,
+    regentDefeatedFrame: null,
+    summonsReleased: 0,
+    summonsRetired: 0,
+    nextSummonTriggerIndex: 0,
+    pendingSummonWaves: [],
+    summonsTelegraphed: 0,
+    capturePoint: null,
+    captureAvailable: false,
+    captureAvailableFrame: null,
+    captureAttempts: 0,
+    rejectedCaptureAttempts: 0,
+    pendingCaptureFrame: null,
+    captured: false,
+    capturedFrame: null,
+    royalAuthorityDisabled: false,
+    hostilesClearedOnCapture: 0,
+    balconyBarrierId: null,
+    balconyOpenedFrame: null,
+  };
+}
+
+interface Floor5FinaleCombatantConfig {
+  readonly health: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+  readonly speedFtPerFrame: number;
+  readonly engageRangeFt: number;
+  readonly aggroRadiusFt: number;
+  /**
+   * Target-position leash: a target further than this from the actor's authored
+   * anchor is never chased. Mirrors {@link steerFloor5Hero}'s leash so a
+   * finale actor cannot be dragged out of its room, and cannot oscillate across
+   * its own leash boundary mid-chase.
+   */
+  readonly leashRadiusFt: number;
+}
+
+function floor5FinaleCombatant(kind: Floor5FinaleActorKind): Floor5FinaleCombatantConfig {
+  const finale = getFloor5FinaleConfig();
+  switch (kind) {
+    case 'crown-auditor':
+      return finale.crownAuditor;
+    case 'courtyard-defender':
+      return finale.courtyardDefenders;
+    case 'regent-emeritus':
+      return finale.regentEmeritus;
+    case 'regent-summon':
+    default:
+      return finale.summons;
+  }
+}
+
+function floor5FinaleActorIsAlive(world: GameWorld, actor: Floor5FinaleActorState): boolean {
+  return (
+    actor.eid > 0 &&
+    entityExists(world.ecs, actor.eid) &&
+    hasComponent(world.ecs, actor.eid, Health) &&
+    (world.stores.health.current[actor.eid] ?? 0) > 0
+  );
+}
+
+function liveFloor5FinaleActors(state: Floor5SiegeState): Floor5FinaleActorState[] {
+  return [...state.finale.courtyardActors, ...state.finale.throneActors].filter(
+    (actor) => actor.defeatedFrame === null,
+  );
+}
+
+/**
+ * Spawn one fixed finale actor.
+ *
+ * Finale actors deliberately carry `Enemy` (so the player's weapons — and the
+ * headless BT provider's target selection — can actually engage them), with
+ * zero generic contact damage because attacks are owned by
+ * {@link applyFloor5FinaleAttacks}. They do NOT carry `EnemyBehavior`, so
+ * `enemyAISystem` never double-steers them: their stance is owned exclusively
+ * by {@link siegeFinaleSystem}.
+ */
+function spawnFloor5FinaleActor(
+  world: GameWorld,
+  kind: Floor5FinaleActorKind,
+  position: { readonly x: number; readonly y: number },
+  anchor: { readonly x: number; readonly y: number },
+): Floor5FinaleActorState {
+  const config = floor5FinaleCombatant(kind);
+  const eid = createEntity(world);
+  const body = PHYSICS_BODIES['mob-baseline'];
+  addComponent(world.ecs, eid, set(Position, { x: position.x, y: position.y }));
+  addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+  addComponent(world.ecs, eid, set(Health, { current: config.health, max: config.health }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Damage, {
+      amount: 0,
+      cooldownMs: config.attackCooldownMs,
+      lastFireMs: -config.attackCooldownMs,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(world.ecs, eid, set(Team, { id: FLOOR5_TEAM_CODE.enemy }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: body.radius, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: body.weight }));
+  addComponent(world.ecs, eid, Enemy);
+  setEnemyAppearanceKey(world, eid, `floor5-${kind}`);
+  return {
+    kind,
+    eid,
+    health: config.health,
+    maxHealth: config.health,
+    spawnedFrame: world.frameCount,
+    defeatedFrame: null,
+    anchorX: anchor.x,
+    anchorY: anchor.y,
+  };
+}
+
+/** Retire a live finale actor without crediting it as a player defeat. */
+function retireFloor5FinaleActor(world: GameWorld, actor: Floor5FinaleActorState): boolean {
+  const wasLive = floor5FinaleActorIsAlive(world, actor);
+  if (actor.eid > 0 && entityExists(world.ecs, actor.eid)) {
+    clearEntityStores(world, actor.eid);
+    removeEntity(world.ecs, actor.eid);
+  }
+  actor.eid = 0;
+  actor.health = 0;
+  return wasLive;
+}
+
+function floor5PlayerEntity(world: GameWorld): number | null {
+  const playerEid = query(world.ecs, [Player, Position, Health])[0];
+  if (playerEid === undefined || (world.stores.health.current[playerEid] ?? 0) <= 0) {
+    return null;
+  }
+  return playerEid;
+}
+
+/**
+ * Finale stance: engage the player when they are inside the actor's aggro
+ * radius AND still inside the actor's leash of its authored anchor; otherwise
+ * fall back to the anchor. Identical rule for every kind, so a headless test can
+ * assert observed position against the authored anchor.
+ */
+function steerFloor5FinaleActor(world: GameWorld, actor: Floor5FinaleActorState): void {
+  const config = floor5FinaleCombatant(actor.kind);
+  const playerEid = floor5PlayerEntity(world);
+  const px = playerEid === null ? 0 : (world.stores.position.x[playerEid] ?? 0);
+  const py = playerEid === null ? 0 : (world.stores.position.y[playerEid] ?? 0);
+  // Leash is measured on the TARGET's offset from the anchor, matching
+  // `steerFloor5Hero`: the actor only chases a player who is inside its room,
+  // which bounds the chase without letting the actor flicker in and out of
+  // engagement as it approaches its own leash boundary.
+  const engages =
+    playerEid !== null &&
+    distanceBetween(world, actor.eid, playerEid) <= config.aggroRadiusFt &&
+    Math.hypot(px - actor.anchorX, py - actor.anchorY) <= config.leashRadiusFt;
+
+  if (engages && playerEid !== null) {
+    if (distanceBetween(world, actor.eid, playerEid) <= config.engageRangeFt) {
+      setComponent(world.ecs, actor.eid, Velocity, { x: 0, y: 0 });
+      return;
+    }
+    stepFloor5Movement(world, actor.eid, px, py, config.speedFtPerFrame);
+    return;
+  }
+
+  const distanceToAnchor = Math.hypot(
+    (world.stores.position.x[actor.eid] ?? 0) - actor.anchorX,
+    (world.stores.position.y[actor.eid] ?? 0) - actor.anchorY,
+  );
+  if (distanceToAnchor <= FLOOR5_HERO_ANCHOR_SLACK_FT) {
+    setComponent(world.ecs, actor.eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  stepFloor5Movement(world, actor.eid, actor.anchorX, actor.anchorY, config.speedFtPerFrame);
+}
+
+/**
+ * Finale attacks, executed on the same post-damage authority tick as the minion
+ * and Hero attacks so every Floor 5 actor resolves through one `applyDamage`
+ * path.
+ */
+function applyFloor5FinaleAttacks(world: GameWorld, state: Floor5SiegeState): void {
+  const playerEid = floor5PlayerEntity(world);
+  if (playerEid === null) return;
+  for (const actor of liveFloor5FinaleActors(state)) {
+    if (!floor5FinaleActorIsAlive(world, actor)) continue;
+    const config = floor5FinaleCombatant(actor.kind);
+    if (distanceBetween(world, actor.eid, playerEid) > config.engageRangeFt) continue;
+    const lastFireMs = world.stores.damage.lastFireMs[actor.eid] ?? -Infinity;
+    if (world.elapsedMs - lastFireMs < config.attackCooldownMs) continue;
+    world.stores.damage.lastFireMs[actor.eid] = world.elapsedMs;
+    applyDamage(
+      world,
+      playerEid,
+      config.attackDamage,
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+      {
+        origin: 'environment',
+        affinity: 'physical',
+        scaleWithPrimary: false,
+        canCrit: false,
+        delivery: 'contact',
+        sourceX: world.stores.position.x[actor.eid] ?? 0,
+        sourceY: world.stores.position.y[actor.eid] ?? 0,
+        sourceEid: actor.eid,
+      },
+    );
+  }
+}
+
+/**
+ * Seal the throne doors and the Winner's Balcony at floor init.
+ *
+ * `SiegeCastleGenerator` carves both rooms as passable, so without these
+ * barriers a player could walk past the courtyard encounter straight to the
+ * throne (and past the Regent straight to the exit). Same mechanism as
+ * {@link sealFloor5BreachIngress}: a dynamic poly barrier that blocks movement,
+ * projectiles and `findTilePath`, dropped in one transaction when the gate is
+ * legitimately earned (spec `FR7.2`).
+ */
+function sealFloor5FinaleIngress(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  floorMap: { readonly tileMap: { index(x: number, y: number): number } },
+  layout: SiegeCastleLayout,
+): void {
+  const sealDoorColumn = (bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly height: number;
+  }): number | null => {
+    const tiles: number[] = [];
+    for (let y = bounds.y; y < bounds.y + bounds.height; y += 1) {
+      tiles.push(floorMap.tileMap.index(bounds.x, y));
+    }
+    return tiles.length === 0 ? null : createPolyBarrier(world, tiles, 'wall').id;
+  };
+  state.finale.throneDoorBarrierId = sealDoorColumn(layout.throneRoom);
+  state.finale.balconyBarrierId = sealDoorColumn(layout.winnersBalcony);
+}
+
+/**
+ * Breach → courtyard handoff (spec `FR7.1`). Reads the one-shot breach latch
+ * rather than re-deriving "is the wall down", so the courtyard can only ever
+ * open through the sanctioned breach transaction.
+ */
+function openFloor5Courtyard(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  const layout = floor5CastleLayout();
+  const tileSizeFt = floor5TileSizeFt(world);
+  const courtyard = centerOf(layout.courtyard);
+  const auditorAnchor = floor5TileToWorld(courtyard.x, courtyard.y, tileSizeFt);
+  finale.courtyardActors.push(
+    spawnFloor5FinaleActor(world, 'crown-auditor', auditorAnchor, auditorAnchor),
+  );
+
+  // Defenders hold an authored fan around the Auditor, derived from the room so
+  // the encounter is identical on every seed (spec `FR7.1` — fixed encounter).
+  const defenderCount = getFloor5FinaleConfig().courtyardDefenders.count;
+  const spreadTiles = Math.max(1, Math.floor(layout.courtyard.height / (defenderCount + 1)));
+  for (let index = 0; index < defenderCount; index += 1) {
+    const offset = index - (defenderCount - 1) / 2;
+    const anchor = floor5TileToWorld(
+      courtyard.x - 2,
+      courtyard.y + offset * spreadTiles,
+      tileSizeFt,
+    );
+    finale.courtyardActors.push(
+      spawnFloor5FinaleActor(world, 'courtyard-defender', anchor, anchor),
+    );
+  }
+
+  finale.courtyardEnteredFrame = world.frameCount;
+  finale.capturePoint = floor5TileToWorld(
+    centerOf(layout.throneRoom).x,
+    centerOf(layout.throneRoom).y,
+    tileSizeFt,
+  );
+  transitionFloor5Phase(world, state, { kind: 'COURTYARD' }, 'breach-latched-courtyard-open');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'The courtyard is open — the Crown Auditor is waiting.',
+    eventId: 'floor5-courtyard-opened',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+/** Open the throne doors and field Regent Emeritus (spec `FR7.2`/`FR7.3`). */
+function openFloor5ThroneRoom(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (finale.throneDoorBarrierId !== null) {
+    dropBarrier(world, finale.throneDoorBarrierId);
+    finale.throneDoorBarrierId = null;
+  }
+  finale.throneDoorOpenedFrame = world.frameCount;
+
+  const layout = floor5CastleLayout();
+  const tileSizeFt = floor5TileSizeFt(world);
+  const throne = centerOf(layout.throneRoom);
+  const anchor = floor5TileToWorld(throne.x, throne.y, tileSizeFt);
+  finale.throneActors.push(spawnFloor5FinaleActor(world, 'regent-emeritus', anchor, anchor));
+  finale.regentSpawnedFrame = world.frameCount;
+  transitionFloor5Phase(world, state, { kind: 'THRONE' }, 'courtyard-cleared-throne-open');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'The throne doors give way. Regent Emeritus takes the floor.',
+    eventId: 'floor5-throne-opened',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+function floor5RegentActor(state: Floor5SiegeState): Floor5FinaleActorState | undefined {
+  return state.finale.throneActors.find((actor) => actor.kind === 'regent-emeritus');
+}
+
+/**
+ * Bounded summon TELEGRAPH (spec `FR7.3`).
+ *
+ * Crossing an authored, strictly-descending Regent health fraction never spawns
+ * anything on the same frame: it queues a wave and announces it, and
+ * {@link releaseFloor5RegentSummons} spawns it `telegraphFrames` later. The
+ * wave's count is reserved against `maxTotal` at telegraph time, so a queued
+ * wave can never push the encounter over the authored cap — which is enforced
+ * here AND validated at manifest-load time.
+ */
+function telegraphFloor5RegentSummons(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  regent: Floor5FinaleActorState,
+): void {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig().summons;
+  const fraction = regent.maxHealth > 0 ? regent.health / regent.maxHealth : 0;
+  while (
+    finale.nextSummonTriggerIndex < config.healthFractionTriggers.length &&
+    fraction <= (config.healthFractionTriggers[finale.nextSummonTriggerIndex] ?? 0)
+  ) {
+    const triggerIndex = finale.nextSummonTriggerIndex;
+    finale.nextSummonTriggerIndex += 1;
+    const remaining = config.maxTotal - finale.summonsTelegraphed;
+    const count = Math.min(config.perTriggerCount, Math.max(0, remaining));
+    if (count === 0) continue;
+    finale.summonsTelegraphed += count;
+    finale.pendingSummonWaves.push({
+      triggerIndex,
+      telegraphedFrame: world.frameCount,
+      releaseFrame: world.frameCount + config.telegraphFrames,
+      count,
+    });
+    pushAnnouncement(world.announcements, {
+      kind: 'bossAbilityCast',
+      archetypeIndex: -1,
+      text: 'Regent Emeritus calls the household guard.',
+      eventId: `floor5-regent-summon-telegraph-${triggerIndex}`,
+      durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+      elapsedMs: world.elapsedMs,
+    });
+  }
+}
+
+/**
+ * Spawn every telegraphed wave whose authored release frame has arrived.
+ * Summon positions are fixed ring offsets around the Regent's anchor, so the
+ * encounter never touches an RNG stream (spec `R8`).
+ */
+function releaseFloor5RegentSummons(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  regent: Floor5FinaleActorState,
+): void {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig().summons;
+  const tileSizeFt = floor5TileSizeFt(world);
+  for (let waveIndex = finale.pendingSummonWaves.length - 1; waveIndex >= 0; waveIndex -= 1) {
+    const wave = finale.pendingSummonWaves[waveIndex]!;
+    if (world.frameCount < wave.releaseFrame) continue;
+    finale.pendingSummonWaves.splice(waveIndex, 1);
+    for (let index = 0; index < wave.count; index += 1) {
+      if (finale.summonsReleased >= config.maxTotal) break;
+      // Authored, deterministic ring offsets around the Regent's anchor.
+      const angle = ((wave.triggerIndex * config.perTriggerCount + index) * Math.PI) / 2;
+      const position = {
+        x: regent.anchorX + Math.cos(angle) * tileSizeFt * 2,
+        y: regent.anchorY + Math.sin(angle) * tileSizeFt * 2,
+      };
+      finale.throneActors.push(
+        spawnFloor5FinaleActor(world, 'regent-summon', position, {
+          x: regent.anchorX,
+          y: regent.anchorY,
+        }),
+      );
+      finale.summonsReleased += 1;
+    }
+  }
+}
+
+/**
+ * Throne capture transaction (spec `FR7.5`).
+ *
+ * Every observable consequence lands in ONE transaction, exactly once: disable
+ * royal authority, clear every remaining hostile the finale owns, open the
+ * Winner's Balcony, and latch `CAPTURED`. Re-entry is impossible because
+ * `captured` is checked first and never cleared.
+ */
+function commitFloor5ThroneCapture(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (finale.captured) return;
+  finale.captured = true;
+  finale.capturedFrame = world.frameCount;
+  finale.pendingCaptureFrame = null;
+
+  // 1. Royal authority goes down first: nothing may cast after the capture.
+  finale.royalAuthorityDisabled = true;
+  setMobAbilitiesEnabled(world, false);
+
+  // 2. Clear every hostile the finale owns, plus any lane leftovers.
+  let cleared = 0;
+  for (const actor of [...finale.courtyardActors, ...finale.throneActors]) {
+    if (retireFloor5FinaleActor(world, actor)) {
+      cleared += 1;
+      if (actor.defeatedFrame === null) {
+        actor.defeatedFrame = world.frameCount;
+        if (actor.kind === 'regent-summon') {
+          finale.summonsRetired += 1;
+        }
+      }
+    }
+  }
+  cleared += clearFloor5Minions(world, state);
+  finale.hostilesClearedOnCapture = cleared;
+
+  // 3. The Winner's Balcony exit only ever opens as part of this transaction.
+  if (finale.balconyBarrierId !== null) {
+    dropBarrier(world, finale.balconyBarrierId);
+    finale.balconyBarrierId = null;
+  }
+  finale.balconyOpenedFrame = world.frameCount;
+
+  // 4. Latch the terminal phase last so every observer that reads `CAPTURED`
+  //    also sees a fully cleaned-up world.
+  recordFloor5PhaseTransition(world, state, { kind: 'CAPTURED' }, 'throne-captured');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: "The castle is yours. The Winner's Balcony is open.",
+    eventId: 'floor5-throne-captured',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+/**
+ * Post-damage finale authority, called from {@link floor5ObjectiveTick} AFTER
+ * the Command Post / breach precedence so a same-tick base loss always outranks
+ * a same-tick capture.
+ */
+function advanceFloor5Finale(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (!state.breach.latched || finale.captured) {
+    return;
+  }
+
+  if (finale.courtyardEnteredFrame === null) {
+    openFloor5Courtyard(world, state);
+    return;
+  }
+
+  // Defeat resolution for every fielded actor. Tolerates both "entity removed
+  // by `healthSystem`" and "entity still present at 0 HP".
+  for (const actor of [...finale.courtyardActors, ...finale.throneActors]) {
+    if (actor.defeatedFrame !== null) continue;
+    if (floor5FinaleActorIsAlive(world, actor)) {
+      actor.health = Math.max(0, world.stores.health.current[actor.eid] ?? 0);
+      continue;
+    }
+    actor.health = 0;
+    actor.eid = 0;
+    actor.defeatedFrame = world.frameCount;
+    if (actor.kind === 'crown-auditor') {
+      finale.auditorDefeatedFrame = world.frameCount;
+    } else if (actor.kind === 'courtyard-defender') {
+      finale.defendersDefeated += 1;
+    } else if (actor.kind === 'regent-emeritus') {
+      finale.regentDefeatedFrame = world.frameCount;
+    }
+  }
+
+  if (
+    !finale.courtyardCleared &&
+    finale.courtyardActors.length > 0 &&
+    finale.courtyardActors.every((actor) => actor.defeatedFrame !== null)
+  ) {
+    finale.courtyardCleared = true;
+    finale.courtyardClearedFrame = world.frameCount;
+    openFloor5ThroneRoom(world, state);
+    return;
+  }
+
+  const regent = floor5RegentActor(state);
+  if (!regent) {
+    return;
+  }
+  if (regent.defeatedFrame === null) {
+    // Telegraph first, then release only waves whose authored window elapsed.
+    telegraphFloor5RegentSummons(world, state, regent);
+    releaseFloor5RegentSummons(world, state, regent);
+    return;
+  }
+
+  // The Regent fell before a telegraphed wave landed: the wave dies with the
+  // encounter rather than spawning onto a defeated boss.
+  finale.pendingSummonWaves.length = 0;
+
+  // Regent down: retire the bounded summons with the encounter, then enable the
+  // SEPARATE capture interaction (spec `FR7.4` — defeating the Regent never
+  // captures the throne by itself).
+  if (!finale.captureAvailable) {
+    for (const actor of finale.throneActors) {
+      if (actor.kind !== 'regent-summon' || actor.defeatedFrame !== null) continue;
+      if (retireFloor5FinaleActor(world, actor)) {
+        finale.summonsRetired += 1;
+      }
+      actor.defeatedFrame = world.frameCount;
+    }
+    finale.captureAvailable = true;
+    finale.captureAvailableFrame = world.frameCount;
+    pushAnnouncement(world.announcements, {
+      kind: 'bossAbilityCast',
+      archetypeIndex: -1,
+      text: 'Regent Emeritus is down. Claim the throne to capture the castle.',
+      eventId: 'floor5-capture-available',
+      durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+      elapsedMs: world.elapsedMs,
+    });
+  }
+
+  if (finale.pendingCaptureFrame !== null) {
+    commitFloor5ThroneCapture(world, state);
+  }
+}
+
+/**
+ * Floor 5 courtyard/throne finale stance system (spec `R7`).
+ *
+ * Deliberately NOT a damage or latch authority: spawning, defeat resolution,
+ * summon release and the capture transaction all stay in
+ * {@link floor5ObjectiveTick} so there is exactly one ordering site.
+ */
+export function siegeFinaleSystem(world: GameWorld): void {
+  if (world.floorId !== 'floor5' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state) || !state.breach.latched) {
+    return;
+  }
+  for (const actor of liveFloor5FinaleActors(state)) {
+    if (!floor5FinaleActorIsAlive(world, actor)) continue;
+    steerFloor5FinaleActor(world, actor);
+  }
+}
+
+/**
+ * Throne-capture interaction request (spec `FR7.4`).
+ *
+ * Enforces STATE legality only — proximity is the presentation layer's job via
+ * {@link getFloor5CaptureMarkerState}, exactly as Floors 1/2/3/6 do. Every
+ * refusal is counted so "cannot capture early" is observable rather than
+ * inferred. An accepted request only LATCHES; `floor5ObjectiveTick` commits it
+ * after the loss checks so a same-tick Command Post loss still wins.
+ */
+export function requestFloor5ThroneCapture(world: GameWorld): Floor5CaptureAttemptResult {
+  const state = floor5SiegeState(world);
+  if (!state) return 'not-available';
+  const finale = state.finale;
+  finale.captureAttempts += 1;
+  if (finale.captured) {
+    finale.rejectedCaptureAttempts += 1;
+    return 'already-captured';
+  }
+  if (finale.pendingCaptureFrame !== null) {
+    finale.rejectedCaptureAttempts += 1;
+    return 'already-pending';
+  }
+  // A terminal loss outranks the capture even after the Regent falls: the
+  // objective tick has stopped advancing, so an accepted latch could never be
+  // committed and must never be offered.
+  if (state.phase.kind === 'DEFEAT') {
+    finale.rejectedCaptureAttempts += 1;
+    return 'not-available';
+  }
+  if (!finale.captureAvailable) {
+    finale.rejectedCaptureAttempts += 1;
+    return floor5RegentActor(state)?.defeatedFrame === null && finale.regentSpawnedFrame !== null
+      ? 'regent-alive'
+      : 'not-available';
+  }
+  finale.pendingCaptureFrame = world.frameCount;
+  return 'accepted';
+}
+
+/** Throne capture point, projected for the shared stair-marker presentation. */
+export function getFloor5CaptureMarkerState(world: GameWorld) {
+  const state = floor5SiegeState(world);
+  const capturePoint = state?.finale.capturePoint;
+  if (!state || !capturePoint) {
+    return null;
+  }
+  return {
+    positionFt: capturePoint,
+    radiusFt: getFloor5FinaleConfig().capture.interactionRadiusFt,
+    visible:
+      state.finale.captureAvailable &&
+      state.finale.pendingCaptureFrame === null &&
+      !state.finale.captured &&
+      !isFloor5Terminal(state),
+    // `locked` must mean exactly "capture is barred", matching what
+    // `requestFloor5ThroneCapture` rejects, so prompt and confirmation can never
+    // disagree.
+    locked:
+      !state.finale.captureAvailable ||
+      state.finale.pendingCaptureFrame !== null ||
+      state.finale.captured ||
+      isFloor5Terminal(state),
+    label: '♛ CLAIM THRONE',
+  };
+}
+
+function buildFloor5FinaleRunStats(state: Floor5SiegeState): Floor5SiegeRunStats['finale'] {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig();
+  const auditor = finale.courtyardActors.find((actor) => actor.kind === 'crown-auditor');
+  const regent = floor5RegentActor(state);
+  const summons = finale.throneActors.filter((actor) => actor.kind === 'regent-summon');
+  return {
+    courtyardEnteredFrame: finale.courtyardEnteredFrame,
+    courtyardCleared: finale.courtyardCleared,
+    courtyardClearedFrame: finale.courtyardClearedFrame,
+    auditorDefeatedFrame: finale.auditorDefeatedFrame,
+    auditorHealth: auditor?.health ?? 0,
+    auditorMaxHealth: auditor?.maxHealth ?? config.crownAuditor.health,
+    defendersSpawned: finale.courtyardActors.filter((actor) => actor.kind === 'courtyard-defender')
+      .length,
+    defendersDefeated: finale.defendersDefeated,
+    throneDoorOpen: finale.throneDoorBarrierId === null,
+    throneDoorOpenedFrame: finale.throneDoorOpenedFrame,
+    regentSpawnedFrame: finale.regentSpawnedFrame,
+    regentDefeatedFrame: finale.regentDefeatedFrame,
+    regentHealth: regent?.health ?? 0,
+    regentMaxHealth: regent?.maxHealth ?? config.regentEmeritus.health,
+    summonsTelegraphed: finale.summonsTelegraphed,
+    summonsReleased: finale.summonsReleased,
+    summonsRetired: finale.summonsRetired,
+    pendingSummonWaves: finale.pendingSummonWaves.length,
+    summonCap: config.summons.maxTotal,
+    liveSummons: summons.filter((actor) => actor.defeatedFrame === null).length,
+    captureAvailable: finale.captureAvailable,
+    captureAvailableFrame: finale.captureAvailableFrame,
+    captureAttempts: finale.captureAttempts,
+    rejectedCaptureAttempts: finale.rejectedCaptureAttempts,
+    captured: finale.captured,
+    capturedFrame: finale.capturedFrame,
+    royalAuthorityDisabled: finale.royalAuthorityDisabled,
+    hostilesClearedOnCapture: finale.hostilesClearedOnCapture,
+    balconyOpen: finale.balconyBarrierId === null,
+    balconyOpenedFrame: finale.balconyOpenedFrame,
+    capturePoint: finale.capturePoint ? { ...finale.capturePoint } : null,
+  };
+}
+
 export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | undefined {
   const state = floor5SiegeState(world);
   if (!state) return undefined;
@@ -2237,6 +2960,7 @@ export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | 
       commitAttempts: state.breach.commitAttempts,
       cleanup: { ...state.breach.cleanup },
     },
+    finale: buildFloor5FinaleRunStats(state),
     heroState: state.heroState,
     heroes: {
       card: state.heroes.card.map((entry) => ({ ...entry })),
@@ -2376,10 +3100,6 @@ export function siegeMinionSystem(world: GameWorld): void {
   }
 }
 
-export function confirmFloor5StairDescend(): boolean {
-  return false;
-}
-
 export function getFloor5RunOutcome(world: GameWorld) {
   const phase = floor5SiegeState(world)?.phase.kind;
   return phase === 'CAPTURED' ? 'cleared_floor' : phase === 'DEFEAT' ? 'failed_timeout' : null;
@@ -2400,6 +3120,7 @@ function floor5ObjectiveTick(world: GameWorld): void {
   // --- Damage phase -------------------------------------------------------
   applyFloor5MinionAttacks(world, state);
   applyFloor5HeroAttacks(world, state);
+  applyFloor5FinaleAttacks(world, state);
   // Roll back any damage the outer wall / ram took from an unauthorised source
   // BEFORE the ram's own strike lands, so the strike is never rolled back.
   enforceFloor5SiegeDamageAuthority(world, state);
@@ -2435,6 +3156,9 @@ function floor5ObjectiveTick(world: GameWorld): void {
   }
   advanceFloor5FieldTasks(world, state);
   advanceFloor5RamConstruction(world, state);
+  // 3. Courtyard → throne → capture. Runs after every loss check so a same-tick
+  //    Command Post loss always outranks a same-tick capture.
+  advanceFloor5Finale(world, state);
   projectFloor5GoalFlags(world, state);
 }
 
@@ -2537,6 +3261,7 @@ export function initializeFloor5Scenario(
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   spawnFloor5Structures(world, siegeState, layout, mapConfig.tileSizeFt);
   sealFloor5BreachIngress(world, siegeState, floorMap, layout);
+  sealFloor5FinaleIngress(world, siegeState, floorMap, layout);
   world.state = 'playing';
   pushAnnouncement(world.announcements, {
     kind: 'bossAbilityCast',
