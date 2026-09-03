@@ -1,11 +1,12 @@
-import { addComponent, set } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Health, Position, SiegeMinion } from '../../src/core/components.js';
+import { Health, Position, SiegeHero, SiegeMinion } from '../../src/core/components.js';
 import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import {
@@ -20,6 +21,7 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
 import { addItem, cloneInventoryBag } from '../../src/shared/inventory.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getQuestDef, SHOPKEEPER_FETCH_ITEM_ID } from '../../src/shared/quest-types.js';
 
 const FLOOR5_RAM_COMPONENT_CLASSES = ['chassis', 'plating', 'broadcast-array'] as const;
@@ -131,6 +133,62 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(getFloor5SiegeRunStats(world)?.trace).toEqual([]);
     expect(world.floorMap?.rooms.some((room) => room.label === 'throne-room')).toBe(true);
     expect(world.rng.next()).toBe(untouched.rng.next());
+  });
+
+  it('spawns visible opposing startup waves with the readable banner and concrete terrain pack', async () => {
+    let startupMinionSnapshot:
+      | {
+          minionAllied: number;
+          minionEnemy: number;
+          renderKinds: string[];
+          announcements: GameWorld['announcements'];
+        }
+      | undefined;
+    await runHeadless(new IdleFloor5Provider(), {
+      floorId: 'floor5',
+      seed: 505,
+      maxFrames: 2,
+      questStallFrames: 0,
+      onFinish: (world) => {
+        const minionEids = Array.from(query(world.ecs, [SiegeMinion]));
+        const heroEids = Array.from(query(world.ecs, [SiegeHero]));
+        const startupCombatantEids = Array.from(new Set([...minionEids, ...heroEids])).sort(
+          (a, b) => a - b,
+        );
+        const minionCounts = minionEids.reduce(
+          (counts, eid) => {
+            const team = world.stores.siegeMinion.team[eid] ?? 0;
+            if (team === 1) counts.minionAllied += 1;
+            if (team === 2) counts.minionEnemy += 1;
+            return counts;
+          },
+          { minionAllied: 0, minionEnemy: 0 },
+        );
+        startupMinionSnapshot = {
+          ...minionCounts,
+          renderKinds: startupCombatantEids.map((eid) => resolveRenderKind(world, eid)),
+          announcements: [...world.announcements],
+        };
+      },
+    });
+
+    expect(startupMinionSnapshot).toBeDefined();
+    expect(startupMinionSnapshot!.minionAllied).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.minionEnemy).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.renderKinds.length).toBeGreaterThan(0);
+    expect(startupMinionSnapshot!.renderKinds).toEqual(
+      Array(startupMinionSnapshot!.renderKinds.length).fill('enemy'),
+    );
+    expect(getFloorManifest('floor5')?.terrainPackId).toBe('floor1-dungeon');
+    expect(startupMinionSnapshot!.announcements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'bossAbilityCast',
+          text: 'Hostile Takeover: defend the Command Post and hold the line.',
+          durationMs: 6000,
+        }),
+      ]),
+    );
   });
 
   it('emits the same empty deterministic phase trace in windowed and headless setup', async () => {

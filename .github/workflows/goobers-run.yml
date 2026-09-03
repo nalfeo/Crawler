@@ -105,24 +105,52 @@ jobs:
               "repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by" \
               --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
           }
+          find_open_goobers_pr() {
+            local issue_number="$1"
+            local candidates=""
+            local details=""
+            local unreadable_candidate=false
+
+            if ! candidates="$(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" |
+                jq -r --arg repo_url "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                  '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null and .source.issue.repository_url == $repo_url) | .source.issue.number'
+            )"; then
+              echo "::error::Could not read same-repository PR cross-references for issue #${issue_number}; retry the workflow before changing its Goobers ownership." >&2
+              return 1
+            fi
+
+            while read -r candidate; do
+              [ -n "$candidate" ] || continue
+              if ! details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository 2>&1)"; then
+                echo "::warning::Could not inspect same-repository PR #${candidate} for issue #${issue_number}: ${details}" >&2
+                unreadable_candidate=true
+                continue
+              fi
+              state="$(jq -r '.state' <<<"$details")"
+              branch="$(jq -r '.headRefName' <<<"$details")"
+              repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
+              if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done <<<"$candidates"
+
+            if [ "$unreadable_candidate" = "true" ]; then
+              echo "::error::At least one same-repository PR for issue #${issue_number} was unreadable, so Goobers cannot safely conclude that resumable work is absent. Retry the workflow." >&2
+              return 2
+            fi
+            return 0
+          }
           if [ -z "${ISSUE_NUMBER}" ]; then
             for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
               --state open --label 'goobers/status:in-review' --limit 1000 --json number --jq '.[].number'); do
-              candidate_pr="$(
-                gh api --paginate \
-                  "repos/${GITHUB_REPOSITORY}/issues/${candidate_issue}/timeline" \
-                  --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
-                  while read -r candidate; do
-                    details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName,headRepository)"
-                    state="$(jq -r '.state' <<<"${details}")"
-                    branch="$(jq -r '.headRefName' <<<"${details}")"
-                    repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"${details}")"
-                    if [ "${state}" = "OPEN" ] && [ "${repository}" = "${GITHUB_REPOSITORY}" ] && [[ "${branch}" == goobers/crawler/* ]]; then
-                      printf '%s\n' "${candidate}"
-                      break
-                    fi
-                  done
-              )"
+              lookup_status=0
+              candidate_pr="$(find_open_goobers_pr "$candidate_issue")" || lookup_status=$?
+              if [ "$lookup_status" -ne 0 ]; then
+                exit "$lookup_status"
+              fi
               if [ -n "${candidate_pr}" ]; then
                 blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
                 if [ -n "${blocked_by}" ]; then
@@ -182,21 +210,11 @@ jobs:
           fi
           echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}" >> "${GITHUB_ENV}"
 
-          pr_number="$(
-            gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/timeline" \
-              --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
-              while read -r candidate; do
-                details="$(gh pr view "${candidate}" --repo "${GITHUB_REPOSITORY}" --json state,headRefName,headRepository)"
-                state="$(jq -r '.state' <<<"${details}")"
-                branch="$(jq -r '.headRefName' <<<"${details}")"
-                repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"${details}")"
-                if [ "${state}" = "OPEN" ] && [ "${repository}" = "${GITHUB_REPOSITORY}" ] && [[ "${branch}" == goobers/crawler/* ]]; then
-                  printf '%s\n' "${candidate}"
-                  break
-                fi
-              done
-          )"
+          lookup_status=0
+          pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")" || lookup_status=$?
+          if [ "$lookup_status" -ne 0 ]; then
+            exit "$lookup_status"
+          fi
           if [ -z "${pr_number}" ]; then
             echo "No open Goobers PR cross-referenced from issue #${ISSUE_NUMBER}; starting a fresh branch."
             exit 0
@@ -409,6 +427,68 @@ jobs:
           goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
 
+      - name: Comment on Goobers run start
+        if: steps.recovery.outputs.should_run != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Cannot post the Goobers start comment because GOOBERS_RECOVERY_ISSUE is not numeric. Re-run with: gh workflow run goobers-run.yml -f issue_number=<issue-number>" >&2
+            exit 1
+          fi
+
+          issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json state,labels,assignees)"
+          issue_state="$(jq -r '.state' <<<"$issue_json")"
+          issue_approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"$issue_json")"
+          issue_unassigned="$(jq -r '[.assignees[]] | length == 0' <<<"$issue_json")"
+          if [ "$issue_state" != "OPEN" ] || [ "$issue_approved" != "true" ] || [ "$issue_unassigned" != "true" ]; then
+            echo "::error::Issue #${issue_number} is no longer an open, unassigned goobers:approved issue. Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+            exit 1
+          fi
+          blocked_by="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/dependencies/blocked_by" \
+              --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
+          )"
+          if [ -n "$blocked_by" ]; then
+            echo "::error::Issue #${issue_number} became blocked by open prerequisite issue(s): ${blocked_by}. No start comment or Goobers claim was created; retry after closing the blockers with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+            exit 1
+          fi
+
+          marker="<!-- crawler-goobers-run-start:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          find_issue_comment_id() {
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
+              jq -r --arg marker "$1" \
+                '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+          }
+          if [ -n "$(find_issue_comment_id "$marker")" ]; then
+            echo "Goobers start comment already exists for Actions run ${GITHUB_RUN_ID}; not posting a duplicate."
+            exit 0
+          fi
+
+          body="$(mktemp)"
+          {
+            echo "$marker"
+            echo
+            echo "Goobers started work on this issue for \`${GOOBERS_WORKFLOW}\`."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "$body"
+
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+
+      - name: Start Goobers host profile
+        id: host-profile-start
+        if: steps.recovery.outputs.should_run != 'false'
+        uses: ./.github/actions/host-profile
+        with:
+          mode: start
+          label: goobers-run
+
       - name: Run the workflow
         if: steps.recovery.outputs.should_run != 'false'
         env:
@@ -426,6 +506,13 @@ jobs:
           set -euo pipefail
           goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
 
+      - name: Report Goobers host profile
+        if: always() && steps.host-profile-start.outcome == 'success'
+        uses: ./.github/actions/host-profile
+        with:
+          mode: report
+          label: goobers-run
+
       - name: Upload run journal
         id: upload-run-journal
         if: always()
@@ -440,37 +527,139 @@ jobs:
         if: always() && steps.recovery.outputs.should_run != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
         run: |
           set -euo pipefail
 
-          if [ -n "${GOOBERS_RESUME_PR:-}" ]; then
-            echo "Goobers resumed open PR #${GOOBERS_RESUME_PR}; preserving in-review ownership."
-            exit 0
-          fi
+          find_open_goobers_pr() {
+            local issue_number="$1"
+            local candidates=""
+            local details=""
+            local unreadable_candidate=false
 
-          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
-          if [ -z "$events_file" ]; then
-            exit 0
+            if ! candidates="$(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" |
+                jq -r --arg repo_url "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                  '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null and .source.issue.repository_url == $repo_url) | .source.issue.number'
+            )"; then
+              echo "::error::Could not read same-repository PR cross-references for issue #${issue_number}; preserving goobers/status:in-review. Retry the workflow." >&2
+              return 1
+            fi
+
+            while read -r candidate; do
+              [ -n "$candidate" ] || continue
+              if ! details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository 2>&1)"; then
+                echo "::warning::Could not inspect same-repository PR #${candidate} for issue #${issue_number}: ${details}" >&2
+                unreadable_candidate=true
+                continue
+              fi
+              state="$(jq -r '.state' <<<"$details")"
+              branch="$(jq -r '.headRefName' <<<"$details")"
+              repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
+              if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done <<<"$candidates"
+
+            if [ "$unreadable_candidate" = "true" ]; then
+              echo "::error::At least one same-repository PR for issue #${issue_number} was unreadable, so Goobers cannot safely release goobers/status:in-review. Retry the workflow." >&2
+              return 2
+            fi
+            return 0
+          }
+
+          events_file=""
+          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
+            events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
           fi
-          no_work_stage="$(
-            jq -r 'select(.type == "stage.finished" and .status == "no-work") | .stage' \
-              "$events_file" | tail -n 1
-          )"
-          if [ -z "$no_work_stage" ]; then
-            exit 0
+          events_input="/dev/null"
+          if [ -n "$events_file" ]; then
+            events_input="$(mktemp)"
+            jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
+            source_line_count="$(awk 'END { print NR }' "$events_file")"
+            valid_line_count="$(awk 'END { print NR }' "$events_input")"
+            if [ "$source_line_count" -ne "$valid_line_count" ]; then
+              echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) while determining issue disposition; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+            fi
           fi
-          no_work_disposition="$(
-            jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
-              "$events_file" | tail -n 1
-          )"
 
           issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
-          if [ -z "$issue_number" ]; then
+          if [ -z "$issue_number" ] && [ -n "$events_file" ]; then
             issue_number="$(
               jq -r 'select(.type == "stage.finished" and .stage == "query-backlog") | .outputs.id // empty' \
-                "$events_file" | tail -n 1
+                "$events_input" | tail -n 1
             )"
+          fi
+
+          no_work_stage=""
+          no_work_disposition=""
+          if [ -n "$events_file" ]; then
+            no_work_stage="$(
+              jq -r 'select(.type == "stage.finished" and .status == "no-work") | .stage' \
+                "$events_input" | tail -n 1
+            )"
+            no_work_disposition="$(
+              jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
+                "$events_input" | tail -n 1
+            )"
+          fi
+
+          open_pr=""
+          pr_lookup_complete=false
+          stale_resume=false
+          if [ -n "${GOOBERS_RESUME_PR:-}" ]; then
+            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+              echo "::error::Goobers resumed PR #${GOOBERS_RESUME_PR}, but the claimed issue number could not be recovered. Preserving goobers/status:in-review; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+              exit 1
+            fi
+            lookup_status=0
+            open_pr="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
+            if [ "$lookup_status" -ne 0 ]; then
+              exit "$lookup_status"
+            fi
+            pr_lookup_complete=true
+            if [ -n "$open_pr" ]; then
+              echo "Goobers resumed open PR #${open_pr}; preserving in-review ownership."
+              exit 0
+            fi
+            stale_resume=true
+            echo "::warning::Goobers resume PR #${GOOBERS_RESUME_PR} is no longer open; evaluating the journal and job status before releasing ownership."
+          fi
+
+          if [ -z "$no_work_stage" ] && { [ "$JOB_STATUS" = "failure" ] || [ "$JOB_STATUS" = "cancelled" ]; }; then
+            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+              echo "::error::Goobers ended with ${JOB_STATUS}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+              exit 1
+            fi
+
+            if [ "$pr_lookup_complete" != "true" ]; then
+              lookup_status=0
+              open_pr="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
+              if [ "$lookup_status" -ne 0 ]; then
+                exit "$lookup_status"
+              fi
+            fi
+            if [ -n "$open_pr" ]; then
+              echo "Goobers run ended with ${JOB_STATUS}, but open Goobers PR #${open_pr} preserves resumable work; preserving in-review ownership."
+              exit 0
+            fi
+
+            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+              --remove-label 'goobers/status:in-review'
+            echo "::warning::Goobers run ended with ${JOB_STATUS} for issue #${issue_number} without an open Goobers PR. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+            exit 0
+          fi
+
+          if [ -z "$no_work_stage" ]; then
+            if [ "$stale_resume" = "true" ]; then
+              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --remove-label 'goobers/status:in-review'
+              echo "::warning::Goobers resume PR #${GOOBERS_RESUME_PR} closed during this run and no replacement PR or no-work disposition was recorded. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+            fi
+            exit 0
           fi
           if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
             echo "::error::Goobers stage '${no_work_stage}' returned no-work, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
@@ -493,23 +682,71 @@ jobs:
             --remove-label 'goobers/status:in-review'
           echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
 
-      - name: Comment with Goobers run diagnostics
+      - name: Comment on Goobers run result
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
-          ARTIFACT_NAME: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
         run: |
           set -euo pipefail
 
-          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1 || true)"
-          if [ -z "$events_file" ]; then
-            echo "No Goobers journal events found; skipping issue comment."
-            exit 0
-          fi
+          find_open_goobers_pr() {
+            local issue_number="$1"
+            local candidates=""
+            local details=""
+            local unreadable_candidate=false
+
+            if ! candidates="$(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" |
+                jq -r --arg repo_url "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                  '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null and .source.issue.repository_url == $repo_url) | .source.issue.number'
+            )"; then
+              echo "::error::Could not read same-repository PR cross-references for issue #${issue_number}; the result comment will report an indeterminate PR state." >&2
+              return 1
+            fi
+
+            while read -r candidate; do
+              [ -n "$candidate" ] || continue
+              if ! details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository 2>&1)"; then
+                echo "::warning::Could not inspect same-repository PR #${candidate} for issue #${issue_number}: ${details}" >&2
+                unreadable_candidate=true
+                continue
+              fi
+              state="$(jq -r '.state' <<<"$details")"
+              branch="$(jq -r '.headRefName' <<<"$details")"
+              repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
+              if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done <<<"$candidates"
+
+            if [ "$unreadable_candidate" = "true" ]; then
+              echo "::error::At least one same-repository PR for issue #${issue_number} was unreadable, so the result cannot safely report that no PR exists." >&2
+              return 2
+            fi
+            return 0
+          }
 
           issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
-          if [ -z "$issue_number" ]; then
+          events_file=""
+          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
+            events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
+          fi
+          events_input="/dev/null"
+          if [ -n "$events_file" ]; then
+            events_input="$(mktemp)"
+            jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
+            source_line_count="$(awk 'END { print NR }' "$events_file")"
+            valid_line_count="$(awk 'END { print NR }' "$events_input")"
+            if [ "$source_line_count" -ne "$valid_line_count" ]; then
+              echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) while building the result comment; inspect artifact '${ARTIFACT_NAME}'." >&2
+            fi
+          fi
+
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]] && [ -n "$events_file" ]; then
             issue_number="$(
               jq -r '
                 if .externalRef? and .externalRef.kind == "issue" then
@@ -519,15 +756,86 @@ jobs:
                 else
                   empty
                 end
-              ' "$events_file" | tail -n 1
+              ' "$events_input" | tail -n 1
             )"
           fi
-          if [ -z "$issue_number" ] || [ "$issue_number" = "null" ]; then
-            echo "No claimed issue found in Goobers journal; skipping issue comment."
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+            echo "No numeric claimed issue found in GOOBERS_RECOVERY_ISSUE or the Goobers journal; skipping issue comment."
             exit 0
           fi
 
-          run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
+          pr_number=""
+          pr_url=""
+          pr_resolution_error=""
+          pr_stage_succeeded="$(
+            jq -r '
+              select(
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              )
+              | "true"
+            ' "$events_input" | tail -n 1
+          )"
+          pr_number="$(
+            jq -r '
+              if (
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              ) then
+                .outputs.prNumber // empty
+              elif (
+                .type == "ref.touched" and
+                .stage == "open-pr" and
+                .externalRef.kind == "pr"
+              ) then
+                .externalRef.id // empty
+              else
+                empty
+              end
+            ' "$events_input" | tail -n 1
+          )"
+          journal_pr_url="$(
+            jq -r '
+              select(
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              )
+              | .outputs["pull-request-url"] // empty
+            ' "$events_input" | tail -n 1
+          )"
+          if [ -z "$pr_number" ] && [[ "$journal_pr_url" =~ /pull/([0-9]+)$ ]]; then
+            pr_number="${BASH_REMATCH[1]}"
+          fi
+          if [ -z "$pr_number" ]; then
+            pr_number="${GOOBERS_RESUME_PR:-}"
+          fi
+          if [ -z "$pr_number" ]; then
+            lookup_status=0
+            pr_number="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
+            if [ "$lookup_status" -ne 0 ]; then
+              pr_number=""
+              pr_resolution_error="Goobers could not determine whether issue #${issue_number} has an open same-repository PR because its timeline or a referenced PR was unreadable. Inspect artifact '${ARTIFACT_NAME}' and retry this workflow."
+            fi
+          fi
+
+          if [ -n "$pr_resolution_error" ]; then
+            :
+          elif [ -n "$pr_number" ] && ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+            pr_resolution_error="Goobers reported non-numeric PR identifier '${pr_number}' for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and the issue timeline."
+            pr_number=""
+          elif [ -n "$pr_number" ]; then
+            pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
+          elif [ "$pr_stage_succeeded" = "true" ] || [ -n "${GOOBERS_RESUME_PR:-}" ]; then
+            pr_resolution_error="Goobers completed a PR-producing run for issue #${issue_number}, but no PR number could be recovered from the journal, resume metadata, or issue timeline. Inspect artifact '${ARTIFACT_NAME}'."
+          fi
+
+          run_ids=""
+          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
+            run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
+          fi
           terminal_summary="$(
             jq -r '
               select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
@@ -540,14 +848,24 @@ jobs:
                 ]
               | map(select(. != "" and . != "code=-"))
               | join(" | ")
-            ' "$events_file" | tail -n 8
+            ' "$events_input" | tail -n 8
           )"
+          display_status="$JOB_STATUS"
+          if [ -n "$pr_resolution_error" ]; then
+            display_status="failure"
+          fi
 
+          marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           body="$(mktemp)"
           {
-            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
+            echo "$marker"
+            echo
+            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${display_status}**."
             echo
             echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [ -n "$pr_url" ]; then
+              echo "- Pull request: #${pr_number} — ${pr_url}"
+            fi
             echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
             echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
             echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
@@ -557,9 +875,35 @@ jobs:
               echo '```'
               echo "$terminal_summary"
               echo '```'
+            else
+              echo
+              echo "Terminal journal events: none recorded."
             fi
-            echo
-            echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+            if [ -n "$pr_resolution_error" ]; then
+              echo
+              echo "### PR resolution failure"
+              echo
+              echo "$pr_resolution_error"
+            fi
           } > "$body"
 
-          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          find_issue_comment_id() {
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
+              jq -r --arg marker "$1" \
+                '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+          }
+          existing_comment_id="$(find_issue_comment_id "$marker")"
+          if [ -n "$existing_comment_id" ]; then
+            jq -Rs '{body: .}' "$body" |
+              gh api --silent --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -
+            echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID}."
+          else
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          fi
+
+          if [ -n "$pr_resolution_error" ]; then
+            echo "::error::${pr_resolution_error}" >&2
+            exit 1
+          fi

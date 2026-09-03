@@ -89,6 +89,24 @@ export interface ScenarioStarterLoadoutCopy {
   readonly optionDescriptionPrefix: string;
 }
 
+/** Semantic floor HUD/audio/VFX cue that the renderer can present without floor branches. */
+export interface ScenarioHudCue {
+  readonly id: string;
+  readonly kind: 'audio' | 'vfx' | 'hud';
+  readonly label: string;
+}
+
+/**
+ * Floor-owned, renderer-neutral HUD state. Scenarios project authoritative
+ * state into plain text/cue semantics; the engine alone chooses pixels, colors,
+ * audio synthesis, and effects.
+ */
+export interface ScenarioHudSnapshot {
+  readonly id: string;
+  readonly lines: readonly string[];
+  readonly cues: readonly ScenarioHudCue[];
+}
+
 /**
  * One ordered Director-commentary beat, shown strictly between `intro` and
  * `victory`/`timeout`. `id` is the stable identifier the presenting layer
@@ -171,6 +189,8 @@ export interface ScenarioPresentationContract<TWorld> {
    * generic picker stays closed.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /** Optional live floor-status panel and cue stream, derived by the scenario. */
+  readonly getHudSnapshot?: (world: TWorld) => ScenarioHudSnapshot | null;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }

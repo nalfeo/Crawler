@@ -66,7 +66,10 @@ import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
-import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
+import type {
+  _CornerButtonProbe as CornerButtonProbe,
+  _ScenarioHudProbe,
+} from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
@@ -104,6 +107,7 @@ import { createAbilityState, forceActivateAbility } from '../../game/systems/abi
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
+import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -139,9 +143,11 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' {
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor6' {
   const raw = new URLSearchParams(window.location.search).get('floor');
-  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' ? raw : 'floor1';
+  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' || raw === 'floor6'
+    ? raw
+    : 'floor1';
 }
 
 /** The single shared status-aura Graphics layer, if the bridge has created it. */
@@ -182,6 +188,7 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getScenarioHudState?(): ScenarioHudProbeState;
   getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
@@ -727,6 +734,9 @@ export interface FamilyHudProbeState {
   readonly panelVisible: boolean;
 }
 
+/** Real rendered state of the generic scenario HUD strip — see `MainGameScene._ScenarioHudProbe`. */
+export type ScenarioHudProbeState = _ScenarioHudProbe;
+
 /**
  * Per-def render tally for a single harvestable node type. Lets the e2e assert
  * that *each* type with live nodes renders all of them as sprites — a
@@ -1000,6 +1010,8 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Real rendered generic scenario HUD strip (see `MainGameScene._ScenarioHudProbe`). */
+  getScenarioHudState(): ScenarioHudProbeState;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
@@ -1167,6 +1179,45 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+   * directly, so an e2e spec can assert the scenario HUD's one-shot `vfx`
+   * cue behavior without driving the entire wave/break/finale progression.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6FinaleVfxCue(): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+   * directly, so an e2e spec can assert the scenario HUD's break-safety
+   * presentation line without driving a full wave-clear through the sim.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6BreakPhase(): boolean;
+  /**
+   * Test-only Floor 6 setup: occupies the first authored build site with the
+   * first roster tower directly on the defense state (bypassing the
+   * currency/phase transaction gates in `buildFloor6Tower`), so an e2e spec
+   * can assert the scenario HUD's occupied-site and tower range/tier
+   * presentation lines without a full economy grind. Returns false when not
+   * booted on Floor 6 or when it has no authored build sites/towers.
+   */
+  primeFloor6OccupiedSite(): { siteId: string; towerId: string } | null;
+  /**
+   * Test-only Floor 6 setup: opens the Relay victory exit directly on the
+   * defense state (`phase.kind = 'VICTORY'`, `exit.opened = true`) and moves
+   * the player to the exit marker position, so an e2e spec can assert the
+   * "Descend" interaction hint actually renders (and that the scenario HUD
+   * strip reflows to avoid it) without grinding a full defense win. Returns
+   * false when not booted on Floor 6 or the exit geometry/map isn't ready.
+   */
+  primeFloor6VictoryExitHint(): boolean;
+  /**
+   * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL danger
+   * level directly on the defense state, so an e2e spec can assert the
+   * Relay danger text renders without scripting a full raider assault.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6RelayCriticalDanger(): boolean;
   /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
@@ -1935,6 +1986,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    getScenarioHudState: (): ScenarioHudProbeState =>
+      getScene()?.getScenarioHudState?.() ?? {
+        visible: false,
+        text: null,
+        bounds: null,
+        vfxVisible: false,
+        cueLabels: [],
+      },
+
     setSimulationPaused: (paused: boolean) => {
       getScene()?.setSimulationPaused(paused);
     },
@@ -2381,6 +2441,119 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inFlightCount: glowingEntities.length,
         emitterLight: field.values[y * field.widthCells + x] ?? null,
       };
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+     * directly (the real phase the sim reaches after clearing all defense
+     * acts), so an e2e spec can assert the scenario HUD's one-shot `vfx` cue
+     * behavior without driving the entire wave/break/finale progression
+     * through the real simulation.
+     */
+    primeFloor6FinaleVfxCue: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'FINALE' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+     * directly, mirroring `primeFloor6FinaleVfxCue`, so an e2e spec can
+     * assert the scenario HUD's break-safety presentation line without
+     * driving a full wave-clear through the sim.
+     */
+    primeFloor6BreakPhase: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'BREAK' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: occupies the first authored build site with
+     * the first roster tower directly on the defense state (bypassing the
+     * currency/phase transaction gates in `buildFloor6Tower`), so an e2e
+     * spec can assert the scenario HUD's occupied-site and tower range/tier
+     * presentation lines without a full economy grind.
+     */
+    primeFloor6OccupiedSite: (): { siteId: string; towerId: string } | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const site = defense?.geometry.buildSites[0];
+      const tower = _getFloor6TowerRoster()[0];
+      if (!scene || !world || !defense || !site || !tower) {
+        return null;
+      }
+      scene.setSimulationPaused(true);
+      defense.towerInstances = defense.towerInstances.filter(
+        (instance) => instance.siteId !== site.id,
+      );
+      defense.towerInstances.push({ siteId: site.id, towerId: tower.id, eid: -1 });
+      return { siteId: site.id, towerId: tower.id };
+    },
+
+    /**
+     * Test-only Floor 6 setup: opens the Relay victory exit and places the
+     * player on its marker, mirroring the authoritative
+     * `getFloor6StairMarkerState` projection (same position/tile math), so an
+     * e2e spec can assert the real "Descend" interaction hint renders without
+     * grinding a full defense win through the sim.
+     */
+    primeFloor6VictoryExitHint: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const floorMap = world?.floorMap;
+      if (!scene || !world || playerEid < 0 || !defense || !floorMap) {
+        return false;
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      defense.phase = { kind: 'VICTORY' };
+      defense.exit.opened = true;
+      defense.exit.confirmed = false;
+      const exit = defense.geometry.victoryExit;
+      const tileSizeFt = floorMap.config.tileSizeFt;
+      world.stores.position.x[playerEid] = (exit.bounds.x + exit.bounds.width / 2) * tileSizeFt;
+      world.stores.position.y[playerEid] = (exit.bounds.y + exit.bounds.height / 2) * tileSizeFt;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL
+     * danger level directly on the defense state, so an e2e spec can assert
+     * the Relay danger text (`CRITICAL Relay danger: ...`) renders without
+     * scripting a full raider assault through the sim.
+     */
+    primeFloor6RelayCriticalDanger: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.relayHp = 1;
+      return true;
     },
 
     primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {

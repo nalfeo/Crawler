@@ -65,6 +65,7 @@ import {
 } from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
+import { confirmFloor6StairDescend, isFloor6ExitDescendable } from '../floor6Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
   computeWeaponPersonaStatAllocation,
@@ -456,6 +457,23 @@ export function autoFloor3ProgressionSystem(world: GameWorld, playerEid: number)
     return;
   }
   confirmFloor3StairDescend(world, playerEid);
+}
+
+/**
+ * Floor 6's Relay exit only reports `cleared_floor` once descent is confirmed
+ * (the Deadline defeat merely opens it). Unlike Floors 1-3 this deliberately
+ * does NOT gate on stair proximity: the BT AI has no Deadline-exit navigation
+ * yet, so auto-confirm as soon as the exit is open instead of stalling every
+ * headless Floor 6 run at the win. `confirmFloor6StairDescend` is idempotent
+ * and a no-op until `isFloor6ExitDescendable` is true, so this unconditional
+ * call is safe rather than an early/incorrect win. Headless-only: real play
+ * still walks to the marker and confirms through its modal.
+ */
+export function autoFloor6ProgressionSystem(world: GameWorld): void {
+  if (!isFloor6ExitDescendable(world)) {
+    return;
+  }
+  confirmFloor6StairDescend(world);
 }
 
 /**
