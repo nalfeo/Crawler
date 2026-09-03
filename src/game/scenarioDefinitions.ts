@@ -301,7 +301,7 @@ export interface ScenarioDefinition {
    * starter choice at all.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
-  /** Optional live floor-status panel and cue stream, derived by the scenario. */
+  /** Local alias of `ScenarioPresentationContract.getHudSnapshot` (see `src/shared/scenario-presentation.ts`) for this floor's typed `ScenarioDefinition`. */
   readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
