@@ -20,6 +20,7 @@ The CI Recovery run itself succeeded, but classified the PR as stale automation 
 - `.github/scripts/ci-recovery/state.mjs`
 - `.github/scripts/ci-recovery/state.test.mjs`
 - `docs/knowledge/handoffs/2026-09-03-ci-recovery-human-escalation-parser.md`
+- `docs/knowledge/metrics/apples/2026-09-03-ci-recovery-human-escalation-parser.json`
 
 ## Verification
 
@@ -30,7 +31,8 @@ The CI Recovery run itself succeeded, but classified the PR as stale automation 
 - `node --test .github/scripts/ci-recovery/reconcile.test.mjs`
 - `git diff --check`
 - `npm run verify:fast`
-- `npm run verify:pr-prereqs` (pending after handoff/apple files are committed)
+- `npm run sync:main -- --reason pre-publish`
+- `npm run verify:pr-prereqs`
 
 ## Unresolved issues
 
