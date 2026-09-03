@@ -31,6 +31,7 @@
     "floorDensity": 1.0,
     "tileSizeFt": 4.0
   },
+  "terrainPackId": "floor1-dungeon",
   "player": {
     "hpBonus": 80,
     "moveSpeedBonus": 0.05,

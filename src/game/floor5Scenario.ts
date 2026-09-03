@@ -41,6 +41,7 @@ import {
 import { getGenerator } from '../core/map/generators/registry.js';
 import { findTilePath } from '../core/map/pathfinding.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../core/physics-defs.js';
+import { pushAnnouncement } from '../shared/announcement-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
@@ -89,6 +90,7 @@ const FLOOR5_STRUCTURE_KIND: Record<Floor5SiegeStructureId, number> = {
   'outer-wall': 4,
 };
 const FLOOR5_MINION_LIVE_CAP = 4;
+const FLOOR5_WELCOME_ANNOUNCEMENT_MS = 6000;
 const FLOOR5_MINION_HP = 24;
 const FLOOR5_MINION_DAMAGE = 6;
 const FLOOR5_MINION_COOLDOWN_MS = 500;
@@ -1749,5 +1751,13 @@ export function initializeFloor5Scenario(
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   spawnFloor5Structures(world, siegeState, layout, mapConfig.tileSizeFt);
   world.state = 'playing';
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'Hostile Takeover: defend the Command Post and hold the line.',
+    eventId: 'floor5-welcome-announcement',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
   world.floorObjectiveTick = floor5ObjectiveTick;
 }
