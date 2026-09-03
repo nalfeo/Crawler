@@ -1,8 +1,8 @@
+import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { query } from 'bitecs';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { Health, Position, SiegeHero, SiegeMinion } from '../../src/core/components.js';
+import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
-import { SiegeHero, SiegeMinion } from '../../src/core/components.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
@@ -16,6 +16,7 @@ import {
   _recoverFloor5RamComponent,
   _requestFloor5RamConstruction,
   siegeDirectorSystem,
+  siegeRamSystem,
 } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
@@ -294,7 +295,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(cloneInventoryBag(bag)).toEqual(inventoryBefore);
   });
 
-  it('pauses and resumes construction deterministically while the build site is under attack', async () => {
+  it('does not treat historical Command Post damage as a permanent build-site threat', async () => {
     let requested = false;
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
@@ -313,10 +314,6 @@ describe('Floor 5 siege foundation real pipeline', () => {
               world.stores.health.current[commandPost] = current - 1;
               return;
             }
-            if (world.frameCount === 80) {
-              const current = world.stores.health.current[commandPost] ?? 0;
-              world.stores.health.current[commandPost] = current + 1;
-            }
           },
         ],
       },
@@ -325,8 +322,42 @@ describe('Floor 5 siege foundation real pipeline', () => {
 
     expect(headless.floor5Siege?.engineState).toBe('READY');
     expect(headless.floor5Siege?.construction.progressMs).toBe(3000);
-    expect(headless.floor5Siege?.construction.pausedMs).toBeCloseTo((79 * 1000) / 60, 5);
-    expect(headless.floor5Siege?.construction.completedFrame).toBeGreaterThan(80);
+    expect(headless.floor5Siege?.construction.completedFrame).not.toBeNull();
+    expect(headless.floor5Siege?.commandPostHealth).toBe(999);
+  });
+
+  it('pauses and resumes construction deterministically for a live build-site threat', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+
+    const state = world.floorExtendedState!.floor5Siege!;
+    const buildSite = state.ram.route[0]!;
+    const threat = createEntity(world);
+    addComponent(world.ecs, threat, set(Position, { x: buildSite.x, y: buildSite.y }));
+    addComponent(world.ecs, threat, set(Health, { current: 1000, max: 1000 }));
+    addComponent(world.ecs, threat, set(SiegeMinion, { team: 2, manifestIndex: 0 }));
+
+    siegeDirectorSystem(world);
+    world.elapsedMs = 1000;
+    world.floorObjectiveTick!(world);
+    expect(state.construction).toMatchObject({
+      buildSiteUnderAttack: true,
+      progressMs: 0,
+      pausedMs: 1000,
+    });
+
+    world.stores.position.x[threat] = buildSite.x + 100;
+    siegeDirectorSystem(world);
+    world.elapsedMs = 2000;
+    world.floorObjectiveTick!(world);
+    expect(state.construction).toMatchObject({
+      buildSiteUnderAttack: false,
+      progressMs: 1000,
+      pausedMs: 1000,
+    });
   });
 
   it('records exactly one DEFEAT transition when the Command Post is destroyed', () => {
@@ -393,6 +424,71 @@ describe('Floor 5 siege foundation real pipeline', () => {
       frame: 99,
       worldElapsedMs: 12_000,
       commandPostHealth: 0,
+    });
+  });
+
+  it('gives same-tick Command Post defeat precedence over a ready ram escort', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+    siegeRamSystem(world);
+
+    world.elapsedMs = 3_000;
+    world.floorObjectiveTick!(world);
+    const state = world.floorExtendedState!.floor5Siege!;
+    expect(state.engineState).toBe('READY');
+
+    const commandPost = state.structures['command-post'].eid;
+    applyDamage(
+      world,
+      commandPost,
+      world.stores.health.current[commandPost] ?? 0,
+      world.stores.position.x[commandPost] ?? 0,
+      world.stores.position.y[commandPost] ?? 0,
+      { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
+    );
+    siegeRamSystem(world);
+    world.floorObjectiveTick!(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.trace.map((entry) => entry.phase.kind)).not.toContain('ESCORT');
+    expect(state.trace.at(-1)?.phase.kind).toBe('DEFEAT');
+    expect(state.engineState).toBe('READY');
+  });
+
+  it('gives Command Post defeat precedence over simultaneous wall and ram destruction', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+    siegeRamSystem(world);
+
+    const state = world.floorExtendedState!.floor5Siege!;
+    const commandPost = state.structures['command-post'].eid;
+    const wall = state.structures['outer-wall'].eid;
+    state.engineState = 'ATTACKING';
+    state.commandPostHealth = 0;
+    state.ram.health = 0;
+    state.ram.wallAuthorizedHealth = 0;
+    world.stores.health.current[commandPost] = 0;
+    world.stores.health.current[wall] = 0;
+    world.stores.health.current[state.ram.eid] = 0;
+
+    world.floorObjectiveTick!(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.breach.latched).toBe(false);
+    expect(state.breach.commitAttempts).toBe(0);
+    expect(state.breach.cleanup).toEqual({
+      ramRetired: false,
+      markersRetired: 0,
+      wallRetired: false,
+      heroesCleared: 0,
+      minionsCleared: 0,
+      waveDebtCleared: 0,
     });
   });
 
