@@ -429,16 +429,27 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
   confirmFloor2StairDescend(world, playerEid);
 }
 
-export function autoFloor3ProgressionSystem(world: GameWorld, playerEid: number): void {
+export function autoFloor3ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  options?: {
+    readonly allowDirectKeptCompanionSelection?: boolean;
+    readonly allowDirectStairDescend?: boolean;
+  },
+): void {
   const floor3State = world.floorExtendedState?.floor3Studios;
   if (!floor3State) {
     return;
   }
+  const allowDirectKeptCompanionSelection = options?.allowDirectKeptCompanionSelection ?? true;
+  const allowDirectStairDescend = options?.allowDirectStairDescend ?? true;
 
   // Headless/AI-runner parity: once the season win is latched, deterministically
   // keep the first valid party Companion using the same scenario callback the
   // headless runner historically used.
-  autoDefaultFloor3KeptCompanion(world);
+  if (allowDirectKeptCompanionSelection) {
+    autoDefaultFloor3KeptCompanion(world);
+  }
 
   if (
     !floor3State.staircaseUnlocked ||
@@ -456,7 +467,9 @@ export function autoFloor3ProgressionSystem(world: GameWorld, playerEid: number)
   if (Math.hypot(dx, dy) > FLOOR2_STAIR_MARKER_RADIUS_FT) {
     return;
   }
-  confirmFloor3StairDescend(world, playerEid);
+  if (allowDirectStairDescend) {
+    confirmFloor3StairDescend(world, playerEid);
+  }
 }
 
 /**
