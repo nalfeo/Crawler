@@ -141,7 +141,7 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps explicit bug reports telemetry-only', async () => {
+  it('labels explicit player reports separately from automated telemetry', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/104' }),
@@ -159,7 +159,7 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry', 'reported-issue']);
   });
 
   it('keeps survey feedback telemetry-only', async () => {
