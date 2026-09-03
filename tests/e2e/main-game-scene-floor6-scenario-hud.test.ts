@@ -48,6 +48,24 @@ async function waitForScenarioHud(
   }
 }
 
+async function waitForInteractionHintBounds(
+  page: Page,
+  label: string,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const surfaces = (await mainSceneProbe.getSafeAreaLayout(page)).surfaces;
+    const hint = surfaces.find((surface) => surface.name === 'interactionHint')?.bounds;
+    if (hint) {
+      return hint;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}`);
+    }
+    await page.waitForTimeout(80);
+  }
+}
+
 async function captureEvidence(
   page: Page,
   viewport: (typeof VIEWPORTS)[number],
@@ -112,20 +130,36 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
         );
 
         // No clipping against the two other bottom-of-screen HUD surfaces
-        // this new strip shares canvas real estate with.
+        // this new strip shares canvas real estate with. `interactionHint`
+        // is not visible yet at this point, so this first check alone would
+        // pass vacuously — it is followed below by priming a real, visible
+        // "Descend" hint and re-asserting no overlap against it.
         const surfaces = (await mainSceneProbe.getSafeAreaLayout(page)).surfaces;
         const bottomCenter = surfaces.find((surface) => surface.name === 'bottomCenter')?.bounds;
         const interactionHint = surfaces.find(
           (surface) => surface.name === 'interactionHint',
         )?.bounds;
+        expect(interactionHint).toBeUndefined();
         if (bottomCenter) {
           expect(boundsOverlap(bounds, bottomCenter)).toBe(false);
         }
-        if (interactionHint) {
-          expect(boundsOverlap(bounds, interactionHint)).toBe(false);
-        }
 
         await captureEvidence(page, viewport, 'docked');
+
+        // Prime the real "Descend" interaction hint (opened Relay victory
+        // exit + player standing on its marker) and confirm the strip
+        // reflows above it instead of clipping it — the exact regression
+        // this reflow fix targets.
+        const hintPrimed = await mainSceneProbe.primeFloor6VictoryExitHint(page);
+        expect(hintPrimed).toBe(true);
+        const liveHintBounds = await waitForInteractionHintBounds(
+          page,
+          'the "Descend" interaction hint to render after opening the Relay exit',
+        );
+        const withHint = await mainSceneProbe.getScenarioHudState(page);
+        expect(withHint.bounds).not.toBeNull();
+        expect(boundsOverlap(withHint.bounds!, liveHintBounds)).toBe(false);
+        await captureEvidence(page, viewport, 'descend-hint-no-overlap');
       } finally {
         await context.close();
       }
@@ -174,4 +208,94 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       }
     }, 60_000);
   }
+
+  it('renders route direction, buildable-vs-occupied sites, tower range/tier, loot, upgrade, break-safety, and Deadline text without color-only meaning', async () => {
+    const context = await browser.newContext({ viewport: VIEWPORTS[0] });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor6' }, LAB_BASE_URL);
+      const initial = await waitForScenarioHud(
+        page,
+        (state) => state.visible && state.text !== null,
+        'Floor 6 scenario HUD strip to render before priming site/phase state',
+      );
+      await mainSceneProbe.setSimulationPaused(page, true);
+
+      // Routes: incoming-wave direction is spelled out as a compass word AND
+      // an arrow glyph, not inferred from route color.
+      expect(initial.text).toMatch(
+        /Routes: .*incoming from (west|east|north|south) route (→|←|↓|↑) Relay/,
+      );
+      // Build sites: a vacant plinth is explicitly labeled "VACANT ... buildable"
+      // before any tower is placed — readable without occupancy color coding.
+      expect(initial.text).toContain('VACANT');
+      expect(initial.text).toContain('buildable maintenance plinth');
+      // Loot and upgrade/break-safety/Deadline presentation lines are always
+      // present, independent of phase.
+      expect(initial.text).toMatch(/Requisitions \d+ available/);
+      expect(initial.text).toMatch(/Loot visible: \d+ requisition drops/);
+      expect(initial.text).toMatch(/upgrade offers (chosen|active)/);
+      expect(initial.text).toContain('Deadline pending');
+      // Relay danger: holding at full HP reads as an explicit "SAFE" word.
+      expect(initial.text).toMatch(/SAFE Relay holding: \d+\/\d+ HP/);
+      await captureEvidence(page, VIEWPORTS[0], 'initial-vacant-sites');
+
+      // Relay danger escalation is stated as a "CRITICAL" word, not merely a
+      // color change on a health bar.
+      const relayCritical = await mainSceneProbe.primeFloor6RelayCriticalDanger(page);
+      expect(relayCritical).toBe(true);
+      const relayDanger = await waitForScenarioHud(
+        page,
+        (state) => state.text !== null && state.text.includes('CRITICAL Relay danger'),
+        'Floor 6 scenario HUD to show the CRITICAL Relay danger text',
+      );
+      expect(relayDanger.text).toMatch(/CRITICAL Relay danger: \d+\/\d+ HP/);
+      await captureEvidence(page, VIEWPORTS[0], 'relay-critical-danger');
+
+      // Occupying a site flips the same line from VACANT to an explicit
+      // OCCUPIED label naming the tower, and surfaces its range/tier text —
+      // proving buildable-vs-occupied and tower range/tier read from text,
+      // not from a site or tower sprite color.
+      const occupied = await mainSceneProbe.primeFloor6OccupiedSite(page);
+      expect(occupied).not.toBeNull();
+      const afterBuild = await waitForScenarioHud(
+        page,
+        (state) => state.text !== null && state.text.includes('OCCUPIED'),
+        'Floor 6 scenario HUD to show the occupied build site',
+      );
+      expect(afterBuild.text).toContain(`OCCUPIED ${occupied!.siteId}: ${occupied!.towerId}`);
+      expect(afterBuild.text).toMatch(
+        new RegExp(
+          `${occupied!.towerId} at ${occupied!.siteId}: \\d+ft, (base tier|\\+\\d+ global tower modifiers?)`,
+        ),
+      );
+      await captureEvidence(page, VIEWPORTS[0], 'occupied-site-tower-range');
+
+      // Break phase: the sealed, non-hostile reset beat states its safety in
+      // words with an exact zero-hostile count, not merely a color change.
+      const breakPrimed = await mainSceneProbe.primeFloor6BreakPhase(page);
+      expect(breakPrimed).toBe(true);
+      const breakState = await waitForScenarioHud(
+        page,
+        (state) => state.text !== null && state.text.includes('BREAK phase'),
+        'Floor 6 scenario HUD to show the BREAK phase',
+      );
+      expect(breakState.text).toMatch(/Break safe: 0 live hostiles/);
+      await captureEvidence(page, VIEWPORTS[0], 'break-phase-safety');
+
+      // Deadline finale: escalation is stated as text ("Deadline active: ...")
+      // plus Relay danger/one-shot cue, not color alone.
+      const finalePrimed = await mainSceneProbe.primeFloor6FinaleVfxCue(page);
+      expect(finalePrimed).toBe(true);
+      const finaleState = await waitForScenarioHud(
+        page,
+        (state) => state.text !== null && state.text.includes('Deadline active'),
+        'Floor 6 scenario HUD to show the Deadline finale escalation',
+      );
+      expect(finaleState.text).toMatch(/Deadline active: .* on/);
+      await captureEvidence(page, VIEWPORTS[0], 'deadline-finale-escalation');
+    } finally {
+      await context.close();
+    }
+  }, 60_000);
 });

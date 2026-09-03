@@ -107,6 +107,7 @@ import { createAbilityState, forceActivateAbility } from '../../game/systems/abi
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
+import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -1185,6 +1186,38 @@ export interface MainSceneProbeApi {
    * Returns false when not booted on Floor 6.
    */
   primeFloor6FinaleVfxCue(): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+   * directly, so an e2e spec can assert the scenario HUD's break-safety
+   * presentation line without driving a full wave-clear through the sim.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6BreakPhase(): boolean;
+  /**
+   * Test-only Floor 6 setup: occupies the first authored build site with the
+   * first roster tower directly on the defense state (bypassing the
+   * currency/phase transaction gates in `buildFloor6Tower`), so an e2e spec
+   * can assert the scenario HUD's occupied-site and tower range/tier
+   * presentation lines without a full economy grind. Returns false when not
+   * booted on Floor 6 or when it has no authored build sites/towers.
+   */
+  primeFloor6OccupiedSite(): { siteId: string; towerId: string } | null;
+  /**
+   * Test-only Floor 6 setup: opens the Relay victory exit directly on the
+   * defense state (`phase.kind = 'VICTORY'`, `exit.opened = true`) and moves
+   * the player to the exit marker position, so an e2e spec can assert the
+   * "Descend" interaction hint actually renders (and that the scenario HUD
+   * strip reflows to avoid it) without grinding a full defense win. Returns
+   * false when not booted on Floor 6 or the exit geometry/map isn't ready.
+   */
+  primeFloor6VictoryExitHint(): boolean;
+  /**
+   * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL danger
+   * level directly on the defense state, so an e2e spec can assert the
+   * Relay danger text renders without scripting a full raider assault.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6RelayCriticalDanger(): boolean;
   /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
@@ -2426,6 +2459,100 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
       scene.setSimulationPaused(true);
       defense.phase = { kind: 'FINALE' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+     * directly, mirroring `primeFloor6FinaleVfxCue`, so an e2e spec can
+     * assert the scenario HUD's break-safety presentation line without
+     * driving a full wave-clear through the sim.
+     */
+    primeFloor6BreakPhase: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'BREAK' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: occupies the first authored build site with
+     * the first roster tower directly on the defense state (bypassing the
+     * currency/phase transaction gates in `buildFloor6Tower`), so an e2e
+     * spec can assert the scenario HUD's occupied-site and tower range/tier
+     * presentation lines without a full economy grind.
+     */
+    primeFloor6OccupiedSite: (): { siteId: string; towerId: string } | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const site = defense?.geometry.buildSites[0];
+      const tower = _getFloor6TowerRoster()[0];
+      if (!scene || !world || !defense || !site || !tower) {
+        return null;
+      }
+      scene.setSimulationPaused(true);
+      defense.towerInstances = defense.towerInstances.filter(
+        (instance) => instance.siteId !== site.id,
+      );
+      defense.towerInstances.push({ siteId: site.id, towerId: tower.id, eid: -1 });
+      return { siteId: site.id, towerId: tower.id };
+    },
+
+    /**
+     * Test-only Floor 6 setup: opens the Relay victory exit and places the
+     * player on its marker, mirroring the authoritative
+     * `getFloor6StairMarkerState` projection (same position/tile math), so an
+     * e2e spec can assert the real "Descend" interaction hint renders without
+     * grinding a full defense win through the sim.
+     */
+    primeFloor6VictoryExitHint: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const floorMap = world?.floorMap;
+      if (!scene || !world || playerEid < 0 || !defense || !floorMap) {
+        return false;
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      defense.phase = { kind: 'VICTORY' };
+      defense.exit.opened = true;
+      defense.exit.confirmed = false;
+      const exit = defense.geometry.victoryExit;
+      const tileSizeFt = floorMap.config.tileSizeFt;
+      world.stores.position.x[playerEid] = (exit.bounds.x + exit.bounds.width / 2) * tileSizeFt;
+      world.stores.position.y[playerEid] = (exit.bounds.y + exit.bounds.height / 2) * tileSizeFt;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL
+     * danger level directly on the defense state, so an e2e spec can assert
+     * the Relay danger text (`CRITICAL Relay danger: ...`) renders without
+     * scripting a full raider assault through the sim.
+     */
+    primeFloor6RelayCriticalDanger: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.relayHp = 1;
       return true;
     },
 

@@ -85,6 +85,7 @@ import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
   autoFloor3ProgressionSystem,
+  autoFloor6ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import {
@@ -1510,6 +1511,7 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
       captureFloor3Progression();
+      autoFloor6ProgressionSystem(world);
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls

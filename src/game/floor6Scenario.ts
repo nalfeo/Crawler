@@ -698,10 +698,7 @@ function floor6RelayMaxHp(state: Floor6DefenseState): number {
  * doing so from a per-frame HUD read would silently advance quest state
  * outside the sim-side systems that own it.
  */
-function floor6QuestGoalFlagSnapshot(
-  world: GameWorld,
-  _state: Floor6DefenseState,
-): Floor6QuestProjectionSnapshot {
+function floor6QuestGoalFlagSnapshot(world: GameWorld): Floor6QuestProjectionSnapshot {
   return {
     'floor6.defense.briefed': world.goalFlags.get('floor6.defense.briefed') === true,
     'floor6.defense.firstWaveCleared':
@@ -770,7 +767,7 @@ function buildFloor6PresentationSnapshot(
   ];
   if (state.phase.kind === 'BREAK') {
     cues.push({
-      id: 'floor6-break-safe',
+      id: `floor6-break-safe-${state.currentActIndex}`,
       kind: 'audio',
       label: 'Service break cue: hostiles cleared; build, sell, and upgrade actions are safe',
     });
@@ -794,7 +791,7 @@ function buildFloor6PresentationSnapshot(
     objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
     phaseLabel: `${state.phase.kind} phase`,
     relayDangerLabel,
-    questGoals: floor6QuestGoalFlagSnapshot(world, state),
+    questGoals: floor6QuestGoalFlagSnapshot(world),
     routes: state.geometry.routes.map((route) => {
       const next = nextByRoute.get(route.id);
       const sample = next ?? manifest.find((entry) => entry.routeId === route.id);
