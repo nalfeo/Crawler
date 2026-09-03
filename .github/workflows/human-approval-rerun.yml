@@ -34,9 +34,6 @@ jobs:
             const HUMAN_APPROVAL_LABEL = 'human-approval-required';
             const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
             const HUMAN_APPROVAL_PHRASE_VARIANT = 'APPROVED FOR CHECKIN';
-            // Broad prefix covers legacy ('copilot/balance-telemetry-driven-improvement-sweep')
-            // and current ('copilot/balance-telemetry-improvement-sweep') naming conventions.
-            const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry';
 
             function hasLabel(labels, wanted) {
               const entries = Array.isArray(labels) ? labels : labels?.nodes || [];
@@ -75,11 +72,6 @@ jobs:
 
             function requiresHumanApproval(pullRequest, closingIssues) {
               if (hasLabel(pullRequest?.labels, HUMAN_APPROVAL_LABEL)) return true;
-              if (
-                String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)
-              ) {
-                return true;
-              }
               return (closingIssues || []).some((issue) =>
                 hasLabel(issue.labels?.nodes, HUMAN_APPROVAL_LABEL),
               );
