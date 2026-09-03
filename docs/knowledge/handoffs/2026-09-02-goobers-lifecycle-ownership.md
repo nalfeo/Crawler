@@ -62,6 +62,42 @@ service before a cross-repository lock is required.
   documented after the first `verify:fast` correctly rejected an unregistered
   file-scope constant.
 
+## Parked PR freshness intervention
+
+On 2026-09-02, PR #4091 was intentionally parked behind
+`human-approval-required` until Goobers shadow mode is unblocked and produces
+hosted data. The PR was otherwise mergeable, had no unresolved review threads,
+and was cleanly `BEHIND` current `main` at head
+`af0b96ba1a9bfbeb8c945c032410b358395fae7d`.
+
+The limited shepherding intervention:
+
+- retained the existing human approval gate and `merge-train-blocked` state;
+- did not synthesize `APPROVED FOR CHECK-IN`, add `merge-train`, arm
+  auto-merge, or attempt a merge;
+- heartbeated shared lease
+  `shepherd-4091-cd5931aa-84a3-4086-a22a-7977e081cbaa` in CI Recovery run
+  `33720106335`;
+- fetched current `main` and merged it without conflicts, producing local
+  reconciliation commit `fb6aaca95`;
+- left the feature's Phase 2 scope and operational cutover requirements
+  unchanged.
+
+Automation did not refresh the parked branch because the blanket freshness path
+in `auto-rebase-prs.yml` treats `human-approval-required` as an automation
+opt-out, while `merge-train.yml` only handles PRs already carrying or
+transitioning the `merge-train` queue label. That leaves intentionally parked,
+approval-gated PRs outside both branch-update paths.
+
+The permanent fix candidate is to separate branch freshness from merge
+admission. A trusted scheduled lane should update same-repository,
+clean-`BEHIND` parked PRs with an expected-head fence while preserving
+`human-approval-required`, never adding `merge-train`, and never granting or
+inferring approval. It should remain lease-aware, emit durable update/skip
+telemetry, and route `DIRTY` branches to explicit conflict recovery instead of
+force-pushing. This keeps long-lived evaluation PRs current without weakening
+their human gate.
+
 ## Unresolved issues
 
 The repository variables still require the documented drain-first operational
