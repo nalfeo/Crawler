@@ -325,6 +325,26 @@ describe('MainGameScene UI exclusivity', () => {
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
   });
 
+  it('closes the achievements panel with Escape without opening another surface', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await waitForState(page, (s) => s.achievementsOpen, {
+      label: 'achievements panel opened for Escape dismissal',
+    });
+
+    await page.keyboard.press('Escape');
+    const state = await waitForState(page, (s) => !s.achievementsOpen, {
+      label: 'achievements panel closed by Escape',
+    });
+
+    expect(
+      state.primarySurfaceCount,
+      'Escape must not open or expose another primary surface',
+    ).toBe(0);
+    expect(state.conversationOpen, 'Escape must not leak into NPC interaction').toBe(false);
+  });
+
   it('requires an explicit NPC interaction before dialogue opens', async () => {
     await bootPlayingSafeScene();
     const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);

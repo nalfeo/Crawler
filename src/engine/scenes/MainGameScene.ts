@@ -1905,6 +1905,15 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
+    if (this.achievementsUI?.isOpen()) {
+      if (event.code === 'Escape' && !event.repeat) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.queuedAchievementsToggle = false;
+        this.achievementsUI.toggle(this.world);
+      }
+      return;
+    }
     if (this.floor3RosterUI?.isOpen()) {
       if (event.repeat) return;
       if (event.code === 'KeyR' || event.code === 'Escape') {

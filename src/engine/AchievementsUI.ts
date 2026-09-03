@@ -245,7 +245,7 @@ export function createAchievementsUI(
   });
   container.add(title);
 
-  const hint = crispText(0, 0, '[V] close', {
+  const hint = crispText(0, 0, '[V]/[ESC] close', {
     fontFamily: FONT_FAMILY,
     fontSize: '13px',
     color: hex(COLORS.textSecondary),
