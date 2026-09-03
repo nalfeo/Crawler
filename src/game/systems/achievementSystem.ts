@@ -179,7 +179,10 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     (world.floor === 1 && world.floorScenario?.runSummary?.outcome === 'cleared_floor') ||
     (world.floor === 2 &&
       (world.floorExtendedState?.familyState?.staircaseDiscovered === true ||
-        world.goalFlags.get('floor2.objective.staircaseDiscovered') === true));
+        world.goalFlags.get('floor2.objective.staircaseDiscovered') === true)) ||
+    (world.floor === 6 &&
+      world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
+      world.floorExtendedState.floor6Defense.exit.opened === true);
   const ratsKilled = floor1Objective?.ratsKilled ?? 0;
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
   const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
@@ -266,6 +269,22 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       allPresentFamiliesNeutralOrBetter,
       allPresentFamiliesEngagedInCombat,
       allPresentFamilyBossesEngaged,
+      floor6RelayBriefed:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.briefed') === true,
+      floor6FirstWaveCleared:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstWaveCleared') === true,
+      floor6FirstBuildPlaced:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstBuildPlaced') === true,
+      floor6FirstUpgradeChosen:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true,
+      floor6BreakCleared:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.breakCleared') === true,
+      floor6DeadlineDefeated:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.deadlineDefeated') === true,
+      floor6RelaySecured:
+        world.floor === 6 &&
+        world.goalFlags.get('floor6.defense.relaySecured') === true &&
+        world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory',
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseSpawned:
         floor1Objective?.staircaseSpawned === true ||

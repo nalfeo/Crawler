@@ -241,13 +241,13 @@ describe('Floor 6 authored defense map', () => {
 });
 
 describe('Floor 6 plumbing', () => {
-  it('is registered and playable but remains unreleased and non-MVP', () => {
+  it('is registered, playable, implemented, and released', () => {
     const manifest = getFloorManifest('floor6');
     expect(manifest).toBe(floor6Manifest);
     expect(manifest?.map.biome).toBe(BiomeType.BROADCAST_RELAY_SET);
-    expect(manifest?.implemented).toEqual({ mvp: false, released: false });
+    expect(manifest?.implemented).toEqual({ mvp: true, released: true, winBudgetMs: 150_000 });
     expect(getAvailableFloorIds()).toContain('floor6');
-    expect(getImplementedFloorIds()).not.toContain('floor6');
+    expect(getImplementedFloorIds()).toContain('floor6');
     expect(isFloorPlayable('floor6')).toBe(true);
 
     const scenario = getScenarioDefinition('floor6');

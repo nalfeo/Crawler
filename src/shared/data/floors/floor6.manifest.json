@@ -4,8 +4,9 @@
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
   "implemented": {
-    "mvp": false,
-    "released": false
+    "mvp": true,
+    "released": true,
+    "winBudgetMs": 150000
   },
   "timer": {
     "durationMs": 3600000,
@@ -72,7 +73,7 @@
       "stallBackstopFrames": 3600,
       "raiderSpeedFtPerFrame": 0.15,
       "raiderAttackRangeFt": 2.5,
-      "raiderRelayDamage": 8,
+      "raiderRelayDamage": 1,
       "raiderAttackCooldownMs": 800,
       "waypointArriveThresholdFt": 1.5,
       "stalledFramesThreshold": 90
@@ -129,8 +130,8 @@
       {
         "id": "signal-slinger",
         "footprintId": "standard",
-        "cost": 4,
-        "sellRefund": 2,
+        "cost": 2,
+        "sellRefund": 1,
         "attackRangeFt": 36,
         "attackDamage": 4,
         "attackCooldownMs": 500
@@ -203,6 +204,13 @@
           "buildCurrencyReward": 0
         }
       ]
+    },
+    "releaseGate": {
+      "completionRateTarget": 0.9,
+      "minimumRelayHealthPct": 0.01,
+      "maxLiveEnemies": 0,
+      "maxStalledRaiders": 0,
+      "maxFrameCostMs": 16.67
     }
   }
 }

@@ -12,6 +12,7 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
+  FLOOR6_ACHIEVEMENTS,
   FLOOR2_ACHIEVEMENT_LOOT_TIERS,
   _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
   FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER,
@@ -102,6 +103,7 @@ describe('floor1 achievements catalog', () => {
   it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
 
     const floor2Catalog = createAchievementCatalog(2, [
       rawAchievement({
@@ -148,7 +150,7 @@ describe('floor1 achievements catalog', () => {
       parseAchievementCatalog([rawAchievement({ id: 'boss-chest:goblin-clan' })]),
     ).toThrow(/collides with the reserved boss-chest reward-bundle prefix/);
     expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
-      FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length,
+      FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length + FLOOR6_ACHIEVEMENTS.length,
     );
     expect(ALL_ACHIEVEMENTS).toEqual(
       ACHIEVEMENT_CATALOG_REGISTRY.catalogs.flatMap((catalog) => catalog.all),
@@ -158,6 +160,7 @@ describe('floor1 achievements catalog', () => {
   it('keeps floor-aware catalog lookup isolated by floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
   });
 
   it('defaults missing scope to floor for backward compatibility', () => {
@@ -214,6 +217,51 @@ describe('floor1 achievements catalog', () => {
     delete raw[0]!.unlockRules;
 
     expect(() => parseAchievementCatalog(raw)).toThrow();
+  });
+});
+
+describe('floor6 achievements catalog', () => {
+  it('registers validated Floor 6 achievements with unique measured requirements', () => {
+    expect(FLOOR6_ACHIEVEMENTS).toHaveLength(7);
+    expect(new Set(FLOOR6_ACHIEVEMENTS.map((achievement) => achievement.id)).size).toBe(
+      FLOOR6_ACHIEVEMENTS.length,
+    );
+    expect(FLOOR6_ACHIEVEMENTS.every((achievement) => achievement.floor === 6)).toBe(true);
+    expect(FLOOR6_ACHIEVEMENTS.every((achievement) => achievement.reward.type === 'none')).toBe(
+      true,
+    );
+
+    const requirementKeys = FLOOR6_ACHIEVEMENTS.map((achievement) =>
+      JSON.stringify(achievement.unlockRules),
+    );
+    expect(new Set(requirementKeys).size).toBe(requirementKeys.length);
+  });
+
+  it('keeps Floor 6 achievements tied to Floor 6 measured facts and quest completion', () => {
+    const factNames = new Set(
+      FLOOR6_ACHIEVEMENTS.flatMap((achievement) =>
+        achievement.unlockRules.flatMap((rule) => (rule.type === 'booleanIs' ? [rule.fact] : [])),
+      ),
+    );
+    expect(factNames).toEqual(
+      new Set([
+        'floor6RelayBriefed',
+        'floor6FirstWaveCleared',
+        'floor6FirstBuildPlaced',
+        'floor6FirstUpgradeChosen',
+        'floor6BreakCleared',
+        'floor6DeadlineDefeated',
+        'floor6RelaySecured',
+        'runClearedFloor',
+      ]),
+    );
+    expect(
+      FLOOR6_ACHIEVEMENTS.some((achievement) =>
+        achievement.unlockRules.some(
+          (rule) => rule.type === 'allQuestsComplete' && rule.questIds.includes('floor6-defense'),
+        ),
+      ),
+    ).toBe(true);
   });
 });
 

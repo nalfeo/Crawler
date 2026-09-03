@@ -1560,6 +1560,46 @@ export interface Floor6LiveEnemyRecord {
   rewardSpawned: boolean;
 }
 
+export interface Floor6PhaseDurationStats {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly enteredFrame: number;
+  readonly exitedFrame: number;
+  readonly durationFrames: number;
+}
+
+export interface Floor6RoutePressureStats {
+  readonly routeId: string;
+  readonly released: number;
+  readonly stalled: number;
+}
+
+export interface Floor6CleanupStats {
+  readonly liveEnemyCount: number;
+  readonly spawnDebt: number;
+  readonly terminalResetCount: number;
+  readonly towersTornDown: number;
+}
+
+export interface Floor6TerminalIntegrityStats {
+  readonly terminal: boolean;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutCount: number;
+  readonly exitOpenCount: number;
+}
+
+export interface Floor6ReleaseGateStats {
+  readonly activeTimeBudgetMs: number | null;
+  readonly frameBudget: number | null;
+  readonly completionRateTarget: number;
+  readonly minimumRelayHealthPct: number;
+  readonly maxLiveEnemies: number;
+  readonly maxStalledRaiders: number;
+  readonly phaseDurations: readonly Floor6PhaseDurationStats[];
+  readonly routePressure: readonly Floor6RoutePressureStats[];
+  readonly cleanup: Floor6CleanupStats;
+  readonly terminalIntegrity: Floor6TerminalIntegrityStats;
+}
+
 /** Telemetry snapshot emitted by the director at every phase transition. */
 export interface Floor6DefenseRunStats {
   readonly phase: Floor6DefensePhase;
@@ -1604,6 +1644,7 @@ export interface Floor6DefenseRunStats {
   readonly victoryPayoutBroadcastScore: number;
   readonly exitOpened: boolean;
   readonly exitOpenCount: number;
+  readonly releaseGate: Floor6ReleaseGateStats;
   readonly presentation: Floor6PresentationSnapshot;
 }
 
