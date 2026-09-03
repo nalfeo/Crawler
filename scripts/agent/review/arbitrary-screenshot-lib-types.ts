@@ -1,4 +1,6 @@
 declare module '*.mjs' {
+  export const GOOBERS_RUN_START_MARKER_PREFIX: string;
+  export const GOOBERS_RUN_RESULT_MARKER_PREFIX: string;
   export const REVIEW_AXES: readonly string[];
   export function mediaTypeFor(path: string): 'image/png' | 'image/jpeg' | 'image/webp';
   export function parseArgs(argv: string[]): {
