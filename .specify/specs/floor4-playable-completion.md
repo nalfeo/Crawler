@@ -77,6 +77,11 @@ button) but they do **not** mutate health/phase/objective state, grant
 invulnerability, force kills, inject enemies, skip interactions, or add
 test-only gameplay hooks. Neither test touches `src/**`.
 
+The contract's shared literals — the five acts, the manifest-derived stall
+backstop, and C5's recorded auto-advance exit reasons — live in
+`tests/helpers/floor4-completion-contract.ts` and are imported by both gates, so
+a change to one criterion cannot silently loosen only one runner.
+
 ## Slice 1 — Baseline (reproduce first)
 
 ### Headless baseline

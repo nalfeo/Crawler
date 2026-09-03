@@ -55,7 +55,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
-import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import {
+  FLOOR4_ACTS,
+  FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
+  FLOOR4_STALL_BACKSTOP_MS,
+} from '../helpers/floor4-completion-contract.js';
 
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner`;
 
@@ -74,23 +78,6 @@ const POLL_INTERVAL_MS = 3_000;
 /** Generous ceiling: the headless baseline reaches VICTORY at ~608s game
  * time / ~36.5k frames; at 16x this needs well under 90s of wall time. */
 const MAX_POLLS = 40;
-
-/** The five authored acts, in order. */
-const ACTS = [1, 2, 3, 4, 5];
-
-/**
- * The real Floor 4 stall backstop (FR8.4), read from the shipped manifest so
- * retuning the backstop retunes this gate with it.
- */
-const STALL_BACKSTOP_MS = getFloorManifest('floor4')?.timer?.durationMs ?? 0;
-
-/**
- * Phase-transition reasons the arena director currently uses to leave an
- * `INTERMISSION` — the shared timer-driven auto-advance recorded as the open
- * C5 shortfall in `.specify/specs/floor4-playable-completion.md`. Kept in sync
- * with the headless gate.
- */
-const AUTO_INTERMISSION_EXIT_REASONS = ['slice2-auto-green-room-exit', 'slice2-auto-stairs'];
 
 async function loadAiRunner(page: Page): Promise<void> {
   await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
@@ -253,20 +240,20 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.finalSnapshot.gateTelegraphsArmed, firstContext).toBeGreaterThan(0);
     // C3 — all five wave windows opened and released.
     expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBeGreaterThanOrEqual(5);
-    expect(firstRun.finalSnapshot.waveActs, firstContext).toEqual([...ACTS]);
+    expect(firstRun.finalSnapshot.waveActs, firstContext).toEqual([...FLOOR4_ACTS]);
     // C4 — all five Headliners physically spawned and fell to ordinary combat.
     expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
-    expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...ACTS]);
+    expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
     // C5 — every act's intermission was entered, banked income, and resolved.
     // Recorded shortfall (identical to headless): resolution is the shared
     // arena-director timer, not yet a public Green Room/stairs interaction.
-    expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...ACTS]);
+    expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toHaveLength(5);
     for (const reason of firstRun.finalSnapshot.intermissionExitReasons) {
-      expect(AUTO_INTERMISSION_EXIT_REASONS, firstContext).toContain(reason);
+      expect(FLOOR4_AUTO_INTERMISSION_EXIT_REASONS, firstContext).toContain(reason);
     }
     // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
     // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
@@ -278,7 +265,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // already implies the backstop never fired (it flips `world.state` to
     // `game_over`, which stops the arena director), and arena time staying
     // inside the manifest deadline shows the run did not grind toward it.
-    expect(firstRun.finalSnapshot.arenaElapsedMs, firstContext).toBeLessThan(STALL_BACKSTOP_MS);
+    expect(firstRun.finalSnapshot.arenaElapsedMs, firstContext).toBeLessThan(
+      FLOOR4_STALL_BACKSTOP_MS,
+    );
 
     const secondRun = await runVisualFloor4Completion(browser);
     const secondContext = `pageErrors=${JSON.stringify(
@@ -308,7 +297,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(secondRun.finalSnapshot.actIncomeCount, secondContext).toBe(
       firstRun.finalSnapshot.actIncomeCount,
     );
-    expect(secondRun.finalSnapshot.arenaElapsedMs, secondContext).toBeLessThan(STALL_BACKSTOP_MS);
+    expect(secondRun.finalSnapshot.arenaElapsedMs, secondContext).toBeLessThan(
+      FLOOR4_STALL_BACKSTOP_MS,
+    );
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
       firstRun.finalSnapshot.timelineFingerprint,

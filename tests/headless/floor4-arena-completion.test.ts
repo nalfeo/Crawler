@@ -47,33 +47,17 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { getPersonaConfig } from '../../src/game/ai/personas.js';
 import type { RunStats } from '../../src/game/ai/types.js';
-import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import {
+  FLOOR4_ACTS,
+  FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
+  FLOOR4_STALL_BACKSTOP_MS,
+} from '../helpers/floor4-completion-contract.js';
 
 /**
  * The canonical deterministic seed the `floor-4-playable-completion` epic
  * names as the acceptance seed for both the headless and visual runners.
  */
 const CANONICAL_SEED = 404;
-
-/**
- * The real Floor 4 stall backstop (FR8.4): `floor4ObjectiveTick` flips the run
- * to `game_over` with the `floor4-stall-backstop` goal flag once raw
- * `world.elapsedMs` reaches the manifest timer. Read from the manifest rather
- * than hardcoded so retuning the backstop retunes this gate with it.
- */
-const STALL_BACKSTOP_MS = getFloorManifest('floor4')?.timer?.durationMs ?? 0;
-
-/** The five authored acts, in order. */
-const ACTS = [1, 2, 3, 4, 5] as const;
-
-/**
- * Phase-transition reasons the arena director currently uses to leave an
- * `INTERMISSION`. Both are the shared timer-driven auto-advance documented as
- * the open C5 shortfall in `.specify/specs/floor4-playable-completion.md`; the
- * Green Room slice that replaces them with a real public interaction must
- * update this list (and the contract table) deliberately.
- */
-const AUTO_INTERMISSION_EXIT_REASONS = ['slice2-auto-green-room-exit', 'slice2-auto-stairs'];
 
 /**
  * Frame budget for a Floor 4 completion run. A full 5-act clear on seed 404
@@ -133,7 +117,7 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(
       arena!.headlinerCard.map((entry) => entry.act),
       telemetryFailure,
-    ).toEqual([...ACTS]);
+    ).toEqual([...FLOOR4_ACTS]);
 
     // C2 — real physical hostiles spawned through the authored feed-gate path.
     // Not a cherry-picked kill count: it's the "did anything actually happen"
@@ -142,7 +126,7 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(arena!.waveTelemetry.gateTelegraphsArmed, telemetryFailure).toBeGreaterThan(0);
     // C3 — all five wave windows opened and released at least one wave each.
     expect(arena!.waveTelemetry.wavesReleased, telemetryFailure).toBeGreaterThanOrEqual(5);
-    expect(phaseActs(timeline, 'WAVES'), telemetryFailure).toEqual([...ACTS]);
+    expect(phaseActs(timeline, 'WAVES'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     // C4 — all five Headliners physically spawned and were defeated through
     // ordinary combat (not force-resolved — `resolveFloor4HeadlinerDefeat`
     // only marks `defeated` on a genuine health-zero kill, and
@@ -150,7 +134,7 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(arena!.headlinerTelemetry.spawned, telemetryFailure).toBe(5);
     expect(arena!.headlinerTelemetry.defeated, telemetryFailure).toBe(5);
     expect(arena!.headlinerTelemetry.overtimeStarted, telemetryFailure).toBe(0);
-    expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...ACTS]);
+    expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
 
     // C5 — every act's intermission was entered AND resolved (each has a
     // successor timeline entry) and banked its act income.
@@ -159,11 +143,11 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // director's shared phase timer, not a public Green Room/stairs
     // interaction. That is asserted explicitly below so the gap is visible in
     // the gate itself rather than only in prose.
-    expect(phaseActs(timeline, 'INTERMISSION'), telemetryFailure).toEqual([...ACTS]);
+    expect(phaseActs(timeline, 'INTERMISSION'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     expect(
       arena!.actIncome.map((entry) => entry.act),
       telemetryFailure,
-    ).toEqual([...ACTS]);
+    ).toEqual([...FLOOR4_ACTS]);
     const intermissionExitReasons = timeline
       .map((entry, index) =>
         timeline[index - 1]?.phase.kind === 'INTERMISSION' ? entry.reason : undefined,
@@ -171,7 +155,7 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
       .filter((reason): reason is string => reason !== undefined);
     expect(intermissionExitReasons, telemetryFailure).toHaveLength(5);
     for (const reason of intermissionExitReasons) {
-      expect(AUTO_INTERMISSION_EXIT_REASONS, telemetryFailure).toContain(reason);
+      expect(FLOOR4_AUTO_INTERMISSION_EXIT_REASONS, telemetryFailure).toContain(reason);
     }
 
     // C6 — the phase trace actually reached the terminal VICTORY phase.
@@ -184,8 +168,7 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // inside `floor4ObjectiveTick`'s raw-elapsed deadline (observed baseline
     // ~608s against a 3600s backstop), and the run did not grind out the test
     // frame cap because something silently stalled.
-    expect(STALL_BACKSTOP_MS, 'floor4 manifest has no timer').toBeGreaterThan(0);
-    expect(stats.gameTimeMs, telemetryFailure).toBeLessThan(STALL_BACKSTOP_MS);
+    expect(stats.gameTimeMs, telemetryFailure).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
     expect(stats.totalFrames, telemetryFailure).toBeLessThan(MAX_FRAMES);
   });
 
