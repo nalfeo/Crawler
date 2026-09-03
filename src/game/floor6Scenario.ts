@@ -64,6 +64,7 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { acceptQuest } from '../core/systems/questSystem.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import { FLOOR6_DEFENSE_QUEST_ID } from '../shared/quest-types.js';
 
 function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
@@ -141,6 +142,8 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     waveManifest: null,
     upgradeOfferManifest: null,
     liveEnemies: [],
+    stalledRaiderCount: 0,
+    routeStallCounts: {},
     nextReleaseIndex: 0,
     spawnDebt: 0,
     relayHp: tuning?.relayMaxHp ?? 100,
@@ -1404,6 +1407,12 @@ export function floor6RaiderSystem(world: GameWorld): void {
         rec.stillFrames = sf;
         if (sf >= stalledThreshold && !rec.stallResolved) {
           rec.stallResolved = true; // director will reconcile
+          state.stalledRaiderCount += 1;
+          const entry = state.waveManifest?.[mIdx];
+          if (entry) {
+            state.routeStallCounts[entry.routeId] =
+              (state.routeStallCounts[entry.routeId] ?? 0) + 1;
+          }
         }
       }
     } else {
@@ -1690,9 +1699,8 @@ function buildFloor6RoutePressure(
     let stalled = 0;
     for (const entry of state.waveManifest ?? []) {
       if (entry.routeId !== route.id) continue;
-      const record = state.liveEnemies[entry.manifestIndex];
-      if (record && entry.manifestIndex < state.nextReleaseIndex) released += 1;
-      if (record?.stallResolved && record.eid > 0) stalled += 1;
+      if (entry.manifestIndex < state.nextReleaseIndex) released += 1;
+      stalled = state.routeStallCounts[route.id] ?? 0;
     }
     return { routeId: route.id, released, stalled };
   });
@@ -1715,6 +1723,8 @@ function buildFloor6ReleaseGateStats(
     minimumRelayHealthPct: gate?.minimumRelayHealthPct ?? 0,
     maxLiveEnemies: gate?.maxLiveEnemies ?? 0,
     maxStalledRaiders: gate?.maxStalledRaiders ?? 0,
+    maxFrameCostMs: gate?.maxFrameCostMs ?? GAME.DELTA_MS,
+    observedFrameCostMs: GAME.DELTA_MS,
     phaseDurations: buildFloor6PhaseDurations(state, world.frameCount),
     routePressure: buildFloor6RoutePressure(state),
     cleanup: {
@@ -1741,7 +1751,7 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
   if (!state) return undefined;
   const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
-  const stalledCount = state.liveEnemies.filter((r) => r.stallResolved && r.eid > 0).length;
+  const stalledCount = state.stalledRaiderCount;
   return {
     phase: { ...state.phase },
     phaseTrace: state.phaseTrace.map((p) => ({ ...p })),
@@ -1818,6 +1828,7 @@ export function confirmFloor6StairDescend(world: GameWorld): boolean {
   const state = world.floorExtendedState?.floor6Defense;
   if (!state || !isFloor6ExitDescendable(world) || state.exit.confirmed) return false;
   state.exit.confirmed = true;
+  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
   return true;
 }
 

@@ -89,7 +89,12 @@
     "difficulty": "brutal",
     "reward": { "type": "none" },
     "unlockRules": [
-      { "type": "booleanIs", "fact": "floor6RelaySecured", "value": true },
+      {
+        "type": "booleanIs",
+        "fact": "floor6RelaySecured",
+        "value": true,
+        "phase": "run_end_clear"
+      },
       { "type": "booleanIs", "fact": "runClearedFloor", "value": true, "phase": "run_end_clear" },
       { "type": "allQuestsComplete", "questIds": ["floor6-defense"], "phase": "run_end_clear" }
     ]

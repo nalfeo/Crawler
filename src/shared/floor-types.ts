@@ -1283,6 +1283,10 @@ export interface Floor6DefenseState {
   upgradeOfferManifest: readonly Floor6UpgradeOfferManifestEntry[] | null;
   /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
   readonly liveEnemies: Floor6LiveEnemyRecord[];
+  /** Cumulative stalled-raider count retained after terminal cleanup. */
+  stalledRaiderCount: number;
+  /** Cumulative stalled-raider count by authored route, retained after cleanup. */
+  routeStallCounts: Record<string, number>;
   /** Index into waveManifest of next entry to release. */
   nextReleaseIndex: number;
   /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
@@ -1594,6 +1598,8 @@ export interface Floor6ReleaseGateStats {
   readonly minimumRelayHealthPct: number;
   readonly maxLiveEnemies: number;
   readonly maxStalledRaiders: number;
+  readonly maxFrameCostMs: number;
+  readonly observedFrameCostMs: number;
   readonly phaseDurations: readonly Floor6PhaseDurationStats[];
   readonly routePressure: readonly Floor6RoutePressureStats[];
   readonly cleanup: Floor6CleanupStats;

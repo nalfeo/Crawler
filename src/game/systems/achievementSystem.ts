@@ -182,7 +182,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.goalFlags.get('floor2.objective.staircaseDiscovered') === true)) ||
     (world.floor === 6 &&
       world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
-      world.floorExtendedState.floor6Defense.exit.opened === true);
+      world.floorExtendedState.floor6Defense.exit.confirmed === true);
   const ratsKilled = floor1Objective?.ratsKilled ?? 0;
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
   const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
@@ -284,7 +284,8 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       floor6RelaySecured:
         world.floor === 6 &&
         world.goalFlags.get('floor6.defense.relaySecured') === true &&
-        world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory',
+        world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
+        world.floorExtendedState.floor6Defense.exit.confirmed === true,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseSpawned:
         floor1Objective?.staircaseSpawned === true ||

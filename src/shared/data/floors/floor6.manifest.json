@@ -5,7 +5,7 @@
   "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
   "implemented": {
     "mvp": true,
-    "released": true,
+    "released": false,
     "winBudgetMs": 150000
   },
   "timer": {
