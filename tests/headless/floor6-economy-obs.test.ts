@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { GameWorld } from '../../src/core/index.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import type { Floor6DefenseRunStats } from '../../src/shared/floor-types.js';
+
+function withoutObservedFrameCost(stats: Floor6DefenseRunStats | undefined) {
+  if (!stats) return stats;
+  return {
+    ...stats,
+    releaseGate: {
+      ...stats.releaseGate,
+      observedFrameCostMs: null,
+    },
+  };
+}
 
 describe('Floor 6 economy real headless pipeline', () => {
   it('collects loot, builds, upgrades, and fights through the real headless strategy', async () => {
@@ -78,7 +90,10 @@ describe('Floor 6 economy real headless pipeline', () => {
     );
     expect(stats.floor6Defense?.presentation.breakSafetyLabel).toContain('Breaks cleared: 2');
     expect(stats.floor6Defense?.presentation.deadlineLabel).toContain('Deadline defeated');
-    expect(stats.floor6Defense).toEqual(replay.floor6Defense);
+    expect(stats.floor6Defense?.releaseGate.observedFrameCostMs).not.toBeNull();
+    expect(withoutObservedFrameCost(stats.floor6Defense)).toEqual(
+      withoutObservedFrameCost(replay.floor6Defense),
+    );
   });
 
   it('executes deterministic tower requests through the real headless pipeline', async () => {
@@ -117,6 +132,9 @@ describe('Floor 6 economy real headless pipeline', () => {
       { siteId: 'plinth-south-a', towerId: 'crane-caster' },
     ]);
     expect(first.floor6Defense?.buildCurrencySpent).toBeGreaterThanOrEqual(14);
-    expect(first.floor6Defense).toEqual(second.floor6Defense);
+    expect(first.floor6Defense?.releaseGate.observedFrameCostMs).not.toBeNull();
+    expect(withoutObservedFrameCost(first.floor6Defense)).toEqual(
+      withoutObservedFrameCost(second.floor6Defense),
+    );
   });
 });
