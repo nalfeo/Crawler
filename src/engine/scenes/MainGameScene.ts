@@ -5956,8 +5956,13 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
+    const hasScenarioPresentationStairs =
+      this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
+      this.options.scenarioPresentation.stairConfirmation !== undefined;
     if (
-      (!this.world.floorScenario && !this.world.floorExtendedState?.familyState) ||
+      (!this.world.floorScenario &&
+        !this.world.floorExtendedState?.familyState &&
+        !hasScenarioPresentationStairs) ||
       this.world.state !== 'playing'
     ) {
       this.interactionHint?.setVisible(false);

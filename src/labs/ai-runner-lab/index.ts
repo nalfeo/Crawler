@@ -1342,6 +1342,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     const moved = movePlayerTo(pos.x, pos.y);
     if (moved) {
+      scene.advanceSimulationFrames(1);
       scene.queuedInteraction = true;
     }
     return moved;
