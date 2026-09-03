@@ -279,7 +279,11 @@ describe('Goobers shadow-mode parity', () => {
       workflow.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-shadow-instance"$/gm),
     ).toHaveLength(3);
     expect(workflow.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
+    expect(workflow).toContain('mkdir -p "$GOOBERS_INSTANCE/config"');
     expect(workflow).toMatch(/uses: actions\/upload-artifact@v4\s+if: always\(\)/);
+    expect(workflow).toMatch(
+      /path: \.goobers-shadow\/\s+if-no-files-found: error\s+include-hidden-files: true/,
+    );
 
     for (const legacyWorkflow of ['ci-recovery.yml', 'merge-train.yml']) {
       const source = fs.readFileSync(

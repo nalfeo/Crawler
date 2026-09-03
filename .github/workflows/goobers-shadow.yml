@@ -130,7 +130,7 @@ jobs:
           set -euo pipefail
           GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-shadow-instance"
           export GOOBERS_INSTANCE
-          mkdir -p "$GOOBERS_INSTANCE"
+          mkdir -p "$GOOBERS_INSTANCE/config"
           cat > "$GOOBERS_INSTANCE/instance.yaml" <<EOF
           apiVersion: goobers.dev/v1alpha1
           kind: Instance
@@ -187,3 +187,4 @@ jobs:
           name: goobers-shadow-${{ env.GOOBERS_SHADOW_REPORT_DAY }}
           path: .goobers-shadow/
           if-no-files-found: error
+          include-hidden-files: true
