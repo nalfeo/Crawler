@@ -50,6 +50,7 @@ describe('release balance analysis', () => {
     expect(canonicalReleaseBalanceCounts()).toEqual({
       floor1: 300,
       floor2: 150,
+      floor6: 150,
       'floor1-chain': 150,
     });
   });

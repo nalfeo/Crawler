@@ -1669,7 +1669,9 @@ function buildFloor6PhaseDurations(
   const durations: Floor6DefenseRunStats['releaseGate']['phaseDurations'][number][] = [];
   for (const [index, entry] of state.phaseTrace.entries()) {
     const next = state.phaseTrace[index + 1];
-    const exitedFrame = next?.frame ?? currentFrame;
+    const exitedFrame =
+      next?.frame ??
+      (entry.toKind === 'VICTORY' || entry.toKind === 'DEFEAT' ? entry.frame : currentFrame);
     durations.push({
       kind: entry.toKind,
       enteredFrame: entry.frame,
