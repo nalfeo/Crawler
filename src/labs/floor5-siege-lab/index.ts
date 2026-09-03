@@ -53,6 +53,7 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `ramHp=${siege?.ram.health ?? 0}/${siege?.ram.maxHealth ?? 0} route=${siege?.ram.routeIndex ?? 0} strikes=${siege?.ram.strikes ?? 0}`,
       `ramProtection=${siege?.ram.protectionMet ?? false} escorts=${siege?.ram.escorts ?? 0} threats=${siege?.ram.threats ?? 0}`,
       `ramRoute=${siege?.ram.routeReached.join(' -> ') || '(none)'}`,
+      `ramStates=${siege?.ram.stateSequence.join(' -> ') || '(none)'}`,
       `construction=${siege?.construction.progressMs ?? 0}/${siege?.construction.requiredMs ?? 0} paused=${siege?.construction.pausedMs ?? 0} underAttack=${siege?.construction.buildSiteUnderAttack ?? false}`,
       `breachLatched=${siege?.breach.latched ?? false} frontFrozen=${siege?.breach.frontFrozen ?? false} cleanup=${JSON.stringify(siege?.breach.cleanup ?? {})}`,
       `hero=${siege?.heroState ?? '(none)'}`,

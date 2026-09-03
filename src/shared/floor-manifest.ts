@@ -1122,6 +1122,13 @@ export const floorManifestDefSchema = z
             message: 'Floor 5 ram strike damage must not exceed authored structure health',
           });
         }
+        if (floor5.ram.arrivalToleranceFt < floor5.ram.advanceSpeedFtPerFrame) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'arrivalToleranceFt'],
+            message: 'Floor 5 ram arrival tolerance must cover one authored advance step',
+          });
+        }
         const ramLossStrikes = Math.ceil(floor5.ram.health / floor5.ram.strike.wallCounterDamage);
         const wallBreachStrikes = Math.ceil(floor5.outerWall.health / floor5.ram.strike.damage);
         if (ramLossStrikes >= wallBreachStrikes || wallBreachStrikes > ramLossStrikes * 2) {

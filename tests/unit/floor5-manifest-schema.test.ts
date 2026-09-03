@@ -55,6 +55,12 @@ describe('floor5 manifest Ratings Ram rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects an arrival tolerance smaller than one advance step', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.arrivalToleranceFt = bad.floor5.ram.advanceSpeedFtPerFrame / 2;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects an exchange that breaches before the first ram is destroyed', () => {
     const bad = cloneFloor5Manifest();
     bad.floor5.ram.health = 1000;

@@ -1745,7 +1745,12 @@ function spawnFloor5RamEntity(world: GameWorld, state: Floor5SiegeState): number
   addComponent(
     world.ecs,
     eid,
-    set(SiegeRam, { routeIndex: 1, protectionMet: 0, strikes: 0, lastStrikeMs: 0 }),
+    set(SiegeRam, {
+      routeIndex: 1,
+      protectionMet: 0,
+      strikes: state.ram.strikes,
+      lastStrikeMs: 0,
+    }),
   );
   state.ram.eid = eid;
   state.ram.health = config.health;
@@ -2110,8 +2115,6 @@ export function siegeRamSystem(world: GameWorld): void {
     return;
   }
 
-  advanceFloor5RamRebuild(world, state);
-
   if (state.engineState === 'LOCKED' || state.engineState === 'DESTROYED') {
     return;
   }
@@ -2135,11 +2138,9 @@ export function siegeRamSystem(world: GameWorld): void {
   if (state.engineState === 'READY') {
     if (!protectionMet) {
       state.ram.holdFrames += 1;
-      setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
-      return;
     }
-    setFloor5EngineState(world, state, 'ADVANCING', 'ratings-ram-escort-started');
-    recordFloor5PhaseTransition(world, state, { kind: 'ESCORT' }, 'ratings-ram-escort-started');
+    setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+    return;
   }
 
   if (state.engineState === 'ADVANCING') {
@@ -2420,6 +2421,11 @@ function floor5ObjectiveTick(world: GameWorld): void {
     // running the lane systems again this tick would resurrect that bookkeeping.
     projectFloor5GoalFlags(world, state);
     return;
+  }
+  advanceFloor5RamRebuild(world, state);
+  if (state.engineState === 'READY' && state.ram.protectionMet) {
+    setFloor5EngineState(world, state, 'ADVANCING', 'ratings-ram-escort-started');
+    recordFloor5PhaseTransition(world, state, { kind: 'ESCORT' }, 'ratings-ram-escort-started');
   }
   updateFloor5Checkpoint(world, state);
   for (const team of ['allied', 'enemy'] as const) {

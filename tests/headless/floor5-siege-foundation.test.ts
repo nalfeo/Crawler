@@ -15,6 +15,7 @@ import {
   _recoverFloor5RamComponent,
   _requestFloor5RamConstruction,
   siegeDirectorSystem,
+  siegeRamSystem,
 } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
@@ -366,6 +367,37 @@ describe('Floor 5 siege foundation real pipeline', () => {
       worldElapsedMs: 12_000,
       commandPostHealth: 0,
     });
+  });
+
+  it('gives same-tick Command Post defeat precedence over a ready ram escort', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+    siegeRamSystem(world);
+
+    world.elapsedMs = 3_000;
+    world.floorObjectiveTick!(world);
+    const state = world.floorExtendedState!.floor5Siege!;
+    expect(state.engineState).toBe('READY');
+
+    const commandPost = state.structures['command-post'].eid;
+    applyDamage(
+      world,
+      commandPost,
+      world.stores.health.current[commandPost] ?? 0,
+      world.stores.position.x[commandPost] ?? 0,
+      world.stores.position.y[commandPost] ?? 0,
+      { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
+    );
+    siegeRamSystem(world);
+    world.floorObjectiveTick!(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.trace.map((entry) => entry.phase.kind)).not.toContain('ESCORT');
+    expect(state.trace.at(-1)?.phase.kind).toBe('DEFEAT');
+    expect(state.engineState).toBe('READY');
   });
 
   it('does not trust a stale structure EID after the slot is reused by another health entity', () => {
