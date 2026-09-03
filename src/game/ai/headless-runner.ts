@@ -196,6 +196,17 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.laneTelemetry.waveCyclesCompleted
     );
   }
+  const floor6Defense = getFloor6DefenseRunStats(world);
+  if (floor6Defense) {
+    return (
+      floor6Defense.totalReleased +
+      floor6Defense.breaksEntered +
+      floor6Defense.breaksExited +
+      floor6Defense.terminalOutcomeCount +
+      floor6Defense.heroDamageDealt +
+      floor6Defense.towerDamageDealt
+    );
+  }
   return computeFloorProgressScore(world.questLog.values(), world.playerGold);
 }
 
@@ -655,7 +666,13 @@ function tryBuildFloor6StrategyTower(world: GameWorld, playerEid: number): boole
 
 function runFloor6HeadlessStrategy(world: GameWorld, playerEid: number, enabled: boolean): void {
   const defense = world.floorExtendedState?.floor6Defense;
-  if (!enabled || world.floorId !== 'floor6' || defense?.phase.kind !== 'DEFEND') return;
+  if (
+    !enabled ||
+    world.floorId !== 'floor6' ||
+    (defense?.phase.kind !== 'DEFEND' && defense?.phase.kind !== 'BREAK')
+  ) {
+    return;
+  }
 
   const affordableOffers = [...(defense.upgradeOfferManifest ?? [])]
     .filter(
@@ -1301,7 +1318,7 @@ export async function runHeadless(
       if (world.floorId === 'floor6' && pendingFloor6TowerBuilds.length > 0) {
         const request = pendingFloor6TowerBuilds[0]!;
         const result = buildFloor6Tower(world, request.siteId, request.towerId);
-        if (result.ok || result.reason !== 'unaffordable') {
+        if (result.ok || (result.reason !== 'unaffordable' && result.reason !== 'phase-locked')) {
           pendingFloor6TowerBuilds.shift();
         }
       }

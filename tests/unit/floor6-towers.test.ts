@@ -16,6 +16,7 @@ import {
 import { memorizeSpell } from '../../src/game/systems/abilitySystem.js';
 import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { TeamId } from '../../src/shared/constants.js';
+import { floor6Manifest } from '../../src/shared/floor-manifest.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -169,6 +170,36 @@ describe('Floor 6 authored tower construction', () => {
     expect(entityExists(world.ecs, b)).toBe(false);
     expect(defense.towerInstances).toEqual([]);
     expect(defense.towersTornDown).toBe(2);
+  });
+
+  it('enforces the manifest allowlist during breaks', () => {
+    const { world, defense } = initFloor6();
+    const finale = floor6Manifest.floor6!.finale!;
+    const allowedActions = [...finale.breakAllowedActions];
+    defense.economy.balance = 100;
+    const occupiedSite = defense.geometry.buildSites[0]!.id;
+    const openSite = defense.geometry.buildSites[1]!.id;
+    expect(buildFloor6Tower(world, occupiedSite, 'signal-slinger').ok).toBe(true);
+    const offer = defense.upgradeOfferManifest![0]!;
+    defense.phase = { kind: 'BREAK' };
+
+    try {
+      finale.breakAllowedActions = ['tower-build'];
+
+      expect(buildFloor6Tower(world, openSite, 'signal-slinger').ok).toBe(true);
+      expect(_sellFloor6Tower(world, occupiedSite)).toEqual({
+        ok: false,
+        reason: 'phase-locked',
+      });
+      expect(purchaseFloor6UpgradeOffer(world, offer.offerId)).toEqual({
+        ok: false,
+        reason: 'phase-locked',
+      });
+      expect(defense.towerInstances.some((tower) => tower.siteId === occupiedSite)).toBe(true);
+      expect(defense.economy.selectedOfferIds).toEqual([]);
+    } finally {
+      finale.breakAllowedActions = allowedActions;
+    }
   });
 
   it('keeps same-step tower hits attributed when terminal teardown removes towers', () => {

@@ -35,6 +35,7 @@ import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { MeleeSpriteId } from '../shared/constants.js';
 import {
+  confirmGeneratedSpriteAnimation,
   GENERATED_SPRITE_REGISTRY_KEY,
   registerGeneratedSpriteAnimations,
   walkAnimationKey,
@@ -130,6 +131,10 @@ const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
  */
 const PLAYER_WALK_SPEED_EPSILON = 0.05;
 const PLAYER_WALK_SPEED_EPSILON_SQ = PLAYER_WALK_SPEED_EPSILON ** 2;
+/** Cap retries for late generated-animation texture registration. */
+const PENDING_ANIMATION_MAX_RETRIES = 8;
+/** Max retry delay (in sync frames) once backoff saturates. */
+const PENDING_ANIMATION_MAX_BACKOFF_FRAMES = 64;
 /** Fallback sprite footprint when a status-affected enemy has no measurable display size. */
 const STATUS_AURA_FALLBACK_SIZE_PX = 16;
 /** Fraction of sprite height below its centre where the ground aura is drawn (the feet). */
@@ -180,6 +185,17 @@ interface PropVisual {
   mode: 'sprite' | 'placeholder';
   textureKey?: string;
   frame?: number;
+}
+
+interface PendingAnimationRetryState {
+  animation: GeneratedSpriteAnimation;
+  attempts: number;
+  nextRetryFrame: number;
+}
+
+function pendingAnimationRetryDelayFrames(attempts: number): number {
+  // Exponential backoff: 1, 2, 4, 8... (capped) across sync frames.
+  return Math.min(PENDING_ANIMATION_MAX_BACKOFF_FRAMES, 2 ** Math.max(0, attempts - 1));
 }
 
 interface MobMotionRenderState {
@@ -734,6 +750,20 @@ export function createPhaserBridge(
    */
   const generatedAnimationByTexture = new Map<string, GeneratedSpriteAnimation>();
   /**
+   * Texture keys whose walk-cycle animation is still un-registered because
+   * their texture had not finished loading into the `TextureManager` the
+   * last time registration was attempted (see `confirmGeneratedSpriteAnimation`
+   * in `generatedAssets/animations.ts`). Retried from `sync()` with bounded,
+   * exponentially-backed-off attempts until each key succeeds (or exhausts and
+   * intentionally degrades to a static sprite), rather than only on
+   * registry-identity change. Without this retry, a
+   * texture that is still loading at the moment of the FIRST registration
+   * attempt (most likely right after a scene restart) would never get a
+   * second chance within that scene's lifetime, and the player would simply
+   * never animate.
+   */
+  const pendingAnimationTextures = new Map<string, PendingAnimationRetryState>();
+  /**
    * Opaque pixel bounds per texture key, so the set-piece pass can anchor and
    * scale props by their VISIBLE art instead of the raw canvas. Rebuilt with
    * `generatedFacingByTexture` whenever the registry identity changes.
@@ -753,6 +783,7 @@ export function createPhaserBridge(
   const mobMotionStates = new Map<number, MobMotionRenderState>();
   const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
+  let syncFrameCount = 0;
 
   function logFallback(type: string): void {
     const spriteId = RENDER_KIND_CONFIGS[type]?.kenneySpriteId;
@@ -779,6 +810,7 @@ export function createPhaserBridge(
 
   return {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
+      syncFrameCount += 1;
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
       /** Ground auras for status-affected enemies, collected during the entity pass. */
@@ -789,6 +821,7 @@ export function createPhaserBridge(
         generatedFacingByTexture.clear();
         generatedBoundsByTexture.clear();
         generatedAnimationByTexture.clear();
+        pendingAnimationTextures.clear();
         if (generatedRegistry) {
           for (const entry of generatedRegistry.entries()) {
             generatedFacingByTexture.set(entry.textureKey, entry.facingDirection);
@@ -800,6 +833,23 @@ export function createPhaserBridge(
             }
           }
           registerGeneratedSpriteAnimations(scene, generatedRegistry);
+          // `registerGeneratedSpriteAnimations` silently skips any texture
+          // that isn't loaded yet rather than registering a broken
+          // zero-frame animation. Track those here so they get retried
+          // below on every subsequent frame (not just the next
+          // registry-identity change) until the texture is ready.
+          if (scene.anims) {
+            for (const [textureKey, animation] of generatedAnimationByTexture) {
+              if (!scene.anims.exists(walkAnimationKey(textureKey))) {
+                pendingAnimationTextures.set(textureKey, {
+                  animation,
+                  // One attempt already occurred in `registerGeneratedSpriteAnimations`.
+                  attempts: 1,
+                  nextRetryFrame: syncFrameCount + pendingAnimationRetryDelayFrames(1),
+                });
+              }
+            }
+          }
         }
         cachedGeneratedRegistry = generatedRegistry;
         registryRevision++;
@@ -809,6 +859,40 @@ export function createPhaserBridge(
         // Invalidate per-entity cached anchors so the next consumer access
         // recomputes from the updated registry.
         world.entityWeaponAnchors.clear();
+      } else if (pendingAnimationTextures.size > 0 && scene.anims) {
+        for (const [textureKey, pending] of pendingAnimationTextures) {
+          if (syncFrameCount < pending.nextRetryFrame) {
+            continue;
+          }
+          pending.attempts += 1;
+          if (confirmGeneratedSpriteAnimation(scene.anims, textureKey, pending.animation)) {
+            pendingAnimationTextures.delete(textureKey);
+            // If a one-shot walk strip finally registers while the player kept
+            // moving, clear the movement latch so the next render pass starts it.
+            if (!pending.animation.loop) {
+              for (const [eid, visual] of visuals) {
+                if (
+                  visual.type === 'player' &&
+                  visual.obj.texture.key === textureKey &&
+                  playerWalkMovingByEid.get(eid) === true
+                ) {
+                  playerWalkMovingByEid.delete(eid);
+                }
+              }
+            }
+            continue;
+          }
+          if (pending.attempts >= PENDING_ANIMATION_MAX_RETRIES) {
+            pendingAnimationTextures.delete(textureKey);
+            logger.warn('Skipping generated walk animation after bounded texture-load retries', {
+              textureKey,
+              attempts: pending.attempts,
+            });
+            continue;
+          }
+          pending.nextRetryFrame =
+            syncFrameCount + pendingAnimationRetryDelayFrames(pending.attempts);
+        }
       }
       const resolvePreferredTexture = (
         type: string,

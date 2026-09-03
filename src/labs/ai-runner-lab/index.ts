@@ -13,6 +13,7 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
+import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
 import {
   AIState,
   AIDecisionMode,
@@ -68,6 +69,7 @@ import {
   Harvestable,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
@@ -631,6 +633,15 @@ export interface AiRunnerDebugSnapshot {
   playerPersona: PlayerPersona;
   arenaEntryFrame: number | null;
   quests: Record<string, { status: string; done: number; total: number }>;
+  /**
+   * Floor 4 arena telemetry (phase, wave/Headliner counters, timeline),
+   * mirroring headless `RunStats.floor4Arena` (`getFloor4ArenaRunStats`) so
+   * an e2e observer can confirm the SAME real production scenario state —
+   * physical spawns, Headliner defeats, and the terminal `VICTORY` phase —
+   * without re-deriving it from raw ECS state. `undefined` off Floor 4 or
+   * before the world exists.
+   */
+  floor4Arena?: Floor4ArenaRunStats;
 }
 
 declare global {
@@ -2915,6 +2926,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       playerPersona: aiConfig.playerPersona,
       arenaEntryFrame,
       quests,
+      floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
     };
   };
   if (typeof window !== 'undefined') {
