@@ -60,6 +60,7 @@ export interface ScenarioStairMarkerState {
 
 /** Presentation copy for the stair-descend confirmation prompt. */
 export interface ScenarioStairConfirmationCopy {
+  readonly kind?: string;
   readonly title: string;
   readonly subtitle: string;
   readonly body: string;
