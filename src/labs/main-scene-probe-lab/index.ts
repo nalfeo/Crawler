@@ -66,7 +66,10 @@ import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
-import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
+import type {
+  _CornerButtonProbe as CornerButtonProbe,
+  _ScenarioHudProbe,
+} from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
@@ -139,9 +142,11 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' {
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor6' {
   const raw = new URLSearchParams(window.location.search).get('floor');
-  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' ? raw : 'floor1';
+  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' || raw === 'floor6'
+    ? raw
+    : 'floor1';
 }
 
 /** The single shared status-aura Graphics layer, if the bridge has created it. */
@@ -182,6 +187,7 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getScenarioHudState?(): ScenarioHudProbeState;
   getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
@@ -727,6 +733,9 @@ export interface FamilyHudProbeState {
   readonly panelVisible: boolean;
 }
 
+/** Real rendered state of the generic scenario HUD strip — see `MainGameScene._ScenarioHudProbe`. */
+export type ScenarioHudProbeState = _ScenarioHudProbe;
+
 /**
  * Per-def render tally for a single harvestable node type. Lets the e2e assert
  * that *each* type with live nodes renders all of them as sprites — a
@@ -1000,6 +1009,8 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Real rendered generic scenario HUD strip (see `MainGameScene._ScenarioHudProbe`). */
+  getScenarioHudState(): ScenarioHudProbeState;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
@@ -1167,6 +1178,13 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+   * directly, so an e2e spec can assert the scenario HUD's one-shot `vfx`
+   * cue behavior without driving the entire wave/break/finale progression.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6FinaleVfxCue(): boolean;
   /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
@@ -1935,6 +1953,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    getScenarioHudState: (): ScenarioHudProbeState =>
+      getScene()?.getScenarioHudState?.() ?? {
+        visible: false,
+        text: null,
+        bounds: null,
+        vfxVisible: false,
+        cueLabels: [],
+      },
+
     setSimulationPaused: (paused: boolean) => {
       getScene()?.setSimulationPaused(paused);
     },
@@ -2381,6 +2408,25 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inFlightCount: glowingEntities.length,
         emitterLight: field.values[y * field.widthCells + x] ?? null,
       };
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+     * directly (the real phase the sim reaches after clearing all defense
+     * acts), so an e2e spec can assert the scenario HUD's one-shot `vfx` cue
+     * behavior without driving the entire wave/break/finale progression
+     * through the real simulation.
+     */
+    primeFloor6FinaleVfxCue: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'FINALE' };
+      return true;
     },
 
     primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {

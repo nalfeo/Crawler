@@ -22,8 +22,10 @@ import {
   _getFloor6InitializationArtifact,
 } from '../../src/game/floor6Scenario.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { floor6Manifest } from '../../src/shared/floor-manifest.js';
 import { createInputState } from '../../src/shared/input.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -170,6 +172,169 @@ describe('Floor 6 wave manifest determinism', () => {
 });
 
 describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
+  it('projects the Slice 8 quest goals from authoritative defense state', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    const quest = world.questLog.get(FLOOR6_DEFENSE_QUEST_ID);
+    expect(quest?.status).toBe('active');
+
+    tickDirector(world);
+    expect(world.goalFlags.get('floor6.defense.briefed')).toBe(true);
+    expect(getFloor6DefenseRunStats(world)?.presentation.questGoals).toMatchObject({
+      'floor6.defense.briefed': true,
+      'floor6.defense.firstWaveCleared': false,
+    });
+
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+    expect(purchaseFloor6UpgradeOffer(world, state.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+    expect(world.goalFlags.get('floor6.defense.firstBuildPlaced')).toBe(true);
+    expect(world.goalFlags.get('floor6.defense.firstUpgradeChosen')).toBe(true);
+
+    completeCurrentFloor6Act(world);
+    expect(world.goalFlags.get('floor6.defense.firstWaveCleared')).toBe(true);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    expect(world.goalFlags.get('floor6.defense.breakCleared')).toBe(true);
+
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    state.finale.bossDefeated = true;
+    tickDirector(world);
+    questSystem(world);
+
+    expect(world.goalFlags.get('floor6.defense.deadlineDefeated')).toBe(true);
+    expect(world.goalFlags.get('floor6.defense.relaySecured')).toBe(true);
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('complete');
+  });
+
+  it('emits non-color presentation labels for routes, sites, towers, loot, upgrades, breaks, and Deadline', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    tickDirector(world);
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+    expect(purchaseFloor6UpgradeOffer(world, state.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+
+    const defendPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(defendPresentation.routes.map((route) => [route.routeId, route.directionLabel])).toEqual(
+      [
+        ['west-service-route', 'incoming from west route → Relay'],
+        ['south-loading-route', 'incoming from south route ↑ Relay'],
+      ],
+    );
+    expect(defendPresentation.buildSites.some((site) => site.label.includes('VACANT'))).toBe(true);
+    expect(defendPresentation.buildSites.some((site) => site.label.includes('OCCUPIED'))).toBe(
+      true,
+    );
+    expect(defendPresentation.towers[0]).toMatchObject({
+      towerId: 'signal-slinger',
+      rangeFt: 36,
+    });
+    expect(defendPresentation.towers[0]!.tierLabel).toContain('tower modifier');
+    expect(defendPresentation.buildCurrencyLabel).toContain('Requisitions');
+    expect(defendPresentation.lootLabel).toContain('requisition drops');
+    expect(defendPresentation.upgradeChoiceLabel).toContain('upgrade offers chosen');
+
+    completeCurrentFloor6Act(world);
+    const breakPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(breakPresentation.breakSafetyLabel).toContain('Break safe: 0 live hostiles');
+    expect(breakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe')).toBe(true);
+
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    const finalePresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(finalePresentation.deadlineLabel).toContain('Deadline active');
+    expect(finalePresentation.cues.some((cue) => cue.id === 'floor6-deadline-finale')).toBe(true);
+
+    state.relayHp = 20;
+    expect(getFloor6DefenseRunStats(world)!.presentation.relayDangerLabel).toMatch(/CRITICAL/);
+  });
+
+  it('tower tier label counts only tower-affecting upgrade offers, not relay/raider-only ones', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    tickDirector(world);
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+
+    // A relay-only offer (no tower effect) must NOT invent a per-tower tier.
+    const relayOnlyOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'relayRepair',
+    );
+    expect(relayOnlyOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, relayOnlyOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe('base tier');
+
+    // A tower-affecting offer is the only thing that should move the label,
+    // and it must count exactly the tower-affecting offers selected (one),
+    // not every selected offer (two).
+    const towerOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'towerDamageBonus',
+    );
+    expect(towerOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, towerOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe(
+      '+1 global tower modifier',
+    );
+  });
+
+  it('same-world restart clears prior Floor 6 quest projection and reaccepts the quest', () => {
+    const { world, player } = initFloor6();
+    const scenario = createFloorMainSceneOptions('floor6');
+    tickDirector(world);
+    const firstState = getDefenseState(world);
+    firstState.economy.balance = 100;
+    firstState.economy.totalEarned = 100;
+    expect(
+      buildFloor6Tower(world, firstState.geometry.buildSites[0]!.id, 'signal-slinger').ok,
+    ).toBe(true);
+    expect(purchaseFloor6UpgradeOffer(world, firstState.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    firstState.finale.bossDefeated = true;
+    tickDirector(world);
+    questSystem(world);
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('complete');
+
+    scenario.configureWorld!(world, player);
+
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('active');
+    expect(world.goalFlags.get('floor6.defense.questComplete')).toBeUndefined();
+    for (const goalId of [
+      'floor6.defense.briefed',
+      'floor6.defense.firstWaveCleared',
+      'floor6.defense.firstBuildPlaced',
+      'floor6.defense.firstUpgradeChosen',
+      'floor6.defense.breakCleared',
+      'floor6.defense.deadlineDefeated',
+      'floor6.defense.relaySecured',
+    ]) {
+      expect(world.goalFlags.get(goalId)).toBeUndefined();
+    }
+    expect(getDefenseState(world).towersTornDown).toBe(0);
+  });
+
   it('survives each authored act and enters/exits bounded hostile-free build breaks', () => {
     const { world } = initFloor6();
     tickDirector(world);
