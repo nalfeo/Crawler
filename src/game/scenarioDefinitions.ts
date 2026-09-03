@@ -72,6 +72,7 @@ import {
 } from './floor5Scenario.js';
 import {
   confirmFloor6StairDescend,
+  floor6CombatContributionSystem,
   getFloor6RunOutcome,
   initializeFloor6Scenario,
   floor6RaiderSystem,
@@ -235,6 +236,7 @@ export interface ScenarioDefinition {
   readonly beforeWeaponSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly beforeEnemyAISystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly afterSpawnerSystems?: ReadonlyArray<CoreSimulationSystem>;
+  readonly afterCoreSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly configureWorld: (
     world: GameWorld,
     playerEid: number,
@@ -849,9 +851,10 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       onStairDescend: confirmFloor6StairDescend,
       beforeEnemyAISystems: [floor6RaiderSystem],
       afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
       director: FLOOR_6_DIRECTOR,
       getRunOutcome: getFloor6RunOutcome,
-      isTerminalRunVictory: false,
+      isTerminalRunVictory: true,
       getCompletionCopy: getFloor6CompletionCopy,
     },
   ],

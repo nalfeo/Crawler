@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 150 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 43 date-prefixed
+- **Count:** 151 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 44 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -176,6 +176,7 @@ hundreds of inbound references.
 - [Generic VFX effects pipeline](0025-vfx-effects-pipeline.md)
 - [Reward-opening audio as a reusable, deterministic cue layer](0071-reward-opening-audio-cues.md) — the first `AudioCueEngine`-based procedural synth cue layer.
 - [Combat/loot audio cues as a second reuse of the reward-opening cue pattern](2026-08-23-combat-loot-audio-cues.md) — weapon/spell/ability/damage/pickup SFX sourced from the existing `combatEvents`/`abilityActivations`/`vfxEvents` queues, no new core plumbing.
+- [Generated-sprite animation registration self-heals a texture-not-ready race](2026-09-02-generated-sprite-animation-self-healing.md) — skips (instead of poisoning) an animation key when the texture isn't loaded yet, retrying per-frame until it is; fixes a fast-scene-restart render-loop freeze that made the visual AI-runner lab unobservable.
 
 ### Process, CI & telemetry
 

@@ -41,6 +41,8 @@ import { floor6Manifest } from '../shared/floor-manifest.js';
 import type {
   Floor6DefenseRunStats,
   Floor6DefenseState,
+  Floor6FinaleAddManifestEntry,
+  Floor6FinaleBossManifestEntry,
   Floor6TowerBuildResult,
   Floor6TowerDef,
   Floor6TowerSellResult,
@@ -81,6 +83,18 @@ function createFloor6EconomyState(): Floor6DefenseState['economy'] {
     selectedOfferIds: [],
     selectionTrace: [],
     terminalResetCount: 0,
+  };
+}
+
+function createFloor6FinaleState(): Floor6DefenseState['finale'] {
+  return {
+    bossManifest: null,
+    addManifest: [],
+    bossEid: 0,
+    bossDefeated: false,
+    startedFrame: null,
+    bossDefeatedFrame: null,
+    timeoutFrames: getFloor6Config().finale?.bossTimeoutFrames ?? 1800,
   };
 }
 
@@ -131,6 +145,27 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     economy: createFloor6EconomyState(),
     towerInstances: [],
     towersTornDown: 0,
+    combatEventCursor: 0,
+    heroDamageDealt: 0,
+    towerDamageDealt: 0,
+    currentActIndex: 0,
+    breakStartedFrame: null,
+    breaksEntered: 0,
+    breaksExited: 0,
+    hostileActivityDuringBreak: 0,
+    finale: createFloor6FinaleState(),
+    terminalOutcome: null,
+    terminalOutcomeCount: 0,
+    victoryPayout: {
+      awarded: false,
+      count: 0,
+      gold: 0,
+      broadcastScore: 0,
+    },
+    exit: {
+      opened: false,
+      openCount: 0,
+    },
   };
 }
 
@@ -201,11 +236,24 @@ function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
 
 /** Record a phase transition and push to the trace. */
 function recordFloor6PhaseTransition(
+  world: GameWorld,
   state: Floor6DefenseState,
   newPhase: Floor6DefenseState['phase'],
-  _reason: string,
+  reason: string,
 ): void {
-  state.phaseTrace.push({ kind: state.phase.kind });
+  state.phaseTrace.push({
+    kind: state.phase.kind,
+    toKind: newPhase.kind,
+    reason,
+    frame: world.frameCount,
+    worldElapsedMs: world.elapsedMs,
+    relayHp: state.relayHp,
+    manifestIndex: state.nextReleaseIndex,
+    activeSites: state.towerInstances.map((instance) => instance.siteId),
+    buildCurrencyBalance: state.economy.balance,
+    selectedOfferIds: [...state.economy.selectedOfferIds],
+    terminalOutcome: state.terminalOutcome,
+  });
   state.phase = newPhase;
 }
 
@@ -221,8 +269,6 @@ function buildFloor6WaveManifest(
 ): readonly Floor6WaveManifestEntry[] {
   const waves = config.waves ?? [];
   const routes = state.geometry.routes;
-  const pack = getFloorEnemyPack(FLOOR6_ENEMY_PACK_ID);
-  const knownArchetypes = new Set(pack?.archetypes.map((a) => a.id) ?? []);
 
   const entries: Floor6WaveManifestEntry[] = [];
   let manifestIndex = 0;
@@ -231,10 +277,9 @@ function buildFloor6WaveManifest(
       const routeIndex = entry.routeIndex % Math.max(routes.length, 1);
       const route = routes[routeIndex];
       if (!route) continue;
-      const archetypeId = knownArchetypes.has(entry.archetypeId)
-        ? entry.archetypeId
-        : (pack?.archetypes[0]?.id ?? 'floor6-site-prep');
+      const archetypeId = entry.archetypeId;
       entries.push({
+        kind: 'wave',
         manifestIndex,
         waveIndex: wave.waveIndex,
         waveLabel: wave.label,
@@ -250,6 +295,76 @@ function buildFloor6WaveManifest(
     }
   }
   return Object.freeze(entries);
+}
+
+function getFloor6ActWaveIndex(actIndex: number): number | null {
+  const wave = getFloor6Config().waves?.[actIndex];
+  return wave?.waveIndex ?? null;
+}
+
+function isFloor6EntryReleasableInCurrentPhase(
+  state: Floor6DefenseState,
+  entry: Floor6WaveManifestEntry,
+): boolean {
+  if (state.phase.kind === 'FINALE') {
+    return entry.kind === 'finale-boss' || entry.kind === 'finale-add';
+  }
+  const currentWaveIndex = getFloor6ActWaveIndex(state.currentActIndex);
+  return entry.kind === 'wave' && entry.waveIndex === currentWaveIndex;
+}
+
+function buildFloor6FinaleManifestEntries(
+  state: Floor6DefenseState,
+  config: NonNullable<typeof floor6Manifest.floor6>,
+  startFrame: number,
+): {
+  readonly boss: Floor6FinaleBossManifestEntry | null;
+  readonly adds: readonly Floor6FinaleAddManifestEntry[];
+  readonly waveEntries: readonly Floor6WaveManifestEntry[];
+} {
+  const finale = config.finale;
+  if (!finale) return { boss: null, adds: [], waveEntries: [] };
+  const routes = state.geometry.routes;
+  const finaleWaveIndex =
+    (config.waves ?? []).reduce(
+      (maxWaveIndex, wave) => Math.max(maxWaveIndex, wave.waveIndex),
+      -1,
+    ) + 1;
+  const baseManifestIndex = state.waveManifest?.length ?? 0;
+  const bossRoute = routes[finale.boss.routeIndex % Math.max(routes.length, 1)];
+  if (!bossRoute) return { boss: null, adds: [], waveEntries: [] };
+  const boss: Floor6FinaleBossManifestEntry = {
+    bossId: finale.boss.id,
+    displayName: finale.boss.displayName,
+    manifestIndex: baseManifestIndex,
+    waveIndex: finaleWaveIndex,
+    waveLabel: 'deadline',
+    routeId: bossRoute.id,
+    entranceId: bossRoute.entranceId,
+    archetypeId: finale.boss.archetypeId,
+    releaseTick: startFrame + finale.boss.releaseTick,
+    hp: finale.boss.hp,
+    buildCurrencyReward: finale.boss.buildCurrencyReward,
+  };
+  const adds = finale.adds.map((add, index): Floor6FinaleAddManifestEntry => {
+    const route = routes[add.routeIndex % Math.max(routes.length, 1)] ?? bossRoute;
+    return {
+      addId: add.id,
+      manifestIndex: baseManifestIndex + index + 1,
+      waveIndex: finaleWaveIndex,
+      waveLabel: 'deadline-adds',
+      routeId: route.id,
+      entranceId: route.entranceId,
+      archetypeId: add.archetypeId,
+      releaseTick: startFrame + add.releaseTick,
+      buildCurrencyReward: add.buildCurrencyReward,
+    };
+  });
+  const waveEntries: Floor6WaveManifestEntry[] = [
+    { ...boss, kind: 'finale-boss' },
+    ...adds.map((add) => ({ ...add, kind: 'finale-add' as const, addId: add.addId })),
+  ];
+  return { boss, adds: Object.freeze(adds), waveEntries: Object.freeze(waveEntries) };
 }
 
 function buildFloor6UpgradeOfferManifest(
@@ -309,6 +424,11 @@ function spawnFloor6Raider(
   addComponent(world.ecs, eid, set(Position, { x: spawnX, y: spawnY }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: archetype.hp, max: archetype.hp }));
+  if (entry.kind === 'finale-boss') {
+    const bossHp = state.finale.bossManifest?.hp ?? archetype.hp;
+    setComponent(world.ecs, eid, Health, { current: bossHp, max: bossHp });
+    state.finale.bossEid = eid;
+  }
   addComponent(
     world.ecs,
     eid,
@@ -352,6 +472,12 @@ function spawnFloor6Raider(
 
 /** Remove all live raider entities (break/terminal cleanup). */
 function clearFloor6Raiders(world: GameWorld, state: Floor6DefenseState): void {
+  for (const eid of query(world.ecs, [BroadcastRelayRaider])) {
+    if (entityExists(world.ecs, eid)) {
+      removeEntity(world.ecs, eid);
+      clearEntityStores(world, eid);
+    }
+  }
   for (const record of state.liveEnemies) {
     if (record.eid > 0 && entityExists(world.ecs, record.eid)) {
       removeEntity(world.ecs, record.eid);
@@ -376,9 +502,102 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
 }
 
 function clearFloor6TerminalState(world: GameWorld, state: Floor6DefenseState): void {
+  recordFloor6CombatContributions(world, state);
   clearFloor6Raiders(world, state);
   teardownFloor6Towers(world);
   clearFloor6EconomyForTerminal(world, state);
+}
+
+function clearFloor6BreakState(world: GameWorld, state: Floor6DefenseState): void {
+  const liveRaiders = countLiveFloor6Raiders(world);
+  state.hostileActivityDuringBreak += liveRaiders;
+  clearFloor6Raiders(world, state);
+}
+
+function setFloor6Defeat(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  reason = 'terminal-defeat',
+): void {
+  if (state.terminalOutcome !== null) return;
+  clearFloor6TerminalState(world, state);
+  state.terminalOutcome = 'defeat';
+  state.terminalOutcomeCount += 1;
+  recordFloor6PhaseTransition(world, state, { kind: 'DEFEAT' }, reason);
+}
+
+function awardFloor6VictoryPayout(world: GameWorld, state: Floor6DefenseState): void {
+  if (state.victoryPayout.awarded) return;
+  const finale = getFloor6Config().finale;
+  const gold = finale?.victoryPayoutGold ?? 0;
+  const broadcastScore = finale?.victoryBroadcastScore ?? 0;
+  world.playerGold += gold;
+  for (const player of query(world.ecs, [Player])) {
+    if (hasComponent(world.ecs, player, BroadcastScore)) {
+      world.stores.broadcastScore.current[player] =
+        (world.stores.broadcastScore.current[player] ?? 0) + broadcastScore;
+    }
+  }
+  state.victoryPayout.awarded = true;
+  state.victoryPayout.count += 1;
+  state.victoryPayout.gold = gold;
+  state.victoryPayout.broadcastScore = broadcastScore;
+}
+
+function openFloor6Exit(state: Floor6DefenseState): void {
+  if (state.exit.opened) return;
+  state.exit.opened = true;
+  state.exit.openCount += 1;
+}
+
+function setFloor6Victory(world: GameWorld, state: Floor6DefenseState): void {
+  if (state.terminalOutcome !== null) return;
+  awardFloor6VictoryPayout(world, state);
+  openFloor6Exit(state);
+  clearFloor6TerminalState(world, state);
+  state.terminalOutcome = 'victory';
+  state.terminalOutcomeCount += 1;
+  recordFloor6PhaseTransition(world, state, { kind: 'VICTORY' }, 'deadline-defeated');
+}
+
+function isFloor6PlayerDefeated(world: GameWorld): boolean {
+  for (const eid of query(world.ecs, [Player, Health])) {
+    if ((world.stores.health.current[eid] ?? 1) <= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function reconcileFloor6TerminalAfterCore(world: GameWorld, state: Floor6DefenseState): void {
+  if (
+    state.terminalOutcome !== null ||
+    state.phase.kind === 'VICTORY' ||
+    state.phase.kind === 'DEFEAT'
+  ) {
+    return;
+  }
+  if (isFloor6PlayerDefeated(world)) {
+    setFloor6Defeat(world, state, 'player-defeated');
+    return;
+  }
+  if (state.relayHp <= 0) {
+    setFloor6Defeat(world, state, 'relay-destroyed');
+    return;
+  }
+  reconcileFloor6LiveEnemies(world, state);
+  if (
+    state.phase.kind === 'FINALE' &&
+    state.finale.startedFrame !== null &&
+    world.frameCount - state.finale.startedFrame >= state.finale.timeoutFrames &&
+    !state.finale.bossDefeated
+  ) {
+    setFloor6Defeat(world, state, 'deadline-timeout');
+    return;
+  }
+  if (state.phase.kind === 'FINALE' && state.finale.bossDefeated) {
+    setFloor6Victory(world, state);
+  }
 }
 
 function selectedFloor6UpgradeValue(state: Floor6DefenseState, kind: string): number {
@@ -401,6 +620,21 @@ function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
   return getFloor6Config().towers?.find((tower) => tower.id === towerId);
 }
 
+type Floor6BreakAction = NonNullable<
+  NonNullable<typeof floor6Manifest.floor6>['finale']
+>['breakAllowedActions'][number];
+
+function isFloor6TransactionAllowed(
+  state: Floor6DefenseState,
+  breakAction: Floor6BreakAction,
+): boolean {
+  return (
+    state.phase.kind === 'DEFEND' ||
+    (state.phase.kind === 'BREAK' &&
+      (getFloor6Config().finale?.breakAllowedActions.includes(breakAction) ?? false))
+  );
+}
+
 export function _getFloor6TowerRoster(): readonly Floor6TowerDef[] {
   return getFloor6Config().towers ?? [];
 }
@@ -421,6 +655,9 @@ export function buildFloor6Tower(
 ): Floor6TowerBuildResult {
   const state = floor6DefenseState(world);
   if (!state) return { ok: false, reason: 'not-floor6' };
+  if (!isFloor6TransactionAllowed(state, 'tower-build')) {
+    return { ok: false, reason: 'phase-locked' };
+  }
   const site = state.geometry.buildSites.find((candidate) => candidate.id === siteId);
   if (!site) return { ok: false, reason: 'invalid-site' };
   if (state.towerInstances.some((instance) => instance.siteId === siteId)) {
@@ -474,6 +711,9 @@ export function buildFloor6Tower(
 export function _sellFloor6Tower(world: GameWorld, siteId: string): Floor6TowerSellResult {
   const state = floor6DefenseState(world);
   if (!state) return { ok: false, reason: 'not-floor6' };
+  if (!isFloor6TransactionAllowed(state, 'tower-sell')) {
+    return { ok: false, reason: 'phase-locked' };
+  }
   const index = state.towerInstances.findIndex((instance) => instance.siteId === siteId);
   if (index < 0) return { ok: false, reason: 'vacant' };
   const [instance] = state.towerInstances.splice(index, 1);
@@ -517,6 +757,44 @@ function refreshFloor6UnlockedOffers(state: Floor6DefenseState): void {
     return;
   }
   state.economy.unlockedOfferIds = nextUnlockedOfferIds;
+}
+
+function recordFloor6CombatContributions(world: GameWorld, state: Floor6DefenseState): void {
+  const combatEvents = world.combatEvents;
+  if (
+    state.combatEventCursor > combatEvents.length ||
+    (state.combatEventCursor > 0 &&
+      combatEvents[state.combatEventCursor - 1] !== state.lastCombatEvent)
+  ) {
+    state.combatEventCursor = 0;
+  }
+  const floor6RaiderEids = new Set<number>();
+  for (const record of state.liveEnemies) {
+    floor6RaiderEids.add(record.eid);
+  }
+  for (
+    let eventIndex = state.combatEventCursor;
+    eventIndex < combatEvents.length;
+    eventIndex += 1
+  ) {
+    const event = combatEvents[eventIndex];
+    if (
+      event?.type !== 'hit' ||
+      event.targetType !== 'enemy' ||
+      event.targetEid === undefined ||
+      (!hasComponent(world.ecs, event.targetEid, BroadcastRelayRaider) &&
+        !floor6RaiderEids.has(event.targetEid))
+    ) {
+      continue;
+    }
+    if (event.sourceEid !== undefined && hasComponent(world.ecs, event.sourceEid, Floor6Tower)) {
+      state.towerDamageDealt += event.amount;
+    } else {
+      state.heroDamageDealt += event.amount;
+    }
+  }
+  state.combatEventCursor = combatEvents.length;
+  state.lastCombatEvent = combatEvents.at(-1);
 }
 
 function creditFloor6WaveRewards(state: Floor6DefenseState): void {
@@ -571,7 +849,9 @@ export function purchaseFloor6UpgradeOffer(
   let reason: Floor6UpgradeSelectionResult['reason'] = 'purchased';
   let ok = false;
 
-  if (!offer) {
+  if (!isFloor6TransactionAllowed(state, 'upgrade-purchase')) {
+    reason = 'phase-locked';
+  } else if (!offer) {
     reason = 'unknown-offer';
   } else if (state.economy.selectedOfferIds.includes(offerId)) {
     reason = 'duplicate';
@@ -624,14 +904,19 @@ function reconcileFloor6LiveEnemies(world: GameWorld, state: Floor6DefenseState)
   for (const record of state.liveEnemies) {
     if (record.eid <= 0 || record.defeated) continue;
     const eid = record.eid;
-    const alive =
-      entityExists(world.ecs, record.eid) && (world.stores.health.current[record.eid] ?? 0) > 0;
+    const exists = entityExists(world.ecs, record.eid);
+    const hp = world.stores.health.current[record.eid] ?? 0;
+    const alive = exists && hp > 0;
     if (!alive) {
       record.defeated = true;
       const manifestEntry = state.waveManifest?.find((candidate) => {
         const rec = state.liveEnemies[candidate.manifestIndex];
         return rec === record;
       });
+      if (manifestEntry?.kind === 'finale-boss' && exists && hp <= 0) {
+        state.finale.bossDefeated = true;
+        state.finale.bossDefeatedFrame ??= world.frameCount;
+      }
       if (manifestEntry && !record.rewardSpawned && entityExists(world.ecs, eid)) {
         spawnFloor6BuildCurrencyReward(world, state, manifestEntry, eid);
         record.rewardSpawned = true;
@@ -664,6 +949,7 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
     // Find oldest unreleased due entry
     const debtEntry = manifest.find((e) => {
       if (e.manifestIndex >= state.nextReleaseIndex) return false;
+      if (!isFloor6EntryReleasableInCurrentPhase(state, e)) return false;
       const rec = state.liveEnemies[e.manifestIndex];
       return rec && rec.eid === 0; // 0 = not yet spawned
     });
@@ -685,6 +971,7 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
     manifest[state.nextReleaseIndex]!.releaseTick <= frame
   ) {
     const entry = manifest[state.nextReleaseIndex]!;
+    if (!isFloor6EntryReleasableInCurrentPhase(state, entry)) break;
     state.nextReleaseIndex += 1;
 
     // Ensure liveEnemies record exists
@@ -710,6 +997,69 @@ function releaseFloor6WaveEntries(world: GameWorld, state: Floor6DefenseState): 
       state.spawnDebt += 1;
     }
     // If over debtCap, entry is deferred but not counted (bounded debt)
+  }
+}
+
+function isFloor6CurrentActCleared(state: Floor6DefenseState): boolean {
+  const currentWaveIndex = getFloor6ActWaveIndex(state.currentActIndex);
+  const manifest = state.waveManifest;
+  if (currentWaveIndex === null || !manifest) return false;
+  const entries = manifest.filter(
+    (entry) => entry.kind === 'wave' && entry.waveIndex === currentWaveIndex,
+  );
+  return (
+    entries.length > 0 &&
+    entries.every((entry) => entry.manifestIndex < state.nextReleaseIndex) &&
+    entries.every((entry) => state.liveEnemies[entry.manifestIndex]?.defeated === true)
+  );
+}
+
+function enterFloor6Break(world: GameWorld, state: Floor6DefenseState): void {
+  clearFloor6BreakState(world, state);
+  state.breakStartedFrame = world.frameCount;
+  state.breaksEntered += 1;
+  recordFloor6PhaseTransition(world, state, { kind: 'BREAK' }, 'act-cleared');
+}
+
+function exitFloor6Break(world: GameWorld, state: Floor6DefenseState): void {
+  state.breakStartedFrame = null;
+  state.breaksExited += 1;
+  state.currentActIndex += 1;
+  recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'break-complete');
+}
+
+function enterFloor6Finale(world: GameWorld, state: Floor6DefenseState): void {
+  clearFloor6BreakState(world, state);
+  const finaleEntries = buildFloor6FinaleManifestEntries(
+    state,
+    getFloor6Config(),
+    world.frameCount,
+  );
+  if (finaleEntries.boss) {
+    state.finale.bossManifest = finaleEntries.boss;
+    state.finale.addManifest = finaleEntries.adds;
+    state.finale.timeoutFrames = getFloor6Config().finale?.bossTimeoutFrames ?? 1800;
+    state.waveManifest = Object.freeze([
+      ...(state.waveManifest ?? []),
+      ...finaleEntries.waveEntries,
+    ]);
+  }
+  state.finale.startedFrame = world.frameCount;
+  state.finale.bossEid = 0;
+  state.finale.bossDefeated = false;
+  state.finale.bossDefeatedFrame = null;
+  state.breakStartedFrame = null;
+  recordFloor6PhaseTransition(world, state, { kind: 'FINALE' }, 'deadline-start');
+}
+
+function progressFloor6DefensePhase(world: GameWorld, state: Floor6DefenseState): void {
+  if (state.phase.kind !== 'DEFEND') return;
+  if (!isFloor6CurrentActCleared(state)) return;
+  const waves = getFloor6Config().waves ?? [];
+  if (state.currentActIndex < waves.length - 1) {
+    enterFloor6Break(world, state);
+  } else {
+    enterFloor6Finale(world, state);
   }
 }
 
@@ -868,7 +1218,7 @@ function selectFloor6TowerTarget(
 /** Floor 6 tower attacks run in the real shared scenario pipeline. */
 export function floor6TowerSystem(world: GameWorld): void {
   const state = floor6DefenseState(world);
-  if (!state || state.phase.kind !== 'DEFEND') return;
+  if (!state || (state.phase.kind !== 'DEFEND' && state.phase.kind !== 'FINALE')) return;
   const damageBonus = selectedFloor6UpgradeValue(state, 'towerDamageBonus');
   const fireRateBonus = Math.min(
     FLOOR6_MAX_FIRE_RATE_BONUS,
@@ -906,9 +1256,9 @@ export function floor6TowerSystem(world: GameWorld): void {
  * `floor6DefenseDirectorSystem` — sole writer of Floor 6 phase, phase trace,
  * wave manifests, and terminal transitions (ADR 0097 D1, spec FR2.1–FR2.4).
  *
- * Runs as `afterSpawnerSystems` so combat resolution (damage / death) has
- * already occurred for this tick, giving terminal-precedence checks a
- * consistent view of player and relay HP.
+ * Runs as `afterSpawnerSystems` to release waves and advance defense phase
+ * before this tick's core combat systems. Same-frame combat contribution
+ * telemetry is drained by `floor6CombatContributionSystem` in postSystems.
  *
  * Terminal ordering within a single tick (FR2.2):
  *   1. Player death → DEFEAT
@@ -946,28 +1296,64 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.totalReleased = 0;
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
-    recordFloor6PhaseTransition(state, { kind: 'DEFEND' }, 'setup-complete');
+    state.combatEventCursor = world.combatEvents.length;
+    state.lastCombatEvent = world.combatEvents.at(-1);
+    state.heroDamageDealt = 0;
+    state.towerDamageDealt = 0;
+    state.currentActIndex = 0;
+    state.breakStartedFrame = null;
+    state.breaksEntered = 0;
+    state.breaksExited = 0;
+    state.hostileActivityDuringBreak = 0;
+    state.finale = createFloor6FinaleState();
+    state.terminalOutcome = null;
+    state.terminalOutcomeCount = 0;
+    state.victoryPayout = {
+      awarded: false,
+      count: 0,
+      gold: 0,
+      broadcastScore: 0,
+    };
+    state.exit = {
+      opened: false,
+      openCount: 0,
+    };
+    recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'setup-complete');
     return;
   }
 
   // ── Terminal precedence check 1: player death ─────────────────────────────
-  let playerDead = false;
-  for (const eid of query(world.ecs, [Player, Health])) {
-    if ((world.stores.health.current[eid] ?? 1) <= 0) {
-      playerDead = true;
-      break;
-    }
-  }
-  if (playerDead) {
-    clearFloor6TerminalState(world, state);
-    recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'player-death');
+  if (isFloor6PlayerDefeated(world)) {
+    setFloor6Defeat(world, state, 'player-defeated');
     return;
   }
 
   // ── Terminal precedence check 2: relay destroyed ──────────────────────────
   if (state.relayHp <= 0) {
-    clearFloor6TerminalState(world, state);
-    recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'relay-destroyed');
+    setFloor6Defeat(world, state, 'relay-destroyed');
+    return;
+  }
+
+  if (state.phase.kind === 'BREAK') {
+    // Entry clears normal act hostiles; this guarded path removes only illegal/stray break hostiles.
+    if (countLiveFloor6Raiders(world) > 0) {
+      clearFloor6BreakState(world, state);
+    }
+    const duration = config.finale?.breakDurationFrames ?? 0;
+    const startedFrame = state.breakStartedFrame ?? world.frameCount;
+    if (world.frameCount - startedFrame >= duration) {
+      exitFloor6Break(world, state);
+    }
+    return;
+  }
+
+  if (
+    state.phase.kind === 'FINALE' &&
+    state.finale.startedFrame !== null &&
+    world.frameCount - state.finale.startedFrame >= state.finale.timeoutFrames &&
+    !state.finale.bossDefeated
+  ) {
+    setFloor6Defeat(world, state, 'deadline-timeout');
     return;
   }
 
@@ -1000,8 +1386,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   }
 
   if (state.stallFrames >= backstopFrames) {
-    clearFloor6TerminalState(world, state);
-    recordFloor6PhaseTransition(state, { kind: 'DEFEAT' }, 'stall-backstop');
+    setFloor6Defeat(world, state, 'wave-backstop');
     return;
   }
 
@@ -1012,6 +1397,20 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
   if (state.phase.kind === 'DEFEND' || state.phase.kind === 'FINALE') {
     releaseFloor6WaveEntries(world, state);
   }
+
+  if (state.phase.kind === 'FINALE' && state.finale.bossDefeated) {
+    setFloor6Victory(world, state);
+    return;
+  }
+
+  progressFloor6DefensePhase(world, state);
+}
+
+export function floor6CombatContributionSystem(world: GameWorld): void {
+  const state = floor6DefenseState(world);
+  if (!state) return;
+  recordFloor6CombatContributions(world, state);
+  reconcileFloor6TerminalAfterCore(world, state);
 }
 
 /**
@@ -1052,18 +1451,38 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     terminalResetCount: state.economy.terminalResetCount,
     towers: state.towerInstances.map(({ siteId, towerId }) => ({ siteId, towerId })),
     towersTornDown: state.towersTornDown,
+    heroDamageDealt: state.heroDamageDealt,
+    towerDamageDealt: state.towerDamageDealt,
+    currentActIndex: state.currentActIndex,
+    breaksEntered: state.breaksEntered,
+    breaksExited: state.breaksExited,
+    hostileActivityDuringBreak: state.hostileActivityDuringBreak,
+    finaleBossDefeated: state.finale.bossDefeated,
+    finaleBossEid: state.finale.bossEid,
+    finaleBossManifest: state.finale.bossManifest ? { ...state.finale.bossManifest } : null,
+    finaleAddManifestLength: state.finale.addManifest.length,
+    terminalOutcome: state.terminalOutcome,
+    terminalOutcomeCount: state.terminalOutcomeCount,
+    victoryPayoutAwarded: state.victoryPayout.awarded,
+    victoryPayoutCount: state.victoryPayout.count,
+    victoryPayoutGold: state.victoryPayout.gold,
+    victoryPayoutBroadcastScore: state.victoryPayout.broadcastScore,
+    exitOpened: state.exit.opened,
+    exitOpenCount: state.exit.openCount,
   };
 }
 
-/** Floor 6 cannot open its exit before the later finale/release slices. */
-export function confirmFloor6StairDescend(): boolean {
-  return false;
+/** Floor 6 exit opens only after the authoritative victory transaction. */
+export function confirmFloor6StairDescend(world: GameWorld): boolean {
+  const state = world.floorExtendedState?.floor6Defense;
+  return state?.phase.kind === 'VICTORY' && state.exit.opened === true;
 }
 
 export function getFloor6RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
-  const phase = world.floorExtendedState?.floor6Defense?.phase.kind;
-  if (phase === 'VICTORY') return 'cleared_floor';
-  if (phase === 'DEFEAT') return 'failed_timeout';
+  const state = world.floorExtendedState?.floor6Defense;
+  if (state?.terminalOutcome === 'victory' && state.phase.kind === 'VICTORY')
+    return 'cleared_floor';
+  if (state?.terminalOutcome === 'defeat' && state.phase.kind === 'DEFEAT') return 'failed_timeout';
   return null;
 }
 

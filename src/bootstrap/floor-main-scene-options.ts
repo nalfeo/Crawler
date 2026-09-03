@@ -190,6 +190,7 @@ export function createFloorMainSceneOptions(
       levelSystem,
       skillSystem,
       abilitySystem,
+      ...(scenario.afterCoreSystems ?? []),
       floorObjectiveSystem,
       questSystem,
       achievementSystem,

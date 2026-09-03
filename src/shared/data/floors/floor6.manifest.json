@@ -171,6 +171,38 @@
           "effect": { "kind": "raiderSlowBonus", "value": 0.08 }
         }
       ]
+    },
+    "finale": {
+      "breakDurationFrames": 120,
+      "bossTimeoutFrames": 1800,
+      "victoryPayoutGold": 25,
+      "victoryBroadcastScore": 10,
+      "breakAllowedActions": ["tower-build", "tower-sell", "upgrade-purchase"],
+      "boss": {
+        "id": "broadcast-deadline",
+        "displayName": "Broadcast Deadline",
+        "routeIndex": 0,
+        "archetypeId": "floor6-broadcast-deadline",
+        "releaseTick": 0,
+        "hp": 60,
+        "buildCurrencyReward": 0
+      },
+      "adds": [
+        {
+          "id": "deadline-demo-lead",
+          "routeIndex": 1,
+          "archetypeId": "floor6-demo-lead",
+          "releaseTick": 60,
+          "buildCurrencyReward": 0
+        },
+        {
+          "id": "deadline-site-prep",
+          "routeIndex": 0,
+          "archetypeId": "floor6-site-prep",
+          "releaseTick": 120,
+          "buildCurrencyReward": 0
+        }
+      ]
     }
   }
 }

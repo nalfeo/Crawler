@@ -4,23 +4,35 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 
 describe('Floor 6 economy real headless pipeline', () => {
-  it('collects ordinary loot and unlocks at least one run-scoped upgrade offer', async () => {
-    const stats = await runHeadless(new BehaviorTreeAI({ seed: 606 }), {
-      floorId: 'floor6',
-      seed: 606,
-      maxFrames: 2000,
-      maxWallTimeMs: 30_000,
-      questStallFrames: 0,
-    });
+  it('collects loot, builds, upgrades, and fights through the real headless strategy', async () => {
+    const createConfig = () =>
+      ({
+        floorId: 'floor6',
+        seed: 606,
+        maxFrames: 7000,
+        maxWallTimeMs: 30_000,
+        questStallFrames: 3000,
+      }) as const;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
+    const replay = await runHeadless(new BehaviorTreeAI({ seed: 606 }), createConfig());
 
     expect(stats.combat.totalKills).toBeGreaterThan(0);
     expect(stats.lootEfficiency?.xpCollected).toBeGreaterThan(0);
     expect(stats.lootEfficiency?.goldCollected).toBeGreaterThan(0);
-    expect(stats.floor6Defense?.buildCurrencyPickupsCollected).toBeGreaterThan(0);
-    expect(stats.floor6Defense?.buildCurrencyBalance).toBeGreaterThanOrEqual(
-      stats.floor6Defense?.upgradeOffers[0]?.cost ?? Number.POSITIVE_INFINITY,
-    );
-    expect(stats.floor6Defense?.unlockedOfferIds.length).toBeGreaterThanOrEqual(1);
+    expect(stats.outcome).toBe('victory');
+    expect(stats.floor6Defense?.phase.kind).toBe('VICTORY');
+    expect(stats.floor6Defense?.breaksEntered).toBe(2);
+    expect(stats.floor6Defense?.breaksExited).toBe(2);
+    expect(stats.floor6Defense?.hostileActivityDuringBreak).toBe(0);
+    expect(stats.floor6Defense?.finaleBossDefeated).toBe(true);
+    expect(stats.floor6Defense?.terminalOutcome).toBe('victory');
+    expect(stats.floor6Defense?.terminalOutcomeCount).toBe(1);
+    expect(stats.floor6Defense?.victoryPayoutCount).toBe(1);
+    expect(stats.floor6Defense?.exitOpenCount).toBe(1);
+    expect(stats.floor6Defense?.towersTornDown).toBeGreaterThanOrEqual(1);
+    expect(stats.floor6Defense?.heroDamageDealt).toBeGreaterThan(0);
+    expect(stats.floor6Defense?.towerDamageDealt).toBeGreaterThan(0);
+    expect(stats.floor6Defense).toEqual(replay.floor6Defense);
   });
 
   it('executes deterministic tower requests through the real headless pipeline', async () => {
