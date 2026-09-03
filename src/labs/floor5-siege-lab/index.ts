@@ -2,7 +2,7 @@ import GUI from 'lil-gui';
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { runSimulationStep } from '../../game/ai/simulation-step.js';
-import { getFloor5SiegeRunStats } from '../../game/floor5Scenario.js';
+import { getFloor5SiegeRunStats, requestFloor5ThroneCapture } from '../../game/floor5Scenario.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState } from '../../shared/input.js';
 import { registerLab } from '../registry.js';
@@ -22,9 +22,11 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
   const sceneOptions = createFloorMainSceneOptions('floor5');
   const inputState = createInputState();
   let world = createGameWorld({ seed: state.seed });
+  let lastCaptureResult: string = '(none)';
 
   function setup(): void {
     world = createGameWorld({ seed: state.seed });
+    lastCaptureResult = '(none)';
     const player = spawnPlayer(world, 0, 0);
     sceneOptions.configureWorld!(world, player);
     render();
@@ -69,6 +71,16 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `legalDamage=${siege?.laneTelemetry.legalDamageEvents ?? 0}`,
       `illegalDamage=${siege?.laneTelemetry.illegalDamageEvents ?? 0}`,
       `pathStalls=${siege?.laneTelemetry.pathStalls ?? 0}`,
+      `courtyard entered=${siege?.finale.courtyardEnteredFrame ?? '-'} cleared=${siege?.finale.courtyardCleared ?? false}@${siege?.finale.courtyardClearedFrame ?? '-'}`,
+      `auditor hp=${siege?.finale.auditorHealth ?? 0}/${siege?.finale.auditorMaxHealth ?? 0} defeated=${siege?.finale.auditorDefeatedFrame ?? '-'}`,
+      `defenders ${siege?.finale.defendersDefeated ?? 0}/${siege?.finale.defendersSpawned ?? 0} defeated`,
+      `throneDoor open=${siege?.finale.throneDoorOpen ?? false}@${siege?.finale.throneDoorOpenedFrame ?? '-'}`,
+      `regent hp=${siege?.finale.regentHealth ?? 0}/${siege?.finale.regentMaxHealth ?? 0} spawned=${siege?.finale.regentSpawnedFrame ?? '-'} defeated=${siege?.finale.regentDefeatedFrame ?? '-'}`,
+      `summons telegraphed=${siege?.finale.summonsTelegraphed ?? 0} pending=${siege?.finale.pendingSummonWaves ?? 0} released=${siege?.finale.summonsReleased ?? 0}/${siege?.finale.summonCap ?? 0} live=${siege?.finale.liveSummons ?? 0} retired=${siege?.finale.summonsRetired ?? 0}`,
+      `capture available=${siege?.finale.captureAvailable ?? false}@${siege?.finale.captureAvailableFrame ?? '-'} attempts=${siege?.finale.captureAttempts ?? 0} rejected=${siege?.finale.rejectedCaptureAttempts ?? 0}`,
+      `captured=${siege?.finale.captured ?? false}@${siege?.finale.capturedFrame ?? '-'} royalAuthorityDisabled=${siege?.finale.royalAuthorityDisabled ?? false} hostilesCleared=${siege?.finale.hostilesClearedOnCapture ?? 0}`,
+      `balcony open=${siege?.finale.balconyOpen ?? false}@${siege?.finale.balconyOpenedFrame ?? '-'}`,
+      `lastCaptureRequest=${lastCaptureResult}`,
       '',
       'stream keys:',
       ...Object.entries(siege?.rngStreamKeys ?? {}).map(([key, value]) => `  ${key}: ${value}`),
@@ -99,6 +111,17 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
     .onFinishChange(() => setup());
   gui.add(state, 'stepMs', 16, 10_000, 16).name('Step ms');
   gui.add({ step }, 'step').name('Advance siege');
+  gui
+    .add(
+      {
+        capture: () => {
+          lastCaptureResult = requestFloor5ThroneCapture(world);
+          render();
+        },
+      },
+      'capture',
+    )
+    .name('Request throne capture');
   gui.add({ setup }, 'setup').name('Reset');
 
   setup();

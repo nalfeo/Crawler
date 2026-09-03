@@ -17,17 +17,17 @@ function seedCountOf(spec: string): number {
 }
 
 describe('sweep leg matrix', () => {
-  it('PR tier runs exactly 50 runs', () => {
+  it('PR tier runs exactly 65 runs', () => {
     // The PR tier's cost is a hard budget: it replaced a 24-run serial gate and
     // must stay small enough to shard inside the prior wall-clock envelope.
     // A careless edit that multiplies this is a CI-cost regression.
-    expect(totalRuns(PR_SWEEP_LEGS)).toBe(50);
+    expect(totalRuns(PR_SWEEP_LEGS)).toBe(65);
   });
 
-  it('release tier runs exactly 600 runs (unchanged total)', () => {
-    // Same total the Floor-1-only baseline cost, now spread across three legs,
-    // so release wall time stays roughly neutral.
-    expect(totalRuns(RELEASE_SWEEP_LEGS)).toBe(600);
+  it('release tier runs exactly 750 runs', () => {
+    // Preserves the prior 600-run matrix and adds a 150-run report-only Floor 6
+    // leg once Floor 6 becomes implemented.
+    expect(totalRuns(RELEASE_SWEEP_LEGS)).toBe(750);
     expect(RELEASE_SWEEP_LEGS.find((l) => l.id === 'floor1')!.runs).toBe(300);
   });
 

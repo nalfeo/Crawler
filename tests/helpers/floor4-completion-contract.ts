@@ -27,7 +27,7 @@ export const FLOOR4_ACTS = [1, 2, 3, 4, 5];
  * so an earlier act cannot satisfy it alone the way the cumulative
  * `wavesReleased` counter could.
  */
-export const FLOOR4_WAVES_PER_ACT: number = (() => {
+const FLOOR4_WAVES_PER_ACT: number = (() => {
   const wavesPerAct = getFloorManifest('floor4')?.floor4?.waves.cadence.wavesPerAct;
   if (typeof wavesPerAct !== 'number' || wavesPerAct <= 0) {
     throw new Error(

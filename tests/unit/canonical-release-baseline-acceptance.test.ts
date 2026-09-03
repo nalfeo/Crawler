@@ -63,6 +63,7 @@ describe('Canonical release-baseline acceptance infrastructure', () => {
     const analysis = analyzeReleaseBalance({
       floor1: [partialRun],
       floor2: [partialRun],
+      floor6: [partialRun],
       floor1Chain: [partialRun],
     });
 
@@ -95,6 +96,7 @@ describe('Canonical release-baseline acceptance infrastructure', () => {
       revision: metadata.revision,
       floor1RunCount: metadata.expectedRunCounts.floor1,
       floor2RunCount: metadata.expectedRunCounts.floor2,
+      floor6RunCount: 150,
       chainedRunCount: metadata.expectedRunCounts.chained,
       meanFloor1CompletionLevel: 7,
       meanFloor3EntryLevel: 10,

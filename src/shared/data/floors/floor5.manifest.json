@@ -119,6 +119,52 @@
       },
       "recoveryDelayFrames": 90
     },
+    "finale": {
+      "crownAuditor": {
+        "health": 180,
+        "attackDamage": 14,
+        "attackCooldownMs": 900,
+        "speedFtPerFrame": 0.7,
+        "engageRangeFt": 5.0,
+        "aggroRadiusFt": 60.0,
+        "leashRadiusFt": 44.0
+      },
+      "courtyardDefenders": {
+        "count": 3,
+        "health": 45,
+        "attackDamage": 9,
+        "attackCooldownMs": 700,
+        "speedFtPerFrame": 0.8,
+        "engageRangeFt": 3.0,
+        "aggroRadiusFt": 48.0,
+        "leashRadiusFt": 40.0
+      },
+      "regentEmeritus": {
+        "health": 320,
+        "attackDamage": 18,
+        "attackCooldownMs": 1100,
+        "speedFtPerFrame": 0.6,
+        "engageRangeFt": 6.0,
+        "aggroRadiusFt": 60.0,
+        "leashRadiusFt": 36.0
+      },
+      "summons": {
+        "maxTotal": 4,
+        "perTriggerCount": 2,
+        "healthFractionTriggers": [0.66, 0.33],
+        "telegraphFrames": 45,
+        "health": 30,
+        "attackDamage": 8,
+        "attackCooldownMs": 800,
+        "speedFtPerFrame": 0.85,
+        "engageRangeFt": 3.0,
+        "aggroRadiusFt": 44.0,
+        "leashRadiusFt": 32.0
+      },
+      "capture": {
+        "interactionRadiusFt": 6.0
+      }
+    },
     "rngStreams": ["waves", "heroes", "tasks", "dressing", "rewards"]
   }
 }

@@ -911,6 +911,108 @@ export interface Floor5BreachState {
   readonly cleanup: Floor5BreachCleanupState;
 }
 
+/**
+ * Floor 5 · courtyard-to-throne finale (slice 6, spec `R7`).
+ *
+ * Every fixed actor in the finale — the Crown Auditor, the authored courtyard
+ * defenders, Regent Emeritus and its bounded summons — is described by this one
+ * kind so the encounter cap, the cleanup receipt and the run-stats projection
+ * can all be expressed without a per-actor bespoke shape.
+ */
+export type Floor5FinaleActorKind =
+  | 'crown-auditor'
+  | 'courtyard-defender'
+  | 'regent-emeritus'
+  | 'regent-summon';
+
+/** One live (or already defeated) fixed finale actor. */
+export interface Floor5FinaleActorState {
+  readonly kind: Floor5FinaleActorKind;
+  /** Entity id, or 0 once the actor is defeated / retired. */
+  eid: number;
+  health: number;
+  readonly maxHealth: number;
+  readonly spawnedFrame: number;
+  defeatedFrame: number | null;
+  /** Authored room anchor the actor leashes to; derived from the layout. */
+  readonly anchorX: number;
+  readonly anchorY: number;
+}
+
+/**
+ * Why a throne-capture interaction was refused. `accepted` is the only value
+ * that latches a pending capture; every other value is a counted rejection so
+ * "cannot capture early" is observable rather than inferred (spec `FR7.4`).
+ */
+export type Floor5CaptureAttemptResult =
+  | 'accepted'
+  | 'already-captured'
+  | 'already-pending'
+  | 'regent-alive'
+  | 'not-available';
+
+/** One telegraphed-but-unreleased Regent summon wave (spec `FR7.3`). */
+export interface Floor5PendingSummonWave {
+  /** Authored health-fraction trigger ordinal that telegraphed this wave. */
+  readonly triggerIndex: number;
+  /** Frame the wave was telegraphed. */
+  readonly telegraphedFrame: number;
+  /** Frame the wave's summons appear; always after `telegraphedFrame`. */
+  readonly releaseFrame: number;
+  /** Summons this wave will release; already reserved against the cap. */
+  readonly count: number;
+}
+
+/** Runtime state of the courtyard → throne → capture finale. */
+export interface Floor5FinaleState {
+  /** Frame the breach latch was observed and the courtyard opened (`FR7.1`). */
+  courtyardEnteredFrame: number | null;
+  /** Live/defeated courtyard encounter: the Auditor plus authored defenders. */
+  readonly courtyardActors: Floor5FinaleActorState[];
+  courtyardCleared: boolean;
+  courtyardClearedFrame: number | null;
+  auditorDefeatedFrame: number | null;
+  defendersDefeated: number;
+  /** Poly-barrier sealing the throne doors, or null once dropped (`FR7.2`). */
+  throneDoorBarrierId: number | null;
+  throneDoorOpenedFrame: number | null;
+  /** Live/defeated throne encounter: the Regent plus its bounded summons. */
+  readonly throneActors: Floor5FinaleActorState[];
+  regentSpawnedFrame: number | null;
+  regentDefeatedFrame: number | null;
+  /** Total summons released this run; never exceeds the authored cap. */
+  summonsReleased: number;
+  /** Summons retired with the encounter rather than defeated. */
+  summonsRetired: number;
+  /** Index of the next authored health-fraction trigger to fire. */
+  nextSummonTriggerIndex: number;
+  /**
+   * Telegraphed summon waves awaiting their authored release frame (`FR7.3`).
+   * Queued counts are reserved against the encounter cap the moment they are
+   * telegraphed, and the queue is discarded if the Regent falls first.
+   */
+  readonly pendingSummonWaves: Floor5PendingSummonWave[];
+  /** Total summons telegraphed this run, released or not. */
+  summonsTelegraphed: number;
+  /** Throne capture point, derived from the authored throne room. */
+  capturePoint: { readonly x: number; readonly y: number } | null;
+  captureAvailable: boolean;
+  captureAvailableFrame: number | null;
+  captureAttempts: number;
+  /** Attempts refused because the capture was not yet enabled (`FR7.4`). */
+  rejectedCaptureAttempts: number;
+  /** Frame an accepted interaction latched, resolved by the objective tick. */
+  pendingCaptureFrame: number | null;
+  captured: boolean;
+  capturedFrame: number | null;
+  royalAuthorityDisabled: boolean;
+  /** Hostile actors cleared by the capture transaction. */
+  hostilesClearedOnCapture: number;
+  /** Poly-barrier sealing the Winner's Balcony, or null once dropped. */
+  balconyBarrierId: number | null;
+  balconyOpenedFrame: number | null;
+}
+
 export type Floor5RequisitionMilestone =
   | 'opening-push'
   | 'siege-yard'
@@ -944,6 +1046,7 @@ export interface Floor5SiegeState {
   breachState: 'SEALED' | 'BREACHED';
   ram: Floor5RamState;
   breach: Floor5BreachState;
+  finale: Floor5FinaleState;
   /**
    * Derived display/trace projection of {@link Floor5SiegeState.heroes}:
    * `PENDING` | `ACTIVE:<heroId>` | `DOWN:<heroId>@<respawnFrame>` | `RETIRED`.
@@ -1010,6 +1113,39 @@ export interface Floor5SiegeRunStats {
     readonly frontFrozen: boolean;
     readonly commitAttempts: number;
     readonly cleanup: Floor5BreachCleanupState;
+  };
+  readonly finale: {
+    readonly courtyardEnteredFrame: number | null;
+    readonly courtyardCleared: boolean;
+    readonly courtyardClearedFrame: number | null;
+    readonly auditorDefeatedFrame: number | null;
+    readonly auditorHealth: number;
+    readonly auditorMaxHealth: number;
+    readonly defendersSpawned: number;
+    readonly defendersDefeated: number;
+    readonly throneDoorOpen: boolean;
+    readonly throneDoorOpenedFrame: number | null;
+    readonly regentSpawnedFrame: number | null;
+    readonly regentDefeatedFrame: number | null;
+    readonly regentHealth: number;
+    readonly regentMaxHealth: number;
+    readonly summonsTelegraphed: number;
+    readonly summonsReleased: number;
+    readonly summonsRetired: number;
+    readonly pendingSummonWaves: number;
+    readonly summonCap: number;
+    readonly liveSummons: number;
+    readonly captureAvailable: boolean;
+    readonly captureAvailableFrame: number | null;
+    readonly captureAttempts: number;
+    readonly rejectedCaptureAttempts: number;
+    readonly captured: boolean;
+    readonly capturedFrame: number | null;
+    readonly royalAuthorityDisabled: boolean;
+    readonly hostilesClearedOnCapture: number;
+    readonly balconyOpen: boolean;
+    readonly balconyOpenedFrame: number | null;
+    readonly capturePoint: { readonly x: number; readonly y: number } | null;
   };
   readonly heroState: string;
   readonly heroes: {
@@ -1147,6 +1283,12 @@ export interface Floor6DefenseState {
   upgradeOfferManifest: readonly Floor6UpgradeOfferManifestEntry[] | null;
   /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
   readonly liveEnemies: Floor6LiveEnemyRecord[];
+  /** Cumulative stalled-raider count retained after terminal cleanup. */
+  stalledRaiderCount: number;
+  /** Cumulative stalled-raider count by authored route, retained after cleanup. */
+  routeStallCounts: Record<string, number>;
+  /** Successful spawned-raider count by authored route, retained after cleanup. */
+  routeReleaseCounts: Record<string, number>;
   /** Index into waveManifest of next entry to release. */
   nextReleaseIndex: number;
   /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
@@ -1424,6 +1566,48 @@ export interface Floor6LiveEnemyRecord {
   rewardSpawned: boolean;
 }
 
+export interface Floor6PhaseDurationStats {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly enteredFrame: number;
+  readonly exitedFrame: number;
+  readonly durationFrames: number;
+}
+
+export interface Floor6RoutePressureStats {
+  readonly routeId: string;
+  readonly released: number;
+  readonly stalled: number;
+}
+
+export interface Floor6CleanupStats {
+  readonly liveEnemyCount: number;
+  readonly spawnDebt: number;
+  readonly terminalResetCount: number;
+  readonly towersTornDown: number;
+}
+
+export interface Floor6TerminalIntegrityStats {
+  readonly terminal: boolean;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutCount: number;
+  readonly exitOpenCount: number;
+}
+
+export interface Floor6ReleaseGateStats {
+  readonly activeTimeBudgetMs: number | null;
+  readonly frameBudget: number | null;
+  readonly completionRateTarget: number;
+  readonly minimumRelayHealthPct: number;
+  readonly maxLiveEnemies: number;
+  readonly maxStalledRaiders: number;
+  readonly maxFrameCostMs: number;
+  readonly observedFrameCostMs: number | null;
+  readonly phaseDurations: readonly Floor6PhaseDurationStats[];
+  readonly routePressure: readonly Floor6RoutePressureStats[];
+  readonly cleanup: Floor6CleanupStats;
+  readonly terminalIntegrity: Floor6TerminalIntegrityStats;
+}
+
 /** Telemetry snapshot emitted by the director at every phase transition. */
 export interface Floor6DefenseRunStats {
   readonly phase: Floor6DefensePhase;
@@ -1468,6 +1652,7 @@ export interface Floor6DefenseRunStats {
   readonly victoryPayoutBroadcastScore: number;
   readonly exitOpened: boolean;
   readonly exitOpenCount: number;
+  readonly releaseGate: Floor6ReleaseGateStats;
   readonly presentation: Floor6PresentationSnapshot;
 }
 

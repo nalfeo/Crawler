@@ -236,7 +236,17 @@ function computeHeadlessFloorProgressScore(
       floor5Siege.ram.strikes +
       floor5Siege.ram.route.filter((marker) => marker.reachedFrame !== null).length +
       Math.floor(floor5RamForwardProgressFt) +
-      (floor5Siege.breach.latched ? 1 : 0)
+      (floor5Siege.breach.latched ? 1 : 0) +
+      // Slice-6 finale terms, so the quest-stall watchdog still sees forward
+      // motion once the lane war is over and the courtyard/throne fight owns
+      // the run.
+      floor5Siege.finale.courtyardActors.filter((actor) => actor.defeatedFrame !== null).length +
+      floor5Siege.finale.throneActors.filter((actor) => actor.defeatedFrame !== null).length +
+      floor5Siege.finale.summonsReleased +
+      (floor5Siege.finale.courtyardCleared ? 1 : 0) +
+      (floor5Siege.finale.throneDoorOpenedFrame !== null ? 1 : 0) +
+      (floor5Siege.finale.captureAvailable ? 1 : 0) +
+      (floor5Siege.finale.captured ? 1 : 0)
     );
   }
   const floor6Defense = getFloor6DefenseRunStats(world);
@@ -1902,6 +1912,16 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      if (world.floorId === 'floor5') {
+        // Floor 5's terminal outcome is the throne capture, which is a SEPARATE
+        // interaction from defeating Regent Emeritus. The BT AI has no
+        // throne-marker navigation yet, so the runner requests the capture every
+        // frame: `requestFloor5ThroneCapture` is the state authority and counts
+        // every refusal, so this both proves "cannot capture early" in a real
+        // run and captures exactly once. Headless-only — real play still walks
+        // to the marker and confirms through its modal.
+        scenario.onStairDescend?.(world, playerEid);
+      }
       if (world.floorId === 'floor6') {
         // Floor 6's Relay exit also only reports `cleared_floor` once descent
         // is confirmed (the Deadline defeat merely opens it), so the same
@@ -2039,6 +2059,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
+    const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
     const crashStats: RunStats = assembleRunStats({
       totalFrames: frameCount,
       wallTimeMs,
@@ -2101,7 +2122,7 @@ export async function runHeadless(
       floor3Progression: buildFloor3Progression(),
       floor4Arena: getFloor4ArenaRunStats(world),
       floor5Siege: getFloor5SiegeRunStats(world),
-      floor6Defense: getFloor6DefenseRunStats(world),
+      floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -2137,6 +2158,7 @@ export async function runHeadless(
 
   const wallTimeMs = Date.now() - startTime;
   const fps = (frameCount / wallTimeMs) * 1000;
+  const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
   const playerHealth = world.stores.health.current[playerEid] ?? 0;
   const finalHealthPercent = playerHealth / playerMaxHealth;
@@ -2215,7 +2237,7 @@ export async function runHeadless(
     floor3Progression: buildFloor3Progression(),
     floor4Arena: getFloor4ArenaRunStats(world),
     floor5Siege: getFloor5SiegeRunStats(world),
-    floor6Defense: getFloor6DefenseRunStats(world),
+    floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
