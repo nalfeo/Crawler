@@ -5,7 +5,18 @@ import {
   collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
 } from '../../src/game/systems/achievementSystem.js';
+import { FLOOR6_DEFENSE_QUEST_ID, type QuestState } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+function completeQuestState(questId: string): QuestState {
+  return {
+    questId,
+    status: 'complete',
+    tracked: false,
+    progress: {},
+    done: {},
+  };
+}
 
 function initFloor6World() {
   const world = createTestWorld({ seed: 606 });
@@ -61,5 +72,19 @@ describe('Floor 6 achievement facts', () => {
     evaluateAchievementUnlocksForPhase(world, 'tick');
 
     expect(world.achievements.unlockedIds.has('floor6-relay-secured')).toBe(false);
+  });
+
+  it('unlocks the final Relay-secured achievement after confirmed descent and actual quest completion', () => {
+    const { world, defense } = initFloor6World();
+
+    world.goalFlags.set('floor6.defense.relaySecured', true);
+    defense.terminalOutcome = 'victory';
+    defense.exit.opened = true;
+    defense.exit.confirmed = true;
+    world.questLog.set(FLOOR6_DEFENSE_QUEST_ID, completeQuestState(FLOOR6_DEFENSE_QUEST_ID));
+
+    evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
+
+    expect(world.achievements.unlockedIds.has('floor6-relay-secured')).toBe(true);
   });
 });

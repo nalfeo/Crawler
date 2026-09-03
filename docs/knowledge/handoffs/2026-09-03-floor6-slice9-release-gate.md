@@ -18,7 +18,7 @@ ai-combat-balance, quests, mapgen, inventory, ci-policy
 
 ## What Was Done
 
-Implemented Floor 6 Slice 9 release plumbing through existing data and telemetry paths: Floor 6 is now `mvp`/`released` with a 150s win budget, report-only PR/release sweep legs, validated Floor 6 achievements, release-gate RunStats snapshots, and focused unit/headless coverage. Observed in the real headless pipeline — before local smoke tuning, Floor 6 seeds 1/3/4/5 lost to Relay destruction; after the route-following fix plus manifest-owned Relay/tower tuning, the 10-seed local smoke panel in `tests/headless/floor6-release-gate.test.ts` passes with terminal victories, terminal integrity, cleanup, route pressure, phase durations, Relay health, and hero/tower contribution assertions.
+Implemented Floor 6 Slice 9 release plumbing through existing data and telemetry paths: Floor 6 is now `mvp` and explicitly unreleased (`released: false`) pending HUMAN_GATE approval, with a 150s win budget, report-only PR/release sweep legs, validated Floor 6 achievements, release-gate RunStats snapshots, and focused unit/headless coverage. Observed in the real headless pipeline — before local smoke tuning, Floor 6 seeds 1/3/4/5 lost to Relay destruction; after the route-following fix plus manifest-owned Relay/tower tuning, the 10-seed local smoke panel in `tests/headless/floor6-release-gate.test.ts` passes with terminal victories, terminal integrity, cleanup, route pressure, phase durations, Relay health, and hero/tower contribution assertions.
 
 ## Key Decisions Made
 

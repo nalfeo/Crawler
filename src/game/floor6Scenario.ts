@@ -144,6 +144,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     liveEnemies: [],
     stalledRaiderCount: 0,
     routeStallCounts: {},
+    routeReleaseCounts: {},
     nextReleaseIndex: 0,
     spawnDebt: 0,
     relayHp: tuning?.relayMaxHp ?? 100,
@@ -524,6 +525,7 @@ function spawnFloor6Raider(
     }),
   );
 
+  state.routeReleaseCounts[entry.routeId] = (state.routeReleaseCounts[entry.routeId] ?? 0) + 1;
   return eid;
 }
 
@@ -1537,6 +1539,9 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.nextReleaseIndex = 0;
     state.spawnDebt = 0;
     state.totalReleased = 0;
+    state.stalledRaiderCount = 0;
+    state.routeStallCounts = {};
+    state.routeReleaseCounts = {};
     state.stallFrames = 0;
     state.lastReleaseFrame = world.frameCount;
     state.combatEventCursor = world.combatEvents.length;
@@ -1694,22 +1699,18 @@ function buildFloor6PhaseDurations(
 function buildFloor6RoutePressure(
   state: Floor6DefenseState,
 ): Floor6DefenseRunStats['releaseGate']['routePressure'] {
-  return state.geometry.routes.map((route) => {
-    let released = 0;
-    let stalled = 0;
-    for (const entry of state.waveManifest ?? []) {
-      if (entry.routeId !== route.id) continue;
-      if (entry.manifestIndex < state.nextReleaseIndex) released += 1;
-      stalled = state.routeStallCounts[route.id] ?? 0;
-    }
-    return { routeId: route.id, released, stalled };
-  });
+  return state.geometry.routes.map((route) => ({
+    routeId: route.id,
+    released: state.routeReleaseCounts[route.id] ?? 0,
+    stalled: state.routeStallCounts[route.id] ?? 0,
+  }));
 }
 
 function buildFloor6ReleaseGateStats(
   world: GameWorld,
   state: Floor6DefenseState,
   liveEnemyCount: number,
+  observedFrameCostMs: number | null,
 ): Floor6DefenseRunStats['releaseGate'] {
   const config = getFloor6Config();
   const gate = config.releaseGate;
@@ -1724,7 +1725,7 @@ function buildFloor6ReleaseGateStats(
     maxLiveEnemies: gate?.maxLiveEnemies ?? 0,
     maxStalledRaiders: gate?.maxStalledRaiders ?? 0,
     maxFrameCostMs: gate?.maxFrameCostMs ?? GAME.DELTA_MS,
-    observedFrameCostMs: GAME.DELTA_MS,
+    observedFrameCostMs,
     phaseDurations: buildFloor6PhaseDurations(state, world.frameCount),
     routePressure: buildFloor6RoutePressure(state),
     cleanup: {
@@ -1746,7 +1747,10 @@ function buildFloor6ReleaseGateStats(
  * Collect a telemetry snapshot from the current defense state.
  * Safe to call from any floor, returns undefined when not on floor 6.
  */
-export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStats | undefined {
+export function getFloor6DefenseRunStats(
+  world: GameWorld,
+  observedFrameCostMs: number | null = null,
+): Floor6DefenseRunStats | undefined {
   const state = floor6DefenseState(world);
   if (!state) return undefined;
   const relayMaxHp = floor6RelayMaxHp(state);
@@ -1798,7 +1802,7 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     victoryPayoutBroadcastScore: state.victoryPayout.broadcastScore,
     exitOpened: state.exit.opened,
     exitOpenCount: state.exit.openCount,
-    releaseGate: buildFloor6ReleaseGateStats(world, state, liveCount),
+    releaseGate: buildFloor6ReleaseGateStats(world, state, liveCount, observedFrameCostMs),
     presentation: buildFloor6PresentationSnapshot(world, state, relayMaxHp),
   };
 }

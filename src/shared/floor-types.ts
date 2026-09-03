@@ -1287,6 +1287,8 @@ export interface Floor6DefenseState {
   stalledRaiderCount: number;
   /** Cumulative stalled-raider count by authored route, retained after cleanup. */
   routeStallCounts: Record<string, number>;
+  /** Successful spawned-raider count by authored route, retained after cleanup. */
+  routeReleaseCounts: Record<string, number>;
   /** Index into waveManifest of next entry to release. */
   nextReleaseIndex: number;
   /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
@@ -1599,7 +1601,7 @@ export interface Floor6ReleaseGateStats {
   readonly maxLiveEnemies: number;
   readonly maxStalledRaiders: number;
   readonly maxFrameCostMs: number;
-  readonly observedFrameCostMs: number;
+  readonly observedFrameCostMs: number | null;
   readonly phaseDurations: readonly Floor6PhaseDurationStats[];
   readonly routePressure: readonly Floor6RoutePressureStats[];
   readonly cleanup: Floor6CleanupStats;

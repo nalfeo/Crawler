@@ -35,6 +35,7 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 import { ITEM_CATALOG, ItemRarity } from '../../src/shared/items.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../../src/shared/quest-types.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -258,7 +259,8 @@ describe('floor6 achievements catalog', () => {
     expect(
       FLOOR6_ACHIEVEMENTS.some((achievement) =>
         achievement.unlockRules.some(
-          (rule) => rule.type === 'allQuestsComplete' && rule.questIds.includes('floor6-defense'),
+          (rule) =>
+            rule.type === 'allQuestsComplete' && rule.questIds.includes(FLOOR6_DEFENSE_QUEST_ID),
         ),
       ),
     ).toBe(true);

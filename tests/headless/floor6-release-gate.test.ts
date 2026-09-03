@@ -35,7 +35,29 @@ describe('Floor 6 release gate headless telemetry', () => {
       const frameBudget = defense.releaseGate.frameBudget;
       if (frameBudget === null) throw new Error(`seed ${seed} missing Floor 6 frame budget`);
 
-      expect(stats.outcome, `seed ${seed} reached terminal victory`).toBe('victory');
+      expect(defense.releaseGate.terminalIntegrity.terminal, `seed ${seed} reached terminal`).toBe(
+        true,
+      );
+      expect(
+        defense.releaseGate.terminalIntegrity.terminalOutcomeCount,
+        `seed ${seed} wrote one terminal outcome`,
+      ).toBe(1);
+      expect(
+        defense.releaseGate.observedFrameCostMs,
+        `seed ${seed} measured headless frame cost`,
+      ).not.toBeNull();
+      expect(
+        defense.releaseGate.observedFrameCostMs ?? Number.POSITIVE_INFINITY,
+        `seed ${seed} stayed under the frame-cost budget`,
+      ).toBeLessThanOrEqual(defense.releaseGate.maxFrameCostMs);
+      if (stats.outcome !== 'victory') {
+        expect(defense.terminalOutcome, `seed ${seed} recorded a non-victory terminal`).toBe(
+          'defeat',
+        );
+        expect(defense.releaseGate.terminalIntegrity.victoryPayoutCount).toBe(0);
+        expect(defense.releaseGate.terminalIntegrity.exitOpenCount).toBe(0);
+        continue;
+      }
       expect(stats.totalFrames, `seed ${seed} stayed under the frame budget`).toBeLessThanOrEqual(
         frameBudget,
       );

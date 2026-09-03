@@ -453,7 +453,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     commandPostHealth: config.commandPost.health,
     engineState: 'LOCKED',
     breachState: 'SEALED',
-    ram: createFloor5RamState(world, config),
+    ram: createFloor5RamState(config),
     finale: createFloor5FinaleState(),
     breach: {
       latched: false,
