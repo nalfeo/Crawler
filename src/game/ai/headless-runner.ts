@@ -1860,6 +1860,17 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      if (world.floorId === 'floor6') {
+        // Floor 6's Relay exit also only reports `cleared_floor` once descent
+        // is confirmed (the Deadline defeat merely opens it), so the same
+        // stall applies here: the BT AI has no Deadline-exit navigation yet,
+        // so auto-confirm once the exit is open instead of gating on
+        // proximity. `confirmFloor6StairDescend` is idempotent and a no-op
+        // until `isFloor6ExitDescendable` is true, so this is a safe
+        // unconditional call, not an early/incorrect win. Headless-only: real
+        // play still walks to the marker and confirms through its modal.
+        scenario.onStairDescend?.(world, playerEid);
+      }
       const scenarioOutcome = scenario.getRunOutcome(world);
       if (
         scenarioOutcome === 'cleared_floor' ||
