@@ -1,5 +1,39 @@
 [
   {
+    "commit": "4dea765b295c0f6aa9f9b4f74534e950d9020830",
+    "commitDate": "2026-09-03T18:46:16Z",
+    "commitSubject": "Floor 5 Slice 6: courtyard handoff, Crown Auditor, throne gate, Regent Emeritus, and throne capture (#4190)",
+    "capturedAt": "2026-09-03T20:08:26.195Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33795264071",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/4dea765b295c0f6aa9f9b4f74534e950d9020830.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 2,
+    "fun": {
+      "overallFunScore": 36.14,
+      "gatePass": false,
+      "path": "by-sha/4dea765b295c0f6aa9f9b4f74534e950d9020830.fun-report.json"
+    }
+  },
+  {
     "commit": "f0af1f1c724eae3aa1563a76556555d4b9dd3223",
     "commitDate": "2026-09-02T14:57:40Z",
     "commitSubject": "Complete Floor 6 Broadcast Deadline finale (#4106)",
