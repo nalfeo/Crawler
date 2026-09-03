@@ -29,6 +29,7 @@ import {
 import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
 import {
   siegeDirectorSystem,
+  siegeFinaleSystem,
   siegeHeroSystem,
   siegeMinionSystem,
   siegeRamSystem,
@@ -99,7 +100,13 @@ describe('createFloor1MainSceneOptions', () => {
     {
       floorId: 'floor5',
       beforeWeaponSystems: [],
-      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem, siegeHeroSystem, siegeRamSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        siegeMinionSystem,
+        siegeHeroSystem,
+        siegeRamSystem,
+        siegeFinaleSystem,
+      ],
       afterSpawnerSystems: [siegeDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,
