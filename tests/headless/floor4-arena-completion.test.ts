@@ -130,7 +130,9 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
         ) ?? [],
       intermissionReasons:
         arena?.timeline.flatMap((entry, index, timeline) =>
-          timeline[index - 1]?.phase.kind === 'INTERMISSION' ? [entry.reason] : [],
+          timeline[index - 1]?.phase.kind === 'INTERMISSION'
+            ? [typeof entry.reason === 'string' ? entry.reason : 'unknown']
+            : [],
         ) ?? [],
       runStatsOutcome: stats.outcome,
       totalFrames: stats.totalFrames,
