@@ -107,6 +107,7 @@ import { createAbilityState, forceActivateAbility } from '../../game/systems/abi
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
+import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -1185,6 +1186,22 @@ export interface MainSceneProbeApi {
    * Returns false when not booted on Floor 6.
    */
   primeFloor6FinaleVfxCue(): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+   * directly, so an e2e spec can assert the scenario HUD's break-safety
+   * presentation line without driving a full wave-clear through the sim.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6BreakPhase(): boolean;
+  /**
+   * Test-only Floor 6 setup: occupies the first authored build site with the
+   * first roster tower directly on the defense state (bypassing the
+   * currency/phase transaction gates in `buildFloor6Tower`), so an e2e spec
+   * can assert the scenario HUD's occupied-site and tower range/tier
+   * presentation lines without a full economy grind. Returns false when not
+   * booted on Floor 6 or when it has no authored build sites/towers.
+   */
+  primeFloor6OccupiedSite(): { siteId: string; towerId: string } | null;
   /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
@@ -2427,6 +2444,48 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.setSimulationPaused(true);
       defense.phase = { kind: 'FINALE' };
       return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+     * directly, mirroring `primeFloor6FinaleVfxCue`, so an e2e spec can
+     * assert the scenario HUD's break-safety presentation line without
+     * driving a full wave-clear through the sim.
+     */
+    primeFloor6BreakPhase: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'BREAK' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: occupies the first authored build site with
+     * the first roster tower directly on the defense state (bypassing the
+     * currency/phase transaction gates in `buildFloor6Tower`), so an e2e
+     * spec can assert the scenario HUD's occupied-site and tower range/tier
+     * presentation lines without a full economy grind.
+     */
+    primeFloor6OccupiedSite: (): { siteId: string; towerId: string } | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const site = defense?.geometry.buildSites[0];
+      const tower = _getFloor6TowerRoster()[0];
+      if (!scene || !world || !defense || !site || !tower) {
+        return null;
+      }
+      scene.setSimulationPaused(true);
+      defense.towerInstances = defense.towerInstances.filter(
+        (instance) => instance.siteId !== site.id,
+      );
+      defense.towerInstances.push({ siteId: site.id, towerId: tower.id, eid: -1 });
+      return { siteId: site.id, towerId: tower.id };
     },
 
     primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {
