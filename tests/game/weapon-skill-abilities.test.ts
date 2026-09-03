@@ -27,7 +27,10 @@ import {
   weaponPrerequisiteMet,
 } from '../../src/game/systems/abilitySystem.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
-import { getAbilityPresentation } from '../../src/shared/ability-presentation.js';
+import {
+  ABILITY_PRESENTATION_BY_ID,
+  getAbilityPresentation,
+} from '../../src/shared/ability-presentation.js';
 import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
 import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
@@ -95,6 +98,16 @@ describe('skill L5 milestone ability grants', () => {
     expect(presentation?.name).not.toBe('bow-shot-base');
     expect(definition?.weaponPrerequisite).toBe('bow');
     expect(definition?.effects).toEqual([{ type: 'stat_add', stat: 'accuracy', value: 0.1 }]);
+  });
+
+  it('never ships a placeholder sentinel as a player-facing effect summary', () => {
+    for (const id of Object.keys(ABILITY_PRESENTATION_BY_ID)) {
+      const summary = getAbilityPresentation(id)?.passiveEffectSummary;
+      if (summary === undefined) continue;
+      expect(summary.trim(), `placeholder effect summary for ability: ${id}`).not.toMatch(
+        /^(TBD|TODO|N\/A)$/i,
+      );
+    }
   });
 
   it('announces the Bow L5 reward without exposing its internal ability ID', () => {
