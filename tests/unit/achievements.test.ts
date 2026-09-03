@@ -12,6 +12,7 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
+  FLOOR5_ACHIEVEMENTS,
   _FLOOR6_ACHIEVEMENTS as FLOOR6_ACHIEVEMENTS,
   FLOOR2_ACHIEVEMENT_LOOT_TIERS,
   _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
@@ -104,6 +105,7 @@ describe('floor1 achievements catalog', () => {
   it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
 
     const floor2Catalog = createAchievementCatalog(2, [
@@ -151,7 +153,10 @@ describe('floor1 achievements catalog', () => {
       parseAchievementCatalog([rawAchievement({ id: 'boss-chest:goblin-clan' })]),
     ).toThrow(/collides with the reserved boss-chest reward-bundle prefix/);
     expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
-      FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length + FLOOR6_ACHIEVEMENTS.length,
+      FLOOR1_ACHIEVEMENT_COUNT +
+        FLOOR2_ACHIEVEMENTS.length +
+        FLOOR5_ACHIEVEMENTS.length +
+        FLOOR6_ACHIEVEMENTS.length,
     );
     expect(ALL_ACHIEVEMENTS).toEqual(
       ACHIEVEMENT_CATALOG_REGISTRY.catalogs.flatMap((catalog) => catalog.all),
@@ -161,6 +166,7 @@ describe('floor1 achievements catalog', () => {
   it('keeps floor-aware catalog lookup isolated by floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
   });
 
@@ -236,6 +242,21 @@ describe('floor6 achievements catalog', () => {
       JSON.stringify(achievement.unlockRules),
     );
     expect(new Set(requirementKeys).size).toBe(requirementKeys.length);
+  });
+
+  describe('floor5 achievements catalog', () => {
+    it('registers Floor 5 achievements with breach/capture/clean-sweep requirements', () => {
+      expect(FLOOR5_ACHIEVEMENTS).toHaveLength(3);
+      expect(FLOOR5_ACHIEVEMENTS.every((achievement) => achievement.floor === 5)).toBe(true);
+      expect(FLOOR5_ACHIEVEMENTS.every((achievement) => achievement.reward.type === 'none')).toBe(
+        true,
+      );
+      expect(FLOOR5_ACHIEVEMENTS.map((achievement) => achievement.id).sort()).toEqual([
+        'floor5-breach-opened',
+        'floor5-castle-captured',
+        'floor5-clean-sweep',
+      ]);
+    });
   });
 
   it('keeps Floor 6 achievements tied to Floor 6 measured facts and quest completion', () => {

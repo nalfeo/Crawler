@@ -115,3 +115,33 @@ describe('floor5 manifest courtyard/throne finale rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('floor5 manifest release-gate rules', () => {
+  it('accepts authored release-gate thresholds', () => {
+    expect(floorManifestDefSchema.safeParse(cloneFloor5Manifest()).success).toBe(true);
+  });
+
+  it('rejects release-gate rates outside percentage bounds', () => {
+    const low = cloneFloor5Manifest();
+    low.floor5.releaseGate!.completionRateTarget = -0.01;
+    expect(floorManifestDefSchema.safeParse(low).success).toBe(false);
+
+    const high = cloneFloor5Manifest();
+    high.floor5.releaseGate!.minimumRamSurvivalRate = 1.01;
+    expect(floorManifestDefSchema.safeParse(high).success).toBe(false);
+  });
+
+  it('rejects release-gate p95 duration below the median target', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.releaseGate!.maxMedianDurationFrames = 2000;
+    bad.floor5.releaseGate!.maxP95DurationFrames = 1999;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a clean-sweep floor below the general minimum command-post floor', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.releaseGate!.minimumCommandPostHealthPct = 0.8;
+    bad.floor5.releaseGate!.cleanSweepMinCommandPostHealthPct = 0.7;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});

@@ -53,7 +53,7 @@ import { pushAnnouncement } from '../shared/announcement-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
-import { TeamId } from '../shared/constants.js';
+import { GAME, TeamId } from '../shared/constants.js';
 import type {
   Floor5CaptureAttemptResult,
   Floor5FieldHeroCardEntry,
@@ -69,6 +69,7 @@ import type {
   Floor5RequisitionMilestone,
   Floor5SiegeCheckpointOwner,
   Floor5SiegePhase,
+  Floor5SiegePhaseKind,
   Floor5SiegePhaseTraceEntry,
   Floor5SiegeRunStats,
   Floor5SiegeState,
@@ -114,6 +115,7 @@ const FLOOR5_MINION_SPEED_FT_PER_FRAME = 0.85;
 const FLOOR5_MINION_ATTACK_RANGE_FT = 2.5;
 const FLOOR5_CHECKPOINT_RADIUS_FT = 8;
 const FLOOR5_PATH_STALL_FRAMES = 90;
+const FLOOR5_RELEASE_FRAME_BUDGET_SLACK = 1.1;
 /**
  * Encoded {@link Floor5FieldHeroRole} stored on the `SiegeHero` marker so ECS
  * consumers (tests, labs, future slices) can read a Hero's single declared role
@@ -2210,6 +2212,10 @@ function getFloor5FinaleConfig() {
   return getFloor5Config().finale;
 }
 
+function getFloor5ReleaseGateConfig() {
+  return getFloor5Config().releaseGate;
+}
+
 function floor5CastleLayout(): SiegeCastleLayout {
   return computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
 }
@@ -2914,7 +2920,167 @@ function buildFloor5FinaleRunStats(state: Floor5SiegeState): Floor5SiegeRunStats
   };
 }
 
-export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | undefined {
+function buildFloor5PhaseDurations(
+  state: Floor5SiegeState,
+  currentFrame: number,
+): Floor5SiegeRunStats['releaseGate']['phaseDurations'] {
+  const durations: Floor5SiegeRunStats['releaseGate']['phaseDurations'][number][] = [];
+  for (const [index, entry] of state.trace.entries()) {
+    const next = state.trace[index + 1];
+    const exitedFrame =
+      next?.frame ??
+      // Terminal phases are latches, not open windows; keep their duration zero.
+      (entry.phase.kind === 'CAPTURED' || entry.phase.kind === 'DEFEAT'
+        ? entry.frame
+        : currentFrame);
+    durations.push({
+      kind: entry.phase.kind,
+      enteredFrame: entry.frame,
+      exitedFrame,
+      durationFrames: Math.max(0, exitedFrame - entry.frame),
+    });
+  }
+  return durations;
+}
+
+function countFloor5TerminalLiveHostiles(world: GameWorld, state: Floor5SiegeState): number {
+  let liveFinaleActors = 0;
+  for (const actor of [...state.finale.courtyardActors, ...state.finale.throneActors]) {
+    if (actor.defeatedFrame === null && entityExists(world.ecs, actor.eid)) {
+      const hp = world.stores.health.current[actor.eid] ?? 0;
+      if (hp > 0) liveFinaleActors += 1;
+    }
+  }
+  return (
+    state.liveMinions.enemy +
+    liveFinaleActors +
+    (floor5HeroEntityIsAlive(world, state.heroes.eid) ? 1 : 0)
+  );
+}
+
+function countFloor5PhaseOrderViolations(state: Floor5SiegeState): number {
+  const isAllowedTransition = (from: Floor5SiegePhaseKind, to: Floor5SiegePhaseKind): boolean => {
+    switch (from) {
+      case 'MUSTER':
+        return to === 'CONTEST' || to === 'DEFEAT';
+      case 'CONTEST':
+        return to === 'BUILD' || to === 'DEFEAT';
+      case 'BUILD':
+        return to === 'ESCORT' || to === 'DEFEAT';
+      case 'ESCORT':
+        return to === 'BUILD' || to === 'BREACH' || to === 'DEFEAT';
+      case 'BREACH':
+        return to === 'COURTYARD' || to === 'DEFEAT';
+      case 'COURTYARD':
+        return to === 'THRONE' || to === 'DEFEAT';
+      case 'THRONE':
+        return to === 'CAPTURED' || to === 'DEFEAT';
+      case 'CAPTURED':
+      case 'DEFEAT':
+        return false;
+      default:
+        return false;
+    }
+  };
+  let violations = 0;
+  let previous: Floor5SiegePhaseKind | null = null;
+  for (const entry of state.trace) {
+    const current = entry.phase.kind;
+    if (previous !== null) {
+      if (!isAllowedTransition(previous, current)) violations += 1;
+    }
+    previous = current;
+  }
+  return violations;
+}
+
+function buildFloor5ReleaseGateStats(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  observedFrameCostMs: number | null,
+): Floor5SiegeRunStats['releaseGate'] {
+  const gate = getFloor5ReleaseGateConfig();
+  const activeTimeBudgetMs = getFloor5Manifest().implemented.winBudgetMs ?? null;
+  const frameBudget =
+    activeTimeBudgetMs === null
+      ? null
+      : Math.ceil((activeTimeBudgetMs * FLOOR5_RELEASE_FRAME_BUDGET_SLACK) / GAME.DELTA_MS);
+  const commandPostMaxHealth = state.structures['command-post'].maxHealth;
+  const commandPostHealthPct =
+    commandPostMaxHealth > 0 ? state.commandPostHealth / commandPostMaxHealth : 0;
+  const terminalOutcomes = state.trace.filter(
+    (entry) => entry.phase.kind === 'CAPTURED' || entry.phase.kind === 'DEFEAT',
+  );
+  const capturedCount = terminalOutcomes.filter((entry) => entry.phase.kind === 'CAPTURED').length;
+  const defeatCount = terminalOutcomes.filter((entry) => entry.phase.kind === 'DEFEAT').length;
+  const routeReached = state.ram.route.filter((marker) => marker.reachedFrame !== null).length;
+  const routeLength = state.ram.route.length;
+  const terminal = isFloor5Terminal(state);
+  const ramSurvivedBreach =
+    state.breach.latched && state.ram.stateTrace.some((entry) => entry.state === 'BREACHED');
+  const liveHostilesOnTerminal = terminal ? countFloor5TerminalLiveHostiles(world, state) : 0;
+  const unmetObjectives = [
+    state.tasks.openingPushRepelled,
+    state.tasks.yardSecured,
+    hasAllFloor5RamComponents(state),
+    state.tasks.checkpointCleared,
+    state.engineState === 'BREACHED',
+    state.breach.latched,
+    state.finale.courtyardCleared,
+    state.finale.regentDefeatedFrame !== null,
+    state.phase.kind === 'CAPTURED',
+  ].filter((met) => !met).length;
+  const unreachableObjectives = terminal ? unmetObjectives : 0;
+  const unboundedSpawnDebt = state.spawnDebt.allied + state.spawnDebt.enemy;
+  const nonTerminalRuns = terminal ? 0 : 1;
+  const phaseOrderViolations = countFloor5PhaseOrderViolations(state);
+  // Each term isolates one specific breach/navigation contract mismatch:
+  // - breach latched while ingress barrier still exists,
+  // - breach latched while outer-wall structure entity still exists,
+  // - breach latched before every authored route waypoint was reached.
+  const navigationMismatchCount =
+    (state.breach.latched && state.breach.barrierId !== null ? 1 : 0) +
+    (state.breach.latched && state.structures['outer-wall'].eid > 0 ? 1 : 0) +
+    (state.breach.latched && routeReached < routeLength ? 1 : 0);
+  return {
+    activeTimeBudgetMs,
+    frameBudget,
+    completionRateTarget: gate.completionRateTarget,
+    maxMedianDurationFrames: gate.maxMedianDurationFrames,
+    maxP95DurationFrames: gate.maxP95DurationFrames,
+    minimumCommandPostHealthPct: gate.minimumCommandPostHealthPct,
+    minimumRamSurvivalRate: gate.minimumRamSurvivalRate,
+    maxLiveHostilesOnTerminal: gate.maxLiveHostilesOnTerminal,
+    maxPathStalls: gate.maxPathStalls,
+    maxFrameCostMs: gate.maxFrameCostMs,
+    observedFrameCostMs,
+    stallBackstopFrames: gate.stallBackstopFrames,
+    cleanSweepMinCommandPostHealthPct: gate.cleanSweepMinCommandPostHealthPct,
+    commandPostHealthPct,
+    ramSurvivedBreach,
+    liveHostilesOnTerminal,
+    phaseDurations: buildFloor5PhaseDurations(state, world.frameCount),
+    terminalIntegrity: {
+      terminal,
+      terminalOutcomeCount: terminalOutcomes.length,
+      capturedCount,
+      defeatCount,
+    },
+    structuralViolations: {
+      unreachableObjectives,
+      phaseOrderViolations,
+      invalidTargetAllegianceEvents: state.laneTelemetry.illegalDamageEvents,
+      navigationMismatchCount,
+      unboundedSpawnDebt,
+      nonTerminalRuns,
+    },
+  };
+}
+
+export function getFloor5SiegeRunStats(
+  world: GameWorld,
+  observedFrameCostMs: number | null = null,
+): Floor5SiegeRunStats | undefined {
   const state = floor5SiegeState(world);
   if (!state) return undefined;
   syncFloor5StructureHealth(world, state);
@@ -3024,6 +3190,7 @@ export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | 
       spawned: { ...state.laneTelemetry.spawned },
       spawnDebtPeak: { ...state.laneTelemetry.spawnDebtPeak },
     },
+    releaseGate: buildFloor5ReleaseGateStats(world, state, observedFrameCostMs),
   };
 }
 
