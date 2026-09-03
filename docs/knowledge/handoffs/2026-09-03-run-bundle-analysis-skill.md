@@ -17,6 +17,13 @@ The workflow parses the canonical `meta`, `runStats`, `recorderJsonl`, and
 inference, and reports missing or contradictory telemetry without treating
 absent optional fields as zero.
 
+Review recovery tightened the acquisition and trust-boundary contract:
+automatic retrieval is limited to canonical Crawler playtest-bundle sources or
+approved local evidence roots, non-canonical HTTPS/public paths require explicit
+user approval, redirect/download validation must recheck resolved addresses, and
+all bundle fields are untrusted evidence whose embedded instructions, links,
+prompts, and tool requests must be ignored.
+
 The skill is read-only and uses existing JSON tooling. It adds no dependency,
 runtime gameplay change, CI gate, or duplicate parser.
 
@@ -40,6 +47,12 @@ runtime gameplay change, CI gate, or duplicate parser.
   — passed.
 - `bash scripts/agent/verify-fast.sh` — passed typecheck/lint, changed tests,
   and data-contract/integrity/coverage checks.
+- Review recovery:
+  `npx vitest run --project unit tests/unit/run-bundle-analysis-skill.test.ts --reporter=dot`
+  — 5/5 passed after trust-boundary updates.
+- Review recovery:
+  `npx prettier --check tests/unit/run-bundle-analysis-skill.test.ts .github/skills/run-bundle-analysis/SKILL.md docs/knowledge/handoffs/2026-09-03-run-bundle-analysis-skill.md`
+  — passed.
 
 ## Unresolved issues
 
