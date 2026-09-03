@@ -61,6 +61,8 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     let barrierVersionAtEnd = 0;
     let finishFrame = 0;
     let commandPostPreDamaged = false;
+    let initialRamRouteIndex: number | null = null;
+    let initialMarkerIndices: number[] | null = null;
 
     const stats = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
@@ -71,8 +73,14 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
         postSystems: [
           (world) => {
             barrierVersionAtStart ??= world.barriers.version;
-            if (commandPostPreDamaged) return;
             const state = world.floorExtendedState!.floor5Siege!;
+            if (initialRamRouteIndex === null && state.ram.eid > 0) {
+              initialRamRouteIndex = world.stores.siegeRam.routeIndex[state.ram.eid] ?? null;
+              initialMarkerIndices = state.ram.route.map(
+                (marker) => world.stores.siegeRouteMarker.index[marker.eid] ?? -1,
+              );
+            }
+            if (commandPostPreDamaged) return;
             const commandPost = state.structures['command-post'].eid;
             if (commandPost <= 0) throw new Error('Floor 5 Command Post was not spawned');
             world.stores.health.current[commandPost] =
@@ -134,6 +142,8 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     expect(siege!.ram.destructions).toBe(1);
     expect(siege!.ram.strikes).toBeGreaterThan(0);
     expect(siege!.ram.advanceFrames).toBeGreaterThan(0);
+    expect(initialRamRouteIndex).toBe(1);
+    expect(initialMarkerIndices).toEqual([0, 1, 2, 3]);
 
     // --- FR5.5: only ram strikes ever damaged the outer wall ---------------
     expect(siege!.ram.wallDamageDealt).toBeGreaterThan(0);
@@ -161,6 +171,33 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     expect(stats.stallReason).toBeUndefined();
     expect(siege!.phase.kind).not.toBe('DEFEAT');
   }, 120_000);
+
+  it('reports a stalled escort when the ram cannot make route progress', async () => {
+    const stats = await runHeadless(new IdleFloor5Provider(), {
+      floorId: 'floor5',
+      seed: 505,
+      maxFrames: 1500,
+      questStallFrames: 120,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            const state = world.floorExtendedState!.floor5Siege!;
+            if (state.engineState !== 'ADVANCING' || state.ram.eid <= 0) return;
+            const buildSite = state.ram.route[0]!;
+            world.stores.position.x[state.ram.eid] = buildSite.x;
+            world.stores.position.y[state.ram.eid] = buildSite.y;
+            world.stores.velocity.x[state.ram.eid] = 0;
+            world.stores.velocity.y[state.ram.eid] = 0;
+          },
+        ],
+      },
+    });
+
+    expect(stats.outcome).toBe('stalled');
+    expect(stats.stallReason).toBeDefined();
+    expect(stats.floor5Siege?.engineState).toBe('ADVANCING');
+    expect(stats.floor5Siege?.ram.routeReached).toEqual(['build-site']);
+  }, 60_000);
 });
 
 describe('Floor 5 outer-wall seal', () => {

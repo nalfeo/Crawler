@@ -181,7 +181,7 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-function computeHeadlessFloorProgressScore(world: GameWorld): number {
+function computeHeadlessFloorProgressScore(world: GameWorld, floor5RamTravelFt = 0): number {
   const floor4Arena = world.floorExtendedState?.floor4Arena;
   if (floor4Arena) {
     return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
@@ -197,7 +197,8 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.ram.builds +
       floor5Siege.ram.destructions +
       floor5Siege.ram.strikes +
-      floor5Siege.ram.advanceFrames +
+      floor5Siege.ram.route.filter((marker) => marker.reachedFrame !== null).length +
+      Math.floor(floor5RamTravelFt) +
       (floor5Siege.breach.latched ? 1 : 0)
     );
   }
@@ -1007,6 +1008,10 @@ export async function runHeadless(
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
   const stallTracker = new QuestProgressStallTracker(mergedConfig.questStallFrames);
+  let floor5RamTravelFt = 0;
+  let observedRamEid = 0;
+  let observedRamX = 0;
+  let observedRamY = 0;
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
@@ -1846,7 +1851,22 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
+      const ramEid = world.floorExtendedState?.floor5Siege?.ram.eid ?? 0;
+      if (ramEid > 0) {
+        const ramX = world.stores.position.x[ramEid] ?? 0;
+        const ramY = world.stores.position.y[ramEid] ?? 0;
+        if (observedRamEid === ramEid) {
+          floor5RamTravelFt += Math.hypot(ramX - observedRamX, ramY - observedRamY);
+        }
+        observedRamEid = ramEid;
+        observedRamX = ramX;
+        observedRamY = ramY;
+      } else {
+        observedRamEid = 0;
+      }
+      if (
+        stallTracker.update(computeHeadlessFloorProgressScore(world, floor5RamTravelFt), frameCount)
+      ) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),

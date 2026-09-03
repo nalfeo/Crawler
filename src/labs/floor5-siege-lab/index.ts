@@ -1,13 +1,10 @@
 import GUI from 'lil-gui';
 import { createGameWorld, spawnPlayer } from '../../core/index.js';
-import {
-  getFloor5SiegeRunStats,
-  initializeFloor5Scenario,
-  siegeDirectorSystem,
-  siegeHeroSystem,
-  siegeMinionSystem,
-  siegeRamSystem,
-} from '../../game/floor5Scenario.js';
+import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { runSimulationStep } from '../../game/ai/simulation-step.js';
+import { getFloor5SiegeRunStats } from '../../game/floor5Scenario.js';
+import { GAME } from '../../shared/constants.js';
+import { createInputState } from '../../shared/input.js';
 import { registerLab } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -22,23 +19,25 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
     'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:12px;line-height:1.5;overflow:auto;max-height:640px;white-space:pre;';
   canvasHost.append(panel);
 
+  const sceneOptions = createFloorMainSceneOptions('floor5');
+  const inputState = createInputState();
   let world = createGameWorld({ seed: state.seed });
 
   function setup(): void {
     world = createGameWorld({ seed: state.seed });
     const player = spawnPlayer(world, 0, 0);
-    initializeFloor5Scenario(world, player);
+    sceneOptions.configureWorld!(world, player);
     render();
   }
 
   function step(): void {
-    world.elapsedMs += state.stepMs;
-    world.frameCount += Math.max(1, Math.round(state.stepMs / 16));
-    siegeMinionSystem(world);
-    siegeHeroSystem(world);
-    siegeRamSystem(world);
-    siegeDirectorSystem(world);
-    world.floorObjectiveTick?.(world);
+    const steps = Math.max(1, Math.round(state.stepMs / GAME.DELTA_MS));
+    for (let index = 0; index < steps; index += 1) {
+      runSimulationStep(world, inputState, GAME.DELTA_MS, {
+        preSystems: sceneOptions.preSystems,
+        postSystems: sceneOptions.postSystems,
+      });
+    }
     render();
   }
 

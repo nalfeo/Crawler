@@ -1,5 +1,7 @@
+import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { Health, Position, SiegeMinion } from '../../src/core/components.js';
+import { createEntity, spawnPlayer } from '../../src/core/helpers.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
 import type { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -263,6 +265,40 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(headless.floor5Siege?.construction.progressMs).toBe(3000);
     expect(headless.floor5Siege?.construction.completedFrame).not.toBeNull();
     expect(headless.floor5Siege?.commandPostHealth).toBe(999);
+  });
+
+  it('pauses and resumes construction deterministically for a live build-site threat', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+
+    const state = world.floorExtendedState!.floor5Siege!;
+    const buildSite = state.ram.route[0]!;
+    const threat = createEntity(world);
+    addComponent(world.ecs, threat, set(Position, { x: buildSite.x, y: buildSite.y }));
+    addComponent(world.ecs, threat, set(Health, { current: 1000, max: 1000 }));
+    addComponent(world.ecs, threat, set(SiegeMinion, { team: 2, manifestIndex: 0 }));
+
+    siegeDirectorSystem(world);
+    world.elapsedMs = 1000;
+    world.floorObjectiveTick!(world);
+    expect(state.construction).toMatchObject({
+      buildSiteUnderAttack: true,
+      progressMs: 0,
+      pausedMs: 1000,
+    });
+
+    world.stores.position.x[threat] = buildSite.x + 100;
+    siegeDirectorSystem(world);
+    world.elapsedMs = 2000;
+    world.floorObjectiveTick!(world);
+    expect(state.construction).toMatchObject({
+      buildSiteUnderAttack: false,
+      progressMs: 1000,
+      pausedMs: 1000,
+    });
   });
 
   it('records exactly one DEFEAT transition when the Command Post is destroyed', () => {

@@ -38,6 +38,15 @@ Implemented Floor 5 Slice 5 for issue #3915.
 - Fixed review-discovered permanent build deadlock by deriving construction
   pressure from current nearby hostile actors rather than cumulative Command
   Post damage.
+- Reconciled the branch with current `main` while preserving both Floor 5
+  Ratings Ram and Floor 6 Broadcast Relay component/store contracts.
+- Wired the Ratings Ram and route-marker component stores so bitecs `set(...)`
+  payloads populate their typed arrays.
+- Made the headless stall watchdog advance only for observed ram travel or
+  lifecycle milestones, so a motionless escort now deterministically reports a
+  stall instead of timing out.
+- Routed the siege lab's step control through the canonical fixed-step pipeline
+  and restored focused live-threat construction pause/resume coverage.
 
 ## Real-Artifact Observation
 
@@ -67,19 +76,6 @@ stall.
   tests plus integrity checks. Rerun on the final tree before publication.
 - `npm run verify:pr-prereqs` identified the missing cross-layer ADR; this
   session added `docs/knowledge/adr/2026-08-31-floor5-ratings-ram.md`.
-
-## Review Harness
-
-- The adversarial plan review established the exact lifecycle hard gate, split
-  pre/post authority, atomic breach ordering, semantic route derivation, and
-  real-headless passability evidence.
-- Exhaustive implementation review found the cumulative-health construction
-  deadlock, disabled stall detector, missing lab stepping/readout, stale rebuild
-  telemetry, duplicate phase trace, weak barrier-version assertion, and
-  `Uint32Array` recycling gap. All applicable findings were fixed and retested.
-- Final multi-model review, adjudication, independent grade, and ledger
-  validation are recorded in
-  `docs/knowledge/review-ledgers/2026-08-31-floor5-ratings-ram.review-ledger.json`.
 
 ## Key Decisions
 
