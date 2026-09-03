@@ -12605,6 +12605,115 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
   );
 });
 
+test('closing feature issue with planning-only diff quarantines before lifecycle admission', async (t) => {
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Plan full CI Recovery acceptance-scope feature',
+        body: 'Fixes nalfeo/Crawler#3915',
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [
+        { filename: 'docs/knowledge/epics/ci-recovery-scope/ci-recovery-scope.epic.json' },
+        { filename: 'docs/knowledge/handoffs/2026-09-03-ci-recovery-scope-plan.md' },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3915',
+                        number: 3915,
+                        title: 'Full CI Recovery acceptance-scope feature',
+                        body: '## Acceptance criteria\n- Compare closing-issue acceptance scope before admission.\n- Add deterministic regression tests.',
+                        state: 'OPEN',
+                        labels: { nodes: [{ name: 'enhancement' }] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('acceptance mismatch must not discover/assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('acceptance mismatch must not run assignment mutations');
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined closing-issue-acceptance pr=#42/);
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-pr-lifecycle:v1 -->')),
+    'expected lifecycle state comment',
+  );
+  assert.ok(
+    comments.some((comment) =>
+      String(comment.body).includes('missing executable diff and test diff'),
+    ),
+    'expected actionable missing evidence in quarantine comments',
+  );
+  const stateComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
+  );
+  assert.equal(
+    parseStateComment(stateComment?.body)?.trigger,
+    'closing-issue-acceptance-quarantined',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'acceptance mismatch must not post a Copilot repair task',
+  );
+});
+
 test('protected-path denial does not quarantine a mixed blocker set', async (t) => {
   const threadId = 'PRRT_protected_path_denial';
   const recoveryReply =

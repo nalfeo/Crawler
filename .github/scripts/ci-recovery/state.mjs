@@ -87,6 +87,99 @@ export function shouldSkipSubstantiveReview(pr, changedFiles) {
   );
 }
 
+function normalizedLabelNames(issue) {
+  return (issue?.labels?.nodes || issue?.labels || [])
+    .map((label) => compact(label?.name ?? label).toLowerCase())
+    .filter(Boolean);
+}
+
+function isDocumentationOnlyIssue(issue) {
+  const labels = normalizedLabelNames(issue);
+  if (
+    labels.some((label) =>
+      /^(?:docs?|documentation)(?:[-_: ]only)?$|^(?:type|kind)[:/ -](?:docs?|documentation)$/.test(
+        label,
+      ),
+    )
+  ) {
+    return true;
+  }
+  if (/^(?:docs?|documentation)\s*:/i.test(String(issue?.title || '').trim())) return true;
+  const text = `${issue?.title || ''}\n${issue?.body || ''}`.toLowerCase();
+  return /\b(?:docs?|documentation)[- ]only\b/.test(text);
+}
+
+function acceptanceLinesFromBody(body) {
+  const lines = String(body || '').split(/\r?\n/);
+  const start = lines.findIndex((line) => /^#{1,6}\s*acceptance(?:\s+criteria)?\b/i.test(line));
+  if (start < 0) return [];
+  const accepted = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{1,6}\s+\S/.test(line)) break;
+    const cleaned = line.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, '').trim();
+    if (cleaned) accepted.push(cleaned);
+  }
+  return accepted;
+}
+
+function isTestEvidencePath(path) {
+  return (
+    path.startsWith('tests/') ||
+    path.includes('/tests/') ||
+    /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path)
+  );
+}
+
+function isExecutableEvidencePath(path) {
+  if (isTestEvidencePath(path)) return false;
+  return (
+    path.startsWith('src/') ||
+    path.startsWith('scripts/') ||
+    path.startsWith('.github/scripts/') ||
+    path.startsWith('.github/workflows/') ||
+    path === 'package.json' ||
+    path === 'package-lock.json'
+  );
+}
+
+export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changedFiles } = {}) {
+  const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
+  const hasExecutableEvidence = paths.some(isExecutableEvidencePath);
+  const hasTestEvidence = paths.some(isTestEvidencePath);
+  const headSha = compact(pr?.head?.sha ?? pr?.headSha);
+
+  for (const issue of closingIssues || []) {
+    if (isDocumentationOnlyIssue(issue)) continue;
+    const acceptanceLines = acceptanceLinesFromBody(issue?.body);
+    if (acceptanceLines.length === 0) continue;
+
+    const missing = [];
+    if (!hasExecutableEvidence) missing.push('executable diff');
+    if (!hasTestEvidence) missing.push('test diff');
+    if (missing.length === 0) continue;
+
+    const issueNumber = Number(issue?.number);
+    const issueLabel = Number.isInteger(issueNumber) ? `#${issueNumber}` : compact(issue?.title);
+    const acceptanceSummary = acceptanceLines.slice(0, 2).join('; ');
+    const missingText = missing.join(' and ');
+    const summary = `Closing issue ${issueLabel} has acceptance criteria, but this PR is missing ${missingText} evidence before admission: ${acceptanceSummary}`;
+    return {
+      kind: 'closing-issue-acceptance',
+      id: `closing-issue-acceptance:${headSha || 'unknown-head'}:${issueLabel}`,
+      issueNumber: Number.isInteger(issueNumber) ? issueNumber : null,
+      headSha,
+      missing,
+      acceptanceLines,
+      summary: compact(summary),
+      blockReason: compact(
+        `closing-issue-acceptance-mismatch:${issueLabel} missing ${missingText}`,
+      ),
+    };
+  }
+
+  return null;
+}
+
 export function admissionWaitReasons(
   requiredChecks,
   reviews,

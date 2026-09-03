@@ -8,6 +8,7 @@ import {
   automationStallAction,
   blockerFingerprint,
   collapseCheckRunsByName,
+  evaluateClosingIssueAcceptanceScope,
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   hasSubstantiveCopilotReview,
@@ -180,6 +181,94 @@ test('shouldSkipSubstantiveReview requires assets/promote branch and approved ar
     shouldSkipSubstantiveReview({ head: { ref: 'feature/safe-art' } }, approvedFiles),
     false,
   );
+});
+
+function featureIssue(overrides = {}) {
+  return {
+    number: 3915,
+    title: 'Full feature issue',
+    body: [
+      '## Acceptance criteria',
+      '- [ ] Add the runtime CI Recovery admission check.',
+      '- [ ] Add deterministic regression tests.',
+    ].join('\n'),
+    labels: { nodes: [{ name: 'enhancement' }] },
+    repository: { nameWithOwner: 'nalfeo/Crawler' },
+    ...overrides,
+  };
+}
+
+test('closing-issue acceptance scope blocks planning-only full-feature closures', () => {
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' }, body: 'Fixes nalfeo/Crawler#3915' },
+    closingIssues: [featureIssue()],
+    changedFiles: [
+      { filename: 'docs/knowledge/epics/floor7/floor7.epic.json' },
+      { filename: 'docs/knowledge/handoffs/2026-09-03-plan.md' },
+    ],
+  });
+
+  assert.ok(result, 'expected a material acceptance-scope mismatch');
+  assert.equal(result.issueNumber, 3915);
+  assert.deepEqual(result.missing, ['executable diff', 'test diff']);
+  assert.match(result.blockReason, /closing-issue-acceptance-mismatch:#3915/);
+  assert.match(result.summary, /runtime CI Recovery admission check/);
+  assert.match(result.id, /abc123/);
+});
+
+test('closing-issue acceptance scope accepts executable plus test evidence', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Closes #3915' },
+      closingIssues: [featureIssue()],
+      changedFiles: [
+        { filename: '.github/scripts/ci-recovery/reconcile.mjs' },
+        { filename: '.github/scripts/ci-recovery/reconcile.test.mjs' },
+      ],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope skips related references and documentation-only issues', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Related to #3915' },
+      closingIssues: [],
+      changedFiles: [{ filename: 'docs/knowledge/epics/floor7/floor7.epic.json' }],
+    }),
+    null,
+  );
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Resolves #77' },
+      closingIssues: [
+        featureIssue({
+          number: 77,
+          title: 'Documentation-only: explain CI Recovery',
+          labels: { nodes: [{ name: 'documentation' }] },
+        }),
+      ],
+      changedFiles: [{ filename: 'docs/runbooks/ci-recovery.md' }],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope blocker identity is head-bound', () => {
+  const args = {
+    closingIssues: [featureIssue()],
+    changedFiles: [{ filename: 'docs/knowledge/epics/floor7/floor7.epic.json' }],
+  };
+  const first = evaluateClosingIssueAcceptanceScope({ ...args, pr: { head: { sha: 'head-one' } } });
+  const second = evaluateClosingIssueAcceptanceScope({
+    ...args,
+    pr: { head: { sha: 'head-two' } },
+  });
+
+  assert.notEqual(first?.id, second?.id);
+  assert.equal(first?.headSha, 'head-one');
+  assert.equal(second?.headSha, 'head-two');
 });
 
 test('normalizes blocker order before fingerprinting', () => {

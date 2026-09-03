@@ -18,6 +18,7 @@ import {
   isSelfRecoveryCheckRun,
   selfRecoveryWorkflowRunIds,
   effectiveLatestThreadComment,
+  evaluateClosingIssueAcceptanceScope,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -3054,6 +3055,18 @@ if (Number(pr.changed_files || 0) > 0) {
   }
 }
 const skipSubstantiveReview = shouldSkipSubstantiveReview(pr, changedFiles);
+const closingIssueAcceptanceMismatch = evaluateClosingIssueAcceptanceScope({
+  pr,
+  closingIssues,
+  changedFiles,
+});
+if (closingIssueAcceptanceMismatch) {
+  blockers.push({
+    kind: closingIssueAcceptanceMismatch.kind,
+    id: closingIssueAcceptanceMismatch.id,
+    summary: closingIssueAcceptanceMismatch.summary,
+  });
+}
 for (const run of retriggerableRuns) {
   const rejection = workflowApprovalRejection({
     run,
@@ -3317,6 +3330,61 @@ if (shouldQuarantineProtectedPathBlockers(normalized)) {
   process.exit(0);
 }
 
+if (closingIssueAcceptanceMismatch && latestOwnerDispositionCommand() !== 'KEEP') {
+  const reason = closingIssueAcceptanceMismatch.blockReason;
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined before lifecycle admission because its closing issue declares acceptance criteria, but the current head does not carry the executable and test evidence needed to satisfy that scope. CI Recovery cannot deterministically choose between removing the closing keyword, splitting the branch, or implementing the missing acceptance scope.',
+    nextActions: [
+      `Add the missing evidence for ${closingIssueAcceptanceMismatch.issueNumber ? `issue #${closingIssueAcceptanceMismatch.issueNumber}` : 'the closing issue'}: ${closingIssueAcceptanceMismatch.missing.join(', ')}.`,
+      'Or remove the closing keyword and use a non-closing reference such as `Related to` / `Refs` if this PR is only planning or partial work.',
+      'After updating the PR head or metadata, CI Recovery will re-evaluate this head-bound quarantine.',
+    ],
+    keepOutcome:
+      'resume this PR despite the missing acceptance evidence; automated repair resumes without changing the closing reference',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('closing-issue-acceptance-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(
+        `dry-run would-post closing-issue-acceptance quarantine pr=#${prNumber}\n`,
+      );
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'closing-issue-acceptance-quarantined',
+    blockers: normalized.filter((blocker) => blocker.id === closingIssueAcceptanceMismatch.id),
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(
+      await release('closing-issue-acceptance-quarantined', quarantinedState),
+    );
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(
+    `quarantined closing-issue-acceptance pr=#${prNumber} blocker=${closingIssueAcceptanceMismatch.id}\n`,
+  );
+  process.exit(0);
+}
+
 const scopeMismatchBlocker =
   latestOwnerDispositionCommand() === 'KEEP' ? null : normalized.find(isScopeMismatchReviewBlocker);
 if (scopeMismatchBlocker) {
@@ -3467,7 +3535,7 @@ let currentLifecyclePhase = null;
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
-      currentLifecyclePhase = record?.phase ?? null;
+      currentLifecyclePhase = record?.headSha === pr.head.sha ? (record?.phase ?? null) : null;
     } catch {
       // Malformed lifecycle comment from a trusted source — log and continue.
       // evaluatePhase will receive null and derive the phase from live facts.
