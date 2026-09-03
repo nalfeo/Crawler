@@ -42,9 +42,9 @@ Implemented Floor 5 Slice 5 for issue #3915.
   Ratings Ram and Floor 6 Broadcast Relay component/store contracts.
 - Wired the Ratings Ram and route-marker component stores so bitecs `set(...)`
   payloads populate their typed arrays.
-- Made the headless stall watchdog advance only for observed ram travel or
-  lifecycle milestones, so a motionless escort now deterministically reports a
-  stall instead of timing out.
+- Made the headless stall watchdog advance only for monotonic authored-route
+  progress or lifecycle milestones, so a stuck or oscillating escort now
+  deterministically reports a stall instead of timing out.
 - Routed the siege lab's step control through the canonical fixed-step pipeline
   and restored focused live-threat construction pause/resume coverage.
 

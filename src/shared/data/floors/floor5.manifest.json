@@ -71,7 +71,8 @@
     },
     "outerWall": {
       "thicknessTiles": 3,
-      "breachWidthTiles": 6
+      "breachWidthTiles": 6,
+      "health": 140
     },
     "courtyard": {
       "widthTiles": 20,

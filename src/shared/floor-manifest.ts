@@ -985,6 +985,7 @@ export const floorManifestDefSchema = z
           .object({
             thicknessTiles: z.number().int().min(1),
             breachWidthTiles: z.number().int().min(1),
+            health: z.number().int().positive(),
           })
           .strict(),
         courtyard: z
@@ -1114,7 +1115,7 @@ export const floorManifestDefSchema = z
             message: 'Floor 5 ram route must end at the breach-approach landmark',
           });
         }
-        if (floor5.ram.strike.damage > floor5.commandPost.health) {
+        if (floor5.ram.strike.damage > floor5.outerWall.health) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['ram', 'strike', 'damage'],

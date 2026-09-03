@@ -172,7 +172,7 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     expect(siege!.phase.kind).not.toBe('DEFEAT');
   }, 120_000);
 
-  it('reports a stalled escort when the ram cannot make route progress', async () => {
+  it('reports a stalled escort when the ram only oscillates without route progress', async () => {
     const stats = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
@@ -184,7 +184,8 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
             const state = world.floorExtendedState!.floor5Siege!;
             if (state.engineState !== 'ADVANCING' || state.ram.eid <= 0) return;
             const buildSite = state.ram.route[0]!;
-            world.stores.position.x[state.ram.eid] = buildSite.x;
+            world.stores.position.x[state.ram.eid] =
+              buildSite.x + (world.frameCount % 2 === 0 ? 4 : -4);
             world.stores.position.y[state.ram.eid] = buildSite.y;
             world.stores.velocity.x[state.ram.eid] = 0;
             world.stores.velocity.y[state.ram.eid] = 0;

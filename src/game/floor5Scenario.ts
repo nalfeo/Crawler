@@ -120,12 +120,7 @@ const FLOOR5_HERO_ROLE_CODE: Record<Floor5FieldHeroRole, number> = {
 };
 /** Feet of slack allowed around a role anchor before the Hero re-centres. */
 const FLOOR5_HERO_ANCHOR_SLACK_FT = 2;
-const FLOOR5_STRUCTURE_HEALTH: Record<Floor5SiegeStructureId, number> = {
-  'command-post': 90,
-  'allied-checkpoint': 36,
-  'enemy-checkpoint': 36,
-  'outer-wall': 140,
-};
+const FLOOR5_CHECKPOINT_HEALTH = 36;
 
 interface Floor5WaveEntryWithIndex {
   readonly entry: Floor5SiegeWaveManifestEntry;
@@ -434,7 +429,7 @@ function createFloor5RamState(
     destructions: 0,
     wallDamageDealt: 0,
     counterDamageTaken: 0,
-    wallAuthorizedHealth: FLOOR5_STRUCTURE_HEALTH['outer-wall'],
+    wallAuthorizedHealth: config.outerWall.health,
     rejectedWallDamage: 0,
     advanceFrames: 0,
     holdFrames: 0,
@@ -504,22 +499,22 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
         id: 'allied-checkpoint',
         team: 'allied',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['allied-checkpoint'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['allied-checkpoint'],
+        health: FLOOR5_CHECKPOINT_HEALTH,
+        maxHealth: FLOOR5_CHECKPOINT_HEALTH,
       },
       'enemy-checkpoint': {
         id: 'enemy-checkpoint',
         team: 'enemy',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['enemy-checkpoint'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['enemy-checkpoint'],
+        health: FLOOR5_CHECKPOINT_HEALTH,
+        maxHealth: FLOOR5_CHECKPOINT_HEALTH,
       },
       'outer-wall': {
         id: 'outer-wall',
         team: 'enemy',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['outer-wall'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['outer-wall'],
+        health: config.outerWall.health,
+        maxHealth: config.outerWall.health,
       },
     },
     waveManifest,
