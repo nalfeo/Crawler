@@ -106,6 +106,39 @@ function setupReconciledShepherdRepo(branchName = 'copilot/ratings-ram-recovery'
   return { root, work, branchName, firstMergeSha };
 }
 
+function setupOrdinaryBranchWithCleanMainMerge() {
+  const root = mkdtempSync(path.join(tmpdir(), 'crawler-main-sync-'));
+  const remote = path.join(root, 'remote.git');
+  const work = path.join(root, 'work');
+  git(root, ['init', '--bare', remote]);
+  git(root, ['init', '--initial-branch=main', work]);
+  git(work, ['remote', 'add', 'origin', remote]);
+  git(work, ['config', 'user.name', 'Test']);
+  git(work, ['config', 'user.email', 'test@example.com']);
+  git(work, ['config', 'core.autocrlf', 'false']);
+  git(work, ['config', 'core.eol', 'lf']);
+
+  writeFileSync(path.join(work, '.gitignore'), 'files/\n');
+  writeFileSync(path.join(work, 'base.txt'), 'base\n');
+  commit(work, 'base');
+  git(work, ['push', '-u', 'origin', 'main']);
+
+  git(work, ['checkout', '-b', 'feature']);
+  writeFileSync(path.join(work, 'feature.txt'), 'feature\n');
+  commit(work, 'feature');
+
+  git(work, ['checkout', 'main']);
+  writeFileSync(path.join(work, 'main-one.txt'), 'main one\n');
+  commit(work, 'main one');
+  git(work, ['push', 'origin', 'main']);
+
+  git(work, ['checkout', 'feature']);
+  git(work, ['merge', '--no-edit', 'origin/main']);
+  advanceMain(work, 'feature', 'main-two.txt', 'main two\n');
+
+  return { root, work };
+}
+
 test('clean branch rebases onto fetched origin/main and records success', (t) => {
   const { root, work, featureSha } = setupDivergedRepo();
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -217,4 +250,17 @@ test('ordinary branch with an existing merge keeps the default rebase strategy',
   assert.match(result.strategyReason, /no shepherd\/recovery ownership context/);
   assert.equal(git(work, ['rev-parse', 'HEAD']), headBefore);
   assert.equal(git(work, ['status', '--porcelain']), '');
+});
+
+test('ordinary branch with a clean existing merge still rebases successfully by default', (t) => {
+  const { root, work } = setupOrdinaryBranchWithCleanMainMerge();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = attemptMainSync({ cwd: work, reason: 'test' });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.strategy, 'rebase');
+  assert.match(result.strategyReason, /no shepherd\/recovery ownership context/);
+  assert.equal(readFileSync(path.join(work, 'main-two.txt'), 'utf8'), 'main two\n');
+  assert.equal(git(work, ['rev-list', '--count', '--merges', 'HEAD']), '0');
 });

@@ -40,8 +40,10 @@ Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still
 - Secret scan of changed files — passed before committing code changes.
 - Automated code review — found three valid issues; addressed by tightening ownership-context detection, short-circuiting merge detection, and adding merge-preserving conflict coverage.
 - `node --test scripts/agent/sync-main.test.mjs` — passed, 6/6 after review fixes.
-- Automated code review rerun — found three valid refinements; addressed by making dedicated shepherd prefixes sufficient, checking all merge parents, and batching main-ancestor membership checks.
+- Automated code review rerun — found three valid refinements; addressed by making dedicated shepherd prefixes sufficient, checking all merge parents, and avoiding a full main-history walk.
 - `node --test scripts/agent/sync-main.test.mjs` — passed, 7/7 after the second review-fix round.
+- Automated code review third pass — addressed bounded candidate-parent scanning, concise strategy reporting, and clean ordinary-branch-with-merge coverage.
+- `node --test scripts/agent/sync-main.test.mjs` — passed, 8/8 after the third review-fix round.
 
 ## Unresolved issues
 
