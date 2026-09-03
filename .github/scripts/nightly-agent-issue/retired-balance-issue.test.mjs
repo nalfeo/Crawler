@@ -15,7 +15,7 @@ async function automationSources(relativeRoot) {
     const relativePath = path.join(relativeRoot, entry.name);
     if (entry.isDirectory()) {
       sources.push(...(await automationSources(relativePath)));
-    } else if (/\.(?:mjs|js|ts|ya?ml)$/.test(entry.name)) {
+    } else if (/\.(?:mjs|js|ts|ya?ml|sh|ps1)$/.test(entry.name)) {
       sources.push(relativePath);
     }
   }
@@ -27,6 +27,7 @@ test('retired balance improvement issue has no automated creation path', async (
     ...(await automationSources('.github/actions')),
     ...(await automationSources('.github/workflows')),
     ...(await automationSources('.github/scripts')),
+    ...(await automationSources('scripts')),
   ];
   const offenders = [];
   for (const relativePath of sources) {
