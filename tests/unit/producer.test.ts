@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  classifyShepherdRun,
   decompose,
   renderTriage,
   triage,
@@ -110,6 +111,54 @@ describe('renderTriage()', () => {
     expect(output).toContain(
       'Verdict: RECOMMENDED — A feature request is reasonable to plan, but it still needs scope clarification first.',
     );
+  });
+
+  describe('classifyShepherdRun()', () => {
+    it('uses successful run JSON over a non-zero watcher exit and flags the disagreement', () => {
+      expect(
+        classifyShepherdRun(
+          {
+            databaseId: 33730214117,
+            status: 'completed',
+            conclusion: 'success',
+            jobs: [
+              { name: 'CI', conclusion: 'success' },
+              { name: 'Build', conclusion: 'skipped' },
+            ],
+          },
+          1,
+        ),
+      ).toEqual({
+        outcome: 'success',
+        failedJobs: [],
+        watcherJsonDisagreement: true,
+      });
+    });
+
+    it('reports genuine failed jobs from authoritative JSON', () => {
+      expect(
+        classifyShepherdRun({
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Unit tests', conclusion: 'failure' }],
+        }),
+      ).toEqual({
+        outcome: 'failure',
+        failedJobs: ['Unit tests'],
+        watcherJsonDisagreement: false,
+      });
+    });
+
+    it.each([
+      ['cancelled', 'cancelled'],
+      ['action_required', 'action-required'],
+    ] as const)('reports %s separately from a failure', (conclusion, outcome) => {
+      expect(classifyShepherdRun({ status: 'completed', conclusion })).toMatchObject({
+        outcome,
+        failedJobs: [],
+        watcherJsonDisagreement: false,
+      });
+    });
   });
 });
 

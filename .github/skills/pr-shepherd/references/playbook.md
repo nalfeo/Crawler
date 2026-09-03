@@ -147,19 +147,24 @@ scorecard (merged vs still-in-flight, with merge commit SHAs).
 
 ## Mode B — Diagnose before giving up
 
-`gh pr checks <n>` labels **`CANCELLED` runs as `fail`**. Most "failures" on this
-repo are cancellations, not real defects. Always confirm:
+`gh pr checks <n>` labels **`CANCELLED` runs as `fail`**. `gh run watch` may also
+return non-zero after a successful run. Neither is authoritative. After a completion
+notification, make exactly one bounded JSON read and classify that result:
 
 ```powershell
 gh pr checks <n>                              # quick view (CANCELLED shows as fail)
 gh run list --branch <branch> --limit 15      # find the real run + its status
-gh run view <run-id> --log-failed             # read the actual error output
+gh run view <run-id> --json databaseId,status,conclusion,jobs,url
+npm run producer -- --shepherd-status --pr <n> --run <run-id> --watch-exit <code>
 ```
 
-Real failure ⇒ fix the underlying cause, push a surgical commit, let the train
-pick the PR back up on its next reconcile. Concurrency/timing artifact ⇒ no
-action; the train admits the PR once required checks report green on the
-latest head.
+The JSON run/job conclusion is final: a watcher/JSON disagreement is a tooling
+diagnostic, not a workflow failure. Read `gh run view <run-id> --log-failed` only
+when that JSON reports a genuine failure. Cancellation and `action_required` are
+separate states; confirm the latest run for cancellation and use the CI Recovery
+retrigger/admin path for `action_required`. Real failure ⇒ fix the underlying
+cause, push a surgical commit, let the train pick the PR back up on its next
+reconcile.
 
 ### Known non-failures (do not chase)
 
