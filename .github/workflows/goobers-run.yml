@@ -409,6 +409,60 @@ jobs:
           goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
 
+      - name: Comment on Goobers run start
+        if: steps.recovery.outputs.should_run != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Cannot post the Goobers start comment because GOOBERS_RECOVERY_ISSUE is not numeric. Re-run with: gh workflow run goobers-run.yml -f issue_number=<issue-number>" >&2
+            exit 1
+          fi
+
+          issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json state,labels,assignees)"
+          issue_state="$(jq -r '.state' <<<"$issue_json")"
+          issue_approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"$issue_json")"
+          issue_unassigned="$(jq -r '[.assignees[]] | length == 0' <<<"$issue_json")"
+          if [ "$issue_state" != "OPEN" ] || [ "$issue_approved" != "true" ] || [ "$issue_unassigned" != "true" ]; then
+            echo "::error::Issue #${issue_number} is no longer an open, unassigned goobers:approved issue. Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+            exit 1
+          fi
+          blocked_by="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/dependencies/blocked_by" \
+              --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
+          )"
+          if [ -n "$blocked_by" ]; then
+            echo "::error::Issue #${issue_number} became blocked by open prerequisite issue(s): ${blocked_by}. No start comment or Goobers claim was created; retry after closing the blockers with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+            exit 1
+          fi
+
+          marker="<!-- goobers:github-run-start run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          find_issue_comment_id() {
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
+              jq -r --arg marker "$1" \
+                '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+          }
+          if [ -n "$(find_issue_comment_id "$marker")" ]; then
+            echo "Goobers start comment already exists for Actions run ${GITHUB_RUN_ID}; not posting a duplicate."
+            exit 0
+          fi
+
+          body="$(mktemp)"
+          {
+            echo "Goobers started work on this issue for \`${GOOBERS_WORKFLOW}\`."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "$marker"
+          } > "$body"
+
+          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+
       - name: Run the workflow
         if: steps.recovery.outputs.should_run != 'false'
         env:
@@ -493,12 +547,12 @@ jobs:
             --remove-label 'goobers/status:in-review'
           echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
 
-      - name: Comment with Goobers run diagnostics
+      - name: Comment on Goobers run result
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
-          ARTIFACT_NAME: goobers-run-${{ inputs.workflow }}-${{ github.run_id }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -527,6 +581,81 @@ jobs:
             exit 0
           fi
 
+          pr_number=""
+          pr_url=""
+          pr_resolution_error=""
+          pr_stage_succeeded="$(
+            jq -r '
+              select(
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              )
+              | "true"
+            ' "$events_file" | tail -n 1
+          )"
+          pr_number="$(
+            jq -r '
+              if (
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              ) then
+                .outputs.prNumber // empty
+              elif (
+                .type == "ref.touched" and
+                .stage == "open-pr" and
+                .externalRef.kind == "pr"
+              ) then
+                .externalRef.id // empty
+              else
+                empty
+              end
+            ' "$events_file" | tail -n 1
+          )"
+          journal_pr_url="$(
+            jq -r '
+              select(
+                .type == "stage.finished" and
+                .stage == "open-pr" and
+                .status == "success"
+              )
+              | .outputs["pull-request-url"] // empty
+            ' "$events_file" | tail -n 1
+          )"
+          if [ -z "$pr_number" ] && [[ "$journal_pr_url" =~ /pull/([0-9]+)$ ]]; then
+            pr_number="${BASH_REMATCH[1]}"
+          fi
+          if [ -z "$pr_number" ]; then
+            pr_number="${GOOBERS_RESUME_PR:-}"
+          fi
+          if [ -z "$pr_number" ]; then
+            pr_number="$(
+              gh api --paginate \
+                "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" \
+                --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' |
+                while read -r candidate; do
+                  details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository)"
+                  state="$(jq -r '.state' <<<"$details")"
+                  branch="$(jq -r '.headRefName' <<<"$details")"
+                  repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
+                  if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+                    printf '%s\n' "$candidate"
+                    break
+                  fi
+                done
+            )"
+          fi
+
+          if [ -n "$pr_number" ] && ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+            pr_resolution_error="Goobers reported non-numeric PR identifier '${pr_number}' for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and the issue timeline."
+            pr_number=""
+          elif [ -n "$pr_number" ]; then
+            pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
+          elif [ "$pr_stage_succeeded" = "true" ] || [ -n "${GOOBERS_RESUME_PR:-}" ]; then
+            pr_resolution_error="Goobers completed a PR-producing run for issue #${issue_number}, but no PR number could be recovered from the journal, resume metadata, or issue timeline. Inspect artifact '${ARTIFACT_NAME}'."
+          fi
+
           run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
           terminal_summary="$(
             jq -r '
@@ -548,6 +677,9 @@ jobs:
             echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
             echo
             echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [ -n "$pr_url" ]; then
+              echo "- Pull request: #${pr_number} — ${pr_url}"
+            fi
             echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
             echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
             echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
@@ -562,4 +694,24 @@ jobs:
             echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           } > "$body"
 
-          gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          marker="<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          find_issue_comment_id() {
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
+              jq -r --arg marker "$1" \
+                '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+          }
+          existing_comment_id="$(find_issue_comment_id "$marker")"
+          if [ -n "$existing_comment_id" ]; then
+            jq -Rs '{body: .}' "$body" |
+              gh api --silent --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -
+            echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID}."
+          else
+            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          fi
+
+          if [ -n "$pr_resolution_error" ]; then
+            echo "::error::${pr_resolution_error}" >&2
+            exit 1
+          fi

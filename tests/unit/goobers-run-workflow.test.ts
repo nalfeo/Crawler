@@ -533,13 +533,63 @@ describe('Goobers automatic dispatch and recovery', () => {
     ).toContain('"$GOOBERS_SOURCE"');
   });
 
+  it('posts separate durable start and result comments with explicit run and PR links', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const start = steps.find((step) => step.name === 'Comment on Goobers run start');
+    const run = steps.find((step) => step.name === 'Run the workflow');
+    const result = steps.find((step) => step.name === 'Comment on Goobers run result');
+
+    expect(start).toBeDefined();
+    expect(result).toBeDefined();
+    expect(start).not.toBe(result);
+    expect(steps.indexOf(start!)).toBeLessThan(steps.indexOf(run!));
+    expect(steps.indexOf(result!)).toBeGreaterThan(steps.indexOf(run!));
+
+    expect(start?.if).toBe("steps.recovery.outputs.should_run != 'false'");
+    expect(start?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(start?.run).toContain('gh issue view "$issue_number"');
+    expect(start?.run).toContain('index("goobers:approved") != null');
+    expect(start?.run).toContain('[.assignees[]] | length == 0');
+    expect(start?.run).toContain('issues/${issue_number}/dependencies/blocked_by');
+    expect(start?.run).toContain('No start comment or Goobers claim was created');
+    expect(start?.run).toContain(
+      'https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}',
+    );
+    expect(start?.run).toContain('goobers:github-run-start');
+    expect(start?.run).toContain('find_issue_comment_id');
+    expect(start?.run).toContain('gh issue comment "$issue_number"');
+
+    expect(result?.if).toBe('always()');
+    expect(result?.env).toMatchObject({
+      GH_TOKEN: '${{ github.token }}',
+      JOB_STATUS: '${{ job.status }}',
+      ARTIFACT_NAME:
+        "goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}",
+    });
+    expect(result?.run).toContain('.outputs.prNumber // empty');
+    expect(result?.run).toContain('.outputs["pull-request-url"] // empty');
+    expect(result?.run).toContain('.externalRef.kind == "pr"');
+    expect(result?.run).toContain('pr_number="${GOOBERS_RESUME_PR:-}"');
+    expect(result?.run).toContain('issues/${issue_number}/timeline');
+    expect(result?.run).toContain('[[ "$branch" == goobers/crawler/* ]]');
+    expect(result?.run).toContain(
+      'pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"',
+    );
+    expect(result?.run).toContain('echo "- Pull request: #${pr_number} — ${pr_url}"');
+    expect(result?.run).toContain('find_issue_comment_id');
+    expect(result?.run).toContain('gh api --silent --method PATCH');
+    expect(result?.run).toContain('gh issue comment "$issue_number"');
+    expect(result?.run).toContain('no PR number could be recovered');
+  });
+
   it('does not strand claimed issues when an implementer incorrectly returns no-work', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const retry = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Handle no-work disposition',
     );
     const diagnostics = workflow.jobs.run?.steps?.find(
-      (step) => step.name === 'Comment with Goobers run diagnostics',
+      (step) => step.name === 'Comment on Goobers run result',
     );
     const coderInstructions = readFileSync(
       path.join(REPO_ROOT, '.goobers', 'gaggles', 'crawler', 'goobers', 'coder', 'instructions.md'),
