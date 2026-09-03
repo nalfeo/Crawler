@@ -17,7 +17,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
+import {
+  loadMainSceneProbeLab,
+  mainSceneProbe,
+  tapKeyUntil,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 import type { Floor3PartyHudProbeState } from '../../src/labs/main-scene-probe-lab/index.js';
 
 async function waitForPartyHud(
@@ -159,8 +164,12 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       const elapsedAfterRosterClosed = await mainSceneProbe.getWorldElapsedMs(page);
       expect(elapsedAfterRosterClosed).not.toBe(elapsedWhileOpen);
 
-      await page.keyboard.press('r');
-      await waitForPartyHud(page, (s) => s.rosterOpen, 'Floor 3 roster overlay opened by [R]');
+      await tapKeyUntil(
+        page,
+        'r',
+        async () => (await mainSceneProbe.getFloor3PartyHudState(page)).rosterOpen,
+        { label: 'Floor 3 roster overlay opened by [R]' },
+      );
       await page.keyboard.press('Escape');
       await waitForPartyHud(page, (s) => !s.rosterOpen, 'Floor 3 roster overlay closed again');
     } finally {
