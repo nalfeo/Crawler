@@ -96,6 +96,25 @@ describe('Floor 5 throne capture interaction', () => {
     expect(consumed.locked).toBe(true);
   });
 
+  it('refuses the capture and hides the marker after a terminal defeat', () => {
+    const { world, state } = createFloor5World();
+    state.finale.capturePoint = { x: 10, y: 20 };
+    state.finale.captureAvailable = true;
+    state.finale.captureAvailableFrame = world.frameCount;
+    // The Regent is down, but the run is already lost: the objective tick has
+    // stopped advancing, so an accepted latch could never be committed.
+    state.phase = { kind: 'DEFEAT' };
+
+    expect(requestFloor5ThroneCapture(world)).toBe('not-available');
+    expect(state.finale.pendingCaptureFrame).toBeNull();
+    expect(state.finale.captured).toBe(false);
+    expect(state.finale.rejectedCaptureAttempts).toBe(1);
+
+    const marker = getFloor5CaptureMarkerState(world)!;
+    expect(marker.visible).toBe(false);
+    expect(marker.locked).toBe(true);
+  });
+
   it('keeps the finale stance system inert until the breach latches', () => {
     const { world, state } = createFloor5World();
     expect(state.breach.latched).toBe(false);

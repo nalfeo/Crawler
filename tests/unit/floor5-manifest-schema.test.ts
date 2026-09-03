@@ -103,6 +103,12 @@ describe('floor5 manifest courtyard/throne finale rules', () => {
     }
   });
 
+  it('rejects a zero-frame summon telegraph window', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.finale.summons.telegraphFrames = 0;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects a non-positive throne capture interaction radius', () => {
     const bad = cloneFloor5Manifest();
     bad.floor5.finale.capture.interactionRadiusFt = 0;

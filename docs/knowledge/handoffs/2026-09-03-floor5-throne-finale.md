@@ -56,6 +56,24 @@ Implemented Floor 5 Slice 6 for issue #3916 (spec `R7`, `FR7.1`–`FR7.5`).
 - Extended the Floor 5 siege lab with a full finale readout and a
   "Request throne capture" action.
 
+### Post-review fixes
+
+Two independent post-diff reviews ran (5🍎 policy). Both findings were valid and
+are fixed on this branch:
+
+- Regent summons now require an **explicit authored telegraph** (`FR7.3`):
+  crossing a health fraction queues and announces a wave, and the summons only
+  appear `summons.telegraphFrames` later. Wave counts are reserved against the
+  cap at telegraph time, and a wave still queued when the Regent falls is
+  discarded rather than spawned onto a defeated boss.
+- The capture request and the capture marker now respect a terminal `DEFEAT`.
+  Previously the marker stayed unlocked after a post-Regent Command Post loss
+  and an accepted latch could never commit, because the objective tick had
+  already stopped advancing.
+- Documented that the finale leash is measured on the TARGET's offset from the
+  actor's anchor, matching `steerFloor5Hero`; the previous field comment
+  implied an actor-position leash, which would oscillate at the boundary.
+
 ## Real-Artifact Observation
 
 Observed in the **real headless pipeline** (`runHeadless`, floor5, seed 505) via
@@ -80,7 +98,7 @@ After (same run, after both encounters resolve and the capture is confirmed):
 
 - `tests/headless/floor5-throne-finale.test.ts` — new hard gate, passing.
 - `tests/unit/floor5-throne-capture.test.ts` — capture legality matrix, marker
-  gating, init sealing, scenario wiring, passing.
+  gating, terminal-defeat refusal, init sealing, scenario wiring, passing.
 - `tests/unit/floor5-manifest-schema.test.ts` — extended with finale rules,
   14 tests passing.
 - `tests/game/floor1-main-scene-options.test.ts` — updated for the new Floor 5

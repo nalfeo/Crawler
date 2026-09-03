@@ -76,7 +76,7 @@ function createFloor5SiegeLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `defenders ${siege?.finale.defendersDefeated ?? 0}/${siege?.finale.defendersSpawned ?? 0} defeated`,
       `throneDoor open=${siege?.finale.throneDoorOpen ?? false}@${siege?.finale.throneDoorOpenedFrame ?? '-'}`,
       `regent hp=${siege?.finale.regentHealth ?? 0}/${siege?.finale.regentMaxHealth ?? 0} spawned=${siege?.finale.regentSpawnedFrame ?? '-'} defeated=${siege?.finale.regentDefeatedFrame ?? '-'}`,
-      `summons released=${siege?.finale.summonsReleased ?? 0}/${siege?.finale.summonCap ?? 0} live=${siege?.finale.liveSummons ?? 0} retired=${siege?.finale.summonsRetired ?? 0}`,
+      `summons telegraphed=${siege?.finale.summonsTelegraphed ?? 0} pending=${siege?.finale.pendingSummonWaves ?? 0} released=${siege?.finale.summonsReleased ?? 0}/${siege?.finale.summonCap ?? 0} live=${siege?.finale.liveSummons ?? 0} retired=${siege?.finale.summonsRetired ?? 0}`,
       `capture available=${siege?.finale.captureAvailable ?? false}@${siege?.finale.captureAvailableFrame ?? '-'} attempts=${siege?.finale.captureAttempts ?? 0} rejected=${siege?.finale.rejectedCaptureAttempts ?? 0}`,
       `captured=${siege?.finale.captured ?? false}@${siege?.finale.capturedFrame ?? '-'} royalAuthorityDisabled=${siege?.finale.royalAuthorityDisabled ?? false} hostilesCleared=${siege?.finale.hostilesClearedOnCapture ?? 0}`,
       `balcony open=${siege?.finale.balconyOpen ?? false}@${siege?.finale.balconyOpenedFrame ?? '-'}`,

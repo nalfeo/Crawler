@@ -15,6 +15,8 @@ import { requestFloor5ThroneCapture } from '../../src/game/floor5Scenario.js';
 import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' with { type: 'json' };
 
 const FINALE_CONFIG = floor5Manifest.floor5.finale;
+/** Frames between damage probes; keeps the encounter longer than a telegraph. */
+const FINALE_CHIP_INTERVAL_FRAMES = 4;
 
 /**
  * Idle provider: the finale must resolve under the REAL Floor 5 pipeline. The
@@ -101,6 +103,9 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     let earlyCaptureCaptured: boolean | null = null;
     let liveFinaleEnemiesAtEnd = 0;
     let peakLiveSummons = 0;
+    let firstTelegraphFrame: number | null = null;
+    let summonsReleasedAtFirstTelegraph: number | null = null;
+    let firstSummonReleaseFrame: number | null = null;
 
     const stats = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
@@ -139,13 +144,25 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
             if (!finale.captured) {
               balconyReachableBeforeCapture ??= reachable(world, tiles.throne, tiles.balcony);
             }
+            // Spec FR7.3: every summon wave is telegraphed before it lands.
+            if (firstTelegraphFrame === null && finale.summonsTelegraphed > 0) {
+              firstTelegraphFrame = world.frameCount;
+              summonsReleasedAtFirstTelegraph = finale.summonsReleased;
+            }
+            if (firstSummonReleaseFrame === null && finale.summonsReleased > 0) {
+              firstSummonReleaseFrame = world.frameCount;
+            }
             peakLiveSummons = Math.max(
               peakLiveSummons,
               finale.throneActors.filter(
                 (actor) => actor.kind === 'regent-summon' && actor.defeatedFrame === null,
               ).length,
             );
-            chipFinaleActors(world, state, 12);
+            // Chip on a fixed cadence so the encounter lasts long enough for
+            // the authored telegraph windows to resolve inside the real run.
+            if (world.frameCount % FINALE_CHIP_INTERVAL_FRAMES === 0) {
+              chipFinaleActors(world, state, 12);
+            }
           },
         ],
       },
@@ -189,6 +206,17 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     expect(finale.summonCap).toBe(FINALE_CONFIG.summons.maxTotal);
     expect(finale.summonsReleased).toBeLessThanOrEqual(finale.summonCap);
     expect(peakLiveSummons).toBeLessThanOrEqual(finale.summonCap);
+    expect(finale.summonsReleased).toBeLessThanOrEqual(finale.summonsTelegraphed);
+    // No summon appears on the frame its wave is telegraphed, and the first
+    // wave lands no earlier than the authored telegraph window.
+    expect(firstTelegraphFrame).not.toBeNull();
+    expect(summonsReleasedAtFirstTelegraph).toBe(0);
+    expect(firstSummonReleaseFrame).not.toBeNull();
+    expect(firstSummonReleaseFrame! - firstTelegraphFrame!).toBeGreaterThanOrEqual(
+      FINALE_CONFIG.summons.telegraphFrames,
+    );
+    // Waves still queued when the Regent falls retire with the encounter.
+    expect(finale.pendingSummonWaves).toBe(0);
 
     // --- FR7.4: capture is SEPARATE from the Regent kill and refused early -
     expect(earlyCaptureResult).not.toBe('accepted');

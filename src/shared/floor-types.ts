@@ -951,6 +951,18 @@ export type Floor5CaptureAttemptResult =
   | 'regent-alive'
   | 'not-available';
 
+/** One telegraphed-but-unreleased Regent summon wave (spec `FR7.3`). */
+export interface Floor5PendingSummonWave {
+  /** Authored health-fraction trigger ordinal that telegraphed this wave. */
+  readonly triggerIndex: number;
+  /** Frame the wave was telegraphed. */
+  readonly telegraphedFrame: number;
+  /** Frame the wave's summons appear; always after `telegraphedFrame`. */
+  readonly releaseFrame: number;
+  /** Summons this wave will release; already reserved against the cap. */
+  readonly count: number;
+}
+
 /** Runtime state of the courtyard → throne → capture finale. */
 export interface Floor5FinaleState {
   /** Frame the breach latch was observed and the courtyard opened (`FR7.1`). */
@@ -974,6 +986,14 @@ export interface Floor5FinaleState {
   summonsRetired: number;
   /** Index of the next authored health-fraction trigger to fire. */
   nextSummonTriggerIndex: number;
+  /**
+   * Telegraphed summon waves awaiting their authored release frame (`FR7.3`).
+   * Queued counts are reserved against the encounter cap the moment they are
+   * telegraphed, and the queue is discarded if the Regent falls first.
+   */
+  readonly pendingSummonWaves: Floor5PendingSummonWave[];
+  /** Total summons telegraphed this run, released or not. */
+  summonsTelegraphed: number;
   /** Throne capture point, derived from the authored throne room. */
   capturePoint: { readonly x: number; readonly y: number } | null;
   captureAvailable: boolean;
@@ -1109,8 +1129,10 @@ export interface Floor5SiegeRunStats {
     readonly regentDefeatedFrame: number | null;
     readonly regentHealth: number;
     readonly regentMaxHealth: number;
+    readonly summonsTelegraphed: number;
     readonly summonsReleased: number;
     readonly summonsRetired: number;
+    readonly pendingSummonWaves: number;
     readonly summonCap: number;
     readonly liveSummons: number;
     readonly captureAvailable: boolean;

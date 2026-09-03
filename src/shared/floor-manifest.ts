@@ -78,7 +78,12 @@ const floor5FinaleCombatantSchema = z
     engageRangeFt: z.number().positive(),
     /** How far the actor looks for a target from its own position. */
     aggroRadiusFt: z.number().positive(),
-    /** How far from its authored room anchor the actor will travel. */
+    /**
+     * How far from the actor's authored room anchor a target may be before the
+     * actor refuses to chase it. Matches the field-Hero leash convention: the
+     * gate is measured on the TARGET's position, not the actor's, so a leashed
+     * actor never oscillates on and off its own leash boundary while chasing.
+     */
     leashRadiusFt: z.number().positive(),
   })
   .strict();
@@ -1127,6 +1132,11 @@ export const floorManifestDefSchema = z
                  * strictly descending order. Fixed thresholds, never RNG.
                  */
                 healthFractionTriggers: z.array(z.number().gt(0).lt(1)).min(1),
+                /**
+                 * Explicit telegraph window (`FR7.3`): frames between a wave
+                 * being announced and its summons appearing. Fixed, never RNG.
+                 */
+                telegraphFrames: z.number().int().positive(),
               })
               .strict(),
             capture: z

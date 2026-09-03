@@ -2243,6 +2243,8 @@ function createFloor5FinaleState(): Floor5FinaleState {
     summonsReleased: 0,
     summonsRetired: 0,
     nextSummonTriggerIndex: 0,
+    pendingSummonWaves: [],
+    summonsTelegraphed: 0,
     capturePoint: null,
     captureAvailable: false,
     captureAvailableFrame: null,
@@ -2265,6 +2267,12 @@ interface Floor5FinaleCombatantConfig {
   readonly speedFtPerFrame: number;
   readonly engageRangeFt: number;
   readonly aggroRadiusFt: number;
+  /**
+   * Target-position leash: a target further than this from the actor's authored
+   * anchor is never chased. Mirrors {@link steerFloor5Hero}'s leash so a
+   * finale actor cannot be dragged out of its room, and cannot oscillate across
+   * its own leash boundary mid-chase.
+   */
   readonly leashRadiusFt: number;
 }
 
@@ -2380,6 +2388,10 @@ function steerFloor5FinaleActor(world: GameWorld, actor: Floor5FinaleActorState)
   const playerEid = floor5PlayerEntity(world);
   const px = playerEid === null ? 0 : (world.stores.position.x[playerEid] ?? 0);
   const py = playerEid === null ? 0 : (world.stores.position.y[playerEid] ?? 0);
+  // Leash is measured on the TARGET's offset from the anchor, matching
+  // `steerFloor5Hero`: the actor only chases a player who is inside its room,
+  // which bounds the chase without letting the actor flicker in and out of
+  // engagement as it approaches its own leash boundary.
   const engages =
     playerEid !== null &&
     distanceBetween(world, actor.eid, playerEid) <= config.aggroRadiusFt &&
@@ -2550,10 +2562,54 @@ function floor5RegentActor(state: Floor5SiegeState): Floor5FinaleActorState | un
 }
 
 /**
- * Bounded summon release (spec `FR7.3`). Summons are released at authored
- * strictly-descending Regent health fractions, `perTriggerCount` at a time, and
- * `summonsReleased` can never exceed the authored `maxTotal` — the cap is
- * enforced here AND validated at manifest-load time.
+ * Bounded summon TELEGRAPH (spec `FR7.3`).
+ *
+ * Crossing an authored, strictly-descending Regent health fraction never spawns
+ * anything on the same frame: it queues a wave and announces it, and
+ * {@link releaseFloor5RegentSummons} spawns it `telegraphFrames` later. The
+ * wave's count is reserved against `maxTotal` at telegraph time, so a queued
+ * wave can never push the encounter over the authored cap — which is enforced
+ * here AND validated at manifest-load time.
+ */
+function telegraphFloor5RegentSummons(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  regent: Floor5FinaleActorState,
+): void {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig().summons;
+  const fraction = regent.maxHealth > 0 ? regent.health / regent.maxHealth : 0;
+  while (
+    finale.nextSummonTriggerIndex < config.healthFractionTriggers.length &&
+    fraction <= (config.healthFractionTriggers[finale.nextSummonTriggerIndex] ?? 0)
+  ) {
+    const triggerIndex = finale.nextSummonTriggerIndex;
+    finale.nextSummonTriggerIndex += 1;
+    const remaining = config.maxTotal - finale.summonsTelegraphed;
+    const count = Math.min(config.perTriggerCount, Math.max(0, remaining));
+    if (count === 0) continue;
+    finale.summonsTelegraphed += count;
+    finale.pendingSummonWaves.push({
+      triggerIndex,
+      telegraphedFrame: world.frameCount,
+      releaseFrame: world.frameCount + config.telegraphFrames,
+      count,
+    });
+    pushAnnouncement(world.announcements, {
+      kind: 'bossAbilityCast',
+      archetypeIndex: -1,
+      text: 'Regent Emeritus calls the household guard.',
+      eventId: `floor5-regent-summon-telegraph-${triggerIndex}`,
+      durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+      elapsedMs: world.elapsedMs,
+    });
+  }
+}
+
+/**
+ * Spawn every telegraphed wave whose authored release frame has arrived.
+ * Summon positions are fixed ring offsets around the Regent's anchor, so the
+ * encounter never touches an RNG stream (spec `R8`).
  */
 function releaseFloor5RegentSummons(
   world: GameWorld,
@@ -2562,18 +2618,15 @@ function releaseFloor5RegentSummons(
 ): void {
   const finale = state.finale;
   const config = getFloor5FinaleConfig().summons;
-  const fraction = regent.maxHealth > 0 ? regent.health / regent.maxHealth : 0;
   const tileSizeFt = floor5TileSizeFt(world);
-  while (
-    finale.nextSummonTriggerIndex < config.healthFractionTriggers.length &&
-    fraction <= (config.healthFractionTriggers[finale.nextSummonTriggerIndex] ?? 0)
-  ) {
-    const triggerIndex = finale.nextSummonTriggerIndex;
-    finale.nextSummonTriggerIndex += 1;
-    for (let index = 0; index < config.perTriggerCount; index += 1) {
+  for (let waveIndex = finale.pendingSummonWaves.length - 1; waveIndex >= 0; waveIndex -= 1) {
+    const wave = finale.pendingSummonWaves[waveIndex]!;
+    if (world.frameCount < wave.releaseFrame) continue;
+    finale.pendingSummonWaves.splice(waveIndex, 1);
+    for (let index = 0; index < wave.count; index += 1) {
       if (finale.summonsReleased >= config.maxTotal) break;
       // Authored, deterministic ring offsets around the Regent's anchor.
-      const angle = ((triggerIndex * config.perTriggerCount + index) * Math.PI) / 2;
+      const angle = ((wave.triggerIndex * config.perTriggerCount + index) * Math.PI) / 2;
       const position = {
         x: regent.anchorX + Math.cos(angle) * tileSizeFt * 2,
         y: regent.anchorY + Math.sin(angle) * tileSizeFt * 2,
@@ -2696,9 +2749,15 @@ function advanceFloor5Finale(world: GameWorld, state: Floor5SiegeState): void {
     return;
   }
   if (regent.defeatedFrame === null) {
+    // Telegraph first, then release only waves whose authored window elapsed.
+    telegraphFloor5RegentSummons(world, state, regent);
     releaseFloor5RegentSummons(world, state, regent);
     return;
   }
+
+  // The Regent fell before a telegraphed wave landed: the wave dies with the
+  // encounter rather than spawning onto a defeated boss.
+  finale.pendingSummonWaves.length = 0;
 
   // Regent down: retire the bounded summons with the encounter, then enable the
   // SEPARATE capture interaction (spec `FR7.4` — defeating the Regent never
@@ -2771,6 +2830,13 @@ export function requestFloor5ThroneCapture(world: GameWorld): Floor5CaptureAttem
     finale.rejectedCaptureAttempts += 1;
     return 'already-pending';
   }
+  // A terminal loss outranks the capture even after the Regent falls: the
+  // objective tick has stopped advancing, so an accepted latch could never be
+  // committed and must never be offered.
+  if (state.phase.kind === 'DEFEAT') {
+    finale.rejectedCaptureAttempts += 1;
+    return 'not-available';
+  }
   if (!finale.captureAvailable) {
     finale.rejectedCaptureAttempts += 1;
     return floor5RegentActor(state)?.defeatedFrame === null && finale.regentSpawnedFrame !== null
@@ -2791,11 +2857,11 @@ export function getFloor5CaptureMarkerState(world: GameWorld) {
   return {
     positionFt: capturePoint,
     radiusFt: getFloor5FinaleConfig().capture.interactionRadiusFt,
-    visible: state.finale.captureAvailable && !state.finale.captured,
+    visible: state.finale.captureAvailable && !state.finale.captured && !isFloor5Terminal(state),
     // `locked` must mean exactly "capture is barred", matching what
     // `requestFloor5ThroneCapture` rejects, so prompt and confirmation can never
     // disagree.
-    locked: !state.finale.captureAvailable || state.finale.captured,
+    locked: !state.finale.captureAvailable || state.finale.captured || isFloor5Terminal(state),
     label: '♛ CLAIM THRONE',
   };
 }
@@ -2822,8 +2888,10 @@ function buildFloor5FinaleRunStats(state: Floor5SiegeState): Floor5SiegeRunStats
     regentDefeatedFrame: finale.regentDefeatedFrame,
     regentHealth: regent?.health ?? 0,
     regentMaxHealth: regent?.maxHealth ?? config.regentEmeritus.health,
+    summonsTelegraphed: finale.summonsTelegraphed,
     summonsReleased: finale.summonsReleased,
     summonsRetired: finale.summonsRetired,
+    pendingSummonWaves: finale.pendingSummonWaves.length,
     summonCap: config.summons.maxTotal,
     liveSummons: summons.filter((actor) => actor.defeatedFrame === null).length,
     captureAvailable: finale.captureAvailable,

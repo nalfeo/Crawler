@@ -152,6 +152,7 @@
         "maxTotal": 4,
         "perTriggerCount": 2,
         "healthFractionTriggers": [0.66, 0.33],
+        "telegraphFrames": 45,
         "health": 30,
         "attackDamage": 8,
         "attackCooldownMs": 800,
