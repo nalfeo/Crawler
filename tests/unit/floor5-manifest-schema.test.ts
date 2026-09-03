@@ -74,3 +74,38 @@ describe('floor5 manifest Ratings Ram rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('floor5 manifest courtyard/throne finale rules', () => {
+  it('accepts the authored finale block', () => {
+    expect(floorManifestDefSchema.safeParse(cloneFloor5Manifest()).success).toBe(true);
+  });
+
+  it('rejects summon health triggers that are not strictly descending', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.finale.summons.healthFractionTriggers = [0.33, 0.66];
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a summon cap smaller than the authored triggers can release', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.finale.summons.maxTotal =
+      bad.floor5.finale.summons.perTriggerCount *
+        bad.floor5.finale.summons.healthFractionTriggers.length -
+      1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a summon trigger at full or zero Regent health', () => {
+    for (const fraction of [1, 0]) {
+      const bad = cloneFloor5Manifest();
+      bad.floor5.finale.summons.healthFractionTriggers = [fraction];
+      expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it('rejects a non-positive throne capture interaction radius', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.finale.capture.interactionRadiusFt = 0;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+});
