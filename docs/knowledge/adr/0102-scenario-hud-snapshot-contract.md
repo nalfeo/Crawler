@@ -23,7 +23,7 @@ Floor 6 Slice 8 requires quest, Director, HUD, audio, VFX, route, site, tower, R
 
 ## Decision
 
-Extend `ScenarioPresentationContract<TWorld>` with an optional `getHudSnapshot(world)` hook returning renderer-neutral `ScenarioHudSnapshot` data: stable snapshot id, display lines, and semantic HUD/audio/VFX cues. Floor 6 implements this hook in `src/game/scenarioDefinitions.ts` by calling `getFloor6DefenseRunStats(world)` and formatting its authoritative `presentation` snapshot. `MainGameScene` consumes only the generic hook, renders the lines in a small live status panel, and dispatches one-shot cue semantics without importing Floor 6 code.
+Extend `ScenarioPresentationContract<TWorld>` with an optional `getHudSnapshot(world)` hook returning renderer-neutral `ScenarioHudSnapshot` data: stable snapshot id, display lines, and semantic HUD/audio/VFX cues. Floor 6 implements this hook in `src/game/scenarioDefinitions.ts` by calling `getFloor6HudPresentation(world)` and formatting its authoritative `Floor6PresentationSnapshot`. That hook is a pure per-frame projection built directly from `Floor6DefenseState` — it deliberately does NOT call `getFloor6DefenseRunStats`, which clones the entire telemetry object (`phaseTrace`, `upgradeOffers`, `selectionTrace`, ...) on every call, a wasted allocation for a HUD read that only needs the presentation lines/cues and must never write goal flags as a side effect of merely being rendered. `MainGameScene` consumes only the generic hook, renders the lines in a small live status panel, and dispatches one-shot cue semantics without importing Floor 6 code.
 
 - **DEC-001**: The shared contract owns only semantic strings and cue kinds; Phaser objects, colors, positions, and synthesized audio choices remain in `src/engine/`.
 - **DEC-002**: Floor 6 keeps its authoritative state projection in `floor6Scenario.ts`; scenario definitions adapt that projection into the generic presentation shape.
@@ -35,7 +35,7 @@ Extend `ScenarioPresentationContract<TWorld>` with an optional `getHudSnapshot(w
 ### Positive
 
 - **POS-001**: The real game now consumes Floor 6 presentation through the same scenario-presentation seam as Director and exit copy, satisfying layer boundaries and avoiding floor branches in the engine.
-- **POS-002**: HUD/audio/VFX proof remains deterministic because all displayed lines and cue labels derive from `Floor6DefenseRunStats.presentation` and authoritative `Floor6DefenseState`.
+- **POS-002**: HUD/audio/VFX proof remains deterministic because all displayed lines and cue labels derive from `getFloor6HudPresentation`'s `Floor6PresentationSnapshot` and authoritative `Floor6DefenseState`.
 - **POS-003**: Future floor-specific HUD panels can reuse the hook without adding `src/game` imports or duplicating scenario state in `MainGameScene`.
 - **POS-004**: Unit source-string wiring coverage can guard the cross-layer seam while focused scenario tests validate the semantic content.
 

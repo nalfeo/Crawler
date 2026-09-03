@@ -767,7 +767,7 @@ function buildFloor6PresentationSnapshot(
   ];
   if (state.phase.kind === 'BREAK') {
     cues.push({
-      id: 'floor6-break-safe',
+      id: `floor6-break-safe-${state.currentActIndex}`,
       kind: 'audio',
       label: 'Service break cue: hostiles cleared; build, sell, and upgrade actions are safe',
     });
