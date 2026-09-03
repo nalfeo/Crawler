@@ -274,10 +274,11 @@ describe('Goobers shadow-mode parity', () => {
     expect(workflow).toContain('legacy-lifecycle-${run.id}');
     expect(workflow).not.toContain('run.pull_requests');
     expect(workflow).not.toContain('github.rest.pulls.get');
-    expect(workflow).not.toContain(
-      '\n      GOOBERS_INSTANCE: ${{ runner.temp }}/goobers-shadow-instance',
-    );
-    expect(workflow.match(/GOOBERS_INSTANCE: \$\{\{ runner\.temp \}\}/g)).toHaveLength(3);
+    expect(workflow).not.toMatch(/\$\{\{[^}]*\brunner\.temp\b[^}]*\}\}/);
+    expect(
+      workflow.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-shadow-instance"$/gm),
+    ).toHaveLength(3);
+    expect(workflow.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
     expect(workflow).toMatch(/uses: actions\/upload-artifact@v4\s+if: always\(\)/);
 
     for (const legacyWorkflow of ['ci-recovery.yml', 'merge-train.yml']) {
