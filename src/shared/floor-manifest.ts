@@ -1067,7 +1067,7 @@ export const floorManifestDefSchema = z
                 cooldownMs: z.number().int().positive(),
                 rangeFt: z.number().positive(),
                 /** Counter-battery damage the wall deals back per ram strike. */
-                wallCounterDamage: z.number().int().min(0),
+                wallCounterDamage: z.number().int().positive(),
               })
               .strict(),
             /** Fixed frame delay from a ram loss to the rebuild (`FR5.6`). */
@@ -1120,6 +1120,16 @@ export const floorManifestDefSchema = z
             code: z.ZodIssueCode.custom,
             path: ['ram', 'strike', 'damage'],
             message: 'Floor 5 ram strike damage must not exceed authored structure health',
+          });
+        }
+        const ramLossStrikes = Math.ceil(floor5.ram.health / floor5.ram.strike.wallCounterDamage);
+        const wallBreachStrikes = Math.ceil(floor5.outerWall.health / floor5.ram.strike.damage);
+        if (ramLossStrikes >= wallBreachStrikes || wallBreachStrikes > ramLossStrikes * 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'strike', 'wallCounterDamage'],
+            message:
+              'Floor 5 ram exchange must destroy exactly one ram before the outer wall breaches',
           });
         }
       })
@@ -1517,6 +1527,17 @@ export const floorManifestDefSchema = z
         path: ['implemented', 'released'],
         message: 'implemented.released requires implemented.mvp to be true',
       });
+    }
+    if (manifest.floor5) {
+      const attackAnchorDistanceFt =
+        (manifest.floor5.outerWall.thicknessTiles / 2 + 1) * manifest.map.tileSizeFt;
+      if (manifest.floor5.ram.strike.rangeFt < attackAnchorDistanceFt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['floor5', 'ram', 'strike', 'rangeFt'],
+          message: 'Floor 5 ram strike range must reach the outer wall from breach-approach',
+        });
+      }
     }
   });
 

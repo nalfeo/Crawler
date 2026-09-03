@@ -30,4 +30,40 @@ describe('floor5 manifest Ratings Ram rules', () => {
       );
     }
   });
+
+  it('rejects duplicate route landmarks', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.routeLandmarks[1] = bad.floor5.ram.routeLandmarks[0]!;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a route that does not start at the build site', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.routeLandmarks[0] = 'siege-yard-junction';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects a route that does not end at the breach approach', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.routeLandmarks[bad.floor5.ram.routeLandmarks.length - 1] = 'checkpoint-junction';
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects strike range that cannot reach the wall from the attack anchor', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.strike.rangeFt = 1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an exchange that breaches before the first ram is destroyed', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.health = 1000;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('rejects an exchange that destroys more than one ram before breach', () => {
+    const bad = cloneFloor5Manifest();
+    bad.floor5.ram.health = 20;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
 });

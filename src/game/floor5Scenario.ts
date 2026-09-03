@@ -1750,7 +1750,6 @@ function spawnFloor5RamEntity(world: GameWorld, state: Floor5SiegeState): number
   state.ram.eid = eid;
   state.ram.health = config.health;
   state.ram.maxHealth = config.health;
-  state.ram.strikes = 0;
   state.ram.lastStrikeMs = 0;
   state.ram.spawnedFrame = world.frameCount;
   state.ram.destroyedFrame = null;

@@ -140,7 +140,7 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     ]);
     expect(siege!.ram.builds).toBe(2);
     expect(siege!.ram.destructions).toBe(1);
-    expect(siege!.ram.strikes).toBeGreaterThan(0);
+    expect(siege!.ram.strikes).toBe(7);
     expect(siege!.ram.advanceFrames).toBeGreaterThan(0);
     expect(initialRamRouteIndex).toBe(1);
     expect(initialMarkerIndices).toEqual([0, 1, 2, 3]);
