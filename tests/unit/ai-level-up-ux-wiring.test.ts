@@ -58,7 +58,9 @@ describe('AI playthrough level-up UX wiring', () => {
       'computeAiStatAllocation(world, playerEid, available, featureFlags.weaponPersonas)',
     );
     expect(source).toContain('autoFloor2ProgressionSystem(world, playerEid);');
-    expect(source).toContain('autoFloor3ProgressionSystem(world, playerEid);');
+    expect(source).toContain('autoFloor3ProgressionSystem(world, playerEid, {');
+    expect(source).toContain('allowDirectKeptCompanionSelection: false');
+    expect(source).toContain('allowDirectStairDescend: false');
     expect(source).toContain(
       'const config = createFloorGameConfig(canvas, sceneOptions, currentFloor);',
     );

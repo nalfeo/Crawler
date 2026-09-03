@@ -4241,7 +4241,7 @@ export class MainGameScene extends Phaser.Scene {
   private showFloor3ProgressSurfaceIfNeeded(): void {
     if (
       this.world.floorId !== 'floor3' ||
-      this.world.state !== 'playing' ||
+      (this.world.state !== 'playing' && this.world.state !== 'safe_room') ||
       !this.modalPicker ||
       this.modalPicker.isOpen()
     ) {
@@ -5982,11 +5982,15 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
-    // Only floors 1 (`floorScenario`) and 2-6 (`floorExtendedState`, e.g.
-    // `familyState`/`floor6Defense`) configure a scenario that can respond to
-    // NPC/stair interactions; a bare world (labs, tests) has neither.
+    const hasScenarioPresentationStairs =
+      this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
+      this.options.scenarioPresentation.stairConfirmation !== undefined;
+    // Floors with either legacy floor scenarios, extended floor state, or an
+    // explicit scenario-presentation stair contract can respond to interactions.
     if (
-      (!this.world.floorScenario && !this.world.floorExtendedState) ||
+      (!this.world.floorScenario &&
+        !this.world.floorExtendedState &&
+        !hasScenarioPresentationStairs) ||
       this.world.state !== 'playing'
     ) {
       this.interactionHint?.setVisible(false);
@@ -6083,7 +6087,11 @@ export class MainGameScene extends Phaser.Scene {
         stairMarker.radiusFt;
 
     const selectedNpcEid =
-      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+      interactionRequested && nearStairs && stairConfirmation.kind === 'floor3-stair-descend'
+        ? -1
+        : tappedNpcEid !== null && !tappedNpcInvalidated
+          ? tappedNpcEid
+          : nearNpcEid;
     if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
@@ -6143,6 +6151,7 @@ export class MainGameScene extends Phaser.Scene {
         if (!this.modalPicker.isOpen()) {
           this.modalPicker.open(
             {
+              kind: stairConfirmation.kind,
               title: stairConfirmation.title,
               subtitle: stairConfirmation.subtitle,
               body: stairConfirmation.body,
