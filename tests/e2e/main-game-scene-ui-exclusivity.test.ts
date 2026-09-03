@@ -764,6 +764,24 @@ describe('MainGameScene UI exclusivity', () => {
     ).toEqual(equippedBeforePassiveActivate);
   });
 
+  it('renders the Bow level-5 reward name and effect in the real HUD announcement', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueSkillUsage(page, 'bow', 'weapon_fired', 135);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+
+    const announcementState = await waitForState(
+      page,
+      (s) =>
+        s.currentAnnouncement?.kind === 'skillPassiveUnlocked' &&
+        s.currentAnnouncement.text.includes('Steady Aim'),
+      { label: 'Bow level-5 milestone renders its player-facing reward' },
+    );
+
+    expect(announcementState.currentAnnouncement?.text).toContain('Steady Aim');
+    expect(announcementState.currentAnnouncement?.text).toContain('+0.1 accuracy with bows');
+    expect(announcementState.currentAnnouncement?.text).not.toContain('bow-shot-base');
+  });
+
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
     await bootPlayingSafeScene();
 

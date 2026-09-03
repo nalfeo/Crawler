@@ -708,13 +708,8 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
 
   // Bow type abilities
   {
-    id: 'bow-shot-base',
-    name: 'Bow Shot',
-    shortLabel: 'SHOT',
-    description: 'Basic bow attack',
-    category: 'combat',
-    kind: 'passive',
-    effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
+    ...ABILITY_PRESENTATION_BY_ID['bow-shot-base'],
+    effects: [{ type: 'stat_add', stat: 'accuracy', value: 0.1 }],
   },
   {
     id: 'bow-piercing',

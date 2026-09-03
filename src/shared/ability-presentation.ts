@@ -199,6 +199,17 @@ export const ABILITY_PRESENTATION_BY_ID = {
     passiveEffectSummary: 'Accuracy +0.1',
     passiveRequirementSummary: 'a bow',
   },
+  'bow-shot-base': {
+    id: 'bow-shot-base',
+    name: 'Steady Aim',
+    shortLabel: 'AIM',
+    description: 'Bonus accuracy while a bow is equipped.',
+    category: 'combat',
+    kind: 'passive',
+    passiveEffectSummary: '+0.1 accuracy with bows',
+    passiveRequirementSummary: 'a bow',
+    weaponPrerequisite: 'bow',
+  },
   'precision-bolts': {
     id: 'precision-bolts',
     name: 'Precision Bolts',
@@ -893,7 +904,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Placeholder for L10 milestone abilities (to be implemented).',
     category: 'combat',
     kind: 'passive',
-    passiveEffectSummary: 'TBD',
+    passiveEffectSummary: 'No bonus yet — reward still to come',
   },
   'placeholder-generic-l15': {
     id: 'placeholder-generic-l15',
@@ -902,7 +913,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Placeholder for L15 milestone abilities (to be implemented).',
     category: 'combat',
     kind: 'passive',
-    passiveEffectSummary: 'TBD',
+    passiveEffectSummary: 'No bonus yet — reward still to come',
   },
   'placeholder-generic-l20': {
     id: 'placeholder-generic-l20',
@@ -911,7 +922,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Placeholder for L20 milestone abilities (to be implemented).',
     category: 'combat',
     kind: 'passive',
-    passiveEffectSummary: 'TBD',
+    passiveEffectSummary: 'No bonus yet — reward still to come',
   },
 } as const satisfies Readonly<Record<string, AbilityPresentation>>;
 
