@@ -31,6 +31,31 @@ representative win rate, economy tuning, achievements, new content, and visual
 polish are explicitly out of scope (user instruction; matches the epic's review
 gate).
 
+### Executable assertion map
+
+`tests/helpers/floor4-completion-contract.ts` evaluates these ordered criteria
+from the shared evidence shape. Each runner asserts every field and reports
+`firstFailedCriterion` alongside its full telemetry snapshot:
+
+| Ordered criterion                                          | Evidence / assertion                                            |
+| ---------------------------------------------------------- | --------------------------------------------------------------- |
+| Scenario initializes                                       | `scenarioInitialized`                                           |
+| A physical feed-gate hostile spawns                        | `enemiesSpawned > 0`                                            |
+| All five wave windows release                              | `wavesReleased >= 5`                                            |
+| All five Headliners spawn and die in combat                | `headlinersSpawned === 5 && headlinersDefeated === 5`           |
+| Every intermission uses its public scenario/UI interaction | five intermission acts and no `slice2-auto-*` transition reason |
+| Phase trace reaches victory                                | `phaseKind === 'VICTORY'`                                       |
+| Headless `RunStats` records victory                        | `runStatsOutcome === 'victory'`                                 |
+| Execution stays under the existing backstop                | no stall outcome and `totalFrames < maxFrames`                  |
+
+The baseline is intentionally **not** an acceptance pass: both artifacts first
+fail `intermission-public-interaction`, because they record
+`slice2-auto-green-room-exit` / `slice2-auto-stairs`. The visual runner also
+does not produce a `RunStats` object; it records its production scenario phase
+instead. These are explicit evidence gaps, not test-only bypasses or gameplay
+mutations. A later interaction slice must make these criteria pass without
+changing this baseline's production-path setup.
+
 ## Slice 1 — Baseline (reproduce first)
 
 ### Headless baseline

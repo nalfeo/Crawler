@@ -50,6 +50,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
+import { assessFloor4Completion } from '../helpers/floor4-completion-contract.js';
 
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner`;
 
@@ -81,8 +82,10 @@ interface Floor4RunSnapshot {
   headlinerSpawned: number | undefined;
   headlinerDefeated: number | undefined;
   intermissionActs: number[];
+  intermissionReasons: string[];
   actIncomeCount: number;
   timelineFingerprint: string;
+  frame: number;
 }
 
 interface Floor4VisualRunResult {
@@ -151,6 +154,11 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
           (entry) => entry?.phase?.kind === 'INTERMISSION' && typeof entry?.phase?.act === 'number',
         )
         .map((entry) => entry.phase.act);
+      const intermissionReasons = timeline.flatMap((entry, index) =>
+        timeline[index - 1]?.phase?.kind === 'INTERMISSION'
+          ? [typeof entry?.reason === 'string' ? entry.reason : 'unknown']
+          : [],
+      );
       return {
         phaseKind: typeof arena?.phase?.kind === 'string' ? arena.phase.kind : null,
         wavesReleased: arena?.waveTelemetry?.wavesReleased,
@@ -158,6 +166,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
         headlinerSpawned: arena?.headlinerTelemetry?.spawned,
         headlinerDefeated: arena?.headlinerTelemetry?.defeated,
         intermissionActs,
+        intermissionReasons,
         actIncomeCount: Array.isArray(arena?.actIncome) ? arena.actIncome.length : 0,
         timelineFingerprint: timeline
           .map((entry) => {
@@ -166,6 +175,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
             return `${kind}${act}`;
           })
           .join('|'),
+        frame: window.__aiRunnerDebug?.().frame ?? -1,
       };
     });
 
@@ -204,6 +214,34 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(new Set(firstRun.finalSnapshot.intermissionActs).size, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
+    const firstAssessment = assessFloor4Completion({
+      scenarioInitialized: firstRun.finalSnapshot.phaseKind !== null,
+      phaseKind: firstRun.finalSnapshot.phaseKind,
+      wavesReleased: firstRun.finalSnapshot.wavesReleased,
+      enemiesSpawned: firstRun.finalSnapshot.enemiesSpawned,
+      headlinersSpawned: firstRun.finalSnapshot.headlinerSpawned,
+      headlinersDefeated: firstRun.finalSnapshot.headlinerDefeated,
+      intermissionActs: firstRun.finalSnapshot.intermissionActs,
+      intermissionReasons: firstRun.finalSnapshot.intermissionReasons,
+      // MainGameScene does not emit RunStats; the phase check above is its production outcome.
+      runStatsOutcome: null,
+      totalFrames: firstRun.finalSnapshot.frame,
+      maxFrames: Number.MAX_SAFE_INTEGER,
+      stallBackstopReached: false,
+    });
+    expect(firstAssessment.criteria['scenario-initialized'], firstContext).toBe(true);
+    expect(firstAssessment.criteria['physical-wave-hostile-spawned'], firstContext).toBe(true);
+    expect(firstAssessment.criteria['all-wave-windows-released'], firstContext).toBe(true);
+    expect(firstAssessment.criteria['all-headliners-spawned-and-defeated'], firstContext).toBe(
+      true,
+    );
+    expect(firstAssessment.criteria['phase-reached-victory'], firstContext).toBe(true);
+    expect(firstAssessment.criteria['runstats-outcome-victory'], firstContext).toBe(false);
+    expect(firstAssessment.criteria['terminated-before-stall-backstop'], firstContext).toBe(true);
+    expect(firstAssessment.criteria['intermission-public-interaction'], firstContext).toBe(false);
+    expect(firstAssessment.firstFailedCriterion, firstContext).toBe(
+      'intermission-public-interaction',
+    );
 
     const secondRun = await runVisualFloor4Completion(browser);
     const secondContext = `pageErrors=${JSON.stringify(

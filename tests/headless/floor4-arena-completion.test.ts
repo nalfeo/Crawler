@@ -52,6 +52,7 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { getPersonaConfig } from '../../src/game/ai/personas.js';
 import type { RunStats } from '../../src/game/ai/types.js';
+import { assessFloor4Completion } from '../helpers/floor4-completion-contract.js';
 
 /**
  * The canonical deterministic seed the `floor-4-playable-completion` epic
@@ -88,9 +89,12 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     const arena = stats.floor4Arena;
 
     expect(arena, 'run produced no floor4Arena telemetry at all').toBeDefined();
-    const telemetryFailure =
-      `outcome=${stats.outcome} phase=${JSON.stringify(arena?.phase)} ` +
-      `frames=${stats.totalFrames} gameTimeMs=${stats.gameTimeMs}`;
+    const telemetryFailure = JSON.stringify({
+      outcome: stats.outcome,
+      frames: stats.totalFrames,
+      gameTimeMs: stats.gameTimeMs,
+      floor4Arena: arena,
+    });
 
     // Real physical hostiles spawned through the authored feed-gate path —
     // this is not a cherry-picked kill count, it's the "did anything actually
@@ -112,6 +116,38 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // ~608s / ~36.5k frames; this just proves it isn't grinding to the frame
     // cap because something silently stalled).
     expect(stats.totalFrames, telemetryFailure).toBeLessThan(MAX_FRAMES);
+
+    const assessment = assessFloor4Completion({
+      scenarioInitialized: arena !== undefined,
+      phaseKind: arena?.phase.kind ?? null,
+      wavesReleased: arena?.waveTelemetry.wavesReleased,
+      enemiesSpawned: arena?.waveTelemetry.enemiesSpawned,
+      headlinersSpawned: arena?.headlinerTelemetry.spawned,
+      headlinersDefeated: arena?.headlinerTelemetry.defeated,
+      intermissionActs:
+        arena?.timeline.flatMap((entry) =>
+          entry.phase.kind === 'INTERMISSION' ? [entry.phase.act] : [],
+        ) ?? [],
+      intermissionReasons:
+        arena?.timeline.flatMap((entry, index, timeline) =>
+          timeline[index - 1]?.phase.kind === 'INTERMISSION' ? [entry.reason] : [],
+        ) ?? [],
+      runStatsOutcome: stats.outcome,
+      totalFrames: stats.totalFrames,
+      maxFrames: MAX_FRAMES,
+      stallBackstopReached: stats.outcome === 'stalled' || stats.totalFrames >= MAX_FRAMES,
+    });
+    expect(assessment.criteria['scenario-initialized'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['physical-wave-hostile-spawned'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['all-wave-windows-released'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['all-headliners-spawned-and-defeated'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['phase-reached-victory'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['runstats-outcome-victory'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['terminated-before-stall-backstop'], telemetryFailure).toBe(true);
+    expect(assessment.criteria['intermission-public-interaction'], telemetryFailure).toBe(false);
+    expect(assessment.firstFailedCriterion, telemetryFailure).toBe(
+      'intermission-public-interaction',
+    );
   });
 
   it('is deterministic: an identical seed produces byte-identical completion telemetry', async () => {
