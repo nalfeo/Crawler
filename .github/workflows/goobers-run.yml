@@ -440,7 +440,7 @@ jobs:
             exit 1
           fi
 
-          marker="<!-- goobers:github-run-start run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          marker="<!-- crawler-goobers-run-start:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           find_issue_comment_id() {
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
@@ -454,11 +454,11 @@ jobs:
 
           body="$(mktemp)"
           {
+            echo "$marker"
+            echo
             echo "Goobers started work on this issue for \`${GOOBERS_WORKFLOW}\`."
             echo
             echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo
-            echo "$marker"
           } > "$body"
 
           gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
@@ -674,6 +674,8 @@ jobs:
 
           body="$(mktemp)"
           {
+            echo "<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+            echo
             echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
             echo
             echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -690,11 +692,9 @@ jobs:
               echo "$terminal_summary"
               echo '```'
             fi
-            echo
-            echo "<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           } > "$body"
 
-          marker="<!-- goobers:github-run run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+          marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           find_issue_comment_id() {
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |

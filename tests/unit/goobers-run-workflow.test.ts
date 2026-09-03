@@ -3,6 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
+import {
+  GOOBERS_RUN_START_MARKER_PREFIX,
+  GOOBERS_RUN_RESULT_MARKER_PREFIX,
+} from '../../.github/scripts/ci-recovery/markers.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -556,7 +560,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(start?.run).toContain(
       'https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}',
     );
-    expect(start?.run).toContain('goobers:github-run-start');
+    expect(start?.run).toContain('crawler-goobers-run-start:v1');
+    expect(start?.run).toContain(GOOBERS_RUN_START_MARKER_PREFIX);
+    expect(start?.run).toMatch(/echo "\$marker"\s*\n\s*echo\s*\n\s*echo "Goobers started work/);
     expect(start?.run).toContain('find_issue_comment_id');
     expect(start?.run).toContain('gh issue comment "$issue_number"');
 
@@ -577,6 +583,10 @@ describe('Goobers automatic dispatch and recovery', () => {
       'pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"',
     );
     expect(result?.run).toContain('echo "- Pull request: #${pr_number} — ${pr_url}"');
+    expect(result?.run).toContain(GOOBERS_RUN_RESULT_MARKER_PREFIX);
+    expect(result?.run).toMatch(
+      /echo "<!-- crawler-goobers-run-result:v1[^\n]*"\s*\n\s*echo\s*\n\s*echo "Goobers GitHub Actions run/,
+    );
     expect(result?.run).toContain('find_issue_comment_id');
     expect(result?.run).toContain('gh api --silent --method PATCH');
     expect(result?.run).toContain('gh issue comment "$issue_number"');
