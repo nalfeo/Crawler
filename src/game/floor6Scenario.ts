@@ -43,6 +43,9 @@ import type {
   Floor6DefenseState,
   Floor6FinaleAddManifestEntry,
   Floor6FinaleBossManifestEntry,
+  Floor6HudCue,
+  Floor6PresentationSnapshot,
+  Floor6QuestProjectionSnapshot,
   Floor6TowerBuildResult,
   Floor6TowerDef,
   Floor6TowerSellResult,
@@ -60,6 +63,8 @@ import { initializePlayerWeaponSkills } from './floorScenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
+import { acceptQuest } from '../core/systems/questSystem.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../shared/quest-types.js';
 
 function getFloor6Config(): NonNullable<typeof floor6Manifest.floor6> {
   const config = floor6Manifest.floor6;
@@ -165,6 +170,7 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     exit: {
       opened: false,
       openCount: 0,
+      confirmed: false,
     },
   };
 }
@@ -220,6 +226,8 @@ export function initializeFloor6Scenario(
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
+  resetFloor6QuestProjection(world);
+  acceptQuest(world, FLOOR6_DEFENSE_QUEST_ID);
   world.state = 'playing';
 }
 
@@ -228,10 +236,27 @@ export function initializeFloor6Scenario(
 const FLOOR6_ENEMY_PACK_ID = 'floor6-renovation-crew';
 const FLOOR6_SELECTION_TRACE_LIMIT = 64;
 const FLOOR6_MAX_FIRE_RATE_BONUS = 0.9;
+export const FLOOR6_DEFENSE_GOAL_IDS = Object.freeze([
+  'floor6.defense.briefed',
+  'floor6.defense.firstWaveCleared',
+  'floor6.defense.firstBuildPlaced',
+  'floor6.defense.firstUpgradeChosen',
+  'floor6.defense.breakCleared',
+  'floor6.defense.deadlineDefeated',
+  'floor6.defense.relaySecured',
+] as const);
 
 /** Retrieve the floor6 defense state guard; returns null when not on floor 6. */
 function floor6DefenseState(world: GameWorld): Floor6DefenseState | null {
   return world.floorExtendedState?.floor6Defense ?? null;
+}
+
+function resetFloor6QuestProjection(world: GameWorld): void {
+  for (const goalId of FLOOR6_DEFENSE_GOAL_IDS) {
+    world.goalFlags.delete(goalId);
+  }
+  world.goalFlags.delete('floor6.defense.questComplete');
+  world.questLog.delete(FLOOR6_DEFENSE_QUEST_ID);
 }
 
 /** Record a phase transition and push to the trace. */
@@ -255,6 +280,35 @@ function recordFloor6PhaseTransition(
     terminalOutcome: state.terminalOutcome,
   });
   state.phase = newPhase;
+  updateFloor6QuestGoalFlags(world, state);
+}
+
+function setProjectedFloor6Goal(world: GameWorld, goalId: string, reached: boolean): void {
+  if (reached || world.goalFlags.get(goalId) === true) {
+    world.goalFlags.set(goalId, true);
+  }
+}
+
+function getFloor6QuestProjection(state: Floor6DefenseState): Floor6QuestProjectionSnapshot {
+  const firstWaveIndex = getFloor6Config().waves?.[0]?.waveIndex;
+  return {
+    'floor6.defense.briefed': state.phaseTrace.some((entry) => entry.reason === 'setup-complete'),
+    'floor6.defense.firstWaveCleared':
+      firstWaveIndex !== undefined && state.economy.rewardedWaveIndexes.includes(firstWaveIndex),
+    'floor6.defense.firstBuildPlaced': state.towerInstances.length > 0 || state.towersTornDown > 0,
+    'floor6.defense.firstUpgradeChosen': state.economy.selectedOfferIds.length > 0,
+    'floor6.defense.breakCleared': state.breaksExited > 0,
+    'floor6.defense.deadlineDefeated': state.finale.bossDefeated,
+    'floor6.defense.relaySecured':
+      state.terminalOutcome === 'victory' && state.exit.opened === true,
+  };
+}
+
+function updateFloor6QuestGoalFlags(world: GameWorld, state: Floor6DefenseState): void {
+  const projection = getFloor6QuestProjection(state);
+  for (const goalId of FLOOR6_DEFENSE_GOAL_IDS) {
+    setProjectedFloor6Goal(world, goalId, projection[goalId]);
+  }
 }
 
 /**
@@ -609,11 +663,188 @@ function selectedFloor6UpgradeValue(state: Floor6DefenseState, kind: string): nu
     .reduce((total, offer) => total + offer.effect.value, 0);
 }
 
+/**
+ * Count of selected upgrade offers whose effect actually modifies towers
+ * (`towerFireRateBonus`/`towerDamageBonus`). The Floor 6 manifest also has
+ * relay-only (`relayMaxHpBonus`, `relayRepair`) and raider-only
+ * (`raiderSlowBonus`) offers that must NOT inflate a per-tower tier label —
+ * those effects are global run-wide modifiers, not a tower upgrade.
+ */
+const FLOOR6_TOWER_AFFECTING_EFFECT_KINDS: ReadonlySet<string> = new Set([
+  'towerFireRateBonus',
+  'towerDamageBonus',
+]);
+
+function selectedFloor6TowerModifierCount(state: Floor6DefenseState): number {
+  return (state.upgradeOfferManifest ?? []).filter(
+    (offer) =>
+      state.economy.selectedOfferIds.includes(offer.offerId) &&
+      FLOOR6_TOWER_AFFECTING_EFFECT_KINDS.has(offer.effect.kind),
+  ).length;
+}
+
 function floor6RelayMaxHp(state: Floor6DefenseState): number {
   return (
     (getFloor6Config().tuning?.relayMaxHp ?? 100) +
     selectedFloor6UpgradeValue(state, 'relayMaxHpBonus')
   );
+}
+
+/**
+ * Pure read of the current quest-goal projection. Goal flags are latched by
+ * the sim-side mutations that actually change state (tower builds, upgrade
+ * purchases, phase transitions — see the `updateFloor6QuestGoalFlags` calls
+ * beside each), so a presentation read must never recompute or write them:
+ * doing so from a per-frame HUD read would silently advance quest state
+ * outside the sim-side systems that own it.
+ */
+function floor6QuestGoalFlagSnapshot(
+  world: GameWorld,
+  _state: Floor6DefenseState,
+): Floor6QuestProjectionSnapshot {
+  return {
+    'floor6.defense.briefed': world.goalFlags.get('floor6.defense.briefed') === true,
+    'floor6.defense.firstWaveCleared':
+      world.goalFlags.get('floor6.defense.firstWaveCleared') === true,
+    'floor6.defense.firstBuildPlaced':
+      world.goalFlags.get('floor6.defense.firstBuildPlaced') === true,
+    'floor6.defense.firstUpgradeChosen':
+      world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true,
+    'floor6.defense.breakCleared': world.goalFlags.get('floor6.defense.breakCleared') === true,
+    'floor6.defense.deadlineDefeated':
+      world.goalFlags.get('floor6.defense.deadlineDefeated') === true,
+    'floor6.defense.relaySecured': world.goalFlags.get('floor6.defense.relaySecured') === true,
+  };
+}
+
+function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState): string {
+  const route = state.geometry.routes.find((candidate) => candidate.id === from.routeId);
+  const routeName = route?.id ?? from.routeId;
+  if (routeName.startsWith('west-')) {
+    return 'incoming from west route → Relay';
+  }
+  if (routeName.startsWith('east-')) {
+    return 'incoming from east route ← Relay';
+  }
+  if (routeName.startsWith('north-')) {
+    return 'incoming from north route ↓ Relay';
+  }
+  if (routeName.startsWith('south-')) {
+    return 'incoming from south route ↑ Relay';
+  }
+  return `incoming from ${route?.entranceId ?? from.entranceId} route to Relay`;
+}
+
+function buildFloor6PresentationSnapshot(
+  world: GameWorld,
+  state: Floor6DefenseState,
+  relayMaxHp: number,
+): Floor6PresentationSnapshot {
+  const manifest = state.waveManifest ?? [];
+  const towerRoster = new Map(_getFloor6TowerRoster().map((tower) => [tower.id, tower]));
+  const nextByRoute = new Map<string, Floor6WaveManifestEntry>();
+  for (const entry of manifest.slice(state.nextReleaseIndex)) {
+    if (!isFloor6EntryReleasableInCurrentPhase(state, entry) || nextByRoute.has(entry.routeId)) {
+      continue;
+    }
+    nextByRoute.set(entry.routeId, entry);
+  }
+  const selectedTowerModifierCount = selectedFloor6TowerModifierCount(state);
+  const towerTierLabel =
+    selectedTowerModifierCount > 0
+      ? `+${selectedTowerModifierCount} global tower modifier${selectedTowerModifierCount === 1 ? '' : 's'}`
+      : 'base tier';
+  const relayPct = relayMaxHp > 0 ? state.relayHp / relayMaxHp : 0;
+  const relayDangerLabel =
+    relayPct <= 0.25
+      ? `CRITICAL Relay danger: ${state.relayHp}/${relayMaxHp} HP`
+      : relayPct <= 0.5
+        ? `WARNING Relay under pressure: ${state.relayHp}/${relayMaxHp} HP`
+        : `SAFE Relay holding: ${state.relayHp}/${relayMaxHp} HP`;
+  const cues: Floor6HudCue[] = [
+    {
+      id: `floor6-phase-${state.phase.kind}`,
+      kind: 'hud',
+      label: `Phase cue: ${state.phase.kind}`,
+    },
+  ];
+  if (state.phase.kind === 'BREAK') {
+    cues.push({
+      id: 'floor6-break-safe',
+      kind: 'audio',
+      label: 'Service break cue: hostiles cleared; build, sell, and upgrade actions are safe',
+    });
+  }
+  if (state.phase.kind === 'FINALE') {
+    cues.push({
+      id: 'floor6-deadline-finale',
+      kind: 'vfx',
+      label: 'Deadline cue: boss pressure active on authored routes',
+    });
+  }
+  if (relayPct <= 0.5) {
+    cues.push({
+      id: 'floor6-relay-danger',
+      kind: 'audio',
+      label: relayDangerLabel,
+    });
+  }
+
+  return {
+    objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
+    phaseLabel: `${state.phase.kind} phase`,
+    relayDangerLabel,
+    questGoals: floor6QuestGoalFlagSnapshot(world, state),
+    routes: state.geometry.routes.map((route) => {
+      const next = nextByRoute.get(route.id);
+      const sample = next ?? manifest.find((entry) => entry.routeId === route.id);
+      return {
+        routeId: route.id,
+        entranceId: route.entranceId,
+        directionLabel: sample
+          ? directionLabel(sample, state)
+          : 'route clear; no incoming wave queued',
+        nextReleaseTick: next?.releaseTick ?? null,
+      };
+    }),
+    buildSites: state.geometry.buildSites.map((site) => {
+      const tower = state.towerInstances.find((instance) => instance.siteId === site.id);
+      return {
+        siteId: site.id,
+        occupied: tower !== undefined,
+        label: tower
+          ? `OCCUPIED ${site.id}: ${tower.towerId}`
+          : `VACANT ${site.id}: buildable maintenance plinth`,
+        towerId: tower?.towerId ?? null,
+      };
+    }),
+    towers: state.towerInstances.map((instance) => {
+      const tower = towerRoster.get(instance.towerId);
+      return {
+        siteId: instance.siteId,
+        towerId: instance.towerId,
+        rangeFt: tower?.attackRangeFt ?? 0,
+        tierLabel: towerTierLabel,
+      };
+    }),
+    buildCurrencyLabel: `Requisitions ${state.economy.balance} available; ${state.economy.totalSpent} spent`,
+    lootLabel: `Loot visible: ${state.economy.pickupsSpawned} requisition drops, ${state.economy.pickupsCollected} collected`,
+    upgradeChoiceLabel:
+      state.upgradeOfferManifest && state.upgradeOfferManifest.length > 0
+        ? `${state.economy.selectedOfferIds.length}/${state.upgradeOfferManifest.length} upgrade offers chosen`
+        : 'No upgrade offers active',
+    breakSafetyLabel:
+      state.phase.kind === 'BREAK'
+        ? `Break safe: ${countLiveFloor6Raiders(world)} live hostiles, ${state.spawnDebt} spawn debt`
+        : `Breaks cleared: ${state.breaksExited}; hostile break activity ${state.hostileActivityDuringBreak}`,
+    deadlineLabel:
+      state.phase.kind === 'FINALE'
+        ? `Deadline active: ${state.finale.bossManifest?.displayName ?? 'Broadcast Deadline'} on ${state.finale.bossManifest?.routeId ?? 'route'}`
+        : state.finale.bossDefeated
+          ? 'Deadline defeated; Relay secured'
+          : 'Deadline pending',
+    cues,
+  };
 }
 
 function getFloor6TowerDef(towerId: string): Floor6TowerDef | undefined {
@@ -705,6 +936,7 @@ export function buildFloor6Tower(
   state.economy.totalSpent += tower.cost;
   state.towerInstances.push({ siteId, towerId, eid });
   sortFloor6TowerInstancesBySite(state);
+  updateFloor6QuestGoalFlags(world, state);
   return { ok: true, reason: 'built', eid };
 }
 
@@ -865,6 +1097,7 @@ export function purchaseFloor6UpgradeOffer(
     if (offer.effect.kind === 'relayRepair') {
       state.relayHp = Math.min(floor6RelayMaxHp(state), state.relayHp + offer.effect.value);
     }
+    updateFloor6QuestGoalFlags(world, state);
   }
 
   refreshFloor6UnlockedOffers(state);
@@ -1317,6 +1550,7 @@ export function floor6DefenseDirectorSystem(world: GameWorld): void {
     state.exit = {
       opened: false,
       openCount: 0,
+      confirmed: false,
     };
     recordFloor6PhaseTransition(world, state, { kind: 'DEFEND' }, 'setup-complete');
     return;
@@ -1414,6 +1648,20 @@ export function floor6CombatContributionSystem(world: GameWorld): void {
 }
 
 /**
+ * Lightweight, pure per-frame HUD projection: builds only the presentation
+ * snapshot the renderer actually needs (lines/cues), without the full
+ * telemetry clone (`phaseTrace`, `upgradeOffers`, `selectionTrace`, etc.)
+ * that {@link getFloor6DefenseRunStats} allocates for run-summary/AI
+ * telemetry consumers. Safe to call every frame from the scenario HUD hook;
+ * has no side effects (does not write goal flags).
+ */
+export function getFloor6HudPresentation(world: GameWorld): Floor6PresentationSnapshot | undefined {
+  const state = floor6DefenseState(world);
+  if (!state) return undefined;
+  return buildFloor6PresentationSnapshot(world, state, floor6RelayMaxHp(state));
+}
+
+/**
  * Collect a telemetry snapshot from the current defense state.
  * Safe to call from any floor, returns undefined when not on floor 6.
  */
@@ -1469,18 +1717,45 @@ export function getFloor6DefenseRunStats(world: GameWorld): Floor6DefenseRunStat
     victoryPayoutBroadcastScore: state.victoryPayout.broadcastScore,
     exitOpened: state.exit.opened,
     exitOpenCount: state.exit.openCount,
+    presentation: buildFloor6PresentationSnapshot(world, state, relayMaxHp),
   };
 }
 
-/** Floor 6 exit opens only after the authoritative victory transaction. */
-export function confirmFloor6StairDescend(world: GameWorld): boolean {
+/**
+ * Pure predicate for whether the Relay exit is currently descendable — the
+ * authoritative victory transaction fired (`exit.opened`). Has no side
+ * effects, so it is safe for the stair marker's per-frame `locked` check;
+ * it must NOT be used to latch the actual descent confirmation (see
+ * {@link confirmFloor6StairDescend}).
+ */
+export function isFloor6ExitDescendable(world: GameWorld): boolean {
   const state = world.floorExtendedState?.floor6Defense;
   return state?.phase.kind === 'VICTORY' && state.exit.opened === true;
 }
 
+/**
+ * Called when the player confirms descent through the Relay exit marker's
+ * confirmation modal. The Deadline defeat opens the exit (`exit.opened`) but
+ * must NOT by itself end the run: `getFloor6RunOutcome` only reports
+ * `cleared_floor` once this confirmation has actually latched, so the
+ * terminal completion screen cannot preempt the marker/confirmation
+ * affordance. Returns `false` (no-op) if the exit isn't open yet or descent
+ * was already confirmed.
+ */
+export function confirmFloor6StairDescend(world: GameWorld): boolean {
+  const state = world.floorExtendedState?.floor6Defense;
+  if (!state || !isFloor6ExitDescendable(world) || state.exit.confirmed) return false;
+  state.exit.confirmed = true;
+  return true;
+}
+
 export function getFloor6RunOutcome(world: GameWorld): ScenarioRunOutcome | null {
   const state = world.floorExtendedState?.floor6Defense;
-  if (state?.terminalOutcome === 'victory' && state.phase.kind === 'VICTORY')
+  if (
+    state?.terminalOutcome === 'victory' &&
+    state.phase.kind === 'VICTORY' &&
+    state.exit.confirmed === true
+  )
     return 'cleared_floor';
   if (state?.terminalOutcome === 'defeat' && state.phase.kind === 'DEFEAT') return 'failed_timeout';
   return null;

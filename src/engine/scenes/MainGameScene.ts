@@ -18,6 +18,7 @@ import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
   selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
+  type ScenarioHudSnapshot,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
 import {
@@ -278,6 +279,14 @@ const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
  * read again as "continue" and the summary would flash past unread.
  */
 const FLOOR_SUMMARY_ACK_ARM_MS = 450;
+
+/**
+ * How long a scenario `vfx` HUD cue stays visible before hiding again. Cues
+ * are one-shot (latched by id in `playedScenarioCueIds`), so the strip must
+ * hide itself after a bounded duration rather than staying visible for as
+ * long as the cue remains present in the scenario's snapshot.
+ */
+const SCENARIO_HUD_VFX_FLASH_MS = 600;
 
 /**
  * Acknowledgement prompt on the between-floor summary. The screen blocks the
@@ -578,6 +587,20 @@ export interface _CornerButtonProbe {
   readonly bounds: ScreenBounds;
 }
 
+/**
+ * Real rendered state of the generic scenario HUD strip (`getHudSnapshot`
+ * presentation). Underscore-prefixed: test/automation scaffolding consumed by
+ * the probe lab and e2e helpers, with no production caller outside this file.
+ */
+export interface _ScenarioHudProbe {
+  readonly visible: boolean;
+  readonly text: string | null;
+  readonly bounds: ScreenBounds | null;
+  /** Whether the one-shot `vfx` cue flash is currently showing. */
+  readonly vfxVisible: boolean;
+  readonly cueLabels: readonly string[];
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -596,6 +619,8 @@ declare global {
         | { playerName: string; playerGender: 'female' | 'male' | 'other' }
         | undefined;
       getDirectorCommentaryText?: () => string | null;
+      getScenarioHudText?: () => string | null;
+      getScenarioHudCueLabels?: () => readonly string[];
       /**
        * Dev-only: which art each door tile rendered from on the last overlay
        * pass, in the REAL game (the probe lab has its own copy of this seam).
@@ -991,6 +1016,12 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space temporary commentary text for scenario callouts. */
   private directorCommentaryText?: Phaser.GameObjects.Text;
 
+  /** Screen-space floor-owned status panel driven through ScenarioPresentationContract. */
+  private scenarioHudText?: Phaser.GameObjects.Text;
+  private scenarioHudVfx?: Phaser.GameObjects.Rectangle;
+  private readonly playedScenarioCueIds = new Set<string>();
+  private scenarioHudCueLabels: string[] = [];
+
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
   /** Panel behind the completion copy; grown when the summary is shown. */
@@ -1227,6 +1258,8 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
+    this.playedScenarioCueIds.clear();
+    this.scenarioHudCueLabels = [];
     this.floor3IntroAcknowledged = false;
     this.announcedFloor3Studios.clear();
     this.announcedFloor3FinalFourRounds.clear();
@@ -1455,6 +1488,9 @@ export class MainGameScene extends Phaser.Scene {
                   | { playerName: string; playerGender: 'female' | 'male' | 'other' }
                   | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
+              getScenarioHudText: () =>
+                this.scenarioHudText?.visible === true ? this.scenarioHudText.text : null,
+              getScenarioHudCueLabels: () => [...this.scenarioHudCueLabels],
               // Door-art provenance for the REAL game, not just the probe lab.
               // Without this the only instrument for "which door art actually
               // rendered" lived in main-scene-probe-lab, so a lab-green door
@@ -1536,6 +1572,10 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.npcQuestIndicators.clear();
       this.interactionHint?.destroy();
+      this.scenarioHudText?.destroy();
+      this.scenarioHudVfx?.destroy();
+      this.playedScenarioCueIds.clear();
+      this.scenarioHudCueLabels = [];
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
       this.offInteractionHintSafeArea?.();
@@ -1603,6 +1643,8 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseSprite = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
+      this.scenarioHudText = undefined;
+      this.scenarioHudVfx = undefined;
       this.actionStatusText?.destroy();
       this.actionStatusText = undefined;
       this.directorCommentaryText = undefined;
@@ -1666,6 +1708,25 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  /**
+   * Real rendered state of the generic scenario HUD strip: visibility, text,
+   * screen bounds, whether the one-shot `vfx` cue flash is currently showing,
+   * and the cue labels dispatched this frame. Test/automation affordance so
+   * e2e probes can assert the shipped HUD surface actually renders (bounds,
+   * clipping, one-shot cue behavior) in the real scene, not merely that its
+   * source wiring string is present.
+   */
+  getScenarioHudState(): _ScenarioHudProbe {
+    const visible = this.scenarioHudText?.visible === true;
+    return {
+      visible,
+      text: visible ? (this.scenarioHudText?.text ?? null) : null,
+      bounds: toScreenBounds(this.scenarioHudText),
+      vfxVisible: this.scenarioHudVfx?.visible === true,
+      cueLabels: [...this.scenarioHudCueLabels],
+    };
   }
 
   /**
@@ -3175,6 +3236,28 @@ export class MainGameScene extends Phaser.Scene {
 
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
+
+    this.scenarioHudVfx = this.add
+      .rectangle(GAME.WIDTH / 2, 0, GAME.WIDTH, 8, 0xf59e0b, 0.75)
+      .setOrigin(0.5, 0)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.scenarioHudText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 112, '', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#e0f2fe',
+        backgroundColor: '#0f172add',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 120 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHintBaselineY =
@@ -4874,6 +4957,57 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  private updateScenarioHudSnapshot(panelOpen: boolean): void {
+    const snapshot = this.options.scenarioPresentation?.getHudSnapshot?.(this.world) ?? null;
+    const visible = snapshot !== null && !panelOpen && this.world.state === 'playing';
+    if (!visible) {
+      this.scenarioHudText?.setVisible(false);
+      this.scenarioHudVfx?.setVisible(false);
+      this.scenarioHudCueLabels = [];
+      return;
+    }
+
+    this.scenarioHudText?.setText(snapshot.lines.join('\n')).setVisible(true);
+    this.scenarioHudCueLabels = snapshot.cues.map((cue) => `${cue.kind}: ${cue.label}`);
+    this.playScenarioHudCues(snapshot);
+  }
+
+  private playScenarioHudCues(snapshot: ScenarioHudSnapshot): void {
+    for (const cue of snapshot.cues) {
+      if (this.playedScenarioCueIds.has(cue.id)) {
+        continue;
+      }
+      this.playedScenarioCueIds.add(cue.id);
+      if (cue.kind === 'audio') {
+        this.rewardAudioEngine?.play({
+          waveform: 'triangle',
+          label: cue.label,
+          frequencyHz: cue.id.includes('danger') ? 220 : 440,
+          durationMs: 180,
+          gain: 0.04,
+        });
+      } else if (cue.kind === 'vfx') {
+        this.flashScenarioHudVfx();
+      }
+    }
+  }
+
+  /**
+   * One-shot flash for a newly-seen `vfx` scenario cue: shows the strip and
+   * hides it again after {@link SCENARIO_HUD_VFX_FLASH_MS}, instead of
+   * staying visible for as long as the cue remains present in the snapshot.
+   */
+  private flashScenarioHudVfx(): void {
+    const vfx = this.scenarioHudVfx;
+    if (!vfx) {
+      return;
+    }
+    vfx.setVisible(true);
+    this.time.delayedCall(SCENARIO_HUD_VFX_FLASH_MS, () => {
+      vfx.setVisible(false);
+    });
+  }
+
   private updateOverlayText(): void {
     // Hide the whole HUD while a full-screen character panel is open so the
     // docked minimap (top-right, HUD_DEPTH..+8) never punches through the
@@ -4923,6 +5057,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    this.updateScenarioHudSnapshot(panelOpen);
     // The ability bar appears/disappears at runtime (spell unlock, modal open),
     // so restack the Talk/Descend hint above it right after the HUD syncs. Both
     // inputs (cached safe-area baseline, cached ability-bar top) are plain
