@@ -10,15 +10,16 @@ Graphics Designer / Asset Forge
 
 ## Systems touched
 
-sprite-pipeline, set-pieces
+sprite-pipeline, mapgen
 
 ## Apples
 
-5🍎 estimated, 1🍎 actual (discovery and pipeline preflight only)
+5🍎 estimated, 1🍎 actual (miss; discovery and pipeline preflight only)
 
 ## Outcome
 
-No assets, briefs, manifests, set-piece data, wiring, or tests were changed.
+This is a blocker handoff only; it references #3917 but must not close it. No
+assets, briefs, manifests, set-piece data, wiring, or tests were changed.
 Generation stopped before authoring because the required Azure configuration is
 unavailable in this cloud worktree:
 
