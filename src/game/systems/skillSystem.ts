@@ -242,6 +242,7 @@ function applyMilestone(
 
         const presentation = getAbilityPresentation(milestone.abilityId);
         const abilityName = presentation?.name ?? grantedDef?.name ?? milestone.abilityId;
+        const effectSummary = presentation?.passiveEffectSummary;
         pushAnnouncement(
           world.announcements,
           grantKind === 'active'
@@ -255,7 +256,7 @@ function applyMilestone(
             : {
                 kind: 'skillPassiveUnlocked',
                 archetypeIndex: -1,
-                text: `Passive Unlocked: ${abilityName}`,
+                text: `Passive Unlocked: ${abilityName}${effectSummary ? ` — ${effectSummary}` : ''}`,
                 durationMs: SKILL_ABILITY_UNLOCK_ANNOUNCEMENT_MS,
                 elapsedMs: world.elapsedMs,
               },
