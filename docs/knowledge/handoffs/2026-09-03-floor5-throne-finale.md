@@ -70,6 +70,10 @@ are fixed on this branch:
   Previously the marker stayed unlocked after a post-Regent Command Post loss
   and an accepted latch could never commit, because the objective tick had
   already stopped advancing.
+- Finale actors keep `Enemy` targeting but carry zero generic contact damage,
+  leaving `floor5ObjectiveTick` as their sole damage authority.
+- An accepted capture latch now immediately hides and locks the capture marker
+  until the objective tick commits it.
 - Documented that the finale leash is measured on the TARGET's offset from the
   actor's anchor, matching `steerFloor5Hero`; the previous field comment
   implied an actor-position leash, which would oscillate at the boundary.
@@ -104,6 +108,8 @@ After (same run, after both encounters resolve and the capture is confirmed):
 - `tests/game/floor1-main-scene-options.test.ts` — updated for the new Floor 5
   system slot, passing.
 - `npm run typecheck` passed.
+- `npm run check:test-only-exports` and `npm run lint:dead-code` passed.
+- `bash scripts/agent/verify-fast.sh` passed (811 files, 11,472 tests).
 - `bash scripts/agent/verify-fast.sh` run: 11,468 tests passed with the single
   scene-options expectation failure above, which this session then fixed.
 

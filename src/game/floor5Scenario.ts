@@ -2310,9 +2310,11 @@ function liveFloor5FinaleActors(state: Floor5SiegeState): Floor5FinaleActorState
  * Spawn one fixed finale actor.
  *
  * Finale actors deliberately carry `Enemy` (so the player's weapons — and the
- * headless BT provider's target selection — can actually engage them) but NOT
- * `EnemyBehavior`, so `enemyAISystem` never double-steers them: their stance is
- * owned exclusively by {@link siegeFinaleSystem}.
+ * headless BT provider's target selection — can actually engage them), with
+ * zero generic contact damage because attacks are owned by
+ * {@link applyFloor5FinaleAttacks}. They do NOT carry `EnemyBehavior`, so
+ * `enemyAISystem` never double-steers them: their stance is owned exclusively
+ * by {@link siegeFinaleSystem}.
  */
 function spawnFloor5FinaleActor(
   world: GameWorld,
@@ -2330,7 +2332,7 @@ function spawnFloor5FinaleActor(
     world.ecs,
     eid,
     set(Damage, {
-      amount: config.attackDamage,
+      amount: 0,
       cooldownMs: config.attackCooldownMs,
       lastFireMs: -config.attackCooldownMs,
     }),
@@ -2857,11 +2859,19 @@ export function getFloor5CaptureMarkerState(world: GameWorld) {
   return {
     positionFt: capturePoint,
     radiusFt: getFloor5FinaleConfig().capture.interactionRadiusFt,
-    visible: state.finale.captureAvailable && !state.finale.captured && !isFloor5Terminal(state),
+    visible:
+      state.finale.captureAvailable &&
+      state.finale.pendingCaptureFrame === null &&
+      !state.finale.captured &&
+      !isFloor5Terminal(state),
     // `locked` must mean exactly "capture is barred", matching what
     // `requestFloor5ThroneCapture` rejects, so prompt and confirmation can never
     // disagree.
-    locked: !state.finale.captureAvailable || state.finale.captured || isFloor5Terminal(state),
+    locked:
+      !state.finale.captureAvailable ||
+      state.finale.pendingCaptureFrame !== null ||
+      state.finale.captured ||
+      isFloor5Terminal(state),
     label: '♛ CLAIM THRONE',
   };
 }
@@ -3088,15 +3098,6 @@ export function siegeMinionSystem(world: GameWorld): void {
     world.stores.siegeMinion.lastX[eid] = x;
     world.stores.siegeMinion.lastY[eid] = y;
   }
-}
-
-/**
- * Floor 5's exit interaction is the throne capture itself: the Winner's Balcony
- * only opens as part of the capture transaction, so the shared stair-descend
- * seam routes straight into {@link requestFloor5ThroneCapture}.
- */
-export function confirmFloor5StairDescend(world: GameWorld): boolean {
-  return requestFloor5ThroneCapture(world) === 'accepted';
 }
 
 export function getFloor5RunOutcome(world: GameWorld) {

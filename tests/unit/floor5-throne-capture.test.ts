@@ -1,6 +1,14 @@
+import { hasComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { spawnPlayer, type GameWorld } from '../../src/core/index.js';
+import {
+  collisionSystem,
+  Damage,
+  damageSystem,
+  Enemy,
+  spawnPlayer,
+  type GameWorld,
+} from '../../src/core/index.js';
 import {
   getFloor5CaptureMarkerState,
   initializeFloor5Scenario,
@@ -18,11 +26,11 @@ import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' w
  * legality matrix of the capture request itself, which the real game reaches
  * through the shared stair-descend seam.
  */
-function createFloor5World(): { world: GameWorld; state: Floor5SiegeState } {
+function createFloor5World(): { world: GameWorld; state: Floor5SiegeState; playerEid: number } {
   const world = createTestWorld({ seed: 505 });
   const playerEid = spawnPlayer(world, 0, 0);
   initializeFloor5Scenario(world, playerEid);
-  return { world, state: world.floorExtendedState!.floor5Siege! };
+  return { world, state: world.floorExtendedState!.floor5Siege!, playerEid };
 }
 
 describe('Floor 5 throne capture interaction', () => {
@@ -54,11 +62,16 @@ describe('Floor 5 throne capture interaction', () => {
 
   it('latches exactly one pending capture once the throne is available', () => {
     const { world, state } = createFloor5World();
+    state.finale.capturePoint = { x: 10, y: 20 };
     state.finale.captureAvailable = true;
     state.finale.captureAvailableFrame = world.frameCount;
 
     expect(requestFloor5ThroneCapture(world)).toBe('accepted');
     expect(state.finale.pendingCaptureFrame).toBe(world.frameCount);
+    expect(getFloor5CaptureMarkerState(world)).toMatchObject({
+      visible: false,
+      locked: true,
+    });
     // A second interaction on the same latch is refused, not queued.
     expect(requestFloor5ThroneCapture(world)).toBe('already-pending');
     expect(state.finale.captureAttempts).toBe(2);
@@ -120,6 +133,26 @@ describe('Floor 5 throne capture interaction', () => {
     expect(state.breach.latched).toBe(false);
     expect(() => siegeFinaleSystem(world)).not.toThrow();
     expect(state.finale.courtyardActors).toHaveLength(0);
+  });
+
+  it('routes finale contact damage only through the Floor 5 objective authority', () => {
+    const { world, state, playerEid } = createFloor5World();
+    state.breach.latched = true;
+    world.floorObjectiveTick?.(world);
+    const actor = state.finale.courtyardActors[0]!;
+    world.stores.position.x[actor.eid] = world.stores.position.x[playerEid]!;
+    world.stores.position.y[actor.eid] = world.stores.position.y[playerEid]!;
+    const startingHealth = world.stores.health.current[playerEid]!;
+
+    expect(hasComponent(world.ecs, actor.eid, Enemy)).toBe(true);
+    expect(hasComponent(world.ecs, actor.eid, Damage)).toBe(true);
+    damageSystem(world, collisionSystem(world));
+    expect(world.stores.health.current[playerEid]).toBe(startingHealth);
+
+    world.floorObjectiveTick?.(world);
+    expect(world.stores.health.current[playerEid]).toBe(
+      startingHealth - floor5Manifest.floor5.finale.crownAuditor.attackDamage,
+    );
   });
 
   it('seals the throne door and the Winner\u2019s Balcony at init', () => {

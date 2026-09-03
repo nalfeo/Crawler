@@ -64,10 +64,10 @@ import {
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
-  confirmFloor5StairDescend,
   getFloor5CaptureMarkerState,
   getFloor5RunOutcome,
   initializeFloor5Scenario,
+  requestFloor5ThroneCapture,
   siegeDirectorSystem,
   siegeFinaleSystem,
   siegeHeroSystem,
@@ -965,7 +965,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor5',
       configureWorld: initializeFloor5Scenario,
-      onStairDescend: confirmFloor5StairDescend,
+      onStairDescend: (world: GameWorld) => requestFloor5ThroneCapture(world) === 'accepted',
       beforeEnemyAISystems: [
         companionAISystem,
         siegeMinionSystem,
