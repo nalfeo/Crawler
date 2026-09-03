@@ -35,6 +35,7 @@ describe('clearEntityStores', () => {
 
     expect(world.stores.position.x[eid]).toBe(12.5);
     expect(world.stores.health.current[eid]).toBe(50);
+    world.stores.siegeRam.lastStrikeMs[eid] = 12_345_678_901;
 
     clearEntityStores(world, eid);
 
@@ -45,6 +46,7 @@ describe('clearEntityStores', () => {
     expect(world.stores.sprite.width[eid]).toBe(0);
     expect(world.stores.enemyBehavior.type[eid]).toBe(0);
     expect(world.stores.enemyBehavior.speed[eid]).toBe(0);
+    expect(world.stores.siegeRam.lastStrikeMs[eid]).toBe(0);
   });
 
   it('leaves the render-only setPieceProps list untouched (set-piece props are not entities)', () => {

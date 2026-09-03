@@ -50,6 +50,7 @@ describe('release balance analysis', () => {
     expect(canonicalReleaseBalanceCounts()).toEqual({
       floor1: 300,
       floor2: 150,
+      floor6: 150,
       'floor1-chain': 150,
     });
   });
@@ -111,12 +112,14 @@ describe('release balance analysis', () => {
           },
         }),
       ],
+      floor6: [run({ finalFloor: 6 })],
       floor1Chain: [run({ finalLevel: 10 })],
     });
     expect(summary.meanFloor1CompletionLevel).toBe(7);
     expect(summary.meanFloor3EntryLevel).toBe(10);
     expect(summary.floor1P90CombatSkillLevel).toBe(4);
     expect(summary.floor2P90CombatSkillLevel).toBe(6);
+    expect(summary.floor6RunCount).toBe(1);
     expect(summary.meanCompletedBossFightMs).toBe(300);
     expect(summary.incompleteBossFightCount).toBe(1);
   });
@@ -135,6 +138,7 @@ describe('release balance analysis', () => {
         }),
       ],
       floor2: [run()],
+      floor6: [run({ finalFloor: 6 })],
       floor1Chain: [run()],
     });
     // Floor 1 has missing telemetry, so skill level is null
@@ -158,6 +162,7 @@ describe('release balance analysis', () => {
           },
         }),
       ],
+      floor6: [run({ finalFloor: 6 })],
       floor1Chain: [run()],
     });
     // Floor 2 has incomplete telemetry (one run missing), so skill level is null
@@ -169,6 +174,7 @@ describe('release balance analysis', () => {
       revision: 2,
       floor1RunCount: 300,
       floor2RunCount: 150,
+      floor6RunCount: 150,
       chainedRunCount: 150,
       meanFloor1CompletionLevel: 7,
       meanFloor3EntryLevel: 10,
@@ -187,6 +193,7 @@ describe('release balance analysis', () => {
       revision: 2,
       floor1RunCount: 300,
       floor2RunCount: 150,
+      floor6RunCount: 150,
       chainedRunCount: 150,
       meanFloor1CompletionLevel: 7,
       meanFloor3EntryLevel: 10,
@@ -200,5 +207,24 @@ describe('release balance analysis', () => {
     expect(() => assertReleaseBalanceSummary(summary)).toThrow(
       /canonical release-balance gate failed/i,
     );
+  });
+
+  it('rejects canonical release-balance summaries missing Floor 6 observations', () => {
+    const summary = {
+      revision: 2,
+      floor1RunCount: 300,
+      floor2RunCount: 150,
+      floor6RunCount: 0,
+      chainedRunCount: 150,
+      meanFloor1CompletionLevel: 7,
+      meanFloor3EntryLevel: 10,
+      floor1P90CombatSkillLevel: 4,
+      floor2P90CombatSkillLevel: 6,
+      completedBossFightCount: 100,
+      incompleteBossFightCount: 0,
+      meanCompletedBossFightMs: 30_000,
+    };
+
+    expect(() => assertReleaseBalanceSummary(summary)).toThrow(/Expected 150 Floor 6 runs/i);
   });
 });

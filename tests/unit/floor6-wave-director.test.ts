@@ -712,7 +712,7 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     }
   });
 
-  it('raider velocity is non-zero when DEFEND and has waypoints to follow', () => {
+  it('raider position advances along authored waypoints without relying on velocity', () => {
     const { world } = initFloor6();
     tickDirector(world);
     const state = getDefenseState(world);
@@ -729,10 +729,19 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
       const entry = state.waveManifest?.[mIdx];
       const route = state.geometry.routes.find((r) => r.id === entry?.routeId);
       if (!route || wIdx >= route.waypoints.length) continue;
-      // Should have non-zero velocity (moving toward waypoint)
-      const vx = world.stores.velocity.x[eid] ?? 0;
-      const vy = world.stores.velocity.y[eid] ?? 0;
-      expect(Math.hypot(vx, vy)).toBeGreaterThan(0);
+      const before = {
+        x: world.stores.position.x[eid] ?? 0,
+        y: world.stores.position.y[eid] ?? 0,
+      };
+      tickBoth(world);
+      const after = {
+        x: world.stores.position.x[eid] ?? 0,
+        y: world.stores.position.y[eid] ?? 0,
+      };
+      expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(0);
+      expect(Math.hypot(world.stores.velocity.x[eid] ?? 0, world.stores.velocity.y[eid] ?? 0)).toBe(
+        0,
+      );
       break; // one raider is enough
     }
   });
@@ -749,7 +758,7 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     expect(state.spawnDebt).toBe(0);
   });
 
-  it('position-based stall detection: stillFrames increments when raider does not move', () => {
+  it('position-based stall detection stays clear while direct route following advances', () => {
     const { world } = initFloor6();
     tickDirector(world);
     const state = getDefenseState(world);
@@ -762,17 +771,83 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     const raiders = Array.from(query(world.ecs, [BroadcastRelayRaider, Health]));
     if (raiders.length === 0) return; // nothing spawned yet — skip
     const eid = raiders[0]!;
-    // Freeze position by repeatedly ticking without physics (position stays constant)
-    // After stalledFramesThreshold ticks, stallResolved should be set
-    const threshold = 90; // default stalledFramesThreshold from tuning
-    // Tick past threshold; in unit tests position never changes (no physics)
-    for (let i = 0; i < threshold + 2; i++) {
+    for (let i = 0; i < 20; i++) {
       tickBoth(world);
     }
     const mIdx = world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0;
     const rec = state.liveEnemies[mIdx];
-    // Either the raider's still frames have accumulated, or stallResolved was set
     const sf = world.stores.broadcastRelayRaider.stillFrames[eid] ?? 0;
-    expect(sf > 0 || (rec?.stallResolved ?? false)).toBe(true);
+    expect(sf).toBe(0);
+    expect(rec?.stallResolved ?? false).toBe(false);
+  });
+
+  it('counts route pressure from successful spawns rather than attempted release indexes', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+    const firstRouteId = state.waveManifest?.[0]?.routeId;
+    if (!firstRouteId) throw new Error('Floor 6 manifest missing first route');
+
+    state.nextReleaseIndex = state.waveManifest?.length ?? 0;
+    state.routeReleaseCounts = { [firstRouteId]: 1 };
+
+    const pressure = getFloor6DefenseRunStats(world)?.releaseGate.routePressure ?? [];
+    expect(pressure.reduce((sum, route) => sum + route.released, 0)).toBe(1);
+    expect(pressure.find((route) => route.routeId === firstRouteId)?.released).toBe(1);
+  });
+
+  it('records stalled raiders once and resets per-run stall counters on restart', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+    const firstReleaseTick = state.waveManifest?.[0]?.releaseTick ?? 999;
+    while (world.frameCount <= firstReleaseTick) {
+      tickDirector(world);
+    }
+
+    const eid = Array.from(query(world.ecs, [BroadcastRelayRaider, Health, Position]))[0];
+    if (eid === undefined) throw new Error('Floor 6 did not spawn a raider for stall coverage');
+    const manifestIndex = world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0;
+    const routeId = state.waveManifest?.[manifestIndex]?.routeId;
+    if (!routeId) throw new Error('Spawned raider missing route manifest entry');
+    const stalledThreshold = floor6Manifest.floor6?.tuning?.stalledFramesThreshold ?? 90;
+    const frozen = {
+      x: world.stores.position.x[eid] ?? 0,
+      y: world.stores.position.y[eid] ?? 0,
+    };
+    const tickFrozenRaider = () => {
+      setComponent(world.ecs, eid, Position, frozen);
+      world.stores.broadcastRelayRaider.prevX[eid] = frozen.x;
+      world.stores.broadcastRelayRaider.prevY[eid] = frozen.y;
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      floor6RaiderSystem(world);
+    };
+
+    for (let i = 0; i < stalledThreshold + 5; i++) {
+      tickFrozenRaider();
+    }
+
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+    expect(state.liveEnemies[manifestIndex]?.stallResolved).toBe(true);
+
+    for (let i = 0; i < 5; i++) {
+      tickFrozenRaider();
+    }
+
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+
+    state.relayHp = 0;
+    floor6DefenseDirectorSystem(world);
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+
+    state.phase = { kind: 'SETUP' };
+    tickDirector(world);
+    expect(state.stalledRaiderCount).toBe(0);
+    expect(state.routeStallCounts).toEqual({});
   });
 });

@@ -68,7 +68,7 @@ describe('scenario definitions', () => {
     // OUT of the implemented (sweepable/winnable) set.
     expect(isFloorImplemented('floor3')).toBe(false);
     expect(isFloorImplemented('floor5')).toBe(false);
-    expect(isFloorImplemented('floor6')).toBe(false);
+    expect(isFloorImplemented('floor6')).toBe(true);
   });
 
   it('returns floor3 scenario with the biome-overworld director copy', () => {

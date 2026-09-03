@@ -412,13 +412,9 @@ function buildFloor5RamRoute(
   });
 }
 
-function createFloor5RamState(
-  world: GameWorld,
-  config: ReturnType<typeof getFloor5Config>,
-): Floor5RamState {
+function createFloor5RamState(config: ReturnType<typeof getFloor5Config>): Floor5RamState {
   const manifest = getFloor5Manifest();
   const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
-  void world;
   return {
     eid: 0,
     health: config.ram.health,
@@ -457,7 +453,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     commandPostHealth: config.commandPost.health,
     engineState: 'LOCKED',
     breachState: 'SEALED',
-    ram: createFloor5RamState(world, config),
+    ram: createFloor5RamState(config),
     finale: createFloor5FinaleState(),
     breach: {
       latched: false,

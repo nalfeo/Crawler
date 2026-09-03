@@ -29,7 +29,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
     }),
     reachedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
     clearedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
-    booleans: fc.array(fc.boolean(), { minLength: 14, maxLength: 14 }),
+    booleans: fc.array(fc.boolean(), { minLength: 21, maxLength: 21 }),
   })
   .map((value) => {
     const empty = createEmptyAchievementFactSnapshot();
@@ -67,6 +67,13 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         allPresentFamiliesEngagedInCombat: value.booleans[11]!,
         allPresentFamiliesNeutralOrBetter: value.booleans[12]!,
         allPresentFamilyBossesEngaged: value.booleans[13]!,
+        floor6RelayBriefed: value.booleans[14]!,
+        floor6FirstWaveCleared: value.booleans[15]!,
+        floor6FirstBuildPlaced: value.booleans[16]!,
+        floor6FirstUpgradeChosen: value.booleans[17]!,
+        floor6BreakCleared: value.booleans[18]!,
+        floor6DeadlineDefeated: value.booleans[19]!,
+        floor6RelaySecured: value.booleans[20]!,
       },
       questIds: value.questIds,
       completedQuestIds: value.completedQuestIds,
