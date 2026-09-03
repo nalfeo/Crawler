@@ -24,7 +24,7 @@ const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
   'copilot-pull-request-reviewer[bot]',
 ]);
 
-// Exported so callers (e.g. nightly-balance-issue.mjs) can recognize a completed
+// Exported so recurring issue filers can recognize a completed
 // Copilot assignment as durable proof of finished intake without duplicating this
 // login list.
 export function isCopilotLogin(login) {

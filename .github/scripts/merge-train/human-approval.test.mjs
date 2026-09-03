@@ -22,23 +22,9 @@ const gatedIssue = {
   labels: { nodes: [{ name: HUMAN_APPROVAL_LABEL }] },
 };
 
-test('detects the durable PR label, source-issue label, and nightly Copilot branch', () => {
+test('detects durable PR and source-issue labels', () => {
   assert.equal(requiresHumanApproval({ labels: [{ name: HUMAN_APPROVAL_LABEL }] }), true);
   assert.equal(requiresHumanApproval({}, [gatedIssue]), true);
-  // Legacy branch name ('driven' variant) — must still match
-  assert.equal(
-    requiresHumanApproval({
-      head: { ref: 'copilot/balance-telemetry-driven-improvement-sweep' },
-    }),
-    true,
-  );
-  // Current branch name (no 'driven') — was the root cause of the stale-prefix defect
-  assert.equal(
-    requiresHumanApproval({
-      head: { ref: 'copilot/balance-telemetry-improvement-sweep' },
-    }),
-    true,
-  );
   assert.equal(requiresHumanApproval({ head: { ref: 'copilot/unrelated-fix' } }), false);
 });
 
@@ -229,15 +215,6 @@ test('closingIssuesPropagatingHumanApproval returns propagating issues when PR h
       gatedIssue,
     ]),
     [gatedIssue],
-  );
-
-  // PR is a nightly-balance branch — no auto-strip (intentional gate)
-  assert.deepEqual(
-    closingIssuesPropagatingHumanApproval(
-      { head: { ref: 'copilot/balance-telemetry-improvement-sweep' } },
-      [gatedIssue],
-    ),
-    [],
   );
 
   // No closing issues with the label — nothing to propagate
