@@ -56,12 +56,13 @@ describe('dev-tier build workflows configure the ingest endpoint', () => {
     expect(new Set(urls).size).toBe(1);
   });
 
-  it('labels every GitHub issue created from a run upload as telemetry', () => {
+  it('keeps telemetry quarantined while identifying explicit player reports', () => {
     const source = readFileSync(
       path.join(REPO_ROOT, 'functions/dev-build-ingest/src/index.ts'),
       'utf8',
     );
-    expect(source).toMatch(/labels:\s*\['telemetry'\]/);
+    expect(source).toMatch(/labels:\s*\[\s*'telemetry'/);
+    expect(source).toMatch(/validated\.bundle\.file_issue\s*\?\s*\['reported-issue'\]/);
     expect(source).not.toMatch(/'goobers:approved'/);
     expect(source).not.toMatch(/labels:\s*\[survey \? 'telemetry' : 'bug'\]/);
   });

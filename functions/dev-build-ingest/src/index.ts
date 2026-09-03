@@ -461,7 +461,7 @@ async function fileGitHubIssue(
     body: JSON.stringify({
       title,
       body: lines.join('\n'),
-      labels: ['telemetry'],
+      labels: ['telemetry', ...(validated.bundle.file_issue ? ['reported-issue'] : [])],
     }),
   });
   if (!result.ok) throw new Error(`GitHub issue creation failed with HTTP ${result.status}`);

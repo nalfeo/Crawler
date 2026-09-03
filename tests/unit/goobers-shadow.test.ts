@@ -274,7 +274,20 @@ describe('Goobers shadow-mode parity', () => {
     expect(workflow).toContain('legacy-lifecycle-${run.id}');
     expect(workflow).not.toContain('run.pull_requests');
     expect(workflow).not.toContain('github.rest.pulls.get');
+    expect(workflow).not.toMatch(/\$\{\{[^}]*\brunner\.temp\b[^}]*\}\}/);
+    expect(
+      workflow.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-shadow-instance"$/gm),
+    ).toHaveLength(3);
+    expect(workflow.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
+    expect(workflow).toContain('mkdir -p "$GOOBERS_INSTANCE/config"');
+    expect(workflow).toContain(
+      'cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-shadow.yaml',
+    );
+    expect(workflow).not.toMatch(/cp\s+(?:-[^\s]+\s+)*\.goobers\/?\s/);
     expect(workflow).toMatch(/uses: actions\/upload-artifact@v4\s+if: always\(\)/);
+    expect(workflow).toMatch(
+      /path: \.goobers-shadow\/\s+if-no-files-found: error\s+include-hidden-files: true/,
+    );
 
     for (const legacyWorkflow of ['ci-recovery.yml', 'merge-train.yml']) {
       const source = fs.readFileSync(

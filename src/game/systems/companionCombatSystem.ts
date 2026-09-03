@@ -4,10 +4,22 @@ import { Companion, DeathTimer, Enemy, Position, Team } from '../../core/compone
 import type { GameWorld } from '../../core/world.js';
 import { STAT_BAND_SCALE, stylePersona } from '../../shared/data/floor3/styles.js';
 import { speciesForToken } from '../../shared/data/floor3/species.js';
+import { TeamId } from '../../shared/constants.js';
+import tuning from '../../shared/data/tuning.json';
 import { getCompanionAIDecision } from './companionAISystem.js';
 
 const MELEE_RANGE_FT = 3;
 const BASE_DAMAGE = 10;
+/**
+ * Floor-3-ONLY companion buff (human-authorized, session 2026-09-03):
+ * outgoing damage multiplier applied only to the player's own party
+ * Companions (`TeamId.PLAYER`), compensating for the party's structural
+ * numbers disadvantage against multi-Companion Studio/Final-Four rosters.
+ * Wild and rival roster Companions deal unmodified damage. Tunable via
+ * `tuning.floor3Companion.playerCompanionDamageMultiplier`; see
+ * `floor3-companion-lab` for the explorable knob.
+ */
+const PLAYER_COMPANION_DAMAGE_MULTIPLIER = tuning.floor3Companion.playerCompanionDamageMultiplier;
 interface CompanionAttackState {
   generation: number;
   lastAttackMs: number;
@@ -24,8 +36,17 @@ function lastAttacks(world: GameWorld): Map<number, CompanionAttackState> {
   return attacks;
 }
 
-/** Resolves the Floor 3 party's auto-attacks after companion targeting. */
-export function companionCombatSystem(world: GameWorld): void {
+/**
+ * Resolves the Floor 3 party's auto-attacks after companion targeting.
+ *
+ * The optional multiplier is a designer-lab seam: production callers omit it
+ * and therefore use tuning.json, while the Floor 3 companion lab can exercise
+ * this exact system with an interactive lil-gui value.
+ */
+export function companionCombatSystem(
+  world: GameWorld,
+  playerCompanionDamageMultiplier = PLAYER_COMPANION_DAMAGE_MULTIPLIER,
+): void {
   const attacks = lastAttacks(world);
   const companions = query(world.ecs, [Companion, Enemy, Position, Team]);
   const liveCompanions = new Set(companions);
@@ -66,10 +87,14 @@ export function companionCombatSystem(world: GameWorld): void {
     const defender = hasComponent(world.ecs, target, Companion)
       ? speciesForToken(world.stores.companion.speciesToken[target] ?? 0)
       : undefined;
+    const attackerBuffMultiplier =
+      world.floorId === 'floor3' && (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER
+        ? playerCompanionDamageMultiplier
+        : 1;
     applyDamage(
       world,
       target,
-      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile],
+      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier,
       world.stores.position.x[target] ?? 0,
       world.stores.position.y[target] ?? 0,
       {
