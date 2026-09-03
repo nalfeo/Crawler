@@ -12,6 +12,11 @@
  * mirroring headless `RunStats.floor4Arena`) until the arena director's
  * phase trace reaches `VICTORY`.
  *
+ * This is the **visual half of the slice-1 acceptance contract**; every
+ * assertion below is tagged with its criterion id (`C1`..`C8`) from the
+ * contract table in `.specify/specs/floor4-playable-completion.md`, matching
+ * the headless gate in `tests/headless/floor4-arena-completion.test.ts`.
+ *
  * ## Why the fast-restart timing matters
  *
  * Selecting Floor 4 + seed 404 via the lab UI calls `phaserScene.scene
@@ -50,7 +55,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
-import { assessFloor4Completion } from '../helpers/floor4-completion-contract.js';
+import {
+  FLOOR4_ACTS,
+  FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
+  FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TOTAL_WAVES_RELEASED,
+} from '../helpers/floor4-completion-contract.js';
 
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner`;
 
@@ -76,16 +86,24 @@ async function loadAiRunner(page: Page): Promise<void> {
 }
 
 interface Floor4RunSnapshot {
+  effectiveFloor: string | null;
+  openingPhaseKind: string | null;
+  openingReason: string | null;
   phaseKind: string | null;
   wavesReleased: number | undefined;
   enemiesSpawned: number | undefined;
+  gateTelegraphsArmed: number | undefined;
   headlinerSpawned: number | undefined;
   headlinerDefeated: number | undefined;
+  headlinerOvertimeStarted: number | undefined;
+  waveActs: number[];
+  headlineActs: number[];
   intermissionActs: number[];
-  intermissionReasons: string[];
+  intermissionExitReasons: string[];
   actIncomeCount: number;
+  arenaElapsedMs: number | undefined;
+  gameMs: number | null;
   timelineFingerprint: string;
-  frame: number;
 }
 
 interface Floor4VisualRunResult {
@@ -147,27 +165,37 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
     }
 
     const finalSnapshot = await page.evaluate(() => {
-      const arena = window.__aiRunnerDebug?.().floor4Arena;
+      const snap = window.__aiRunnerDebug?.();
+      const arena = snap?.floor4Arena;
       const timeline = Array.isArray(arena?.timeline) ? arena.timeline : [];
-      const intermissionActs = timeline
-        .filter(
-          (entry) => entry?.phase?.kind === 'INTERMISSION' && typeof entry?.phase?.act === 'number',
+      const actsFor = (kind: string): number[] =>
+        timeline
+          .filter((entry) => entry?.phase?.kind === kind && typeof entry?.phase?.act === 'number')
+          .map((entry) => entry.phase.act as number);
+      const intermissionExitReasons = timeline
+        .map((entry, index) =>
+          timeline[index - 1]?.phase?.kind === 'INTERMISSION' ? entry?.reason : undefined,
         )
-        .map((entry) => entry.phase.act);
-      const intermissionReasons = timeline.flatMap((entry, index) =>
-        timeline[index - 1]?.phase?.kind === 'INTERMISSION'
-          ? [typeof entry?.reason === 'string' ? entry.reason : 'unknown']
-          : [],
-      );
+        .filter((reason): reason is string => typeof reason === 'string');
       return {
+        effectiveFloor: typeof snap?.effectiveFloor === 'string' ? snap.effectiveFloor : null,
+        openingPhaseKind:
+          typeof timeline[0]?.phase?.kind === 'string' ? timeline[0].phase.kind : null,
+        openingReason: typeof timeline[0]?.reason === 'string' ? timeline[0].reason : null,
         phaseKind: typeof arena?.phase?.kind === 'string' ? arena.phase.kind : null,
         wavesReleased: arena?.waveTelemetry?.wavesReleased,
         enemiesSpawned: arena?.waveTelemetry?.enemiesSpawned,
+        gateTelegraphsArmed: arena?.waveTelemetry?.gateTelegraphsArmed,
         headlinerSpawned: arena?.headlinerTelemetry?.spawned,
         headlinerDefeated: arena?.headlinerTelemetry?.defeated,
-        intermissionActs,
-        intermissionReasons,
+        headlinerOvertimeStarted: arena?.headlinerTelemetry?.overtimeStarted,
+        waveActs: actsFor('WAVES'),
+        headlineActs: actsFor('HEADLINE'),
+        intermissionActs: actsFor('INTERMISSION'),
+        intermissionExitReasons,
         actIncomeCount: Array.isArray(arena?.actIncome) ? arena.actIncome.length : 0,
+        arenaElapsedMs: arena?.arenaElapsedMs,
+        gameMs: typeof snap?.gameMs === 'number' ? snap.gameMs : null,
         timelineFingerprint: timeline
           .map((entry) => {
             const kind = typeof entry?.phase?.kind === 'string' ? entry.phase.kind : 'unknown';
@@ -175,7 +203,6 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
             return `${kind}${act}`;
           })
           .join('|'),
-        frame: window.__aiRunnerDebug?.().frame ?? -1,
       };
     });
 
@@ -187,17 +214,21 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
 
 describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
   let browser: Browser;
+  let firstRun: Floor4VisualRunResult;
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
-  });
+    // Shared across this describe's tests (the main completion test AND the
+    // isolated C5 characterization below) so the second test doesn't need to
+    // pay for another real browser run of the same canonical seed.
+    firstRun = await runVisualFloor4Completion(browser);
+  }, 300_000);
 
   afterAll(async () => {
     await closeQuietly(browser);
   });
 
   it('completes: production BehaviorTreeAI drives the real MainGameScene to VICTORY with deterministic visual-run parity', async () => {
-    const firstRun = await runVisualFloor4Completion(browser);
     const firstContext = `pageErrors=${JSON.stringify(firstRun.pageErrors)} lastSnapshot=${JSON.stringify(
       firstRun.lastSnapshot,
     )} finalSnapshot=${JSON.stringify(firstRun.finalSnapshot)}`;
@@ -206,42 +237,45 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // freeze the render loop with a TypeError must not recur.
     expect(firstRun.pageErrors, firstContext).toEqual([]);
     expect(firstRun.reachedVictory, firstContext).toBe(true);
-    expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
-    expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBeGreaterThanOrEqual(5);
+
+    // C1 — the standard Floor 4 scenario initialized inside the real scene.
+    expect(firstRun.finalSnapshot.effectiveFloor, firstContext).toBe('floor4');
+    expect(firstRun.finalSnapshot.openingPhaseKind, firstContext).toBe('COUNTDOWN');
+    expect(firstRun.finalSnapshot.openingReason, firstContext).toBe('floor4-initialized');
+    // C2 — physical hostiles released through the authored feed-gate path.
     expect(firstRun.finalSnapshot.enemiesSpawned, firstContext).toBeGreaterThanOrEqual(200);
+    expect(firstRun.finalSnapshot.gateTelegraphsArmed, firstContext).toBeGreaterThan(0);
+    // C3 — all five wave windows opened AND released every authored wave
+    // (manifest-derived full-release ceiling; see the headless gate's
+    // identical comment for why a bare lower bound would also pass with
+    // earlier acts alone).
+    expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBe(FLOOR4_TOTAL_WAVES_RELEASED);
+    expect(firstRun.finalSnapshot.waveActs, firstContext).toEqual([...FLOOR4_ACTS]);
+    // C4 — all five Headliners physically spawned and fell to ordinary combat.
     expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
-    expect(new Set(firstRun.finalSnapshot.intermissionActs).size, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
+    expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
+    // C5 — partially met (see the dedicated shortfall test below for the
+    // gap): every act's intermission was entered, banked income, and
+    // resolved (each has a recorded exit reason).
+    expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toHaveLength(5);
+    // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
+    // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
+    // uses to produce headless `RunStats.outcome === 'victory'`; the visual
+    // runner produces no `RunStats` of its own.
+    expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
     expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
-    const firstAssessment = assessFloor4Completion({
-      scenarioInitialized: firstRun.finalSnapshot.phaseKind !== null,
-      phaseKind: firstRun.finalSnapshot.phaseKind,
-      wavesReleased: firstRun.finalSnapshot.wavesReleased,
-      enemiesSpawned: firstRun.finalSnapshot.enemiesSpawned,
-      headlinersSpawned: firstRun.finalSnapshot.headlinerSpawned,
-      headlinersDefeated: firstRun.finalSnapshot.headlinerDefeated,
-      intermissionActs: firstRun.finalSnapshot.intermissionActs,
-      intermissionReasons: firstRun.finalSnapshot.intermissionReasons,
-      // MainGameScene does not emit RunStats; the phase check above is its production outcome.
-      runStatsOutcome: null,
-      totalFrames: firstRun.finalSnapshot.frame,
-      maxFrames: Number.MAX_SAFE_INTEGER,
-      stallBackstopReached: false,
-    });
-    expect(firstAssessment.criteria['scenario-initialized'], firstContext).toBe(true);
-    expect(firstAssessment.criteria['physical-wave-hostile-spawned'], firstContext).toBe(true);
-    expect(firstAssessment.criteria['all-wave-windows-released'], firstContext).toBe(true);
-    expect(firstAssessment.criteria['all-headliners-spawned-and-defeated'], firstContext).toBe(
-      true,
-    );
-    expect(firstAssessment.criteria['phase-reached-victory'], firstContext).toBe(true);
-    expect(firstAssessment.criteria['runstats-outcome-victory'], firstContext).toBe(false);
-    expect(firstAssessment.criteria['terminated-before-stall-backstop'], firstContext).toBe(true);
-    expect(firstAssessment.criteria['intermission-public-interaction'], firstContext).toBe(false);
-    expect(firstAssessment.firstFailedCriterion, firstContext).toBe(
-      'intermission-public-interaction',
-    );
+    // C8 — terminated under the real Floor 4 stall backstop. `arenaElapsedMs`
+    // only advances during WAVES/HEADLINE and is capped well below the
+    // backstop, so it can't prove this; compare the raw clock
+    // (`gameMs` === `world.elapsedMs`) that `floor4ObjectiveTick` itself
+    // measures against the manifest deadline — the same field headless
+    // `RunStats.gameTimeMs` reports for the identical C8 assertion.
+    expect(firstRun.finalSnapshot.gameMs, firstContext).not.toBeNull();
+    expect(firstRun.finalSnapshot.gameMs, firstContext).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
 
     const secondRun = await runVisualFloor4Completion(browser);
     const secondContext = `pageErrors=${JSON.stringify(
@@ -271,9 +305,35 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(secondRun.finalSnapshot.actIncomeCount, secondContext).toBe(
       firstRun.finalSnapshot.actIncomeCount,
     );
+    expect(secondRun.finalSnapshot.gameMs, secondContext).not.toBeNull();
+    expect(secondRun.finalSnapshot.gameMs, secondContext).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
       firstRun.finalSnapshot.timelineFingerprint,
     );
   }, 300_000);
+
+  // C5 (not yet met) — isolated as an expected-failure characterization
+  // rather than folded into the "completes" test above, so nothing here can
+  // be mistaken for evidence the criterion passes. `FLOOR4_AUTO_INTERMISSION_
+  // EXIT_REASONS` is the shared-timer allowlist; the criterion's actual bar
+  // is that at least one intermission resolves for a reason OUTSIDE that
+  // allowlist (a real Green Room/stairs interaction). Today every exit is in
+  // the allowlist, so the inner assertion fails — `it.fails` records that as
+  // the expected, documented result. Once a future slice adds the real
+  // interaction, the inner assertion starts passing, which flips `it.fails`
+  // into an *unexpected* pass and breaks this test — forcing whoever ships
+  // that slice to drop `.fails` here and flip the C5 row in the spec table
+  // to "met" in the same change. Reuses the same shared `firstRun` from
+  // `beforeAll` rather than driving a second real browser run.
+  it.fails(
+    'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
+    () => {
+      expect(
+        firstRun.finalSnapshot.intermissionExitReasons.some(
+          (reason) => !FLOOR4_AUTO_INTERMISSION_EXIT_REASONS.includes(reason),
+        ),
+      ).toBe(true);
+    },
+  );
 });

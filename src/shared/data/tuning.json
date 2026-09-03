@@ -56,7 +56,13 @@
     "commandLevelsPerCapacityCharge": 5,
     "_commandLevelsPerCapacityCharge_note": "Player levels required per EXTRA simultaneous command charge (spec R7 'player level also powers Floor-3 command capacity'). Capacity is 1 + floor((playerLevel - 1) / this), capped at partyMaxSize.",
     "partyMaxSize": 6,
-    "_partyMaxSize_note": "Starter pick + 5 poaches = 6 (spec R5); PartySlot.locked latches once this many Companions have been recruited."
+    "_partyMaxSize_note": "Starter pick + 5 poaches = 6 (spec R5); PartySlot.locked latches once this many Companions have been recruited.",
+    "starterLevel": 25,
+    "_starterLevel_note": "Floor-3-ONLY initial level for the player's starter Companion (recruitFloor3PartyCompanion), replacing a hardcoded level 1. Raised to the adult-form threshold (species.ts FORM_MIN_LEVELS[2]=25) so the lone starter is not stuck at the weakest (baby, statScale 1.0) band while the party is still size-1 against multi-Companion Studio/wild encounters. Human-authorized Floor-3-only tuning lever (session 2026-09-03); does not touch Floor 1/2 leveling.",
+    "playerCompanionHpMultiplier": 3,
+    "_playerCompanionHpMultiplier_note": "Floor-3-ONLY HP multiplier applied only to the player's own recruited party Companions (TeamId.PLAYER) at recruit time, on top of the shared species/form statScale every Companion (wild, Studio, Final Four) already uses. Compensates for the party's structural numbers disadvantage (1 starter vs a multi-Companion Studio/Final-Four roster) without touching wild/rival Companion stats. Human-authorized Floor-3-only companion buff (session 2026-09-03); tune via floor3-companion-lab, not a broad win-rate sweep.",
+    "playerCompanionDamageMultiplier": 3,
+    "_playerCompanionDamageMultiplier_note": "Floor-3-ONLY outgoing-damage multiplier applied only to the player's own recruited party Companions (TeamId.PLAYER) in companionCombatSystem, leaving wild/Studio/Final-Four Companion damage (and all other floors) untouched. Same rationale/authorization as playerCompanionHpMultiplier: offsets being outnumbered, not a general balance claim."
   },
   "floor": {
     "minDurationS": 120,
