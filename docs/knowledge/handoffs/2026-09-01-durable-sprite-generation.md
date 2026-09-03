@@ -40,9 +40,10 @@ therefore not reproducible from durable storage alone.
 **The fix — one shared durability boundary.**
 
 - `scripts/sprites/run-durability.ts` (new) is the single boundary:
-  - `resolveGenerationRunStore()` — durable-by-default. Unset `SPRITES_RUN_STORE` - Azure credentials ⇒ `azure-blob` mirrored to local. Unset + no credentials
-    ⇒ **throws** naming `npm run setup:azure:env` and the `local` opt-out.
-    Explicit `local` ⇒ `ephemeral-explicit`, labelled `LOCAL ONLY … NOT durably
+  - `resolveGenerationRunStore()` — durable-by-default. Unset `SPRITES_RUN_STORE`
+    - Azure credentials ⇒ `azure-blob` mirrored to local. Unset + no credentials
+      ⇒ **throws** naming `npm run setup:azure:env` and the `local` opt-out.
+      Explicit `local` ⇒ `ephemeral-explicit`, labelled `LOCAL ONLY … NOT durably
 persisted`.
   - `buildRunProvenance()` — pure/deterministic; emits `provenance/brief.yaml`
     (verbatim authored brief) and `provenance/prompt.json` (expanded effective

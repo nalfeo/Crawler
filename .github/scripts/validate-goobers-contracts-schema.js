@@ -180,8 +180,7 @@ export const outputV1 = {
         },
         idempotencyKey: {
           type: ['string', 'null'],
-          description:
-            'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
+          description: 'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
         },
         parityStatus: {
           type: ['string', 'null'],

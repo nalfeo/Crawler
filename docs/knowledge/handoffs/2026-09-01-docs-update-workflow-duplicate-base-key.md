@@ -9,8 +9,8 @@ ci-automation
 PR #4041 (this branch, "supply an explicit base branch for the docs-update
 automation PR") added `base: main` to the two `peter-evans/create-pull-request@v7`
 steps in `.github/workflows/docs-update.yml`. Independently, PR #4053 ("Fix
-docs-update PR creation on workflow*run detached HEAD") landed on `main` with
-the \_same* fix. When this PR's branch was fast-forwarded/merged with `main` via
+docs-update PR creation on workflow_run detached HEAD") landed on `main` with
+the _same_ fix. When this PR's branch was fast-forwarded/merged with `main` via
 `update-branch`, the merge kept both PRs' `base: main` lines in each `with:`
 block, producing a duplicate YAML mapping key at line 182 (and a second
 duplicate at line 224 for the retry step):
