@@ -2169,6 +2169,15 @@ test('human escalation requires both a human hand-off and an explicit unresolved
     'However, I do not have write access to edit the actual GitHub PR description/closing-keyword text from this session\'s available tooling (no PR-metadata-write scope, only code push + comment replies) — the PR body above still literally reads "Fixes #3980". ' +
     '**Leaving this thread unresolved**: a maintainer (or an agent with PR-edit permissions) needs to manually change the PR description from `Fixes #3980` to `Related to #3980` before merge, so #3980 is not auto-closed incomplete.';
   assert.equal(isHumanEscalationDeclaration(pr4115Reply), true);
+  // The external-action pattern must require an actual actor phrase governing
+  // the action, not just the words "human"/"maintainer"/"owner" appearing
+  // anywhere before "needs"/"must" in the clause (PR #4123 review finding).
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'Leaving the human-readable label unresolved: it must be corrected in code.',
+    ),
+    false,
+  );
   // A hand-off mention alone must not park a PR that inline repair can still fix.
   assert.equal(
     isHumanEscalationDeclaration(

@@ -1033,7 +1033,7 @@ const humanEscalationHandoffPattern =
 const humanEscalationUnresolvedPattern =
   /\b(?:leav(?:e|es|ing)|left|leaving|keep(?:ing)?|remain(?:s|ing)?|stays?)\b[^.!?\n]{0,80}?\bunresolved\b/i;
 const humanEscalationExternalActionPattern =
-  /\b(?:human|maintainer|owner|agent\s+with\s+[^.!?\n]{0,80}\bpermissions?)\b[^.!?\n]{0,140}\b(?:needs?|must|requires?|required)\b/i;
+  /\b(?:a|an|the|each|every|only)\s+(?:human|maintainer|owner|agent\s+with\s+[^.!?\n]{0,80}\bpermissions?)\b(?!-)(?:\s*\([^)]{0,120}\))?[^.!?\n]{0,80}\b(?:needs?|must|requires?|required)\b/i;
 const humanEscalationConditionalPattern =
   /\b(?:if|when|should|would|could|might|may|maybe|later|future|next\s+time|recurs?)\b/i;
 
