@@ -57,6 +57,8 @@ ci-policy
 - Added deterministic workflow-contract assertions for step ordering,
   no-work/dependency gating, Actions URL rendering, PR recovery sources,
   explicit PR URL rendering, and rerun idempotency.
+- Extended the existing ambient `.mjs` declarations for the shared Goobers
+  lifecycle marker constants used by the workflow contract test.
 - Bracketed the real `goobers run` invocation with the existing
   `.github/actions/host-profile` action after dependency/setup work. Both steps
   use the `goobers-run` label; the report runs immediately after Goobers with

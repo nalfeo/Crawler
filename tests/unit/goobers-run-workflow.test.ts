@@ -724,7 +724,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(script).toContain('echo "::error::${pr_resolution_error}"');
     expect(postIndex).toBeGreaterThanOrEqual(0);
     expect(failIndex).toBeGreaterThan(postIndex);
-    expect(script.match(/marker="<!-- goobers:github-run /g)).toHaveLength(1);
+    expect(script.match(/marker="<!-- crawler-goobers-run-result:v1 /g)).toHaveLength(1);
     expect(script).toContain('echo "$marker"');
   });
 
