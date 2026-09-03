@@ -98,6 +98,7 @@ import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { createLogger } from '../shared/logger.js';
 import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../shared/npc-types.js';
+import tuning from '../shared/data/tuning.json';
 
 const logger = createLogger('game:floor3-scenario');
 
@@ -107,6 +108,22 @@ const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
 /** World-unit offset (one map tile) so the starter Companion doesn't spawn stacked on the player. */
 const FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES = 1;
 const FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES = 1;
+/**
+ * Floor-3-ONLY: initial level of the player's starter Companion (spec R5
+ * §6.1), tunable via `tuning.floor3Companion.starterLevel` instead of a
+ * hardcoded `1`. Raising this crosses into higher stat-scale forms
+ * (`FORM_MIN_LEVELS`), giving the lone starter a fighting chance while the
+ * party is still size-1 against multi-Companion Studio/wild encounters.
+ * See `floor3-companion-lab` for the explorable knob.
+ */
+const FLOOR3_STARTER_COMPANION_LEVEL = tuning.floor3Companion.starterLevel;
+/**
+ * Floor-3-ONLY HP multiplier applied only to the player's own recruited
+ * party Companions (`recruitFloor3PartyCompanion`, both the starter pick
+ * and every Trainer poach), on top of the species/form `statScale` every
+ * Companion already uses. Wild/Studio/Final-Four Companion HP is untouched.
+ */
+const FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER = tuning.floor3Companion.playerCompanionHpMultiplier;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
@@ -1360,7 +1377,7 @@ function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): vo
     }
   }
   if (species !== undefined) {
-    recruitFloor3PartyCompanion(world, species, 1);
+    recruitFloor3PartyCompanion(world, species, FLOOR3_STARTER_COMPANION_LEVEL);
   }
 
   if (world.floorExtendedState) {
@@ -1390,7 +1407,15 @@ function recruitFloor3PartyCompanion(
 
   const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
   const form = formForLevel(species, level);
-  const hp = archetype ? Math.max(1, Math.round(archetype.hp * form.statScale)) : 1;
+  // Floor-3-ONLY companion buff (human-authorized, session 2026-09-03):
+  // the player's own recruited party Companions get an HP multiplier on top
+  // of the shared species/form statScale, compensating for the party's
+  // numbers disadvantage against multi-Companion Studio/Final-Four rosters.
+  // Wild and rival roster Companions (spawnRosterCompanion) never pass
+  // through this function, so they are unaffected.
+  const hp = archetype
+    ? Math.max(1, Math.round(archetype.hp * form.statScale * FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER))
+    : 1;
   const attackRange =
     archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
       ? archetype.detectRange * 0.65

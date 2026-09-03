@@ -64,6 +64,7 @@ import {
   markSpellBrokerPurchased,
 } from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
+import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
   computeWeaponPersonaStatAllocation,
@@ -425,6 +426,36 @@ export function autoFloor2ProgressionSystem(world: GameWorld, playerEid: number)
     return;
   }
   confirmFloor2StairDescend(world, playerEid);
+}
+
+export function autoFloor3ProgressionSystem(world: GameWorld, playerEid: number): void {
+  const floor3State = world.floorExtendedState?.floor3Studios;
+  if (!floor3State) {
+    return;
+  }
+
+  // Headless/AI-runner parity: once the season win is latched, deterministically
+  // keep the first valid party Companion using the same scenario callback the
+  // headless runner historically used.
+  autoDefaultFloor3KeptCompanion(world);
+
+  if (
+    !floor3State.staircaseUnlocked ||
+    !floor3State.staircaseSpawned ||
+    floor3State.staircaseDiscovered ||
+    !floor3State.staircasePos
+  ) {
+    return;
+  }
+
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const dx = playerX - floor3State.staircasePos.x;
+  const dy = playerY - floor3State.staircasePos.y;
+  if (Math.hypot(dx, dy) > FLOOR2_STAIR_MARKER_RADIUS_FT) {
+    return;
+  }
+  confirmFloor3StairDescend(world, playerEid);
 }
 
 /**
