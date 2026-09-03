@@ -64,7 +64,7 @@ with zero page errors and an identical phase fingerprint across both runs.
 
 ## Key Decisions Made
 
-- **No `src/**` change.\*\* The issue says "no implementation or tuning belongs in
+- **No source change at all.** The issue says "no implementation or tuning belongs in
   this slice," so every gap was closed with test-only assertions read from
   telemetry that already exists.
 - **C7 by equivalence in the visual runner.** `RunStats` only exists headless.
