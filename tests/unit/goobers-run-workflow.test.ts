@@ -585,7 +585,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(result?.run).toContain('echo "- Pull request: #${pr_number} — ${pr_url}"');
     expect(result?.run).toContain(GOOBERS_RUN_RESULT_MARKER_PREFIX);
     expect(result?.run).toMatch(
-      /echo "<!-- crawler-goobers-run-result:v1[^\n]*"\s*\n\s*echo\s*\n\s*echo "Goobers GitHub Actions run/,
+      /echo "\$marker"\s*\n\s*echo\s*\n\s*echo "Goobers GitHub Actions run/,
     );
     expect(result?.run).toContain('find_issue_comment_id');
     expect(result?.run).toContain('gh api --silent --method PATCH');

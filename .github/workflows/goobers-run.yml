@@ -672,9 +672,10 @@ jobs:
             ' "$events_file" | tail -n 8
           )"
 
+          marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           body="$(mktemp)"
           {
-            echo "<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
+            echo "$marker"
             echo
             echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${JOB_STATUS}**."
             echo
@@ -694,7 +695,6 @@ jobs:
             fi
           } > "$body"
 
-          marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           find_issue_comment_id() {
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
