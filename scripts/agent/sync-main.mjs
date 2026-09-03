@@ -45,6 +45,15 @@ function git(cwd, args) {
   }).trim();
 }
 
+function gitSucceeds(cwd, args, runGit) {
+  try {
+    runGit(cwd, args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function branchHasShepherdContext(branch) {
   const lowerBranch = branch.toLowerCase();
   const segments = lowerBranch.split(/[/_-]+/);
@@ -69,13 +78,25 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
     return false;
   }
 
-  const merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
+  let merges;
+  try {
+    merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
+  } catch {
+    return false;
+  }
   if (!merges) return false;
-  const mainAncestors = new Set(runGit(cwd, ['rev-list', mainRef]).split('\n'));
 
   for (const line of merges.split('\n')) {
     const parts = line.trim().split(/\s+/);
-    if (parts.slice(1).some((parent) => mainAncestors.has(parent))) return true;
+    if (
+      parts
+        .slice(1)
+        .some((parent) =>
+          gitSucceeds(cwd, ['merge-base', '--is-ancestor', parent, mainRef], runGit),
+        )
+    ) {
+      return true;
+    }
   }
 
   return false;
@@ -107,6 +128,10 @@ function selectSyncStrategy(cwd, branch, mainRef, runGit) {
       ? 'branch has shepherd/recovery ownership context but no existing mainline reconciliation merge was found'
       : 'branch name has no shepherd/recovery ownership context',
   };
+}
+
+function strategySummary(strategy) {
+  return `strategy ${strategy.name} selected because ${strategy.reason}`;
 }
 
 function gitOperationInProgress(cwd, runGit) {
@@ -232,8 +257,8 @@ export function attemptMainSync({
         headSha: runGit(cwd, ['rev-parse', 'HEAD']),
         mainSha,
         message: abortError
-          ? `${strategy.conflictOperation} failed and abort also failed (strategy: ${strategy.name}; reason: ${strategy.reason}): ${abortError.message}`
-          : `${strategy.conflictOperation} conflicted and was aborted cleanly (strategy: ${strategy.name}; reason: ${strategy.reason}): ${syncError.message}`,
+          ? `${strategy.conflictOperation} failed and abort also failed (${strategySummary(strategy)}): ${abortError.message}`
+          : `${strategy.conflictOperation} conflicted and was aborted cleanly (${strategySummary(strategy)}): ${syncError.message}`,
       };
       writeSyncState(cwd, resultState(state, result, now));
       return result;
@@ -250,8 +275,8 @@ export function attemptMainSync({
       mainSha,
       message:
         headAfter === headBefore
-          ? `Branch already contains origin/main (strategy: ${strategy.name}; reason: ${strategy.reason}).`
-          : `Branch ${strategy.actionPastTense} onto origin/main (strategy: ${strategy.name}; reason: ${strategy.reason}).`,
+          ? `Branch already contains origin/main (${strategySummary(strategy)}).`
+          : `Branch ${strategy.actionPastTense} onto origin/main (${strategySummary(strategy)}).`,
     };
     writeSyncState(cwd, resultState(state, result, now));
     return result;
