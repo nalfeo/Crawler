@@ -199,6 +199,16 @@ export const ABILITY_PRESENTATION_BY_ID = {
     passiveEffectSummary: 'Accuracy +0.1',
     passiveRequirementSummary: 'a bow',
   },
+  'bow-shot-base': {
+    id: 'bow-shot-base',
+    name: 'Steady Aim',
+    shortLabel: 'AIM',
+    description: 'Bonus accuracy while a bow is equipped.',
+    category: 'combat',
+    kind: 'passive',
+    passiveEffectSummary: '+0.1 accuracy with bows',
+    passiveRequirementSummary: 'a bow',
+  },
   'precision-bolts': {
     id: 'precision-bolts',
     name: 'Precision Bolts',

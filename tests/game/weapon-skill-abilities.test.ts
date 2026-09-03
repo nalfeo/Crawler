@@ -27,6 +27,7 @@ import {
   weaponPrerequisiteMet,
 } from '../../src/game/systems/abilitySystem.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
+import { getAbilityPresentation } from '../../src/shared/ability-presentation.js';
 import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
 import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
@@ -81,6 +82,30 @@ function getL5AbilityId(skillId: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 describe('skill L5 milestone ability grants', () => {
+  it('presents the Bow L5 reward with its player-facing name and concrete effect', () => {
+    const bow = getSkillDefinition('bow')!;
+    const milestone = bow.milestones.find((entry) => entry.level === 5)!;
+    const presentation = getAbilityPresentation(milestone.abilityId!);
+
+    expect(milestone.name).toBe('Steady Aim');
+    expect(milestone.description).toContain('+0.1 accuracy with bows');
+    expect(presentation?.name).toBe('Steady Aim');
+    expect(presentation?.passiveEffectSummary).toBe('+0.1 accuracy with bows');
+    expect(presentation?.name).not.toBe('bow-shot-base');
+  });
+
+  it('announces the Bow L5 reward without exposing its internal ability ID', () => {
+    const { world, player } = setupPlayerWithSkills();
+    const bow = getSkillDefinition('bow')!;
+
+    fireSkillUsageEvents(world, player, 'bow', 'weapon_fired', bow.usageThresholds[4]!);
+    skillSystem(world);
+
+    const announcement = world.announcements.find((event) => event.kind === 'skillPassiveUnlocked');
+    expect(announcement?.text).toBe('Passive Unlocked: Steady Aim — +0.1 accuracy with bows');
+    expect(announcement?.text).not.toContain('bow-shot-base');
+  });
+
   it('every weapon class skill has an L5 milestone with an abilityId', () => {
     for (const id of WEAPON_CLASS_SKILL_IDS) {
       expect(getL5AbilityId(id), `missing L5 ability grant for class skill: ${id}`).toBeDefined();
