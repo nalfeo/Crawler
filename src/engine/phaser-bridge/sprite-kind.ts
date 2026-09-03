@@ -15,6 +15,8 @@ import {
   Player,
   Projectile,
   Returning,
+  SiegeHero,
+  SiegeMinion,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -82,6 +84,8 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Harvestable)) return 'harvestable';
   if (hasComponent(world.ecs, eid, BossChestEntity)) return 'boss_chest';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
+  if (hasComponent(world.ecs, eid, SiegeMinion) || hasComponent(world.ecs, eid, SiegeHero))
+    return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';
   if (hasComponent(world.ecs, eid, BuildCurrencyPickup)) return 'build_currency';
