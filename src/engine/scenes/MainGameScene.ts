@@ -4218,7 +4218,7 @@ export class MainGameScene extends Phaser.Scene {
   private showFloor3ProgressSurfaceIfNeeded(): void {
     if (
       this.world.floorId !== 'floor3' ||
-      this.world.state !== 'playing' ||
+      (this.world.state !== 'playing' && this.world.state !== 'safe_room') ||
       !this.modalPicker ||
       this.modalPicker.isOpen()
     ) {
