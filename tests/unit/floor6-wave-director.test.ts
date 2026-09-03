@@ -249,10 +249,16 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
     completeCurrentFloor6Act(world);
     const breakPresentation = getFloor6DefenseRunStats(world)!.presentation;
     expect(breakPresentation.breakSafetyLabel).toContain('Break safe: 0 live hostiles');
-    expect(breakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe')).toBe(true);
+    expect(breakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe-0')).toBe(true);
 
     tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
     completeCurrentFloor6Act(world);
+    // Regression coverage: each BREAK occurrence must cue audio once, not
+    // just the first — MainGameScene.playedScenarioCueIds latches cue IDs
+    // for the whole run, so a second break needs a distinct ID from the
+    // first (`floor6-break-safe-0`) to actually replay the cue.
+    const secondBreakPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(secondBreakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe-1')).toBe(true);
     tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
     completeCurrentFloor6Act(world);
     const finalePresentation = getFloor6DefenseRunStats(world)!.presentation;

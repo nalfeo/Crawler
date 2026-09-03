@@ -18,11 +18,13 @@ describe('createEntity', () => {
     // Dirty a store slot manually at ID 0
     world.stores.position.x[0] = 124.875;
     world.stores.health.current[0] = 42;
+    world.stores.siegeMinion.targetEid[0] = 123_456;
 
     const eid = createEntity(world);
 
     expect(world.stores.position.x[eid]).toBe(0);
     expect(world.stores.health.current[eid]).toBe(0);
+    expect(world.stores.siegeMinion.targetEid[eid]).toBe(0);
   });
 });
 

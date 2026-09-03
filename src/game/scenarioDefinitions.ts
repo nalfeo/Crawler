@@ -70,6 +70,7 @@ import {
   siegeDirectorSystem,
   siegeHeroSystem,
   siegeMinionSystem,
+  siegeRamSystem,
 } from './floor5Scenario.js';
 import {
   confirmFloor6StairDescend,
@@ -301,7 +302,7 @@ export interface ScenarioDefinition {
    * starter choice at all.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
-  /** Optional live floor-status panel and cue stream, derived by the scenario. */
+  /** Local alias of `ScenarioPresentationContract.getHudSnapshot` (see `src/shared/scenario-presentation.ts`) for this floor's typed `ScenarioDefinition`. */
   readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
@@ -952,7 +953,16 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       floorId: 'floor5',
       configureWorld: initializeFloor5Scenario,
       onStairDescend: confirmFloor5StairDescend,
-      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem, siegeHeroSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        siegeMinionSystem,
+        siegeHeroSystem,
+        // Ratings Ram spawn/movement/protection runs AFTER the minion and Hero
+        // systems so its protection evaluation reads this frame's committed
+        // lane state, and BEFORE `enemyAISystem`/movement so the velocity it
+        // sets is consumed the same tick.
+        siegeRamSystem,
+      ],
       afterSpawnerSystems: [siegeDirectorSystem],
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,

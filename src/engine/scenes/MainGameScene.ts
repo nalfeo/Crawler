@@ -259,6 +259,14 @@ const INTERACTION_HINT_BOTTOM_MARGIN = 12;
  * cleanly above the slots row instead of covering it.
  */
 const INTERACTION_HINT_ABILITY_BAR_GAP = 10;
+/** Default bottom-anchored Y for the generic scenario HUD strip (`scenarioHudText`). */
+const SCENARIO_HUD_BASE_Y = GAME.HEIGHT - 112;
+/**
+ * Design-space gutter kept between the top of the interaction hint and the
+ * bottom of the scenario HUD strip, so the strip reflows above the Talk/Descend
+ * button instead of overlapping it whenever the hint is visible.
+ */
+const SCENARIO_HUD_INTERACTION_HINT_GAP = 10;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
 const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
@@ -1840,6 +1848,21 @@ export class MainGameScene extends Phaser.Scene {
     return Math.min(baseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP);
   }
 
+  /**
+   * Bottom-anchored Y for the generic scenario HUD strip, reflowed above the
+   * interaction hint (Talk/Descend button) whenever it is visible so the two
+   * bottom-center surfaces never overlap. The hint's own screen bounds are
+   * used (not a fixed offset) because its position and scale already vary
+   * with the ability bar and UI scale — see {@link interactionHintY}.
+   */
+  private scenarioHudTextY(): number {
+    if (this.interactionHint?.visible) {
+      const hintTop = this.interactionHint.getBounds().y;
+      return Math.min(SCENARIO_HUD_BASE_Y, hintTop - SCENARIO_HUD_INTERACTION_HINT_GAP);
+    }
+    return SCENARIO_HUD_BASE_Y;
+  }
+
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
     const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
     return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
@@ -3253,7 +3276,7 @@ export class MainGameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setVisible(false);
     this.scenarioHudText = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - 112, '', {
+      .text(GAME.WIDTH / 2, SCENARIO_HUD_BASE_Y, '', {
         fontFamily: 'monospace',
         fontSize: '13px',
         fontStyle: 'bold',
@@ -4976,7 +4999,10 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    this.scenarioHudText?.setText(snapshot.lines.join('\n')).setVisible(true);
+    this.scenarioHudText
+      ?.setY(this.scenarioHudTextY())
+      .setText(snapshot.lines.join('\n'))
+      .setVisible(true);
     this.scenarioHudCueLabels = snapshot.cues.map((cue) => `${cue.kind}: ${cue.label}`);
     this.playScenarioHudCues(snapshot);
   }
@@ -5959,9 +5985,11 @@ export class MainGameScene extends Phaser.Scene {
     const hasScenarioPresentationStairs =
       this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
       this.options.scenarioPresentation.stairConfirmation !== undefined;
+    // Floors with either legacy floor scenarios, extended floor state, or an
+    // explicit scenario-presentation stair contract can respond to interactions.
     if (
       (!this.world.floorScenario &&
-        !this.world.floorExtendedState?.familyState &&
+        !this.world.floorExtendedState &&
         !hasScenarioPresentationStairs) ||
       this.world.state !== 'playing'
     ) {

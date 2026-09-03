@@ -26,6 +26,7 @@ import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
+import type { Floor5RamRouteLandmark } from './floor-types.js';
 
 const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
 const FLOOR6_RNG_STREAMS = [
@@ -44,6 +45,20 @@ const FLOOR6_UPGRADE_EFFECT_KINDS = [
   'raiderSlowBonus',
 ] as const;
 const FLOOR6_BREAK_ACTIONS = ['tower-build', 'tower-sell', 'upgrade-purchase'] as const;
+
+/**
+ * Closed set of semantic Ratings-Ram escort landmarks (spec `FR5.2`).
+ *
+ * Mirrors {@link Floor5RamRouteLandmark}; kept as a const tuple so the Zod
+ * enum and the shared union can never drift (the `satisfies` below fails the
+ * build if they do).
+ */
+const FLOOR5_RAM_ROUTE_LANDMARKS = [
+  'build-site',
+  'siege-yard-junction',
+  'checkpoint-junction',
+  'breach-approach',
+] as const satisfies readonly Floor5RamRouteLandmark[];
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -970,6 +985,7 @@ export const floorManifestDefSchema = z
           .object({
             thicknessTiles: z.number().int().min(1),
             breachWidthTiles: z.number().int().min(1),
+            health: z.number().int().positive(),
           })
           .strict(),
         courtyard: z
@@ -1013,6 +1029,51 @@ export const floorManifestDefSchema = z
             terminal: z.array(z.enum(['CAPTURED', 'DEFEAT'])).length(2),
           })
           .strict(),
+        /**
+         * Ratings Ram (spec `R5`, `FR5.1`–`FR5.7`).
+         *
+         * Everything here is authored as SEMANTICS + CADENCE, never as world
+         * coordinates: `routeLandmarks` names an ordered list of layout
+         * landmarks and `floor5Scenario` derives each waypoint's position from
+         * the authored `SiegeCastleGenerator` tile layout. Frame/ms cadence is
+         * fixed-tick on purpose so the escort is replay-deterministic.
+         */
+        ram: z
+          .object({
+            /** Ram hull HP. Consumed by outer-wall counter-battery fire. */
+            health: z.number().int().positive(),
+            /** Ordered semantic escort route (positions are derived, not authored). */
+            routeLandmarks: z.array(z.enum(FLOOR5_RAM_ROUTE_LANDMARKS)).min(2),
+            /**
+             * Advance gating (`FR5.3`). The ram only rolls while the count of
+             * live hostile threats inside `radiusFt` is at or below
+             * `maxThreats` — a THREAT threshold, deliberately not an escort
+             * headcount, so an attrited allied wave can never permanently
+             * soft-lock the escort.
+             */
+            protection: z
+              .object({
+                radiusFt: z.number().positive(),
+                maxThreats: z.number().int().min(0),
+              })
+              .strict(),
+            advanceSpeedFtPerFrame: z.number().positive(),
+            /** Distance at which a waypoint counts as reached. */
+            arrivalToleranceFt: z.number().positive(),
+            /** Ram-vs-outer-wall exchange (`FR5.4`, `FR5.5`). */
+            strike: z
+              .object({
+                damage: z.number().int().positive(),
+                cooldownMs: z.number().int().positive(),
+                rangeFt: z.number().positive(),
+                /** Counter-battery damage the wall deals back per ram strike. */
+                wallCounterDamage: z.number().int().positive(),
+              })
+              .strict(),
+            /** Fixed frame delay from a ram loss to the rebuild (`FR5.6`). */
+            recoveryDelayFrames: z.number().int().positive(),
+          })
+          .strict(),
         rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
       })
       .strict()
@@ -1030,6 +1091,52 @@ export const floorManifestDefSchema = z
             code: z.ZodIssueCode.custom,
             path: ['rngStreams'],
             message: 'Floor 5 RNG stream labels must be unique',
+          });
+        }
+        const landmarks = floor5.ram.routeLandmarks;
+        if (new Set(landmarks).size !== landmarks.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks'],
+            message: 'Floor 5 ram route landmarks must be unique',
+          });
+        }
+        if (landmarks[0] !== 'build-site') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks', 0],
+            message: 'Floor 5 ram route must start at the build-site landmark',
+          });
+        }
+        if (landmarks[landmarks.length - 1] !== 'breach-approach') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks', landmarks.length - 1],
+            message: 'Floor 5 ram route must end at the breach-approach landmark',
+          });
+        }
+        if (floor5.ram.strike.damage > floor5.outerWall.health) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'strike', 'damage'],
+            message: 'Floor 5 ram strike damage must not exceed authored structure health',
+          });
+        }
+        if (floor5.ram.arrivalToleranceFt < floor5.ram.advanceSpeedFtPerFrame) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'arrivalToleranceFt'],
+            message: 'Floor 5 ram arrival tolerance must cover one authored advance step',
+          });
+        }
+        const ramLossStrikes = Math.ceil(floor5.ram.health / floor5.ram.strike.wallCounterDamage);
+        const wallBreachStrikes = Math.ceil(floor5.outerWall.health / floor5.ram.strike.damage);
+        if (ramLossStrikes >= wallBreachStrikes || wallBreachStrikes > ramLossStrikes * 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'strike', 'wallCounterDamage'],
+            message:
+              'Floor 5 ram exchange must destroy exactly one ram before the outer wall breaches',
           });
         }
       })
@@ -1427,6 +1534,17 @@ export const floorManifestDefSchema = z
         path: ['implemented', 'released'],
         message: 'implemented.released requires implemented.mvp to be true',
       });
+    }
+    if (manifest.floor5) {
+      const attackAnchorDistanceFt =
+        (manifest.floor5.outerWall.thicknessTiles / 2 + 1.5) * manifest.map.tileSizeFt;
+      if (manifest.floor5.ram.strike.rangeFt < attackAnchorDistanceFt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['floor5', 'ram', 'strike', 'rangeFt'],
+          message: 'Floor 5 ram strike range must reach the outer wall from breach-approach',
+        });
+      }
     }
   });
 

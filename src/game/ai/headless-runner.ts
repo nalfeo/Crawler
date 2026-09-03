@@ -85,6 +85,7 @@ import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
   autoFloor3ProgressionSystem,
+  autoFloor6ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import {
@@ -184,7 +185,40 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-function computeHeadlessFloorProgressScore(world: GameWorld): number {
+function measureFloor5RamForwardProgressFt(world: GameWorld): number {
+  const state = world.floorExtendedState?.floor5Siege;
+  if (!state || state.ram.route.length < 2) return 0;
+
+  const route = state.ram.route;
+  const segmentLengths = route.slice(1).map((marker, index) => {
+    const previous = route[index]!;
+    return Math.hypot(marker.x - previous.x, marker.y - previous.y);
+  });
+  const routeLength = segmentLengths.reduce((sum, length) => sum + length, 0);
+  let progressFt = state.ram.destructions * routeLength;
+  if (state.ram.eid <= 0) return progressFt;
+
+  const targetIndex = Math.max(1, Math.min(state.ram.routeIndex, route.length - 1));
+  progressFt += segmentLengths.slice(0, targetIndex - 1).reduce((sum, length) => sum + length, 0);
+
+  const previous = route[targetIndex - 1]!;
+  const target = route[targetIndex]!;
+  const segmentX = target.x - previous.x;
+  const segmentY = target.y - previous.y;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+  if (segmentLengthSquared === 0) return progressFt;
+
+  const ramX = world.stores.position.x[state.ram.eid] ?? previous.x;
+  const ramY = world.stores.position.y[state.ram.eid] ?? previous.y;
+  const projected =
+    ((ramX - previous.x) * segmentX + (ramY - previous.y) * segmentY) / segmentLengthSquared;
+  return progressFt + Math.sqrt(segmentLengthSquared) * Math.max(0, Math.min(1, projected));
+}
+
+function computeHeadlessFloorProgressScore(
+  world: GameWorld,
+  floor5RamForwardProgressFt = 0,
+): number {
   const floor4Arena = world.floorExtendedState?.floor4Arena;
   if (floor4Arena) {
     return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
@@ -196,7 +230,13 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.laneTelemetry.spawned.enemy +
       floor5Siege.laneTelemetry.legalDamageEvents +
       floor5Siege.laneTelemetry.checkpointContests +
-      floor5Siege.laneTelemetry.waveCyclesCompleted
+      floor5Siege.laneTelemetry.waveCyclesCompleted +
+      floor5Siege.ram.builds +
+      floor5Siege.ram.destructions +
+      floor5Siege.ram.strikes +
+      floor5Siege.ram.route.filter((marker) => marker.reachedFrame !== null).length +
+      Math.floor(floor5RamForwardProgressFt) +
+      (floor5Siege.breach.latched ? 1 : 0)
     );
   }
   const floor6Defense = getFloor6DefenseRunStats(world);
@@ -1005,6 +1045,7 @@ export async function runHeadless(
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
   const stallTracker = new QuestProgressStallTracker(mergedConfig.questStallFrames);
+  let floor5RamForwardProgressFt = 0;
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
@@ -1510,6 +1551,7 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
       captureFloor3Progression();
+      autoFloor6ProgressionSystem(world);
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1905,7 +1947,16 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
+      floor5RamForwardProgressFt = Math.max(
+        floor5RamForwardProgressFt,
+        measureFloor5RamForwardProgressFt(world),
+      );
+      if (
+        stallTracker.update(
+          computeHeadlessFloorProgressScore(world, floor5RamForwardProgressFt),
+          frameCount,
+        )
+      ) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),
