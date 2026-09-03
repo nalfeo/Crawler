@@ -45,26 +45,20 @@ function git(cwd, args) {
   }).trim();
 }
 
-function gitSucceeds(cwd, args, runGit) {
-  try {
-    runGit(cwd, args);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function branchHasShepherdContext(branch) {
   const lowerBranch = branch.toLowerCase();
   const segments = lowerBranch.split(/[/_-]+/);
   const hasShepherdMarker = segments.some((part) => part === 'shepherd' || part === 'recovery');
-  const hasOwnershipPrefix =
-    lowerBranch.startsWith('copilot/') ||
+
+  if (
     lowerBranch.startsWith('ci-recovery/') ||
     lowerBranch.startsWith('pr-shepherd/') ||
-    lowerBranch.startsWith('shepherd/');
+    lowerBranch.startsWith('shepherd/')
+  ) {
+    return true;
+  }
 
-  return hasOwnershipPrefix && hasShepherdMarker;
+  return lowerBranch.startsWith('copilot/') && hasShepherdMarker;
 }
 
 function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
@@ -77,18 +71,11 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
 
   const merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
   if (!merges) return false;
+  const mainAncestors = new Set(runGit(cwd, ['rev-list', mainRef]).split('\n'));
 
   for (const line of merges.split('\n')) {
     const parts = line.trim().split(/\s+/);
-    if (
-      parts
-        .slice(2)
-        .some((parent) =>
-          gitSucceeds(cwd, ['merge-base', '--is-ancestor', parent, mainRef], runGit),
-        )
-    ) {
-      return true;
-    }
+    if (parts.slice(1).some((parent) => mainAncestors.has(parent))) return true;
   }
 
   return false;
