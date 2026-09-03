@@ -2584,6 +2584,31 @@ describe('BehaviorTreeAI', () => {
     }
   });
 
+  it('does not re-target Floor 3 progress when progressGoalSuppressedUntilFrame is in the future', () => {
+    const world = createTestWorld({ seed: 58, floor: 3 });
+    spawnPlayer(world, 0, 0);
+    world.floorExtendedState = {
+      floor3Studios: {
+        studios: [],
+        finalFour: {} as never,
+        studiosDefeatedCount: 0,
+        finalFourRounds: [],
+        finalFourRoundIndex: 0,
+        staircaseSpawned: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircasePos: { x: 90, y: 34 },
+      },
+    };
+
+    const ai = new BehaviorTreeAI({ seed: 58 });
+    suppressProgressGoals(ai);
+
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().reason).not.toBe('Heading to the Floor 3 exit stairs');
+  });
+
   it('engages nearby enemies before long NPC approach paths', () => {
     const { world } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
