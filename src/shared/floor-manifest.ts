@@ -1537,7 +1537,7 @@ export const floorManifestDefSchema = z
     }
     if (manifest.floor5) {
       const attackAnchorDistanceFt =
-        (manifest.floor5.outerWall.thicknessTiles / 2 + 1) * manifest.map.tileSizeFt;
+        (manifest.floor5.outerWall.thicknessTiles / 2 + 1.5) * manifest.map.tileSizeFt;
       if (manifest.floor5.ram.strike.rangeFt < attackAnchorDistanceFt) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

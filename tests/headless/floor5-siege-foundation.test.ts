@@ -400,6 +400,40 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(state.engineState).toBe('READY');
   });
 
+  it('gives Command Post defeat precedence over simultaneous wall and ram destruction', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    completeFloor5RamPrerequisites(world);
+    expect(_requestFloor5RamConstruction(world)).toBe(true);
+    siegeRamSystem(world);
+
+    const state = world.floorExtendedState!.floor5Siege!;
+    const commandPost = state.structures['command-post'].eid;
+    const wall = state.structures['outer-wall'].eid;
+    state.engineState = 'ATTACKING';
+    state.commandPostHealth = 0;
+    state.ram.health = 0;
+    state.ram.wallAuthorizedHealth = 0;
+    world.stores.health.current[commandPost] = 0;
+    world.stores.health.current[wall] = 0;
+    world.stores.health.current[state.ram.eid] = 0;
+
+    world.floorObjectiveTick!(world);
+
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.breach.latched).toBe(false);
+    expect(state.breach.commitAttempts).toBe(0);
+    expect(state.breach.cleanup).toEqual({
+      ramRetired: false,
+      markersRetired: 0,
+      wallRetired: false,
+      heroesCleared: 0,
+      minionsCleared: 0,
+      waveDebtCleared: 0,
+    });
+  });
+
   it('does not trust a stale structure EID after the slot is reused by another health entity', () => {
     const world = createTestWorld({ seed: 5 });
     const player = spawnPlayer(world, 0, 0);

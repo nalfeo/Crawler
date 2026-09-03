@@ -51,8 +51,9 @@ describe('floor5 manifest Ratings Ram rules', () => {
 
   it('rejects strike range that cannot reach the wall from the attack anchor', () => {
     const bad = cloneFloor5Manifest();
-    bad.floor5.ram.strike.rangeFt = 1;
+    bad.floor5.ram.strike.rangeFt = 11;
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+    expect(floorManifestDefSchema.safeParse(cloneFloor5Manifest()).success).toBe(true);
   });
 
   it('rejects an arrival tolerance smaller than one advance step', () => {
