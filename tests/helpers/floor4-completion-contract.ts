@@ -9,6 +9,8 @@ export const FLOOR4_COMPLETION_CRITERIA = [
   'terminated-before-stall-backstop',
 ] as const;
 
+const FLOOR4_SCENARIO_BEAT_COUNT = 5;
+
 export type Floor4CompletionCriterion = (typeof FLOOR4_COMPLETION_CRITERIA)[number];
 
 export interface Floor4CompletionEvidence {
@@ -39,10 +41,11 @@ export function assessFloor4Completion(
     'physical-wave-hostile-spawned': (evidence.enemiesSpawned ?? 0) > 0,
     'all-wave-windows-released': (evidence.wavesReleased ?? 0) >= 5,
     'all-headliners-spawned-and-defeated':
-      evidence.headlinersSpawned === 5 && evidence.headlinersDefeated === 5,
+      evidence.headlinersSpawned === FLOOR4_SCENARIO_BEAT_COUNT &&
+      evidence.headlinersDefeated === FLOOR4_SCENARIO_BEAT_COUNT,
     'intermission-public-interaction':
-      new Set(evidence.intermissionActs).size === 5 &&
-      evidence.intermissionReasons.length === 5 &&
+      new Set(evidence.intermissionActs).size === FLOOR4_SCENARIO_BEAT_COUNT &&
+      evidence.intermissionReasons.length === FLOOR4_SCENARIO_BEAT_COUNT &&
       evidence.intermissionReasons.every(
         (reason) => reason !== 'slice2-auto-green-room-exit' && reason !== 'slice2-auto-stairs',
       ),
