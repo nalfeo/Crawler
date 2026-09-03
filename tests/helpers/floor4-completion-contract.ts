@@ -15,6 +15,32 @@ import { getFloorManifest } from '../../src/shared/floor-registry.js';
 export const FLOOR4_ACTS = [1, 2, 3, 4, 5];
 
 /**
+ * C3's bound: the manifest-authored wave count per act
+ * (`floor4.waves.cadence.wavesPerAct`), read from the shipped manifest rather
+ * than hard-coded. Each act builds its own wave-window manifests array of
+ * exactly this length and starts its release cursor at 0
+ * (`armFloor4WaveWindow` in `src/game/floor4Scenario.ts`), so a single act can
+ * never release more than this many waves.
+ *
+ * `FLOOR4_ACTS.length * FLOOR4_WAVES_PER_ACT` is therefore a real full-release
+ * ceiling: reaching it requires every act to release every one of its waves,
+ * so an earlier act cannot satisfy it alone the way the cumulative
+ * `wavesReleased` counter could.
+ */
+export const FLOOR4_WAVES_PER_ACT: number = (() => {
+  const wavesPerAct = getFloorManifest('floor4')?.floor4?.waves.cadence.wavesPerAct;
+  if (typeof wavesPerAct !== 'number' || wavesPerAct <= 0) {
+    throw new Error(
+      'floor4 manifest has no positive waves.cadence.wavesPerAct — the Floor 4 wave-release ceiling (C3) cannot be asserted',
+    );
+  }
+  return wavesPerAct;
+})();
+
+/** The full-release ceiling: every act releasing every one of its waves. */
+export const FLOOR4_TOTAL_WAVES_RELEASED: number = FLOOR4_ACTS.length * FLOOR4_WAVES_PER_ACT;
+
+/**
  * C8's bound: the real Floor 4 stall backstop (FR8.4). `floor4ObjectiveTick`
  * flips the run to `game_over` with the `floor4-stall-backstop` goal flag once
  * raw `world.elapsedMs` reaches the manifest timer, so this is read from the

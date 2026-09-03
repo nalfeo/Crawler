@@ -51,6 +51,7 @@ import {
   FLOOR4_ACTS,
   FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
   FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
 
 /**
@@ -124,8 +125,14 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // floor the epic's slice 1 baseline exists to check.
     expect(arena!.waveTelemetry.enemiesSpawned, telemetryFailure).toBeGreaterThan(0);
     expect(arena!.waveTelemetry.gateTelegraphsArmed, telemetryFailure).toBeGreaterThan(0);
-    // C3 — all five wave windows opened and released at least one wave each.
-    expect(arena!.waveTelemetry.wavesReleased, telemetryFailure).toBeGreaterThanOrEqual(5);
+    // C3 — all five wave windows opened AND released every authored wave.
+    // `wavesReleased` is cumulative across acts, so a bare lower bound (e.g.
+    // ">= 5") would also pass if act 1 alone released 5+ waves and acts 2-5
+    // released none. Compare against the manifest-derived full-release
+    // ceiling instead: each act can release at most `FLOOR4_WAVES_PER_ACT`
+    // waves, so reaching the five-act total requires every act to release
+    // every one of its waves.
+    expect(arena!.waveTelemetry.wavesReleased, telemetryFailure).toBe(FLOOR4_TOTAL_WAVES_RELEASED);
     expect(phaseActs(timeline, 'WAVES'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     // C4 — all five Headliners physically spawned and were defeated through
     // ordinary combat (not force-resolved — `resolveFloor4HeadlinerDefeat`
@@ -136,13 +143,9 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(arena!.headlinerTelemetry.overtimeStarted, telemetryFailure).toBe(0);
     expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
 
-    // C5 — every act's intermission was entered AND resolved (each has a
+    // C5 — partially met (see the dedicated shortfall test below for the
+    // gap): every act's intermission was entered AND resolved (each has a
     // successor timeline entry) and banked its act income.
-    //
-    // NOTE (recorded slice-1 shortfall): resolution is currently the arena
-    // director's shared phase timer, not a public Green Room/stairs
-    // interaction. That is asserted explicitly below so the gap is visible in
-    // the gate itself rather than only in prose.
     expect(phaseActs(timeline, 'INTERMISSION'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     expect(
       arena!.actIncome.map((entry) => entry.act),
@@ -154,9 +157,6 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
       )
       .filter((reason): reason is string => reason !== undefined);
     expect(intermissionExitReasons, telemetryFailure).toHaveLength(5);
-    for (const reason of intermissionExitReasons) {
-      expect(FLOOR4_AUTO_INTERMISSION_EXIT_REASONS, telemetryFailure).toContain(reason);
-    }
 
     // C6 — the phase trace actually reached the terminal VICTORY phase.
     expect(arena!.phase.kind, telemetryFailure).toBe('VICTORY');
@@ -171,6 +171,36 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(stats.gameTimeMs, telemetryFailure).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
     expect(stats.totalFrames, telemetryFailure).toBeLessThan(MAX_FRAMES);
   });
+
+  // C5 (not yet met) — isolated as an expected-failure characterization
+  // rather than folded into the "completes" test above, so nothing here can
+  // be mistaken for evidence the criterion passes. `FLOOR4_AUTO_INTERMISSION_
+  // EXIT_REASONS` is the shared-timer allowlist; the criterion's actual bar
+  // is that at least one intermission resolves for a reason OUTSIDE that
+  // allowlist (a real Green Room/stairs interaction). Today every exit is in
+  // the allowlist, so the inner assertion fails — `it.fails` records that as
+  // the expected, documented result. Once a future slice adds the real
+  // interaction, the inner assertion starts passing, which flips `it.fails`
+  // into an *unexpected* pass and breaks this test — forcing whoever ships
+  // that slice to drop `.fails` here and flip the C5 row in the spec table
+  // to "met" in the same change.
+  it.fails(
+    'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
+    async () => {
+      const stats = await runFloor4(CANONICAL_SEED);
+      const timeline = stats.floor4Arena!.timeline;
+      const intermissionExitReasons = timeline
+        .map((entry, index) =>
+          timeline[index - 1]?.phase.kind === 'INTERMISSION' ? entry.reason : undefined,
+        )
+        .filter((reason): reason is string => reason !== undefined);
+      expect(
+        intermissionExitReasons.some(
+          (reason) => !FLOOR4_AUTO_INTERMISSION_EXIT_REASONS.includes(reason),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it('is deterministic: an identical seed produces byte-identical completion telemetry', async () => {
     const first = await runFloor4(CANONICAL_SEED);

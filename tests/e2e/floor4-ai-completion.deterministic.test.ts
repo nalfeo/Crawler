@@ -59,6 +59,7 @@ import {
   FLOOR4_ACTS,
   FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
   FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
 
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner`;
@@ -101,6 +102,7 @@ interface Floor4RunSnapshot {
   intermissionExitReasons: string[];
   actIncomeCount: number;
   arenaElapsedMs: number | undefined;
+  gameMs: number | null;
   timelineFingerprint: string;
 }
 
@@ -193,6 +195,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
         intermissionExitReasons,
         actIncomeCount: Array.isArray(arena?.actIncome) ? arena.actIncome.length : 0,
         arenaElapsedMs: arena?.arenaElapsedMs,
+        gameMs: typeof snap?.gameMs === 'number' ? snap.gameMs : null,
         timelineFingerprint: timeline
           .map((entry) => {
             const kind = typeof entry?.phase?.kind === 'string' ? entry.phase.kind : 'unknown';
@@ -211,17 +214,21 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
 
 describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
   let browser: Browser;
+  let firstRun: Floor4VisualRunResult;
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
-  });
+    // Shared across this describe's tests (the main completion test AND the
+    // isolated C5 characterization below) so the second test doesn't need to
+    // pay for another real browser run of the same canonical seed.
+    firstRun = await runVisualFloor4Completion(browser);
+  }, 300_000);
 
   afterAll(async () => {
     await closeQuietly(browser);
   });
 
   it('completes: production BehaviorTreeAI drives the real MainGameScene to VICTORY with deterministic visual-run parity', async () => {
-    const firstRun = await runVisualFloor4Completion(browser);
     const firstContext = `pageErrors=${JSON.stringify(firstRun.pageErrors)} lastSnapshot=${JSON.stringify(
       firstRun.lastSnapshot,
     )} finalSnapshot=${JSON.stringify(firstRun.finalSnapshot)}`;
@@ -238,36 +245,37 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // C2 — physical hostiles released through the authored feed-gate path.
     expect(firstRun.finalSnapshot.enemiesSpawned, firstContext).toBeGreaterThanOrEqual(200);
     expect(firstRun.finalSnapshot.gateTelegraphsArmed, firstContext).toBeGreaterThan(0);
-    // C3 — all five wave windows opened and released.
-    expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBeGreaterThanOrEqual(5);
+    // C3 — all five wave windows opened AND released every authored wave
+    // (manifest-derived full-release ceiling; see the headless gate's
+    // identical comment for why a bare lower bound would also pass with
+    // earlier acts alone).
+    expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBe(FLOOR4_TOTAL_WAVES_RELEASED);
     expect(firstRun.finalSnapshot.waveActs, firstContext).toEqual([...FLOOR4_ACTS]);
     // C4 — all five Headliners physically spawned and fell to ordinary combat.
     expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
     expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
-    // C5 — every act's intermission was entered, banked income, and resolved.
-    // Recorded shortfall (identical to headless): resolution is the shared
-    // arena-director timer, not yet a public Green Room/stairs interaction.
+    // C5 — partially met (see the dedicated shortfall test below for the
+    // gap): every act's intermission was entered, banked income, and
+    // resolved (each has a recorded exit reason).
     expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toHaveLength(5);
-    for (const reason of firstRun.finalSnapshot.intermissionExitReasons) {
-      expect(FLOOR4_AUTO_INTERMISSION_EXIT_REASONS, firstContext).toContain(reason);
-    }
     // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
     // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
     // uses to produce headless `RunStats.outcome === 'victory'`; the visual
     // runner produces no `RunStats` of its own.
     expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
     expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
-    // C8 — terminated under the real Floor 4 stall backstop. Reaching VICTORY
-    // already implies the backstop never fired (it flips `world.state` to
-    // `game_over`, which stops the arena director), and arena time staying
-    // inside the manifest deadline shows the run did not grind toward it.
-    expect(firstRun.finalSnapshot.arenaElapsedMs, firstContext).toBeLessThan(
-      FLOOR4_STALL_BACKSTOP_MS,
-    );
+    // C8 — terminated under the real Floor 4 stall backstop. `arenaElapsedMs`
+    // only advances during WAVES/HEADLINE and is capped well below the
+    // backstop, so it can't prove this; compare the raw clock
+    // (`gameMs` === `world.elapsedMs`) that `floor4ObjectiveTick` itself
+    // measures against the manifest deadline — the same field headless
+    // `RunStats.gameTimeMs` reports for the identical C8 assertion.
+    expect(firstRun.finalSnapshot.gameMs, firstContext).not.toBeNull();
+    expect(firstRun.finalSnapshot.gameMs, firstContext).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
 
     const secondRun = await runVisualFloor4Completion(browser);
     const secondContext = `pageErrors=${JSON.stringify(
@@ -297,12 +305,35 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(secondRun.finalSnapshot.actIncomeCount, secondContext).toBe(
       firstRun.finalSnapshot.actIncomeCount,
     );
-    expect(secondRun.finalSnapshot.arenaElapsedMs, secondContext).toBeLessThan(
-      FLOOR4_STALL_BACKSTOP_MS,
-    );
+    expect(secondRun.finalSnapshot.gameMs, secondContext).not.toBeNull();
+    expect(secondRun.finalSnapshot.gameMs, secondContext).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
       firstRun.finalSnapshot.timelineFingerprint,
     );
   }, 300_000);
+
+  // C5 (not yet met) — isolated as an expected-failure characterization
+  // rather than folded into the "completes" test above, so nothing here can
+  // be mistaken for evidence the criterion passes. `FLOOR4_AUTO_INTERMISSION_
+  // EXIT_REASONS` is the shared-timer allowlist; the criterion's actual bar
+  // is that at least one intermission resolves for a reason OUTSIDE that
+  // allowlist (a real Green Room/stairs interaction). Today every exit is in
+  // the allowlist, so the inner assertion fails — `it.fails` records that as
+  // the expected, documented result. Once a future slice adds the real
+  // interaction, the inner assertion starts passing, which flips `it.fails`
+  // into an *unexpected* pass and breaks this test — forcing whoever ships
+  // that slice to drop `.fails` here and flip the C5 row in the spec table
+  // to "met" in the same change. Reuses the same shared `firstRun` from
+  // `beforeAll` rather than driving a second real browser run.
+  it.fails(
+    'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
+    () => {
+      expect(
+        firstRun.finalSnapshot.intermissionExitReasons.some(
+          (reason) => !FLOOR4_AUTO_INTERMISSION_EXIT_REASONS.includes(reason),
+        ),
+      ).toBe(true);
+    },
+  );
 });
