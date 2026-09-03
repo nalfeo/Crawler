@@ -45,6 +45,72 @@ function git(cwd, args) {
   }).trim();
 }
 
+function gitSucceeds(cwd, args, runGit) {
+  try {
+    runGit(cwd, args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function branchHasShepherdContext(branch) {
+  return branch
+    .split(/[/_-]+/)
+    .some((part) => part.toLowerCase() === 'shepherd' || part.toLowerCase() === 'recovery');
+}
+
+function mainlineReconciliationMerges(cwd, mainRef, runGit) {
+  let mergeBase;
+  try {
+    mergeBase = runGit(cwd, ['merge-base', 'HEAD', mainRef]);
+  } catch {
+    return [];
+  }
+
+  const merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
+  if (!merges) return [];
+
+  return merges
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/))
+    .filter((parts) =>
+      parts
+        .slice(2)
+        .some((parent) =>
+          gitSucceeds(cwd, ['merge-base', '--is-ancestor', parent, mainRef], runGit),
+        ),
+    )
+    .map(([sha]) => sha);
+}
+
+function selectSyncStrategy(cwd, branch, mainRef, runGit) {
+  const reconciliationMerges = mainlineReconciliationMerges(cwd, mainRef, runGit);
+  const shepherdContext = branchHasShepherdContext(branch);
+
+  if (shepherdContext && reconciliationMerges.length > 0) {
+    return {
+      name: 'merge-preserving',
+      gitCommand: ['merge', '--no-edit', mainRef],
+      abortCommand: ['merge', '--abort'],
+      actionPastTense: 'merged',
+      conflictOperation: 'Merge-preserving update',
+      reason: `branch name has shepherd/recovery context and ${reconciliationMerges.length} existing mainline reconciliation merge(s) were found`,
+    };
+  }
+
+  return {
+    name: 'rebase',
+    gitCommand: ['rebase', mainRef],
+    abortCommand: ['rebase', '--abort'],
+    actionPastTense: 'rebased',
+    conflictOperation: 'Rebase',
+    reason: shepherdContext
+      ? 'branch has shepherd/recovery context but no existing mainline reconciliation merges were found'
+      : 'branch name has no shepherd/recovery ownership context',
+  };
+}
+
 function gitOperationInProgress(cwd, runGit) {
   for (const operation of ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD']) {
     const gitPath = runGit(cwd, ['rev-parse', '--git-path', operation]);
@@ -62,6 +128,8 @@ function resultState(state, result, now) {
     lastReason: result.reason,
     lastResult: result.status,
     lastMessage: result.message,
+    ...(result.strategy ? { lastStrategy: result.strategy } : {}),
+    ...(result.strategyReason ? { lastStrategyReason: result.strategyReason } : {}),
     ...(result.headSha ? { headSha: result.headSha } : {}),
     ...(result.mainSha ? { mainSha: result.mainSha } : {}),
     ...(result.status === 'success' ? { lastSuccessAt: new Date(now).toISOString() } : {}),
@@ -146,12 +214,14 @@ export function attemptMainSync({
       return result;
     }
 
+    const strategy = selectSyncStrategy(cwd, branch, 'refs/remotes/origin/main', runGit);
+
     try {
-      runGit(cwd, ['rebase', 'refs/remotes/origin/main']);
-    } catch (rebaseError) {
+      runGit(cwd, strategy.gitCommand);
+    } catch (syncError) {
       let abortError = null;
       try {
-        runGit(cwd, ['rebase', '--abort']);
+        runGit(cwd, strategy.abortCommand);
       } catch (error) {
         abortError = error;
       }
@@ -159,11 +229,13 @@ export function attemptMainSync({
         status: abortError ? 'failed-abort' : 'conflict-aborted',
         reason,
         branchChanged: false,
+        strategy: strategy.name,
+        strategyReason: strategy.reason,
         headSha: runGit(cwd, ['rev-parse', 'HEAD']),
         mainSha,
         message: abortError
-          ? `Rebase failed and abort also failed: ${abortError.message}`
-          : `Rebase conflicted and was aborted cleanly: ${rebaseError.message}`,
+          ? `${strategy.conflictOperation} failed and abort also failed (strategy: ${strategy.name}; reason: ${strategy.reason}): ${abortError.message}`
+          : `${strategy.conflictOperation} conflicted and was aborted cleanly (strategy: ${strategy.name}; reason: ${strategy.reason}): ${syncError.message}`,
       };
       writeSyncState(cwd, resultState(state, result, now));
       return result;
@@ -174,12 +246,14 @@ export function attemptMainSync({
       status: 'success',
       reason,
       branchChanged: headAfter !== headBefore,
+      strategy: strategy.name,
+      strategyReason: strategy.reason,
       headSha: headAfter,
       mainSha,
       message:
         headAfter === headBefore
-          ? 'Branch already contains origin/main.'
-          : 'Branch rebased onto origin/main.',
+          ? `Branch already contains origin/main (strategy: ${strategy.name}; reason: ${strategy.reason}).`
+          : `Branch ${strategy.actionPastTense} onto origin/main (strategy: ${strategy.name}; reason: ${strategy.reason}).`,
     };
     writeSyncState(cwd, resultState(state, result, now));
     return result;
