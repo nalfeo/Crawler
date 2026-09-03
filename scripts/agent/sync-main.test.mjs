@@ -171,12 +171,34 @@ test('recovery branch with existing mainline reconciliation merges preserves mer
   assert.match(readSyncState(work).lastStrategyReason, /existing mainline reconciliation merge/);
 });
 
+test('conflicting merge-preserving sync aborts and restores the original shepherd branch', (t) => {
+  const { root, work, branchName } = setupReconciledShepherdRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const headBefore = git(work, ['rev-parse', 'HEAD']);
+  git(work, ['checkout', 'main']);
+  writeFileSync(path.join(work, 'shared.txt'), 'main two\n');
+  commit(work, 'main conflicts with reconciled file');
+  git(work, ['push', 'origin', 'main']);
+  git(work, ['checkout', branchName]);
+
+  const result = attemptMainSync({ cwd: work, reason: 'test' });
+  const mergeHeadPath = git(work, ['rev-parse', '--git-path', 'MERGE_HEAD']);
+
+  assert.equal(result.status, 'conflict-aborted');
+  assert.equal(result.strategy, 'merge-preserving');
+  assert.match(result.message, /Merge-preserving update conflicted and was aborted cleanly/);
+  assert.equal(git(work, ['rev-parse', 'HEAD']), headBefore);
+  assert.equal(readFileSync(path.join(work, 'shared.txt'), 'utf8'), 'resolved feature plus main\n');
+  assert.equal(git(work, ['status', '--porcelain']), '');
+  assert.equal(existsSync(path.resolve(work, mergeHeadPath)), false);
+});
+
 test('ordinary branch with an existing merge keeps the default rebase strategy', (t) => {
   const { root, work, branchName } = setupReconciledShepherdRepo();
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  git(work, ['branch', '-m', branchName, 'feature']);
+  git(work, ['branch', '-m', branchName, 'fix/recovery-timeout-bug']);
   const headBefore = git(work, ['rev-parse', 'HEAD']);
-  advanceMain(work, 'feature', 'main-two.txt', 'main two\n');
+  advanceMain(work, 'fix/recovery-timeout-bug', 'main-two.txt', 'main two\n');
 
   const result = attemptMainSync({ cwd: work, reason: 'test' });
 
