@@ -17,6 +17,7 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { InputState } from '../../src/shared/input.js';
 import { addItem, cloneInventoryBag } from '../../src/shared/inventory.js';
+import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getQuestDef, SHOPKEEPER_FETCH_ITEM_ID } from '../../src/shared/quest-types.js';
 
 const FLOOR5_RAM_COMPONENT_CLASSES = ['chassis', 'plating', 'broadcast-array'] as const;
@@ -128,6 +129,23 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(getFloor5SiegeRunStats(world)?.trace).toEqual([]);
     expect(world.floorMap?.rooms.some((room) => room.label === 'throne-room')).toBe(true);
     expect(world.rng.next()).toBe(untouched.rng.next());
+  });
+
+  it('uses a readable floor-5 startup announcement and a concrete terrain pack in the real pipeline', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+
+    expect(getFloorManifest('floor5')?.terrainPackId).toBe('floor1-dungeon');
+    expect(world.announcements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'bossAbilityCast',
+          text: 'Hostile Takeover: defend the Command Post and hold the line.',
+          durationMs: 6000,
+        }),
+      ]),
+    );
   });
 
   it('emits the same empty deterministic phase trace in windowed and headless setup', async () => {
