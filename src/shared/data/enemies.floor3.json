@@ -640,13 +640,13 @@
       "speciesId": "lumen-kindler"
     }
   ],
-  "enemyCap": 28,
-  "spawnIntervalMs": 900,
+  "enemyCap": 14,
+  "spawnIntervalMs": 1500,
   "spawnRadiusMin": 18,
   "despawnDistanceFt": 84,
-  "engageRadiusFt": 28,
+  "engageRadiusFt": 16,
   "engageTarget": 8,
-  "maxSpawnsPerTick": 3,
+  "maxSpawnsPerTick": 2,
   "roomWaveChance": 0.0,
   "roomWaveMin": 0,
   "roomWaveMax": 0
