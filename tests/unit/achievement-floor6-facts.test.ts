@@ -33,6 +33,7 @@ describe('Floor 6 achievement facts', () => {
     }
     defense.terminalOutcome = 'victory';
     defense.exit.opened = true;
+    defense.exit.confirmed = true;
 
     const facts = collectCurrentFloorAchievementFacts(world);
 

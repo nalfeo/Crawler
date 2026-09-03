@@ -772,7 +772,7 @@ export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
 export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
 export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
-export const FLOOR6_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR6_ACHIEVEMENT_CATALOG.all;
+export const _FLOOR6_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR6_ACHIEVEMENT_CATALOG.all;
 /** Count of Floor 2 floor-scoped achievements (excludes `current_run`-scoped entries). */
 export const FLOOR2_ACHIEVEMENT_COUNT = FLOOR2_ACHIEVEMENT_CATALOG.floorScoped.length;
 /** Count of Floor 2 `current_run`-scoped (run-global) achievements. */

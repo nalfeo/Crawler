@@ -412,13 +412,9 @@ function buildFloor5RamRoute(
   });
 }
 
-function createFloor5RamState(
-  world: GameWorld,
-  config: ReturnType<typeof getFloor5Config>,
-): Floor5RamState {
+function createFloor5RamState(config: ReturnType<typeof getFloor5Config>): Floor5RamState {
   const manifest = getFloor5Manifest();
   const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
-  void world;
   return {
     eid: 0,
     health: config.ram.health,
