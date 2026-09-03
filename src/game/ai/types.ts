@@ -510,6 +510,25 @@ export interface Floor2ProgressionMetrics {
   exitCompleted: boolean;
 }
 
+/** A deterministic Floor 3 progression transition captured by the headless runner. */
+export interface Floor3ProgressionMilestone {
+  frame: number;
+  gameTimeMs: number;
+}
+
+/** Complete production Floor 3 progression evidence captured by the headless runner. */
+export interface Floor3ProgressionMetrics {
+  leftEntrance: Floor3ProgressionMilestone | null;
+  studioVictories: Record<string, Floor3ProgressionMilestone | null>;
+  finalFourRounds: ReadonlyArray<{
+    handlerId: string;
+    victory: Floor3ProgressionMilestone | null;
+  }>;
+  keptCompanionSelected: Floor3ProgressionMilestone | null;
+  exitArrived: Floor3ProgressionMilestone | null;
+  exitCompleted: Floor3ProgressionMilestone | null;
+}
+
 /** End-of-run equipment usability + reward-resolution invariants. */
 export interface EquipmentPlayabilityMetrics {
   /** Total Quartermaster equipment gold observed as spent this run. */
@@ -794,6 +813,8 @@ export interface RunStats {
   floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
+  /** Full production Floor 3 Studio, Final Four, and exit progression evidence. */
+  floor3Progression?: Floor3ProgressionMetrics;
   /** Floor 4 arena clock and phase timeline evidence. */
   floor4Arena?: Floor4ArenaRunStats;
   /** Floor 5 siege phase skeleton and transition trace evidence. */
