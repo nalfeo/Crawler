@@ -92,7 +92,7 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
           eventCount(trace, 'floor3-final-four-versus', 'confirmed') === 4;
         const hasKeepConfirm = eventCount(trace, 'floor3-keep-companion', 'confirmed') === 1;
         const hasOutside10s = snapshot.floor3MaxAliveOutsideSpawnStreakMs >= 10_000;
-        if (!hasStairConfirm && hasEveryRepeatedSurface && hasKeepConfirm) {
+        if (!hasStairConfirm && hasEveryRepeatedSurface && hasKeepConfirm && hasOutside10s) {
           for (let stairPoll = 0; stairPoll < 30; stairPoll += 1) {
             await page.evaluate(() => {
               const jumpToStairs = (window as { __aiRunnerJumpToStairs?: () => boolean })

@@ -6087,7 +6087,11 @@ export class MainGameScene extends Phaser.Scene {
         stairMarker.radiusFt;
 
     const selectedNpcEid =
-      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+      interactionRequested && nearStairs && stairConfirmation.kind === 'floor3-stair-descend'
+        ? -1
+        : tappedNpcEid !== null && !tappedNpcInvalidated
+          ? tappedNpcEid
+          : nearNpcEid;
     if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
