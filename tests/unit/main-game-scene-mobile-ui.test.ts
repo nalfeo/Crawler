@@ -59,7 +59,10 @@ describe('MainGameScene NPC tap targeting', () => {
       'const tapped = (this.tappedInteraction && !tappedNpcInvalidated) || this.queuedInteraction;',
     );
     expect(source).toContain(
-      'tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;',
+      "interactionRequested && nearStairs && stairConfirmation.kind === 'floor3-stair-descend'",
+    );
+    expect(source).toContain(
+      'tappedNpcEid !== null && !tappedNpcInvalidated\n          ? tappedNpcEid\n          : nearNpcEid;',
     );
   });
 });
