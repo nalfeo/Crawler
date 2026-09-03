@@ -38,9 +38,12 @@ Accepted
   removed from managed PRs absent from the resulting groups; historical
   comments remain audit records but cannot preserve out-of-scope membership.
 - **DEC-003**: `scripts/agent/sync-main.mjs` fetches `origin/main` and rebases a
-  clean, non-main authoring branch locally. Conflicting rebases are immediately
-  aborted. Dirty or otherwise unsafe branches receive an actionable warning.
-  The helper never pushes and records session-local evidence under `files/`.
+  clean, non-main authoring branch locally by default. Shepherd/recovery branches
+  that already contain mainline reconciliation merges instead merge current
+  `origin/main` so deliberate prior conflict resolutions are not rewritten.
+  Conflicting rebases or merges are immediately aborted. Dirty or otherwise unsafe
+  branches receive an actionable warning. The helper never pushes and records
+  session-local evidence under `files/`.
 - **DEC-004**: Synchronization runs at session preflight, after 30 measured
   active authoring minutes, and immediately before publication. Active time is
   accumulated only across bounded gaps between agent tool calls so idle time
