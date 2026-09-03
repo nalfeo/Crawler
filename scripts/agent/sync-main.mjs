@@ -55,47 +55,58 @@ function gitSucceeds(cwd, args, runGit) {
 }
 
 function branchHasShepherdContext(branch) {
-  return branch
-    .split(/[/_-]+/)
-    .some((part) => part.toLowerCase() === 'shepherd' || part.toLowerCase() === 'recovery');
+  const lowerBranch = branch.toLowerCase();
+  const segments = lowerBranch.split(/[/_-]+/);
+  const hasShepherdMarker = segments.some((part) => part === 'shepherd' || part === 'recovery');
+  const hasOwnershipPrefix =
+    lowerBranch.startsWith('copilot/') ||
+    lowerBranch.startsWith('ci-recovery/') ||
+    lowerBranch.startsWith('pr-shepherd/') ||
+    lowerBranch.startsWith('shepherd/');
+
+  return hasOwnershipPrefix && hasShepherdMarker;
 }
 
-function mainlineReconciliationMerges(cwd, mainRef, runGit) {
+function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
   let mergeBase;
   try {
     mergeBase = runGit(cwd, ['merge-base', 'HEAD', mainRef]);
   } catch {
-    return [];
+    return false;
   }
 
   const merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
-  if (!merges) return [];
+  if (!merges) return false;
 
-  return merges
-    .split('\n')
-    .map((line) => line.trim().split(/\s+/))
-    .filter((parts) =>
+  for (const line of merges.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (
       parts
         .slice(2)
         .some((parent) =>
           gitSucceeds(cwd, ['merge-base', '--is-ancestor', parent, mainRef], runGit),
-        ),
-    )
-    .map(([sha]) => sha);
+        )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function selectSyncStrategy(cwd, branch, mainRef, runGit) {
-  const reconciliationMerges = mainlineReconciliationMerges(cwd, mainRef, runGit);
   const shepherdContext = branchHasShepherdContext(branch);
+  const hasReconciliationMerge = hasMainlineReconciliationMerge(cwd, mainRef, runGit);
 
-  if (shepherdContext && reconciliationMerges.length > 0) {
+  if (shepherdContext && hasReconciliationMerge) {
     return {
       name: 'merge-preserving',
       gitCommand: ['merge', '--no-edit', mainRef],
       abortCommand: ['merge', '--abort'],
       actionPastTense: 'merged',
       conflictOperation: 'Merge-preserving update',
-      reason: `branch name has shepherd/recovery context and ${reconciliationMerges.length} existing mainline reconciliation merge(s) were found`,
+      reason:
+        'branch name has shepherd/recovery ownership context and an existing mainline reconciliation merge was found',
     };
   }
 
@@ -106,7 +117,7 @@ function selectSyncStrategy(cwd, branch, mainRef, runGit) {
     actionPastTense: 'rebased',
     conflictOperation: 'Rebase',
     reason: shepherdContext
-      ? 'branch has shepherd/recovery context but no existing mainline reconciliation merges were found'
+      ? 'branch has shepherd/recovery ownership context but no existing mainline reconciliation merge was found'
       : 'branch name has no shepherd/recovery ownership context',
   };
 }
