@@ -71,8 +71,7 @@ function advanceMain(work, branchName, fileName, contents) {
   git(work, ['checkout', branchName]);
 }
 
-function setupReconciledShepherdRepo() {
-  const branchName = 'copilot/ratings-ram-recovery';
+function setupReconciledShepherdRepo(branchName = 'copilot/ratings-ram-recovery') {
   const root = mkdtempSync(path.join(tmpdir(), 'crawler-main-sync-'));
   const remote = path.join(root, 'remote.git');
   const work = path.join(root, 'work');
@@ -191,6 +190,17 @@ test('conflicting merge-preserving sync aborts and restores the original shepher
   assert.equal(readFileSync(path.join(work, 'shared.txt'), 'utf8'), 'resolved feature plus main\n');
   assert.equal(git(work, ['status', '--porcelain']), '');
   assert.equal(existsSync(path.resolve(work, mergeHeadPath)), false);
+});
+
+test('dedicated shepherd ownership branch prefix does not require an extra marker segment', (t) => {
+  const { root, work, branchName } = setupReconciledShepherdRepo('ci-recovery/fix-timeout');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  advanceMain(work, branchName, 'main-two.txt', 'main two\n');
+
+  const result = attemptMainSync({ cwd: work, reason: 'test' });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.strategy, 'merge-preserving');
 });
 
 test('ordinary branch with an existing merge keeps the default rebase strategy', (t) => {
