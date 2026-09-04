@@ -14,7 +14,7 @@ ai-behavior-tree
 
 ## Apples
 
-2🍎 estimated, 2🍎 actual — exact; this session landed one new deterministic
+3🍎 estimated, 3🍎 actual — exact; this session landed one new deterministic
 test file, one shared-constant helper, a small refactor of an existing test,
 and a one-field production telemetry fix required to make the new test
 observe the truth.
