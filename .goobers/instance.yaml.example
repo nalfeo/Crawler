@@ -13,6 +13,7 @@ credentials:
 runner:
   envPassthrough:
     - GOOBERS_RECOVERY_ISSUE
+    - GOOBERS_INTAKE_COHORT
     - GOOBERS_RESUME_BRANCH
 runConditions:
   maxParallelRuns: 1

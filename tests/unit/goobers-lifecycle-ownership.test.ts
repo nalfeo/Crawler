@@ -718,9 +718,18 @@ describe('Goobers lifecycle ownership', () => {
       path.join(repositoryRoot, '.github/scripts/ci-recovery/issue-intake-lib.mjs'),
       'utf8',
     );
-    // Each deferral to Goobers must be conditional on Goobers owning the lane.
-    expect(intake.match(/goobersOwnsImplementationClaim\(\)/g)).toHaveLength(3);
+    // Every deferral to Goobers routes through one gate — `goobersOwnsIssueIntake`
+    // — which is itself conditional on Goobers owning the lane. Duplicated
+    // per-call-site ownership checks are what let the approved-only cohort
+    // drift away from the legacy cohort in the first place.
+    expect(intake).toMatch(
+      /export function goobersOwnsIssueIntake\([\s\S]*?if \(!goobersOwnsImplementationClaim\(env\)\) return false;/,
+    );
+    expect(intake.match(/goobersOwnsIssueIntake\(/g)).toHaveLength(4);
     expect(workflow('issue-copilot-intake.yml')).toContain(
+      'LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}',
+    );
+    expect(workflow('goobers-run.yml')).toContain(
       'LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}',
     );
   });

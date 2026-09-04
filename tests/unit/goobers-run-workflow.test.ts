@@ -147,20 +147,96 @@ function extractPinnedSha(script: string | null | undefined): string | null {
 }
 
 describe('Goobers automatic dispatch and recovery', () => {
-  it('runs for the exact approval label and performs an hourly recovery sweep', () => {
+  it('dispatches immediately for eligible issue events and performs an hourly recovery sweep', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
 
-    expect(workflow.on.issues?.types).toEqual(['labeled']);
+    // `opened`/`reopened` are the immediate-dispatch path for the transferred
+    // legacy intake cohort; `labeled` remains the explicit approval path.
+    expect(workflow.on.issues?.types).toEqual(['opened', 'reopened', 'labeled']);
     expect(workflow.on.schedule).toEqual([{ cron: '37 * * * *' }]);
     expect(workflow.on.workflow_dispatch).toBeDefined();
     expect(workflow.jobs.run?.if).toContain("github.event_name != 'issues'");
     expect(workflow.jobs.run?.if).toContain("github.event.label.name == 'goobers:approved'");
+    expect(workflow.jobs.run?.if).toContain("github.event.action != 'labeled'");
     expect(workflow.jobs.run?.if).toContain("github.event.issue.state == 'open'");
+    expect(workflow.jobs.run?.if).toContain("vars.LIFECYCLE_MUTATION_OWNER == 'goobers'");
     expect(workflow.concurrency).toBeUndefined();
     expect(workflow.jobs.run?.concurrency).toEqual({
       group: 'goobers-run',
       'cancel-in-progress': false,
     });
+  });
+
+  it('routes the whole legacy intake cohort through the canonical selector', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const recovery =
+      steps.find((step) => step.name === 'Resolve Goobers recovery target')?.run ?? '';
+    const start = steps.find((step) => step.name === 'Comment on Goobers run start')?.run ?? '';
+
+    // The selectors themselves must never be restated in YAML/jq — that
+    // duplication is what let the approved-only cohort drift from legacy's.
+    expect(recovery).toContain('node .github/scripts/goobers/intake-selection.mjs');
+    expect(start).toContain('node .github/scripts/goobers/intake-selection.mjs --issue -');
+    // The shared query carries no cohort filter; the extra narrow approved
+    // query exists only so the approved queue cannot fall off the far side of
+    // GitHub Search's 1000-result cap.
+    const sharedQuery = recovery.slice(
+      recovery.indexOf('search_open_unassigned() {'),
+      recovery.indexOf('search_open_unassigned --label'),
+    );
+    expect(sharedQuery).not.toContain("--label 'goobers:approved'");
+    expect(recovery).toContain("search_open_unassigned --label 'goobers:approved'");
+    expect(recovery).toContain('jq -s \'add\' "${approved_file}" "${parity_file}"');
+    expect(start).not.toContain('index("goobers:approved") != null');
+    expect(workflow.jobs.run?.env?.LIFECYCLE_MUTATION_OWNER).toBe(
+      '${{ vars.LIFECYCLE_MUTATION_OWNER }}',
+    );
+    expect(workflow.jobs.run?.env?.ISSUE_OWNER).toBe('nalfeo');
+
+    // Node must be installed before the selector runs, including on runs that
+    // then skip, so eligibility never depends on the runner image's Node.
+    const nodeIndex = steps.findIndex((step) => step.name === 'Set up Node.js');
+    const recoveryIndex = steps.findIndex(
+      (step) => step.name === 'Resolve Goobers recovery target',
+    );
+    expect(nodeIndex).toBeGreaterThanOrEqual(0);
+    expect(nodeIndex).toBeLessThan(recoveryIndex);
+    expect(steps[nodeIndex]?.if).toBeUndefined();
+    expect(steps.filter((step) => step.name === 'Set up Node.js')).toHaveLength(1);
+  });
+
+  it('skips ineligible issues without claiming, and exempts resumes from fresh-intake gates', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const recovery =
+      steps.find((step) => step.name === 'Resolve Goobers recovery target')?.run ?? '';
+    const start = steps.find((step) => step.name === 'Comment on Goobers run start')?.run ?? '';
+
+    expect(recovery).toContain('is not in the Goobers intake cohort');
+    expect(recovery).toContain('should_run=false');
+    expect(recovery).toContain('INTAKE_COHORT="resume"');
+    expect(recovery).toContain('GOOBERS_INTAKE_COHORT=${INTAKE_COHORT}');
+    expect(start).toContain('if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]');
+    expect(start).toContain('is no longer in the Goobers intake cohort');
+    // The revalidated cohort must overwrite GOOBERS_INTAKE_COHORT so the
+    // downstream claim fence trusts a fresh verdict, not a possibly-stale one
+    // from the earlier resolve step.
+    expect(start).toContain('revalidated_cohort="$(jq -r \'.cohort // ""\' <<<"$decision")"');
+    expect(start).toContain(
+      'echo "GOOBERS_INTAKE_COHORT=${revalidated_cohort}" >> "${GITHUB_ENV}"',
+    );
+    // The claim fence downstream must accept the cohort the workflow resolved.
+    const definition = readFileSync(
+      path.join(REPO_ROOT, '.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml'),
+      'utf8',
+    );
+    expect(definition).toContain('GOOBERS_INTAKE_COHORT');
+    expect(definition).toContain('(approved|legacy-parity|resume) claimable=true ;;');
+    // The fence must trust the canonical cohort verdict outright rather than
+    // re-deriving approval via its own label lookup, which drifted out of
+    // sync with the case-insensitive canonical selector.
+    expect(definition).not.toContain('index("goobers:approved") != null');
   });
 
   it('uses trusted pinned defaults outside manual dispatches', () => {
@@ -243,7 +319,20 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryStep?.run).toContain('gh search issues');
     expect(recoveryStep?.run).toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(recoveryStep?.run).toContain('--state open');
-    expect(recoveryStep?.run).toContain("--label 'goobers:approved'");
+    // Deliberately NOT filtered to `goobers:approved` in the shared query:
+    // Goobers must claim at least the whole legacy intake cohort, and the
+    // canonical selector decides membership from the returned payloads. The
+    // separate narrow approved query keeps the approved queue reachable past
+    // GitHub Search's 1000-result cap.
+    const sharedQuery = (recoveryStep?.run ?? '').slice(
+      (recoveryStep?.run ?? '').indexOf('search_open_unassigned() {'),
+      (recoveryStep?.run ?? '').indexOf('search_open_unassigned --label'),
+    );
+    expect(sharedQuery).not.toContain("--label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain("search_open_unassigned --label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain(
+      '--json number,state,labels,assignees,author,isPullRequest',
+    );
     expect(recoveryStep?.run).toContain('--no-assignee');
     expect(recoveryStep?.run).toContain(
       '-- \'-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"\'',
@@ -283,13 +372,17 @@ describe('Goobers automatic dispatch and recovery', () => {
       'Verify archive against pinned checksum',
       'Extract binary',
       'Verify binary version',
-      'Set up Node.js',
       'Install project dependencies',
       'Install Copilot CLI',
       'Validate .goobers source tree',
       'Scaffold throwaway instance root',
       'Materialize checked-in source into the instance',
     ];
+    // `Set up Node.js` is deliberately ungated and ahead of resolution: the
+    // eligibility selector itself runs on Node, so gating it on the resolve
+    // step's own output would be circular. It is a cached ~2s step.
+    const setupNode = goobersRunSteps?.find((step) => step.name === 'Set up Node.js');
+    expect(setupNode?.if).toBeUndefined();
     for (const stepName of gatedStepNames) {
       const step = goobersRunSteps?.find((candidate) => candidate.name === stepName);
       expect(step?.if, `expected "${stepName}" to be gated on should_run`).toBe(
@@ -494,12 +587,14 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(readGeneratedEnvPassthrough(materialize?.run)).toEqual([
       'GOOBERS_INSTANCE',
       'GOOBERS_RECOVERY_ISSUE',
+      'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',
       'GH_TOKEN',
       'GITHUB_REPOSITORY',
     ]);
     expect(instance.runner?.envPassthrough).toEqual([
       'GOOBERS_RECOVERY_ISSUE',
+      'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',
     ]);
   });
@@ -634,7 +729,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(start?.if).toBe("steps.recovery.outputs.should_run != 'false'");
     expect(start?.env?.GH_TOKEN).toBe('${{ github.token }}');
     expect(start?.run).toContain('gh issue view "$issue_number"');
-    expect(start?.run).toContain('index("goobers:approved") != null');
+    expect(start?.run).toContain('node .github/scripts/goobers/intake-selection.mjs --issue -');
     expect(start?.run).toContain('[.assignees[]] | length == 0');
     expect(start?.run).toContain('issues/${issue_number}/dependencies/blocked_by');
     expect(start?.run).toContain('No start comment or Goobers claim was created');
