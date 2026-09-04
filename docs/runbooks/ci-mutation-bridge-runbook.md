@@ -10,7 +10,7 @@ tracked per lane, and every lane always has exactly one writer:
 
 | Lane                                     | Phase 2 owner | Selector                         | Phase 3 status                |
 | ---------------------------------------- | ------------- | -------------------------------- | ----------------------------- |
-| Implementation claim (approved issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       | n/a (Phase 2 lane)            |
+| Implementation claim (eligible issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       | n/a (Phase 2 lane)            |
 | CI Recovery router + reconciliation      | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    | not yet migratable            |
 | Review-thread reply/resolve              | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` | **migratable (Lane A, live)** |
 | Auto-rebase branch updates               | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  | not yet migratable            |
@@ -18,12 +18,30 @@ tracked per lane, and every lane always has exactly one writer:
 
 ## The ownership boundary
 
-Goobers owns **approved-issue intake and implementation, up to and including PR
+Goobers owns **issue intake and implementation, up to and including PR
 creation, publication, and readiness.** The moment a PR is published, the claim
 is handed off and legacy automation owns the PR lifecycle end to end.
 
+The transferred intake cohort is the **union** of the maintainer-approved queue
+and the legacy issue-intake eligibility cohort — Goobers must process at least
+every issue the legacy reconciler would have. Membership is decided by one
+canonical function (`goobersIntakeEligibility` /
+`legacyIntakeCohortEligibility` in
+`.github/scripts/ci-recovery/issue-intake-lib.mjs`), consumed by both the
+Goobers dispatcher and legacy intake, so the two can never disagree:
+
+| Issue class                                                | `LIFECYCLE_MUTATION_OWNER=goobers` | rollback (`legacy`/malformed) |
+| ---------------------------------------------------------- | ---------------------------------- | ----------------------------- |
+| `goobers:approved` (any opener)                            | Goobers                            | legacy                        |
+| Opened by `nalfeo` / Actions / Copilot, unassigned         | Goobers                            | legacy                        |
+| `telemetry` labeled, not approved                          | nobody (excluded by policy)        | nobody                        |
+| Untrusted opener, not approved                             | nobody (excluded by policy)        | nobody                        |
+| `automation` labeled, not opened by Actions, not approved  | nobody (excluded by policy)        | nobody                        |
+| Already assigned (e.g. stale Copilot session restart lane) | legacy                             | legacy                        |
+| `goobers/status:in-review` / `completed-existing-work`     | Goobers (in flight / terminal)     | legacy                        |
+
 ```
-approved issue ──► Goobers claims ──► implementation ──► PR published
+eligible issue ──► Goobers claims ──► implementation ──► PR published
                                                              │
                                                    claim released (handoff)
                                                              │
@@ -32,17 +50,20 @@ approved issue ──► Goobers claims ──► implementation ──► PR pu
 ```
 
 The claim lease exists only to stop two implementers picking up the same
-approved issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
+issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
 by a PR or head SHA, and **no PR-lifecycle lane consults it**. That is what
 guarantees there is no gap: legacy automation is live for a published PR whether
 or not a claim ever existed.
 
 ## Fail directions (deliberately opposite)
 
-- **Claim lane fails closed.** `LIFECYCLE_MUTATION_OWNER` must be exactly
-  `goobers` or `legacy`. Any other value — unset, misspelled, wrong case,
-  padded — disables _both_ claim writers. Duplicate implementation work is the
-  expensive failure, so ambiguity means nobody writes.
+- **Claim lane fails closed against dual writers, not against automation.**
+  `LIFECYCLE_MUTATION_OWNER` migrates the lane to Goobers only on the literal
+  `goobers`. Any other value — unset, misspelled, wrong case, padded, or the
+  literal `legacy` — leaves the whole transferred cohort with **legacy**, the
+  same as an explicit rollback (see the table above). Duplicate implementation
+  work is the expensive failure, so ambiguity means exactly one writer
+  (legacy), never zero and never two.
 - **PR-lifecycle lanes fail operational.** A lane selector migrates only on the
   literal `goobers`; unset or malformed leaves **legacy** in charge. A typo can
   never silently take CI Recovery, review threads, rebasing, or the merge train
@@ -176,8 +197,8 @@ misconfiguration, not expected behavior — check that lane's selector.
 5. Set `LIFECYCLE_MUTATION_OWNER=legacy`; verify a Goobers acquire reports
    `observe-only` while every PR lane still mutates.
 6. Restore `LIFECYCLE_MUTATION_OWNER=goobers` and re-verify one acquire.
-7. Verify a malformed selector (for example `goobrs`) disables both claim
-   writers and leaves all PR lanes running.
+7. Verify a malformed selector (for example `goobrs`) leaves the claim with
+   legacy (same as `legacy`, not disabled) and leaves all PR lanes running.
 
 Document the run IDs, timestamps, and the exact mutated PR in the incident or
 drill record.
