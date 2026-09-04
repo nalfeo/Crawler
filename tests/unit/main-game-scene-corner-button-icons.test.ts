@@ -27,7 +27,7 @@ const SOURCE = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf8');
 const EXPECTED_TEXT_PRESENTATION_ICONS = ['✕'];
 
 function stringConstantValue(name: string): string | null {
-  const match = new RegExp(`const ${name} = '([^']+)';`).exec(SOURCE);
+  const match = new RegExp(`const ${name} = ['"]([^'"]+)['"];`).exec(SOURCE);
   return match?.[1] ?? null;
 }
 
@@ -40,7 +40,7 @@ function cornerButtonLabels(): string[] {
     match = pattern.exec(SOURCE);
   }
   const issueLabel = stringConstantValue('ISSUE_BUTTON_LABEL');
-  if (issueLabel && SOURCE.includes('ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL')) {
+  if (issueLabel && /ISSUE_BUTTON_LABEL_COMPACT\s*:\s*ISSUE_BUTTON_LABEL/.test(SOURCE)) {
     labels.push(issueLabel);
   }
   return labels;
