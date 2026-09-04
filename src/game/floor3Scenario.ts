@@ -131,6 +131,7 @@ const FLOOR3_STARTER_COMPANION_LEVEL = tuning.floor3Companion.starterLevel;
  * Companion already uses. Wild/Studio/Final-Four Companion HP is untouched.
  */
 const FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER = tuning.floor3Companion.playerCompanionHpMultiplier;
+const FLOOR3_WILD_RANGED_ATTACK_RANGE_SHARE = 0.65;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
@@ -317,6 +318,15 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     speed = scaled.speed;
   }
 
+  // Floor 3 wild hostility is player-anchored by design: the per-archetype
+  // detectRange values still document/reuse species behavior for roster
+  // Companions, but wild ambient mobs all use the floor-tuned aggro radius.
+  // Keep ranged/support standoff inside that same radius so a wild never tries
+  // to hold position beyond the range where it is allowed to be hostile.
+  const wildAttackRange =
+    archetype.aiType === 'ranged' || archetype.aiType === 'support'
+      ? FLOOR3_WILD_AGGRO_RANGE_FT * FLOOR3_WILD_RANGED_ATTACK_RANGE_SHARE
+      : 0;
   const eid = spawnBehaviorEnemy(
     world,
     x,
@@ -325,9 +335,7 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     resolveFloor3ArchetypeAiType(archetype),
     speed,
     FLOOR3_WILD_AGGRO_RANGE_FT,
-    archetype.aiType === 'ranged' || archetype.aiType === 'support'
-      ? FLOOR3_WILD_AGGRO_RANGE_FT * 0.65
-      : 0,
+    wildAttackRange,
   );
   addComponent(world.ecs, eid, set(Team, { id: FLOOR3_WILD_TEAM_ID }));
   setComponent(world.ecs, eid, Sprite, {

@@ -6,7 +6,10 @@ import tuning from '../../shared/data/tuning.json';
 
 export const FLOOR3_WILD_AGGRO_RANGE_FT = tuning.floor3Companion.wildAggroRangeFt;
 const FLOOR3_WILD_DISENGAGE_RANGE_FT = FLOOR3_WILD_AGGRO_RANGE_FT * 2;
-const lastUpdatedFrameByWorld = new WeakMap<GameWorld, number>();
+const lastUpdateByWorld = new WeakMap<
+  GameWorld,
+  { frameCount: number; hostileWilds: Set<number> }
+>();
 
 function resolveHostileWilds(world: GameWorld): Set<number> {
   let hostileWilds = world.floorExtendedState?.floor3HostileWildEnemyEids;
@@ -22,16 +25,19 @@ function resolveHostileWilds(world: GameWorld): Set<number> {
 
 export function updateFloor3WildHostility(world: GameWorld): void {
   if (world.floorId !== 'floor3') return;
-  if (lastUpdatedFrameByWorld.get(world) === world.frameCount) return;
   const player = query(world.ecs, [Player, Position])[0];
   if (player === undefined) return;
-  lastUpdatedFrameByWorld.set(world, world.frameCount);
 
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
   const aggroRangeSq = FLOOR3_WILD_AGGRO_RANGE_FT * FLOOR3_WILD_AGGRO_RANGE_FT;
   const disengageRangeSq = FLOOR3_WILD_DISENGAGE_RANGE_FT * FLOOR3_WILD_DISENGAGE_RANGE_FT;
   const hostileWilds = resolveHostileWilds(world);
+  const lastUpdate = lastUpdateByWorld.get(world);
+  if (lastUpdate?.frameCount === world.frameCount && lastUpdate.hostileWilds === hostileWilds) {
+    return;
+  }
+  lastUpdateByWorld.set(world, { frameCount: world.frameCount, hostileWilds });
   const liveWilds = new Set<number>();
 
   for (const eid of query(world.ecs, [Enemy, Position])) {
