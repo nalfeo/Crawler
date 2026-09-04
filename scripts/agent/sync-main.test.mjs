@@ -139,6 +139,35 @@ function setupOrdinaryBranchWithCleanMainMerge() {
   return { root, work };
 }
 
+function setupShepherdBranchWithUnrelatedMerge() {
+  const root = mkdtempSync(path.join(tmpdir(), 'crawler-main-sync-'));
+  const remote = path.join(root, 'remote.git');
+  const work = path.join(root, 'work');
+  git(root, ['init', '--bare', remote]);
+  git(root, ['init', '--initial-branch=main', work]);
+  git(work, ['remote', 'add', 'origin', remote]);
+  git(work, ['config', 'user.name', 'Test']);
+  git(work, ['config', 'user.email', 'test@example.com']);
+  git(work, ['config', 'core.autocrlf', 'false']);
+  git(work, ['config', 'core.eol', 'lf']);
+
+  writeFileSync(path.join(work, '.gitignore'), 'files/\n');
+  writeFileSync(path.join(work, 'base.txt'), 'base\n');
+  commit(work, 'base');
+  git(work, ['push', '-u', 'origin', 'main']);
+
+  git(work, ['checkout', '-b', 'shepherd/unrelated-merge']);
+  git(work, ['checkout', '-b', 'topic']);
+  writeFileSync(path.join(work, 'topic.txt'), 'topic\n');
+  commit(work, 'topic');
+
+  git(work, ['checkout', 'shepherd/unrelated-merge']);
+  git(work, ['merge', '--no-ff', '--no-edit', 'topic']);
+  advanceMain(work, 'shepherd/unrelated-merge', 'main-one.txt', 'main one\n');
+
+  return { root, work };
+}
+
 test('clean branch rebases onto fetched origin/main and records success', (t) => {
   const { root, work, featureSha } = setupDivergedRepo();
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -263,4 +292,49 @@ test('ordinary branch with a clean existing merge still rebases successfully by 
   assert.match(result.strategyReason, /no shepherd\/recovery ownership context/);
   assert.equal(readFileSync(path.join(work, 'main-two.txt'), 'utf8'), 'main two\n');
   assert.equal(git(work, ['rev-list', '--count', '--merges', 'HEAD']), '0');
+});
+
+test('ordinary branches do not inspect merge history before selecting rebase', (t) => {
+  const { root, work } = setupDivergedRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runGit = (cwd, args) => {
+    assert.notEqual(args[0], 'merge-base');
+    assert.notEqual(args[0], 'rev-list');
+    return git(cwd, args);
+  };
+
+  const result = attemptMainSync({ cwd: work, reason: 'test', runGit });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.strategy, 'rebase');
+});
+
+test('eligible branch with only an unrelated merge keeps the default rebase strategy', (t) => {
+  const { root, work } = setupShepherdBranchWithUnrelatedMerge();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = attemptMainSync({ cwd: work, reason: 'test' });
+
+  assert.equal(result.status, 'success');
+  assert.equal(result.strategy, 'rebase');
+  assert.match(result.strategyReason, /no existing mainline reconciliation merge/);
+  assert.equal(readFileSync(path.join(work, 'topic.txt'), 'utf8'), 'topic\n');
+  assert.equal(readFileSync(path.join(work, 'main-one.txt'), 'utf8'), 'main one\n');
+  assert.equal(git(work, ['rev-list', '--count', '--merges', 'HEAD']), '0');
+});
+
+test('strategy evidence is cleared when a later attempt defers before strategy selection', (t) => {
+  const { root, work, branchName } = setupRepoWithReconciliationMerge();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  advanceMain(work, branchName, 'main-two.txt', 'main two\n');
+  const firstResult = attemptMainSync({ cwd: work, reason: 'test' });
+  writeFileSync(path.join(work, 'dirty.txt'), 'dirty\n');
+
+  const secondResult = attemptMainSync({ cwd: work, reason: 'test' });
+  const state = readSyncState(work);
+
+  assert.equal(firstResult.strategy, 'merge-preserving');
+  assert.equal(secondResult.status, 'deferred-dirty');
+  assert.equal(Object.hasOwn(state, 'lastStrategy'), false);
+  assert.equal(Object.hasOwn(state, 'lastStrategyReason'), false);
 });

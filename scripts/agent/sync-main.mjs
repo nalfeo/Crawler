@@ -110,7 +110,7 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
 
   for (const line of merges.split('\n')) {
     const parts = line.trim().split(/\s+/);
-    if (hasMainlineParent(cwd, parts.slice(1), mainRef, runGit)) return true;
+    if (hasMainlineParent(cwd, parts.slice(2), mainRef, runGit)) return true;
   }
 
   return false;
@@ -118,7 +118,8 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
 
 function selectSyncStrategy(cwd, branch, mainRef, runGit) {
   const shepherdContext = branchHasShepherdContext(branch);
-  const hasReconciliationMerge = hasMainlineReconciliationMerge(cwd, mainRef, runGit);
+  const hasReconciliationMerge =
+    shepherdContext && hasMainlineReconciliationMerge(cwd, mainRef, runGit);
 
   if (shepherdContext && hasReconciliationMerge) {
     return {
@@ -158,19 +159,31 @@ function gitOperationInProgress(cwd, runGit) {
 }
 
 function resultState(state, result, now) {
-  return {
+  const nextState = {
     ...state,
     schema: 'crawler-main-sync/v1',
     lastAttemptAt: new Date(now).toISOString(),
     lastReason: result.reason,
     lastResult: result.status,
     lastMessage: result.message,
-    ...(result.strategy ? { lastStrategy: result.strategy } : {}),
-    ...(result.strategyReason ? { lastStrategyReason: result.strategyReason } : {}),
     ...(result.headSha ? { headSha: result.headSha } : {}),
     ...(result.mainSha ? { mainSha: result.mainSha } : {}),
     ...(result.status === 'success' ? { lastSuccessAt: new Date(now).toISOString() } : {}),
   };
+
+  if (result.strategy) {
+    nextState.lastStrategy = result.strategy;
+  } else {
+    delete nextState.lastStrategy;
+  }
+
+  if (result.strategyReason) {
+    nextState.lastStrategyReason = result.strategyReason;
+  } else {
+    delete nextState.lastStrategyReason;
+  }
+
+  return nextState;
 }
 
 export function attemptMainSync({
