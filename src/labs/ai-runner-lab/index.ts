@@ -14,6 +14,8 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
+import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
   AIState,
   AIDecisionMode,
@@ -58,6 +60,7 @@ import {
   questSystem,
   setTrackedQuest,
   startFloor1BossEncounter,
+  getCompanionAIDecision,
   type ScenarioInitializationOptions,
 } from '../../game/index.js';
 import {
@@ -69,6 +72,7 @@ import {
   Gold,
   DroppedItem,
   Harvestable,
+  Companion,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
@@ -102,7 +106,11 @@ import { ftToPx, pxToFt } from '../../shared/units.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
-import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './path-overlay.js';
+import {
+  buildSmoothedOverlayPath,
+  OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
+  type OverlayPoint,
+} from './path-overlay.js';
 import {
   AI_RUNNER_SCENARIO_PRESETS,
   DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
@@ -666,6 +674,16 @@ export interface AiRunnerDebugSnapshot {
   }>;
   runOutcome: string | null;
   /**
+   * Distinguishes Floor 3's three `world.state === 'game_over'` causes so a
+   * headless/e2e observer can tell a companion-party wipe apart from a floor
+   * timeout or the player's own HP reaching zero — all three set the same
+   * `worldState` string (`healthSystem.ts`, `floor3Scenario.ts`), so without
+   * this the underlying cause is otherwise invisible outside the game
+   * process. `null` while the world is not in `game_over` (or is on a
+   * different floor). Debug-only; never asserted against by shipped code.
+   */
+  floor3LossReason: 'party-wiped' | 'timeout' | 'player-hp' | null;
+  /**
    * The floor the live world is actually on, or `'unknown'` before a world
    * exists / when the world reports a floor with no registered manifest.
    * Derived from the floor registry rather than a hardcoded union so a newly
@@ -686,6 +704,25 @@ export interface AiRunnerDebugSnapshot {
    * before the world exists.
    */
   floor4Arena?: Floor4ArenaRunStats;
+  /**
+   * Per-companion decision + path telemetry (#4205), mirroring the player's
+   * own `state`/`reason`/`targetX`/`targetY`/`targetDist` fields above so a
+   * companion's current behavior is exposed with the same shape/parity as
+   * the player's. `path` is the same string-pulled overlay geometry drawn
+   * on screen (see `buildSmoothedOverlayPath` in `path-overlay.ts`), reduced
+   * to plain points for headless/e2e assertions.
+   */
+  companions: ReadonlyArray<{
+    eid: number;
+    x: number;
+    y: number;
+    kind: string;
+    targetEid: number | null;
+    targetX: number | null;
+    targetY: number | null;
+    targetDist: number | null;
+    path: ReadonlyArray<{ x: number; y: number }>;
+  }>;
 }
 
 declare global {
@@ -951,6 +988,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   ]);
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
+  /** Companion decision/path overlay graphics (#4205), parity with `pathGraphics`. */
+  let companionGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -1720,6 +1759,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     // Drop any stale AI path overlay so it doesn't trail behind the human.
     pathGraphics?.clear();
+    companionGraphics?.clear();
     renderControls();
   };
 
@@ -1771,6 +1811,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     floor3PendingResumeKinds.clear();
     pathGraphics?.destroy();
     pathGraphics = null;
+    companionGraphics?.destroy();
+    companionGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
     riskRewardFieldsGraphics?.destroy();
@@ -2160,6 +2202,131 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (decision.targetX !== null && decision.targetY !== null) {
       graphics.lineStyle(2, 0xff7043, 0.9);
       graphics.strokeCircle(ftToPx(decision.targetX), ftToPx(decision.targetY), 10);
+    }
+  };
+
+  /**
+   * Reads every companion's current AI decision + a string-pulled path to its
+   * decision target, in the same shape/units as the player's own telemetry
+   * (#4205). A companion has no multi-waypoint route planner like the
+   * player's `BehaviorTreeAI` — `enemyAISystem` steers it straight at
+   * `CompanionAIDecision.x/y` — so the "path" is that single leg run through
+   * the same string-pull/line-of-sight helper the player overlay uses, for
+   * visual and structural parity rather than a literal identical algorithm.
+   */
+  const getCompanionTelemetry = (world: GameWorld): AiRunnerDebugSnapshot['companions'] => {
+    const companions: AiRunnerDebugSnapshot['companions'][number][] = [];
+    for (const eid of query(world.ecs, [Companion, Position])) {
+      const decision = getCompanionAIDecision(world, eid);
+      if (!decision) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const targetDist = Math.hypot(decision.x - x, decision.y - y);
+      let path: OverlayPoint[] = [{ x, y }];
+      if (world.floorMap) {
+        path = buildSmoothedOverlayPath(
+          { x, y },
+          [{ x: decision.x, y: decision.y }],
+          (px, py) => world.floorMap!.isPassableAt(px, py),
+          pxToFt(OVERLAY_LINE_OF_SIGHT_SAMPLE_PX),
+          (px, py) => world.floorMap!.worldToTile(px, py),
+        );
+      }
+      companions.push({
+        eid,
+        x: Math.round(x),
+        y: Math.round(y),
+        kind: decision.kind,
+        targetEid: decision.targetEid ?? null,
+        targetX: Math.round(decision.x),
+        targetY: Math.round(decision.y),
+        targetDist: Math.round(targetDist),
+        path: path.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) })),
+      });
+    }
+    return companions;
+  };
+
+  /**
+   * Distinguishes Floor 3's `game_over` causes (see `AiRunnerDebugSnapshot`
+   * doc comment) by re-deriving the same predicates `floor3Scenario.ts` and
+   * `healthSystem.ts` used to set it, rather than adding new state — pure and
+   * read-only, safe to call every frame regardless of floor or world state.
+   *
+   * Floor-gated on `floorId === 'floor3'` per the doc comment ("or is on a
+   * different floor"): the timeout goal flag and party-wipe predicate are
+   * Floor-3-specific concepts, so evaluating them on another floor would be
+   * meaningless even if `world.state` happened to be `'game_over'` there too.
+   *
+   * Player-HP is checked before the party-wipe predicate: a simultaneous
+   * player-death + party-wipe frame is the player's own HP reaching zero
+   * (`healthSystem.ts`), which is the more specific/actionable cause and must
+   * win over the party-wipe fallback, not the other way around.
+   */
+  const getFloor3LossReason = (world: GameWorld): AiRunnerDebugSnapshot['floor3LossReason'] => {
+    if (world.floorId !== 'floor3' || world.state !== 'game_over') return null;
+    if (world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true) return 'timeout';
+    const playerEid = query(world.ecs, [Player])[0];
+    const playerHealth =
+      playerEid !== undefined ? (world.stores.health.current[playerEid] ?? 0) : 0;
+    if (playerHealth <= 0) return 'player-hp';
+    if (_isPartyWiped(world)) return 'party-wiped';
+    return 'player-hp';
+  };
+
+  const ensureCompanionGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!companionGraphics || !companionGraphics.scene) {
+      companionGraphics = scene.add.graphics();
+      // World-space debug overlay: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
+      companionGraphics.setDepth(WORLD_VFX_DEPTH.debugPath);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        companionGraphics,
+      );
+    }
+    return companionGraphics;
+  };
+
+  /**
+   * Draws each companion's current decision path + target with the same
+   * visual language as the player's own path overlay above (#4205): a
+   * colored line to the target and a stroked target circle, giving on-screen
+   * parity between the player's AI decision and every companion's.
+   * Rival-primary pursuit renders pink/magenta so it reads as distinct from
+   * the player's orange target circle; follow/idle/disabled render green.
+   */
+  const drawCompanionOverlay = (): void => {
+    const graphics = ensureCompanionGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !world) {
+      return;
+    }
+    graphics.clear();
+    if (manualControl) {
+      // Mirrors drawPathOverlay: the AI's own targeting is frozen/stale while
+      // a human drives, so hide it rather than show a misleading overlay.
+      return;
+    }
+    for (const companion of getCompanionTelemetry(world)) {
+      const color = companion.kind === 'rival-primary' ? 0xff4081 : 0x69f0ae;
+      if (companion.path.length > 1) {
+        graphics.lineStyle(2, color, 0.85);
+        graphics.beginPath();
+        const [first, ...rest] = companion.path;
+        graphics.moveTo(ftToPx(first!.x), ftToPx(first!.y));
+        for (const point of rest) {
+          graphics.lineTo(ftToPx(point.x), ftToPx(point.y));
+        }
+        graphics.strokePath();
+      }
+      if (companion.targetX !== null && companion.targetY !== null) {
+        graphics.lineStyle(2, color, 0.9);
+        graphics.strokeCircle(ftToPx(companion.targetX), ftToPx(companion.targetY), 7);
+      }
     }
   };
 
@@ -2774,6 +2941,17 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
                 <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
                 <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
               </div>
+              <!--
+                #4205: companion decision/path parity with the player row
+                above — reads the same getCompanionTelemetry() snapshot the
+                world-space overlay (drawCompanionOverlay) already draws
+                from, but as an actual visible text readout rather than only
+                canvas geometry, so a user (not just a debug-snapshot
+                consumer) can see each companion's current decision + path.
+              -->
+              <div id="ai-companions-block" class="runner-decision-grid">
+                <div><strong>Companions:</strong> <span id="ai-companions">-</span></div>
+              </div>
               <details id="ai-tree-details" class="runner-tree-details"${openDetails.has('ai-tree-details') ? ' open' : ''}>
                 <summary id="ai-tree-details-summary">Decision tree</summary>
                 <div id="ai-tree"></div>
@@ -3160,6 +3338,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       arenaEntryFrame,
       quests,
       floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
+      companions: world ? getCompanionTelemetry(world) : [],
+      floor3LossReason: world ? getFloor3LossReason(world) : null,
     };
   };
   if (typeof window !== 'undefined') {
@@ -3203,6 +3383,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
           : 'No path';
     }
+    // #4205: visible companion decision/path readout, parity with the
+    // player's Reason/Path cells above — one comma-joined summary per
+    // recruited companion so the panel scales with party size without new
+    // DOM elements per companion.
+    const companionsElem = document.getElementById('ai-companions');
+    if (companionsElem) {
+      const companions = world ? getCompanionTelemetry(world) : [];
+      companionsElem.textContent =
+        companions.length > 0
+          ? companions
+              .map(
+                (companion) =>
+                  `#${companion.eid} ${companion.kind} → (${companion.targetX}, ${companion.targetY}) · ${companion.path.length} pt path`,
+              )
+              .join('; ')
+          : 'None';
+    }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {
       let modesText = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
@@ -3236,6 +3433,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     syncLightingTelemetry();
     syncFovTelemetry();
     drawPathOverlay();
+    drawCompanionOverlay();
     drawFlowFieldOverlay();
     drawRiskRewardFieldsOverlay();
     drawFusedCandidateOverlay();
@@ -3275,6 +3473,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     persistLabState();
     pathGraphics?.destroy();
     pathGraphics = null;
+    companionGraphics?.destroy();
+    companionGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
     riskRewardFieldsGraphics?.destroy();
