@@ -1,5 +1,44 @@
 [
   {
+    "commit": "8bb1361b3dcf78aceeaca7515c70edcdcf059863",
+    "commitDate": "2026-09-04T16:14:40Z",
+    "commitSubject": "feat: route Floor 3 Studios through canonical quest HUD (#4231)",
+    "capturedAt": "2026-09-04T17:36:35.179Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33896862159",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/8bb1361b3dcf78aceeaca7515c70edcdcf059863.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 0.8933333333333333,
+        "totalWins": 134,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 33.33,
+      "gatePass": false,
+      "path": "by-sha/8bb1361b3dcf78aceeaca7515c70edcdcf059863.fun-report.json"
+    }
+  },
+  {
     "commit": "4dea765b295c0f6aa9f9b4f74534e950d9020830",
     "commitDate": "2026-09-03T18:46:16Z",
     "commitSubject": "Floor 5 Slice 6: courtyard handoff, Crown Auditor, throne gate, Regent Emeritus, and throne capture (#4190)",
