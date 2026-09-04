@@ -195,14 +195,17 @@ interface SpellBrokerDialogueState {
   readonly locked: boolean;
   /** The player has claimed their spellbook reward. */
   readonly spellbookClaimed: boolean;
+  /** The merchant errand has been accepted and the tail-reference beat is now valid. */
+  readonly merchantQuestStarted: boolean;
 }
 
 /**
  * Pick the Spell Broker's contextual dialogue for the current quest progress.
  *
- * Priority (highest first): locked (gated behind the Goon) > post-spellbook
- * claim. Returns `null` when neither applies, signalling the caller to fall back
- * to the Broker's default authored dialogue.
+ * Priority (highest first): locked > post-spellbook claim > merchant-quest gate.
+ * Once the merchant errand is active, the Broker can safely use the default
+ * authored line that references the tail. Before then, suppress that default line
+ * so the Broker does not mention a quest the player has not been assigned.
  */
 export function selectSpellBrokerDialogue(
   state: SpellBrokerDialogueState,
@@ -213,7 +216,10 @@ export function selectSpellBrokerDialogue(
   if (state.spellbookClaimed) {
     return SPELL_BROKER_POST_CLAIM_DIALOGUE;
   }
-  return null;
+  if (state.merchantQuestStarted) {
+    return null;
+  }
+  return [];
 }
 
 // ---- Tutorial Goon contextual dialogue ----
