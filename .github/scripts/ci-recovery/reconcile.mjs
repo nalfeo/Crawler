@@ -2508,13 +2508,6 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
     continue;
   }
   if (followupIssues.length === 0) continue;
-  // Follow-up backlog replies and resolves are review-thread writes, so they
-  // belong to the review-threads lane, not the enclosing CI-recovery lane.
-  if (!legacyReviewThreadWritesEnabled()) {
-    await dispatchReviewThreadsGoobersOnce();
-    continue;
-  }
-
   const sourceList = followupIssues
     .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
     .join(', ');

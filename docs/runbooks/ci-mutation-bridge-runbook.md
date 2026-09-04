@@ -94,10 +94,12 @@ it to `legacy`.
 gh variable set LIFECYCLE_OWNER_REVIEW_THREADS -R nalfeo/Crawler --body 'goobers'
 ```
 
-`reconcile.mjs` immediately stops posting outdated-marker replies and resolving
-threads itself, and instead dispatches `goobers-review-threads.yml` once per
-reconcile run. That hosted workflow re-derives the same decision
-deterministically (`crawler-review-threads` via
+`reconcile.mjs` immediately stops posting generic outdated-marker replies and
+resolving generic trusted-marker threads itself, and instead dispatches
+`goobers-review-threads.yml` once per reconcile run. Follow-up-backlog
+threads remain legacy-owned for now because the marker body depends on the
+issue(s) reconcile.mjs just created or reused. The hosted workflow re-derives
+the generic decision deterministically (`crawler-review-threads` via
 `.github/scripts/goobers-review-threads.mjs`) and applies it after re-validating
 that the thread state has not changed. Roll it back the same way as any other
 lane:
@@ -185,13 +187,15 @@ drill record.
 Phase 2 transfers **only** the pre-PR implementation claim. Merge-train
 promotion, auto-rebase, and CI Recovery state mutations remain legacy-owned and
 fully operational. Phase 3 review-thread reply/resolve (Lane A) is now
-migratable via `LIFECYCLE_OWNER_REVIEW_THREADS`; its hosted wrapper
-conservatively passes an empty reachable-commit-SHA set rather than
-reproducing reconcile.mjs's full stale-marker lineage/near-typo-promotion
-logic — a documented limitation, not a silent gap. Lanes B (CI Recovery
-reconciliation), C (merge-train admission), and D (merge-train promotion)
-remain legacy-owned; each moves independently in a later Phase 3 slice via its
-own lane selector.
+migratable via `LIFECYCLE_OWNER_REVIEW_THREADS` for generic outdated-marker and
+trusted-marker resolution. Follow-up-backlog thread replies/resolves remain
+legacy-owned until a later contract can pass the created/reused follow-up issue
+mapping into Goobers. The hosted wrapper conservatively passes an empty
+reachable-commit-SHA set rather than reproducing reconcile.mjs's full
+stale-marker lineage/near-typo-promotion logic — a documented limitation, not
+a silent gap. Lanes B (CI Recovery reconciliation), C (merge-train admission),
+and D (merge-train promotion) remain legacy-owned; each moves independently in
+a later Phase 3 slice via its own lane selector.
 
 ## Post-incident review checklist
 

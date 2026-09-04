@@ -279,6 +279,9 @@ jobs:
               return String(current.head.sha || '').toLowerCase();
             }
 
+            const emptyReachableCommitShas = new Set();
+            const postedOutdatedMarkers = new Set();
+
             for (const decision of decisions) {
               // Re-fetch both the head SHA and the thread state immediately
               // before writing: a push between decide and apply must not let a
@@ -321,6 +324,7 @@ jobs:
                     comment_id: Number(decision.replyCommentId),
                     body: decision.markerBody,
                   });
+                  postedOutdatedMarkers.add(decision.threadId);
                   core.info(`posted outdated-marker thread=${decision.threadId}`);
                 } catch (error) {
                   core.warning(`outdated-marker-reply-failed thread=${decision.threadId} err=${error.message}`);
@@ -329,6 +333,26 @@ jobs:
               }
 
               if (decision.action === 'resolve') {
+                if (decision.requiresPostedMarker && !postedOutdatedMarkers.has(decision.threadId)) {
+                  core.info(`skip resolve thread=${decision.threadId} reason=paired-marker-not-posted`);
+                  continue;
+                }
+                // The decision artifact is advisory only. Re-run the shared
+                // resolver predicate against the live thread immediately before
+                // resolving so a reviewer reply, failed/skipped marker post, or
+                // other contention keeps the thread open. For same-pass
+                // post+resolve decisions, requiresPostedMarker has already
+                // proved this run posted the marker; this live-state check then
+                // proves the marker actually landed and is still latest.
+                if (!state_.shouldResolveThread(thread, headNow, emptyReachableCommitShas)) {
+                  const pairedSamePass = postedOutdatedMarkers.has(decision.threadId);
+                  core.info(
+                    `skip resolve thread=${decision.threadId} reason=${
+                      pairedSamePass ? 'posted-marker-not-yet-visible' : 'live-thread-not-resolvable'
+                    }`,
+                  );
+                  continue;
+                }
                 try {
                   await github.graphql(
                     `

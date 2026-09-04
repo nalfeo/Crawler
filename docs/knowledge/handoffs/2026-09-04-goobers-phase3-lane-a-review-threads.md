@@ -3,14 +3,16 @@
 ## Summary
 
 Shipped a bounded slice of the Phase 3 Goobers migration (#3841 / epic #3838):
-Lane A only — review-thread reply/resolve is now migratable to Goobers behind
-`LIFECYCLE_OWNER_REVIEW_THREADS`. A new deterministic decision script
+Lane A only — generic review-thread reply/resolve is now migratable to Goobers
+behind `LIFECYCLE_OWNER_REVIEW_THREADS`. A new deterministic decision script
 reproduces reconcile.mjs's exact two-phase legacy behavior (post an
 `✅ Addressed` outdated-marker reply, then resolve), a new Goobers workflow
 runs it, and a new hosted wrapper applies the decision after re-validating
-thread state immediately before every write. Legacy still owns the lane by
-default; nothing mutates differently until an operator explicitly sets the
-selector to `goobers`.
+thread state immediately before every write. Follow-up-backlog thread
+replies/resolves stay legacy-owned for now because they depend on the
+created/reused follow-up issue mapping that Goobers does not receive yet.
+Legacy still owns the lane by default; nothing mutates differently until an
+operator explicitly sets the selector to `goobers`.
 
 ## Systems touched
 
@@ -46,7 +48,8 @@ reachableCommitShas })` that reproduces reconcile.mjs's two-phase
   (`dispatchReviewThreadsGoobersOnce`), fired at most once per reconcile run
   the first time `legacyReviewThreadWritesEnabled()` is false, wrapped in
   try/catch so a dispatch failure can never crash reconcile or block
-  `release()`.
+  `release()`. The follow-up-backlog repair path remains legacy-owned because
+  it needs the just-created/reused issue numbers in its marker body.
 - Docs: `.goobers/README.md` (Phase 3 Lane A paragraph),
   `docs/runbooks/ci-mutation-bridge-runbook.md` (ownership table gained a
   "Phase 3 status" column; added the `LIFECYCLE_OWNER_REVIEW_THREADS`

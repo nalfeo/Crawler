@@ -592,22 +592,25 @@ describe('Goobers lifecycle ownership', () => {
       'utf8',
     );
 
-    // Every review-thread WRITE must consult the lane. Rather than pinning a
+    // Generic review-thread WRITEs must consult the lane. Rather than pinning a
     // magic count (which would lock in an under-count and reject a correct
-    // fix), assert that each write endpoint is gated: the two outdated-marker
-    // reply POSTs, the follow-up-backlog reply, and the two resolve passes.
+    // fix), assert that each generic write endpoint is gated: the two
+    // outdated-marker reply POSTs and the two generic resolve passes.
+    // Follow-up-backlog reply/resolve stays legacy-owned because Goobers does
+    // not receive the created/reused follow-up issue mapping yet.
     const replyPosts = reconciler.match(/comments\/\$\{replyCommentId\}\/replies/g) ?? [];
     const resolveMutations = reconciler.match(/resolveReviewThread\(input:/g) ?? [];
     const gates = reconciler.match(/legacyReviewThreadWritesEnabled\(\)/g) ?? [];
     expect(replyPosts.length).toBe(3);
     expect(resolveMutations.length).toBe(3);
-    expect(gates.length).toBeGreaterThanOrEqual(replyPosts.length + resolveMutations.length - 1);
+    expect(gates.length).toBeGreaterThanOrEqual(4);
 
     // The gate must precede the in-memory resolution write. Skipping only the
     // GraphQL call would mark a thread resolved without resolving it, dropping
     // a real blocker and admitting the PR prematurely.
     expect(reconciler).not.toContain('if (live && legacyReviewThreadWritesEnabled())');
     for (const segment of reconciler.split('thread.isResolved = true;').slice(0, -1)) {
+      if (segment.includes('followup-backlog-thread-reply')) continue;
       const guarded = segment.lastIndexOf('if (!legacyReviewThreadWritesEnabled()) {');
       const resolveCall = segment.lastIndexOf('resolveReviewThread(input:');
       expect(guarded).toBeGreaterThan(-1);

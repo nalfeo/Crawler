@@ -80,7 +80,7 @@ function cloneThreadWithSyntheticMarker(thread, markerBody) {
  *   computation). Pass an empty array to conservatively skip lineage checks,
  *   the same conservative choice reconcile.mjs's own early-exit path makes.
  * @returns {Array<{threadId: string, action: 'post-outdated-marker'|'resolve',
- *   replyCommentId?: string, markerBody?: string}>}
+ *   replyCommentId?: string, markerBody?: string, requiresPostedMarker?: boolean}>}
  */
 export function decideReviewThreadActions({
   threads = [],
@@ -97,6 +97,7 @@ export function decideReviewThreadActions({
   // thread promoted here can be resolved within THIS same call — exactly like
   // reconcile.mjs mutating `thread.comments.nodes` in place between its passes.
   const workingThreads = [];
+  const syntheticMarkerThreadIds = new Set();
   for (const thread of threads) {
     if (thread.isResolved) {
       workingThreads.push(thread);
@@ -125,6 +126,7 @@ export function decideReviewThreadActions({
       replyCommentId,
       markerBody,
     });
+    syntheticMarkerThreadIds.add(thread.id);
     workingThreads.push(cloneThreadWithSyntheticMarker(thread, markerBody));
   }
 
@@ -133,7 +135,11 @@ export function decideReviewThreadActions({
   for (const thread of workingThreads) {
     if (thread.isResolved) continue;
     if (!shouldResolveThread(thread, head, reachable)) continue;
-    decisions.push({ threadId: thread.id, action: 'resolve' });
+    decisions.push({
+      threadId: thread.id,
+      action: 'resolve',
+      ...(syntheticMarkerThreadIds.has(thread.id) ? { requiresPostedMarker: true } : {}),
+    });
   }
 
   return decisions;

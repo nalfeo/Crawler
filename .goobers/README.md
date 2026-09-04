@@ -78,20 +78,23 @@ Runtime journals remain outside this source tree; only retries within one
 Actions job share its throwaway instance.
 
 Phase 3 migrates PR-lifecycle lanes one at a time behind their own selector.
-Lane A (review-thread reply/resolve) is now live: `crawler-review-threads`
-deterministically decides which unresolved threads get an outdated-marker
-reply or a resolve, reproducing reconcile.mjs's own two-phase behavior with no
-network calls of its own. The hosted `goobers-review-threads.yml` wrapper only
-runs when `LIFECYCLE_OWNER_REVIEW_THREADS` is the literal `goobers`, re-fetches
-each thread immediately before writing so a stale decision can never mutate,
-and posts/resolves with the job's own installation token (a first-party bot
-reply already satisfies the marker-trust check in
-`ci-recovery/state.mjs`, so no elevated PAT is required). It conservatively
-passes an empty reachable-commit-SHA set rather than reproducing reconcile.mjs's
-full stale-marker lineage/near-typo logic — a documented limitation, not a
-silent gap. Lanes B (CI Recovery reconciliation), C (merge-train admission),
-and D (merge-train promotion) remain legacy-owned and move independently in
-later Phase 3 slices.
+Lane A (review-thread reply/resolve) is now live for generic review-thread
+markers: `crawler-review-threads` deterministically decides which unresolved
+threads get an outdated-marker reply or a resolve, reproducing reconcile.mjs's
+own two-phase behavior with no network calls of its own. The hosted
+`goobers-review-threads.yml` wrapper only runs when
+`LIFECYCLE_OWNER_REVIEW_THREADS` is the literal `goobers`, re-fetches each
+thread immediately before writing so a stale decision can never mutate, and
+posts/resolves with the job's own installation token (a first-party bot reply
+already satisfies the marker-trust check in `ci-recovery/state.mjs`, so no
+elevated PAT is required). Follow-up-backlog thread replies/resolves remain
+legacy-owned for now because that path depends on the issue(s) reconcile.mjs
+just created or reused, and the Goobers contract intentionally does not carry
+that mapping yet. It conservatively passes an empty reachable-commit-SHA set
+rather than reproducing reconcile.mjs's full stale-marker lineage/near-typo
+logic — a documented limitation, not a silent gap. Lanes B (CI Recovery
+reconciliation), C (merge-train admission), and D (merge-train promotion)
+remain legacy-owned and move independently in later Phase 3 slices.
 
 ## Contract Versions
 

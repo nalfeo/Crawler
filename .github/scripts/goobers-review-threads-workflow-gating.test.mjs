@@ -51,6 +51,13 @@ test('goobers-review-threads.yml re-validates state immediately before every mut
   assert.match(reviewThreads, /reason=head-changed/);
   assert.match(reviewThreads, /reason=already-resolved-or-missing/);
   assert.match(reviewThreads, /reason=marker-already-present/);
+  assert.match(reviewThreads, /decision\.requiresPostedMarker/);
+  assert.match(reviewThreads, /reason=paired-marker-not-posted/);
+  assert.match(
+    reviewThreads,
+    /state_\.shouldResolveThread\(thread, headNow, emptyReachableCommitShas\)/,
+  );
+  assert.match(reviewThreads, /posted-marker-not-yet-visible/);
 });
 
 test('goobers-review-threads.yml requests least-privilege permissions', () => {

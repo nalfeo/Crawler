@@ -53,6 +53,7 @@ test('(b) same-pass promotion: a single call over a marker-less outdated thread 
     ['post-outdated-marker', 'resolve'],
   );
   assert.equal(decisions[1].threadId, 't1');
+  assert.equal(decisions[1].requiresPostedMarker, true);
 });
 
 test('(c) a trusted marker naming a reachable ancestor SHA resolves directly, no marker post', () => {

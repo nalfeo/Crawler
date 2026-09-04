@@ -6635,7 +6635,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile files unassigned follow-up backlog issue and resolves matching review thread', async (t) => {
+test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migrated review-threads lane', async (t) => {
   const sourceIssueNumber = 3120;
   const followupReviewCommentId = '3810312490';
   const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
@@ -6726,6 +6726,7 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
   const { code, stdout, stderr } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
+    LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
@@ -6757,6 +6758,16 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
   assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
   assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
   assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    0,
+    'follow-up backlog repair needs issue context that Goobers does not receive yet',
+  );
 });
 
 test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {
