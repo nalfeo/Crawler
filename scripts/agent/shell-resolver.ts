@@ -15,7 +15,7 @@ interface SpawnResult {
   stdout?: string | Buffer | null;
 }
 
-interface ShellResolverHost {
+export interface ShellResolverHost {
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
   existsSync: (path: string) => boolean;
@@ -31,6 +31,34 @@ export class ShellResolutionError extends Error {
     super(message);
     this.name = 'ShellResolutionError';
   }
+}
+
+export function windowsPathToWslPath(windowsPath: string): string {
+  const forwardSlashed = windowsPath.replace(/\\/g, '/');
+  const driveMatch = /^([A-Za-z]):\/(.*)$/.exec(forwardSlashed);
+  if (!driveMatch) {
+    return forwardSlashed;
+  }
+  const [, drive, rest] = driveMatch;
+  return `/mnt/${drive!.toLowerCase()}/${rest}`;
+}
+
+export function envWithWslPassthrough(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const existing = env.WSLENV ? env.WSLENV.split(':').filter(Boolean) : [];
+  const existingNames = new Set(existing.map((entry) => entry.split('/')[0]).filter(Boolean));
+  const extraNames = Object.keys(env).filter(
+    (name) =>
+      name !== 'PATH' &&
+      name !== 'Path' &&
+      name !== 'PATHEXT' &&
+      name !== 'WSLENV' &&
+      !existingNames.has(name),
+  );
+  const wslEnv = [...existing, ...extraNames].join(':');
+  return {
+    ...env,
+    ...(wslEnv ? { WSLENV: wslEnv } : {}),
+  };
 }
 
 function defaultHost(): ShellResolverHost {
@@ -77,8 +105,7 @@ function pathCandidates(env: NodeJS.ProcessEnv): string[] {
     .filter(Boolean)
     .flatMap((entry) => [
       windowsJoin(entry, 'bash'),
-      ...pathExts.map((extension) => windowsJoin(entry, `bash${extension.toLowerCase()}`)),
-      ...pathExts.map((extension) => windowsJoin(entry, `bash${extension.toUpperCase()}`)),
+      ...pathExts.map((extension) => windowsJoin(entry, `bash${extension}`)),
     ]);
 }
 
@@ -90,12 +117,12 @@ function isGitBashPath(candidate: string): boolean {
   return /[\\/]Git[\\/](?:bin|usr[\\/]bin)[\\/]bash\.exe$/i.test(candidate);
 }
 
-function wslShimCandidates(env: NodeJS.ProcessEnv): string[] {
+function wslShimCandidates(env: NodeJS.ProcessEnv, pathBashes: readonly string[]): string[] {
   return unique(
     [
       env.WINDIR ? windowsJoin(env.WINDIR, 'System32', 'bash.exe') : undefined,
       env.SystemRoot ? windowsJoin(env.SystemRoot, 'System32', 'bash.exe') : undefined,
-      ...pathCandidates(env).filter((candidate) => /[\\/]System32[\\/]bash\.exe$/i.test(candidate)),
+      ...pathBashes.filter((candidate) => /[\\/]System32[\\/]bash\.exe$/i.test(candidate)),
     ].filter((candidate): candidate is string => Boolean(candidate)),
   );
 }
@@ -120,15 +147,18 @@ export function resolveBashShell(host: ShellResolverHost = defaultHost()): BashS
     return { command: 'bash', kind: 'posix-bash' };
   }
 
+  const pathBashes = pathCandidates(host.env);
   const gitBash = unique([
     ...windowsGitBashCandidates(host.env),
-    ...pathCandidates(host.env).filter(isGitBashPath),
+    ...pathBashes.filter(isGitBashPath),
   ]).find((candidate) => host.existsSync(candidate));
   if (gitBash) {
     return { command: gitBash, kind: 'git-bash' };
   }
 
-  const wslShim = wslShimCandidates(host.env).find((candidate) => host.existsSync(candidate));
+  const wslShim = wslShimCandidates(host.env, pathBashes).find((candidate) =>
+    host.existsSync(candidate),
+  );
   if (wslShim) {
     const probe = host.spawnSync(wslShim, ['-lc', 'printf __crawler_wsl_ready__'], {
       encoding: 'utf8',

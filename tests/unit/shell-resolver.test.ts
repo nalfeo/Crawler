@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveBashShell, ShellResolutionError } from '../../scripts/agent/shell-resolver.js';
+import {
+  envWithWslPassthrough,
+  resolveBashShell,
+  ShellResolutionError,
+  windowsPathToWslPath,
+} from '../../scripts/agent/shell-resolver.js';
 
 type SpawnCall = {
   command: string;
@@ -113,5 +118,26 @@ describe('resolveBashShell', () => {
       'tsx scripts/agent/run-bash-wrapper.ts scripts/agent/verify.sh',
     );
     expect(packageJson.scripts['security:check']).not.toMatch(/(?:^|&& )bash scripts\/agent\//);
+  });
+
+  it('converts Windows paths for the WSL fallback', () => {
+    expect(
+      windowsPathToWslPath('C:\\Users\\runner\\work\\Crawler\\scripts\\agent\\verify.sh'),
+    ).toBe('/mnt/c/Users/runner/work/Crawler/scripts/agent/verify.sh');
+    expect(windowsPathToWslPath('/already/posix/path.sh')).toBe('/already/posix/path.sh');
+  });
+
+  it('passes wrapper environment variables into WSL without replacing its PATH', () => {
+    expect(
+      envWithWslPassthrough({
+        PATH: 'C:\\Windows\\System32',
+        WSLENV: 'EXISTING/u',
+        VERIFY_FAST_TEST_STATIC_ONLY: '1',
+        SCOPE_FILES_OVERRIDE: 'docs/readme.md',
+      }),
+    ).toMatchObject({
+      PATH: 'C:\\Windows\\System32',
+      WSLENV: 'EXISTING/u:VERIFY_FAST_TEST_STATIC_ONLY:SCOPE_FILES_OVERRIDE',
+    });
   });
 });
