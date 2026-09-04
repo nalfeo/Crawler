@@ -304,6 +304,8 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
           `corner button spacing must be uniform (${gaps.join(', ')})`,
         ).toBeLessThanOrEqual(CORNER_BUTTON_SPACING_TOLERANCE);
 
+        // Reset to the ordinary desktop safe rect before opening Gear: this is
+        // the tight 100px right gutter where the full text button regressed.
         await applySafeAreaInsets(page, ZERO_INSETS);
         await mainSceneProbe.requestEquipToggle(page);
         await waitForState(page, (state) => state.equipmentOpen && state.issueButtonVisible, {
