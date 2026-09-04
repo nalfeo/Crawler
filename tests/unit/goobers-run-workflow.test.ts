@@ -177,7 +177,14 @@ describe('Goobers automatic dispatch and recovery', () => {
     // The selectors themselves must never be restated in YAML/jq — that
     // duplication is what let the approved-only cohort drift from legacy's.
     expect(recovery).toContain('node .github/scripts/goobers/intake-selection.mjs');
-    expect(start).toContain('node .github/scripts/goobers/intake-selection.mjs --issue -');
+    // The payload is handed over as a file, never piped: a non-blocking pipe on
+    // the Actions runner made a synchronous stdin read fail with EAGAIN and
+    // burned live intake runs before any issue could be claimed.
+    expect(start).toContain(
+      'node .github/scripts/goobers/intake-selection.mjs --issue "$issue_file"',
+    );
+    expect(recovery).not.toContain('intake-selection.mjs --issue -');
+    expect(start).not.toContain('intake-selection.mjs --issue -');
     // The shared query carries no cohort filter; the extra narrow approved
     // query exists only so the approved queue cannot fall off the far side of
     // GitHub Search's 1000-result cap.
@@ -716,10 +723,12 @@ describe('Goobers automatic dispatch and recovery', () => {
   it('posts separate durable start and result comments with explicit run and PR links', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
+    const recovery = steps.find((step) => step.name === 'Resolve Goobers recovery target');
     const start = steps.find((step) => step.name === 'Comment on Goobers run start');
     const run = steps.find((step) => step.name === 'Run the workflow');
     const result = steps.find((step) => step.name === 'Comment on Goobers run result');
 
+    expect(recovery?.id).toBe('recovery');
     expect(start).toBeDefined();
     expect(result).toBeDefined();
     expect(start).not.toBe(result);
@@ -729,7 +738,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(start?.if).toBe("steps.recovery.outputs.should_run != 'false'");
     expect(start?.env?.GH_TOKEN).toBe('${{ github.token }}');
     expect(start?.run).toContain('gh issue view "$issue_number"');
-    expect(start?.run).toContain('node .github/scripts/goobers/intake-selection.mjs --issue -');
+    expect(start?.run).toContain(
+      'node .github/scripts/goobers/intake-selection.mjs --issue "$issue_file"',
+    );
     expect(start?.run).toContain('[.assignees[]] | length == 0');
     expect(start?.run).toContain('issues/${issue_number}/dependencies/blocked_by');
     expect(start?.run).toContain('No start comment or Goobers claim was created');
@@ -742,7 +753,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(start?.run).toContain('find_issue_comment_id');
     expect(start?.run).toContain('gh issue comment "$issue_number"');
 
-    expect(result?.if).toBe('always()');
+    expect(result?.if).toBe("always() && steps.recovery.outputs.should_run != 'false'");
     expect(result?.env).toMatchObject({
       GH_TOKEN: '${{ github.token }}',
       JOB_STATUS: '${{ job.status }}',
@@ -777,8 +788,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     const script = result?.run ?? '';
     const issueResolutionIndex = script.indexOf('issue_number="${GOOBERS_RECOVERY_ISSUE:-}"');
     const journalLookupIndex = script.indexOf('events_file=""');
-
     expect(issueResolutionIndex).toBeGreaterThanOrEqual(0);
+    expect(journalLookupIndex).toBeGreaterThanOrEqual(0);
     expect(issueResolutionIndex).toBeLessThan(journalLookupIndex);
     expect(script).toContain('events_input="/dev/null"');
     expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');
@@ -830,11 +841,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     const script = disposition?.run ?? '';
     const openPrCheckIndex = script.indexOf('if [ -n "$open_pr" ]');
-    const releaseIndex = script.indexOf(
-      'gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \\\n' +
-        "    --remove-label 'goobers/status:in-review'",
-      openPrCheckIndex,
-    );
+    const releaseIndex = script.indexOf('release_claim "$issue_number"', openPrCheckIndex);
 
     expect(disposition?.env?.JOB_STATUS).toBe('${{ job.status }}');
     expect(script).toContain('[ "$JOB_STATUS" = "failure" ]');
@@ -851,6 +858,61 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(releaseIndex).toBeGreaterThan(openPrCheckIndex);
     expect(script).toContain('without an open Goobers PR. Restored retry eligibility');
     expect(script).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
+  });
+
+  // Production incident: Goobers runs 33925493716 (issue #4252) and
+  // 33926202682 (issue #4253) failed in "Resolve Goobers recovery target", and
+  // the failure handler then reported that the claimed issue number could not
+  // be recovered — even though both runs were `issues` events that named their
+  // target — because GOOBERS_RECOVERY_ISSUE was only written after every
+  // fallible lookup had already had its chance to fail.
+  it('records an explicitly named issue before any fallible lookup can fail', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const recovery =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Resolve Goobers recovery target')
+        ?.run ?? '';
+
+    expect(recovery).toContain('persist_recovery_issue() {');
+    expect(recovery).toContain('echo "GOOBERS_RECOVERY_ISSUE=$1" >> "${GITHUB_ENV}"');
+
+    const persistIndex = recovery.indexOf('persist_recovery_issue "${ISSUE_NUMBER}"');
+    expect(persistIndex).toBeGreaterThan(0);
+    expect(persistIndex).toBeLessThan(recovery.indexOf('find_open_goobers_pr "$ISSUE_NUMBER"'));
+    expect(persistIndex).toBeLessThan(recovery.indexOf('decision="$(decide_issue'));
+    // Every sweep-selected target is recorded at selection time too, so a
+    // failure between selection and the final env write stays attributable.
+    expect(recovery.match(/persist_recovery_issue "\$\{ISSUE_NUMBER\}"/g)).toHaveLength(3);
+    // Falling through to the sweep must un-attribute the run, or the handler
+    // would release a claim that was never made against the event's issue.
+    expect(recovery).toContain('persist_recovery_issue ""');
+  });
+
+  it('leaves no stale in-review claim when a run fails before Goobers ever starts', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const disposition =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Handle no-work disposition')?.run ??
+      '';
+
+    // No journal means the gaggle's query-backlog claim never ran, so no
+    // goobers/status:in-review label can exist for this run. Hard-failing there
+    // buried the real failure under a second, false "stale claim" error.
+    expect(disposition).toContain('if [ -z "$events_file" ]; then');
+    expect(disposition).toContain('no goobers/status:in-review label was created by this run');
+    const noJournalIndex = disposition.indexOf('if [ -z "$events_file" ]; then');
+    const unrecoverableIndex = disposition.indexOf(
+      'but the claimed issue number could not be recovered. Inspect artifact',
+    );
+    expect(noJournalIndex).toBeGreaterThan(0);
+    expect(noJournalIndex).toBeLessThan(unrecoverableIndex);
+
+    // Releasing the claim is this step's whole purpose, so a failed release
+    // must name the manual remediation instead of a bare `gh` error.
+    expect(disposition).toContain('release_claim() {');
+    expect(disposition).toMatch(
+      /--remove-label 'goobers\/status:in-review'; then\n\s+echo "::error::Could not remove/,
+    );
+    expect(disposition).toContain('Remove it manually, then retry with: gh workflow run');
+    expect(disposition.match(/release_claim "\$issue_number"/g)).toHaveLength(3);
   });
 
   it('does not strand claimed issues when an implementer incorrectly returns no-work', () => {

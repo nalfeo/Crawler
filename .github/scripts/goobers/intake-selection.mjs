@@ -18,6 +18,10 @@
  *     Reads a single `gh issue view --json number,state,labels,assignees,author`
  *     payload and prints the decision as JSON. Always exits 0; the caller reads
  *     `.eligible`.
+ *
+ * Callers should prefer an explicit file path. `-` is supported (and hardened
+ * against non-blocking pipes, below) but a file is the only wiring that cannot
+ * lose the payload to a transient read error.
  */
 import fs from 'node:fs';
 import process from 'node:process';
@@ -92,8 +96,65 @@ export function selectGoobersIntakeIssues(candidates, options = {}) {
   ];
 }
 
+const STDIN_RETRY_SLEEP_MS = 5;
+const STDIN_TIMEOUT_MS = 30_000;
+const STDIN_CHUNK_BYTES = 64 * 1024;
+
+/** Blocks the current thread without spinning the CPU. */
+function sleepSync(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+/**
+ * Reads a whole stream from `fd` synchronously, tolerating a non-blocking pipe.
+ *
+ * `fs.readFileSync(0)` throws `EAGAIN` the moment stdin is a pipe carrying the
+ * `O_NONBLOCK` flag — which is exactly what `gh ... | node ...` produced on the
+ * GitHub Actions runner, killing live Goobers intake with
+ * `could not parse issue JSON from '-'`. EAGAIN on a non-blocking pipe means
+ * "the writer has not produced the next bytes yet", not "this read failed", so
+ * the only correct response is to wait and read again until EOF.
+ *
+ * `read`/`sleep`/`now` are injectable so the retry path is unit-testable
+ * without depending on the host kernel's pipe scheduling.
+ */
+export function readAllSync(fd, options = {}) {
+  const {
+    read = (buffer) => fs.readSync(fd, buffer, 0, buffer.length, null),
+    sleep = sleepSync,
+    now = Date.now,
+    timeoutMs = STDIN_TIMEOUT_MS,
+    retrySleepMs = STDIN_RETRY_SLEEP_MS,
+  } = options;
+  const buffer = Buffer.alloc(STDIN_CHUNK_BYTES);
+  const chunks = [];
+  const deadline = now() + timeoutMs;
+  for (;;) {
+    let bytesRead;
+    try {
+      bytesRead = read(buffer);
+    } catch (error) {
+      if (error?.code === 'EAGAIN') {
+        if (now() >= deadline) {
+          throw new Error(
+            `timed out after ${timeoutMs}ms waiting for data (stdin stayed non-blocking/EAGAIN)`,
+          );
+        }
+        sleep(retrySleepMs);
+        continue;
+      }
+      // A pipe closed by the writer surfaces as EOF on some platforms.
+      if (error?.code === 'EOF') break;
+      throw error;
+    }
+    if (!bytesRead) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function readInput(source) {
-  const raw = source === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(source, 'utf8');
+  const raw = source === '-' ? readAllSync(0) : fs.readFileSync(source, 'utf8');
   return raw.replace(/^\uFEFF/, '');
 }
 
@@ -118,9 +179,24 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     process.exit(2);
   }
 
+  let raw;
+  try {
+    raw = readInput(source);
+  } catch (error) {
+    const remediation =
+      source === '-'
+        ? "intake-selection: pass an explicit file path instead of '-' " +
+          '(e.g. `gh issue view ... > "$f" && node .github/scripts/goobers/intake-selection.mjs --issue "$f"`).\n'
+        : '';
+    process.stderr.write(
+      `intake-selection: could not read issue JSON from '${source}': ${error.message}\n${remediation}`,
+    );
+    process.exit(2);
+  }
+
   let payload;
   try {
-    payload = JSON.parse(readInput(source));
+    payload = JSON.parse(raw);
   } catch (error) {
     process.stderr.write(
       `intake-selection: could not parse issue JSON from '${source}': ${error.message}\n`,
