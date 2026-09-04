@@ -40,7 +40,7 @@ function cornerButtonLabels(): string[] {
     match = pattern.exec(SOURCE);
   }
   const issueLabel = stringConstantValue('ISSUE_BUTTON_LABEL');
-  if (issueLabel && /ISSUE_BUTTON_LABEL_COMPACT\s*:\s*ISSUE_BUTTON_LABEL/.test(SOURCE)) {
+  if (issueLabel && /\bISSUE_BUTTON_LABEL_COMPACT\b\s*:\s*\bISSUE_BUTTON_LABEL\b/.test(SOURCE)) {
     labels.push(issueLabel);
   }
   return labels;
