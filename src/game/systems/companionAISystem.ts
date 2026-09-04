@@ -73,6 +73,12 @@ export function companionAISystem(world: GameWorld): void {
   // the fresh-acquisition scan below always runs unconditionally — it only
   // prevents an unbounded chain of individually-reasonable engagements from
   // pulling a companion off the leash forever.
+  //
+  // Not airtight: if a nearby rival still exists at the exact frame the
+  // streak trips, the companion simply re-locks onto it and stays displaced
+  // — this is a deliberately-accepted boundary (every stronger intervention
+  // tried caused real deaths; see ADR 0104 "Known limitation" / "Risks"
+  // before attempting to close this gap).
   const engagementEndFrames = tuning.floor3Companion.engagementEndFrames;
 
   // Ranged/support archetypes are the only ones stamped with a positive
