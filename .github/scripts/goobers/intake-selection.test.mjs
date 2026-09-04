@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -7,6 +9,7 @@ import {
   decideGhIssue,
   normalizeGhIssue,
   normalizeGhLogin,
+  readAllSync,
   selectGoobersIntakeIssues,
 } from './intake-selection.mjs';
 
@@ -293,4 +296,145 @@ test('the gaggle claim fence honors the cohort handed down by the trusted workfl
   assert.match(GAGGLE, /\(approved\|legacy-parity\|resume\) claimable=true ;;/);
   assert.doesNotMatch(GAGGLE, /index\("goobers:approved"\) != null/);
   assert.match(WORKFLOW, /- GOOBERS_INTAKE_COHORT/);
+});
+
+// --- stdin robustness -------------------------------------------------------
+//
+// Production incident: Goobers runs 33925493716 (#4252) and 33926202682 (#4253)
+// both died in "Resolve Goobers recovery target" with
+// `intake-selection: could not parse issue JSON from '-': EAGAIN: resource
+// temporarily unavailable, read`. `gh ... | node ...` on the Actions runner
+// handed the selector a NON-BLOCKING pipe, and a synchronous read of a
+// non-blocking pipe reports EAGAIN whenever the writer has not produced the
+// next bytes yet. The reader must wait, not fail.
+
+/** A `read` implementation that replays a scripted sequence of pipe events. */
+function scriptedReader(events) {
+  const queue = [...events];
+  return (buffer) => {
+    const next = queue.shift();
+    if (next === undefined) return 0;
+    if (next === 0) return 0;
+    if (next === 'EAGAIN') {
+      const error = new Error('EAGAIN: resource temporarily unavailable, read');
+      error.code = 'EAGAIN';
+      throw error;
+    }
+    if (next === 'EOF') {
+      const error = new Error('EOF: end of file, read');
+      error.code = 'EOF';
+      throw error;
+    }
+    return Buffer.from(next, 'utf8').copy(buffer);
+  };
+}
+
+test('readAllSync waits through EAGAIN on a non-blocking pipe instead of failing', () => {
+  const slept = [];
+  const payload = '{"number":4252,"state":"open"}';
+
+  // What the old `fs.readFileSync(0, 'utf8')` did on that same pipe: one
+  // single-shot read, so the very first EAGAIN aborted the whole run.
+  assert.throws(() => scriptedReader(['EAGAIN', payload])(Buffer.alloc(64)), { code: 'EAGAIN' });
+
+  const text = readAllSync(0, {
+    read: scriptedReader(['EAGAIN', 'EAGAIN', payload, 'EAGAIN', 0]),
+    sleep: (ms) => slept.push(ms),
+    now: () => 0,
+  });
+
+  assert.equal(text, payload);
+  assert.equal(JSON.parse(text).number, 4252);
+  assert.equal(slept.length, 3, 'each EAGAIN must yield before retrying, not spin');
+});
+
+test('readAllSync reassembles a payload split across pipe chunks', () => {
+  const text = readAllSync(0, {
+    read: scriptedReader(['{"number":', '4253,', '"state":"open"}', 'EOF']),
+    sleep: () => {},
+    now: () => 0,
+  });
+
+  assert.deepEqual(JSON.parse(text), { number: 4253, state: 'open' });
+});
+
+test('readAllSync gives up with an actionable message instead of hanging forever', () => {
+  let clock = 0;
+  assert.throws(
+    () =>
+      readAllSync(0, {
+        read: scriptedReader(Array.from({ length: 100 }, () => 'EAGAIN')),
+        sleep: () => {
+          clock += 1000;
+        },
+        now: () => clock,
+        timeoutMs: 50,
+      }),
+    /timed out after 50ms waiting for data/,
+  );
+});
+
+test('the CLI parses real piped `gh` JSON and an explicit file path identically', () => {
+  const script = path.resolve('.github/scripts/goobers/intake-selection.mjs');
+  const issue = JSON.stringify({
+    number: 4252,
+    state: 'OPEN',
+    author: { login: 'nalfeo', is_bot: false },
+    labels: [{ name: 'goobers:approved' }],
+    assignees: [],
+  });
+  const env = { ...process.env, LIFECYCLE_MUTATION_OWNER: 'goobers', ISSUE_OWNER: 'nalfeo' };
+
+  const piped = execFileSync(process.execPath, [script, '--issue', '-'], {
+    input: issue,
+    encoding: 'utf8',
+    env,
+  });
+
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'goobers-intake-'));
+  try {
+    const file = path.join(directory, 'issue.json');
+    writeFileSync(file, issue, 'utf8');
+    const fromFile = execFileSync(process.execPath, [script, '--issue', file], {
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(fromFile, piped);
+    assert.equal(JSON.parse(fromFile).eligible, true);
+    assert.equal(JSON.parse(fromFile).number, 4252);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the CLI only recommends a file path when stdin could not be read', () => {
+  const script = path.resolve('.github/scripts/goobers/intake-selection.mjs');
+  const missing = path.join(os.tmpdir(), 'goobers-intake-file-that-does-not-exist.json');
+  const result = spawnSync(process.execPath, [script, '--issue', missing], { encoding: 'utf8' });
+
+  assert.equal(result.status, 2);
+  assert.ok(result.stderr.includes(`could not read issue JSON from '${missing}'`));
+  assert.doesNotMatch(result.stderr, /pass an explicit file path instead of '-'/);
+});
+
+test('goobers-run hands the selector a file, never a pipe on stdin', () => {
+  // A file path is the only wiring that cannot lose the payload to a transient
+  // pipe read error, so the workflow must never reintroduce `--issue -`.
+  assert.doesNotMatch(
+    WORKFLOW,
+    /intake-selection\.mjs --issue -/,
+    'piping into the selector is what EAGAIN killed in production; pass a file path',
+  );
+  const fileBacked = WORKFLOW.match(/intake-selection\.mjs --issue "\$\{?issue_file\}?"/g) ?? [];
+  assert.equal(fileBacked.length, 2, 'both decide_issue and the run-start race guard read a file');
+  assert.match(
+    WORKFLOW,
+    /--json number,state,labels,assignees,author > "\$\{issue_file\}"/,
+    'decide_issue must capture `gh issue view` output to a file before selecting',
+  );
+  assert.match(
+    WORKFLOW,
+    /printf '%s' "\$issue_json" > "\$issue_file"/,
+    'the run-start race guard must materialize its payload before selecting',
+  );
 });
