@@ -1154,10 +1154,11 @@ export class MainGameScene extends Phaser.Scene {
 
   private offMobileButtonScale?: () => void;
   private offMobileButtonSafeArea?: () => void;
+  private applyMobileButtonScale?: (scale: number) => void;
   /** Reapplies the stacked corner-button layout; also used to restore the
    * Issue button's normal position after it is temporarily relocated to
    * avoid overlapping an open panel (see {@link updateOverlayText}). */
-  private applyMobileButtonScale?: (scale: number) => void;
+  private repositionIssueButton?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -3381,8 +3382,8 @@ export class MainGameScene extends Phaser.Scene {
       this.issueButtonCompact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL,
       () => {
         this.openIssueReport();
-      },
-    ).setDepth(ISSUE_BUTTON_DEPTH);
+     },
+   ).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -3405,7 +3406,6 @@ export class MainGameScene extends Phaser.Scene {
         this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
-        this.issueButton,
       ]) {
         button?.setX(left);
       }
@@ -3435,12 +3435,12 @@ export class MainGameScene extends Phaser.Scene {
           safe.bottom -
           (this.issueButton?.displayHeight ?? 0),
       );
-      if (this.issueButton) {
-        this.issueButtonLayoutApplied = true;
-      }
+     if (this.issueButton) {
+       this.issueButtonLayoutApplied = true;
+     }
+     this.applyMobileButtonScale = applyMobileButtonScale;
     };
     applyMobileButtonScale(getUiScale(this));
-    this.applyMobileButtonScale = applyMobileButtonScale;
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
     this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
       applyMobileButtonScale(getUiScale(this));
