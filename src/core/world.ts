@@ -60,6 +60,8 @@ import {
   Team,
   SiegeHero,
   SiegeMinion,
+  SiegeRam,
+  SiegeRouteMarker,
   SiegeStructure,
   BroadcastRelayRaider,
   Floor6Tower,
@@ -1060,6 +1062,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, SiegeMinion, stores.siegeMinion);
   wireStore(ecs, SiegeStructure, stores.siegeStructure);
   wireStore(ecs, SiegeHero, stores.siegeHero);
+  wireStore(ecs, SiegeRam, stores.siegeRam);
+  wireStore(ecs, SiegeRouteMarker, stores.siegeRouteMarker);
   wireStore(ecs, BroadcastRelayRaider, stores.broadcastRelayRaider);
   wireStore(ecs, Floor6Tower, stores.floor6Tower);
   wireStore(ecs, Lifetime, stores.lifetime);

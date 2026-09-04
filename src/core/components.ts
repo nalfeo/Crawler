@@ -77,6 +77,17 @@ export const SiegeStructure = {};
  */
 export const SiegeHero = {};
 /**
+ * Floor 5 Ratings Ram marker — the single escorted siege engine (spec `R5`).
+ * Distinct from {@link SiegeStructure} so lane-war structure queries, wave
+ * caps and telemetry never mistake the ram for a lane objective.
+ */
+export const SiegeRam = {};
+/**
+ * Floor 5 Ratings Ram escort-route waypoint marker. Purely positional: never
+ * carries `Team` or `Health`, so it is untargetable and unkillable.
+ */
+export const SiegeRouteMarker = {};
+/**
  * Floor 6 route-following raider marker. Placed on demolition crew enemies that
  * follow authored waypoint routes toward the Broadcast Relay. Distinct from
  * `Enemy`/`EnemyBehavior` so normal AI systems skip them; `floor6RaiderSystem`
@@ -375,6 +386,33 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     siegeStructure: {
       team: new Uint8Array(maxEntities),
       kind: new Uint8Array(maxEntities),
+    },
+    /**
+     * Floor 5 · Ratings Ram (slice 5). Deliberately its OWN store rather than
+     * a reuse of `siegeStructure`: the ram is neither a lane objective nor a
+     * minion, and the lane-war contract counts `[SiegeStructure, Team, Health]`
+     * entities exactly.
+     */
+    siegeRam: {
+      /** Index of the route landmark the ram is travelling TOWARD. */
+      routeIndex: new Uint8Array(maxEntities),
+      /** 1 while the protection gate is satisfied, else 0. */
+      protectionMet: new Uint8Array(maxEntities),
+      /** Strikes landed on the outer wall by THIS ram instance. */
+      strikes: new Uint16Array(maxEntities),
+      /** `world.elapsedMs` of the last landed strike (0 = never). */
+      lastStrikeMs: new Float64Array(maxEntities),
+    },
+    /**
+     * Floor 5 · Ratings Ram escort-route waypoint marker. Carries no `Team`
+     * and no `Health` on purpose — markers must never be targetable, killable,
+     * or counted by any lane-war query.
+     */
+    siegeRouteMarker: {
+      /** 0-based index into the authored landmark order. */
+      index: new Uint8Array(maxEntities),
+      /** 1 once the ram has arrived at this landmark. */
+      reached: new Uint8Array(maxEntities),
     },
     siegeHero: {
       /** Siege-marker team code (1 = allied, 2 = enemy). Heroes are always 2. */

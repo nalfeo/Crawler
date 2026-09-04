@@ -32,7 +32,6 @@ jobs:
       GOOBERS_SHADOW_REPORT_DAY: ${{ inputs.report_day }}
       GOOBERS_VERSION: v0.3.3
       GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
-      GOOBERS_INSTANCE: ${{ runner.temp }}/goobers-shadow-instance
     steps:
       - uses: actions/checkout@v4
         with:
@@ -129,8 +128,15 @@ jobs:
       - name: Materialize read-only Goobers instance
         run: |
           set -euo pipefail
-          mkdir -p "$GOOBERS_INSTANCE"
-          cat > "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-shadow-instance"
+          GOOBERS_SOURCE="$RUNNER_TEMP/goobers-shadow-source"
+          export GOOBERS_INSTANCE
+          mkdir -p "$GOOBERS_INSTANCE/config" "$GOOBERS_SOURCE/gaggles/crawler/workflows"
+          cp .goobers/manifest.yaml "$GOOBERS_SOURCE/manifest.yaml"
+          cp .goobers/gaggles/crawler/gaggle.yaml "$GOOBERS_SOURCE/gaggles/crawler/gaggle.yaml"
+          cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-shadow.yaml \
+            "$GOOBERS_SOURCE/gaggles/crawler/workflows/crawler-lifecycle-shadow.yaml"
+          cat > "$GOOBERS_SOURCE/instance.yaml.example" <<EOF
           apiVersion: goobers.dev/v1alpha1
           kind: Instance
           repos:
@@ -139,14 +145,17 @@ jobs:
               name: ${GITHUB_REPOSITORY#*/}
               token:
                 env: GOOBERS_GITHUB_TOKEN
-          workflowSource:
-            kind: local-dir
-            path: ${GITHUB_WORKSPACE}/.goobers
           runner:
             envPassthrough:
               - GOOBERS_SHADOW_INPUT_FILE
           runConditions:
             maxParallelRuns: 1
+          EOF
+          cp "$GOOBERS_SOURCE/instance.yaml.example" "$GOOBERS_INSTANCE/instance.yaml"
+          cat >> "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          workflowSource:
+            kind: local-dir
+            path: ${GOOBERS_SOURCE}
           EOF
           goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
@@ -155,11 +164,17 @@ jobs:
         env:
           GOOBERS_GITHUB_TOKEN: ${{ github.token }}
           GOOBERS_SHADOW_INPUT_FILE: ${{ github.workspace }}/.goobers-shadow/legacy-triggers.json
-        run: goobers run crawler-lifecycle-shadow "$GOOBERS_INSTANCE"
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-shadow-instance"
+          export GOOBERS_INSTANCE
+          goobers run crawler-lifecycle-shadow "$GOOBERS_INSTANCE"
 
       - name: Extract Goobers decisions
         run: |
           set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-shadow-instance"
+          export GOOBERS_INSTANCE
           events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
           cp "$events_file" .goobers-shadow/goobers-events.jsonl
           jq -r 'select(.type == "stage.finished" and .stage == "decide") | .outputs.decisions' \
@@ -180,3 +195,4 @@ jobs:
           name: goobers-shadow-${{ env.GOOBERS_SHADOW_REPORT_DAY }}
           path: .goobers-shadow/
           if-no-files-found: error
+          include-hidden-files: true

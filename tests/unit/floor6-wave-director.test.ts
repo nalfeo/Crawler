@@ -22,8 +22,10 @@ import {
   _getFloor6InitializationArtifact,
 } from '../../src/game/floor6Scenario.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { floor6Manifest } from '../../src/shared/floor-manifest.js';
 import { createInputState } from '../../src/shared/input.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -170,6 +172,175 @@ describe('Floor 6 wave manifest determinism', () => {
 });
 
 describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
+  it('projects the Slice 8 quest goals from authoritative defense state', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    const quest = world.questLog.get(FLOOR6_DEFENSE_QUEST_ID);
+    expect(quest?.status).toBe('active');
+
+    tickDirector(world);
+    expect(world.goalFlags.get('floor6.defense.briefed')).toBe(true);
+    expect(getFloor6DefenseRunStats(world)?.presentation.questGoals).toMatchObject({
+      'floor6.defense.briefed': true,
+      'floor6.defense.firstWaveCleared': false,
+    });
+
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+    expect(purchaseFloor6UpgradeOffer(world, state.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+    expect(world.goalFlags.get('floor6.defense.firstBuildPlaced')).toBe(true);
+    expect(world.goalFlags.get('floor6.defense.firstUpgradeChosen')).toBe(true);
+
+    completeCurrentFloor6Act(world);
+    expect(world.goalFlags.get('floor6.defense.firstWaveCleared')).toBe(true);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    expect(world.goalFlags.get('floor6.defense.breakCleared')).toBe(true);
+
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    state.finale.bossDefeated = true;
+    tickDirector(world);
+    questSystem(world);
+
+    expect(world.goalFlags.get('floor6.defense.deadlineDefeated')).toBe(true);
+    expect(world.goalFlags.get('floor6.defense.relaySecured')).toBe(true);
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('complete');
+  });
+
+  it('emits non-color presentation labels for routes, sites, towers, loot, upgrades, breaks, and Deadline', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    tickDirector(world);
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+    expect(purchaseFloor6UpgradeOffer(world, state.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+
+    const defendPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(defendPresentation.routes.map((route) => [route.routeId, route.directionLabel])).toEqual(
+      [
+        ['west-service-route', 'incoming from west route → Relay'],
+        ['south-loading-route', 'incoming from south route ↑ Relay'],
+      ],
+    );
+    expect(defendPresentation.buildSites.some((site) => site.label.includes('VACANT'))).toBe(true);
+    expect(defendPresentation.buildSites.some((site) => site.label.includes('OCCUPIED'))).toBe(
+      true,
+    );
+    expect(defendPresentation.towers[0]).toMatchObject({
+      towerId: 'signal-slinger',
+      rangeFt: 36,
+    });
+    expect(defendPresentation.towers[0]!.tierLabel).toContain('tower modifier');
+    expect(defendPresentation.buildCurrencyLabel).toContain('Requisitions');
+    expect(defendPresentation.lootLabel).toContain('requisition drops');
+    expect(defendPresentation.upgradeChoiceLabel).toContain('upgrade offers chosen');
+
+    completeCurrentFloor6Act(world);
+    const breakPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(breakPresentation.breakSafetyLabel).toContain('Break safe: 0 live hostiles');
+    expect(breakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe-0')).toBe(true);
+
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    // Regression coverage: each BREAK occurrence must cue audio once, not
+    // just the first — MainGameScene.playedScenarioCueIds latches cue IDs
+    // for the whole run, so a second break needs a distinct ID from the
+    // first (`floor6-break-safe-0`) to actually replay the cue.
+    const secondBreakPresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(secondBreakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe-1')).toBe(true);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    const finalePresentation = getFloor6DefenseRunStats(world)!.presentation;
+    expect(finalePresentation.deadlineLabel).toContain('Deadline active');
+    expect(finalePresentation.cues.some((cue) => cue.id === 'floor6-deadline-finale')).toBe(true);
+
+    state.relayHp = 20;
+    expect(getFloor6DefenseRunStats(world)!.presentation.relayDangerLabel).toMatch(/CRITICAL/);
+  });
+
+  it('tower tier label counts only tower-affecting upgrade offers, not relay/raider-only ones', () => {
+    const { world } = initFloor6();
+    const state = getDefenseState(world);
+    tickDirector(world);
+    state.economy.balance = 100;
+    state.economy.totalEarned = 100;
+    expect(buildFloor6Tower(world, state.geometry.buildSites[0]!.id, 'signal-slinger').ok).toBe(
+      true,
+    );
+
+    // A relay-only offer (no tower effect) must NOT invent a per-tower tier.
+    const relayOnlyOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'relayRepair',
+    );
+    expect(relayOnlyOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, relayOnlyOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe('base tier');
+
+    // A tower-affecting offer is the only thing that should move the label,
+    // and it must count exactly the tower-affecting offers selected (one),
+    // not every selected offer (two).
+    const towerOffer = state.upgradeOfferManifest!.find(
+      (offer) => offer.effect.kind === 'towerDamageBonus',
+    );
+    expect(towerOffer).toBeDefined();
+    expect(purchaseFloor6UpgradeOffer(world, towerOffer!.offerId).ok).toBe(true);
+    expect(getFloor6DefenseRunStats(world)!.presentation.towers[0]!.tierLabel).toBe(
+      '+1 global tower modifier',
+    );
+  });
+
+  it('same-world restart clears prior Floor 6 quest projection and reaccepts the quest', () => {
+    const { world, player } = initFloor6();
+    const scenario = createFloorMainSceneOptions('floor6');
+    tickDirector(world);
+    const firstState = getDefenseState(world);
+    firstState.economy.balance = 100;
+    firstState.economy.totalEarned = 100;
+    expect(
+      buildFloor6Tower(world, firstState.geometry.buildSites[0]!.id, 'signal-slinger').ok,
+    ).toBe(true);
+    expect(purchaseFloor6UpgradeOffer(world, firstState.upgradeOfferManifest![0]!.offerId).ok).toBe(
+      true,
+    );
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
+    completeCurrentFloor6Act(world);
+    firstState.finale.bossDefeated = true;
+    tickDirector(world);
+    questSystem(world);
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('complete');
+
+    scenario.configureWorld!(world, player);
+
+    expect(world.questLog.get(FLOOR6_DEFENSE_QUEST_ID)?.status).toBe('active');
+    expect(world.goalFlags.get('floor6.defense.questComplete')).toBeUndefined();
+    for (const goalId of [
+      'floor6.defense.briefed',
+      'floor6.defense.firstWaveCleared',
+      'floor6.defense.firstBuildPlaced',
+      'floor6.defense.firstUpgradeChosen',
+      'floor6.defense.breakCleared',
+      'floor6.defense.deadlineDefeated',
+      'floor6.defense.relaySecured',
+    ]) {
+      expect(world.goalFlags.get(goalId)).toBeUndefined();
+    }
+    expect(getDefenseState(world).towersTornDown).toBe(0);
+  });
+
   it('survives each authored act and enters/exits bounded hostile-free build breaks', () => {
     const { world } = initFloor6();
     tickDirector(world);
@@ -541,7 +712,7 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     }
   });
 
-  it('raider velocity is non-zero when DEFEND and has waypoints to follow', () => {
+  it('raider position advances along authored waypoints without relying on velocity', () => {
     const { world } = initFloor6();
     tickDirector(world);
     const state = getDefenseState(world);
@@ -558,10 +729,19 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
       const entry = state.waveManifest?.[mIdx];
       const route = state.geometry.routes.find((r) => r.id === entry?.routeId);
       if (!route || wIdx >= route.waypoints.length) continue;
-      // Should have non-zero velocity (moving toward waypoint)
-      const vx = world.stores.velocity.x[eid] ?? 0;
-      const vy = world.stores.velocity.y[eid] ?? 0;
-      expect(Math.hypot(vx, vy)).toBeGreaterThan(0);
+      const before = {
+        x: world.stores.position.x[eid] ?? 0,
+        y: world.stores.position.y[eid] ?? 0,
+      };
+      tickBoth(world);
+      const after = {
+        x: world.stores.position.x[eid] ?? 0,
+        y: world.stores.position.y[eid] ?? 0,
+      };
+      expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(0);
+      expect(Math.hypot(world.stores.velocity.x[eid] ?? 0, world.stores.velocity.y[eid] ?? 0)).toBe(
+        0,
+      );
       break; // one raider is enough
     }
   });
@@ -578,7 +758,7 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     expect(state.spawnDebt).toBe(0);
   });
 
-  it('position-based stall detection: stillFrames increments when raider does not move', () => {
+  it('position-based stall detection stays clear while direct route following advances', () => {
     const { world } = initFloor6();
     tickDirector(world);
     const state = getDefenseState(world);
@@ -591,17 +771,83 @@ describe('Floor 6 raider route traversal (FR3.1)', () => {
     const raiders = Array.from(query(world.ecs, [BroadcastRelayRaider, Health]));
     if (raiders.length === 0) return; // nothing spawned yet — skip
     const eid = raiders[0]!;
-    // Freeze position by repeatedly ticking without physics (position stays constant)
-    // After stalledFramesThreshold ticks, stallResolved should be set
-    const threshold = 90; // default stalledFramesThreshold from tuning
-    // Tick past threshold; in unit tests position never changes (no physics)
-    for (let i = 0; i < threshold + 2; i++) {
+    for (let i = 0; i < 20; i++) {
       tickBoth(world);
     }
     const mIdx = world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0;
     const rec = state.liveEnemies[mIdx];
-    // Either the raider's still frames have accumulated, or stallResolved was set
     const sf = world.stores.broadcastRelayRaider.stillFrames[eid] ?? 0;
-    expect(sf > 0 || (rec?.stallResolved ?? false)).toBe(true);
+    expect(sf).toBe(0);
+    expect(rec?.stallResolved ?? false).toBe(false);
+  });
+
+  it('counts route pressure from successful spawns rather than attempted release indexes', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+    const firstRouteId = state.waveManifest?.[0]?.routeId;
+    if (!firstRouteId) throw new Error('Floor 6 manifest missing first route');
+
+    state.nextReleaseIndex = state.waveManifest?.length ?? 0;
+    state.routeReleaseCounts = { [firstRouteId]: 1 };
+
+    const pressure = getFloor6DefenseRunStats(world)?.releaseGate.routePressure ?? [];
+    expect(pressure.reduce((sum, route) => sum + route.released, 0)).toBe(1);
+    expect(pressure.find((route) => route.routeId === firstRouteId)?.released).toBe(1);
+  });
+
+  it('records stalled raiders once and resets per-run stall counters on restart', () => {
+    const { world } = initFloor6();
+    tickDirector(world);
+    const state = getDefenseState(world);
+    const firstReleaseTick = state.waveManifest?.[0]?.releaseTick ?? 999;
+    while (world.frameCount <= firstReleaseTick) {
+      tickDirector(world);
+    }
+
+    const eid = Array.from(query(world.ecs, [BroadcastRelayRaider, Health, Position]))[0];
+    if (eid === undefined) throw new Error('Floor 6 did not spawn a raider for stall coverage');
+    const manifestIndex = world.stores.broadcastRelayRaider.manifestIndex[eid] ?? 0;
+    const routeId = state.waveManifest?.[manifestIndex]?.routeId;
+    if (!routeId) throw new Error('Spawned raider missing route manifest entry');
+    const stalledThreshold = floor6Manifest.floor6?.tuning?.stalledFramesThreshold ?? 90;
+    const frozen = {
+      x: world.stores.position.x[eid] ?? 0,
+      y: world.stores.position.y[eid] ?? 0,
+    };
+    const tickFrozenRaider = () => {
+      setComponent(world.ecs, eid, Position, frozen);
+      world.stores.broadcastRelayRaider.prevX[eid] = frozen.x;
+      world.stores.broadcastRelayRaider.prevY[eid] = frozen.y;
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      floor6RaiderSystem(world);
+    };
+
+    for (let i = 0; i < stalledThreshold + 5; i++) {
+      tickFrozenRaider();
+    }
+
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+    expect(state.liveEnemies[manifestIndex]?.stallResolved).toBe(true);
+
+    for (let i = 0; i < 5; i++) {
+      tickFrozenRaider();
+    }
+
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+
+    state.relayHp = 0;
+    floor6DefenseDirectorSystem(world);
+    expect(state.phase.kind).toBe('DEFEAT');
+    expect(state.stalledRaiderCount).toBe(1);
+    expect(state.routeStallCounts[routeId]).toBe(1);
+
+    state.phase = { kind: 'SETUP' };
+    tickDirector(world);
+    expect(state.stalledRaiderCount).toBe(0);
+    expect(state.routeStallCounts).toEqual({});
   });
 });

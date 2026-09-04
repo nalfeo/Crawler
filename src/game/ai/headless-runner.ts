@@ -21,7 +21,7 @@ import {
   statSystem,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
-import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
@@ -43,6 +43,8 @@ import {
   type AIPathingModeValue,
   type LootEfficiencyMetrics,
   type GoldEconomyMetrics,
+  type Floor3ProgressionMetrics,
+  type Floor3ProgressionMilestone,
   type PlayerPersona,
   type RunStats,
   type LevelUpEvent,
@@ -82,6 +84,8 @@ import {
   autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
+  autoFloor3ProgressionSystem,
+  autoFloor6ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
 import {
@@ -181,7 +185,40 @@ function hasFloor2ExitCompleted(world: GameWorld): boolean {
   );
 }
 
-function computeHeadlessFloorProgressScore(world: GameWorld): number {
+function measureFloor5RamForwardProgressFt(world: GameWorld): number {
+  const state = world.floorExtendedState?.floor5Siege;
+  if (!state || state.ram.route.length < 2) return 0;
+
+  const route = state.ram.route;
+  const segmentLengths = route.slice(1).map((marker, index) => {
+    const previous = route[index]!;
+    return Math.hypot(marker.x - previous.x, marker.y - previous.y);
+  });
+  const routeLength = segmentLengths.reduce((sum, length) => sum + length, 0);
+  let progressFt = state.ram.destructions * routeLength;
+  if (state.ram.eid <= 0) return progressFt;
+
+  const targetIndex = Math.max(1, Math.min(state.ram.routeIndex, route.length - 1));
+  progressFt += segmentLengths.slice(0, targetIndex - 1).reduce((sum, length) => sum + length, 0);
+
+  const previous = route[targetIndex - 1]!;
+  const target = route[targetIndex]!;
+  const segmentX = target.x - previous.x;
+  const segmentY = target.y - previous.y;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+  if (segmentLengthSquared === 0) return progressFt;
+
+  const ramX = world.stores.position.x[state.ram.eid] ?? previous.x;
+  const ramY = world.stores.position.y[state.ram.eid] ?? previous.y;
+  const projected =
+    ((ramX - previous.x) * segmentX + (ramY - previous.y) * segmentY) / segmentLengthSquared;
+  return progressFt + Math.sqrt(segmentLengthSquared) * Math.max(0, Math.min(1, projected));
+}
+
+function computeHeadlessFloorProgressScore(
+  world: GameWorld,
+  floor5RamForwardProgressFt = 0,
+): number {
   const floor4Arena = world.floorExtendedState?.floor4Arena;
   if (floor4Arena) {
     return floor4Arena.arenaElapsedMs + floor4Arena.timeline.length;
@@ -193,7 +230,23 @@ function computeHeadlessFloorProgressScore(world: GameWorld): number {
       floor5Siege.laneTelemetry.spawned.enemy +
       floor5Siege.laneTelemetry.legalDamageEvents +
       floor5Siege.laneTelemetry.checkpointContests +
-      floor5Siege.laneTelemetry.waveCyclesCompleted
+      floor5Siege.laneTelemetry.waveCyclesCompleted +
+      floor5Siege.ram.builds +
+      floor5Siege.ram.destructions +
+      floor5Siege.ram.strikes +
+      floor5Siege.ram.route.filter((marker) => marker.reachedFrame !== null).length +
+      Math.floor(floor5RamForwardProgressFt) +
+      (floor5Siege.breach.latched ? 1 : 0) +
+      // Slice-6 finale terms, so the quest-stall watchdog still sees forward
+      // motion once the lane war is over and the courtyard/throne fight owns
+      // the run.
+      floor5Siege.finale.courtyardActors.filter((actor) => actor.defeatedFrame !== null).length +
+      floor5Siege.finale.throneActors.filter((actor) => actor.defeatedFrame !== null).length +
+      floor5Siege.finale.summonsReleased +
+      (floor5Siege.finale.courtyardCleared ? 1 : 0) +
+      (floor5Siege.finale.throneDoorOpenedFrame !== null ? 1 : 0) +
+      (floor5Siege.finale.captureAvailable ? 1 : 0) +
+      (floor5Siege.finale.captured ? 1 : 0)
     );
   }
   const floor6Defense = getFloor6DefenseRunStats(world);
@@ -1002,6 +1055,7 @@ export async function runHeadless(
   let outcome: RunStats['outcome'] = 'timeout';
   let stallReason: string | undefined;
   const stallTracker = new QuestProgressStallTracker(mergedConfig.questStallFrames);
+  let floor5RamForwardProgressFt = 0;
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
@@ -1044,6 +1098,12 @@ export async function runHeadless(
   const floor1BossStartedHealthFraction = new Map<string, number>();
   const floor1BossDefeatedFrame = new Map<string, number>();
   const floor1BossDefeatedMs = new Map<string, number>();
+  let floor3LeftEntrance: Floor3ProgressionMetrics['leftEntrance'] = null;
+  const floor3StudioVictories = new Map<string, Floor3ProgressionMilestone>();
+  const floor3FinalFourVictories = new Map<number, Floor3ProgressionMilestone>();
+  let floor3KeptCompanionSelected: Floor3ProgressionMetrics['keptCompanionSelected'] = null;
+  let floor3ExitArrived: Floor3ProgressionMetrics['exitArrived'] = null;
+  let floor3ExitCompleted: Floor3ProgressionMetrics['exitCompleted'] = null;
   const equipmentSpendTelemetry = createEquipmentSpendTelemetry();
 
   // Latches the Floor 1 boss encounter transitions for the frame that just ran.
@@ -1074,6 +1134,66 @@ export async function runHeadless(
         recordRewardEvent(runData, 'boss_kill', bossId, world.elapsedMs, currentActiveTimeMs());
       }
     }
+  };
+
+  const floor3Milestone = (): Floor3ProgressionMilestone => ({
+    frame: frameCount,
+    gameTimeMs: world.elapsedMs,
+  });
+  const captureFloor3Progression = (): void => {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (world.floorId !== 'floor3' || !state) return;
+
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    const floorMap = world.floorMap;
+    if (floor3LeftEntrance === null && floorMap?.spawnRoom) {
+      const tile = floorMap.worldToTile(playerX, playerY);
+      if (floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== floorMap.spawnRoom.id) {
+        floor3LeftEntrance = floor3Milestone();
+      }
+    }
+    for (const studio of state.studios) {
+      if (studio.defeated && !floor3StudioVictories.has(studio.id)) {
+        floor3StudioVictories.set(studio.id, floor3Milestone());
+      }
+    }
+    state.finalFourRounds.forEach((round, index) => {
+      if (round.defeated && !floor3FinalFourVictories.has(index)) {
+        floor3FinalFourVictories.set(index, floor3Milestone());
+      }
+    });
+    if (state.keptCompanionEid !== undefined && floor3KeptCompanionSelected === null) {
+      floor3KeptCompanionSelected = floor3Milestone();
+    }
+    if (
+      state.staircasePos &&
+      Math.hypot(playerX - state.staircasePos.x, playerY - state.staircasePos.y) <=
+        FLOOR2_STAIR_MARKER_RADIUS_FT &&
+      floor3ExitArrived === null
+    ) {
+      floor3ExitArrived = floor3Milestone();
+    }
+    if (state.staircaseDiscovered && floor3ExitCompleted === null) {
+      floor3ExitCompleted = floor3Milestone();
+    }
+  };
+  const buildFloor3Progression = (): Floor3ProgressionMetrics | undefined => {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (world.floorId !== 'floor3' || !state) return undefined;
+    return {
+      leftEntrance: floor3LeftEntrance,
+      studioVictories: Object.fromEntries(
+        state.studios.map((studio) => [studio.id, floor3StudioVictories.get(studio.id) ?? null]),
+      ),
+      finalFourRounds: state.finalFourRounds.map((round, index) => ({
+        handlerId: round.handlerId,
+        victory: floor3FinalFourVictories.get(index) ?? null,
+      })),
+      keptCompanionSelected: floor3KeptCompanionSelected,
+      exitArrived: floor3ExitArrived,
+      exitCompleted: floor3ExitCompleted,
+    };
   };
 
   // NPC interaction tracking
@@ -1439,6 +1559,9 @@ export async function runHeadless(
       // runSimulationStep, so no second explicit objective call is needed here.
       autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
       autoFloor2ProgressionSystem(world, playerEid);
+      autoFloor3ProgressionSystem(world, playerEid);
+      captureFloor3Progression();
+      autoFloor6ProgressionSystem(world);
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
       // NOTE: the runner deliberately does NOT restock the Quartermaster on
       // safe-room entry. `MainGameScene` never calls
@@ -1789,22 +1912,25 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
-      // Non-interactive runs must still satisfy Floor 3's required keep-one
-      // reward before their carryover snapshot is captured, and Floor 3 only
-      // reports `cleared_floor` once the descend is confirmed. Unlike Floors
-      // 1-2 (`autoFloor1/2ProgressionSystem`) this deliberately does NOT gate
-      // on stair proximity: the BT AI has no Floor 3 exit navigation yet
-      // (`isFloorClearedAwaitingSweep` covers Floors 1-2 only), so a proximity
-      // gate here would stall every headless Floor 3 run at the win instead of
-      // completing it. Replace this with a proximity-gated
-      // `autoFloor3ProgressionSystem` once the AI can path to the Floor 3
-      // exit. Headless-only: real play still walks to the stairs.
-      if (scenario.autoSelectKeptCompanion) {
-        // Note the sequencing: `autoSelectKeptCompanion` returns false when
-        // there is nothing left to pick (a post-victory party wipe, which the
-        // descend gate explicitly allows), so the descend attempt must not be
-        // conditional on it or those runs would stall instead of completing.
-        scenario.autoSelectKeptCompanion(world);
+      if (world.floorId === 'floor5') {
+        // Floor 5's terminal outcome is the throne capture, which is a SEPARATE
+        // interaction from defeating Regent Emeritus. The BT AI has no
+        // throne-marker navigation yet, so the runner requests the capture every
+        // frame: `requestFloor5ThroneCapture` is the state authority and counts
+        // every refusal, so this both proves "cannot capture early" in a real
+        // run and captures exactly once. Headless-only — real play still walks
+        // to the marker and confirms through its modal.
+        scenario.onStairDescend?.(world, playerEid);
+      }
+      if (world.floorId === 'floor6') {
+        // Floor 6's Relay exit also only reports `cleared_floor` once descent
+        // is confirmed (the Deadline defeat merely opens it), so the same
+        // stall applies here: the BT AI has no Deadline-exit navigation yet,
+        // so auto-confirm once the exit is open instead of gating on
+        // proximity. `confirmFloor6StairDescend` is idempotent and a no-op
+        // until `isFloor6ExitDescendable` is true, so this is a safe
+        // unconditional call, not an early/incorrect win. Headless-only: real
+        // play still walks to the marker and confirms through its modal.
         scenario.onStairDescend?.(world, playerEid);
       }
       const scenarioOutcome = scenario.getRunOutcome(world);
@@ -1841,7 +1967,16 @@ export async function runHeadless(
       // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
       // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
       // relocates first (~100s); this only fires if that fails to recover.
-      if (stallTracker.update(computeHeadlessFloorProgressScore(world), frameCount)) {
+      floor5RamForwardProgressFt = Math.max(
+        floor5RamForwardProgressFt,
+        measureFloor5RamForwardProgressFt(world),
+      );
+      if (
+        stallTracker.update(
+          computeHeadlessFloorProgressScore(world, floor5RamForwardProgressFt),
+          frameCount,
+        )
+      ) {
         outcome = 'stalled';
         stallReason = formatQuestStallReason(
           world.questLog.values(),
@@ -1924,6 +2059,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
+    const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
     const crashStats: RunStats = assembleRunStats({
       totalFrames: frameCount,
       wallTimeMs,
@@ -1983,9 +2119,10 @@ export async function runHeadless(
         floor2EncounterDefeatedMs,
         buildFloor2HuntMetrics(),
       ),
+      floor3Progression: buildFloor3Progression(),
       floor4Arena: getFloor4ArenaRunStats(world),
       floor5Siege: getFloor5SiegeRunStats(world),
-      floor6Defense: getFloor6DefenseRunStats(world),
+      floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
@@ -2021,6 +2158,7 @@ export async function runHeadless(
 
   const wallTimeMs = Date.now() - startTime;
   const fps = (frameCount / wallTimeMs) * 1000;
+  const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
   const playerHealth = world.stores.health.current[playerEid] ?? 0;
   const finalHealthPercent = playerHealth / playerMaxHealth;
@@ -2096,9 +2234,10 @@ export async function runHeadless(
       floor2EncounterDefeatedMs,
       buildFloor2HuntMetrics(),
     ),
+    floor3Progression: buildFloor3Progression(),
     floor4Arena: getFloor4ArenaRunStats(world),
     floor5Siege: getFloor5SiegeRunStats(world),
-    floor6Defense: getFloor6DefenseRunStats(world),
+    floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),

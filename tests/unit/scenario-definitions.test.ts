@@ -26,6 +26,7 @@ import {
   FLOOR3_TIMEOUT_GOAL_ID,
 } from '../../src/game/floor3Scenario.js';
 import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import { floor6DefenseDirectorSystem } from '../../src/game/floor6Scenario.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -59,7 +60,7 @@ describe('scenario definitions', () => {
   });
 
   it('marks every registered floor playable, and only winnable floors implemented', () => {
-    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5', 'floor6'] as const) {
       expect(isFloorPlayable(floorId)).toBe(true);
     }
     expect(isFloorPlayable('floor-does-not-exist')).toBe(false);
@@ -67,6 +68,7 @@ describe('scenario definitions', () => {
     // OUT of the implemented (sweepable/winnable) set.
     expect(isFloorImplemented('floor3')).toBe(false);
     expect(isFloorImplemented('floor5')).toBe(false);
+    expect(isFloorImplemented('floor6')).toBe(true);
   });
 
   it('returns floor3 scenario with the biome-overworld director copy', () => {
@@ -81,7 +83,7 @@ describe('scenario definitions', () => {
   });
 
   it('authors at least twenty intro variants for every registered floor', () => {
-    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5'] as const) {
+    for (const floorId of ['floor1', 'floor2', 'floor3', 'floor4', 'floor5', 'floor6'] as const) {
       const scenario = getScenarioDefinition(floorId);
       const variants = scenario.director.introVariants ?? [];
       expect(variants.length).toBeGreaterThanOrEqual(20);
@@ -99,6 +101,10 @@ describe('scenario definitions', () => {
     for (const variant of getScenarioDefinition('floor5').director.introVariants ?? []) {
       expect(variant).toContain('Command Post');
       expect(variant).not.toMatch(/control point|capture node|capture exchange/i);
+    }
+    for (const variant of getScenarioDefinition('floor6').director.introVariants ?? []) {
+      expect(variant).toContain('Broadcast Relay');
+      expect(variant).not.toMatch(/offline|not active|foundation/i);
     }
   });
 
@@ -159,6 +165,77 @@ describe('scenario definitions', () => {
     it('floor2 declares no mid-run milestones today', () => {
       const scenario = getScenarioDefinition('floor2');
       expect(scenario.director.milestones).toEqual([]);
+    });
+
+    it('floor6 declares ordered static Director milestones for every defense beat', () => {
+      const scenario = getScenarioDefinition('floor6');
+      expect(scenario.director.milestones.map((m) => m.id)).toEqual([
+        'floor6-defense-briefed',
+        'floor6-first-wave-cleared',
+        'floor6-first-build-placed',
+        'floor6-first-upgrade-chosen',
+        'floor6-break-cleared',
+        'floor6-deadline-started',
+        'floor6-deadline-defeated',
+      ]);
+      for (const milestone of scenario.director.milestones) {
+        expect(milestone.copy.length).toBeGreaterThan(0);
+        expect(typeof milestone.isReached).toBe('function');
+      }
+    });
+
+    it('floor6 milestone predicates project authoritative scenario state and goal flags', () => {
+      const scenario = getScenarioDefinition('floor6');
+      const world = createTestWorld({ seed: 606 });
+      const player = spawnPlayer(world, 0, 0);
+      scenario.configureWorld(world, player);
+      const [
+        briefed,
+        firstWave,
+        firstBuild,
+        firstUpgrade,
+        breakCleared,
+        deadlineStarted,
+        deadlineDefeated,
+      ] = scenario.director.milestones;
+
+      for (const milestone of scenario.director.milestones) {
+        expect(milestone.isReached(world)).toBe(false);
+      }
+
+      floor6DefenseDirectorSystem(world);
+      expect(briefed!.isReached(world)).toBe(true);
+
+      world.goalFlags.set('floor6.defense.firstWaveCleared', true);
+      world.goalFlags.set('floor6.defense.firstBuildPlaced', true);
+      world.goalFlags.set('floor6.defense.firstUpgradeChosen', true);
+      world.goalFlags.set('floor6.defense.breakCleared', true);
+      expect(firstWave!.isReached(world)).toBe(true);
+      expect(firstBuild!.isReached(world)).toBe(true);
+      expect(firstUpgrade!.isReached(world)).toBe(true);
+      expect(breakCleared!.isReached(world)).toBe(true);
+
+      world.floorExtendedState!.floor6Defense!.phase = { kind: 'FINALE' };
+      expect(deadlineStarted!.isReached(world)).toBe(true);
+      world.goalFlags.set('floor6.defense.deadlineDefeated', true);
+      expect(deadlineDefeated!.isReached(world)).toBe(true);
+    });
+
+    it('floor6 exposes a generic HUD snapshot for the real scene presenter', () => {
+      const scenario = getScenarioDefinition('floor6');
+      const world = createTestWorld({ seed: 606 });
+      const player = spawnPlayer(world, 0, 0);
+      scenario.configureWorld(world, player);
+      floor6DefenseDirectorSystem(world);
+
+      const hud = scenario.getHudSnapshot?.(world);
+
+      expect(hud).toBeDefined();
+      expect(hud?.lines.join('\n')).toContain('Protect the Broadcast Relay');
+      expect(hud?.lines.join('\n')).toContain('incoming from west route');
+      expect(hud?.lines.join('\n')).toContain('incoming from south route');
+      expect(hud?.lines.join('\n')).toContain('VACANT');
+      expect(hud?.cues.map((cue) => cue.kind)).toContain('hud');
     });
 
     it('floor1 milestone predicates flip on as the real objective state advances', () => {
@@ -282,6 +359,34 @@ describe('scenario definitions', () => {
         body: 'The Main Event rehearsal ran start-to-finish and the crowd got its winner banner.',
       });
     });
+
+    it('floor6 reports terminal victory only from the authoritative defense outcome', () => {
+      const scenario = getScenarioDefinition('floor6');
+      const world = createTestWorld({ seed: 606, floor: 6 });
+      const player = spawnPlayer(world, 0, 0);
+      scenario.configureWorld(world, player);
+      const defense = world.floorExtendedState!.floor6Defense!;
+
+      expect(scenario.getRunOutcome(world)).toBeNull();
+      defense.terminalOutcome = 'victory';
+      defense.phase = { kind: 'DEFEND' };
+      expect(scenario.getRunOutcome(world)).toBeNull();
+
+      defense.phase = { kind: 'VICTORY' };
+      expect(scenario.getRunOutcome(world)).toBeNull();
+
+      defense.exit.opened = true;
+      expect(scenario.getRunOutcome(world)).toBeNull();
+
+      defense.exit.confirmed = true;
+      expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
+      expect(scenario.director.isVictoryReached(world)).toBe(true);
+      expect(scenario.getCompletionCopy('terminal_victory')).toEqual({
+        title: 'Floor 6 Complete!',
+        subtitle: 'Broadcast Relay secured',
+        body: 'The set survived its Deadline and the exit is clear.',
+      });
+    });
   });
 
   describe('semantic stair marker/proximity', () => {
@@ -349,16 +454,44 @@ describe('scenario definitions', () => {
       world.floorExtendedState.familyState!.staircaseDiscovered = true;
       expect(scenario.getStairMarkerState!(world)!.visible).toBe(false);
     });
+
+    it('floor6 exit marker projects victory-exit geometry and locks until the Relay exit opens', () => {
+      const scenario = getScenarioDefinition('floor6');
+      const world = createTestWorld({ seed: 606 });
+      expect(scenario.getStairMarkerState?.(world)).toBeNull();
+
+      const player = spawnPlayer(world, 0, 0);
+      scenario.configureWorld(world, player);
+      const defense = world.floorExtendedState!.floor6Defense!;
+      const hidden = scenario.getStairMarkerState!(world);
+      expect(hidden).not.toBeNull();
+      expect(hidden!.visible).toBe(false);
+      expect(hidden!.locked).toBe(true);
+      expect(hidden!.label).toContain('RELAY EXIT');
+      expect(hidden!.radiusFt).toBe(FLOOR2_STAIR_MARKER_RADIUS_FT);
+      expect(hidden).not.toHaveProperty('depth');
+      expect(hidden).not.toHaveProperty('color');
+
+      defense.phase = { kind: 'VICTORY' };
+      defense.exit.opened = true;
+      const visible = scenario.getStairMarkerState!(world);
+      expect(visible!.visible).toBe(true);
+      expect(visible!.locked).toBe(false);
+      expect(scenario.onStairDescend!(world, player)).toBe(true);
+    });
   });
 
   describe('semantic stair-descend confirmation presentation', () => {
-    it('floor1 and floor2 declare distinct, non-empty confirmation copy', () => {
+    it('floor1, floor2, and floor6 declare distinct, non-empty confirmation copy', () => {
       const floor1 = getScenarioDefinition('floor1').stairConfirmation;
       const floor2 = getScenarioDefinition('floor2').stairConfirmation;
+      const floor6 = getScenarioDefinition('floor6').stairConfirmation;
       expect(floor1).toBeDefined();
       expect(floor2).toBeDefined();
+      expect(floor6).toBeDefined();
       expect(floor1).not.toEqual(floor2);
-      for (const copy of [floor1, floor2]) {
+      expect(floor6).not.toEqual(floor1);
+      for (const copy of [floor1, floor2, floor6]) {
         expect(copy!.title.length).toBeGreaterThan(0);
         expect(copy!.subtitle.length).toBeGreaterThan(0);
         expect(copy!.body.length).toBeGreaterThan(0);
@@ -407,7 +540,7 @@ describe('scenario definitions', () => {
         'terminal_victory',
         'terminal_complete',
       ];
-      for (const floorId of ['floor1', 'floor2']) {
+      for (const floorId of ['floor1', 'floor2', 'floor6']) {
         const scenario = getScenarioDefinition(floorId);
         for (const variant of variants) {
           const copy = scenario.getCompletionCopy(variant);

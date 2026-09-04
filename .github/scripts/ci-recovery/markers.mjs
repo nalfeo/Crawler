@@ -218,6 +218,30 @@ export function epicIssuesCommentMarker(epicId, hash, issueNumbers) {
 }
 
 // ---------------------------------------------------------------------------
+// Goobers lifecycle-progress comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Leading prefix for the Goobers run-start comment posted on an approved
+ * issue when `.github/workflows/goobers-run.yml` claims it. Full format:
+ * `<!-- crawler-goobers-run-start:v1 run-id=<id> workflow=<name> -->`.
+ *
+ * This MUST be the first line of the comment body, not merely present
+ * somewhere inside it: `ci-recovery-router.yml`'s `issue_comment` job filters
+ * with `startsWith(comment.body, MANAGED_COMMENT_PREFIX)`, and a marker that
+ * isn't the leading text does not satisfy `startsWith`.
+ */
+export const GOOBERS_RUN_START_MARKER_PREFIX = '<!-- crawler-goobers-run-start:v1';
+
+/**
+ * Leading prefix for the Goobers run-result comment posted once a claimed
+ * run finishes. Full format:
+ * `<!-- crawler-goobers-run-result:v1 run-id=<id> workflow=<name> -->`.
+ * Same leading-line requirement as `GOOBERS_RUN_START_MARKER_PREFIX`.
+ */
+export const GOOBERS_RUN_RESULT_MARKER_PREFIX = '<!-- crawler-goobers-run-result:v1';
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -268,4 +292,6 @@ export const MANAGED_COMMENT_MARKERS = [
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
   EPIC_ISSUES_COMMENT_MARKER_PREFIX,
+  GOOBERS_RUN_START_MARKER_PREFIX,
+  GOOBERS_RUN_RESULT_MARKER_PREFIX,
 ];

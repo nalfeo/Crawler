@@ -93,6 +93,22 @@ describe('floor6 manifest economy schema validation', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects release-gate rates outside percentage bounds', () => {
+    const badCompletionRate = cloneFloor6Manifest();
+    badCompletionRate.floor6.releaseGate!.completionRateTarget = 1.01;
+    expect(floorManifestDefSchema.safeParse(badCompletionRate).success).toBe(false);
+
+    const badRelayCushion = cloneFloor6Manifest();
+    badRelayCushion.floor6.releaseGate!.minimumRelayHealthPct = -0.01;
+    expect(floorManifestDefSchema.safeParse(badRelayCushion).success).toBe(false);
+  });
+
+  it('rejects negative release-gate budget counters', () => {
+    const bad = cloneFloor6Manifest();
+    bad.floor6.releaseGate!.maxStalledRaiders = -1;
+    expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
+  });
+
   it('rejects a finale boss referencing an unknown archetype', () => {
     const bad = cloneFloor6Manifest();
     bad.floor6.finale!.boss = {

@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import floor1Achievements from './data/achievements.floor1.json';
 import floor2Achievements from './data/achievements.floor2.json';
+import floor6Achievements from './data/achievements.floor6.json';
 import { type EquipmentRewardTier } from './generated-equipment-types.js';
 import { ITEM_CATALOG, ItemRarity } from './items.js';
 
@@ -290,7 +291,7 @@ export const ACHIEVEMENT_DIFFICULTIES = ['basic', 'standard', 'hard', 'brutal'] 
 export type AchievementDifficulty = (typeof ACHIEVEMENT_DIFFICULTIES)[number];
 export const ACHIEVEMENT_SCOPES = ['floor', 'current_run'] as const;
 export type AchievementScope = (typeof ACHIEVEMENT_SCOPES)[number];
-export const ACHIEVEMENT_FLOORS = [1, 2] as const;
+export const ACHIEVEMENT_FLOORS = [1, 2, 6] as const;
 export type AchievementFloor = (typeof ACHIEVEMENT_FLOORS)[number];
 export const ACHIEVEMENT_RULE_PHASES = ['tick', 'run_end_clear'] as const;
 export type AchievementRulePhase = (typeof ACHIEVEMENT_RULE_PHASES)[number];
@@ -342,6 +343,13 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'allPresentFamiliesNeutralOrBetter',
   'allPresentFamiliesEngagedInCombat',
   'allPresentFamilyBossesEngaged',
+  'floor6RelayBriefed',
+  'floor6FirstWaveCleared',
+  'floor6FirstBuildPlaced',
+  'floor6FirstUpgradeChosen',
+  'floor6BreakCleared',
+  'floor6DeadlineDefeated',
+  'floor6RelaySecured',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
@@ -538,7 +546,7 @@ const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
 const achievementSchema = z
   .object({
     id: z.string().min(1),
-    floor: z.union([z.literal(1), z.literal(2)]),
+    floor: z.union([z.literal(1), z.literal(2), z.literal(6)]),
     scope: achievementScopeSchema.default('floor'),
     title: z.string().min(1),
     popupText: z.string().min(1),
@@ -755,13 +763,16 @@ export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achi
  * is generated or required to ship this slice.
  */
 export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, floor2Achievements);
+export const FLOOR6_ACHIEVEMENT_CATALOG = createAchievementCatalog(6, floor6Achievements);
 export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
   FLOOR1_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENT_CATALOG,
+  FLOOR6_ACHIEVEMENT_CATALOG,
 ]);
 export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
 export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
+export const _FLOOR6_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR6_ACHIEVEMENT_CATALOG.all;
 /** Count of Floor 2 floor-scoped achievements (excludes `current_run`-scoped entries). */
 export const FLOOR2_ACHIEVEMENT_COUNT = FLOOR2_ACHIEVEMENT_CATALOG.floorScoped.length;
 /** Count of Floor 2 `current_run`-scoped (run-global) achievements. */
@@ -769,7 +780,7 @@ export const FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT =
   FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal.length;
 
 export function isAchievementFloor(value: number): value is AchievementFloor {
-  return value === 1 || value === 2;
+  return value === 1 || value === 2 || value === 6;
 }
 
 export function getAchievementCatalogForFloor(
@@ -834,6 +845,13 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       allPresentFamiliesNeutralOrBetter: false,
       allPresentFamiliesEngagedInCombat: false,
       allPresentFamilyBossesEngaged: false,
+      floor6RelayBriefed: false,
+      floor6FirstWaveCleared: false,
+      floor6FirstBuildPlaced: false,
+      floor6FirstUpgradeChosen: false,
+      floor6BreakCleared: false,
+      floor6DeadlineDefeated: false,
+      floor6RelaySecured: false,
     },
     questIds: [],
     completedQuestIds: [],

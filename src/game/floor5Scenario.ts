@@ -7,17 +7,25 @@ import {
   set,
   setComponent,
 } from 'bitecs';
-import { attachBarriersToFloorMap } from '../core/barriers/index.js';
+import {
+  attachBarriersToFloorMap,
+  createPolyBarrier,
+  dropBarrier,
+} from '../core/barriers/index.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import {
   applyDamage,
   BroadcastScore,
   Damage,
+  Enemy,
   Health,
   Immovable,
+  Player,
   Position,
   SiegeHero,
   SiegeMinion,
+  SiegeRam,
+  SiegeRouteMarker,
   SiegeStructure,
   Size,
   Sprite,
@@ -41,14 +49,23 @@ import {
 import { getGenerator } from '../core/map/generators/registry.js';
 import { findTilePath } from '../core/map/pathfinding.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../core/physics-defs.js';
+import { pushAnnouncement } from '../shared/announcement-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { TeamId } from '../shared/constants.js';
 import type {
+  Floor5CaptureAttemptResult,
   Floor5FieldHeroCardEntry,
+  Floor5FinaleActorKind,
+  Floor5FinaleActorState,
+  Floor5FinaleState,
   Floor5FieldHeroRole,
   Floor5RamComponentClass,
+  Floor5RamRouteLandmark,
+  Floor5RamRouteMarkerState,
+  Floor5RamState,
+  Floor5RatingsRamState,
   Floor5RequisitionMilestone,
   Floor5SiegeCheckpointOwner,
   Floor5SiegePhase,
@@ -89,6 +106,7 @@ const FLOOR5_STRUCTURE_KIND: Record<Floor5SiegeStructureId, number> = {
   'outer-wall': 4,
 };
 const FLOOR5_MINION_LIVE_CAP = 4;
+const FLOOR5_WELCOME_ANNOUNCEMENT_MS = 6000;
 const FLOOR5_MINION_HP = 24;
 const FLOOR5_MINION_DAMAGE = 6;
 const FLOOR5_MINION_COOLDOWN_MS = 500;
@@ -110,12 +128,7 @@ const FLOOR5_HERO_ROLE_CODE: Record<Floor5FieldHeroRole, number> = {
 };
 /** Feet of slack allowed around a role anchor before the Hero re-centres. */
 const FLOOR5_HERO_ANCHOR_SLACK_FT = 2;
-const FLOOR5_STRUCTURE_HEALTH: Record<Floor5SiegeStructureId, number> = {
-  'command-post': 90,
-  'allied-checkpoint': 36,
-  'enemy-checkpoint': 36,
-  'outer-wall': 140,
-};
+const FLOOR5_CHECKPOINT_HEALTH = 36;
 
 interface Floor5WaveEntryWithIndex {
   readonly entry: Floor5SiegeWaveManifestEntry;
@@ -242,8 +255,16 @@ function tileCenterToWorld(
                   x: layout.commandPost.x + layout.commandPost.width + 1,
                   y: layout.primaryLane.y + layout.primaryLane.height / 2,
                 }
-              : {
-                  x: layout.breachSite.x + layout.breachSite.width + 2,
+              : // The enemy garrison sorties from the LANE side of its own outer
+                // wall (mirroring the allied spawn's offset from the Command
+                // Post). The breach site is sealed by a barrier until the
+                // Ratings Ram lands (`sealFloor5BreachIngress`), so a
+                // courtyard-side muster would leave every defender — and the
+                // field Hero — permanently walled out of the lane war they
+                // exist to fight. Derived from the authored layout, never
+                // hardcoded.
+                {
+                  x: layout.breachSite.x - 2,
                   y: layout.primaryLane.y + layout.primaryLane.height / 2,
                 };
   return {
@@ -340,6 +361,86 @@ function floor5HeroStateLabel(heroes: Floor5SiegeState['heroes']): string {
   }
 }
 
+/**
+ * Resolve one semantic escort landmark to its authored TILE. Positions are
+ * always derived from {@link SiegeCastleLayout} — never authored as world
+ * coordinates — so re-authoring the castle geometry moves the escort route
+ * with it and can never desync from the walkable lane (spec `FR5.2`).
+ */
+function floor5RamLandmarkTile(
+  layout: SiegeCastleLayout,
+  landmark: Floor5RamRouteLandmark,
+): { tileX: number; tileY: number } {
+  const laneCenterY = Math.floor(layout.primaryLane.y + layout.primaryLane.height / 2);
+  switch (landmark) {
+    case 'build-site':
+      // One tile INSIDE the lane, in front of the Command Post: the staging
+      // yard. Deliberately not the Command Post centre — a field Hero anchored
+      // on the Command Post would otherwise permanently sit inside the ram's
+      // protection bubble and stall the escort before it ever rolled.
+      return { tileX: layout.primaryLane.x + 1, tileY: laneCenterY };
+    case 'siege-yard-junction':
+      return { tileX: Math.floor(centerOf(layout.siegeYard).x), tileY: laneCenterY };
+    case 'checkpoint-junction':
+      return { tileX: Math.floor(centerOf(layout.checkpointPocket).x), tileY: laneCenterY };
+    case 'breach-approach':
+      // The traversable LANE-SIDE attack anchor: the last open lane tile before
+      // the outer wall. The wall's own tiles are barriered at init, so the ram
+      // must never path onto them.
+      return { tileX: layout.outerWall.x - 1, tileY: laneCenterY };
+  }
+}
+
+/** Derive the ordered, positioned escort route from the manifest landmarks. */
+function buildFloor5RamRoute(
+  layout: SiegeCastleLayout,
+  landmarks: readonly Floor5RamRouteLandmark[],
+  tileSizeFt: number,
+): Floor5RamRouteMarkerState[] {
+  return landmarks.map((landmark, index) => {
+    const { tileX, tileY } = floor5RamLandmarkTile(layout, landmark);
+    return {
+      landmark,
+      index,
+      tileX,
+      tileY,
+      x: tileX * tileSizeFt + tileSizeFt / 2,
+      y: tileY * tileSizeFt + tileSizeFt / 2,
+      eid: 0,
+      reachedFrame: null,
+    };
+  });
+}
+
+function createFloor5RamState(config: ReturnType<typeof getFloor5Config>): Floor5RamState {
+  const manifest = getFloor5Manifest();
+  const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+  return {
+    eid: 0,
+    health: config.ram.health,
+    maxHealth: config.ram.health,
+    routeIndex: 0,
+    route: buildFloor5RamRoute(layout, config.ram.routeLandmarks, manifest.map.tileSizeFt),
+    protectionMet: false,
+    escorts: 0,
+    threats: 0,
+    strikes: 0,
+    lastStrikeMs: 0,
+    spawnedFrame: null,
+    destroyedFrame: null,
+    rebuildAvailableFrame: null,
+    builds: 0,
+    destructions: 0,
+    wallDamageDealt: 0,
+    counterDamageTaken: 0,
+    wallAuthorizedHealth: config.outerWall.health,
+    rejectedWallDamage: 0,
+    advanceFrames: 0,
+    holdFrames: 0,
+    stateTrace: [],
+  };
+}
+
 function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
   const config = getFloor5Config();
   const rngStreamKeys = Object.fromEntries(
@@ -352,6 +453,23 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     commandPostHealth: config.commandPost.health,
     engineState: 'LOCKED',
     breachState: 'SEALED',
+    ram: createFloor5RamState(config),
+    finale: createFloor5FinaleState(),
+    breach: {
+      latched: false,
+      committedFrame: null,
+      barrierId: null,
+      frontFrozen: false,
+      commitAttempts: 0,
+      cleanup: {
+        ramRetired: false,
+        markersRetired: 0,
+        wallRetired: false,
+        heroesCleared: 0,
+        minionsCleared: 0,
+        waveDebtCleared: 0,
+      },
+    },
     heroState: 'PENDING',
     heroes: createFloor5HeroSlotState(rngStreamKeys.heroes),
     tasks: {
@@ -386,22 +504,22 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
         id: 'allied-checkpoint',
         team: 'allied',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['allied-checkpoint'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['allied-checkpoint'],
+        health: FLOOR5_CHECKPOINT_HEALTH,
+        maxHealth: FLOOR5_CHECKPOINT_HEALTH,
       },
       'enemy-checkpoint': {
         id: 'enemy-checkpoint',
         team: 'enemy',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['enemy-checkpoint'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['enemy-checkpoint'],
+        health: FLOOR5_CHECKPOINT_HEALTH,
+        maxHealth: FLOOR5_CHECKPOINT_HEALTH,
       },
       'outer-wall': {
         id: 'outer-wall',
         team: 'enemy',
         eid: 0,
-        health: FLOOR5_STRUCTURE_HEALTH['outer-wall'],
-        maxHealth: FLOOR5_STRUCTURE_HEALTH['outer-wall'],
+        health: config.outerWall.health,
+        maxHealth: config.outerWall.health,
       },
     },
     waveManifest,
@@ -640,11 +758,15 @@ function selectFloor5Target(
     return opposingMinion.eid;
   }
 
+  // Spec `FR5.5`: the outer wall is RAM-ONLY. It is deliberately absent from
+  // every minion priority list — chaff must never be able to prioritise (or,
+  // via `applyFloor5MinionAttacks`, damage) the wall, otherwise the escort
+  // objective could be trivially bypassed by lane attrition.
   const priorities: readonly Floor5SiegeStructureId[] =
     team === 'allied'
       ? state.checkpointOwner === 'allied'
-        ? ['outer-wall']
-        : ['enemy-checkpoint', 'outer-wall']
+        ? []
+        : ['enemy-checkpoint']
       : state.checkpointOwner === 'enemy'
         ? ['command-post']
         : ['allied-checkpoint', 'command-post'];
@@ -658,10 +780,22 @@ function selectFloor5Target(
   // Last resort only. The active field Hero is a legal target for the opposing
   // side, but it sits BEHIND the lane objective on purpose: a boss-strength
   // named defender parked on the lane would otherwise soak every allied minion
-  // indefinitely and stall the Slice-2 push contract. Heroes are meant to be
-  // worn down by the player, not by minion chaff.
+  // indefinitely and stall the Slice-2 push contract. Allied minions engage a
+  // Hero only when that Hero becomes an immediate threat to the ram.
   const heroEid = state.heroes.eid;
   if (team === 'allied' && floor5HeroEntityIsAlive(world, heroEid)) {
+    // Spec `FR5.3` escort precedence: while the Ratings Ram is on the field an
+    // allied minion only engages the Hero when the Hero is actually inside the
+    // ram's protection bubble (i.e. it is a THREAT to the escort). Otherwise it
+    // returns `null` so `steerFloor5Minion` rallies it back onto the ram.
+    // Without this the whole allied wave beelines a boss-strength Hero across
+    // the lane, dies, and leaves the ram unscreened for the rest of the run.
+    if (
+      floor5RamIsOnField(world, state) &&
+      distanceBetween(world, heroEid, state.ram.eid) > getFloor5Config().ram.protection.radiusFt
+    ) {
+      return null;
+    }
     return heroEid;
   }
   return null;
@@ -715,7 +849,29 @@ function steerFloor5Minion(world: GameWorld, state: Floor5SiegeState, eid: numbe
       : 'enemy';
   const target = selectFloor5Target(world, state, eid, team);
   world.stores.siegeMinion.targetEid[eid] = target ?? 0;
-  if (target === null || distanceBetween(world, eid, target) <= FLOOR5_MINION_ATTACK_RANGE_FT) {
+  if (target === null) {
+    // Spec `FR5.3`: an idle allied minion rallies to the Ratings Ram so the
+    // escort bubble is actually screened. This only ever moves the minion —
+    // escort headcount never gates the advance (see `evaluateFloor5RamProtection`).
+    if (team === 'allied' && floor5RamIsOnField(world, state)) {
+      const ramEid = state.ram.eid;
+      const distance = distanceBetween(world, eid, ramEid);
+      const escortStandoffFt = getFloor5Config().ram.protection.radiusFt / 2;
+      if (distance > escortStandoffFt) {
+        stepFloor5Movement(
+          world,
+          eid,
+          world.stores.position.x[ramEid] ?? 0,
+          world.stores.position.y[ramEid] ?? 0,
+          FLOOR5_MINION_SPEED_FT_PER_FRAME,
+        );
+        return;
+      }
+    }
+    setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  if (distanceBetween(world, eid, target) <= FLOOR5_MINION_ATTACK_RANGE_FT) {
     setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
     return;
   }
@@ -1091,6 +1247,10 @@ export function siegeHeroSystem(world: GameWorld): void {
   if (!state || isFloor5Terminal(state)) {
     return;
   }
+  // The breach commit explicitly retires the Hero slot; nothing may re-field it.
+  if (state.breach.latched) {
+    return;
+  }
   const heroes = state.heroes;
   const config = getFloor5HeroConfig();
 
@@ -1386,7 +1546,15 @@ export function _requestFloor5RamConstruction(world: GameWorld): boolean {
   }
 
   if (state.engineState === 'LOCKED' || state.engineState === 'DESTROYED') {
-    state.engineState = 'BUILDING';
+    // A destroyed ram may only re-enter construction once its authored recovery
+    // delay has elapsed (spec `FR5.6`); `advanceFloor5RamRebuild` owns that
+    // schedule, so an early manual request is denied rather than skipping it.
+    if (state.engineState === 'DESTROYED' && state.ram.rebuildAvailableFrame !== null) {
+      state.construction.deniedAttempts += 1;
+      return false;
+    }
+    setFloor5EngineState(world, state, 'BUILDING', 'ram-construction-authorized');
+    state.ram.builds += 1;
     state.construction.progressMs = 0;
     state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
     state.construction.startedFrame = world.frameCount;
@@ -1417,8 +1585,12 @@ function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.checkpointCleared, state.tasks.checkpointCleared);
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.ramBuilt, state.engineState === 'READY');
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.wallBreached, state.breachState === 'BREACHED');
-  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.courtyardCleared, false);
-  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.regentDefeated, false);
+  setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.courtyardCleared, state.finale.courtyardCleared);
+  setGoalFlag(
+    world,
+    FLOOR5_SIEGE_GOAL_IDS.regentDefeated,
+    state.finale.regentDefeatedFrame !== null,
+  );
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.castleCaptured, state.phase.kind === 'CAPTURED');
 }
 
@@ -1461,7 +1633,7 @@ function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState)
       state.construction.progressMs + (elapsedDeltaMs - stalled),
     );
     if (state.construction.progressMs >= state.construction.requiredMs) {
-      state.engineState = 'READY';
+      setFloor5EngineState(world, state, 'READY', 'ratings-ram-built');
       state.construction.completedFrame ??= world.frameCount;
     }
     return;
@@ -1472,9 +1644,1274 @@ function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState)
     state.construction.progressMs + elapsedDeltaMs,
   );
   if (state.construction.progressMs >= state.construction.requiredMs) {
-    state.engineState = 'READY';
+    setFloor5EngineState(world, state, 'READY', 'ratings-ram-built');
     state.construction.completedFrame ??= world.frameCount;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ratings Ram (spec R5 / FR5.1–FR5.7)
+// ---------------------------------------------------------------------------
+
+function getFloor5RamConfig() {
+  return getFloor5Config().ram;
+}
+
+/**
+ * The ONLY sanctioned mutation point for {@link Floor5SiegeState.engineState}.
+ * Every transition is appended to `ram.stateTrace`, which is what the real
+ * headless pipeline asserts the `BUILDING → READY → ADVANCING → ATTACKING →
+ * DESTROYED → BUILDING → READY → ADVANCING → ATTACKING → BREACHED` sequence
+ * against. Re-entering the same state is a no-op so the trace stays a pure
+ * transition log.
+ */
+function setFloor5EngineState(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  next: Floor5RatingsRamState,
+  reason: string,
+): void {
+  if (state.engineState === next) return;
+  state.engineState = next;
+  state.ram.stateTrace.push({ state: next, frame: world.frameCount, reason });
+}
+
+function floor5RamIsOnField(world: GameWorld, state: Floor5SiegeState): boolean {
+  const eid = state.ram.eid;
+  return (
+    eid > 0 &&
+    entityExists(world.ecs, eid) &&
+    hasComponent(world.ecs, eid, SiegeRam) &&
+    (world.stores.health.current[eid] ?? 0) > 0
+  );
+}
+
+function floor5RamRouteTarget(state: Floor5SiegeState): Floor5RamRouteMarkerState | undefined {
+  return state.ram.route[Math.min(state.ram.routeIndex, state.ram.route.length - 1)];
+}
+
+function spawnFloor5RouteMarkers(world: GameWorld, state: Floor5SiegeState): void {
+  for (const marker of state.ram.route) {
+    if (marker.eid > 0 && entityExists(world.ecs, marker.eid)) continue;
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Position, { x: marker.x, y: marker.y }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(SiegeRouteMarker, { index: marker.index, reached: marker.reachedFrame === null ? 0 : 1 }),
+    );
+    marker.eid = eid;
+  }
+}
+
+function retireFloor5RouteMarkers(world: GameWorld, state: Floor5SiegeState): number {
+  let retired = 0;
+  for (const marker of state.ram.route) {
+    if (marker.eid > 0 && entityExists(world.ecs, marker.eid)) {
+      clearEntityStores(world, marker.eid);
+      removeEntity(world.ecs, marker.eid);
+      retired += 1;
+    }
+    marker.eid = 0;
+  }
+  return retired;
+}
+
+function retireFloor5RamEntity(world: GameWorld, state: Floor5SiegeState): boolean {
+  const eid = state.ram.eid;
+  state.ram.eid = 0;
+  if (eid > 0 && entityExists(world.ecs, eid)) {
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+    return true;
+  }
+  return false;
+}
+
+/** Spawn (or respawn) the ram at the authored `build-site` landmark. */
+function spawnFloor5RamEntity(world: GameWorld, state: Floor5SiegeState): number {
+  retireFloor5RamEntity(world, state);
+  const config = getFloor5RamConfig();
+  const buildSite = state.ram.route[0]!;
+  const body = PHYSICS_BODIES['spawner-structure'];
+  const eid = createEntity(world);
+  addComponent(world.ecs, eid, set(Position, { x: buildSite.x, y: buildSite.y }));
+  addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+  addComponent(world.ecs, eid, set(Health, { current: config.health, max: config.health }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(world.ecs, eid, set(Team, { id: TeamId.SIEGE_ALLIED }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: body.radius,
+      halfWidth: body.halfWidth,
+      halfHeight: body.halfHeight,
+      shape: body.shape,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: body.weight }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(SiegeRam, {
+      routeIndex: 1,
+      protectionMet: 0,
+      strikes: state.ram.strikes,
+      lastStrikeMs: 0,
+    }),
+  );
+  state.ram.eid = eid;
+  state.ram.health = config.health;
+  state.ram.maxHealth = config.health;
+  state.ram.lastStrikeMs = 0;
+  state.ram.spawnedFrame = world.frameCount;
+  state.ram.destroyedFrame = null;
+  state.ram.routeIndex = Math.min(1, state.ram.route.length - 1);
+  for (const marker of state.ram.route) {
+    marker.reachedFrame = marker.index === 0 ? world.frameCount : null;
+    if (marker.eid > 0 && entityExists(world.ecs, marker.eid)) {
+      world.stores.siegeRouteMarker.reached[marker.eid] = marker.index === 0 ? 1 : 0;
+    }
+  }
+  spawnFloor5RouteMarkers(world, state);
+  return eid;
+}
+
+/**
+ * Spec `FR5.3` — advance gating.
+ *
+ * The gate is a THREAT threshold, never an escort headcount: Floor 5 releases
+ * its allied wave once and never replenishes it, so a "needs N escorts alive"
+ * rule would permanently soft-lock the escort the moment the allied wave was
+ * attrited. Escort count is still measured and reported (it is what clears the
+ * threats), it just does not gate.
+ */
+function evaluateFloor5RamProtection(world: GameWorld, state: Floor5SiegeState): boolean {
+  const { radiusFt, maxThreats } = getFloor5RamConfig().protection;
+  const ramEid = state.ram.eid;
+  if (!floor5RamIsOnField(world, state)) {
+    state.ram.escorts = 0;
+    state.ram.threats = 0;
+    state.ram.protectionMet = false;
+    return false;
+  }
+  let escorts = 0;
+  let threats = 0;
+  for (const eid of liveFloor5Minions(world)) {
+    if (distanceBetween(world, eid, ramEid) > radiusFt) continue;
+    if ((world.stores.siegeMinion.team[eid] ?? 0) === FLOOR5_SIEGE_MARKER_TEAM.allied) {
+      escorts += 1;
+    } else {
+      threats += 1;
+    }
+  }
+  const heroEid = state.heroes.eid;
+  if (
+    floor5HeroEntityIsAlive(world, heroEid) &&
+    distanceBetween(world, heroEid, ramEid) <= radiusFt
+  ) {
+    threats += 1;
+  }
+  state.ram.escorts = escorts;
+  state.ram.threats = threats;
+  state.ram.protectionMet = threats <= maxThreats;
+  world.stores.siegeRam.protectionMet[ramEid] = state.ram.protectionMet ? 1 : 0;
+  return state.ram.protectionMet;
+}
+
+/** Walk the ram one step along the derived semantic route. */
+function advanceFloor5RamRoute(world: GameWorld, state: Floor5SiegeState): void {
+  const config = getFloor5RamConfig();
+  const ramEid = state.ram.eid;
+  const target = floor5RamRouteTarget(state);
+  if (!target) return;
+  const rx = world.stores.position.x[ramEid] ?? 0;
+  const ry = world.stores.position.y[ramEid] ?? 0;
+  // Arrival is "within tolerance OR standing on the landmark's tile". The tile
+  // test is load-bearing, not belt-and-braces: `stepFloor5Movement` resolves a
+  // TILE path, so once the ram shares a tile with its waypoint the path is a
+  // single node and steering legitimately produces zero velocity. Without the
+  // tile test the escort parks a metre short of a junction forever.
+  const tile = world.floorMap?.worldToTile(rx, ry);
+  const onLandmarkTile = tile !== undefined && tile.x === target.tileX && tile.y === target.tileY;
+  if (Math.hypot(target.x - rx, target.y - ry) <= config.arrivalToleranceFt || onLandmarkTile) {
+    target.reachedFrame ??= world.frameCount;
+    if (target.eid > 0 && entityExists(world.ecs, target.eid)) {
+      world.stores.siegeRouteMarker.reached[target.eid] = 1;
+    }
+    if (state.ram.routeIndex < state.ram.route.length - 1) {
+      state.ram.routeIndex += 1;
+      world.stores.siegeRam.routeIndex[ramEid] = state.ram.routeIndex;
+    }
+    setComponent(world.ecs, ramEid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  state.ram.advanceFrames += 1;
+  stepFloor5Movement(world, ramEid, target.x, target.y, config.advanceSpeedFtPerFrame);
+}
+
+function floor5RamAtAttackAnchor(world: GameWorld, state: Floor5SiegeState): boolean {
+  const finalMarker = state.ram.route[state.ram.route.length - 1]!;
+  if (finalMarker.reachedFrame === null) return false;
+  const wall = state.structures['outer-wall'];
+  if (!structureIsAlive(world, wall)) return false;
+  return distanceBetween(world, state.ram.eid, wall.eid) <= getFloor5RamConfig().strike.rangeFt;
+}
+
+/**
+ * Spec `FR5.5` — outer-wall damage authority.
+ *
+ * `ram.wallAuthorizedHealth` is the scenario's ledger of the ONLY legitimate
+ * source of outer-wall damage (ram strikes). Any other system that lowers the
+ * wall's ECS health is restored here and counted. Symmetrically, the ram's hull
+ * is only ever spent by outer-wall counter-battery fire, so it is restored too.
+ * Run BEFORE `applyFloor5RamStrike` so the strike's own damage is never rolled back.
+ */
+function enforceFloor5SiegeDamageAuthority(world: GameWorld, state: Floor5SiegeState): void {
+  const wall = state.structures['outer-wall'];
+  if (floor5StructureMatchesEntity(world, wall)) {
+    const current = world.stores.health.current[wall.eid] ?? 0;
+    const authorized = state.ram.wallAuthorizedHealth;
+    if (current !== authorized) {
+      if (current < authorized) {
+        state.ram.rejectedWallDamage += authorized - current;
+      }
+      setComponent(world.ecs, wall.eid, Health, { current: authorized, max: wall.maxHealth });
+    }
+  }
+  if (floor5RamIsOnField(world, state)) {
+    const current = world.stores.health.current[state.ram.eid] ?? 0;
+    if (current !== state.ram.health) {
+      setComponent(world.ecs, state.ram.eid, Health, {
+        current: state.ram.health,
+        max: state.ram.maxHealth,
+      });
+    }
+  }
+}
+
+/**
+ * Ram ↔ outer-wall exchange. Runs inside the objective tick's damage phase so
+ * ALL post-damage resolution stays in one authority.
+ */
+function applyFloor5RamStrike(world: GameWorld, state: Floor5SiegeState): void {
+  if (state.engineState !== 'ATTACKING' || state.breach.latched) return;
+  if (!floor5RamIsOnField(world, state)) return;
+  const wall = state.structures['outer-wall'];
+  if (!structureIsAlive(world, wall)) return;
+  const config = getFloor5RamConfig();
+  if (distanceBetween(world, state.ram.eid, wall.eid) > config.strike.rangeFt) return;
+  if (
+    state.ram.lastStrikeMs > 0 &&
+    world.elapsedMs - state.ram.lastStrikeMs < config.strike.cooldownMs
+  ) {
+    return;
+  }
+  state.ram.lastStrikeMs = world.elapsedMs;
+  world.stores.siegeRam.lastStrikeMs[state.ram.eid] = world.elapsedMs;
+  state.ram.strikes += 1;
+  world.stores.siegeRam.strikes[state.ram.eid] = state.ram.strikes;
+
+  applyDamage(
+    world,
+    wall.eid,
+    config.strike.damage,
+    world.stores.position.x[wall.eid] ?? 0,
+    world.stores.position.y[wall.eid] ?? 0,
+    {
+      origin: 'environment',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      delivery: 'contact',
+      sourceX: world.stores.position.x[state.ram.eid] ?? 0,
+      sourceY: world.stores.position.y[state.ram.eid] ?? 0,
+      sourceEid: state.ram.eid,
+    },
+  );
+  const wallHealth = Math.max(0, world.stores.health.current[wall.eid] ?? 0);
+  state.ram.wallDamageDealt += Math.max(0, state.ram.wallAuthorizedHealth - wallHealth);
+  state.ram.wallAuthorizedHealth = wallHealth;
+
+  // Counter-battery: the wall answers every strike. This is the ONLY source of
+  // ram damage, which is what makes the destruction/rebuild cycle replayable.
+  if (config.strike.wallCounterDamage > 0) {
+    applyDamage(
+      world,
+      state.ram.eid,
+      config.strike.wallCounterDamage,
+      world.stores.position.x[state.ram.eid] ?? 0,
+      world.stores.position.y[state.ram.eid] ?? 0,
+      {
+        origin: 'environment',
+        affinity: 'physical',
+        scaleWithPrimary: false,
+        canCrit: false,
+        delivery: 'contact',
+        sourceX: world.stores.position.x[wall.eid] ?? 0,
+        sourceY: world.stores.position.y[wall.eid] ?? 0,
+        sourceEid: wall.eid,
+      },
+    );
+    const ramHealth = Math.max(0, world.stores.health.current[state.ram.eid] ?? 0);
+    state.ram.counterDamageTaken += Math.max(0, state.ram.health - ramHealth);
+    state.ram.health = ramHealth;
+  }
+}
+
+function syncFloor5RamHealth(world: GameWorld, state: Floor5SiegeState): void {
+  if (state.ram.eid > 0 && entityExists(world.ecs, state.ram.eid)) {
+    state.ram.health = Math.max(0, world.stores.health.current[state.ram.eid] ?? 0);
+  } else if (state.ram.eid > 0) {
+    state.ram.eid = 0;
+    state.ram.health = 0;
+  }
+}
+
+function destroyFloor5Ram(world: GameWorld, state: Floor5SiegeState, reason: string): void {
+  retireFloor5RamEntity(world, state);
+  retireFloor5RouteMarkers(world, state);
+  state.ram.health = 0;
+  state.ram.protectionMet = false;
+  state.ram.escorts = 0;
+  state.ram.threats = 0;
+  state.ram.destroyedFrame = world.frameCount;
+  state.ram.destructions += 1;
+  state.ram.rebuildAvailableFrame = world.frameCount + getFloor5RamConfig().recoveryDelayFrames;
+  setFloor5EngineState(world, state, 'DESTROYED', reason);
+  transitionFloor5Phase(world, state, { kind: 'BUILD' }, reason);
+}
+
+/** Zero every outstanding wave/spawn obligation. Returns the units cancelled. */
+function clearFloor5WaveDebt(state: Floor5SiegeState): number {
+  let cleared = 0;
+  for (const team of ['allied', 'enemy'] as const) {
+    cleared += state.waveRemainder[team] + state.spawnDebt[team];
+    state.waveRemainder[team] = 0;
+    state.spawnDebt[team] = 0;
+    state.spawnDebtManifestQueue[team].length = 0;
+    state.waveCursor[team] = state.waveManifest.length;
+  }
+  return cleared;
+}
+
+function clearFloor5Minions(world: GameWorld, state: Floor5SiegeState): number {
+  let cleared = 0;
+  for (const eid of query(world.ecs, [SiegeMinion])) {
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+    cleared += 1;
+  }
+  state.liveMinions.allied = 0;
+  state.liveMinions.enemy = 0;
+  return cleared;
+}
+
+/**
+ * One-shot outer-wall breach commit (spec `FR5.7`).
+ *
+ * Every observable consequence of the breach lands in ONE transaction, in a
+ * fixed order, exactly once: drop the sealing barrier (whose live blocked-tile
+ * registry is consulted by navigation), retire the ram + route markers + wall entity, freeze the lane
+ * front at the courtyard, cancel all outstanding wave/spawn debt, and
+ * explicitly clean up the field Hero and every live minion. Re-entry is a
+ * counted no-op — `commitAttempts` proves the latch under test.
+ */
+function commitFloor5Breach(world: GameWorld, state: Floor5SiegeState): void {
+  state.breach.commitAttempts += 1;
+  if (state.breach.latched) return;
+  state.breach.latched = true;
+  state.breach.committedFrame = world.frameCount;
+
+  // 1. Drop the barrier that sealed the carved ingress. Navigation consults the
+  //    live blocked-tile registry, so the newly-open lane is visible immediately.
+  if (state.breach.barrierId !== null) {
+    dropBarrier(world, state.breach.barrierId);
+    state.breach.barrierId = null;
+  }
+
+  // 2. Retire the siege engine, its route markers, and the wall itself.
+  state.breach.cleanup.ramRetired = retireFloor5RamEntity(world, state);
+  state.breach.cleanup.markersRetired = retireFloor5RouteMarkers(world, state);
+  const wall = state.structures['outer-wall'];
+  if (floor5StructureMatchesEntity(world, wall)) {
+    clearEntityStores(world, wall.eid);
+    removeEntity(world.ecs, wall.eid);
+    state.breach.cleanup.wallRetired = true;
+  }
+  wall.eid = 0;
+  wall.health = 0;
+  state.ram.wallAuthorizedHealth = 0;
+  state.ram.health = 0;
+
+  // 3. Freeze the lane front at the courtyard and cancel every wave obligation
+  //    so no spawn debt can leak past the breach.
+  state.breach.frontFrozen = true;
+  state.breach.cleanup.waveDebtCleared = clearFloor5WaveDebt(state);
+
+  // 4. Explicit actor cleanup — Heroes first (they own ability runtime state),
+  //    then every remaining minion on both sides.
+  const heroWasFielded = floor5HeroEntityIsAlive(world, state.heroes.eid);
+  despawnFloor5Hero(world, state);
+  state.heroes.status = 'retired';
+  state.heroes.respawnFrame = null;
+  state.heroes.targetEid = 0;
+  state.breach.cleanup.heroesCleared = heroWasFielded ? 1 : 0;
+  state.heroState = floor5HeroStateLabel(state.heroes);
+  state.breach.cleanup.minionsCleared = clearFloor5Minions(world, state);
+
+  // 5. Latch the terminal ram/breach states last so every observer that reads
+  //    `BREACHED` also sees a fully cleaned-up world.
+  state.breachState = 'BREACHED';
+  setFloor5EngineState(world, state, 'BREACHED', 'outer-wall-breached');
+  recordFloor5PhaseTransition(world, state, { kind: 'BREACH' }, 'outer-wall-breached');
+}
+
+/**
+ * Post-damage wall-vs-ram outcome, evaluated AFTER the Command Post defeat
+ * precedence in {@link floor5ObjectiveTick}.
+ *
+ * Precedence when both fall on the same tick: Command Post defeat (already
+ * handled by the caller) > outer-wall lethal (breach) > ram lethal
+ * (destruction). A wall that reached 0 HP can never be un-destroyed, so the
+ * wall's lethal blow wins and the doomed ram is retired by the breach cleanup.
+ */
+function resolveFloor5WallVsRam(world: GameWorld, state: Floor5SiegeState): void {
+  if (state.breach.latched) return;
+  const wall = state.structures['outer-wall'];
+  const wallDown = !structureIsAlive(world, wall) && wall.maxHealth > 0 && wall.eid !== 0;
+  const ramDown = state.ram.eid > 0 && state.ram.health <= 0;
+  if (wallDown) {
+    commitFloor5Breach(world, state);
+    return;
+  }
+  if (ramDown) {
+    destroyFloor5Ram(world, state, 'ratings-ram-destroyed');
+  }
+}
+
+/** Fixed-tick rebuild schedule (spec `FR5.6`). */
+function advanceFloor5RamRebuild(world: GameWorld, state: Floor5SiegeState): void {
+  if (state.engineState !== 'DESTROYED' || state.breach.latched) return;
+  const availableFrame = state.ram.rebuildAvailableFrame;
+  if (availableFrame === null || world.frameCount < availableFrame) return;
+  state.ram.rebuildAvailableFrame = null;
+  state.construction.progressMs = 0;
+  state.construction.lastProgressWorldElapsedMs = world.elapsedMs;
+  state.construction.attempts += 1;
+  state.construction.startedFrame = world.frameCount;
+  state.construction.completedFrame = null;
+  state.ram.builds += 1;
+  setFloor5EngineState(world, state, 'BUILDING', 'ratings-ram-rebuild-started');
+  spawnFloor5RamEntity(world, state);
+  transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ratings-ram-rebuild-started');
+}
+
+/**
+ * Floor 5 Ratings Ram spawn / movement / protection system (spec `R5`).
+ *
+ * Deliberately NOT a damage authority: every post-damage consequence (strike
+ * resolution, destruction, breach commit) stays in `floor5ObjectiveTick` so
+ * there is exactly one ordering site.
+ */
+export function siegeRamSystem(world: GameWorld): void {
+  if (world.floorId !== 'floor5' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state) || state.breach.latched) {
+    return;
+  }
+
+  if (state.engineState === 'LOCKED' || state.engineState === 'DESTROYED') {
+    return;
+  }
+
+  // The ram becomes a real, observable entity the moment construction starts.
+  if (!floor5RamIsOnField(world, state)) {
+    if (state.engineState === 'BUILDING' || state.engineState === 'READY') {
+      spawnFloor5RamEntity(world, state);
+    } else {
+      return;
+    }
+  }
+
+  const protectionMet = evaluateFloor5RamProtection(world, state);
+
+  if (state.engineState === 'BUILDING') {
+    setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+
+  if (state.engineState === 'READY') {
+    if (!protectionMet) {
+      state.ram.holdFrames += 1;
+    }
+    setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+
+  if (state.engineState === 'ADVANCING') {
+    if (floor5RamAtAttackAnchor(world, state)) {
+      setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+      setFloor5EngineState(world, state, 'ATTACKING', 'ratings-ram-reached-breach-approach');
+      return;
+    }
+    if (!protectionMet) {
+      state.ram.holdFrames += 1;
+      setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+      return;
+    }
+    advanceFloor5RamRoute(world, state);
+    return;
+  }
+
+  if (state.engineState === 'ATTACKING') {
+    setComponent(world.ecs, state.ram.eid, Velocity, { x: 0, y: 0 });
+  }
+}
+
+/**
+ * Seal the carved breach ingress at floor init (spec `FR5.1`).
+ *
+ * `SiegeCastleGenerator` deliberately carves the breach site as passable
+ * RUBBLE so the post-breach courtyard route is authored in the tile layout.
+ * The floor therefore starts with the wall already open, which would let the
+ * player and every minion walk straight past the objective. Rather than
+ * mutating `TileMap.flags` (which the generator owns and which would desync
+ * the authored layout), the ingress is closed with the existing dynamic poly
+ * barrier: it blocks movement, projectiles and `findTilePath` alike, carries
+ * no `Health` so nothing can chip it down, and dropping it at breach commit is
+ * a single version-bumping transaction.
+ */
+function sealFloor5BreachIngress(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  floorMap: { readonly tileMap: { index(x: number, y: number): number } },
+  layout: SiegeCastleLayout,
+): void {
+  const tiles: number[] = [];
+  for (let y = layout.breachSite.y; y < layout.breachSite.y + layout.breachSite.height; y += 1) {
+    for (let x = layout.breachSite.x; x < layout.breachSite.x + layout.breachSite.width; x += 1) {
+      tiles.push(floorMap.tileMap.index(x, y));
+    }
+  }
+  if (tiles.length === 0) return;
+  const handle = createPolyBarrier(world, tiles, 'wall');
+  state.breach.barrierId = handle.id;
+}
+
+// ---------------------------------------------------------------------------
+// Courtyard → throne finale (spec `R7` / `FR7.1`–`FR7.5`)
+// ---------------------------------------------------------------------------
+
+function getFloor5FinaleConfig() {
+  return getFloor5Config().finale;
+}
+
+function floor5CastleLayout(): SiegeCastleLayout {
+  return computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+}
+
+function floor5TileSizeFt(world: GameWorld): number {
+  return world.floorMap?.config.tileSizeFt ?? buildFloor5MapConfig().tileSizeFt;
+}
+
+/** Tile coordinates → world feet, using the same centring rule as structures. */
+function floor5TileToWorld(tileX: number, tileY: number, tileSizeFt: number) {
+  return { x: tileX * tileSizeFt + tileSizeFt / 2, y: tileY * tileSizeFt + tileSizeFt / 2 };
+}
+
+function createFloor5FinaleState(): Floor5FinaleState {
+  return {
+    courtyardEnteredFrame: null,
+    courtyardActors: [],
+    courtyardCleared: false,
+    courtyardClearedFrame: null,
+    auditorDefeatedFrame: null,
+    defendersDefeated: 0,
+    throneDoorBarrierId: null,
+    throneDoorOpenedFrame: null,
+    throneActors: [],
+    regentSpawnedFrame: null,
+    regentDefeatedFrame: null,
+    summonsReleased: 0,
+    summonsRetired: 0,
+    nextSummonTriggerIndex: 0,
+    pendingSummonWaves: [],
+    summonsTelegraphed: 0,
+    capturePoint: null,
+    captureAvailable: false,
+    captureAvailableFrame: null,
+    captureAttempts: 0,
+    rejectedCaptureAttempts: 0,
+    pendingCaptureFrame: null,
+    captured: false,
+    capturedFrame: null,
+    royalAuthorityDisabled: false,
+    hostilesClearedOnCapture: 0,
+    balconyBarrierId: null,
+    balconyOpenedFrame: null,
+  };
+}
+
+interface Floor5FinaleCombatantConfig {
+  readonly health: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+  readonly speedFtPerFrame: number;
+  readonly engageRangeFt: number;
+  readonly aggroRadiusFt: number;
+  /**
+   * Target-position leash: a target further than this from the actor's authored
+   * anchor is never chased. Mirrors {@link steerFloor5Hero}'s leash so a
+   * finale actor cannot be dragged out of its room, and cannot oscillate across
+   * its own leash boundary mid-chase.
+   */
+  readonly leashRadiusFt: number;
+}
+
+function floor5FinaleCombatant(kind: Floor5FinaleActorKind): Floor5FinaleCombatantConfig {
+  const finale = getFloor5FinaleConfig();
+  switch (kind) {
+    case 'crown-auditor':
+      return finale.crownAuditor;
+    case 'courtyard-defender':
+      return finale.courtyardDefenders;
+    case 'regent-emeritus':
+      return finale.regentEmeritus;
+    case 'regent-summon':
+    default:
+      return finale.summons;
+  }
+}
+
+function floor5FinaleActorIsAlive(world: GameWorld, actor: Floor5FinaleActorState): boolean {
+  return (
+    actor.eid > 0 &&
+    entityExists(world.ecs, actor.eid) &&
+    hasComponent(world.ecs, actor.eid, Health) &&
+    (world.stores.health.current[actor.eid] ?? 0) > 0
+  );
+}
+
+function liveFloor5FinaleActors(state: Floor5SiegeState): Floor5FinaleActorState[] {
+  return [...state.finale.courtyardActors, ...state.finale.throneActors].filter(
+    (actor) => actor.defeatedFrame === null,
+  );
+}
+
+/**
+ * Spawn one fixed finale actor.
+ *
+ * Finale actors deliberately carry `Enemy` (so the player's weapons — and the
+ * headless BT provider's target selection — can actually engage them), with
+ * zero generic contact damage because attacks are owned by
+ * {@link applyFloor5FinaleAttacks}. They do NOT carry `EnemyBehavior`, so
+ * `enemyAISystem` never double-steers them: their stance is owned exclusively
+ * by {@link siegeFinaleSystem}.
+ */
+function spawnFloor5FinaleActor(
+  world: GameWorld,
+  kind: Floor5FinaleActorKind,
+  position: { readonly x: number; readonly y: number },
+  anchor: { readonly x: number; readonly y: number },
+): Floor5FinaleActorState {
+  const config = floor5FinaleCombatant(kind);
+  const eid = createEntity(world);
+  const body = PHYSICS_BODIES['mob-baseline'];
+  addComponent(world.ecs, eid, set(Position, { x: position.x, y: position.y }));
+  addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
+  addComponent(world.ecs, eid, set(Health, { current: config.health, max: config.health }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Damage, {
+      amount: 0,
+      cooldownMs: config.attackCooldownMs,
+      lastFireMs: -config.attackCooldownMs,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
+  addComponent(world.ecs, eid, set(Team, { id: FLOOR5_TEAM_CODE.enemy }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, { radius: body.radius, halfWidth: 0, halfHeight: 0, shape: SHAPE_CIRCLE }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: body.weight }));
+  addComponent(world.ecs, eid, Enemy);
+  setEnemyAppearanceKey(world, eid, `floor5-${kind}`);
+  return {
+    kind,
+    eid,
+    health: config.health,
+    maxHealth: config.health,
+    spawnedFrame: world.frameCount,
+    defeatedFrame: null,
+    anchorX: anchor.x,
+    anchorY: anchor.y,
+  };
+}
+
+/** Retire a live finale actor without crediting it as a player defeat. */
+function retireFloor5FinaleActor(world: GameWorld, actor: Floor5FinaleActorState): boolean {
+  const wasLive = floor5FinaleActorIsAlive(world, actor);
+  if (actor.eid > 0 && entityExists(world.ecs, actor.eid)) {
+    clearEntityStores(world, actor.eid);
+    removeEntity(world.ecs, actor.eid);
+  }
+  actor.eid = 0;
+  actor.health = 0;
+  return wasLive;
+}
+
+function floor5PlayerEntity(world: GameWorld): number | null {
+  const playerEid = query(world.ecs, [Player, Position, Health])[0];
+  if (playerEid === undefined || (world.stores.health.current[playerEid] ?? 0) <= 0) {
+    return null;
+  }
+  return playerEid;
+}
+
+/**
+ * Finale stance: engage the player when they are inside the actor's aggro
+ * radius AND still inside the actor's leash of its authored anchor; otherwise
+ * fall back to the anchor. Identical rule for every kind, so a headless test can
+ * assert observed position against the authored anchor.
+ */
+function steerFloor5FinaleActor(world: GameWorld, actor: Floor5FinaleActorState): void {
+  const config = floor5FinaleCombatant(actor.kind);
+  const playerEid = floor5PlayerEntity(world);
+  const px = playerEid === null ? 0 : (world.stores.position.x[playerEid] ?? 0);
+  const py = playerEid === null ? 0 : (world.stores.position.y[playerEid] ?? 0);
+  // Leash is measured on the TARGET's offset from the anchor, matching
+  // `steerFloor5Hero`: the actor only chases a player who is inside its room,
+  // which bounds the chase without letting the actor flicker in and out of
+  // engagement as it approaches its own leash boundary.
+  const engages =
+    playerEid !== null &&
+    distanceBetween(world, actor.eid, playerEid) <= config.aggroRadiusFt &&
+    Math.hypot(px - actor.anchorX, py - actor.anchorY) <= config.leashRadiusFt;
+
+  if (engages && playerEid !== null) {
+    if (distanceBetween(world, actor.eid, playerEid) <= config.engageRangeFt) {
+      setComponent(world.ecs, actor.eid, Velocity, { x: 0, y: 0 });
+      return;
+    }
+    stepFloor5Movement(world, actor.eid, px, py, config.speedFtPerFrame);
+    return;
+  }
+
+  const distanceToAnchor = Math.hypot(
+    (world.stores.position.x[actor.eid] ?? 0) - actor.anchorX,
+    (world.stores.position.y[actor.eid] ?? 0) - actor.anchorY,
+  );
+  if (distanceToAnchor <= FLOOR5_HERO_ANCHOR_SLACK_FT) {
+    setComponent(world.ecs, actor.eid, Velocity, { x: 0, y: 0 });
+    return;
+  }
+  stepFloor5Movement(world, actor.eid, actor.anchorX, actor.anchorY, config.speedFtPerFrame);
+}
+
+/**
+ * Finale attacks, executed on the same post-damage authority tick as the minion
+ * and Hero attacks so every Floor 5 actor resolves through one `applyDamage`
+ * path.
+ */
+function applyFloor5FinaleAttacks(world: GameWorld, state: Floor5SiegeState): void {
+  const playerEid = floor5PlayerEntity(world);
+  if (playerEid === null) return;
+  for (const actor of liveFloor5FinaleActors(state)) {
+    if (!floor5FinaleActorIsAlive(world, actor)) continue;
+    const config = floor5FinaleCombatant(actor.kind);
+    if (distanceBetween(world, actor.eid, playerEid) > config.engageRangeFt) continue;
+    const lastFireMs = world.stores.damage.lastFireMs[actor.eid] ?? -Infinity;
+    if (world.elapsedMs - lastFireMs < config.attackCooldownMs) continue;
+    world.stores.damage.lastFireMs[actor.eid] = world.elapsedMs;
+    applyDamage(
+      world,
+      playerEid,
+      config.attackDamage,
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+      {
+        origin: 'environment',
+        affinity: 'physical',
+        scaleWithPrimary: false,
+        canCrit: false,
+        delivery: 'contact',
+        sourceX: world.stores.position.x[actor.eid] ?? 0,
+        sourceY: world.stores.position.y[actor.eid] ?? 0,
+        sourceEid: actor.eid,
+      },
+    );
+  }
+}
+
+/**
+ * Seal the throne doors and the Winner's Balcony at floor init.
+ *
+ * `SiegeCastleGenerator` carves both rooms as passable, so without these
+ * barriers a player could walk past the courtyard encounter straight to the
+ * throne (and past the Regent straight to the exit). Same mechanism as
+ * {@link sealFloor5BreachIngress}: a dynamic poly barrier that blocks movement,
+ * projectiles and `findTilePath`, dropped in one transaction when the gate is
+ * legitimately earned (spec `FR7.2`).
+ */
+function sealFloor5FinaleIngress(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  floorMap: { readonly tileMap: { index(x: number, y: number): number } },
+  layout: SiegeCastleLayout,
+): void {
+  const sealDoorColumn = (bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly height: number;
+  }): number | null => {
+    const tiles: number[] = [];
+    for (let y = bounds.y; y < bounds.y + bounds.height; y += 1) {
+      tiles.push(floorMap.tileMap.index(bounds.x, y));
+    }
+    return tiles.length === 0 ? null : createPolyBarrier(world, tiles, 'wall').id;
+  };
+  state.finale.throneDoorBarrierId = sealDoorColumn(layout.throneRoom);
+  state.finale.balconyBarrierId = sealDoorColumn(layout.winnersBalcony);
+}
+
+/**
+ * Breach → courtyard handoff (spec `FR7.1`). Reads the one-shot breach latch
+ * rather than re-deriving "is the wall down", so the courtyard can only ever
+ * open through the sanctioned breach transaction.
+ */
+function openFloor5Courtyard(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  const layout = floor5CastleLayout();
+  const tileSizeFt = floor5TileSizeFt(world);
+  const courtyard = centerOf(layout.courtyard);
+  const auditorAnchor = floor5TileToWorld(courtyard.x, courtyard.y, tileSizeFt);
+  finale.courtyardActors.push(
+    spawnFloor5FinaleActor(world, 'crown-auditor', auditorAnchor, auditorAnchor),
+  );
+
+  // Defenders hold an authored fan around the Auditor, derived from the room so
+  // the encounter is identical on every seed (spec `FR7.1` — fixed encounter).
+  const defenderCount = getFloor5FinaleConfig().courtyardDefenders.count;
+  const spreadTiles = Math.max(1, Math.floor(layout.courtyard.height / (defenderCount + 1)));
+  for (let index = 0; index < defenderCount; index += 1) {
+    const offset = index - (defenderCount - 1) / 2;
+    const anchor = floor5TileToWorld(
+      courtyard.x - 2,
+      courtyard.y + offset * spreadTiles,
+      tileSizeFt,
+    );
+    finale.courtyardActors.push(
+      spawnFloor5FinaleActor(world, 'courtyard-defender', anchor, anchor),
+    );
+  }
+
+  finale.courtyardEnteredFrame = world.frameCount;
+  finale.capturePoint = floor5TileToWorld(
+    centerOf(layout.throneRoom).x,
+    centerOf(layout.throneRoom).y,
+    tileSizeFt,
+  );
+  transitionFloor5Phase(world, state, { kind: 'COURTYARD' }, 'breach-latched-courtyard-open');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'The courtyard is open — the Crown Auditor is waiting.',
+    eventId: 'floor5-courtyard-opened',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+/** Open the throne doors and field Regent Emeritus (spec `FR7.2`/`FR7.3`). */
+function openFloor5ThroneRoom(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (finale.throneDoorBarrierId !== null) {
+    dropBarrier(world, finale.throneDoorBarrierId);
+    finale.throneDoorBarrierId = null;
+  }
+  finale.throneDoorOpenedFrame = world.frameCount;
+
+  const layout = floor5CastleLayout();
+  const tileSizeFt = floor5TileSizeFt(world);
+  const throne = centerOf(layout.throneRoom);
+  const anchor = floor5TileToWorld(throne.x, throne.y, tileSizeFt);
+  finale.throneActors.push(spawnFloor5FinaleActor(world, 'regent-emeritus', anchor, anchor));
+  finale.regentSpawnedFrame = world.frameCount;
+  transitionFloor5Phase(world, state, { kind: 'THRONE' }, 'courtyard-cleared-throne-open');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'The throne doors give way. Regent Emeritus takes the floor.',
+    eventId: 'floor5-throne-opened',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+function floor5RegentActor(state: Floor5SiegeState): Floor5FinaleActorState | undefined {
+  return state.finale.throneActors.find((actor) => actor.kind === 'regent-emeritus');
+}
+
+/**
+ * Bounded summon TELEGRAPH (spec `FR7.3`).
+ *
+ * Crossing an authored, strictly-descending Regent health fraction never spawns
+ * anything on the same frame: it queues a wave and announces it, and
+ * {@link releaseFloor5RegentSummons} spawns it `telegraphFrames` later. The
+ * wave's count is reserved against `maxTotal` at telegraph time, so a queued
+ * wave can never push the encounter over the authored cap — which is enforced
+ * here AND validated at manifest-load time.
+ */
+function telegraphFloor5RegentSummons(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  regent: Floor5FinaleActorState,
+): void {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig().summons;
+  const fraction = regent.maxHealth > 0 ? regent.health / regent.maxHealth : 0;
+  while (
+    finale.nextSummonTriggerIndex < config.healthFractionTriggers.length &&
+    fraction <= (config.healthFractionTriggers[finale.nextSummonTriggerIndex] ?? 0)
+  ) {
+    const triggerIndex = finale.nextSummonTriggerIndex;
+    finale.nextSummonTriggerIndex += 1;
+    const remaining = config.maxTotal - finale.summonsTelegraphed;
+    const count = Math.min(config.perTriggerCount, Math.max(0, remaining));
+    if (count === 0) continue;
+    finale.summonsTelegraphed += count;
+    finale.pendingSummonWaves.push({
+      triggerIndex,
+      telegraphedFrame: world.frameCount,
+      releaseFrame: world.frameCount + config.telegraphFrames,
+      count,
+    });
+    pushAnnouncement(world.announcements, {
+      kind: 'bossAbilityCast',
+      archetypeIndex: -1,
+      text: 'Regent Emeritus calls the household guard.',
+      eventId: `floor5-regent-summon-telegraph-${triggerIndex}`,
+      durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+      elapsedMs: world.elapsedMs,
+    });
+  }
+}
+
+/**
+ * Spawn every telegraphed wave whose authored release frame has arrived.
+ * Summon positions are fixed ring offsets around the Regent's anchor, so the
+ * encounter never touches an RNG stream (spec `R8`).
+ */
+function releaseFloor5RegentSummons(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  regent: Floor5FinaleActorState,
+): void {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig().summons;
+  const tileSizeFt = floor5TileSizeFt(world);
+  for (let waveIndex = finale.pendingSummonWaves.length - 1; waveIndex >= 0; waveIndex -= 1) {
+    const wave = finale.pendingSummonWaves[waveIndex]!;
+    if (world.frameCount < wave.releaseFrame) continue;
+    finale.pendingSummonWaves.splice(waveIndex, 1);
+    for (let index = 0; index < wave.count; index += 1) {
+      if (finale.summonsReleased >= config.maxTotal) break;
+      // Authored, deterministic ring offsets around the Regent's anchor.
+      const angle = ((wave.triggerIndex * config.perTriggerCount + index) * Math.PI) / 2;
+      const position = {
+        x: regent.anchorX + Math.cos(angle) * tileSizeFt * 2,
+        y: regent.anchorY + Math.sin(angle) * tileSizeFt * 2,
+      };
+      finale.throneActors.push(
+        spawnFloor5FinaleActor(world, 'regent-summon', position, {
+          x: regent.anchorX,
+          y: regent.anchorY,
+        }),
+      );
+      finale.summonsReleased += 1;
+    }
+  }
+}
+
+/**
+ * Throne capture transaction (spec `FR7.5`).
+ *
+ * Every observable consequence lands in ONE transaction, exactly once: disable
+ * royal authority, clear every remaining hostile the finale owns, open the
+ * Winner's Balcony, and latch `CAPTURED`. Re-entry is impossible because
+ * `captured` is checked first and never cleared.
+ */
+function commitFloor5ThroneCapture(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (finale.captured) return;
+  finale.captured = true;
+  finale.capturedFrame = world.frameCount;
+  finale.pendingCaptureFrame = null;
+
+  // 1. Royal authority goes down first: nothing may cast after the capture.
+  finale.royalAuthorityDisabled = true;
+  setMobAbilitiesEnabled(world, false);
+
+  // 2. Clear every hostile the finale owns, plus any lane leftovers.
+  let cleared = 0;
+  for (const actor of [...finale.courtyardActors, ...finale.throneActors]) {
+    if (retireFloor5FinaleActor(world, actor)) {
+      cleared += 1;
+      if (actor.defeatedFrame === null) {
+        actor.defeatedFrame = world.frameCount;
+        if (actor.kind === 'regent-summon') {
+          finale.summonsRetired += 1;
+        }
+      }
+    }
+  }
+  cleared += clearFloor5Minions(world, state);
+  finale.hostilesClearedOnCapture = cleared;
+
+  // 3. The Winner's Balcony exit only ever opens as part of this transaction.
+  if (finale.balconyBarrierId !== null) {
+    dropBarrier(world, finale.balconyBarrierId);
+    finale.balconyBarrierId = null;
+  }
+  finale.balconyOpenedFrame = world.frameCount;
+
+  // 4. Latch the terminal phase last so every observer that reads `CAPTURED`
+  //    also sees a fully cleaned-up world.
+  recordFloor5PhaseTransition(world, state, { kind: 'CAPTURED' }, 'throne-captured');
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: "The castle is yours. The Winner's Balcony is open.",
+    eventId: 'floor5-throne-captured',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
+}
+
+/**
+ * Post-damage finale authority, called from {@link floor5ObjectiveTick} AFTER
+ * the Command Post / breach precedence so a same-tick base loss always outranks
+ * a same-tick capture.
+ */
+function advanceFloor5Finale(world: GameWorld, state: Floor5SiegeState): void {
+  const finale = state.finale;
+  if (!state.breach.latched || finale.captured) {
+    return;
+  }
+
+  if (finale.courtyardEnteredFrame === null) {
+    openFloor5Courtyard(world, state);
+    return;
+  }
+
+  // Defeat resolution for every fielded actor. Tolerates both "entity removed
+  // by `healthSystem`" and "entity still present at 0 HP".
+  for (const actor of [...finale.courtyardActors, ...finale.throneActors]) {
+    if (actor.defeatedFrame !== null) continue;
+    if (floor5FinaleActorIsAlive(world, actor)) {
+      actor.health = Math.max(0, world.stores.health.current[actor.eid] ?? 0);
+      continue;
+    }
+    actor.health = 0;
+    actor.eid = 0;
+    actor.defeatedFrame = world.frameCount;
+    if (actor.kind === 'crown-auditor') {
+      finale.auditorDefeatedFrame = world.frameCount;
+    } else if (actor.kind === 'courtyard-defender') {
+      finale.defendersDefeated += 1;
+    } else if (actor.kind === 'regent-emeritus') {
+      finale.regentDefeatedFrame = world.frameCount;
+    }
+  }
+
+  if (
+    !finale.courtyardCleared &&
+    finale.courtyardActors.length > 0 &&
+    finale.courtyardActors.every((actor) => actor.defeatedFrame !== null)
+  ) {
+    finale.courtyardCleared = true;
+    finale.courtyardClearedFrame = world.frameCount;
+    openFloor5ThroneRoom(world, state);
+    return;
+  }
+
+  const regent = floor5RegentActor(state);
+  if (!regent) {
+    return;
+  }
+  if (regent.defeatedFrame === null) {
+    // Telegraph first, then release only waves whose authored window elapsed.
+    telegraphFloor5RegentSummons(world, state, regent);
+    releaseFloor5RegentSummons(world, state, regent);
+    return;
+  }
+
+  // The Regent fell before a telegraphed wave landed: the wave dies with the
+  // encounter rather than spawning onto a defeated boss.
+  finale.pendingSummonWaves.length = 0;
+
+  // Regent down: retire the bounded summons with the encounter, then enable the
+  // SEPARATE capture interaction (spec `FR7.4` — defeating the Regent never
+  // captures the throne by itself).
+  if (!finale.captureAvailable) {
+    for (const actor of finale.throneActors) {
+      if (actor.kind !== 'regent-summon' || actor.defeatedFrame !== null) continue;
+      if (retireFloor5FinaleActor(world, actor)) {
+        finale.summonsRetired += 1;
+      }
+      actor.defeatedFrame = world.frameCount;
+    }
+    finale.captureAvailable = true;
+    finale.captureAvailableFrame = world.frameCount;
+    pushAnnouncement(world.announcements, {
+      kind: 'bossAbilityCast',
+      archetypeIndex: -1,
+      text: 'Regent Emeritus is down. Claim the throne to capture the castle.',
+      eventId: 'floor5-capture-available',
+      durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+      elapsedMs: world.elapsedMs,
+    });
+  }
+
+  if (finale.pendingCaptureFrame !== null) {
+    commitFloor5ThroneCapture(world, state);
+  }
+}
+
+/**
+ * Floor 5 courtyard/throne finale stance system (spec `R7`).
+ *
+ * Deliberately NOT a damage or latch authority: spawning, defeat resolution,
+ * summon release and the capture transaction all stay in
+ * {@link floor5ObjectiveTick} so there is exactly one ordering site.
+ */
+export function siegeFinaleSystem(world: GameWorld): void {
+  if (world.floorId !== 'floor5' || world.state !== 'playing') {
+    return;
+  }
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state) || !state.breach.latched) {
+    return;
+  }
+  for (const actor of liveFloor5FinaleActors(state)) {
+    if (!floor5FinaleActorIsAlive(world, actor)) continue;
+    steerFloor5FinaleActor(world, actor);
+  }
+}
+
+/**
+ * Throne-capture interaction request (spec `FR7.4`).
+ *
+ * Enforces STATE legality only — proximity is the presentation layer's job via
+ * {@link getFloor5CaptureMarkerState}, exactly as Floors 1/2/3/6 do. Every
+ * refusal is counted so "cannot capture early" is observable rather than
+ * inferred. An accepted request only LATCHES; `floor5ObjectiveTick` commits it
+ * after the loss checks so a same-tick Command Post loss still wins.
+ */
+export function requestFloor5ThroneCapture(world: GameWorld): Floor5CaptureAttemptResult {
+  const state = floor5SiegeState(world);
+  if (!state) return 'not-available';
+  const finale = state.finale;
+  finale.captureAttempts += 1;
+  if (finale.captured) {
+    finale.rejectedCaptureAttempts += 1;
+    return 'already-captured';
+  }
+  if (finale.pendingCaptureFrame !== null) {
+    finale.rejectedCaptureAttempts += 1;
+    return 'already-pending';
+  }
+  // A terminal loss outranks the capture even after the Regent falls: the
+  // objective tick has stopped advancing, so an accepted latch could never be
+  // committed and must never be offered.
+  if (state.phase.kind === 'DEFEAT') {
+    finale.rejectedCaptureAttempts += 1;
+    return 'not-available';
+  }
+  if (!finale.captureAvailable) {
+    finale.rejectedCaptureAttempts += 1;
+    return floor5RegentActor(state)?.defeatedFrame === null && finale.regentSpawnedFrame !== null
+      ? 'regent-alive'
+      : 'not-available';
+  }
+  finale.pendingCaptureFrame = world.frameCount;
+  return 'accepted';
+}
+
+/** Throne capture point, projected for the shared stair-marker presentation. */
+export function getFloor5CaptureMarkerState(world: GameWorld) {
+  const state = floor5SiegeState(world);
+  const capturePoint = state?.finale.capturePoint;
+  if (!state || !capturePoint) {
+    return null;
+  }
+  return {
+    positionFt: capturePoint,
+    radiusFt: getFloor5FinaleConfig().capture.interactionRadiusFt,
+    visible:
+      state.finale.captureAvailable &&
+      state.finale.pendingCaptureFrame === null &&
+      !state.finale.captured &&
+      !isFloor5Terminal(state),
+    // `locked` must mean exactly "capture is barred", matching what
+    // `requestFloor5ThroneCapture` rejects, so prompt and confirmation can never
+    // disagree.
+    locked:
+      !state.finale.captureAvailable ||
+      state.finale.pendingCaptureFrame !== null ||
+      state.finale.captured ||
+      isFloor5Terminal(state),
+    label: '♛ CLAIM THRONE',
+  };
+}
+
+function buildFloor5FinaleRunStats(state: Floor5SiegeState): Floor5SiegeRunStats['finale'] {
+  const finale = state.finale;
+  const config = getFloor5FinaleConfig();
+  const auditor = finale.courtyardActors.find((actor) => actor.kind === 'crown-auditor');
+  const regent = floor5RegentActor(state);
+  const summons = finale.throneActors.filter((actor) => actor.kind === 'regent-summon');
+  return {
+    courtyardEnteredFrame: finale.courtyardEnteredFrame,
+    courtyardCleared: finale.courtyardCleared,
+    courtyardClearedFrame: finale.courtyardClearedFrame,
+    auditorDefeatedFrame: finale.auditorDefeatedFrame,
+    auditorHealth: auditor?.health ?? 0,
+    auditorMaxHealth: auditor?.maxHealth ?? config.crownAuditor.health,
+    defendersSpawned: finale.courtyardActors.filter((actor) => actor.kind === 'courtyard-defender')
+      .length,
+    defendersDefeated: finale.defendersDefeated,
+    throneDoorOpen: finale.throneDoorBarrierId === null,
+    throneDoorOpenedFrame: finale.throneDoorOpenedFrame,
+    regentSpawnedFrame: finale.regentSpawnedFrame,
+    regentDefeatedFrame: finale.regentDefeatedFrame,
+    regentHealth: regent?.health ?? 0,
+    regentMaxHealth: regent?.maxHealth ?? config.regentEmeritus.health,
+    summonsTelegraphed: finale.summonsTelegraphed,
+    summonsReleased: finale.summonsReleased,
+    summonsRetired: finale.summonsRetired,
+    pendingSummonWaves: finale.pendingSummonWaves.length,
+    summonCap: config.summons.maxTotal,
+    liveSummons: summons.filter((actor) => actor.defeatedFrame === null).length,
+    captureAvailable: finale.captureAvailable,
+    captureAvailableFrame: finale.captureAvailableFrame,
+    captureAttempts: finale.captureAttempts,
+    rejectedCaptureAttempts: finale.rejectedCaptureAttempts,
+    captured: finale.captured,
+    capturedFrame: finale.capturedFrame,
+    royalAuthorityDisabled: finale.royalAuthorityDisabled,
+    hostilesClearedOnCapture: finale.hostilesClearedOnCapture,
+    balconyOpen: finale.balconyBarrierId === null,
+    balconyOpenedFrame: finale.balconyOpenedFrame,
+    capturePoint: finale.capturePoint ? { ...finale.capturePoint } : null,
+  };
 }
 
 export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | undefined {
@@ -1487,6 +2924,39 @@ export function getFloor5SiegeRunStats(world: GameWorld): Floor5SiegeRunStats | 
     commandPostHealth: state.commandPostHealth,
     engineState: state.engineState,
     breachState: state.breachState,
+    ram: {
+      eid: state.ram.eid,
+      health: state.ram.health,
+      maxHealth: state.ram.maxHealth,
+      routeIndex: state.ram.routeIndex,
+      routeLandmarks: state.ram.route.map((marker) => marker.landmark),
+      routeReached: state.ram.route
+        .filter((marker) => marker.reachedFrame !== null)
+        .map((marker) => marker.landmark),
+      protectionMet: state.ram.protectionMet,
+      escorts: state.ram.escorts,
+      threats: state.ram.threats,
+      strikes: state.ram.strikes,
+      builds: state.ram.builds,
+      destructions: state.ram.destructions,
+      wallDamageDealt: state.ram.wallDamageDealt,
+      counterDamageTaken: state.ram.counterDamageTaken,
+      rejectedWallDamage: state.ram.rejectedWallDamage,
+      advanceFrames: state.ram.advanceFrames,
+      holdFrames: state.ram.holdFrames,
+      rebuildAvailableFrame: state.ram.rebuildAvailableFrame,
+      stateSequence: state.ram.stateTrace.map((entry) => entry.state),
+      stateTrace: state.ram.stateTrace.map((entry) => ({ ...entry })),
+    },
+    breach: {
+      latched: state.breach.latched,
+      committedFrame: state.breach.committedFrame,
+      barrierSealed: state.breach.barrierId !== null,
+      frontFrozen: state.breach.frontFrozen,
+      commitAttempts: state.breach.commitAttempts,
+      cleanup: { ...state.breach.cleanup },
+    },
+    finale: buildFloor5FinaleRunStats(state),
     heroState: state.heroState,
     heroes: {
       card: state.heroes.card.map((entry) => ({ ...entry })),
@@ -1566,10 +3036,18 @@ export function siegeDirectorSystem(world: GameWorld): void {
     return;
   }
   state.lastWorldElapsedMs = world.elapsedMs;
-  _setFloor5BuildSiteUnderAttack(
-    world,
-    state.commandPostHealth < getFloor5Config().commandPost.health,
-  );
+  const buildSite = state.ram.route[0];
+  const threatRadius = getFloor5RamConfig().protection.radiusFt;
+  const isNearBuildSite = (eid: number): boolean =>
+    buildSite !== undefined &&
+    Math.hypot(
+      (world.stores.position.x[eid] ?? 0) - buildSite.x,
+      (world.stores.position.y[eid] ?? 0) - buildSite.y,
+    ) <= threatRadius;
+  const enemyMinionThreat = liveFloor5Minions(world, 'enemy').some(isNearBuildSite);
+  const heroThreat =
+    floor5HeroEntityIsAlive(world, state.heroes.eid) && isNearBuildSite(state.heroes.eid);
+  _setFloor5BuildSiteUnderAttack(world, enemyMinionThreat || heroThreat);
   if (state.commandPostHealth <= 0) {
     recordFloor5PhaseTransition(world, state, { kind: 'DEFEAT' }, 'command-post-destroyed');
   }
@@ -1581,6 +3059,14 @@ export function siegeMinionSystem(world: GameWorld): void {
   }
   const state = floor5SiegeState(world);
   if (!state || state.phase.kind === 'CAPTURED' || state.phase.kind === 'DEFEAT') {
+    return;
+  }
+  // Post-breach the lane front is frozen at the courtyard: no further wave
+  // release, no debt drain, no steering. Without this the commit's cleanup
+  // would be undone by the very next tick.
+  if (state.breach.frontFrozen) {
+    state.liveMinions.allied = 0;
+    state.liveMinions.enemy = 0;
     return;
   }
   releaseFloor5WaveDebt(world, state);
@@ -1610,10 +3096,6 @@ export function siegeMinionSystem(world: GameWorld): void {
   }
 }
 
-export function confirmFloor5StairDescend(): boolean {
-  return false;
-}
-
 export function getFloor5RunOutcome(world: GameWorld) {
   const phase = floor5SiegeState(world)?.phase.kind;
   return phase === 'CAPTURED' ? 'cleared_floor' : phase === 'DEFEAT' ? 'failed_timeout' : null;
@@ -1631,15 +3113,38 @@ function floor5ObjectiveTick(world: GameWorld): void {
     projectFloor5GoalFlags(world, state);
     return;
   }
+  // --- Damage phase -------------------------------------------------------
   applyFloor5MinionAttacks(world, state);
   applyFloor5HeroAttacks(world, state);
+  applyFloor5FinaleAttacks(world, state);
+  // Roll back any damage the outer wall / ram took from an unauthorised source
+  // BEFORE the ram's own strike lands, so the strike is never rolled back.
+  enforceFloor5SiegeDamageAuthority(world, state);
+  applyFloor5RamStrike(world, state);
+  // --- Health sync --------------------------------------------------------
   syncFloor5StructureHealth(world, state);
+  syncFloor5RamHealth(world, state);
   resolveFloor5HeroDefeat(world, state);
   state.heroState = floor5HeroStateLabel(state.heroes);
+  // --- Outcome precedence -------------------------------------------------
+  // 1. Command Post defeat is absolute and short-circuits everything else.
   if (state.commandPostHealth <= 0) {
     recordFloor5PhaseTransition(world, state, { kind: 'DEFEAT' }, 'command-post-destroyed');
     projectFloor5GoalFlags(world, state);
     return;
+  }
+  // 2. Wall-vs-ram: a lethal blow on the wall outranks a lethal blow on the ram.
+  resolveFloor5WallVsRam(world, state);
+  if (state.breach.latched && state.breach.committedFrame === world.frameCount) {
+    // The breach commit already froze the front and cleaned every actor up;
+    // running the lane systems again this tick would resurrect that bookkeeping.
+    projectFloor5GoalFlags(world, state);
+    return;
+  }
+  advanceFloor5RamRebuild(world, state);
+  if (state.engineState === 'READY' && state.ram.protectionMet) {
+    setFloor5EngineState(world, state, 'ADVANCING', 'ratings-ram-escort-started');
+    recordFloor5PhaseTransition(world, state, { kind: 'ESCORT' }, 'ratings-ram-escort-started');
   }
   updateFloor5Checkpoint(world, state);
   for (const team of ['allied', 'enemy'] as const) {
@@ -1647,6 +3152,9 @@ function floor5ObjectiveTick(world: GameWorld): void {
   }
   advanceFloor5FieldTasks(world, state);
   advanceFloor5RamConstruction(world, state);
+  // 3. Courtyard → throne → capture. Runs after every loss check so a same-tick
+  //    Command Post loss always outranks a same-tick capture.
+  advanceFloor5Finale(world, state);
   projectFloor5GoalFlags(world, state);
 }
 
@@ -1748,6 +3256,16 @@ export function initializeFloor5Scenario(
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
   spawnFloor5Structures(world, siegeState, layout, mapConfig.tileSizeFt);
+  sealFloor5BreachIngress(world, siegeState, floorMap, layout);
+  sealFloor5FinaleIngress(world, siegeState, floorMap, layout);
   world.state = 'playing';
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: 'Hostile Takeover: defend the Command Post and hold the line.',
+    eventId: 'floor5-welcome-announcement',
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
   world.floorObjectiveTick = floor5ObjectiveTick;
 }

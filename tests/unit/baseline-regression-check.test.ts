@@ -141,6 +141,7 @@ describe('release baseline regression check', () => {
         legs: {
           floor1: { totalWins: 584, totalRuns: 600, winRate: 584 / 600 },
           floor2: { totalWins: 41, totalRuns: 150, winRate: 41 / 150 },
+          floor6: { totalWins: 140, totalRuns: 150, winRate: 140 / 150 },
           'floor1-chain': { totalWins: 54, totalRuns: 150, winRate: 54 / 150 },
         },
       };

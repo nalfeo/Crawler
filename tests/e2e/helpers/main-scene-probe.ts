@@ -30,6 +30,7 @@ import type {
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
   SafeAreaLayoutProbe,
+  ScenarioHudProbeState,
   StatusAuraEnemyProbe,
   StatusAuraRenderSummary,
   TerrainRenderSummary,
@@ -102,6 +103,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
   getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
+  getScenarioHudState: (page: Page): Promise<ScenarioHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getScenarioHudState()),
   getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   getFloor3LeagueHudState: (page: Page): Promise<Floor3LeagueHudProbeState> =>
@@ -171,6 +174,16 @@ export const mainSceneProbe = {
   },
   primeStatusAuraEnemy: (page: Page): Promise<StatusAuraEnemyProbe | null> =>
     page.evaluate(() => window.__mainSceneProbe!.primeStatusAuraEnemy()),
+  primeFloor6FinaleVfxCue: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6FinaleVfxCue()),
+  primeFloor6BreakPhase: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6BreakPhase()),
+  primeFloor6OccupiedSite: (page: Page): Promise<{ siteId: string; towerId: string } | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6OccupiedSite()),
+  primeFloor6VictoryExitHint: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6VictoryExitHint()),
+  primeFloor6RelayCriticalDanger: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6RelayCriticalDanger()),
   getEntityCameraPosition: (page: Page, eid: number): Promise<ProbePoint | null> =>
     page.evaluate((id) => window.__mainSceneProbe!.getEntityCameraPosition(id), eid),
   applyStatusAuraDebuff: (page: Page, enemyEid: number): Promise<boolean> =>

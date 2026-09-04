@@ -487,6 +487,21 @@ jobs:
           - { leg: floor1-chain, shard: 12 }
           - { leg: floor1-chain, shard: 13 }
           - { leg: floor1-chain, shard: 14 }
+          - { leg: floor6, shard: 0 }
+          - { leg: floor6, shard: 1 }
+          - { leg: floor6, shard: 2 }
+          - { leg: floor6, shard: 3 }
+          - { leg: floor6, shard: 4 }
+          - { leg: floor6, shard: 5 }
+          - { leg: floor6, shard: 6 }
+          - { leg: floor6, shard: 7 }
+          - { leg: floor6, shard: 8 }
+          - { leg: floor6, shard: 9 }
+          - { leg: floor6, shard: 10 }
+          - { leg: floor6, shard: 11 }
+          - { leg: floor6, shard: 12 }
+          - { leg: floor6, shard: 13 }
+          - { leg: floor6, shard: 14 }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -512,9 +527,9 @@ jobs:
           start=$((SHARD * 10 + 1))
           end=$((start + 9))
           if [ "$end" -gt 150 ]; then end=150; fi
-          if [ "$LEG" = "floor2" ]; then
+          if [ "$LEG" = "floor2" ] || [ "$LEG" = "floor6" ]; then
             npm run ai:winrate-sweep -- \
-              --floor floor2 --seeds "$start-$end" --no-force-weapon \
+              --floor "$LEG" --seeds "$start-$end" --no-force-weapon \
               --out ".cache/release-legs/$LEG-$SHARD.json"
           else
             npm run ai:winrate-sweep -- \
@@ -601,7 +616,7 @@ jobs:
           echo "short=$(echo "$SHA" | cut -c1-12)" >> "$GITHUB_OUTPUT"
           echo "Baseline will be tagged with SHA: $SHA"
 
-      # Multi-floor release sweep — 600 runs across three legs (see the
+      # Multi-floor release sweep — 750 runs across four legs (see the
       # canonical matrix in scripts/agent/perf/sweep-legs.ts).
       #
       # Floor 1 alone can no longer answer "is the game completable
@@ -614,14 +629,16 @@ jobs:
       #   floor2      150 seeds, seed-selected weapon  (report-only)
       #   floor1-chain 150 seeds, chained F1 → F2      (report-only; the ONLY
       #                leg that exercises the floor transition)
+      #   floor6      150 seeds, seed-selected weapon  (report-only)
       #
       # "Report-only" means a slip never fails this job — but it is NOT
       # unwatched: both report-only legs are held to a 90% win-rate target and a
       # breach files a Copilot-assigned investigation issue below, the same
       # release-time treatment Floor 1's 100% invariant already gets.
       #
-      # Total run count is unchanged from the previous Floor-1-only 100-seed ×
-      # 6-weapon baseline, so release wall time stays roughly neutral.
+      # Floor 6 intentionally adds report-only coverage on top of the previous
+      # 600-run matrix rather than silently dropping the new implemented floor
+      # from release telemetry.
       #
       # Resizing the Floor-1 leg (600 → 300 runs) is an intentional sweep
       # resize, so the regression check reports ONE skipped comparison and then
@@ -666,7 +683,7 @@ jobs:
           const dir = '.cache/release-legs';
           const expectedShards = 15;
           const expectedRuns = 150;
-          for (const leg of ['floor2', 'floor1-chain']) {
+          for (const leg of ['floor2', 'floor1-chain', 'floor6']) {
             const shardPattern = new RegExp(`^${leg}-(\\d+)\\.json$`);
             const shardId = (file) => {
               const match = path.basename(file).match(shardPattern);
@@ -700,7 +717,7 @@ jobs:
               continue;
             }
             fs.writeFileSync(`.cache/baseline/leg-${leg}.json`, JSON.stringify({
-              floorId: leg === 'floor2' ? 'floor2' : 'floor1',
+              floorId: leg === 'floor1-chain' ? 'floor1' : leg,
               legId: leg,
               ...totals,
               winRate: totals.totalWins / totals.totalRuns,
@@ -720,7 +737,7 @@ jobs:
             const base = ".cache/baseline";
             const baseline = JSON.parse(fs.readFileSync(`${base}/baseline.json`, "utf8"));
             const legs = { floor1: pick(baseline) };
-            for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"]]) {
+            for (const [id, file] of [["floor2", "leg-floor2.json"], ["floor1-chain", "leg-floor1-chain.json"], ["floor6", "leg-floor6.json"]]) {
               const p = `${base}/${file}`;
               if (!fs.existsSync(p)) { console.log(`skipping missing leg ${id}`); continue; }
               legs[id] = pick(JSON.parse(fs.readFileSync(p, "utf8")), true);
@@ -746,7 +763,7 @@ jobs:
             echo ""
             echo "| Leg | Win rate | Wins | Blocking |"
             echo "| --- | ---: | ---: | :---: |"
-            for f in .cache/baseline/baseline.json .cache/baseline/leg-floor2.json .cache/baseline/leg-floor1-chain.json; do
+            for f in .cache/baseline/baseline.json .cache/baseline/leg-floor2.json .cache/baseline/leg-floor1-chain.json .cache/baseline/leg-floor6.json; do
               [ -f "$f" ] || continue
               node -e '
                 const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
@@ -913,12 +930,6 @@ jobs:
             attempt=$((attempt + 1))
             sleep $((RANDOM % 5 + 2))
           done
-
-      - name: File nightly balance issue for release baseline
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
-        run: node .github/scripts/nightly-balance-issue/run.mjs
 
       - name: Detect baseline win-rate regression
         id: baseline-regression
