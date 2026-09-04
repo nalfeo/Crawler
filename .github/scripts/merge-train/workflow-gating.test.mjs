@@ -88,8 +88,13 @@ test('each legacy lane is gated on its own owner, never the claim selector', () 
       ),
       `${laneVar} lane gate missing`,
     );
-    // The claim-lane selector must never gate a PR-lifecycle lane.
-    assert.doesNotMatch(content, /vars\.LIFECYCLE_MUTATION_OWNER/);
+    // The claim-lane selector must never gate a PR-lifecycle lane. It may still
+    // be passed as env (legacy intake reads it for rollback), so assert on the
+    // `if:` conditions rather than on any occurrence.
+    const gateLines = content.split('\n').filter((line) => /^\s*if:/.test(line));
+    for (const line of gateLines) {
+      assert.doesNotMatch(line, /LIFECYCLE_MUTATION_OWNER/);
+    }
   }
 
   assert.match(mergeTrain, /Observe legacy merge-train triggers without mutation/);
@@ -117,6 +122,10 @@ test('Goobers claim ownership is issue-scoped, handed off at publication, and tr
   assert.match(goobersLifecycleOwner, /- handoff/);
   assert.match(goobersLifecycleOwner, /closingIssuesReferences/);
   assert.match(goobersLifecycleOwner, /issueNumber/);
+  // Fork fence: pull_request_target has base-repo write permission, so the
+  // head repository must reach the decision or a fork PR could drop a claim.
+  assert.match(goobersLifecycleOwner, /headRepository \{ nameWithOwner \}/);
+  assert.match(goobersLifecycleOwner, /headRepository,/);
   // No PR-head fence remains, because the claim never covers a PR lifecycle.
   assert.doesNotMatch(goobersLifecycleOwner, /liveHeadSha: pull\.head\.sha/);
 

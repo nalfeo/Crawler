@@ -7,6 +7,7 @@ import { parse } from 'yaml';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const {
   decideLifecycleLease,
+  isRepositoryPullRequestUrl,
   isTrustedLifecycleLeaseComment,
   LIFECYCLE_CLAIM_LANE,
   LIFECYCLE_LANES,
@@ -20,6 +21,12 @@ const {
   renderLifecycleLease,
   selectLifecycleLeaseComments,
 } = await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
+const { legacyReviewThreadWritesEnabled } = await import(
+  path.join(repositoryRoot, '.github/scripts/ci-recovery/state.mjs')
+);
+const { goobersOwnsImplementationClaim } = await import(
+  path.join(repositoryRoot, '.github/scripts/ci-recovery/issue-intake-lib.mjs')
+);
 const markers = await import(path.join(repositoryRoot, '.github/scripts/ci-recovery/markers.mjs'));
 
 function workflow(name: string) {
@@ -30,6 +37,7 @@ const base = {
   owner: 'goobers',
   legacyBridgeEnabled: 'true',
   repository: 'nalfeo/Crawler',
+  headRepository: 'nalfeo/Crawler',
   issueNumber: 3843,
   leaseId: 'goobers:100:1',
   operation: 'acquire',
@@ -279,7 +287,6 @@ describe('Goobers lifecycle ownership', () => {
     for (const override of [
       { issueNumber: 0 },
       { issueNumber: Number.NaN },
-      { repository: '' },
       { leaseId: '' },
       { operation: 'promote' },
       { now: 'not-a-date' },
@@ -291,6 +298,14 @@ describe('Goobers lifecycle ownership', () => {
         observable: true,
       });
     }
+
+    // An empty repository cannot satisfy the same-repository fence, so it is
+    // rejected earlier, as a fork.
+    expect(decideLifecycleLease({ ...base, repository: '' })).toMatchObject({
+      status: 'rejected',
+      reason: 'fork',
+      writeAction: 'none',
+    });
   });
 
   it('counts only trusted authors when reading lease marker comments', () => {
@@ -409,12 +424,54 @@ describe('Goobers lifecycle ownership', () => {
     });
   });
 
+  it('refuses a fork head so a fork PR cannot drop a legitimate claim', () => {
+    // pull_request_target runs with base-repo write permission even for fork
+    // PRs, so an outside contributor writing "Fixes #3843" must not be able to
+    // delete the claim on that issue.
+    for (const headRepository of ['attacker/Crawler', 'nalfeo/Crawler-evil', '', undefined]) {
+      expect(
+        decideLifecycleLease({
+          ...base,
+          headRepository,
+          operation: 'handoff',
+          prUrl: 'https://github.com/nalfeo/Crawler/pull/4091',
+          markerComments: [markerComment(base.leaseId)],
+        }),
+      ).toMatchObject({ status: 'rejected', reason: 'fork', writeAction: 'none' });
+    }
+  });
+
+  it('matches handoff targets structurally rather than by prefix', () => {
+    expect(
+      isRepositoryPullRequestUrl('https://github.com/nalfeo/Crawler/pull/1', 'nalfeo/Crawler'),
+    ).toBe(true);
+    for (const hostile of [
+      // Shares the prefix but addresses a different resource.
+      'https://github.com/nalfeo/Crawler/pull/1/../../../attacker/evil/pull/1',
+      'https://github.com/nalfeo/Crawler/pull/1/files',
+      // Look-alike hosts and schemes.
+      'https://github.com.evil.test/nalfeo/Crawler/pull/1',
+      'http://github.com/nalfeo/Crawler/pull/1',
+      'https://evil.test/nalfeo/Crawler/pull/1',
+      // Wrong resource kind or repository.
+      'https://github.com/nalfeo/Crawler/issues/1',
+      'https://github.com/attacker/Crawler/pull/1',
+      'https://github.com/nalfeo/Crawler/pull/0',
+      'https://github.com/nalfeo/Crawler/pull/abc',
+      'not-a-url',
+      '',
+    ]) {
+      expect(isRepositoryPullRequestUrl(hostile, 'nalfeo/Crawler')).toBe(false);
+    }
+  });
+
   it('refuses a handoff that does not point at a PR in this repository', () => {
     for (const prUrl of [
       '',
       'https://github.com/attacker/Crawler/pull/1',
       'https://example.com/nalfeo/Crawler/pull/1',
       'https://github.com/nalfeo/Crawler/issues/1',
+      'https://github.com/nalfeo/Crawler/pull/1/../../../attacker/evil/pull/1',
     ]) {
       expect(
         decideLifecycleLease({
@@ -514,9 +571,56 @@ describe('Goobers lifecycle ownership', () => {
     );
   });
 
-  it('passes the review-thread lane owner into the legacy reconciler', () => {
+  it('enforces the review-thread lane in the reconciler, not just in workflow env', () => {
+    // Regression: the lane selector was previously passed as an env var that no
+    // script read, so migrating the lane silently created a dual writer.
     expect(workflow('ci-recovery.yml')).toContain(
       "LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS || 'legacy' }}",
     );
+
+    expect(legacyReviewThreadWritesEnabled({ LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers' })).toBe(
+      false,
+    );
+    // Fail-operational: anything that is not the literal 'goobers' keeps legacy
+    // resolving review threads.
+    for (const value of ['legacy', '', 'Goobers', ' goobers', 'goobrs', undefined]) {
+      expect(legacyReviewThreadWritesEnabled({ LIFECYCLE_OWNER_REVIEW_THREADS: value })).toBe(true);
+    }
+
+    const reconciler = fs.readFileSync(
+      path.join(repositoryRoot, '.github/scripts/ci-recovery/reconcile.mjs'),
+      'utf8',
+    );
+    // Every review-thread mutation site must consult the lane.
+    expect(reconciler.match(/legacyReviewThreadWritesEnabled\(\)/g)).toHaveLength(3);
+  });
+
+  it('hands approved-issue intake back to legacy on rollback', () => {
+    // Rollback must not leave approved issues without an intake owner.
+    expect(goobersOwnsImplementationClaim({ LIFECYCLE_MUTATION_OWNER: 'goobers' })).toBe(true);
+    for (const value of ['legacy', '', 'Goobers', ' goobers', 'off', undefined]) {
+      expect(goobersOwnsImplementationClaim({ LIFECYCLE_MUTATION_OWNER: value })).toBe(false);
+    }
+
+    const intake = fs.readFileSync(
+      path.join(repositoryRoot, '.github/scripts/ci-recovery/issue-intake-lib.mjs'),
+      'utf8',
+    );
+    // Each deferral to Goobers must be conditional on Goobers owning the lane.
+    expect(intake.match(/goobersOwnsImplementationClaim\(\)/g)).toHaveLength(3);
+    expect(workflow('issue-copilot-intake.yml')).toContain(
+      'LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}',
+    );
+  });
+
+  it('always writes a decision artifact, even when publication is a no-op', () => {
+    // The artifact upload uses if-no-files-found: error, so a skip path that
+    // wrote nothing turned an expected no-op into a failed workflow run.
+    const source = workflow('goobers-lifecycle-owner.yml');
+    expect(source).toContain("skip('no-claimed-issue')");
+    expect(source).toContain("skip('ambiguous-claimed-issues')");
+    expect(source).toContain('.goobers-lifecycle/decision.json');
+    // Ambiguity is refused rather than guessed.
+    expect(source).toContain('refusing to hand off');
   });
 });

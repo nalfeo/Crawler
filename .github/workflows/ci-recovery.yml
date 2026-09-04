@@ -93,6 +93,7 @@ jobs:
         if: vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
           LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS || 'legacy' }}
           CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}

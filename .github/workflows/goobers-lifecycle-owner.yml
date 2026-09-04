@@ -89,6 +89,22 @@ jobs:
             const operation = process.env.REQUESTED_OPERATION;
             let issueNumber = Number(process.env.REQUESTED_ISSUE);
             let prUrl = process.env.REQUESTED_PR_URL || '';
+            // workflow_dispatch requires repository write access, so that path
+            // is trusted; a pull_request_target run must prove the head is not
+            // a fork before it may touch a claim.
+            let headRepository = repository;
+
+            async function claimMarkers(issue) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                per_page: 100,
+              });
+              return ownership
+                .selectLifecycleLeaseComments(comments)
+                .map(comment => ({ id: comment.id, body: comment.body }));
+            }
 
             // On a publication event the claim subject is the approved issue the
             // PR closes. Resolving it from GitHub's own closing references (not
@@ -103,6 +119,7 @@ jobs:
                   repository(owner:$owner,name:$repo){
                     pullRequest(number:$pr){
                       url
+                      headRepository { nameWithOwner }
                       closingIssuesReferences(first:10){ nodes { number } }
                     }
                   }
@@ -111,25 +128,43 @@ jobs:
               );
               const pull = linked.repository.pullRequest;
               prUrl = prUrl || pull.url;
-              issueNumber = pull.closingIssuesReferences.nodes[0]?.number ?? 0;
-              if (!issueNumber) {
-                // Nothing was claimed, so there is nothing to hand off. Legacy
-                // PR-lifecycle automation is already live either way.
-                core.info('LIFECYCLE_OWNERSHIP_DECISION {"status":"observe-only","reason":"no-claimed-issue"}');
+              headRepository = pull.headRepository?.nameWithOwner || '';
+
+              // A PR may close several issues; hand off the one that actually
+              // holds a claim rather than assuming the first reference.
+              const candidates = pull.closingIssuesReferences.nodes.map(node => node.number);
+              const claimed = [];
+              for (const candidate of candidates) {
+                if ((await claimMarkers(candidate)).length > 0) claimed.push(candidate);
+              }
+              function skip(reason) {
+                // The artifact upload runs with `if-no-files-found: error`, so an
+                // expected no-op must still produce a decision record.
+                fs.mkdirSync('.goobers-lifecycle', { recursive: true });
+                const decision = { status: 'observe-only', reason, writeAction: 'none', observable: true };
+                fs.writeFileSync(
+                  '.goobers-lifecycle/decision.json',
+                  `${JSON.stringify({ decision }, null, 2)}\n`,
+                );
+                core.info(`LIFECYCLE_OWNERSHIP_DECISION ${JSON.stringify(decision)}`);
                 core.setOutput('skip', 'true');
+              }
+              if (claimed.length > 1) {
+                // Ambiguous: refuse to guess which claim this publication ends.
+                core.warning(`PR closes multiple claimed issues (${claimed.join(', ')}); refusing to hand off.`);
+                skip('ambiguous-claimed-issues');
                 return;
               }
+              if (claimed.length === 0) {
+                // Nothing was claimed, so there is nothing to hand off. Legacy
+                // PR-lifecycle automation is already live either way.
+                skip('no-claimed-issue');
+                return;
+              }
+              issueNumber = claimed[0];
             }
 
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              per_page: 100,
-            });
-            const markerComments = ownership
-              .selectLifecycleLeaseComments(comments)
-              .map(comment => ({ id: comment.id, body: comment.body }));
+            const markerComments = await claimMarkers(issueNumber);
             const currentLease = markerComments.length === 1
               ? ownership.parseLifecycleLease(markerComments[0].body)
               : null;
@@ -140,6 +175,7 @@ jobs:
               owner: process.env.LIFECYCLE_MUTATION_OWNER,
               legacyBridgeEnabled: process.env.LEGACY_CI_MUTATION_BRIDGE_ENABLED,
               repository,
+              headRepository,
               issueNumber,
               prUrl,
               leaseId,

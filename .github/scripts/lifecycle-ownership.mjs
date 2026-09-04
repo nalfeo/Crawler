@@ -171,6 +171,33 @@ function result(status, reason, input, lease = null, writeAction = 'none', extra
 const LEASE_OPERATIONS = ['acquire', 'heartbeat', 'handoff', 'release'];
 
 /**
+ * Structural check that `value` is the canonical GitHub URL of a pull request
+ * in `repository`.
+ *
+ * A `startsWith` prefix test is not sufficient: `.../pull/1/../../../other`
+ * shares the prefix but addresses a different resource, and a host like
+ * `github.com.evil.test` would pass a naive string compare. Parsing the URL and
+ * matching host plus exact path segments removes that whole class.
+ */
+export function isRepositoryPullRequestUrl(value, repository) {
+  let url;
+  try {
+    url = new URL(String(value ?? ''));
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.host.toLowerCase() !== 'github.com') return false;
+  const segments = url.pathname.split('/').filter(Boolean);
+  if (segments.length !== 4) return false;
+  const [owner, repo, kind, number] = segments;
+  return (
+    `${owner}/${repo}`.toLowerCase() === repository.toLowerCase() &&
+    kind === 'pull' &&
+    /^[1-9]\d*$/.test(number)
+  );
+}
+
+/**
  * Decide the next state of the pre-PR implementation claim lease.
  *
  * The lease exists only to stop two implementers claiming the same approved
@@ -180,6 +207,7 @@ const LEASE_OPERATIONS = ['acquire', 'heartbeat', 'handoff', 'release'];
  */
 export function decideLifecycleLease(input) {
   const repository = String(input.repository ?? '').trim();
+  const headRepository = String(input.headRepository ?? '').trim();
   const issueNumber = Number(input.issueNumber);
   const leaseId = String(input.leaseId ?? '').trim();
   const operation = String(input.operation ?? '').trim();
@@ -190,8 +218,14 @@ export function decideLifecycleLease(input) {
   if (!lifecycleWriterEnabled(input, 'goobers')) {
     return result('observe-only', 'goobers-not-selected', scope);
   }
+  // `pull_request_target` grants base-repository write permission even for fork
+  // PRs. Without this fence an outside contributor could open a fork PR whose
+  // body says "Fixes #N" and make the publication handoff delete a legitimate
+  // implementation claim on that issue.
+  if (!repository || repository.toLowerCase() !== headRepository.toLowerCase()) {
+    return result('rejected', 'fork', scope);
+  }
   if (
-    !repository ||
     !Number.isInteger(issueNumber) ||
     issueNumber < 1 ||
     !leaseId ||
@@ -201,11 +235,14 @@ export function decideLifecycleLease(input) {
     return result('rejected', 'invalid-input', scope);
   }
   // A handoff is the audit record of "Goobers finished; legacy owns the PR
-  // now", so it is only meaningful with a PR in this same repository.
-  const expectedPrPrefix = `https://github.com/${repository.toLowerCase()}/pull/`;
-  if (operation === 'handoff' && !prUrl.toLowerCase().startsWith(expectedPrPrefix)) {
+  // now", so it is only meaningful for a PR in this same repository. The URL is
+  // matched structurally rather than by prefix so a crafted path cannot smuggle
+  // a different target past the check.
+  if (operation === 'handoff' && !isRepositoryPullRequestUrl(prUrl, repository)) {
     return result('rejected', 'invalid-handoff-target', scope);
   }
+  // A handoff is the audit record of "Goobers finished; legacy owns the PR
+  // now", so it is only meaningful with a PR in this same repository.
 
   const markerComments = Array.isArray(input.markerComments) ? input.markerComments : [];
   const parsed = markerComments.map((comment) => ({

@@ -34,6 +34,7 @@ import {
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
+  legacyReviewThreadWritesEnabled,
   shouldSkipSubstantiveReview,
   STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
@@ -1906,7 +1907,7 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   // Thread-resolution pass: resolve any unresolved thread with a trusted marker.
   for (const thread of earlyUnresolved) {
     if (!shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
-    if (live) {
+    if (live && legacyReviewThreadWritesEnabled()) {
       try {
         await assertExpectedMetadataUnchanged('resolve-thread');
         await graphql(
@@ -2358,7 +2359,7 @@ for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
 for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
-  if (live) {
+  if (live && legacyReviewThreadWritesEnabled()) {
     await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
       pat,
@@ -2461,6 +2462,9 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
     continue;
   }
   if (followupIssues.length === 0) continue;
+  // Follow-up backlog replies and resolves are review-thread writes, so they
+  // belong to the review-threads lane, not the enclosing CI-recovery lane.
+  if (!legacyReviewThreadWritesEnabled()) continue;
 
   const sourceList = followupIssues
     .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)

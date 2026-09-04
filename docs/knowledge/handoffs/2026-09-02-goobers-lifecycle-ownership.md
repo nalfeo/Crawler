@@ -166,6 +166,56 @@ including idempotent replay and rejection of out-of-repository handoff targets.
 `workflow-gating.test.mjs` asserts each legacy workflow is gated on its own lane
 variable and that the claim selector appears in none of them.
 
+### Independent review round (2 reviews, per 4🍎 review harness)
+
+Two independent post-diff reviews ran on different models (GPT-5.6 Sol and
+Claude Opus 4.8). Both independently identified the same critical
+`pull_request_target` vulnerability, which is strong signal it was real.
+
+Validated findings and their fixes:
+
+1. **Critical — a fork PR could delete a legitimate implementation claim.**
+   `goobers-lifecycle-owner.yml` runs on `pull_request_target` with
+   `issues: write`, which grants base-repository write even for fork PRs. The
+   re-scoping had dropped the old fork fence, so an outside contributor could
+   open a fork PR whose body said `Fixes #N` and make the publication handoff
+   delete the active claim on that issue — re-opening it for duplicate
+   implementation, repeatedly. Fixed by resolving `headRepository` from the PR
+   and rejecting any head outside this repository with `reason=fork`.
+2. **The handoff URL check was bypassable.** A `startsWith` prefix test accepts
+   `.../pull/1/../../../attacker/...` and look-alike hosts. Replaced with
+   `isRepositoryPullRequestUrl`, which parses the URL and matches scheme, host,
+   and exact path segments.
+3. **`LIFECYCLE_OWNER_REVIEW_THREADS` was a dead knob.** It was passed as an env
+   var that no script read, so migrating the lane would have silently produced a
+   dual writer, while migrating the CI-recovery lane would have taken review
+   threads dark. Now enforced inside `reconcile.mjs` at all three review-thread
+   mutation sites via `legacyReviewThreadWritesEnabled()`, making the lane
+   genuinely independent.
+4. **Rollback did not restore approved-issue intake.** Legacy intake refused
+   every `goobers:approved` issue unconditionally (pre-existing on `main`), so
+   `LIFECYCLE_MUTATION_OWNER=legacy` would have left approved issues with no
+   intake owner at all — the exact gap this work exists to prevent. The three
+   deferral sites are now conditional on `goobersOwnsImplementationClaim()`.
+5. **Publication considered only the first closing issue.** A PR closing several
+   issues could leave the actual claim leased. Now every closing reference is
+   scanned for a trusted claim; multiple claims are refused as ambiguous rather
+   than guessed.
+6. **An expected no-op failed the workflow.** The skip path returned before
+   creating `.goobers-lifecycle/`, while the artifact upload uses
+   `if-no-files-found: error`. The skip path now writes an observe-only decision
+   artifact.
+
+One finding was **not** actioned by design: a reviewer argued that an unset
+`LEGACY_CI_MUTATION_BRIDGE_ENABLED` taking all legacy lanes dark violates the
+fail-operational rule. That default is pre-existing on `main`, the second
+reviewer explicitly assessed it as not a regression, and inverting an existing
+emergency control without the owner's agreement would itself be a silent
+weakening. It is instead documented as the one deliberate global kill switch,
+with the runbook noting that a PR lane reporting `observe-only` when it was not
+migrated is a misconfiguration. **Operational note for the owner: keep that
+variable set to `true`; deleting it stops all legacy PR automation.**
+
 ## Merge-train shepherd intervention (2026-09-03)
 
 Shepherded under shared lease
