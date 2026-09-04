@@ -45,12 +45,21 @@ function git(cwd, args) {
   }).trim();
 }
 
-function gitSucceeds(cwd, args, runGit) {
+function gitIsAncestor(cwd, candidate, ancestorOf, runGit) {
   try {
-    runGit(cwd, args);
+    runGit(cwd, ['merge-base', '--is-ancestor', candidate, ancestorOf]);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error.status === 1) return false;
+    throw error;
+  }
+}
+
+function hasMainlineParent(cwd, parents, mainRef, runGit) {
+  try {
+    return parents.some((parent) => gitIsAncestor(cwd, parent, mainRef, runGit));
+  } catch (error) {
+    throw new Error(`Could not inspect merge parent ancestry: ${error.message}`);
   }
 }
 
@@ -88,15 +97,7 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
 
   for (const line of merges.split('\n')) {
     const parts = line.trim().split(/\s+/);
-    if (
-      parts
-        .slice(1)
-        .some((parent) =>
-          gitSucceeds(cwd, ['merge-base', '--is-ancestor', parent, mainRef], runGit),
-        )
-    ) {
-      return true;
-    }
+    if (hasMainlineParent(cwd, parts.slice(1), mainRef, runGit)) return true;
   }
 
   return false;
@@ -257,7 +258,7 @@ export function attemptMainSync({
         headSha: runGit(cwd, ['rev-parse', 'HEAD']),
         mainSha,
         message: abortError
-          ? `${strategy.conflictOperation} failed and abort also failed (${strategySummary(strategy)}): ${abortError.message}`
+          ? `${strategy.conflictOperation} failed: ${syncError.message}; abort also failed: ${abortError.message} (${strategySummary(strategy)}).`
           : `${strategy.conflictOperation} conflicted and was aborted cleanly (${strategySummary(strategy)}): ${syncError.message}`,
       };
       writeSyncState(cwd, resultState(state, result, now));
