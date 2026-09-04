@@ -528,7 +528,6 @@ const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
 };
 
 const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
-  kind: 'floor3-stair-descend',
   title: 'Victory! Ready to exit?',
   subtitle: 'You are at the extraction point.',
   body: 'The Final Four are defeated. Are you ready to exit the Companion League?',

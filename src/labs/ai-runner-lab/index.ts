@@ -38,7 +38,6 @@ import {
   autoFloor3ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
-import { applyStartPlayerLevel } from '../../game/scenarios/playerLevelProgression.js';
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
@@ -539,37 +538,6 @@ function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
     : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
 }
 
-function floorIdFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  const requested = new URLSearchParams(window.location.search).get('floor');
-  if (!requested) return null;
-  if (hasFloorManifest(requested)) return requested;
-  console.warn(`AI Runner lab: unknown ?floor="${requested}" — falling back to floor1.`);
-  return 'floor1';
-}
-
-function seedFromUrl(): number | null {
-  if (typeof window === 'undefined') return null;
-  const requested = new URLSearchParams(window.location.search).get('seed');
-  if (!requested) return null;
-  const parsed = Number(requested);
-  if (Number.isFinite(parsed)) return Math.trunc(parsed);
-  console.warn(`AI Runner lab: invalid ?seed="${requested}" — falling back to the saved seed.`);
-  return null;
-}
-
-function startPlayerLevelFromUrl(): number {
-  if (typeof window === 'undefined') return 1;
-  const requested = new URLSearchParams(window.location.search).get('startPlayerLevel');
-  if (!requested) return 1;
-  const parsed = Number(requested);
-  if (Number.isInteger(parsed) && parsed >= 1) return parsed;
-  console.warn(
-    `AI Runner lab: invalid ?startPlayerLevel="${requested}" — falling back to level 1.`,
-  );
-  return 1;
-}
-
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
@@ -653,17 +621,6 @@ export interface AiRunnerDebugSnapshot {
   npcMem: { discovered: string[]; talked: string[]; needed: number };
   conversationNpcEid: number | null;
   modalOpen: boolean;
-  modalKind: string | null;
-  inSpawnRoom: boolean | null;
-  floor3AliveOutsideSpawnStreakMs: number;
-  floor3MaxAliveOutsideSpawnStreakMs: number;
-  floor3SurfaceTrace: ReadonlyArray<{
-    kind: string;
-    action: 'opened' | 'confirmed';
-    frame: number | null;
-    gameMs: number | null;
-    worldState: string | null;
-  }>;
   runOutcome: string | null;
   /**
    * The floor the live world is actually on, or `'unknown'` before a world
@@ -691,7 +648,6 @@ export interface AiRunnerDebugSnapshot {
 declare global {
   interface Window {
     __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
-    __aiRunnerJumpToStairs?: () => boolean;
   }
 }
 
@@ -709,11 +665,7 @@ function randomRunSeed(): number {
 interface RunnerSceneInternals {
   world?: GameWorld;
   playerEid?: number;
-  modalPicker?: {
-    isOpen(): boolean;
-    getKind(): string | null;
-    handleKeyDown(event: KeyboardEvent): void;
-  };
+  modalPicker?: { isOpen(): boolean; getKind(): string | null; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   requestInventoryToggle(): void;
@@ -790,18 +742,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // tab that last ran Floor 2 with a different seed doesn't contaminate the
   // inspection scene with the wrong floor or the wrong RNG state.
   const urlScenario = scenarioPresetIdFromUrl();
-  const urlFloor = floorIdFromUrl();
-  const urlSeed = seedFromUrl();
   let selectedScenarioPresetId =
     urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
   let currentSeed =
-    urlSeed ??
-    (urlScenario != null
+    urlScenario != null
       ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
-      : (persisted?.seed ?? INITIAL_SEED));
+      : (persisted?.seed ?? INITIAL_SEED);
   // Declared ahead of `featureFlags` (below) so its context can reflect the
   // real starting floor rather than re-deriving the same expression twice.
-  let currentFloor = urlScenario != null ? 'floor1' : (urlFloor ?? persisted?.floorId ?? 'floor1');
+  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
@@ -812,7 +761,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // lab constructs.
   const urlPersona = playerPersonaFromUrl();
   const persistedPersona = persisted?.aiConfig?.playerPersona;
-  const configuredStartPlayerLevel = startPlayerLevelFromUrl();
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
@@ -925,26 +873,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let lastObservedPlayerHealth: number | null = null;
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
-  let previousFloor3ModalKind: string | null = null;
-  let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
-  let floor3AliveOutsideSpawnStreakMs = 0;
-  let floor3MaxAliveOutsideSpawnStreakMs = 0;
-  const floor3SurfaceTrace: Array<{
-    kind: string;
-    action: 'opened' | 'confirmed';
-    frame: number | null;
-    gameMs: number | null;
-    worldState: string | null;
-  }> = [];
-  const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
-    'floor3-intro',
-    'floor3-starter',
-    'floor3-poach',
-    'floor3-studio-versus',
-    'floor3-final-four-versus',
-    'floor3-keep-companion',
-    'floor3-stair-descend',
-  ]);
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -997,52 +925,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   applyScenarioVisualProfile(selectedScenarioPresetId);
 
-  const isPlayerInSpawnRoom = (world: GameWorld, playerEid: number): boolean | null => {
-    if (!world.floorMap || world.floorMap.spawnRoom === null) {
-      return null;
-    }
-    const tile = world.floorMap.worldToTile(
-      world.stores.position.x[playerEid] ?? 0,
-      world.stores.position.y[playerEid] ?? 0,
-    );
-    return world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === world.floorMap.spawnRoom.id;
-  };
-
-  const updateFloor3AliveOutsideSpawnStreak = (
-    world: GameWorld,
-    playerEid: number,
-    playerHealth: number | null,
-  ): void => {
-    if (world.floorId !== 'floor3') {
-      floor3AliveOutsideSpawnStreakStartMs = null;
-      floor3AliveOutsideSpawnStreakMs = 0;
-      return;
-    }
-    const inSpawnRoom = isPlayerInSpawnRoom(world, playerEid);
-    const activeOutside =
-      typeof world.elapsedMs === 'number' &&
-      world.state === 'playing' &&
-      inSpawnRoom === false &&
-      playerHealth !== null &&
-      playerHealth > 0;
-    if (!activeOutside) {
-      floor3AliveOutsideSpawnStreakStartMs = null;
-      floor3AliveOutsideSpawnStreakMs = 0;
-      return;
-    }
-    if (floor3AliveOutsideSpawnStreakStartMs === null) {
-      floor3AliveOutsideSpawnStreakStartMs = world.elapsedMs;
-    }
-    floor3AliveOutsideSpawnStreakMs = Math.max(
-      0,
-      world.elapsedMs - floor3AliveOutsideSpawnStreakStartMs,
-    );
-    floor3MaxAliveOutsideSpawnStreakMs = Math.max(
-      floor3MaxAliveOutsideSpawnStreakMs,
-      floor3AliveOutsideSpawnStreakMs,
-    );
-  };
-
   const aiInputProvider = {
     poll(state: {
       moveX: number;
@@ -1074,12 +956,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
-        if (typeof playerEid === 'number' && playerEid >= 0) {
-          updateFloor3AliveOutsideSpawnStreak(world, playerEid, playerHealth);
-        } else {
-          floor3AliveOutsideSpawnStreakStartMs = null;
-          floor3AliveOutsideSpawnStreakMs = 0;
-        }
         syncAiRunnerSettlementReturnRouting(
           world,
           !manualControl,
@@ -1145,10 +1021,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, featureFlags.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
-    autoFloor3ProgressionSystem(world, playerEid, {
-      allowDirectKeptCompanionSelection: false,
-      allowDirectStairDescend: false,
-    });
+    autoFloor3ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
     });
@@ -1173,7 +1046,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       base.configureWorld(world, playerEid);
       const scenarioPreset = getAiRunnerScenarioPreset(selectedScenarioPresetId);
       scenarioPreset?.configureWorld?.(world, playerEid);
-      applyStartPlayerLevel(world, configuredStartPlayerLevel);
     },
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
@@ -1247,16 +1119,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     target: Exclude<JumpTarget, 'boss-encounter'>,
   ): { x: number; y: number } | null => {
-    if (target === 'staircase-room') {
-      const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world);
-      if (stairMarker?.visible) {
-        return stairMarker.positionFt;
-      }
-      const floor3Stairs = world.floorExtendedState?.floor3Studios?.staircasePos;
-      if (floor3Stairs) {
-        return floor3Stairs;
-      }
-    }
     const objective = world.floorScenario?.objective;
     if (!objective) {
       return null;
@@ -1327,25 +1189,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     movePlayerTo(pos.x, pos.y);
-  };
-
-  const jumpToStairsForDebug = (): boolean => {
-    const scene = getScene();
-    const world = scene?.world;
-    const playerEid = findPlayerEid();
-    if (!scene || !world || playerEid === undefined) {
-      return false;
-    }
-    const pos = resolveJumpPosition(world, 'staircase-room');
-    if (!pos) {
-      return false;
-    }
-    const moved = movePlayerTo(pos.x, pos.y);
-    if (moved) {
-      scene.advanceSimulationFrames(1);
-      scene.queuedInteraction = true;
-    }
-    return moved;
   };
 
   const applyQuestDebug = (): void => {
@@ -1778,11 +1621,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     disposeHardwareInput();
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
-    previousFloor3ModalKind = null;
-    floor3AliveOutsideSpawnStreakStartMs = null;
-    floor3AliveOutsideSpawnStreakMs = 0;
-    floor3MaxAliveOutsideSpawnStreakMs = 0;
-    floor3SurfaceTrace.length = 0;
     pathGraphics?.destroy();
     pathGraphics = null;
     flowFieldGraphics?.destroy();
@@ -1859,47 +1697,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     return { kind: 'floor', floorId: 'floor1' };
   };
 
-  const recordFloor3SurfaceEvent = (
-    world: GameWorld,
-    kind: string,
-    action: 'opened' | 'confirmed',
-  ): void => {
-    floor3SurfaceTrace.push({
-      kind,
-      action,
-      frame: world.frameCount ?? null,
-      gameMs: world.elapsedMs ?? null,
-      worldState: world.state ?? null,
-    });
-    if (floor3SurfaceTrace.length > 128) {
-      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - 128);
-    }
-  };
-
-  const confirmModalSelection = (
-    modalPicker: NonNullable<RunnerSceneInternals['modalPicker']>,
-    world: GameWorld,
-    modalKind: string | null,
-  ): void => {
-    const wasOpen = modalPicker.isOpen();
-    modalPicker.handleKeyDown(
-      new KeyboardEvent('keydown', {
-        code: 'Enter',
-        key: 'Enter',
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
-    if (wasOpen && !modalPicker.isOpen()) {
-      if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
-        recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
-      }
-      if (world.floorId === 'floor3') {
-        previousFloor3ModalKind = null;
-      }
-    }
-  };
-
   const autoAdvanceSceneUi = (): void => {
     if (manualControl) {
       // Human is driving — let them operate modals, NPCs, shops and stairs
@@ -1914,23 +1711,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const modalPicker = scene.modalPicker;
-    const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world) ?? null;
-    const activeModalKind =
-      modalPicker?.isOpen() === true ? (modalPicker.getKind() ?? '__anonymous__') : null;
-    if (world.floorId === 'floor3' && activeModalKind !== previousFloor3ModalKind) {
-      if (activeModalKind && FLOOR3_AUTO_MODAL_KINDS.has(activeModalKind)) {
-        recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
-      }
-      previousFloor3ModalKind = activeModalKind;
-    }
+    const objective = world.floorScenario?.objective;
 
     if (world.state === 'loadout') {
-      if (modalPicker?.isOpen()) {
-        const modalKind = modalPicker.getKind();
-        if (world.floorId !== 'floor3' || (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind))) {
-          confirmModalSelection(modalPicker, world, modalKind);
-        }
-      }
+      sceneOptions.selectLoadoutOption?.(world, 0);
+      modalPicker?.close();
       return;
     }
 
@@ -1953,43 +1738,43 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     if (modalPicker?.isOpen()) {
-      const modalKind = modalPicker.getKind();
-      if (world.floorId === 'floor3' && modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
-        confirmModalSelection(modalPicker, world, modalKind);
-        return;
-      }
       if (
         world.goalFlags.get('floor1-boss-battle-complete') === true &&
         world.featureUnlocks.spells !== true
       ) {
-        confirmModalSelection(modalPicker, world, modalKind);
+        const offeredSpellId = sceneOptions.getSpellRewardOptions?.(world)?.[0]?.id;
+        if (offeredSpellId) {
+          sceneOptions.selectSpellFromBossBattle?.(world, playerEid, offeredSpellId);
+        }
+        modalPicker.close();
         return;
       }
       if (
-        stairMarker !== null &&
-        stairMarker.visible &&
-        !stairMarker.locked &&
+        objective?.staircaseUnlocked &&
+        !objective.staircaseDiscovered &&
         Math.hypot(
-          (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
-          (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
-        ) <= stairMarker.radiusFt
+          (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
+          (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
+        ) <= objective.markerRadiusFt
       ) {
-        confirmModalSelection(modalPicker, world, modalKind);
+        sceneOptions.onStairDescend?.(world, playerEid);
+        modalPicker.close();
         return;
       }
       if (sceneOptions.shopkeeper && sceneOptions.shopkeeper.getStage(world) === 'ready-to-buy') {
-        const hadGold = world.playerGold >= sceneOptions.shopkeeper.equipmentCost;
-        confirmModalSelection(modalPicker, world, modalKind);
-        if (hadGold) {
-          pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
-          pendingGearEquipPreview = true;
+        if (world.playerGold >= sceneOptions.shopkeeper.equipmentCost) {
+          if (sceneOptions.shopkeeper.purchase(world, playerEid)) {
+            pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
+            pendingGearEquipPreview = true;
+          }
         }
+        modalPicker.close();
         return;
       }
       const spellBroker = sceneOptions.spellQuestGiver;
       const spellBrokerIntent = getSpellBrokerIntent(world);
       if (
-        modalKind === 'spell-broker' &&
+        modalPicker.getKind() === 'spell-broker' &&
         spellBroker?.getSpellBrokerOffers &&
         spellBroker.canPurchaseSpell &&
         spellBroker.purchaseSpell &&
@@ -1997,16 +1782,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         (isSpellBrokerPurchaseActive(spellBrokerIntent) ||
           spellBrokerIntent.purchaseStatus === 'purchased')
       ) {
-        const hadPurchasableOffer = spellBroker
+        const offer = spellBroker
           .getSpellBrokerOffers(world)
-          .some(
+          .find(
             (entry) =>
               !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
           );
-        confirmModalSelection(modalPicker, world, modalKind);
-        if (hadPurchasableOffer) {
+        if (offer && spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
           markSpellBrokerPurchased(world);
         }
+        modalPicker.close();
         return;
       }
     }
@@ -2035,13 +1820,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       decision.targetEid >= 0 &&
       (world.npcs.get(decision.targetEid)?.nearbyPlayer ?? false);
     const nearStairs =
-      stairMarker !== null &&
-      stairMarker.visible &&
-      !stairMarker.locked &&
+      objective?.staircaseUnlocked === true &&
+      objective.staircaseSpawned === true &&
+      !objective.staircaseDiscovered &&
       Math.hypot(
-        (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
-        (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
-      ) <= stairMarker.radiusFt;
+        (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
+        (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
+      ) <= objective.markerRadiusFt;
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -3085,7 +2870,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       px !== null && py !== null && decision.targetX !== null && decision.targetY !== null
         ? Math.round(Math.hypot(decision.targetX - px, decision.targetY - py))
         : null;
-    const inSpawnRoom = hasPlayer ? isPlayerInSpawnRoom(world, playerEid) : null;
     const quests: AiRunnerDebugSnapshot['quests'] = {};
     if (world) {
       for (const [questId, quest] of world.questLog.entries()) {
@@ -3138,13 +2922,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       },
       conversationNpcEid: scene?.conversationNpcEid ?? null,
       modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
-      modalKind: scene?.modalPicker?.isOpen?.()
-        ? (scene.modalPicker.getKind() ?? '__anonymous__')
-        : null,
-      inSpawnRoom,
-      floor3AliveOutsideSpawnStreakMs,
-      floor3MaxAliveOutsideSpawnStreakMs,
-      floor3SurfaceTrace,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
@@ -3156,7 +2933,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   if (typeof window !== 'undefined') {
     window.__aiRunnerDebug = buildDebugSnapshot;
-    window.__aiRunnerJumpToStairs = jumpToStairsForDebug;
   }
 
   const updateInterval = setInterval(() => {
@@ -3262,7 +3038,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     window.removeEventListener('keydown', onKeyDown);
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
-      delete window.__aiRunnerJumpToStairs;
     }
     recorderControls.destroy();
     disposeHardwareInput();
