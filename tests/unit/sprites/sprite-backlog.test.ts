@@ -352,6 +352,27 @@ describe('prepareSpriteBacklog retry state', () => {
     }
   });
 
+  it('does not alter pending-review state for a retry that is not pending', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-invalid-retry-'));
+    try {
+      const statePath = path.join(root, 'state.json');
+      const originalState = { version: 1, pendingReview: {} };
+      writeFileSync(statePath, `${JSON.stringify(originalState)}\n`);
+
+      expect(() =>
+        prepareSpriteBacklog(root, {
+          floors: [1],
+          limit: 1,
+          statePath,
+          retryConcepts: ['not-pending'],
+        }),
+      ).toThrow('not pending human review');
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual(originalState);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('prioritizes a queued pending-overlay dislike', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-pending-dislike-'));
     const originalCopilotHome = process.env.COPILOT_HOME;
