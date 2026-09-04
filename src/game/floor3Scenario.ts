@@ -818,10 +818,7 @@ function popFloor3ExitStairs(world: GameWorld): void {
   setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, true);
 }
 
-/**
- * Explicit deterministic kept-companion path for non-interactive/headless
- * completion. Real play must call `selectFloor3KeptCompanion` instead.
- */
+/** Deterministically selects the first valid party Companion through the public scenario callback. */
 export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (
@@ -836,8 +833,7 @@ export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
     .sort((a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0));
   const firstEid = party[0];
   if (firstEid === undefined) return false;
-  studiosState.keptCompanionEid = firstEid;
-  return true;
+  return selectFloor3KeptCompanion(world, firstEid);
 }
 
 function latchFloor3Victory(world: GameWorld): void {

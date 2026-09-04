@@ -691,7 +691,6 @@ export interface AiRunnerDebugSnapshot {
 declare global {
   interface Window {
     __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
-    __aiRunnerJumpToStairs?: () => boolean;
   }
 }
 
@@ -713,6 +712,7 @@ interface RunnerSceneInternals {
     isOpen(): boolean;
     getKind(): string | null;
     handleKeyDown(event: KeyboardEvent): void;
+    wasConfirmedByCallback(): boolean;
   };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
@@ -1333,25 +1333,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     movePlayerTo(pos.x, pos.y);
   };
 
-  const jumpToStairsForDebug = (): boolean => {
-    const scene = getScene();
-    const world = scene?.world;
-    const playerEid = findPlayerEid();
-    if (!scene || !world || playerEid === undefined) {
-      return false;
-    }
-    const pos = resolveJumpPosition(world, 'staircase-room');
-    if (!pos) {
-      return false;
-    }
-    const moved = movePlayerTo(pos.x, pos.y);
-    if (moved) {
-      scene.advanceSimulationFrames(1);
-      scene.queuedInteraction = true;
-    }
-    return moved;
-  };
-
   const applyQuestDebug = (): void => {
     const world = getScene()?.world;
     if (!world) {
@@ -1896,7 +1877,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }),
     );
     if (wasOpen && !modalPicker.isOpen()) {
-      if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+      // `wasConfirmedByCallback()` reflects whether the modal's real
+      // `onConfirm` hook actually ran, not just that the picker closed —
+      // `ModalPickerUI` also closes a confirmed selection when no
+      // `onConfirm` hook is registered at all, so recording on close alone
+      // would keep passing even if a required handler were removed.
+      if (
+        modalKind &&
+        FLOOR3_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
         floor3PendingResumeKinds.add(modalKind);
       }
@@ -3174,7 +3164,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   if (typeof window !== 'undefined') {
     window.__aiRunnerDebug = buildDebugSnapshot;
-    window.__aiRunnerJumpToStairs = jumpToStairsForDebug;
   }
 
   const updateInterval = setInterval(() => {
@@ -3280,7 +3269,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     window.removeEventListener('keydown', onKeyDown);
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
-      delete window.__aiRunnerJumpToStairs;
     }
     recorderControls.destroy();
     disposeHardwareInput();

@@ -55,9 +55,15 @@ describe('floor3 production completion (real headless pipeline, no mutation)', (
         startPlayerLevel: 20,
       });
 
-      expect(stats.outcome).toBe('victory');
-
       const progression = stats.floor3Progression;
+      const context = JSON.stringify({
+        outcome: stats.outcome,
+        frame: stats.totalFrames,
+        gameTimeMs: stats.gameTimeMs,
+        progression,
+      });
+      expect(stats.outcome, `Floor 3 did not complete; ${context}`).toBe('victory');
+
       expect(progression).toBeDefined();
       // Left the protected spawn room under its own navigation.
       expect(progression?.leftEntrance).not.toBeNull();
