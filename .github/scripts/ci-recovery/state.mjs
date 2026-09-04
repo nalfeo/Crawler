@@ -157,10 +157,13 @@ function isExecutableEvidencePath(path) {
   );
 }
 
+const ACCEPTANCE_SCOPE_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', '.github/', 'public/'];
+
 /**
  * Repository paths named inside the acceptance criteria, used as the issue-scoped
- * expectation set. Only backticked tokens that look like repository paths (they
- * contain a `/`) are considered, so prose and commands never become expectations.
+ * expectation set. Only backticked tokens under a known top-level source root are
+ * considered, so prose, shell commands, and package specifiers (`@scope/pkg`)
+ * never become hard diff requirements.
  */
 function acceptanceScopePaths(acceptanceLines) {
   const expected = new Set();
@@ -168,12 +171,15 @@ function acceptanceScopePaths(acceptanceLines) {
     for (const match of String(line).matchAll(/`([^`\n]+)`/g)) {
       const token = match[1]
         .trim()
+        .replace(/^\.\//, '')
         .replace(/^\/+/, '')
         .replace(/[.,;:)\]]+$/, '')
-        .replace(/\/\*+$/, '');
-      if (!token || /\s/.test(token) || !token.includes('/')) continue;
-      if (!/^[\w.@-]+(?:\/[\w.@-]+)+$/.test(token)) continue;
-      expected.add(token.replace(/\/+$/, ''));
+        .replace(/\/\*+$/, '')
+        .replace(/\/+$/, '');
+      if (!token || /\s/.test(token)) continue;
+      if (!ACCEPTANCE_SCOPE_ROOTS.some((root) => token.startsWith(root))) continue;
+      if (!/^[\w.-]+(?:\/[\w.-]+)+$/.test(token)) continue;
+      expected.add(token);
     }
   }
   return [...expected];

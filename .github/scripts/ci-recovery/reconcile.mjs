@@ -3572,12 +3572,6 @@ let staleClosingIssueAcceptanceQuarantine = false;
     }
   }
 }
-if (staleClosingIssueAcceptanceQuarantine) {
-  process.stdout.write(
-    `closing-issue-acceptance-quarantine-cleared pr=#${prNumber} reason=mismatch-resolved\n`,
-  );
-  await applyPrLifecycle(PHASE.REPAIRING, 'closing-issue-acceptance-resolved');
-}
 const lifecyclePrFacts = {
   state: pr.state,
   draft: pr.draft,
@@ -3592,6 +3586,18 @@ const lifecyclePrFacts = {
   skipSubstantiveReview,
 };
 const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
+if (staleClosingIssueAcceptanceQuarantine) {
+  // The recorded quarantine is stale, so hand the record back to the phase the
+  // live facts derive (which still accounts for any other blocker) rather than
+  // forcing a phase of our own.
+  process.stdout.write(
+    `closing-issue-acceptance-quarantine-cleared pr=#${prNumber} reason=mismatch-resolved\n`,
+  );
+  await applyPrLifecycle(
+    lifecycleEvaluation.phase,
+    lifecycleEvaluation.blockReason || 'closing-issue-acceptance-resolved',
+  );
+}
 process.stdout.write(
   `${formatLifecycleOutcome(prNumber, { acted: false, noOp: true, phase: lifecycleEvaluation.phase, reason: `evaluated:${lifecycleEvaluation.phase}` })}\n`,
 );

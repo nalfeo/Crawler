@@ -289,6 +289,25 @@ test('closing-issue acceptance scope is issue-scoped when acceptance criteria na
   );
 });
 
+test('closing-issue acceptance scope ignores non-path tokens in acceptance criteria', () => {
+  // `@scope/pkg` and command strings are documentation references, not diff requirements,
+  // so this issue has no path expectations and falls back to the diff-shape signal.
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [
+      featureIssue({
+        body: [
+          '## Acceptance criteria',
+          '- [ ] Depend on `@scope/pkg` and run `scripts/agent/verify-fast.sh --flag`.',
+        ].join('\n'),
+      }),
+    ],
+    changedFiles: [{ filename: 'src/game/alpha.ts' }, { filename: 'tests/unit/alpha.test.ts' }],
+  });
+
+  assert.equal(result, null);
+});
+
 test('closing-issue acceptance scope evaluates every closing issue independently', () => {
   const implemented = featureIssue({
     number: 4101,
