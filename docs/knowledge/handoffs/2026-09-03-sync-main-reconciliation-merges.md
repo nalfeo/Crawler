@@ -22,7 +22,7 @@ Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still
 
 ## Files touched
 
-- `scripts/agent/sync-main.mjs` — added deterministic strategy selection, batched/short-circuiting mainline reconciliation-merge detection, merge-preserving update/abort handling, and strategy reporting.
+- `scripts/agent/sync-main.mjs` — added deterministic strategy selection, bounded short-circuiting mainline reconciliation-merge detection, merge-preserving update/abort handling, and strategy reporting.
 - `scripts/agent/sync-main.test.mjs` — added branch-history tests for repeated main advancement, preservation of prior semantic conflict resolutions, merge-preserving conflict aborts, dedicated shepherd ownership prefixes, and unchanged ordinary-branch rebase behavior.
 - `docs/knowledge/adr/0075-ci-conflict-scope-and-authoring-main-sync.md` — updated the existing sync-main decision to document the merge-preserving shepherd/recovery exception.
 - `docs/knowledge/metrics/apples/2026-09-03-sync-main-reconciliation-merges.json` — recorded 3🍎 estimate/actual calibration.
@@ -30,7 +30,7 @@ Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still
 ## Verification run
 
 - `bash scripts/agent/preflight.sh` — passed; branch already contained `origin/main`, dependencies installed, typecheck passed.
-- `node --test scripts/agent/sync-main.test.mjs` — passed, 5/5 before review fixes; 6/6 after addressing review findings.
+- `node --test scripts/agent/sync-main.test.mjs` — passed, 5/5 before review fixes; final focused coverage is 8/8 after addressing review findings.
 - `npx prettier --check scripts/agent/sync-main.mjs scripts/agent/sync-main.test.mjs docs/knowledge/adr/0075-ci-conflict-scope-and-authoring-main-sync.md` — initially found formatting in `sync-main.mjs`; fixed with the existing formatter.
 - `npx prettier --write scripts/agent/sync-main.mjs scripts/agent/sync-main.test.mjs docs/knowledge/adr/0075-ci-conflict-scope-and-authoring-main-sync.md` — applied formatting.
 - `node --test scripts/agent/sync-main.test.mjs` — passed, 5/5 after formatting.
