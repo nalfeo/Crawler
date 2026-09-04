@@ -1056,6 +1056,147 @@ branch scripts plus all 25 embedded `run:` step scripts in `goobers-run.yml`,
 `npm run docs:check` (0 blocking), `npm run verify:fast`, and
 `npm run verify:pr-prereqs` — all green, with `jq` 1.7.1 on PATH.
 
+## Main sync (2026-09-04, rebase onto `d7ea2f7ab`)
+
+Rebased onto `origin/main` at `d7ea2f7ab`, which had advanced by two merges:
+#4240 ("Give Goobers intake parity with the legacy issue reconciler") — which
+rewrites the same resolve step this branch relocated — and #4241 (Floor 4 wave
+cadence, disjoint).
+
+**Strategy: the seven iterative commits were squashed to one before rebasing.**
+All seven rewrite the same 2.2k-line workflow, so replaying them would have
+forced the same intertwined conflict to be re-resolved seven times, with drift
+risk at every step. Squashing first made it one reconciliation. The squash was
+proved lossless before rebasing (`git diff 53191b1c1 <squashed>` empty, so the
+certified tree was byte-identical), and the squashed message retains all seven
+subjects and the five-round review record. The branch is now exactly one commit
+ahead of `origin/main` and zero behind.
+
+**Conflicts (2 files, 12 hunks), all resolved semantically (never
+`ours`/`theirs`):**
+
+- **Job `if:` gate.** Main widened it for intake parity
+  (`opened`/`reopened` dispatch immediately; `labeled` stays approval-gated).
+  This branch had moved that gate from `run` to `reserve`. The merged gate keeps
+  main's full expression on **`reserve`**, for the reason recorded in the
+  previous sync section: `needs: reserve` makes it gate all four slots.
+- **Fresh-backlog scan.** This is the one place the two intents genuinely
+  disagreed. Main made the scan _select and designate_ a fresh issue via the
+  canonical selector; this branch had deliberately made it _non-designating_
+  (it answers only "is any eligible work left?") because the recovery path
+  bypasses `backlog-query --claim`, so a preflight-picked fresh issue is
+  invisible to the provider claim protocol and the four slots would race onto
+  it. **Resolution: keep the branch's non-designating structure, and adopt
+  main's definition of "eligible."** The scan now runs main's dual query
+  (narrow approved + broad parity) through this branch's hardened
+  `list_backlog_candidates` wrapper, hands both to `intake-selection.mjs`, and
+  records only `eligible_fresh_issue`. Both invariants hold; neither was
+  weakened. A regression test pins the non-designation directly (the fresh scan
+  must not contain `ISSUE_NUMBER="${candidate_issue}"`).
+- **Independent additions kept side by side.** Main's `decide_issue()` helper
+  and this branch's live-sibling `RECOVERY_ALLOWED` gate; main's
+  `INTAKE_COHORT` resolution and this branch's lease gate + `recovery_issue`
+  output; main's `LIFECYCLE_MUTATION_OWNER`/`ISSUE_OWNER` job env and this
+  branch's `outputs:` block.
+- **One hunk was pure misalignment.** Git aligned this branch's new "Reserve the
+  recovery target…" step against main's copies of steps this branch had
+  relocated into the `run` job. Taking the branch side there is correct, but it
+  drops main's _edits_ to those steps, so each was carried across by hand (see
+  below).
+
+**The load-bearing catch: the cohort now has to cross a job boundary.** Main
+propagates its verdict as `GOOBERS_INTAKE_COHORT` via `GITHUB_ENV`, and the
+merged gaggle's claim fence refuses any recovery claim whose cohort is not
+`approved|legacy-parity|resume`. `GITHUB_ENV` does not cross jobs, and this
+branch had split resolution (`reserve`) from execution (`run`) — so a verbatim
+merge would have left every adopting slot with an empty cohort and **refused
+100% of recovery claims**, silently. The cohort is therefore published as a
+`reserve` job output (`intake_cohort`, with the run-start revalidated verdict
+preferred over the resolve-step verdict), re-exported into the lane environment
+by "Adopt the reserved recovery target", and added to the per-slot
+`envPassthrough`. Main's dead `GITHUB_ENV` writes in `reserve` were dropped
+rather than kept as cargo. Executable tests now pin the whole chain.
+
+Main's other in-step edits were carried across the same way: `Set up Node.js`
+stays unconditional and ahead of resolution (it now lives in `reserve`, because
+that is where the selector runs), and `GOOBERS_INTAKE_COHORT` was added to the
+slot `envPassthrough`.
+
+**A latent test-fixture bug surfaced and was fixed at its root:** main added
+`state,labels,assignees` to the `gh search issues --json` field list, which made
+the search call match the `*state,labels,assignees*` branch of the bash `gh`
+stub _before_ its own `"search issues"*` branch. The stub returned a single
+issue object where the selector expects an array, so the fresh scan silently
+found nothing and `FRESH_SCAN_FAILS` never triggered. Fixed by ordering the
+specific case first, with a comment naming why. The stub fixtures also now carry
+`number`/`author`, which the canonical selector requires.
+
+**Post-sync revalidation:** focused Goobers suites (`goobers-run-workflow`,
+`goobers-run-slot-cleanup`, `goobers-lifecycle-ownership`: 137 passed, 2
+skipped), main's own intake suites (`intake-selection`, `issue-intake`: 52
+passed), `npm run test:guards` (2862 passed, 0 failed — the `guards` group
+covers all of `.github/scripts`, including the ci-recovery router and markers),
+router/marker suites (149 + 5 passed), YAML parse of every workflow plus the
+gaggle, `bash -n` on all 25 embedded `run:` scripts, `npm run docs:check` (0
+blocking), `npm run verify:fast`, and `npm run verify:pr-prereqs` — all green,
+with `jq` 1.7.1 on PATH. `npm run sync:main -- --reason pre-publish` re-run
+clean afterwards.
+
+## Main sync (2026-09-04, rebase onto `4009ddbd2`)
+
+`origin/main` advanced again mid-session, by #4243 (sprite backlog, disjoint)
+and **#4255 (`fix(goobers): read intake JSON from a file, not a fragile stdin
+pipe`)**, which edits the same resolve step again. Rebased onto `4009ddbd2`;
+the first `sync:main` attempt aborted cleanly and lost nothing.
+
+**Adopted from #4255 verbatim** (real bug fixes, both carried into this
+branch's relocated steps):
+
+- `decide_issue()` now stages the issue payload as a **file** instead of piping
+  it on stdin. Actions' bash can hand the selector a non-blocking pipe, and a
+  synchronous stdin read of one fails with `EAGAIN` — this burned live intake
+  runs. Auto-merged.
+- The run-start race guard gets the same treatment; merged by hand because this
+  branch had already rewritten the surrounding cohort logic to use
+  `RESOLVED_INTAKE_COHORT` rather than `GITHUB_ENV`.
+
+**Deliberately NOT adopted, because this branch already enforces the same
+invariant structurally — each re-verified rather than assumed:**
+
+- **`persist_recovery_issue()` (GITHUB_ENV).** Upstream's fix for the
+  #4252/#4253 incident, where a resolve-step failure left the run unattributable.
+  `GITHUB_ENV` cannot cross from `reserve` to `run`, so importing it here would
+  be dead code of exactly the kind removed in the previous sync. The invariant is
+  kept by ordering instead: `recovery_issue` is published as a job **output**
+  before the fallible PR lookup, the resolve step executes **no** label mutation
+  at all (verified: every `gh issue edit` occurrence in it is inside a
+  remediation message), the reservation is written only by the next step — which
+  is gated on `recovery_issue != ''` — and `release-unstarted-reservation` reads
+  that output on `always()`. Upstream's test was **retargeted, not deleted**, and
+  now pins each of those four properties plus the absence of any `GITHUB_ENV`
+  write.
+- **`release_claim()` helper.** All five label-release sites in this branch
+  already check the `gh` call and emit an actionable `::error::` naming the exact
+  `gh issue edit` remediation — the helper is upstream's refactor toward what is
+  already here. The retargeted test now asserts the property over **every**
+  release site rather than the existence of one helper, so an unchecked release
+  cannot slip in beside a checked one.
+- **The no-journal guard.** Upstream added `if [ -z "$events_file" ]` so a
+  pre-start failure is not reported as a stale claim. This branch's per-slot
+  disposition already does this keyed on the slot's own `run_id`, which is
+  strictly finer: a sibling slot's journal cannot stand in for it.
+- **`Comment on Goobers run result` gated on `should_run != 'false'`.** Here the
+  whole `run` job carries that gate via `needs.reserve.outputs.should_run`, so no
+  lane — and no result comment — starts for an empty backlog. The step stays
+  `always()` so a failed lane still reports.
+
+**Post-sync revalidation (second sync):** Goobers suites 139 passed / 2 skipped,
+`npm run test:guards` 2862 passed, main's intake suites 52 passed, router and
+marker suites, YAML parse of every workflow and the gaggle, `bash -n` on all
+embedded `run:` scripts, `npm run docs:check`, `npm run verify:fast`,
+`npm run verify:pr-prereqs`, and a final clean
+`npm run sync:main -- --reason pre-publish`.
+
 ## Residual notes
 
 No unresolved correctness caveat: every independent-review finding above — all
