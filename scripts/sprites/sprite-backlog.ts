@@ -17,6 +17,10 @@ import {
   type PlaceholderAuditReport,
 } from './placeholder-audit.js';
 import { runPlaceholderAudit } from './placeholder-audit-cli.js';
+import {
+  readPendingDislikedSpriteNames,
+  resolvePendingAnnotationsPath,
+} from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 
 const DEFAULT_STATE_PATH = path.join('generated', 'sprite-backlog-state.json');
 const DEFAULT_MANIFEST_PATH = path.join('public', 'assets', 'generated', 'manifest.json');
@@ -82,6 +86,7 @@ export interface BuildSpriteBacklogPlanInput {
   readonly dislikedSpriteNames: ReadonlySet<string>;
   readonly placeholderReport: Pick<PlaceholderAuditReport, 'placeholderOnly'>;
   readonly pendingReviewConcepts?: ReadonlySet<string>;
+  readonly retrySources?: ReadonlyMap<string, SpriteBacklogSource>;
   readonly floors: ReadonlySet<number>;
   readonly limit: number;
   readonly invalidBriefs?: readonly InvalidSpriteBacklogBrief[];
@@ -181,7 +186,28 @@ export function buildSpriteBacklogPlan(input: BuildSpriteBacklogPlanInput): Spri
     'missing',
     new Set([...missingConcepts].filter((concept) => !dislikedConcepts.has(concept))),
   );
-  const available = [...disliked, ...missing];
+  const ordinaryAvailable = [...disliked, ...missing];
+  const retries = [...(input.retrySources ?? new Map<string, SpriteBacklogSource>())]
+    .map(([concept, source]) => {
+      const brief = briefsByConcept.get(concept);
+      if (!brief) {
+        throw new Error(
+          `cannot retry "${concept}": no eligible judged brief exists for the selected floors`,
+        );
+      }
+      return { ...brief, source };
+    })
+    .sort((left, right) => left.concept.localeCompare(right.concept));
+  if (retries.length > input.limit) {
+    throw new Error(
+      `cannot retry ${retries.length} concepts: retry count exceeds backlog limit ${input.limit}`,
+    );
+  }
+  const retriedConcepts = new Set(retries.map(({ concept }) => concept));
+  const available = [
+    ...retries,
+    ...ordinaryAvailable.filter(({ concept }) => !retriedConcepts.has(concept)),
+  ];
 
   return {
     selected: available.slice(0, input.limit),
@@ -267,25 +293,40 @@ export function prepareSpriteBacklog(
 ): PreparedSpriteBacklog {
   const statePath = path.resolve(repoRoot, options.statePath ?? DEFAULT_STATE_PATH);
   let state = readState(statePath);
+  const retrySources = new Map<string, SpriteBacklogSource>();
   if (options.retryConcepts && options.retryConcepts.length > 0) {
     const pendingReview = { ...state.pendingReview };
     for (const concept of options.retryConcepts) {
-      delete pendingReview[normalizeConcept(concept)];
+      const normalizedConcept = normalizeConcept(concept);
+      const pending = pendingReview[normalizedConcept];
+      if (!pending) {
+        throw new Error(`cannot retry "${normalizedConcept}": it is not pending human review`);
+      }
+      retrySources.set(normalizedConcept, pending.source);
+      delete pendingReview[normalizedConcept];
     }
     state = { version: 1, pendingReview };
-    if (options.persistRetryChanges !== false) {
-      writeState(statePath, state);
-    }
   }
   const discovered = collectBacklogBriefs(repoRoot);
   const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
   const manifestEntries = loadGeneratedManifest(generatedDir).entries;
   const annotations = readAnnotations(repoRoot);
-  const dislikedSpriteNames = new Set(
+  const trackedDislikedSpriteNames = new Set(
     Object.entries(annotations.sprites)
       .filter(([, annotation]) => annotation.disliked === true)
       .map(([spriteName]) => spriteName),
   );
+  const pendingDislikedSpriteNames = readPendingDislikedSpriteNames(
+    resolvePendingAnnotationsPath(repoRoot),
+    {
+      getCurrentAnnotation: (spriteName) =>
+        Object.hasOwn(annotations.sprites, spriteName) ? annotations.sprites[spriteName] : null,
+    },
+  );
+  const dislikedSpriteNames = new Set([
+    ...trackedDislikedSpriteNames,
+    ...pendingDislikedSpriteNames,
+  ]);
   const placeholderReport = runPlaceholderAudit(repoRoot, {
     manifestPath: DEFAULT_MANIFEST_PATH,
     since: undefined,
@@ -299,10 +340,14 @@ export function prepareSpriteBacklog(
     dislikedSpriteNames,
     placeholderReport,
     pendingReviewConcepts: new Set(Object.keys(state.pendingReview)),
+    retrySources,
     floors: new Set(options.floors),
     limit: options.limit,
     invalidBriefs: discovered.invalidBriefs,
   });
+  if (retrySources.size > 0 && options.persistRetryChanges !== false) {
+    writeState(statePath, state);
+  }
   return { plan, statePath, state };
 }
 

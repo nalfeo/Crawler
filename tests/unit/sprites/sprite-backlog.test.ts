@@ -12,6 +12,7 @@ import {
   type SpriteBacklogBrief,
   type PreparedSpriteBacklog,
 } from '../../../scripts/sprites/sprite-backlog.js';
+import { resolvePendingAnnotationsPath } from '../../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 
 function manifestEntry(briefId: string): ManifestEntry {
   return {
@@ -130,6 +131,34 @@ describe('buildSpriteBacklogPlan', () => {
         limit: 0,
       }),
     ).toThrow('positive integer');
+  });
+
+  it('selects explicit retries ahead of the ordinary limited backlog', () => {
+    const plan = buildSpriteBacklogPlan({
+      briefs: [brief('first', 1), brief('retry-me', 3)],
+      manifestEntries: { 'first-var-0': manifestEntry('first') },
+      dislikedSpriteNames: new Set(['first-var-0']),
+      placeholderReport: { placeholderOnly: [] },
+      retrySources: new Map([['retry-me', 'disliked']]),
+      floors: new Set([1, 2, 3]),
+      limit: 1,
+    });
+
+    expect(plan.selected.map((item) => item.concept)).toEqual(['retry-me']);
+  });
+
+  it('rejects retries without an eligible brief', () => {
+    expect(() =>
+      buildSpriteBacklogPlan({
+        briefs: [brief('outside-floor', 2)],
+        manifestEntries: {},
+        dislikedSpriteNames: new Set(),
+        placeholderReport: { placeholderOnly: [] },
+        retrySources: new Map([['outside-floor', 'disliked']]),
+        floors: new Set([1]),
+        limit: 1,
+      }),
+    ).toThrow('no eligible judged brief');
   });
 
   it('persists a passing result immediately as pending human review', () => {
@@ -287,6 +316,7 @@ describe('prepareSpriteBacklog retry state', () => {
         persistRetryChanges: false,
       });
       expect(dryRun.state.pendingReview).toEqual({});
+      expect(dryRun.plan.selected.map((item) => item.concept)).toEqual(['retry-me']);
       expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual(originalState);
 
       const persisted = prepareSpriteBacklog(root, {
@@ -302,6 +332,51 @@ describe('prepareSpriteBacklog retry state', () => {
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prioritizes a queued pending-overlay dislike', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-pending-dislike-'));
+    const pendingPath = resolvePendingAnnotationsPath(root);
+    try {
+      mkdirSync(path.join(root, 'briefs', 'items'), { recursive: true });
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+      mkdirSync(path.join(root, 'public', 'assets', 'generated', 'entries'), { recursive: true });
+      mkdirSync(path.dirname(pendingPath), { recursive: true });
+      cpSync(
+        path.join(process.cwd(), 'data', 'sprite-types', 'item.json'),
+        path.join(root, 'data', 'sprite-types', 'item.json'),
+      );
+      cpSync(
+        path.join(process.cwd(), 'data', 'palettes', 'kenney-roguelike.json'),
+        path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      );
+      writeFileSync(
+        path.join(root, 'briefs', 'items', 'queued-dislike.yaml'),
+        'type: item\nname: queued-dislike\ndescription: A queued dislike.\n',
+      );
+      writeFileSync(
+        path.join(root, 'public', 'assets', 'generated', 'entries', 'queued-dislike-var-0.json'),
+        `${JSON.stringify(manifestEntry('queued-dislike'))}\n`,
+      );
+      writeFileSync(
+        pendingPath,
+        JSON.stringify({
+          sprites: {
+            'queued-dislike-var-0': { base: null, annotation: { disliked: true } },
+          },
+        }),
+      );
+
+      const prepared = prepareSpriteBacklog(root, { floors: [1], limit: 1 });
+
+      expect(prepared.plan.selected.map(({ source, concept }) => `${source}:${concept}`)).toEqual([
+        'disliked:queued-dislike',
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(pendingPath, { force: true });
     }
   });
 });
