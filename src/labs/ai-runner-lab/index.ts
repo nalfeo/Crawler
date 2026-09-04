@@ -1960,7 +1960,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       activeModalKind === null &&
       pendingFloor3ResumeKinds.length > 0
     ) {
-      for (const kind of pendingFloor3ResumeKinds.splice(0)) {
+      const kind = pendingFloor3ResumeKinds.shift();
+      if (kind) {
         recordFloor3SurfaceEvent(world, kind, 'resumed');
       }
     }

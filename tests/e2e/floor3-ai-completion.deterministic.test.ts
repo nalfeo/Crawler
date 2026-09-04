@@ -123,6 +123,7 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
 
         const snapshots: AiRunnerDebugSnapshot[] = [];
         let lastSnapshot: AiRunnerDebugSnapshot | null = null;
+        let reachedCompletion = false;
 
         for (let poll = 0; poll < MAX_POLLS; poll += 1) {
           await page.waitForTimeout(POLL_INTERVAL_MS);
@@ -131,7 +132,10 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
           if (!snapshot) continue;
           snapshots.push(snapshot);
           lastSnapshot = snapshot;
-          if (snapshot.runOutcome === 'cleared_floor') break;
+          if (snapshot.runOutcome === 'cleared_floor') {
+            reachedCompletion = true;
+            break;
+          }
         }
 
         expect(pageErrors).toEqual([]);
@@ -187,6 +191,7 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         // mocked/forced completion. On Floor 3 this comes from the scenario's
         // own `getRunOutcome`, the same result headless `runHeadless` maps to
         // `RunStats.outcome === 'victory'`.
+        expect(reachedCompletion, context).toBe(true);
         expect(lastSnapshot!.runOutcome, context).toBe('cleared_floor');
 
         // Every required Floor 3 surface opened AND was acknowledged.
