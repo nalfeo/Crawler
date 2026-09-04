@@ -58,6 +58,7 @@ returns approved issues first, then the parity cohort.
 - `.github/scripts/goobers/intake-selection.test.mjs`
 - `.github/workflows/goobers-run.yml`
 - `.github/workflows/issue-copilot-intake.yml`
+- `.github/workflows/epic-reprocess.yml`
 - `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml`
 - `.goobers/instance.yaml.example`
 - `.goobers/README.md`
@@ -68,6 +69,34 @@ returns approved issues first, then the parity cohort.
 - `tests/unit/goobers-lifecycle-ownership.test.ts`
 - `docs/knowledge/handoffs/2026-09-04-goobers-intake-parity.md`
 - `docs/knowledge/metrics/apples/2026-09-04-goobers-intake-parity.json`
+
+## Review findings addressed
+
+An independent post-diff review (3🍎 harness, different model) raised three
+findings. Two were fixed:
+
+- **`epic-reprocess.yml` never passed `LIFECYCLE_MUTATION_OWNER`,** so the
+  shared eligibility library always concluded legacy owned intake there. The
+  hourly epic reprocessor would have reassigned Cloud Copilot to unassigned
+  epic nodes that Goobers was concurrently claiming — a genuine dual writer,
+  latent before this PR for approved epic nodes and much wider after it. Fixed
+  by passing the selector, plus a test asserting **every** legacy
+  Copilot-assigning workflow reads it.
+- **GitHub Search caps at 1000 results,** and the parity query is no longer
+  label-filtered, so a large enough backlog of older ineligible issues could
+  have hidden the maintainer's approved queue permanently. Fixed by running the
+  narrow approved query _as well as_ the broad parity query and de-duplicating
+  the overlap by issue number in `selectGoobersIntakeIssues`.
+
+The third — that under rollback an approved issue from outside the legacy
+trusted-opener cohort has no owner — was **deliberately not changed**. It is
+pre-existing behavior, identical before and after this PR, and honoring the
+approved label as a trust override inside legacy intake would _expand_ legacy's
+cohort beyond its pre-cutover policy. Forming the union does not require that,
+and the session brief says to preserve the legacy exclusions/trust policy
+exactly. Under `goobers` (the steady state) those issues route correctly,
+because the approved override precedes the trust check in
+`goobersIntakeEligibility`.
 
 ## Verification
 

@@ -178,7 +178,16 @@ describe('Goobers automatic dispatch and recovery', () => {
     // duplication is what let the approved-only cohort drift from legacy's.
     expect(recovery).toContain('node .github/scripts/goobers/intake-selection.mjs');
     expect(start).toContain('node .github/scripts/goobers/intake-selection.mjs --issue -');
-    expect(recovery).not.toContain("--label 'goobers:approved'");
+    // The shared query carries no cohort filter; the extra narrow approved
+    // query exists only so the approved queue cannot fall off the far side of
+    // GitHub Search's 1000-result cap.
+    const sharedQuery = recovery.slice(
+      recovery.indexOf('search_open_unassigned() {'),
+      recovery.indexOf('search_open_unassigned --label'),
+    );
+    expect(sharedQuery).not.toContain("--label 'goobers:approved'");
+    expect(recovery).toContain("search_open_unassigned --label 'goobers:approved'");
+    expect(recovery).toContain('jq -s \'add\' "${approved_file}" "${parity_file}"');
     expect(start).not.toContain('index("goobers:approved") != null');
     expect(workflow.jobs.run?.env?.LIFECYCLE_MUTATION_OWNER).toBe(
       '${{ vars.LIFECYCLE_MUTATION_OWNER }}',
@@ -299,10 +308,17 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recoveryStep?.run).toContain('gh search issues');
     expect(recoveryStep?.run).toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(recoveryStep?.run).toContain('--state open');
-    // Deliberately NOT filtered to `goobers:approved`: Goobers must claim at
-    // least the whole legacy intake cohort, and the canonical selector decides
-    // membership from the returned payloads.
-    expect(recoveryStep?.run).not.toContain("--label 'goobers:approved'");
+    // Deliberately NOT filtered to `goobers:approved` in the shared query:
+    // Goobers must claim at least the whole legacy intake cohort, and the
+    // canonical selector decides membership from the returned payloads. The
+    // separate narrow approved query keeps the approved queue reachable past
+    // GitHub Search's 1000-result cap.
+    const sharedQuery = (recoveryStep?.run ?? '').slice(
+      (recoveryStep?.run ?? '').indexOf('search_open_unassigned() {'),
+      (recoveryStep?.run ?? '').indexOf('search_open_unassigned --label'),
+    );
+    expect(sharedQuery).not.toContain("--label 'goobers:approved'");
+    expect(recoveryStep?.run).toContain("search_open_unassigned --label 'goobers:approved'");
     expect(recoveryStep?.run).toContain(
       '--json number,state,labels,assignees,author,isPullRequest',
     );

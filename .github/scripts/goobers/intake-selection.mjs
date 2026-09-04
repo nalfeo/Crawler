@@ -69,14 +69,23 @@ export function decideGhIssue(entry, options = {}) {
  * maintainer's queue is never starved by the newly transferred parity cohort),
  * then the parity cohort. Within a cohort the caller's order — oldest-created
  * first, from the search qualifiers — is preserved.
+ *
+ * Candidates may legitimately repeat (the caller runs one narrow approved query
+ * and one broad parity query so the approved queue can never fall off the far
+ * side of the Search API's result cap), so the first decision per issue number
+ * wins.
  */
 export function selectGoobersIntakeIssues(candidates, options = {}) {
   const decisions = (Array.isArray(candidates) ? candidates : []).map((entry) =>
     decideGhIssue(entry, options),
   );
-  const eligible = decisions.filter(
-    (decision) => decision.eligible && Number.isInteger(decision.number),
-  );
+  const seen = new Set();
+  const eligible = decisions.filter((decision) => {
+    if (!decision.eligible || !Number.isInteger(decision.number)) return false;
+    if (seen.has(decision.number)) return false;
+    seen.add(decision.number);
+    return true;
+  });
   return [
     ...eligible.filter((decision) => decision.cohort === 'approved'),
     ...eligible.filter((decision) => decision.cohort !== 'approved'),

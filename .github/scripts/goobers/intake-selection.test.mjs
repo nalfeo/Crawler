@@ -228,24 +228,64 @@ test('selection drops records without a usable issue number', () => {
   assert.deepEqual(selectGoobersIntakeIssues(null, { env: GOOBERS_ENV }), []);
 });
 
+test('selection de-duplicates the approved/parity query overlap by issue number', () => {
+  // The workflow runs a narrow approved query AND a broad parity query, so the
+  // approved queue can never fall off the far side of the Search API's 1000
+  // result cap. The same issue therefore appears twice.
+  const approved = ghIssue({ number: 12, labels: [{ name: 'goobers:approved' }] });
+  const selected = selectGoobersIntakeIssues(
+    [approved, ghIssue({ number: 10 }), approved, ghIssue({ number: 10 })],
+    { maintainerLogin: 'nalfeo', env: GOOBERS_ENV },
+  );
+
+  assert.deepEqual(
+    selected.map((decision) => [decision.number, decision.cohort]),
+    [
+      [12, 'approved'],
+      [10, 'legacy-parity'],
+    ],
+  );
+});
+
 test('goobers-run dispatches immediately on issue events and still sweeps hourly', () => {
   assert.match(WORKFLOW, /types:\s*\[opened,\s*reopened,\s*labeled\]/);
   assert.match(WORKFLOW, /- cron: '37 \* \* \* \*'/);
 });
 
 test('goobers-run selects candidates without a label filter and delegates the policy', () => {
-  const searchBlock = WORKFLOW.slice(WORKFLOW.indexOf('gh search issues'));
-  const search = searchBlock.slice(0, searchBlock.indexOf('> "${candidates_file}"'));
+  const searchBlock = WORKFLOW.slice(WORKFLOW.indexOf('search_open_unassigned() {'));
+  const search = searchBlock.slice(0, searchBlock.indexOf('search_open_unassigned --label'));
   assert.ok(
     !search.includes("--label 'goobers:approved'"),
-    'the candidate query must not pre-filter to approved issues, or the parity cohort is lost',
+    'the shared candidate query must not pre-filter to approved issues, or the parity cohort is lost',
   );
   assert.match(search, /--json number,state,labels,assignees,author,isPullRequest/);
+  // Approved issues are ALSO fetched by a narrow query so they can never fall
+  // off the far side of GitHub Search's 1000-result cap behind older noise.
+  assert.match(
+    WORKFLOW,
+    /search_open_unassigned --label 'goobers:approved' > "\$\{approved_file\}"/,
+  );
+  assert.match(WORKFLOW, /search_open_unassigned > "\$\{parity_file\}"/);
+  assert.match(WORKFLOW, /jq -s 'add' "\$\{approved_file\}" "\$\{parity_file\}"/);
   assert.match(
     WORKFLOW,
     /node \.github\/scripts\/goobers\/intake-selection\.mjs \\\n\s+--candidates/,
   );
   assert.match(WORKFLOW, /LIFECYCLE_MUTATION_OWNER: \$\{\{ vars\.LIFECYCLE_MUTATION_OWNER \}\}/);
+});
+
+test('every legacy Copilot-assigning workflow reads the lane selector', () => {
+  // A legacy assigner that cannot see the selector always concludes legacy owns
+  // intake, and reassigns an issue Goobers is concurrently claiming.
+  for (const file of ['issue-copilot-intake.yml', 'epic-reprocess.yml']) {
+    const workflow = readFileSync(path.resolve('.github/workflows', file), 'utf8');
+    assert.match(
+      workflow,
+      /LIFECYCLE_MUTATION_OWNER: \$\{\{ vars\.LIFECYCLE_MUTATION_OWNER \}\}/,
+      `${file} must pass the implementation-claim lane selector to the intake library`,
+    );
+  }
 });
 
 test('the gaggle claim fence honors the cohort handed down by the trusted workflow', () => {

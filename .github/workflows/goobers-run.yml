@@ -237,19 +237,32 @@ jobs:
             # eligible issue and falsely report "no work" when those 100 are all
             # assigned/in-review.
             #
-            # The query intentionally does NOT filter by `goobers:approved`:
-            # Goobers must pick up at least the full legacy intake cohort. The
-            # canonical selector decides membership from the returned payloads.
+            # The parity query intentionally does NOT filter by
+            # `goobers:approved`: Goobers must pick up at least the full legacy
+            # intake cohort, and the canonical selector decides membership from
+            # the returned payloads.
+            #
+            # The narrow approved query is run *as well* because GitHub Search
+            # returns at most 1000 results: without it, 1000 older ineligible
+            # issues could hide the maintainer's approved queue entirely. The
+            # selector de-duplicates the overlap by issue number.
+            approved_file="${RUNNER_TEMP}/goobers-intake-approved.json"
+            parity_file="${RUNNER_TEMP}/goobers-intake-parity.json"
             candidates_file="${RUNNER_TEMP}/goobers-intake-candidates.json"
             selected_file="${RUNNER_TEMP}/goobers-intake-selected.tsv"
-            gh search issues \
-              --repo "${GITHUB_REPOSITORY}" \
-              --state open \
-              --no-assignee \
-              --sort created --order asc --limit 1000 \
-              --json number,state,labels,assignees,author,isPullRequest \
-              -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"' \
-              > "${candidates_file}"
+            search_open_unassigned() {
+              gh search issues \
+                --repo "${GITHUB_REPOSITORY}" \
+                --state open \
+                --no-assignee \
+                --sort created --order asc --limit 1000 \
+                --json number,state,labels,assignees,author,isPullRequest \
+                "$@" \
+                -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"'
+            }
+            search_open_unassigned --label 'goobers:approved' > "${approved_file}"
+            search_open_unassigned > "${parity_file}"
+            jq -s 'add' "${approved_file}" "${parity_file}" > "${candidates_file}"
             node .github/scripts/goobers/intake-selection.mjs \
               --candidates "${candidates_file}" > "${selected_file}"
             while IFS=$'\t' read -r candidate_issue candidate_cohort; do
