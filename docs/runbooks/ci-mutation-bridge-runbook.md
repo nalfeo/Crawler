@@ -8,13 +8,13 @@ Crawler's automation during the Goobers migration.
 The migration is **hybrid by design and has no downtime phase.** Ownership is
 tracked per lane, and every lane always has exactly one writer:
 
-| Lane                                     | Phase 2 owner | Selector                         |
-| ---------------------------------------- | ------------- | -------------------------------- |
-| Implementation claim (approved issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       |
-| CI Recovery router + reconciliation      | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    |
-| Review-thread reply/resolve              | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` |
-| Auto-rebase branch updates               | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  |
-| Merge-train admission + promotion        | legacy        | `LIFECYCLE_OWNER_MERGE_TRAIN`    |
+| Lane                                     | Phase 2 owner | Selector                         | Phase 3 status                |
+| ---------------------------------------- | ------------- | -------------------------------- | ----------------------------- |
+| Implementation claim (approved issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       | n/a (Phase 2 lane)            |
+| CI Recovery router + reconciliation      | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    | not yet migratable            |
+| Review-thread reply/resolve              | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` | **migratable (Lane A, live)** |
+| Auto-rebase branch updates               | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  | not yet migratable            |
+| Merge-train admission + promotion        | legacy        | `LIFECYCLE_OWNER_MERGE_TRAIN`    | not yet migratable            |
 
 ## The ownership boundary
 
@@ -87,6 +87,24 @@ gh variable set LIFECYCLE_OWNER_MERGE_TRAIN -R nalfeo/Crawler --body 'goobers'
 The legacy workflow for that lane immediately reports `observe-only` while every
 other lane keeps running. Roll a lane back by deleting the variable or setting
 it to `legacy`.
+
+**Lane A — review-thread reply/resolve** is the first lane migratable this way:
+
+```bash
+gh variable set LIFECYCLE_OWNER_REVIEW_THREADS -R nalfeo/Crawler --body 'goobers'
+```
+
+`reconcile.mjs` immediately stops posting outdated-marker replies and resolving
+threads itself, and instead dispatches `goobers-review-threads.yml` once per
+reconcile run. That hosted workflow re-derives the same decision
+deterministically (`crawler-review-threads` via
+`.github/scripts/goobers-review-threads.mjs`) and applies it after re-validating
+that the thread state has not changed. Roll it back the same way as any other
+lane:
+
+```bash
+gh variable set LIFECYCLE_OWNER_REVIEW_THREADS -R nalfeo/Crawler --body 'legacy'
+```
 
 ## Roll back claim ownership
 
@@ -165,9 +183,15 @@ drill record.
 ## Known limitations
 
 Phase 2 transfers **only** the pre-PR implementation claim. Merge-train
-promotion, review-thread closure, auto-rebase, and CI Recovery state mutations
-all remain legacy-owned and fully operational; each moves independently in
-Phase 3 via its own lane selector.
+promotion, auto-rebase, and CI Recovery state mutations remain legacy-owned and
+fully operational. Phase 3 review-thread reply/resolve (Lane A) is now
+migratable via `LIFECYCLE_OWNER_REVIEW_THREADS`; its hosted wrapper
+conservatively passes an empty reachable-commit-SHA set rather than
+reproducing reconcile.mjs's full stale-marker lineage/near-typo-promotion
+logic — a documented limitation, not a silent gap. Lanes B (CI Recovery
+reconciliation), C (merge-train admission), and D (merge-train promotion)
+remain legacy-owned; each moves independently in a later Phase 3 slice via its
+own lane selector.
 
 ## Post-incident review checklist
 

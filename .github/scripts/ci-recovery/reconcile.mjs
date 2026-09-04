@@ -23,6 +23,7 @@ import {
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  reviewThreadReplyCommentId,
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   shouldMutateRecoveryState,
@@ -247,7 +248,6 @@ const RELEASE_CONVERGED_ELSEWHERE = 'converged-elsewhere';
 const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
-const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
 const TASK_COMMENT_MARKER_PATTERN = new RegExp(
   `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
   'i',
@@ -303,11 +303,6 @@ function calculateRebaseFailureBackoffMs(attempt) {
     REBASE_FAILURE_MAX_BACKOFF_MS,
     REBASE_FAILURE_BASE_BACKOFF_MS * 2 ** (safeAttempt - 1),
   );
-}
-
-function reviewThreadReplyCommentId(url) {
-  const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
-  return match?.[1] ?? null;
 }
 
 function extractTaskFingerprint(body) {
@@ -1166,6 +1161,32 @@ async function dispatchWorkflow(workflow, inputs) {
   );
 }
 
+// Phase 3, Lane A: when the review-threads lane is migrated to Goobers, legacy
+// makes zero review-thread writes (see legacyReviewThreadWritesEnabled() call
+// sites below) but must still give the migrated lane a chance to act, or a
+// migrated PR's outdated/resolvable threads would simply never be handled.
+// Dispatched at most once per reconcile run -- guarded by this module-level
+// flag -- regardless of how many of the (mutually exclusive, per-run) legacy
+// call sites are reached, since the early-exit and main-flow passes never
+// both run in the same invocation. Best-effort: a dispatch failure must never
+// crash reconcile.mjs or block release() from running below.
+let reviewThreadsGoobersDispatchAttempted = false;
+async function dispatchReviewThreadsGoobersOnce() {
+  if (reviewThreadsGoobersDispatchAttempted) return;
+  reviewThreadsGoobersDispatchAttempted = true;
+  try {
+    await dispatchWorkflow('goobers-review-threads.yml', { pr_number: String(prNumber) });
+    process.stdout.write(
+      `${live ? 'dispatched' : 'would-dispatch'} goobers-review-threads pr=#${prNumber}\n`,
+    );
+  } catch (dispatchErr) {
+    const safeMsg = String(dispatchErr?.message || dispatchErr)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(`goobers-review-threads-dispatch-failed pr=#${prNumber} err=${safeMsg}\n`);
+  }
+}
+
 async function release(reason, nextState = null) {
   const ownershipToRelease = state;
   const releasedState =
@@ -1861,7 +1882,10 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
     // to the review-threads lane. Skipping the whole iteration (rather than
     // just the POST) also avoids injecting the synthetic marker comment, which
     // would otherwise make the resolution pass believe the thread was handled.
-    if (!legacyReviewThreadWritesEnabled()) continue;
+    if (!legacyReviewThreadWritesEnabled()) {
+      await dispatchReviewThreadsGoobersOnce();
+      continue;
+    }
     if (shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
     const comments = thread.comments?.nodes ?? [];
     const last = comments[comments.length - 1];
@@ -1915,7 +1939,10 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
     // Gate BEFORE the in-memory `isResolved` write below: skipping only the
     // GraphQL call would mark the thread resolved locally without resolving it,
     // dropping a genuine blocker and admitting the PR prematurely.
-    if (!legacyReviewThreadWritesEnabled()) continue;
+    if (!legacyReviewThreadWritesEnabled()) {
+      await dispatchReviewThreadsGoobersOnce();
+      continue;
+    }
     if (live) {
       try {
         await assertExpectedMetadataUnchanged('resolve-thread');
@@ -2320,7 +2347,10 @@ function shouldAutoPostOutdatedMarker(candidate) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   // Review-thread write: gated on the review-threads lane (see pass above).
-  if (!legacyReviewThreadWritesEnabled()) continue;
+  if (!legacyReviewThreadWritesEnabled()) {
+    await dispatchReviewThreadsGoobersOnce();
+    continue;
+  }
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {
@@ -2371,7 +2401,10 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   // Gate before the in-memory resolution write (see the early pass).
-  if (!legacyReviewThreadWritesEnabled()) continue;
+  if (!legacyReviewThreadWritesEnabled()) {
+    await dispatchReviewThreadsGoobersOnce();
+    continue;
+  }
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
@@ -2477,7 +2510,10 @@ for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolv
   if (followupIssues.length === 0) continue;
   // Follow-up backlog replies and resolves are review-thread writes, so they
   // belong to the review-threads lane, not the enclosing CI-recovery lane.
-  if (!legacyReviewThreadWritesEnabled()) continue;
+  if (!legacyReviewThreadWritesEnabled()) {
+    await dispatchReviewThreadsGoobersOnce();
+    continue;
+  }
 
   const sourceList = followupIssues
     .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)

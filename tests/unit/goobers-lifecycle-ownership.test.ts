@@ -608,7 +608,7 @@ describe('Goobers lifecycle ownership', () => {
     // a real blocker and admitting the PR prematurely.
     expect(reconciler).not.toContain('if (live && legacyReviewThreadWritesEnabled())');
     for (const segment of reconciler.split('thread.isResolved = true;').slice(0, -1)) {
-      const guarded = segment.lastIndexOf('if (!legacyReviewThreadWritesEnabled()) continue;');
+      const guarded = segment.lastIndexOf('if (!legacyReviewThreadWritesEnabled()) {');
       const resolveCall = segment.lastIndexOf('resolveReviewThread(input:');
       expect(guarded).toBeGreaterThan(-1);
       expect(guarded).toBeLessThan(resolveCall);

@@ -1,0 +1,352 @@
+name: Goobers Review Threads
+run-name: Goobers review-thread reply/resolve for PR #${{ inputs.pr_number }}
+
+# Phase 3, Lane A: review-thread reply/resolve only. Lanes B (CI Recovery
+# reconciliation), C (merge-train admission), and D (merge-train promotion)
+# are explicitly out of scope and remain legacy-owned; this workflow never
+# touches merge-train admission/promotion gating.
+#
+# Fail-closed by design: this workflow only mutates when
+# vars.LIFECYCLE_OWNER_REVIEW_THREADS is the literal string 'goobers'. Unset
+# or any other value leaves the job an explicit no-op, matching the
+# PR-lifecycle-lane fail-operational contract in
+# docs/runbooks/ci-mutation-bridge-runbook.md (legacy reconcile.mjs keeps
+# writing whenever this workflow observes anything other than 'goobers').
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR whose review threads should be reconciled
+        required: true
+        type: string
+
+concurrency:
+  # Scoped per-PR so a burst of reconcile-triggered dispatches for the same PR
+  # serialize instead of racing two applies against the same thread state.
+  # cancel-in-progress stays false and queue: max keeps every dispatch queued
+  # rather than dropped -- see ci-recovery.yml/ci-recovery-router.yml for the
+  # same anti-drop rationale (a dropped dispatch silently loses a mutation
+  # opportunity with no retry).
+  group: crawler-review-threads-${{ inputs.pr_number }}
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  review-threads:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOBERS_VERSION: v0.3.3
+      GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
+    steps:
+      - name: Checkout trusted review-threads implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Capture immutable review-thread input
+        id: review-threads-input
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+
+            // Fail-closed gate: only run when the lane is explicitly migrated.
+            if (String(process.env.LIFECYCLE_OWNER_REVIEW_THREADS || '') !== 'goobers') {
+              fs.mkdirSync('.goobers-review-threads', { recursive: true });
+              fs.writeFileSync(
+                '.goobers-review-threads/decision.json',
+                `${JSON.stringify(
+                  { decisions: [], reason: 'lane-not-migrated', observable: true },
+                  null,
+                  2,
+                )}\n`,
+              );
+              core.info('LIFECYCLE_OWNER_REVIEW_THREADS is not "goobers"; observe-only no-op.');
+              core.setOutput('skip', 'true');
+              return;
+            }
+
+            const prNumber = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(prNumber) || prNumber < 1) {
+              throw new Error(`Invalid pr_number input: ${process.env.PR_NUMBER}`);
+            }
+
+            const github_ = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/ci-recovery/github.mjs',
+            )));
+
+            const pr = (await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            })).data;
+            const headSha = String(pr.head.sha || '').toLowerCase();
+
+            const review = await github_.listReviewThreads(
+              process.env.GOOBERS_GITHUB_TOKEN || github.token,
+              context.repo.owner,
+              context.repo.repo,
+              prNumber,
+              (query, variables) => github.graphql(query, variables),
+            );
+
+            // Conservative: empty reachableCommitShas. Reproducing reconcile.mjs's
+            // full stale-marker near-typo/lineage-compare logic (reconcile.mjs
+            // ~2199-2293) is out of scope for this Lane-A slice; reconcile.mjs's
+            // own early-exit path (R06/R07) makes this exact same conservative
+            // choice for the identical reason (the compare API call is
+            // unreachable from that path). Documented limitation, not a silent
+            // gap -- see docs/knowledge/handoffs for the Phase 3 Lane A handoff.
+            const input = {
+              threads: review.threads,
+              headSha,
+              reachableCommitShas: [],
+            };
+            fs.mkdirSync('.goobers-review-threads', { recursive: true });
+            fs.writeFileSync(
+              '.goobers-review-threads/input.json',
+              `${JSON.stringify(input, null, 2)}\n`,
+            );
+            core.setOutput('skip', 'false');
+            core.setOutput('pr-number', String(prNumber));
+            core.setOutput('head-sha', headSha);
+
+      - name: Download pinned Goobers release
+        if: steps.review-threads-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/goobers-review-threads-bin"
+          curl -fsSL -o "$RUNNER_TEMP/goobers-review-threads.tar.gz" \
+            "https://github.com/Agent-Clubhouse/Goobers/releases/download/${GOOBERS_VERSION}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+          echo "${GOOBERS_SHA256}  $RUNNER_TEMP/goobers-review-threads.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/goobers-review-threads.tar.gz" -C "$RUNNER_TEMP/goobers-review-threads-bin" goobers
+          chmod +x "$RUNNER_TEMP/goobers-review-threads-bin/goobers"
+          echo "$RUNNER_TEMP/goobers-review-threads-bin" >> "$GITHUB_PATH"
+
+      - name: Materialize review-threads-only Goobers instance
+        if: steps.review-threads-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-review-threads-instance"
+          GOOBERS_SOURCE="$RUNNER_TEMP/goobers-review-threads-source"
+          export GOOBERS_INSTANCE
+          mkdir -p "$GOOBERS_INSTANCE/config" "$GOOBERS_SOURCE/gaggles/crawler/workflows"
+          cp .goobers/manifest.yaml "$GOOBERS_SOURCE/manifest.yaml"
+          cp .goobers/gaggles/crawler/gaggle.yaml "$GOOBERS_SOURCE/gaggles/crawler/gaggle.yaml"
+          cp .goobers/gaggles/crawler/workflows/crawler-review-threads.yaml \
+            "$GOOBERS_SOURCE/gaggles/crawler/workflows/crawler-review-threads.yaml"
+          cat > "$GOOBERS_SOURCE/instance.yaml.example" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${GITHUB_REPOSITORY_OWNER}
+              name: ${GITHUB_REPOSITORY#*/}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          runner:
+            envPassthrough:
+              - GOOBERS_REVIEW_THREADS_INPUT_FILE
+          runConditions:
+            maxParallelRuns: 1
+          EOF
+          cp "$GOOBERS_SOURCE/instance.yaml.example" "$GOOBERS_INSTANCE/instance.yaml"
+          cat >> "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          workflowSource:
+            kind: local-dir
+            path: ${GOOBERS_SOURCE}
+          EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
+          goobers validate "$GOOBERS_INSTANCE"
+
+      - name: Run authoritative Goobers review-threads decision
+        if: steps.review-threads-input.outputs.skip != 'true'
+        env:
+          GOOBERS_GITHUB_TOKEN: ${{ github.token }}
+          GOOBERS_REVIEW_THREADS_INPUT_FILE: ${{ github.workspace }}/.goobers-review-threads/input.json
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-review-threads-instance"
+          export GOOBERS_INSTANCE
+          goobers run crawler-review-threads "$GOOBERS_INSTANCE"
+
+      - name: Extract review-thread decisions
+        if: steps.review-threads-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-review-threads-instance"
+          export GOOBERS_INSTANCE
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
+          jq -r 'select(.type == "stage.finished" and .stage == "decide") | .outputs.decisions' \
+            "$events_file" | tail -n 1 | jq '{ decisions: . }' > .goobers-review-threads/decision.json
+          if [ ! -s .goobers-review-threads/decision.json ]; then
+            echo "::error::No stage.finished/decide event found in ${events_file}."
+            exit 1
+          fi
+          if ! jq -e '.decisions | type == "array"' .goobers-review-threads/decision.json >/dev/null; then
+            echo "::error::The decide event did not contain a valid decisions array."
+            exit 1
+          fi
+
+      - name: Apply fenced review-thread decisions
+        uses: actions/github-script@v7
+        if: steps.review-threads-input.outputs.skip != 'true'
+        env:
+          PR_NUMBER: ${{ steps.review-threads-input.outputs.pr-number }}
+          EXPECTED_HEAD_SHA: ${{ steps.review-threads-input.outputs.head-sha }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const github_ = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/ci-recovery/github.mjs',
+            )));
+
+            const { decisions } = JSON.parse(
+              fs.readFileSync('.goobers-review-threads/decision.json', 'utf8'),
+            );
+            core.info(`GOOBERS_REVIEW_THREADS_DECISIONS ${JSON.stringify(decisions)}`);
+            if (!Array.isArray(decisions) || decisions.length === 0) return;
+
+            // Re-check lane ownership right before writing: contention or a
+            // mid-run rollback must not let a stale decision mutate.
+            const laneOwner = await (async () => {
+              try {
+                return (await github.rest.actions.getRepoVariable({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'LIFECYCLE_OWNER_REVIEW_THREADS',
+                })).data.value;
+              } catch (error) {
+                if (error.status === 404) return '';
+                throw error;
+              }
+            })();
+            if (String(laneOwner || '') !== 'goobers') {
+              core.warning('Lane ownership changed before apply; skipping all mutations.');
+              return;
+            }
+
+            const prNumber = Number(process.env.PR_NUMBER);
+            const expectedHeadSha = String(process.env.EXPECTED_HEAD_SHA || '').toLowerCase();
+
+            // github.token is sufficient here (not CRAWLER_CI_PAT): a reply
+            // posted by github-actions[bot] already satisfies the marker-trust
+            // check in ci-recovery/state.mjs (TRUSTED_BOT_LOGINS includes
+            // 'github-actions[bot]'), and resolving a review thread only needs
+            // pull-requests:write, which this job's token already has. Unlike
+            // the implementation-claim lease (which must look like a trusted
+            // human/OWNER account to satisfy unrelated trust checks),
+            // review-thread marker trust already has a first-party bot escape
+            // hatch, so no elevated PAT is required.
+            const token = github.token;
+
+            async function currentThreads() {
+              return github_.listReviewThreads(
+                token,
+                context.repo.owner,
+                context.repo.repo,
+                prNumber,
+                (query, variables) => github.graphql(query, variables),
+              );
+            }
+
+            async function currentHeadSha() {
+              const current = (await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              })).data;
+              return String(current.head.sha || '').toLowerCase();
+            }
+
+            for (const decision of decisions) {
+              // Re-fetch both the head SHA and the thread state immediately
+              // before writing: a push between decide and apply must not let a
+              // stale decision (computed against an older head) mutate.
+              const headNow = await currentHeadSha();
+              if (headNow !== expectedHeadSha) {
+                core.warning(`skip decision=${decision.action} thread=${decision.threadId} reason=head-changed`);
+                continue;
+              }
+              const review = await currentThreads();
+              const thread = review.threads.find((candidate) => candidate.id === decision.threadId);
+              if (!thread || thread.isResolved) {
+                core.info(`skip decision=${decision.action} thread=${decision.threadId} reason=already-resolved-or-missing`);
+                continue;
+              }
+
+              if (decision.action === 'post-outdated-marker') {
+                // Marker-collision safety: re-check that no trusted marker was
+                // added to this thread since the decision was computed.
+                const comments = thread.comments?.nodes ?? [];
+                const last = comments[comments.length - 1];
+                const hasTrustedMarkerAlready =
+                  last &&
+                  /addressed\s+in/i.test(String(last.body || '')) &&
+                  (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(
+                    String(last.authorAssociation || '').toUpperCase(),
+                  ) ||
+                    ['copilot-swe-agent[bot]', 'copilot-swe-agent', 'github-actions[bot]', 'copilot'].includes(
+                      String(last.author?.login || '').toLowerCase(),
+                    ));
+                if (hasTrustedMarkerAlready) {
+                  core.info(`skip post-outdated-marker thread=${decision.threadId} reason=marker-already-present`);
+                  continue;
+                }
+                try {
+                  await github.rest.pulls.createReplyForReviewComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                    comment_id: Number(decision.replyCommentId),
+                    body: decision.markerBody,
+                  });
+                  core.info(`posted outdated-marker thread=${decision.threadId}`);
+                } catch (error) {
+                  core.warning(`outdated-marker-reply-failed thread=${decision.threadId} err=${error.message}`);
+                }
+                continue;
+              }
+
+              if (decision.action === 'resolve') {
+                try {
+                  await github.graphql(
+                    `
+                      mutation ($threadId: ID!) {
+                        resolveReviewThread(input: { threadId: $threadId }) {
+                          thread { isResolved }
+                        }
+                      }
+                    `,
+                    { threadId: decision.threadId },
+                  );
+                  core.info(`resolved thread=${decision.threadId}`);
+                } catch (error) {
+                  core.warning(`resolve-thread-failed thread=${decision.threadId} err=${error.message}`);
+                }
+              }
+            }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goobers-review-threads-${{ github.run_id }}
+          path: .goobers-review-threads/
+          if-no-files-found: error
+          include-hidden-files: true

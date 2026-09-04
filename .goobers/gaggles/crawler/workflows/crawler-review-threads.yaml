@@ -1,0 +1,31 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Workflow
+dslVersion: '2.0'
+metadata:
+  name: crawler-review-threads
+spec:
+  gaggle: crawler
+  displayName: Crawler review-thread reply/resolve (Phase 3, Lane A)
+  triggers:
+    - type: manual
+  readiness:
+    maxConcurrentRuns: 1
+  start: decide
+  tasks:
+    - name: decide
+      type: deterministic
+      goal: >-
+        Decide review-thread reply/resolve actions for one PR without directly
+        mutating GitHub. Reproduces the legacy two-phase (post-outdated-marker,
+        then resolve) reconcile.mjs behavior deterministically so the hosted
+        wrapper can apply the decision after re-validating thread state.
+      run:
+        script: |
+          set -eu
+          node .github/scripts/goobers-review-threads.mjs \
+            --input "${GOOBERS_REVIEW_THREADS_INPUT_FILE:?}" \
+            --output goobers-review-threads-result.json
+      inputs:
+        resultFile: goobers-review-threads-result.json
+      expectedOutputs:
+        - decisions
