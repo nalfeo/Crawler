@@ -236,8 +236,8 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
-const ISSUE_BUTTON_LABEL = '🚩 Issue';
-const ISSUE_BUTTON_LABEL_COMPACT = '🚩';
+export const _ISSUE_BUTTON_LABEL = '🚩 Issue';
+export const _ISSUE_BUTTON_LABEL_COMPACT = '🚩';
 /**
  * Depth for the terminal action-status toast (run-bundle/RunStats completion
  * telemetry AND issue-filing submission results share this single slot). Must
@@ -1829,6 +1829,10 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  getIssueButtonCompactLabel(): string {
+    return _ISSUE_BUTTON_LABEL_COMPACT;
+  }
+
   getAchievementsButtonBounds(): ScreenBounds | null {
     if (!this.achievementsButton?.visible) {
       return null;
@@ -3373,7 +3377,7 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.issueButton = makeCornerButton(
       cornerButtonTop() + 392,
-      this.issueButtonCompact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL,
+      this.issueButtonCompact ? _ISSUE_BUTTON_LABEL_COMPACT : _ISSUE_BUTTON_LABEL,
       () => {
         this.openIssueReport();
       },
@@ -5448,17 +5452,15 @@ export class MainGameScene extends Phaser.Scene {
       this.issueButtonCompact = compact;
       return;
     }
-    const label = compact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL;
+    const label = compact ? _ISSUE_BUTTON_LABEL_COMPACT : _ISSUE_BUTTON_LABEL;
     if (this.issueButtonCompact === compact && this.issueButton.text === label) {
       return;
     }
-    const previousCompact = this.issueButtonCompact;
-    this.issueButton.setText(label);
     const relayout = this.applyMobileButtonScale;
     if (!relayout) {
-      this.issueButtonCompact = previousCompact;
       return;
     }
+    this.issueButton.setText(label);
     this.issueButtonCompact = compact;
     relayout(getUiScale(this));
   }

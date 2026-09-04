@@ -298,7 +298,10 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         expect(compactIssue?.visible, 'Issue button must remain visible while Gear is open').toBe(
           true,
         );
-        expect(compactIssue?.label, 'Issue uses the compact panel-open affordance').toBe('🚩');
+        const compactIssueLabel = await mainSceneProbe.getIssueButtonCompactLabel(page);
+        expect(compactIssue?.label, 'Issue uses the compact panel-open affordance').toBe(
+          compactIssueLabel,
+        );
         expect(
           overlaps(compactIssue!.bounds, equipmentPanel!),
           'Issue must not overlap the open Gear panel',
