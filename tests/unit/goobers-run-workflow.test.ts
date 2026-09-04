@@ -219,13 +219,24 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(recovery).toContain('GOOBERS_INTAKE_COHORT=${INTAKE_COHORT}');
     expect(start).toContain('if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]');
     expect(start).toContain('is no longer in the Goobers intake cohort');
+    // The revalidated cohort must overwrite GOOBERS_INTAKE_COHORT so the
+    // downstream claim fence trusts a fresh verdict, not a possibly-stale one
+    // from the earlier resolve step.
+    expect(start).toContain('revalidated_cohort="$(jq -r \'.cohort // ""\' <<<"$decision")"');
+    expect(start).toContain(
+      'echo "GOOBERS_INTAKE_COHORT=${revalidated_cohort}" >> "${GITHUB_ENV}"',
+    );
     // The claim fence downstream must accept the cohort the workflow resolved.
     const definition = readFileSync(
       path.join(REPO_ROOT, '.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml'),
       'utf8',
     );
     expect(definition).toContain('GOOBERS_INTAKE_COHORT');
-    expect(definition).toContain('(legacy-parity|resume) claimable=true ;;');
+    expect(definition).toContain('(approved|legacy-parity|resume) claimable=true ;;');
+    // The fence must trust the canonical cohort verdict outright rather than
+    // re-deriving approval via its own label lookup, which drifted out of
+    // sync with the case-insensitive canonical selector.
+    expect(definition).not.toContain('index("goobers:approved") != null');
   });
 
   it('uses trusted pinned defaults outside manual dispatches', () => {

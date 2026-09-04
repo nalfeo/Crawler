@@ -171,6 +171,23 @@ test('an already-assigned issue stays with legacy so no restart lane is orphaned
   });
 });
 
+test('an assigned goobers:approved issue also stays with legacy, not just plain assigned ones', async () => {
+  // The approval shortcut must never outrank the assignment carve-out: an
+  // assigned issue is the stale-session restart lane regardless of who
+  // approved it, or the restart lane would go ownerless (Goobers rejects
+  // assigned issues in goobersIntakeEligibility either way).
+  await withGoobersOwnership(() => {
+    const issue = {
+      number: 123,
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'goobers:approved' }],
+      assignees: [{ login: 'copilot-swe-agent[bot]' }],
+    };
+    assert.equal(issueIntakeEligibility(issue, 'nalfeo').eligible, true);
+    assert.equal(goobersIntakeEligibility(issue).eligible, false);
+  });
+});
+
 test('issue intake rejects missing issues and pull-request payloads', () => {
   assert.equal(issueIntakeEligibility(null).eligible, false);
   assert.equal(

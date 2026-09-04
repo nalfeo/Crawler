@@ -290,6 +290,7 @@ test('every legacy Copilot-assigning workflow reads the lane selector', () => {
 
 test('the gaggle claim fence honors the cohort handed down by the trusted workflow', () => {
   assert.match(GAGGLE, /GOOBERS_INTAKE_COHORT/);
-  assert.match(GAGGLE, /\(legacy-parity\|resume\) claimable=true ;;/);
+  assert.match(GAGGLE, /\(approved\|legacy-parity\|resume\) claimable=true ;;/);
+  assert.doesNotMatch(GAGGLE, /index\("goobers:approved"\) != null/);
   assert.match(WORKFLOW, /- GOOBERS_INTAKE_COHORT/);
 });

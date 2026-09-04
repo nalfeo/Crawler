@@ -260,14 +260,18 @@ export function legacyIntakeCohortEligibility(issue, maintainerLogin = 'nalfeo')
  * path. The owner requirement is that Goobers processes *at least* everything
  * legacy intake would have, so the transferred cohort is the union of:
  *
- * - explicitly approved issues (which transfer regardless of opener trust or
- *   assignment, exactly as Phase 2 shipped), and
+ * - explicitly approved issues that are still unassigned (approval overrides
+ *   opener trust, but never the assignment carve-out below), and
  * - the legacy eligibility cohort, minus issues that already carry an assignee.
  *
- * The assignment carve-out is what keeps the handover gapless: Goobers only
- * claims unassigned issues (`requireUnassigned`), so legacy must keep owning an
- * already-assigned issue — that is the lane that restarts a stalled Copilot
- * session — rather than both writers standing down.
+ * The assignment carve-out is checked FIRST, ahead of the approval shortcut,
+ * and applies to approved issues too: Goobers only claims unassigned issues
+ * (`requireUnassigned`, enforced identically in `goobersIntakeEligibility`
+ * below), so an already-assigned issue — approved or not — must stay with
+ * legacy, which is the lane that restarts a stalled Copilot session. Checking
+ * approval before assignment would report Goobers as the owner here while
+ * `goobersIntakeEligibility` simultaneously rejects the same issue as
+ * assigned, leaving the restart lane ownerless.
  */
 export function goobersOwnsIssueIntake(
   issue,
@@ -275,8 +279,8 @@ export function goobersOwnsIssueIntake(
 ) {
   if (!goobersOwnsImplementationClaim(env)) return false;
   if (!issue || issue.pull_request) return false;
-  if (isGoobersApprovedIssue(issue)) return true;
   if (hasIssueAssignees(issue)) return false;
+  if (isGoobersApprovedIssue(issue)) return true;
   return legacyIntakeCohortEligibility(issue, maintainerLogin).eligible;
 }
 
@@ -744,6 +748,15 @@ export function openBlockingIssues(dependencies) {
  * `blocked_by` dependency chain the intent is for Copilot to pick up the
  * dependent once the blocker clears, regardless of its labels.  The
  * trusted-opener check (no arbitrary bots) still applies.
+ *
+ * This bypass is a deliberate, retained legacy-only carve-out, not a parity
+ * gap: Goobers has no equivalent dependency-unblock trigger in this cutover
+ * (its `issues`/[opened, reopened, labeled] event and hourly sweep never fire
+ * from a *blocker* closing), so an automation-labeled, owner-opened dependent
+ * that this bypass unblocks is never a candidate `goobersIntakeEligibility`
+ * would independently claim. `goobersOwnsIssueIntake` still applies the
+ * regular (non-bypassed) cohort policy to it above, so it stays legacy-only
+ * rather than becoming a dual-writer risk — it is simply never transferred.
  *
  * `restart` is threaded straight through to `runIssueIntake`. It defaults to
  * `false`, which is a no-op when Copilot is already assigned (the assignee

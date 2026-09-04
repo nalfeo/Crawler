@@ -32,22 +32,22 @@ spec:
             esac
             issue_json="$(gh issue view "${issue}" --repo "${repo}" --json state,title,body,url,labels,assignees)"
             state="$(printf '%s' "${issue_json}" | jq -r '.state')"
-            approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
             assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
             # The dispatching workflow (.github/workflows/goobers-run.yml) has
             # already judged this issue with the canonical intake selector and
-            # hands the verdict down as GOOBERS_INTAKE_COHORT. Re-deriving the
-            # cohort here would duplicate the legacy exclusions policy, so this
-            # fence re-checks only the live state that can change under us and
-            # otherwise accepts the cohort from that trusted caller.
+            # hands the verdict down as GOOBERS_INTAKE_COHORT, refreshed by its
+            # own race-guard revalidation immediately before this run starts.
+            # Re-deriving the cohort here (e.g. a separate label lookup) would
+            # duplicate the legacy exclusions policy with its own bugs, so
+            # this fence trusts that cohort verdict outright — including the
+            # literal `approved` value the canonical selector emits for
+            # goobers:approved issues — and re-checks only the live state
+            # (open, unassigned) that can still change between resolution and
+            # this claim.
             claimable=false
-            if [ "${approved}" = "true" ]; then
-              claimable=true
-            else
-              case "${GOOBERS_INTAKE_COHORT:-}" in
-                (legacy-parity|resume) claimable=true ;;
-              esac
-            fi
+            case "${GOOBERS_INTAKE_COHORT:-}" in
+              (approved|legacy-parity|resume) claimable=true ;;
+            esac
             if [ "${state}" != "OPEN" ] || [ "${claimable}" != "true" ] || [ "${assigned}" != "false" ]; then
               echo "Issue #${issue} is not an open, unassigned issue in the Goobers intake cohort; refusing recovery claim." >&2
               exit 1

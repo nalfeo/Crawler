@@ -135,3 +135,45 @@ tests/unit/goobers-shadow.test.ts` (87 passing)
   backlog will be claimed first. If that ordering is wrong for the maintainer,
   the fix is the cohort ordering in `selectGoobersIntakeIssues`, not a new
   label filter in YAML.
+
+## Review-fix round (independent post-diff review)
+
+A different-model post-diff review flagged four findings; all four were real
+and are fixed:
+
+1. **`goobersOwnsIssueIntake` checked approval before assignment.** An
+   assigned `goobers:approved` issue was reported Goobers-owned there while
+   `goobersIntakeEligibility` (correctly) rejected the same issue as assigned,
+   leaving the stale-session restart lane ownerless. Fixed by checking the
+   assignee carve-out first; added a dedicated approved-plus-assigned test.
+2. **The unblock-sweep automation-label bypass (`intakeOpenedIssue({
+fromUnblockSweep: true })`) was an undocumented parity gap.** It is a
+   deliberate legacy-only carve-out — Goobers has no dependency-unblock
+   trigger in this cutover, so the dependent it unblocks is never a
+   `goobersIntakeEligibility` candidate anyway, and it is legacy-only, never
+   dual-claimed. Documented explicitly in the JSDoc and `.goobers/README.md`
+   instead of silently relying on the reader inferring it.
+3. **The `crawler-feature-pr.yaml` claim fence re-derived `approved` via a
+   case-sensitive `jq` label lookup** that could diverge from the
+   case-insensitive canonical selector, and didn't accept the literal
+   `approved` cohort value at all. Fixed by trusting the `GOOBERS_INTAKE_COHORT`
+   verdict outright (`approved|legacy-parity|resume`) instead of re-deriving
+   policy, and by having `goobers-run.yml`'s run-start race-guard overwrite
+   `GOOBERS_INTAKE_COHORT` with its own freshly revalidated cohort so the fence
+   never claims against a stale resolve-time value.
+4. **Docs contradicted the code on `LIFECYCLE_MUTATION_OWNER` malformed/unset
+   behavior.** `.goobers/README.md`, `ci-config-knobs.md`, and the CI mutation
+   bridge runbook said any non-`goobers`/`legacy` value "disables both claim
+   writers"; the code and `goobers-lifecycle-ownership.test.ts` say it rolls
+   back to legacy (exactly one writer, never zero). Aligned all three docs on
+   the code's actual behavior: fail closed against a _dual_ writer, not
+   against automation entirely.
+
+Verification: `node --test .github/scripts/ci-recovery/issue-intake.test.mjs
+.github/scripts/goobers/intake-selection.test.mjs` (52 passing, including two
+new tests); `npx vitest run --project unit
+tests/unit/goobers-run-workflow.test.ts tests/unit/goobers-lifecycle-ownership.test.ts
+tests/unit/goobers-contracts.test.ts tests/unit/goobers-shadow.test.ts` (87
+passing); `npm run test:guards` (2839 passing, 44 pre-existing failures in
+unrelated NPC/sprite-editor test files, confirmed identical on the pre-fix
+tree via `git stash`); `npm run verify:pr-prereqs`.

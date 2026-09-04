@@ -555,11 +555,19 @@ jobs:
           # cohort selector the resolve step used, so a label/approval change
           # between resolution and claim cannot start work Goobers no longer
           # owns. Resumes are exempt for the reason documented in that step.
+          # The freshly revalidated cohort overwrites GOOBERS_INTAKE_COHORT so
+          # every downstream consumer (the claim fence in
+          # crawler-feature-pr.yaml) sees this run-start verdict rather than a
+          # value that may be stale from the earlier resolve step.
           if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]; then
             decision="$(printf '%s' "$issue_json" | node .github/scripts/goobers/intake-selection.mjs --issue -)"
             if [ "$(jq -r '.eligible' <<<"$decision")" != "true" ]; then
               echo "::error::Issue #${issue_number} is no longer in the Goobers intake cohort ($(jq -r '.reason' <<<"$decision")). Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
               exit 1
+            fi
+            revalidated_cohort="$(jq -r '.cohort // ""' <<<"$decision")"
+            if [ -n "$revalidated_cohort" ] && [ "$revalidated_cohort" != "${GOOBERS_INTAKE_COHORT:-}" ]; then
+              echo "GOOBERS_INTAKE_COHORT=${revalidated_cohort}" >> "${GITHUB_ENV}"
             fi
           fi
           blocked_by="$(

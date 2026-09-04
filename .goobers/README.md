@@ -31,6 +31,16 @@ dispositioned `goobers/status:completed-existing-work` are excluded. While
 observe-only for exactly that cohort, so there is one intake owner and no
 no-work gap; on rollback, legacy resumes the whole cohort and Goobers claims
 nothing at all.
+
+One legacy behavior is a deliberate carve-out, not a parity gap: the unblock
+sweep (`intakeUnblockedDependents`) bypasses the `automation`-label
+restriction for a dependent whose blocker just closed, on the theory that a
+human who wired up the `blocked_by` chain already meant for Copilot to pick it
+up. Goobers has no equivalent dependency-unblock trigger — its cohort is
+computed from `issues` events and the hourly sweep, never from a _blocker_
+closing — so that specific dependent is never a candidate `goobersIntakeEligibility`
+would independently claim, and it stays with legacy rather than becoming
+ownerless or dual-claimed.
 The workflow never merges a PR. Plan, implementation, and review each allow at
 most two attempts, and the run
 allows at most two gate repasses. After implementation commits, the workflow
@@ -79,9 +89,12 @@ decision artifact.
 
 **Ownership is per lane, so a cutover has no downtime.**
 `LIFECYCLE_MUTATION_OWNER` selects the owner of the implementation-claim lane
-**only**: exactly `goobers` or `legacy`, anything else disables both claim
-writers (fail closed, because duplicate implementation work is the costly
-failure). Every PR-lifecycle lane has its own selector
+**only**, and migrates it to Goobers only on the exact literal `goobers`.
+Every other value — unset, malformed, or the literal `legacy` — leaves legacy
+in charge of the whole transferred cohort (rollback), the same one-writer
+behavior as every other lane selector below: fail closed against a _dual_
+writer, never fail closed against automation entirely. Every PR-lifecycle lane
+has its own selector
 (`LIFECYCLE_OWNER_CI_RECOVERY`, `LIFECYCLE_OWNER_REVIEW_THREADS`,
 `LIFECYCLE_OWNER_BRANCH_UPDATE`, `LIFECYCLE_OWNER_MERGE_TRAIN`) that defaults to
 `legacy` and only migrates on the literal `goobers`. A misconfigured or unset

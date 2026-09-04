@@ -57,10 +57,13 @@ or not a claim ever existed.
 
 ## Fail directions (deliberately opposite)
 
-- **Claim lane fails closed.** `LIFECYCLE_MUTATION_OWNER` must be exactly
-  `goobers` or `legacy`. Any other value — unset, misspelled, wrong case,
-  padded — disables _both_ claim writers. Duplicate implementation work is the
-  expensive failure, so ambiguity means nobody writes.
+- **Claim lane fails closed against dual writers, not against automation.**
+  `LIFECYCLE_MUTATION_OWNER` migrates the lane to Goobers only on the literal
+  `goobers`. Any other value — unset, misspelled, wrong case, padded, or the
+  literal `legacy` — leaves the whole transferred cohort with **legacy**, the
+  same as an explicit rollback (see the table above). Duplicate implementation
+  work is the expensive failure, so ambiguity means exactly one writer
+  (legacy), never zero and never two.
 - **PR-lifecycle lanes fail operational.** A lane selector migrates only on the
   literal `goobers`; unset or malformed leaves **legacy** in charge. A typo can
   never silently take CI Recovery, review threads, rebasing, or the merge train
@@ -174,8 +177,8 @@ misconfiguration, not expected behavior — check that lane's selector.
 5. Set `LIFECYCLE_MUTATION_OWNER=legacy`; verify a Goobers acquire reports
    `observe-only` while every PR lane still mutates.
 6. Restore `LIFECYCLE_MUTATION_OWNER=goobers` and re-verify one acquire.
-7. Verify a malformed selector (for example `goobrs`) disables both claim
-   writers and leaves all PR lanes running.
+7. Verify a malformed selector (for example `goobrs`) leaves the claim with
+   legacy (same as `legacy`, not disabled) and leaves all PR lanes running.
 
 Document the run IDs, timestamps, and the exact mutated PR in the incident or
 drill record.
