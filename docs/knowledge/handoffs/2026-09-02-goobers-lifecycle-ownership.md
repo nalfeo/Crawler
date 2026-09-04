@@ -98,6 +98,49 @@ telemetry, and route `DIRTY` branches to explicit conflict recovery instead of
 force-pushing. This keeps long-lived evaluation PRs current without weakening
 their human gate.
 
+## Merge-train shepherd intervention (2026-09-03)
+
+Shepherded under shared lease
+`phase2-cutover-a167fa3c-8226-4527-a065-5a239663b17b` after the repository owner
+approved the Phase 2 cutover.
+
+- Reconciled the branch with `main` (21 commits behind → 0). The silent
+  merge-revert guard confirmed no surviving reverts across the two merge
+  commits, and all six previously-resolved review-thread fixes were verified
+  still present in the merged tree (trusted-author marker filtering, registry
+  marker sourcing, strict TTL parsing, literal owner/bridge gates, `queue: max`
+  concurrency, and the `liveHeadSha` stale-head rejection).
+- Diagnosed CI run `33720282498`: the `E2E Visual — Game/UI` job was
+  `cancelled` by concurrency, which is what failed the `Merge gate`/`ci`
+  aggregate. No real defect; superseded by the branch update.
+
+### Real blocker found: the owner workflow could not start
+
+`goobers-lifecycle-owner.yml` was authored from the pre-fix `goobers-shadow`
+template and reintroduced the exact defect class fixed on `main` by PR #4132 and
+PR #4157. Run `33823932907` was a zero-job failure named by the workflow file
+path — the invalid-workflow-file signature — because a `runner.temp` expression
+sat in `jobs.<id>.env`, where the `runner` context is unavailable.
+
+This mattered beyond a red check: cutting lifecycle ownership over to a workflow
+that GitHub refuses to start would have left PR lifecycle handling with no
+writer at all. Fixed by mirroring main's proven shape:
+
+- resolve `GOOBERS_INSTANCE` at runtime from `$RUNNER_TEMP` in each consuming
+  step instead of job-level `env`;
+- create the `config/` directory Goobers v0.3.3 requires at materialization;
+- materialize an isolated `workflowSource` containing only
+  `crawler-lifecycle-owner.yaml`, rather than the whole checked-out `.goobers`
+  tree, so unrelated feature workflows do not enter model-harness preflight;
+- enable `include-hidden-files` for the `.goobers-lifecycle/` artifact.
+
+Regression coverage for the rejected-expression class, the three runtime
+assignments, isolated materialization, and hidden artifact upload was added to
+`tests/unit/goobers-lifecycle-ownership.test.ts`, mirroring the equivalent
+`goobers-shadow` assertions so the template defect cannot silently return.
+
+No gate was weakened, no requirement relaxed, and auto-merge was never armed.
+
 ## Unresolved issues
 
 The repository variables still require the documented drain-first operational
