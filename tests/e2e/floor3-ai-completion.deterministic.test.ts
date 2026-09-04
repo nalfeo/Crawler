@@ -252,11 +252,11 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         // transition telemetry rather than a sampled browser state: at 16x,
         // the healthy gap between adjacent surfaces can be shorter than the
         // E2E poll interval.
-        for (const event of trace.filter(
-          (entry) => entry.action === 'confirmed' && entry.kind !== 'floor3-stair-descend',
-        )) {
+        for (const [eventIndex, event] of trace.entries()) {
+          if (event.action !== 'confirmed' || event.kind === 'floor3-stair-descend') continue;
           const resumeEvent = trace.find(
-            (entry) =>
+            (entry, index) =>
+              index > eventIndex &&
               entry.action === 'resumed' &&
               entry.kind === event.kind &&
               typeof entry.gameMs === 'number' &&
