@@ -725,6 +725,7 @@ export class MainGameScene extends Phaser.Scene {
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
   private issueButtonCompact = false;
+  private issueButtonLayoutApplied = false;
   private issueReportPausedState?: boolean;
   private issueReportDescription = '';
   private issueReportIncludeLogs = true;
@@ -3434,6 +3435,9 @@ export class MainGameScene extends Phaser.Scene {
           safe.bottom -
           (this.issueButton?.displayHeight ?? 0),
       );
+      if (this.issueButton) {
+        this.issueButtonLayoutApplied = true;
+      }
     };
     applyMobileButtonScale(getUiScale(this));
     this.applyMobileButtonScale = applyMobileButtonScale;
@@ -5455,11 +5459,16 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     const label = compact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL;
-    if (this.issueButtonCompact === compact && this.issueButton.text === label) {
+    if (
+      this.issueButtonLayoutApplied &&
+      this.issueButtonCompact === compact &&
+      this.issueButton.text === label
+    ) {
       return;
     }
     this.issueButton.setText(label);
     this.issueButtonCompact = compact;
+    this.issueButtonLayoutApplied = false;
     this.applyMobileButtonScale?.(getUiScale(this));
   }
 

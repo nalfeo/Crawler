@@ -62,6 +62,7 @@ async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<
           'important',
         );
       }
+      window.dispatchEvent(new Event('resize'));
       const canvas = document.querySelector('canvas')?.getBoundingClientRect();
       if (!canvas) {
         return null;
@@ -74,7 +75,6 @@ async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<
         Math.min(design.width, Math.max(0, overlap) * scaleX);
       const clampY = (overlap: number): number =>
         Math.min(design.height, Math.max(0, overlap) * scaleY);
-      window.dispatchEvent(new Event('resize'));
       return {
         top: clampY(values.top - canvas.y),
         right: clampX(canvasRight - (window.innerWidth - values.right)),
