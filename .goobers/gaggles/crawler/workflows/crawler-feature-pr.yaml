@@ -16,7 +16,7 @@ spec:
   tasks:
     - name: query-backlog
       type: deterministic
-      goal: Claim one maintainer-approved Crawler feature issue.
+      goal: Claim one Crawler feature issue from the maintainer-approved or legacy-parity intake cohort.
       run:
         script: |
           set -eu
@@ -32,10 +32,24 @@ spec:
             esac
             issue_json="$(gh issue view "${issue}" --repo "${repo}" --json state,title,body,url,labels,assignees)"
             state="$(printf '%s' "${issue_json}" | jq -r '.state')"
-            approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
             assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
-            if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ] || [ "${assigned}" != "false" ]; then
-              echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
+            # The dispatching workflow (.github/workflows/goobers-run.yml) has
+            # already judged this issue with the canonical intake selector and
+            # hands the verdict down as GOOBERS_INTAKE_COHORT, refreshed by its
+            # own race-guard revalidation immediately before this run starts.
+            # Re-deriving the cohort here (e.g. a separate label lookup) would
+            # duplicate the legacy exclusions policy with its own bugs, so
+            # this fence trusts that cohort verdict outright — including the
+            # literal `approved` value the canonical selector emits for
+            # goobers:approved issues — and re-checks only the live state
+            # (open, unassigned) that can still change between resolution and
+            # this claim.
+            claimable=false
+            case "${GOOBERS_INTAKE_COHORT:-}" in
+              (approved|legacy-parity|resume) claimable=true ;;
+            esac
+            if [ "${state}" != "OPEN" ] || [ "${claimable}" != "true" ] || [ "${assigned}" != "false" ]; then
+              echo "Issue #${issue} is not an open, unassigned issue in the Goobers intake cohort; refusing recovery claim." >&2
               exit 1
             fi
             gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'

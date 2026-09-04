@@ -7,6 +7,7 @@ import {
   addIssueAssignees,
   buildIssueActorIds,
   buildRetroactivePlanComment,
+  goobersIntakeEligibility,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
   intakeOpenedIssue,
@@ -17,6 +18,7 @@ import {
   IssueClaimedByGoobersError,
   isTelemetryIssue,
   issueIntakeEligibility,
+  legacyIntakeCohortEligibility,
   openBlockingIssues,
   removeIssueAssignees,
   reviewThreadFollowupBacklogIssueNumbers,
@@ -34,7 +36,21 @@ test('issue intake workflow subscribes to reopened issues', () => {
   assert.match(workflow, /types:\s*\[opened,\s*reopened,\s*closed\]/);
 });
 
-process.env.LIFECYCLE_MUTATION_OWNER = 'goobers';
+// Default era for this suite: legacy owns the implementation-claim lane, so the
+// legacy intake assertions below describe the pre-cutover behavior verbatim.
+// Cutover behavior (Goobers owning the transferred cohort) is asserted inside
+// `withGoobersOwnership` so the two eras can never be confused for each other.
+process.env.LIFECYCLE_MUTATION_OWNER = 'legacy';
+
+async function withGoobersOwnership(run) {
+  const previous = process.env.LIFECYCLE_MUTATION_OWNER;
+  process.env.LIFECYCLE_MUTATION_OWNER = 'goobers';
+  try {
+    return await run();
+  } finally {
+    process.env.LIFECYCLE_MUTATION_OWNER = previous;
+  }
+}
 
 test('issue intake accepts only trusted opener and label combinations', () => {
   const cases = [
@@ -68,24 +84,108 @@ test('issue intake accepts only trusted opener and label combinations', () => {
       eligible: false,
     },
     {
-      name: 'Goobers-owned maintainer issue',
+      name: 'Goobers-approved maintainer issue while legacy owns the lane',
       login: 'nalfeo',
       labels: ['goobers:approved'],
-      eligible: false,
+      eligible: true,
     },
   ];
 
   for (const entry of cases) {
-    const result = issueIntakeEligibility(
-      {
+    const issue = {
+      number: 123,
+      user: { login: entry.login },
+      labels: entry.labels.map((name) => ({ name })),
+    };
+    assert.equal(issueIntakeEligibility(issue, 'nalfeo').eligible, entry.eligible, entry.name);
+    // The cohort function is the canonical definition of this policy and must
+    // agree with legacy-era intake case for case; Goobers selects from it too.
+    assert.equal(
+      legacyIntakeCohortEligibility(issue, 'nalfeo').eligible,
+      entry.name.startsWith('Goobers-approved') ? true : entry.eligible,
+      `${entry.name} (cohort)`,
+    );
+  }
+});
+
+test('legacy intake goes observe-only for the whole transferred cohort under Goobers', async () => {
+  // Parity gate: every issue legacy would have picked up must move to Goobers,
+  // not just the ones a human labeled goobers:approved.
+  await withGoobersOwnership(() => {
+    const transferred = [
+      { name: 'maintainer issue', login: 'nalfeo', labels: [] },
+      { name: 'Actions automation issue', login: 'github-actions[bot]', labels: ['automation'] },
+      { name: 'Copilot-opened issue', login: 'copilot-swe-agent[bot]', labels: [] },
+    ];
+    for (const entry of transferred) {
+      const issue = {
         number: 123,
         user: { login: entry.login },
         labels: entry.labels.map((name) => ({ name })),
-      },
-      'nalfeo',
-    );
-    assert.equal(result.eligible, entry.eligible, entry.name);
-  }
+      };
+      assert.deepEqual(
+        issueIntakeEligibility(issue, 'nalfeo'),
+        {
+          eligible: false,
+          reason: 'legacy intake is observe-only while Goobers owns the implementation-claim lane',
+        },
+        entry.name,
+      );
+      assert.equal(goobersIntakeEligibility(issue).eligible, true, `${entry.name} (goobers owns)`);
+    }
+
+    // Issues legacy would never have taken stay with legacy: no cohort grows
+    // silently, and nothing that legacy still owns becomes ownerless.
+    const retained = [
+      { name: 'untrusted opener', login: 'dependabot[bot]', labels: [] },
+      { name: 'maintainer automation issue', login: 'nalfeo', labels: ['automation'] },
+    ];
+    for (const entry of retained) {
+      const issue = {
+        number: 123,
+        user: { login: entry.login },
+        labels: entry.labels.map((name) => ({ name })),
+      };
+      assert.equal(issueIntakeEligibility(issue, 'nalfeo').eligible, false, entry.name);
+      assert.equal(
+        goobersIntakeEligibility(issue).eligible,
+        false,
+        `${entry.name} (goobers does not own)`,
+      );
+    }
+  });
+});
+
+test('an already-assigned issue stays with legacy so no restart lane is orphaned', async () => {
+  // Goobers only claims unassigned issues, so transferring an assigned one
+  // would leave the stale-session restart lane with no owner at all.
+  await withGoobersOwnership(() => {
+    const issue = {
+      number: 123,
+      user: { login: 'nalfeo' },
+      labels: [],
+      assignees: [{ login: 'copilot-swe-agent[bot]' }],
+    };
+    assert.equal(issueIntakeEligibility(issue, 'nalfeo').eligible, true);
+    assert.equal(goobersIntakeEligibility(issue).eligible, false);
+  });
+});
+
+test('an assigned goobers:approved issue also stays with legacy, not just plain assigned ones', async () => {
+  // The approval shortcut must never outrank the assignment carve-out: an
+  // assigned issue is the stale-session restart lane regardless of who
+  // approved it, or the restart lane would go ownerless (Goobers rejects
+  // assigned issues in goobersIntakeEligibility either way).
+  await withGoobersOwnership(() => {
+    const issue = {
+      number: 123,
+      user: { login: 'nalfeo' },
+      labels: [{ name: 'goobers:approved' }],
+      assignees: [{ login: 'copilot-swe-agent[bot]' }],
+    };
+    assert.equal(issueIntakeEligibility(issue, 'nalfeo').eligible, true);
+    assert.equal(goobersIntakeEligibility(issue).eligible, false);
+  });
 });
 
 test('issue intake rejects missing issues and pull-request payloads', () => {
@@ -1233,24 +1333,26 @@ test('legacy intake reclaims goobers:approved issues when the claim lane rolls b
 
 test('intakeOpenedIssue rejects a Goobers-owned dependent even from the unblock sweep', async () => {
   let paginateCalled = false;
-  const result = await intakeOpenedIssue({
-    graphql: async () => ({}),
-    paginate: async () => {
-      paginateCalled = true;
-      return [];
-    },
-    request: async () => ({ data: [] }),
-    token: 'token',
-    owner: 'nalfeo',
-    repo: 'Crawler',
-    issue: {
-      number: 1906,
-      node_id: 'ISSUE_1906',
-      user: { login: 'nalfeo' },
-      labels: [{ name: 'GOOBERS:APPROVED' }],
-    },
-    fromUnblockSweep: true,
-  });
+  const result = await withGoobersOwnership(() =>
+    intakeOpenedIssue({
+      graphql: async () => ({}),
+      paginate: async () => {
+        paginateCalled = true;
+        return [];
+      },
+      request: async () => ({ data: [] }),
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue: {
+        number: 1906,
+        node_id: 'ISSUE_1906',
+        user: { login: 'nalfeo' },
+        labels: [{ name: 'GOOBERS:APPROVED' }],
+      },
+      fromUnblockSweep: true,
+    }),
+  );
 
   assert.deepEqual(result, {
     assigned: false,
@@ -1261,6 +1363,36 @@ test('intakeOpenedIssue rejects a Goobers-owned dependent even from the unblock 
     false,
     'Goobers ownership must short-circuit before the dependency query',
   );
+});
+
+test('the unblock sweep also stands down for the transferred legacy cohort', async () => {
+  let paginateCalled = false;
+  const result = await withGoobersOwnership(() =>
+    intakeOpenedIssue({
+      graphql: async () => ({}),
+      paginate: async () => {
+        paginateCalled = true;
+        return [];
+      },
+      request: async () => ({ data: [] }),
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue: {
+        number: 1907,
+        node_id: 'ISSUE_1907',
+        user: { login: 'nalfeo' },
+        labels: [],
+      },
+      fromUnblockSweep: true,
+    }),
+  );
+
+  assert.deepEqual(result, {
+    assigned: false,
+    reason: 'legacy intake is observe-only while Goobers owns the implementation-claim lane',
+  });
+  assert.equal(paginateCalled, false);
 });
 
 test('intakeUnblockedDependents assigns eligible unblocked dependents and skips the rest', async () => {
@@ -1483,7 +1615,7 @@ test('runIssueIntake refuses to assign an issue that is no longer open', async (
   );
 });
 
-test('runIssueIntake refuses to assign when issue gains goobers:approved during intake', async () => {
+test('runIssueIntake refuses to assign when Goobers claims the issue during intake', async () => {
   let assignmentMutationCalled = false;
   const graphql = async (_token, query) => {
     if (query.includes('suggestedActors')) {
@@ -1509,21 +1641,61 @@ test('runIssueIntake refuses to assign when issue gains goobers:approved during 
   };
 
   let requestCalled = false;
-  await assert.rejects(
-    runIssueIntake({
-      graphql,
-      paginate: async () => [],
-      request: async () => {
-        requestCalled = true;
-        return { data: { id: 1 } };
-      },
-      token: 'token',
-      owner: 'nalfeo',
-      repo: 'Crawler',
-      issue,
-    }),
-    IssueClaimedByGoobersError,
-  );
+  await withGoobersOwnership(async () => {
+    await assert.rejects(
+      runIssueIntake({
+        graphql,
+        paginate: async () => [],
+        request: async () => {
+          requestCalled = true;
+          return { data: { id: 1 } };
+        },
+        token: 'token',
+        owner: 'nalfeo',
+        repo: 'Crawler',
+        issue,
+      }),
+      IssueClaimedByGoobersError,
+    );
+  });
   assert.equal(requestCalled, false);
   assert.equal(assignmentMutationCalled, false);
+});
+
+test('runIssueIntake stands down when a live re-fetch shows the transferred cohort', async () => {
+  // The live guard must cover the parity cohort too, or a race could double-write
+  // an issue Goobers is about to claim.
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            labels: { nodes: [] },
+            assignees: { nodes: [] },
+          },
+        },
+      };
+    }
+    throw new Error('assignment mutation must not run when Goobers owns the issue');
+  };
+
+  await withGoobersOwnership(async () => {
+    await assert.rejects(
+      runIssueIntake({
+        graphql,
+        paginate: async () => [],
+        request: async () => ({ data: { id: 1 } }),
+        token: 'token',
+        owner: 'nalfeo',
+        repo: 'Crawler',
+        issue: { ...issue, user: { login: 'nalfeo' } },
+      }),
+      IssueClaimedByGoobersError,
+    );
+  });
 });
