@@ -18,7 +18,7 @@ quests, ai-behavior-tree, devtools
 
 ## Summary
 
-- Added a Floor 5 `releaseGate` manifest contract with approved numeric thresholds
+- Added a Floor 5 `releaseGate` manifest contract with provisional numeric thresholds
   for completion rate, median/p95 duration, Command Post floor, Ram survival
   floor, terminal live-hostile/path-stall/frame-cost caps, stall backstop, and
   clean-sweep health floor.

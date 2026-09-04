@@ -5,6 +5,7 @@ import {
   collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
 } from '../../src/game/systems/achievementSystem.js';
+import { requestFloor5ThroneCapture } from '../../src/game/floor5Scenario.js';
 import { floor5Manifest } from '../../src/shared/floor-manifest.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -65,6 +66,40 @@ describe('Floor 5 achievement facts', () => {
     expect(world.achievements.unlockedIds.has('floor5-clean-sweep')).toBe(false);
 
     evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
+    expect(world.achievements.unlockedIds.has('floor5-castle-captured')).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor5-clean-sweep')).toBe(true);
+  });
+
+  it('unlocks run-end Floor 5 achievements through the real capture objective path', () => {
+    const { world, siege } = initFloor5World();
+    const cleanSweepFloor = floor5Manifest.floor5!.releaseGate!.cleanSweepMinCommandPostHealthPct;
+    const commandPostMaxHealth = siege.structures['command-post'].maxHealth;
+
+    siege.breach.latched = true;
+    siege.phase = { kind: 'THRONE' };
+    siege.finale.courtyardEnteredFrame = world.frameCount;
+    siege.finale.courtyardCleared = true;
+    siege.finale.regentSpawnedFrame = world.frameCount;
+    siege.finale.regentDefeatedFrame = world.frameCount;
+    siege.finale.throneActors.push({
+      kind: 'regent-emeritus',
+      eid: 0,
+      health: 0,
+      maxHealth: 1,
+      spawnedFrame: world.frameCount,
+      defeatedFrame: world.frameCount,
+      anchorX: 0,
+      anchorY: 0,
+    });
+    siege.finale.captureAvailable = true;
+    siege.finale.captureAvailableFrame = world.frameCount;
+    siege.commandPostHealth = Math.ceil(commandPostMaxHealth * cleanSweepFloor);
+
+    expect(requestFloor5ThroneCapture(world)).toBe('accepted');
+    world.floorObjectiveTick?.(world);
+
+    expect(siege.phase.kind).toBe('CAPTURED');
+    expect(world.goalFlags.get('floor5.siege.castleCaptured')).toBe(true);
     expect(world.achievements.unlockedIds.has('floor5-castle-captured')).toBe(true);
     expect(world.achievements.unlockedIds.has('floor5-clean-sweep')).toBe(true);
   });

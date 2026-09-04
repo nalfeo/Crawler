@@ -90,6 +90,7 @@ import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { acceptQuest, setTrackedQuest } from '../core/systems/questSystem.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 
 const FLOOR5_PLAYER_STAT_SOURCE_ID = 'floor5-manifest-player';
 const FLOOR5_TEAM_CODE: Record<Floor5SiegeTeam, number> = {
@@ -445,12 +446,13 @@ function createFloor5RamState(config: ReturnType<typeof getFloor5Config>): Floor
 
 function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
   const config = getFloor5Config();
+  const initialPhase = { kind: config.phase.initial };
   const rngStreamKeys = Object.fromEntries(
     config.rngStreams.map((label) => [label, `${world.seed}:floor5:${label}`]),
   ) as Floor5SiegeState['rngStreamKeys'];
   const waveManifest = buildFloor5WaveManifest(rngStreamKeys.waves);
   return {
-    phase: { kind: config.phase.initial },
+    phase: initialPhase,
     lastWorldElapsedMs: world.elapsedMs,
     commandPostHealth: config.commandPost.health,
     engineState: 'LOCKED',
@@ -493,7 +495,18 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
       completedFrame: null,
     },
     rngStreamKeys,
-    trace: [],
+    trace: [
+      {
+        phase: clonePhase(initialPhase),
+        reason: 'floor5-initialized',
+        frame: world.frameCount,
+        worldElapsedMs: world.elapsedMs,
+        commandPostHealth: config.commandPost.health,
+        engineState: 'LOCKED',
+        breachState: 'SEALED',
+        heroState: 'PENDING',
+      },
+    ],
     structures: {
       'command-post': {
         id: 'command-post',
@@ -1594,6 +1607,12 @@ function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void
     state.finale.regentDefeatedFrame !== null,
   );
   setGoalFlag(world, FLOOR5_SIEGE_GOAL_IDS.castleCaptured, state.phase.kind === 'CAPTURED');
+}
+
+function evaluateFloor5RunEndAchievements(world: GameWorld, state: Floor5SiegeState): void {
+  if (state.phase.kind === 'CAPTURED') {
+    evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
+  }
 }
 
 function advanceFloor5RamConstruction(world: GameWorld, state: Floor5SiegeState): void {
@@ -3278,6 +3297,7 @@ function floor5ObjectiveTick(world: GameWorld): void {
   }
   if (isFloor5Terminal(state)) {
     projectFloor5GoalFlags(world, state);
+    evaluateFloor5RunEndAchievements(world, state);
     return;
   }
   // --- Damage phase -------------------------------------------------------
@@ -3323,6 +3343,7 @@ function floor5ObjectiveTick(world: GameWorld): void {
   //    Command Post loss always outranks a same-tick capture.
   advanceFloor5Finale(world, state);
   projectFloor5GoalFlags(world, state);
+  evaluateFloor5RunEndAchievements(world, state);
 }
 
 function equipFloor5StarterWeapon(
