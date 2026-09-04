@@ -53,7 +53,7 @@ interface SafeAreaLayout {
 }
 
 async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<void> {
-  await page.evaluate((values) => {
+  const expectedInsets = await page.evaluate((values) => {
     for (const [edge, value] of Object.entries(values)) {
       document.documentElement.style.setProperty(
         `--crawler-safe-area-inset-${edge}`,
@@ -61,19 +61,34 @@ async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<
         'important',
       );
     }
+    const canvas = document.querySelector('canvas')?.getBoundingClientRect();
+    if (!canvas) {
+      return null;
+    }
+    const scaleX = 1280 / canvas.width;
+    const scaleY = 720 / canvas.height;
+    const canvasRight = canvas.x + canvas.width;
+    const canvasBottom = canvas.y + canvas.height;
+    const clampX = (overlap: number): number => Math.min(1280, Math.max(0, overlap) * scaleX);
+    const clampY = (overlap: number): number => Math.min(720, Math.max(0, overlap) * scaleY);
     window.dispatchEvent(new Event('resize'));
+    return {
+      top: clampY(values.top - canvas.y),
+      right: clampX(canvasRight - (window.innerWidth - values.right)),
+      bottom: clampY(canvasBottom - (window.innerHeight - values.bottom)),
+      left: clampX(values.left - canvas.x),
+    };
   }, insets);
+  if (!expectedInsets) {
+    throw new Error('safe-area inset test could not find the Phaser canvas');
+  }
   await page.waitForFunction(
-    ({ expectedEdges }) => {
+    ({ expected, edges }) => {
       const layout = window.__mainSceneProbe?.getSafeAreaLayout();
       if (!layout) return false;
-      return expectedEdges.every(([edge, shouldBeNonzero]) =>
-        shouldBeNonzero ? layout.insets[edge] > 0 : layout.insets[edge] === 0,
-      );
+      return edges.every((edge) => Math.abs(layout.insets[edge] - expected[edge]) < 0.001);
     },
-    {
-      expectedEdges: SAFE_AREA_EDGES.map((edge) => [edge, insets[edge] > 0] as const),
-    },
+    { expected: expectedInsets, edges: SAFE_AREA_EDGES },
     { timeout: 5_000, polling: 100 },
   );
 }
