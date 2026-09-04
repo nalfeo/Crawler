@@ -1,7 +1,9 @@
 name: Goobers Run
 
-# Dispatches the Goobers `crawler-feature-pr` workflow when an issue receives
-# `goobers:approved`, with an hourly recovery sweep and a manual escape hatch.
+# Dispatches the Goobers `crawler-feature-pr` workflow for every issue the
+# legacy issue-intake reconciler would have picked up — the maintainer-approved
+# queue plus the legacy trusted-opener cohort — immediately on the issue event,
+# with an hourly recovery sweep and a manual escape hatch.
 # Downloads a pinned, checksum-verified Goobers release binary
 # (no Go build step — see .github/workflows/goobers-validate.yml), scaffolds a
 # throwaway instance root in the runner's temp directory, materializes this
@@ -14,7 +16,10 @@ name: Goobers Run
 
 on:
   issues:
-    types: [labeled]
+    # `opened`/`reopened` give a newly eligible issue an immediate dispatch;
+    # `labeled` covers the explicit `goobers:approved` approval. The hourly
+    # schedule below is the recovery path for missed webhooks and backlog.
+    types: [opened, reopened, labeled]
   schedule:
     # Recover missed webhooks and retry still-eligible work without running at
     # the crowded top of the hour.
@@ -51,15 +56,21 @@ permissions:
 jobs:
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
-    # Goobers only claims and implements approved issues while it owns the
+    # Goobers only claims and implements issues while it owns the
     # implementation-claim lane. Without this, a rollback to `legacy` would
     # leave BOTH Goobers and legacy intake claiming the same issue, which is
     # exactly the dual-writer case the lane model exists to prevent.
+    #
+    # This is only the cheap coarse gate. Cohort membership (trusted opener,
+    # telemetry, automation provenance, approval override) is decided by the
+    # canonical selector in the "Resolve Goobers recovery target" step so the
+    # legacy exclusions live in exactly one place.
     if: >-
       vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&
       (github.event_name != 'issues' ||
-      (github.event.label.name == 'goobers:approved' &&
-      github.event.issue.state == 'open'))
+      (github.event.issue.state == 'open' &&
+      (github.event.action != 'labeled' ||
+      github.event.label.name == 'goobers:approved')))
     # Keep irrelevant issue-label events from entering the workflow-level
     # pending slot and cancelling a queued schedule/manual run before this
     # job-level `if` can skip them.
@@ -75,6 +86,10 @@ jobs:
       GOOBERS_REPO: Agent-Clubhouse/Goobers
       GOOBERS_INSTANCE: ${{ github.workspace }}/.goobers-instance
       GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
+      # Consumed by the canonical eligibility library, which fails closed on
+      # anything other than the literal `goobers`.
+      LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
+      ISSUE_OWNER: nalfeo
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -87,6 +102,14 @@ jobs:
           set -euo pipefail
           cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
           echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
+
+      # Deliberately unconditional and ahead of target resolution: the
+      # eligibility selector below runs on Node, including on runs that then
+      # skip, so it must not depend on the runner image's ambient Node version.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Resolve Goobers recovery target
         id: recovery
@@ -105,6 +128,14 @@ jobs:
             echo "::error::abandon_existing=true requires an explicit issue_number; refusing to close an arbitrary recovered PR." >&2
             exit 1
           fi
+          # Single source of truth for "may Goobers claim this issue": the
+          # canonical library shared with legacy intake. Never re-implement
+          # these selectors in YAML or jq.
+          decide_issue() {
+            gh issue view "$1" --repo "${GITHUB_REPOSITORY}" \
+              --json number,state,labels,assignees,author |
+              node .github/scripts/goobers/intake-selection.mjs --issue -
+          }
           find_open_dependency_blockers() {
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by" \
@@ -148,6 +179,35 @@ jobs:
             fi
             return 0
           }
+          INTAKE_COHORT=""
+          # An `issues` event names its own target. When that issue is not in
+          # the intake cohort, fall through to the normal recovery sweep rather
+          # than burning the run: the concurrency group holds a single pending
+          # slot, so an ineligible event that simply exited could displace real
+          # queued work.
+          if [ -n "${ISSUE_NUMBER}" ] && [ "${GITHUB_EVENT_NAME}" = "issues" ]; then
+            if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+              echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; the issues event payload is malformed." >&2
+              exit 1
+            fi
+            lookup_status=0
+            event_pr="$(find_open_goobers_pr "$ISSUE_NUMBER")" || lookup_status=$?
+            if [ "$lookup_status" -ne 0 ]; then
+              exit "$lookup_status"
+            fi
+            if [ -n "${event_pr}" ]; then
+              INTAKE_COHORT="resume"
+            else
+              decision="$(decide_issue "${ISSUE_NUMBER}")"
+              if [ "$(jq -r '.eligible' <<<"${decision}")" = "true" ]; then
+                INTAKE_COHORT="$(jq -r '.cohort' <<<"${decision}")"
+                echo "Issue event selected issue #${ISSUE_NUMBER} (cohort: ${INTAKE_COHORT})."
+              else
+                echo "::notice::Issue #${ISSUE_NUMBER} is not in the Goobers intake cohort ($(jq -r '.reason' <<<"${decision}")); falling through to the recovery sweep without claiming it."
+                ISSUE_NUMBER=""
+              fi
+            fi
+          fi
           if [ -z "${ISSUE_NUMBER}" ]; then
             for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
               --state open --label 'goobers/status:in-review' --limit 1000 --json number --jq '.[].number'); do
@@ -163,40 +223,49 @@ jobs:
                   continue
                 fi
                 ISSUE_NUMBER="${candidate_issue}"
+                INTAKE_COHORT="resume"
                 echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr}."
                 break
               fi
             done
           fi
           if [ -z "${ISSUE_NUMBER}" ]; then
-            # Apply eligibility filters and creation-order sort server-side
-            # (GitHub search qualifiers) rather than paging `gh issue list`
-            # and sorting locally: the REST issue-list endpoint truncates to
-            # 100 most-recently-updated issues before any local `--jq`
-            # filtering, which can both miss an older eligible issue and
-            # falsely report "no work" when those 100 are all
+            # Apply state/assignee filters and creation-order sort server-side
+            # (GitHub search qualifiers) rather than paging `gh issue list`:
+            # the REST issue-list endpoint truncates to 100 most-recently-updated
+            # issues before any local filtering, which can both miss an older
+            # eligible issue and falsely report "no work" when those 100 are all
             # assigned/in-review.
-            for candidate_issue in $(
-              gh search issues \
-                --repo "${GITHUB_REPOSITORY}" \
-                --state open \
-                --label 'goobers:approved' \
-                --no-assignee \
-                --sort created --order asc --limit 1000 \
-                --json number --jq '.[].number' \
-                -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"'
-            ); do
+            #
+            # The query intentionally does NOT filter by `goobers:approved`:
+            # Goobers must pick up at least the full legacy intake cohort. The
+            # canonical selector decides membership from the returned payloads.
+            candidates_file="${RUNNER_TEMP}/goobers-intake-candidates.json"
+            selected_file="${RUNNER_TEMP}/goobers-intake-selected.tsv"
+            gh search issues \
+              --repo "${GITHUB_REPOSITORY}" \
+              --state open \
+              --no-assignee \
+              --sort created --order asc --limit 1000 \
+              --json number,state,labels,assignees,author,isPullRequest \
+              -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"' \
+              > "${candidates_file}"
+            node .github/scripts/goobers/intake-selection.mjs \
+              --candidates "${candidates_file}" > "${selected_file}"
+            while IFS=$'\t' read -r candidate_issue candidate_cohort; do
+              [ -n "${candidate_issue}" ] || continue
               blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
               if [ -n "${blocked_by}" ]; then
                 echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
                 continue
               fi
               ISSUE_NUMBER="${candidate_issue}"
-              echo "Selected fresh approved issue #${ISSUE_NUMBER}."
+              INTAKE_COHORT="${candidate_cohort}"
+              echo "Selected eligible issue #${ISSUE_NUMBER} (cohort: ${INTAKE_COHORT})."
               break
-            done
+            done < "${selected_file}"
             if [ -z "${ISSUE_NUMBER}" ]; then
-              echo "No unblocked eligible goobers:approved issue found; skipping this run."
+              echo "No unblocked issue in the Goobers intake cohort; skipping this run."
               echo "should_run=false" >> "${GITHUB_OUTPUT}"
               exit 0
             fi
@@ -213,13 +282,35 @@ jobs:
             echo "should_run=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}" >> "${GITHUB_ENV}"
 
           lookup_status=0
           pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")" || lookup_status=$?
           if [ "$lookup_status" -ne 0 ]; then
             exit "$lookup_status"
           fi
+
+          # Intake eligibility gates FRESH claims only. An issue with an open
+          # Goobers PR is already claimed, so a resume must not be re-judged
+          # against the fresh-intake exclusions it legitimately violates (it
+          # carries goobers/status:in-review by construction).
+          if [ -n "${pr_number}" ]; then
+            INTAKE_COHORT="resume"
+          elif [ -z "${INTAKE_COHORT}" ]; then
+            decision="$(decide_issue "${ISSUE_NUMBER}")"
+            INTAKE_COHORT="$(jq -r '.cohort // ""' <<<"${decision}")"
+            if [ "$(jq -r '.eligible' <<<"${decision}")" != "true" ]; then
+              echo "::notice::Issue #${ISSUE_NUMBER} is not in the Goobers intake cohort ($(jq -r '.reason' <<<"${decision}")); skipping without any claim or mutation. Label it goobers:approved to force intake, then retry with: gh workflow run goobers-run.yml -f issue_number=${ISSUE_NUMBER}"
+              echo "should_run=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "Issue #${ISSUE_NUMBER} is eligible for Goobers intake (cohort: ${INTAKE_COHORT})."
+          fi
+
+          {
+            echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}"
+            echo "GOOBERS_INTAKE_COHORT=${INTAKE_COHORT}"
+          } >> "${GITHUB_ENV}"
+
           if [ -z "${pr_number}" ]; then
             echo "No open Goobers PR cross-referenced from issue #${ISSUE_NUMBER}; starting a fresh branch."
             exit 0
@@ -349,12 +440,6 @@ jobs:
           ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
           echo "$PWD/bin" >> "$GITHUB_PATH"
 
-      - name: Set up Node.js
-        if: steps.recovery.outputs.should_run != 'false'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Install project dependencies
         if: steps.recovery.outputs.should_run != 'false'
         run: npm ci
@@ -423,6 +508,7 @@ jobs:
             envPassthrough:
               - GOOBERS_INSTANCE
               - GOOBERS_RECOVERY_ISSUE
+              - GOOBERS_INTAKE_COHORT
               - GOOBERS_RESUME_BRANCH
               - GH_TOKEN
               - GITHUB_REPOSITORY
@@ -445,13 +531,23 @@ jobs:
             exit 1
           fi
 
-          issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json state,labels,assignees)"
+          issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json number,state,labels,assignees,author)"
           issue_state="$(jq -r '.state' <<<"$issue_json")"
-          issue_approved="$(jq -r '[.labels[].name] | index("goobers:approved") != null' <<<"$issue_json")"
           issue_unassigned="$(jq -r '[.assignees[]] | length == 0' <<<"$issue_json")"
-          if [ "$issue_state" != "OPEN" ] || [ "$issue_approved" != "true" ] || [ "$issue_unassigned" != "true" ]; then
-            echo "::error::Issue #${issue_number} is no longer an open, unassigned goobers:approved issue. Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+          if [ "$issue_state" != "OPEN" ] || [ "$issue_unassigned" != "true" ]; then
+            echo "::error::Issue #${issue_number} is no longer an open, unassigned issue. Fix its state or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
             exit 1
+          fi
+          # Race guard: revalidate the live issue against the same canonical
+          # cohort selector the resolve step used, so a label/approval change
+          # between resolution and claim cannot start work Goobers no longer
+          # owns. Resumes are exempt for the reason documented in that step.
+          if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]; then
+            decision="$(printf '%s' "$issue_json" | node .github/scripts/goobers/intake-selection.mjs --issue -)"
+            if [ "$(jq -r '.eligible' <<<"$decision")" != "true" ]; then
+              echo "::error::Issue #${issue_number} is no longer in the Goobers intake cohort ($(jq -r '.reason' <<<"$decision")). Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+              exit 1
+            fi
           fi
           blocked_by="$(
             gh api --paginate \
@@ -507,6 +603,7 @@ jobs:
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
           GOOBERS_RESUME_BRANCH: ${{ env.GOOBERS_RESUME_BRANCH }}
           GOOBERS_RECOVERY_ISSUE: ${{ env.GOOBERS_RECOVERY_ISSUE }}
+          GOOBERS_INTAKE_COHORT: ${{ env.GOOBERS_INTAKE_COHORT }}
         run: |
           set -euo pipefail
           goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"

@@ -16,7 +16,7 @@ spec:
   tasks:
     - name: query-backlog
       type: deterministic
-      goal: Claim one maintainer-approved Crawler feature issue.
+      goal: Claim one Crawler feature issue from the maintainer-approved or legacy-parity intake cohort.
       run:
         script: |
           set -eu
@@ -34,8 +34,22 @@ spec:
             state="$(printf '%s' "${issue_json}" | jq -r '.state')"
             approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
             assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
-            if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ] || [ "${assigned}" != "false" ]; then
-              echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
+            # The dispatching workflow (.github/workflows/goobers-run.yml) has
+            # already judged this issue with the canonical intake selector and
+            # hands the verdict down as GOOBERS_INTAKE_COHORT. Re-deriving the
+            # cohort here would duplicate the legacy exclusions policy, so this
+            # fence re-checks only the live state that can change under us and
+            # otherwise accepts the cohort from that trusted caller.
+            claimable=false
+            if [ "${approved}" = "true" ]; then
+              claimable=true
+            else
+              case "${GOOBERS_INTAKE_COHORT:-}" in
+                (legacy-parity|resume) claimable=true ;;
+              esac
+            fi
+            if [ "${state}" != "OPEN" ] || [ "${claimable}" != "true" ] || [ "${assigned}" != "false" ]; then
+              echo "Issue #${issue} is not an open, unassigned issue in the Goobers intake cohort; refusing recovery claim." >&2
               exit 1
             fi
             gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'

@@ -2,10 +2,11 @@
 
 This directory is Crawler's versioned Goobers desired-state source. It defines
 the `crawler-feature-pr` workflow, dispatched automatically by GitHub Actions
-when `goobers:approved` is applied and rediscovered by an hourly recovery sweep:
+for every issue in the Goobers intake cohort and rediscovered by an hourly
+recovery sweep:
 
 ```text
-goobers:approved issue
+eligible issue (approved, or the legacy intake cohort)
   -> producer plan
   -> implementer
   -> independent reviewer
@@ -13,9 +14,25 @@ goobers:approved issue
   -> ready-for-review PR
 ```
 
-The workflow never merges a PR. The trusted Issue Copilot Intake workflow
-intentionally does not assign Cloud Copilot to `goobers:approved` issues.
-Plan, implementation, and review each allow at most two attempts, and the run
+The intake cohort is the union of two sets, decided by the single canonical
+selector in `.github/scripts/ci-recovery/issue-intake-lib.mjs` (wrapped for the
+CLI by `.github/scripts/goobers/intake-selection.mjs`):
+
+- **approved** — any open, unassigned issue labeled `goobers:approved`,
+  regardless of who opened it; and
+- **legacy-parity** — every issue the legacy Issue Copilot Intake reconciler
+  would have picked up: opened by `nalfeo`, `github-actions[bot]`, or a
+  recognized Copilot identity, not labeled `telemetry`, and `automation`-labeled
+  only when GitHub Actions opened it.
+
+Issues already assigned, already carrying `goobers/status:in-review`, or
+dispositioned `goobers/status:completed-existing-work` are excluded. While
+`LIFECYCLE_MUTATION_OWNER=goobers`, the trusted Issue Copilot Intake workflow is
+observe-only for exactly that cohort, so there is one intake owner and no
+no-work gap; on rollback, legacy resumes the whole cohort and Goobers claims
+nothing at all.
+The workflow never merges a PR. Plan, implementation, and review each allow at
+most two attempts, and the run
 allows at most two gate repasses. After implementation commits, the workflow
 checkpoints the branch before review so partial progress survives a failed run.
 When an issue is linked to an open PR, the hosted wrapper passes its validated

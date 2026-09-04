@@ -10,7 +10,7 @@ tracked per lane, and every lane always has exactly one writer:
 
 | Lane                                     | Phase 2 owner | Selector                         |
 | ---------------------------------------- | ------------- | -------------------------------- |
-| Implementation claim (approved issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       |
+| Implementation claim (eligible issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       |
 | CI Recovery router + reconciliation      | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    |
 | Review-thread reply/resolve              | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` |
 | Auto-rebase branch updates               | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  |
@@ -18,12 +18,30 @@ tracked per lane, and every lane always has exactly one writer:
 
 ## The ownership boundary
 
-Goobers owns **approved-issue intake and implementation, up to and including PR
+Goobers owns **issue intake and implementation, up to and including PR
 creation, publication, and readiness.** The moment a PR is published, the claim
 is handed off and legacy automation owns the PR lifecycle end to end.
 
+The transferred intake cohort is the **union** of the maintainer-approved queue
+and the legacy issue-intake eligibility cohort — Goobers must process at least
+every issue the legacy reconciler would have. Membership is decided by one
+canonical function (`goobersIntakeEligibility` /
+`legacyIntakeCohortEligibility` in
+`.github/scripts/ci-recovery/issue-intake-lib.mjs`), consumed by both the
+Goobers dispatcher and legacy intake, so the two can never disagree:
+
+| Issue class                                                | `LIFECYCLE_MUTATION_OWNER=goobers` | rollback (`legacy`/malformed) |
+| ---------------------------------------------------------- | ---------------------------------- | ----------------------------- |
+| `goobers:approved` (any opener)                            | Goobers                            | legacy                        |
+| Opened by `nalfeo` / Actions / Copilot, unassigned         | Goobers                            | legacy                        |
+| `telemetry` labeled, not approved                          | nobody (excluded by policy)        | nobody                        |
+| Untrusted opener, not approved                             | nobody (excluded by policy)        | nobody                        |
+| `automation` labeled, not opened by Actions, not approved  | nobody (excluded by policy)        | nobody                        |
+| Already assigned (e.g. stale Copilot session restart lane) | legacy                             | legacy                        |
+| `goobers/status:in-review` / `completed-existing-work`     | Goobers (in flight / terminal)     | legacy                        |
+
 ```
-approved issue ──► Goobers claims ──► implementation ──► PR published
+eligible issue ──► Goobers claims ──► implementation ──► PR published
                                                              │
                                                    claim released (handoff)
                                                              │
@@ -32,7 +50,7 @@ approved issue ──► Goobers claims ──► implementation ──► PR pu
 ```
 
 The claim lease exists only to stop two implementers picking up the same
-approved issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
+issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
 by a PR or head SHA, and **no PR-lifecycle lane consults it**. That is what
 guarantees there is no gap: legacy automation is live for a published PR whether
 or not a claim ever existed.
