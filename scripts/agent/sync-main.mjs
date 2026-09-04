@@ -56,8 +56,6 @@ function gitSucceeds(cwd, args, runGit) {
 
 function branchHasShepherdContext(branch) {
   const lowerBranch = branch.toLowerCase();
-  const segments = lowerBranch.split(/[/_-]+/);
-  const hasShepherdMarker = segments.some((part) => part === 'shepherd' || part === 'recovery');
 
   if (
     lowerBranch.startsWith('ci-recovery/') ||
@@ -67,6 +65,8 @@ function branchHasShepherdContext(branch) {
     return true;
   }
 
+  const segments = lowerBranch.split(/[/_-]+/);
+  const hasShepherdMarker = segments.some((part) => part === 'shepherd' || part === 'recovery');
   return lowerBranch.startsWith('copilot/') && hasShepherdMarker;
 }
 
@@ -125,8 +125,8 @@ function selectSyncStrategy(cwd, branch, mainRef, runGit) {
     actionPastTense: 'rebased',
     conflictOperation: 'Rebase',
     reason: shepherdContext
-      ? 'branch has shepherd/recovery ownership context but no existing mainline reconciliation merge was found'
-      : 'branch name has no shepherd/recovery ownership context',
+      ? 'branch name has shepherd/recovery ownership context but no existing mainline reconciliation merge was found'
+      : 'branch name has no shepherd/recovery ownership context, so reconciliation-merge preservation does not apply',
   };
 }
 
