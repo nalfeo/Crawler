@@ -252,3 +252,35 @@ Additional verification for the follow-up:
 - Follow-up apple metric:
   `docs/knowledge/metrics/apples/2026-09-04-floor3-wild-hostility.json` (3🍎
   estimated, 3🍎 actual, exact).
+
+## Follow-up: Headless Floor 1 Gate CI recovery
+
+CI later failed the `Headless Floor 1 Gate` job on PR head `8812698`, but the
+failing assertion was the Floor 3 production completion test:
+
+- `tests/headless/floor3-completion.test.ts` reproduced locally as a deterministic
+  timeout at frame 54,000.
+- The run cleared five Studios but stalled on Skyroot with one live Studio rival
+  Companion displaced far from the room anchor and one player Companion knocked
+  out.
+- Root cause: `findFloor3ProgressObjective()` routed partial party KOs to
+  `resolveNearestSafeAnchor()` even though production Floor 3 does not spawn
+  `RallyPoint` entities. `companionKOSystem` only revives at actual
+  `RallyPoint`s, so the AI could repeatedly stand at a safe-room anchor without
+  recovering the party or finishing the displaced rival.
+
+Fix:
+
+- `src/game/ai/bt-ai-provider.ts` now routes Floor 3 recovery only to an actual
+  nearest `RallyPoint` entity. If no RallyPoint exists, encounter progress
+  continues instead of dead-routing to a generic safe anchor.
+- Floor 3 encounter progress now prefers a reachable live encounter enemy before
+  falling back to the static room anchor, so a displaced last rival can be
+  chased instead of leaving the AI staged at an empty Studio center.
+
+Verification:
+
+- `npx vitest run tests/headless/floor3-completion.test.ts --project headless`:
+  passed.
+- `npx vitest run tests/game/floor3-companion-combat.test.ts tests/ecs/companion-ai-system.test.ts --project unit`:
+  17/17 passed.
