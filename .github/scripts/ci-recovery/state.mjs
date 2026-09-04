@@ -115,7 +115,7 @@ function acceptanceLinesFromBody(body) {
   if (start < 0) return [];
   const accepted = [];
   for (const line of lines.slice(start + 1)) {
-    if (/^#{1,6}\s+\S/.test(line)) break;
+    if (/^#{1,6}\s*\S/.test(line)) break;
     const cleaned = line.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, '').trim();
     if (cleaned) accepted.push(cleaned);
   }
@@ -142,6 +142,13 @@ function isExecutableEvidencePath(path) {
   );
 }
 
+/**
+ * Returns a head-bound quarantine blocker when a PR closes a non-documentation
+ * issue with acceptance criteria but lacks either executable or test diff
+ * evidence. `closingIssues` is GitHub's `closingIssuesReferences` node shape,
+ * `changedFiles` is the pull-files REST shape, and `null` means admission may
+ * proceed to the other lifecycle checks.
+ */
 export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changedFiles } = {}) {
   const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
   const hasExecutableEvidence = paths.some(isExecutableEvidencePath);

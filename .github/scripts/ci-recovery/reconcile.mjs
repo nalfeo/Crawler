@@ -3535,6 +3535,8 @@ let currentLifecyclePhase = null;
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
+      // Lifecycle phases are head-bound: a new push must re-run head-scoped
+      // admission checks instead of inheriting a stale quarantine/queue verdict.
       currentLifecyclePhase = record?.headSha === pr.head.sha ? (record?.phase ?? null) : null;
     } catch {
       // Malformed lifecycle comment from a trusted source — log and continue.
