@@ -76,4 +76,21 @@ describe('BT — Floor 6 relay defense priority', () => {
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(ai.getDecision().targetEid).toBe(relayThreat);
   });
+
+  it('honors an active ignoredEnemyUntilFrame blacklist entry for a stalled raider', () => {
+    const { world } = makeFloor6DefenseWorld();
+    const stalled = spawnRelayRaider(world, 8, 0);
+    const reachable = spawnRelayRaider(world, 40, 0);
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const harness = ai as unknown as {
+      ignoredEnemyUntilFrame: Map<number, number>;
+    };
+    harness.ignoredEnemyUntilFrame.set(stalled, world.frameCount + 120);
+
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(reachable);
+  });
 });

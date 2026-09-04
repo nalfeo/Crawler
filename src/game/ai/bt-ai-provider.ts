@@ -6208,6 +6208,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     for (const eid of query(world.ecs, [BroadcastRelayRaider, Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if (!isEnemyCombatEligible(world, eid)) continue;
+
+      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+      if (ignoredUntil !== undefined) {
+        if (ignoredUntil > world.frameCount) continue;
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
+
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
 
