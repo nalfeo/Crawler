@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import {
+  FLOOR3_COMPLETION_SEED,
+  FLOOR3_COMPLETION_START_PLAYER_LEVEL,
+} from '../helpers/floor3-completion-contract.js';
 
 /**
  * Real-pipeline (`runHeadless` + production `BehaviorTreeAI`) Floor 3
@@ -37,8 +41,8 @@ describe('floor3 production completion (real headless pipeline, no mutation)', (
     'completes Floor 3 via real BehaviorTreeAI combat: exits the entrance, clears all ' +
       '6 Studios, wins all 4 Final Four rounds, keeps a Companion, and reaches/confirms the exit',
     async () => {
-      const stats = await runHeadless(new BehaviorTreeAI({ seed: 3539 }), {
-        seed: 3539,
+      const stats = await runHeadless(new BehaviorTreeAI({ seed: FLOOR3_COMPLETION_SEED }), {
+        seed: FLOOR3_COMPLETION_SEED,
         floorId: 'floor3',
         // Above the seed's observed completion frame (44,493) with headroom;
         // no stopWhen/onFinish hook touches the world — the run either
@@ -52,7 +56,7 @@ describe('floor3 production completion (real headless pipeline, no mutation)', (
         // it only raises the AI-controlled player character's starting
         // level, the same as every other floor's headless tests do to skip
         // grind and focus the assertion on the system under test.
-        startPlayerLevel: 20,
+        startPlayerLevel: FLOOR3_COMPLETION_START_PLAYER_LEVEL,
       });
 
       expect(stats.outcome).toBe('victory');
