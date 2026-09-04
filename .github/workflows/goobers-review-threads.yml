@@ -292,7 +292,7 @@ jobs:
                 continue;
               }
               const review = await currentThreads();
-              const thread = review.threads.find((candidate) => candidate.id === decision.threadId);
+              let thread = review.threads.find((candidate) => candidate.id === decision.threadId);
               if (!thread || thread.isResolved) {
                 core.info(`skip decision=${decision.action} thread=${decision.threadId} reason=already-resolved-or-missing`);
                 continue;
@@ -336,6 +336,16 @@ jobs:
                 if (decision.requiresPostedMarker && !postedOutdatedMarkers.has(decision.threadId)) {
                   core.info(`skip resolve thread=${decision.threadId} reason=paired-marker-not-posted`);
                   continue;
+                }
+                if (decision.requiresPostedMarker) {
+                  const refreshedReview = await currentThreads();
+                  thread = refreshedReview.threads.find(
+                    (candidate) => candidate.id === decision.threadId,
+                  );
+                  if (!thread || thread.isResolved) {
+                    core.info(`skip resolve thread=${decision.threadId} reason=already-resolved-or-missing`);
+                    continue;
+                  }
                 }
                 // The decision artifact is advisory only. Re-run the shared
                 // resolver predicate against the live thread immediately before

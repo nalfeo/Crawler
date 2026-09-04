@@ -603,7 +603,10 @@ describe('Goobers lifecycle ownership', () => {
     const gates = reconciler.match(/legacyReviewThreadWritesEnabled\(\)/g) ?? [];
     expect(replyPosts.length).toBe(3);
     expect(resolveMutations.length).toBe(3);
-    expect(gates.length).toBeGreaterThanOrEqual(4);
+    const followUpBacklogWrites = 2;
+    expect(gates.length).toBeGreaterThanOrEqual(
+      replyPosts.length + resolveMutations.length - followUpBacklogWrites,
+    );
 
     // The gate must precede the in-memory resolution write. Skipping only the
     // GraphQL call would mark a thread resolved without resolving it, dropping
