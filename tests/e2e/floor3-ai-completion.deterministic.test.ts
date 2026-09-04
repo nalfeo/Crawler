@@ -243,20 +243,23 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         }
 
         // Simulation genuinely resumed (no lingering modal, world back to
-        // 'playing') after every non-terminal confirmation.
+        // 'playing') after every non-terminal confirmation. This is lab-side
+        // transition telemetry rather than a sampled browser state: at 16x,
+        // the healthy gap between adjacent surfaces can be shorter than the
+        // E2E poll interval.
         for (const event of trace.filter(
           (entry) => entry.action === 'confirmed' && entry.kind !== 'floor3-stair-descend',
         )) {
-          const resumeSample = snapshots.find(
-            (sample) =>
-              typeof sample.gameMs === 'number' &&
+          const resumeEvent = trace.find(
+            (entry) =>
+              entry.action === 'resumed' &&
+              entry.kind === event.kind &&
+              typeof entry.gameMs === 'number' &&
               typeof event.gameMs === 'number' &&
-              sample.gameMs > event.gameMs &&
-              sample.modalOpen === false &&
-              sample.worldState === 'playing',
+              entry.gameMs > event.gameMs,
           );
           expect(
-            Boolean(resumeSample),
+            Boolean(resumeEvent),
             `simulation did not resume after ${event.kind} at ${event.gameMs}ms; ${context}`,
           ).toBe(true);
         }

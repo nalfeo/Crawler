@@ -472,13 +472,13 @@ export function createModalPickerUI(
           const selectedOption = confirmed.options[confirmed.selectedIndex];
           let shouldClose = true;
           if (selectedOption && hooks?.onConfirm) {
-            confirmHandlerInvocations += 1;
             shouldClose =
               hooks.onConfirm({
                 option: selectedOption,
                 optionIndex: confirmed.selectedIndex,
                 source: 'pointer',
               }) !== false;
+            confirmHandlerInvocations += 1;
           }
           if (shouldClose) {
             close();
@@ -568,13 +568,13 @@ export function createModalPickerUI(
           const option = next.options[next.selectedIndex];
           let shouldClose = true;
           if (option && hooks?.onConfirm) {
-            confirmHandlerInvocations += 1;
             shouldClose =
               hooks.onConfirm({
                 option,
                 optionIndex: next.selectedIndex,
                 source: 'keyboard',
               }) !== false;
+            confirmHandlerInvocations += 1;
           }
           if (shouldClose) {
             close();

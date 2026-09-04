@@ -660,7 +660,7 @@ export interface AiRunnerDebugSnapshot {
   floor3MaxAliveOutsideSpawnStreakMs: number;
   floor3SurfaceTrace: ReadonlyArray<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
@@ -940,12 +940,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   let previousFloor3ModalKind: string | null = null;
+  const pendingFloor3ResumeKinds: string[] = [];
   let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
   let floor3AliveOutsideSpawnStreakMs = 0;
   let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
@@ -1795,6 +1796,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
     previousFloor3ModalKind = null;
+    pendingFloor3ResumeKinds.length = 0;
     floor3AliveOutsideSpawnStreakStartMs = null;
     floor3AliveOutsideSpawnStreakMs = 0;
     floor3MaxAliveOutsideSpawnStreakMs = 0;
@@ -1878,7 +1880,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const recordFloor3SurfaceEvent = (
     world: GameWorld,
     kind: string,
-    action: 'opened' | 'confirmed',
+    action: 'opened' | 'confirmed' | 'resumed',
     confirmHandlerInvoked: boolean | null = null,
   ): void => {
     floor3SurfaceTrace.push({
@@ -1925,6 +1927,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           : confirmHandlerCountAfter > confirmHandlerCountBefore;
       if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed', confirmHandlerInvoked);
+        if (modalKind !== 'floor3-stair-descend') {
+          pendingFloor3ResumeKinds.push(modalKind);
+        }
       }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;
@@ -1949,6 +1954,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world) ?? null;
     const activeModalKind =
       modalPicker?.isOpen() === true ? (modalPicker.getKind() ?? '__anonymous__') : null;
+    if (
+      world.floorId === 'floor3' &&
+      world.state === 'playing' &&
+      activeModalKind === null &&
+      pendingFloor3ResumeKinds.length > 0
+    ) {
+      for (const kind of pendingFloor3ResumeKinds.splice(0)) {
+        recordFloor3SurfaceEvent(world, kind, 'resumed');
+      }
+    }
     if (world.floorId === 'floor3' && activeModalKind !== previousFloor3ModalKind) {
       if (activeModalKind && FLOOR3_AUTO_MODAL_KINDS.has(activeModalKind)) {
         recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
