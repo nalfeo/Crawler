@@ -50,7 +50,7 @@ function gitIsAncestor(cwd, candidate, ancestorOf, runGit) {
     runGit(cwd, ['merge-base', '--is-ancestor', candidate, ancestorOf]);
     return true;
   } catch (error) {
-    if (error.status === 1) return false;
+    if (isExpectedGitNegative(error)) return false;
     throw error;
   }
 }
@@ -74,24 +74,33 @@ function branchHasShepherdContext(branch) {
     return true;
   }
 
+  // Generic copilot branches require a shepherd/recovery segment delimited by
+  // '/', '_' or '-' so unrelated names like "fix-recovery-timeout" stay on rebase.
   const segments = lowerBranch.split(/[/_-]+/);
   const hasShepherdMarker = segments.some((part) => part === 'shepherd' || part === 'recovery');
   return lowerBranch.startsWith('copilot/') && hasShepherdMarker;
+}
+
+function isExpectedGitNegative(error) {
+  return error.status === 1;
 }
 
 function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
   let mergeBase;
   try {
     mergeBase = runGit(cwd, ['merge-base', 'HEAD', mainRef]);
-  } catch {
+  } catch (error) {
+    if (!isExpectedGitNegative(error)) {
+      throw new Error(`Could not find merge base with ${mainRef}: ${error.message}`);
+    }
     return false;
   }
 
   let merges;
   try {
     merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
-  } catch {
-    return false;
+  } catch (error) {
+    throw new Error(`Could not inspect merge commits since ${mergeBase}: ${error.message}`);
   }
   if (!merges) return false;
 

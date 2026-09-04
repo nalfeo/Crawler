@@ -18,7 +18,7 @@ ci-policy
 
 ## Summary
 
-Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still use the existing rebase strategy, while branches with dedicated shepherd ownership prefixes (or marker-bearing `copilot/` shepherd/recovery names) that already contain mainline reconciliation merges use a merge-preserving `origin/main` update. The command now reports the selected strategy and deterministic reason, and the local sync evidence records the strategy fields for later inspection.
+Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still use the existing rebase strategy, while branches with dedicated shepherd ownership prefixes (or delimiter-marker-bearing `copilot/` shepherd/recovery names) that already contain mainline reconciliation merges use a merge-preserving `origin/main` update. The command now reports the selected strategy and deterministic reason, and the local sync evidence records the strategy fields for later inspection.
 
 ## Files touched
 
@@ -46,6 +46,7 @@ Updated `scripts/agent/sync-main.mjs` so ordinary clean authoring branches still
 - `node --test scripts/agent/sync-main.test.mjs` — passed, 8/8 after the third review-fix round.
 - Automated code review fourth pass — addressed real git-error surfacing during ancestry checks and clearer abort-failure messaging.
 - `node --test scripts/agent/sync-main.test.mjs` — passed, 8/8 after the fourth review-fix round.
+- Automated code review fifth pass — documented generic `copilot/` marker delimiters and renamed the reconciliation-merge fixture helper.
 
 ## Unresolved issues
 
