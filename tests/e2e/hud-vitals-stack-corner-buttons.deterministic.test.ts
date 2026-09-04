@@ -15,7 +15,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
+import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 import { GAME_H, GAME_W } from './e2e-constants.js';
 
 const VIEWPORTS = [
@@ -36,6 +36,59 @@ const MAX_LOWER_STACK_GAP_RATIO = 0.15;
  * asserted for uniformity across the column rather than as an absolute value.
  */
 const CORNER_BUTTON_SPACING_TOLERANCE = 1;
+const DEVICE_INSETS = { top: 0, right: 340, bottom: 100, left: 0 };
+const ZERO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
+
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface SafeAreaLayout {
+  insets: typeof DEVICE_INSETS;
+  surfaces: Array<{ name: string; bounds: Bounds }>;
+}
+
+async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<void> {
+  await page.evaluate((values) => {
+    for (const [edge, value] of Object.entries(values)) {
+      document.documentElement.style.setProperty(
+        `--crawler-safe-area-inset-${edge}`,
+        `${value}px`,
+        'important',
+      );
+    }
+    window.dispatchEvent(new Event('resize'));
+  }, insets);
+  await page.waitForTimeout(400);
+}
+
+async function waitForSurfaces(
+  page: Page,
+  names: readonly string[],
+  timeoutMs = 15_000,
+): Promise<SafeAreaLayout> {
+  const deadline = Date.now() + timeoutMs;
+  let layout = await mainSceneProbe.getSafeAreaLayout(page);
+  while (!names.every((name) => layout.surfaces.some((surface) => surface.name === name))) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `timed out waiting for probe surfaces ${names.join(', ')} (have: ${layout.surfaces
+          .map((surface) => surface.name)
+          .join(', ')})`,
+      );
+    }
+    await page.waitForTimeout(100);
+    layout = await mainSceneProbe.getSafeAreaLayout(page);
+  }
+  return layout;
+}
+
+function overlaps(a: Bounds, b: Bounds): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
 
 describe('real MainGameScene HUD vitals stack and corner buttons', () => {
   let browser: Browser;
@@ -55,6 +108,7 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         context = await browser.newContext({ viewport });
         const page: Page = await context.newPage();
         await loadMainSceneProbeLab(page);
+        await applySafeAreaInsets(page);
         // Resolve the starter-weapon loadout through the shipped path (the
         // skill tracker only renders once a weapon is equipped) and unlock the
         // drops flag the XP row is gated on.
@@ -138,7 +192,16 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         const issue = shown.find((button) => button.id === 'issue');
         expect(issue, 'Issue button must render with the unlocked surfaces').toBeDefined();
         if (!issue) return;
-        const safeLayout = await mainSceneProbe.getSafeAreaLayout(page);
+        const npcTarget = await mainSceneProbe.primeNpcInteractionTarget(page);
+        expect(npcTarget, 'probe should expose at least one NPC interaction target').not.toBeNull();
+        const safeLayout = await waitForSurfaces(page, ['skillPanel', 'interactionHint']);
+        expect(safeLayout.insets.right, 'test must exercise a nonzero right inset').toBeGreaterThan(
+          0,
+        );
+        expect(
+          safeLayout.insets.bottom,
+          'test must exercise a nonzero bottom inset',
+        ).toBeGreaterThan(0);
         const margin = 16;
         expect(issue.bounds.x).toBeGreaterThanOrEqual(
           GAME_W - safeLayout.insets.right - margin - issue.bounds.width,
@@ -152,15 +215,13 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
         expect(issue.bounds.y + issue.bounds.height).toBeLessThanOrEqual(
           GAME_H - safeLayout.insets.bottom - margin,
         );
-        for (const surface of safeLayout.surfaces.filter(
-          ({ name }) => name === 'skillPanel' || name === 'interactionHint',
-        )) {
-          const overlaps =
-            issue.bounds.x < surface.bounds.x + surface.bounds.width &&
-            issue.bounds.x + issue.bounds.width > surface.bounds.x &&
-            issue.bounds.y < surface.bounds.y + surface.bounds.height &&
-            issue.bounds.y + issue.bounds.height > surface.bounds.y;
-          expect(overlaps, `Issue must not overlap ${surface.name}`).toBe(false);
+        for (const surfaceName of ['skillPanel', 'interactionHint']) {
+          const surface = safeLayout.surfaces.find(({ name }) => name === surfaceName);
+          expect(surface, `${surfaceName} must be present before overlap assertion`).toBeDefined();
+          expect(
+            overlaps(issue.bounds, surface!.bounds),
+            `Issue must not overlap ${surfaceName}`,
+          ).toBe(false);
         }
 
         // Presentation, read off the *live* scene rather than source: every
@@ -211,6 +272,26 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
           Math.max(...gaps) - Math.min(...gaps),
           `corner button spacing must be uniform (${gaps.join(', ')})`,
         ).toBeLessThanOrEqual(CORNER_BUTTON_SPACING_TOLERANCE);
+
+        await applySafeAreaInsets(page, ZERO_INSETS);
+        await mainSceneProbe.requestEquipToggle(page);
+        await waitForState(page, (state) => state.equipmentOpen && state.issueButtonVisible, {
+          label: 'equipment panel open with visible Issue affordance',
+        });
+        const equipmentPanel = await mainSceneProbe.getEquipmentPanelBounds(page);
+        expect(equipmentPanel, 'Equipment panel must expose live bounds when open').not.toBeNull();
+        const compactIssue = (await mainSceneProbe.getCornerButtonLayout(page)).find(
+          (button) => button.id === 'issue',
+        );
+        expect(compactIssue, 'Issue button must still exist while Gear is open').toBeDefined();
+        expect(compactIssue?.visible, 'Issue button must remain visible while Gear is open').toBe(
+          true,
+        );
+        expect(compactIssue?.label, 'Issue uses the compact panel-open affordance').toBe('🚩');
+        expect(
+          overlaps(compactIssue!.bounds, equipmentPanel!),
+          'Issue must not overlap the open Gear panel',
+        ).toBe(false);
       } finally {
         await closeQuietly(context);
       }

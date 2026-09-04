@@ -722,6 +722,7 @@ export class MainGameScene extends Phaser.Scene {
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
+  private issueButtonCompact = false;
   private issueReportPausedState?: boolean;
   private issueReportDescription = '';
   private issueReportIncludeLogs = true;
@@ -5103,15 +5104,12 @@ export class MainGameScene extends Phaser.Scene {
 
     const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
-    // Keep Issue independently anchored in the bottom-right safe area while
-    // panels are open so it remains clickable without covering their content.
     if (this.issueButton) {
+      this.setIssueButtonCompact(panelOpen);
       if (panelOpen) {
         this.issueButton.setDepth(MODAL_DISMISS_BUTTON_DEPTH);
-        this.applyMobileButtonScale?.(getUiScale(this));
       } else if (this.hudHiddenForPanel === false) {
         this.issueButton.setDepth(ISSUE_BUTTON_DEPTH);
-        this.applyMobileButtonScale?.(getUiScale(this));
       }
     }
 
@@ -5437,6 +5435,15 @@ export class MainGameScene extends Phaser.Scene {
       issueSubmitting: this.issueReportSubmitting,
       hasTerminalRunOutcome: this.hasReachedScenarioRunOutcome(),
     });
+  }
+
+  private setIssueButtonCompact(compact: boolean): void {
+    if (!this.issueButton || this.issueButtonCompact === compact) {
+      return;
+    }
+    this.issueButtonCompact = compact;
+    this.issueButton.setText(compact ? '🚩' : '🚩 Issue');
+    this.applyMobileButtonScale?.(getUiScale(this));
   }
 
   private nextIssueReportRunId(): string {

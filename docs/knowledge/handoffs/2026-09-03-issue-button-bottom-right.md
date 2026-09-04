@@ -12,6 +12,12 @@ supported landscape viewports. It no longer joins the left corner-button
 column or jumps to the top-right when a panel opens. Its elevated panel depth
 and existing picker/cancel behavior are preserved.
 
+Review recovery compacted the Issue affordance to a flag-only button while
+full-screen panels are open, so it can remain clickable above the Gear panel
+without covering panel content. Panel-open frames now change only depth unless
+the compact/full label state actually flips; scale and safe-area subscriptions
+remain the only steady-state relayout path.
+
 ## Evidence
 
 - Before: the Issue button was appended to the left corner-button stack at
@@ -20,6 +26,9 @@ and existing picker/cancel behavior are preserved.
 - After: deterministic real MainGameScene probes passed at 1280x720 and
   960x540, asserting the Issue bounds stay inside the bottom-right safe-area
   margin and clear the skill HUD and interaction hint.
+- Review recovery: the same deterministic probe now injects nonzero right and
+  bottom safe-area bands, primes a real NPC Talk hint before overlap checks, and
+  asserts the compact Issue button does not overlap the open Gear panel.
 - The real MainGameScene UI exclusivity suite passed its inventory click-through
   and picker cancellation coverage, including preservation of the underlying
   inventory and pause state.
