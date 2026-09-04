@@ -7,6 +7,23 @@ import { floor6Manifest } from '../../src/shared/floor-manifest.js';
 const FLOOR6_RELEASE_SMOKE_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 describe('Floor 6 release gate headless telemetry', () => {
+  it('intercepts the release-baseline seed 36 raider wave before the relay falls', async () => {
+    const seed = 36;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed }), {
+      floorId: 'floor6',
+      seed,
+      maxFrames: requireDefaultMaxFrames('floor6'),
+      maxWallTimeMs: 30_000,
+    });
+
+    expect(stats.outcome).toBe('victory');
+    expect(stats.floor6Defense?.terminalOutcome).toBe('victory');
+    expect(stats.floor6Defense?.relayHp ?? 0).toBeGreaterThan(0);
+    expect(stats.aiTelemetry?.decisionStateMs.ENGAGE ?? 0).toBeGreaterThan(
+      stats.aiTelemetry?.decisionStateMs.EXPLORE ?? 0,
+    );
+  });
+
   it('meets the release-gate thresholds on the local 10-seed smoke panel', async () => {
     const maxFrames = requireDefaultMaxFrames('floor6');
     const runs = [];
