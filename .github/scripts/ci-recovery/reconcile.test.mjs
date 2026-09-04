@@ -16941,3 +16941,97 @@ test('expected head/base mutation fencing is wired as a fail-closed pre-mutation
     'startup must fail closed when expected metadata no longer matches',
   );
 });
+
+test('review-threads lane migrated to Goobers stops every legacy thread write', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-lane',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
+  });
+
+  // Exit code is intentionally not asserted: with the lane migrated the thread
+  // legitimately stays an unresolved blocker, so reconcile continues down its
+  // dispatch path. What matters is that legacy made no review-thread write.
+  void code;
+  void stderr;
+
+  // Lane migrated: legacy must make NO review-thread write at all -- neither
+  // the ? Addressed reply nor the resolve -- or Phase 3 has two writers.
+  const laneReplyCall = mutatingCalls.find(
+    (call) => String(call.url || '').includes('/replies') && call.method === 'POST',
+  );
+  assert.equal(
+    laneReplyCall,
+    undefined,
+    'legacy must not post a review-thread reply on a migrated lane',
+  );
+
+  const laneResolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread'),
+  );
+  assert.equal(laneResolveCall, undefined, 'legacy must not resolve a thread on a migrated lane');
+
+  assert.doesNotMatch(stdout, /posted outdated-marker/);
+  assert.doesNotMatch(stdout, /resolved thread=thread-outdated-lane/);
+});

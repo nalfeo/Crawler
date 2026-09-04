@@ -165,6 +165,17 @@ export function isGoobersApprovedIssue(issue) {
   return hasIssueLabel(issue, GOOBERS_APPROVED_LABEL);
 }
 
+/**
+ * True when Goobers owns the implementation-claim lane.
+ *
+ * Mirrors `lifecycleLaneOwner('implementation-claim', ...)`: only the literal
+ * `goobers` selects Goobers, so a rollback (`legacy`) or any malformed value
+ * hands approved-issue intake back to legacy rather than leaving it ownerless.
+ */
+export function goobersOwnsImplementationClaim(env = process.env) {
+  return String(env.LIFECYCLE_MUTATION_OWNER ?? '') === 'goobers';
+}
+
 function hasIssueLabel(issue, expectedLabel) {
   return (issue?.labels || []).some(
     (label) => String(label?.name || '').toLowerCase() === expectedLabel,
@@ -181,10 +192,15 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   }
 
   if (isGoobersApprovedIssue(issue)) {
-    return {
-      eligible: false,
-      reason: 'goobers:approved issues are owned by the Goobers intake workflow',
-    };
+    // Only defer to Goobers while Goobers actually owns the implementation
+    // claim lane. Otherwise a rollback would leave approved issues with no
+    // intake owner at all, which is the gap the lane model exists to prevent.
+    if (goobersOwnsImplementationClaim()) {
+      return {
+        eligible: false,
+        reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+      };
+    }
   }
 
   const opener = String(issue.user?.login || '').toLowerCase();
@@ -631,7 +647,7 @@ export async function intakeOpenedIssue({
     if (isTelemetryIssue(issue)) {
       return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
     }
-    if (isGoobersApprovedIssue(issue)) {
+    if (isGoobersApprovedIssue(issue) && goobersOwnsImplementationClaim()) {
       return {
         assigned: false,
         reason: 'goobers:approved issues are owned by the Goobers intake workflow',
@@ -813,7 +829,10 @@ export async function runIssueIntake({
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
   }
-  if (isGoobersApprovedIssue({ labels: assignmentContext.labels })) {
+  if (
+    isGoobersApprovedIssue({ labels: assignmentContext.labels }) &&
+    goobersOwnsImplementationClaim()
+  ) {
     throw new IssueClaimedByGoobersError(issue.number);
   }
 

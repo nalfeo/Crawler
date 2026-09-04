@@ -17,6 +17,7 @@ const mergeTrain = read('merge-train.yml');
 const ciRecovery = read('ci-recovery.yml');
 const autoRebase = read('auto-rebase-prs.yml');
 const ciRecoveryRouter = read('ci-recovery-router.yml');
+const goobersLifecycleOwner = read('goobers-lifecycle-owner.yml');
 
 test('ci.yml runs the full-CI backstop daily, not hourly', () => {
   const crons = [...ci.matchAll(/-\s*cron:\s*'([^']+)'/g)].map((m) => m[1]);
@@ -68,25 +69,74 @@ test('ci-recovery-incidents.yml routes scheduled CI regardless of MERGE_TRAIN_EN
   assert.doesNotMatch(routeIncident, /MERGE_TRAIN_ENABLED/);
 });
 
-test('legacy mutation workflows default to the disabled bridge and gate direct legacy mutations', () => {
-  for (const content of [mergeTrain, ciRecovery, autoRebase, ciRecoveryRouter]) {
+test('each legacy lane is gated on its own owner, never the claim selector', () => {
+  // The no-downtime contract: selecting Goobers for the pre-PR implementation
+  // claim must not turn any unmigrated PR-lifecycle lane observe-only.
+  const lanes = [
+    [mergeTrain, 'LIFECYCLE_OWNER_MERGE_TRAIN'],
+    [ciRecovery, 'LIFECYCLE_OWNER_CI_RECOVERY'],
+    [autoRebase, 'LIFECYCLE_OWNER_BRANCH_UPDATE'],
+    [ciRecoveryRouter, 'LIFECYCLE_OWNER_CI_RECOVERY'],
+  ];
+  for (const [content, laneVar] of lanes) {
     assert.match(content, /LEGACY_CI_MUTATION_BRIDGE_ENABLED/);
-    assert.match(content, /== 'true'/);
-    assert.match(content, /false/);
+    assert.match(content, /observe-only/);
+    // Legacy keeps writing unless THIS lane migrated to Goobers.
+    assert.ok(
+      content.includes(
+        `vars.${laneVar} != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`,
+      ),
+      `${laneVar} lane gate missing`,
+    );
+    // The claim-lane selector must never gate a PR-lifecycle lane. It may still
+    // be passed as env (legacy intake reads it for rollback), so assert on the
+    // `if:` conditions rather than on any occurrence.
+    const gateLines = content.split('\n').filter((line) => /^\s*if:/.test(line));
+    for (const line of gateLines) {
+      assert.doesNotMatch(line, /LIFECYCLE_MUTATION_OWNER/);
+    }
   }
 
-  assert.match(
-    mergeTrain,
-    /Legacy mutation bridge disabled; skipping direct merge-train mutations/,
-  );
-  assert.match(ciRecovery, /Legacy mutation bridge disabled; skipping direct legacy CI recovery/);
-  assert.match(autoRebase, /Bridge disabled; skip legacy rebase mutations/);
+  assert.match(mergeTrain, /Observe legacy merge-train triggers without mutation/);
+  assert.match(ciRecovery, /Observe legacy CI recovery without mutation/);
+  assert.match(autoRebase, /Observe legacy rebase triggers without mutation/);
+  assert.match(ciRecoveryRouter, /Observe legacy CI-recovery triggers without dispatch/);
   assert.match(
     ciRecoveryRouter,
-    /Legacy mutation bridge disabled; skip direct CI-recovery dispatches/,
+    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
   );
-  assert.match(
-    ciRecoveryRouter,
-    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
-  );
+});
+
+test('Goobers claim ownership is issue-scoped, handed off at publication, and trust-checked', () => {
+  // Claim concurrency is its own group so it can never serialize behind, or
+  // stall, PR-lifecycle automation.
+  assert.match(goobersLifecycleOwner, /group: crawler-implementation-claim-/);
+  assert.match(goobersLifecycleOwner, /cancel-in-progress: false/);
+  assert.match(goobersLifecycleOwner, /queue: max/);
+  assert.match(ciRecovery, /group: crawler-ci-pr-\$\{\{ inputs\.pr_number \}\}/);
+  assert.match(ciRecovery, /queue: max/);
+
+  // Publication is a handoff, not a lease acquisition.
+  assert.match(goobersLifecycleOwner, /types: \[opened, ready_for_review\]/);
+  assert.doesNotMatch(goobersLifecycleOwner, /synchronize/);
+  assert.match(goobersLifecycleOwner, /- handoff/);
+  assert.match(goobersLifecycleOwner, /closingIssuesReferences/);
+  assert.match(goobersLifecycleOwner, /issueNumber/);
+  // Fork fence: pull_request_target has base-repo write permission, so the
+  // head repository must reach the decision or a fork PR could drop a claim.
+  assert.match(goobersLifecycleOwner, /headRepository \{ nameWithOwner \}/);
+  assert.match(goobersLifecycleOwner, /headRepository,/);
+  // No PR-head fence remains, because the claim never covers a PR lifecycle.
+  assert.doesNotMatch(goobersLifecycleOwner, /liveHeadSha: pull\.head\.sha/);
+
+  assert.match(goobersLifecycleOwner, /getRepoVariable/);
+  assert.match(goobersLifecycleOwner, /lifecycleWriterEnabled/);
+  assert.match(goobersLifecycleOwner, /markers\.length !== 1/);
+  // Both marker scans must go through the trusted-author filter so an external
+  // commenter cannot forge or poison the claim state.
+  assert.equal(goobersLifecycleOwner.match(/selectLifecycleLeaseComments\(comments\)/g)?.length, 2);
+  assert.doesNotMatch(goobersLifecycleOwner, /startsWith\(ownership\.LIFECYCLE_LEASE_MARKER/);
+  assert.match(goobersLifecycleOwner, /Refresh lease clock from GitHub server/);
+  assert.match(goobersLifecycleOwner, /response\.headers\.date/);
+  assert.match(goobersLifecycleOwner, /No stage\.finished\/decide-ownership event found/);
 });

@@ -136,6 +136,9 @@ const OPERATIONALLY_TWEAKABLE_ROUTER: Record<string, string> = {
  * a matching env read in its own file and a row in ci-config-knobs.md.
  */
 const OPERATIONALLY_TWEAKABLE_BY_FILE: Record<string, Record<string, string>> = {
+  '.github/scripts/lifecycle-ownership.mjs': {
+    DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS: 'LIFECYCLE_LEASE_TTL_SECONDS',
+  },
   '.github/scripts/release-sweep-admission.mjs': {
     RELEASE_SWEEP_MAX_COMPETING_DEMAND: 'RELEASE_SWEEP_MAX_COMPETING_DEMAND',
     RELEASE_SWEEP_MAX_QUEUED_JOBS: 'RELEASE_SWEEP_MAX_QUEUED_JOBS',
