@@ -258,7 +258,6 @@ interface MainSceneInternals {
   };
   equipmentUI?: {
     isOpen(): boolean;
-    getPanelScreenBounds(): ScreenBounds;
     getGeneratedBagCellScreenBounds(
       instanceKey: GeneratedEquipmentInstanceKey,
     ): ScreenBounds | null;
@@ -355,7 +354,6 @@ interface MainSceneInternals {
    */
   interactionHint?: { readonly visible: boolean; readonly text: string };
   getIssueButtonBounds?(): ScreenBounds | null;
-  getIssueButtonCompactLabel?(): string;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
   getAchievementsButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
@@ -1155,10 +1153,6 @@ export interface MainSceneProbeApi {
   requestQuartermasterToggle(): void;
   /** Bounds of the live Issue button, or null when it is unavailable. */
   getIssueButtonBounds(): ScreenBounds | null;
-  /** Scene-owned compact Issue label used while full-screen panels are open. */
-  getIssueButtonCompactLabel(): string;
-  /** Bounds of the open Equipment panel, or null when it is closed/unavailable. */
-  getEquipmentPanelBounds(): ScreenBounds | null;
   /** Live label/visibility/bounds of every on-screen corner button, in stack order. */
   getCornerButtonLayout(): readonly CornerButtonProbe[];
   /** Rendered bounds of each bottom-left vitals row present in the live scene. */
@@ -2369,16 +2363,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getAchievementsButtonBounds: () => getScene()?.getAchievementsButtonBounds?.() ?? null,
 
     getInteractionHintBounds: () => getScene()?.getInteractionHintBounds?.() ?? null,
-
-    getIssueButtonCompactLabel: () => getScene()?.getIssueButtonCompactLabel?.() ?? '',
-
-    getEquipmentPanelBounds: () => {
-      const equipment = getScene()?.equipmentUI;
-      if (!equipment?.isOpen()) {
-        return null;
-      }
-      return equipment.getPanelScreenBounds();
-    },
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
