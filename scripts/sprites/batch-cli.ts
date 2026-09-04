@@ -35,8 +35,13 @@ import {
 import { ProviderError } from './provider/types.js';
 import { resolveGenerationRunStore } from './run-durability.js';
 import { loadEnvLocal } from './sidecar/env-local.js';
+import {
+  prepareSpriteBacklog,
+  recordSpriteBacklogResult,
+  type PreparedSpriteBacklog,
+} from './sprite-backlog.js';
 
-interface BatchCliArgs {
+export interface BatchCliArgs {
   readonly briefs: ReadonlyArray<string>;
   readonly briefsDir: string | null;
   readonly judgeBudgetUsd: number | undefined;
@@ -47,9 +52,12 @@ interface BatchCliArgs {
   readonly pruneJudgeCacheHours: number | undefined;
   readonly concurrency: number;
   readonly dryRun: boolean;
+  readonly backlogFloors: ReadonlyArray<number> | null;
+  readonly limit: number;
+  readonly retryConcepts: ReadonlyArray<string>;
 }
 
-function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
+export function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
   const briefs: string[] = [];
   let briefsDir: string | null = null;
   let judgeBudgetUsd: number | undefined;
@@ -60,6 +68,9 @@ function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
   let pruneJudgeCacheHours: number | undefined;
   let concurrency = 1;
   let dryRun = false;
+  let backlogFloors: number[] | null = null;
+  let limit = 5;
+  const retryConcepts: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -107,6 +118,26 @@ function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
       concurrency = n;
     } else if (arg === '--dry-run') {
       dryRun = true;
+    } else if (arg === '--backlog-floors') {
+      const v = argv[++i];
+      if (!v) throw new Error('--backlog-floors requires comma-separated floor numbers');
+      const floors = v.split(',').map(Number);
+      if (floors.some((floor) => !Number.isInteger(floor) || floor < 1)) {
+        throw new Error(`--backlog-floors must contain positive integers, got ${v}`);
+      }
+      backlogFloors = [...new Set(floors)];
+    } else if (arg === '--limit') {
+      const v = argv[++i];
+      if (!v) throw new Error('--limit requires a positive integer');
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 1) {
+        throw new Error(`--limit must be a positive integer, got ${v}`);
+      }
+      limit = n;
+    } else if (arg === '--retry') {
+      const v = argv[++i];
+      if (!v) throw new Error('--retry requires a sprite concept');
+      retryConcepts.push(v);
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -115,6 +146,12 @@ function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
     } else if (arg) {
       briefs.push(arg);
     }
+  }
+  if (retryConcepts.length > 0 && backlogFloors === null) {
+    throw new Error('--retry requires --backlog-floors');
+  }
+  if (backlogFloors !== null && (briefs.length > 0 || briefsDir !== null)) {
+    throw new Error('--backlog-floors cannot be combined with --brief or --briefs-dir');
   }
   return {
     briefs,
@@ -127,6 +164,9 @@ function parseArgs(argv: ReadonlyArray<string>): BatchCliArgs {
     pruneJudgeCacheHours,
     concurrency,
     dryRun,
+    backlogFloors,
+    limit,
+    retryConcepts,
   };
 }
 
@@ -144,6 +184,11 @@ function printHelp(): void {
       '  --brief <path>             Add an explicit brief. Repeatable.',
       '  --briefs-dir <path>        Glob **/*.yaml from this directory.',
       '                             Combinable with --brief.',
+      '  --backlog-floors <list>    Select resumable disliked-first work for the',
+      '                             comma-separated floors (for example 1,2,3).',
+      '  --limit <n>                Maximum backlog briefs selected (default 5).',
+      '  --retry <concept>          Remove one pending-review concept and regenerate it.',
+      '                             Repeatable; only valid with --backlog-floors.',
       '',
       'Cost gates (one of --judge-budget-usd, SPRITES_JUDGE_BUDGET_USD, or --no-budget is required):',
       '  --judge-budget-usd <n>     Hard USD cap on judge spend for this batch.',
@@ -256,8 +301,39 @@ async function main(): Promise<number> {
   }
 
   let briefs: string[];
+  let preparedBacklog: PreparedSpriteBacklog | null = null;
   try {
-    briefs = await resolveBriefs(args);
+    if (args.backlogFloors !== null) {
+      preparedBacklog = prepareSpriteBacklog(process.cwd(), {
+        floors: args.backlogFloors,
+        limit: args.limit,
+        retryConcepts: args.retryConcepts,
+        persistRetryChanges: !args.dryRun,
+      });
+      briefs = preparedBacklog.plan.selected.map((selection) => selection.path);
+      process.stdout.write(
+        `sprite backlog: ${preparedBacklog.plan.available.length} ready, ` +
+          `${preparedBacklog.plan.pendingReviewConcepts.length} pending review, ` +
+          `${preparedBacklog.plan.blockedDisliked.length} disliked blocked, ` +
+          `${preparedBacklog.plan.blockedMissing.length} missing-art blocked\n`,
+      );
+      for (const invalid of preparedBacklog.plan.invalidBriefs) {
+        process.stderr.write(
+          `invalid backlog brief skipped: ${invalid.path}\n  ${invalid.error.replace(/\n/g, '\n  ')}\n`,
+        );
+      }
+      for (const selection of preparedBacklog.plan.selected) {
+        process.stdout.write(
+          `  ${selection.source.padEnd(8)} floor ${selection.floor}  ${selection.concept}\n`,
+        );
+      }
+      if (briefs.length === 0) {
+        process.stdout.write('sprite backlog: no eligible work remains\n');
+        return 0;
+      }
+    } else {
+      briefs = await resolveBriefs(args);
+    }
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
@@ -352,6 +428,9 @@ async function main(): Promise<number> {
     concurrency: args.concurrency,
     onBriefComplete: (result, index, total) => {
       process.stderr.write(formatLine(result, index, total));
+      if (preparedBacklog) {
+        recordSpriteBacklogResult(preparedBacklog, result);
+      }
     },
   });
 
