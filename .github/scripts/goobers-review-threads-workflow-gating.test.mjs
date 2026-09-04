@@ -52,7 +52,8 @@ test('goobers-review-threads.yml re-validates state immediately before every mut
   assert.match(reviewThreads, /reason=already-resolved-or-missing/);
   assert.match(reviewThreads, /reason=marker-already-present/);
   assert.match(reviewThreads, /decision\.requiresPostedMarker/);
-  assert.match(reviewThreads, /reviewAfterPostedMarkers \?\?= await currentThreads\(\)/);
+  assert.match(reviewThreads, /reviewAfterPostedMarkersCount !== postedOutdatedMarkers\.size/);
+  assert.match(reviewThreads, /reviewAfterPostedMarkers = await currentThreads\(\)/);
   assert.match(reviewThreads, /reason=paired-marker-not-posted/);
   assert.match(
     reviewThreads,
