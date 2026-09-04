@@ -1066,6 +1066,7 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  runEndAchievementsEvaluated: boolean;
   readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   waveCursor: Record<Floor5SiegeTeam, number>;

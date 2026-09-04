@@ -507,6 +507,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
         heroState: 'PENDING',
       },
     ],
+    runEndAchievementsEvaluated: false,
     structures: {
       'command-post': {
         id: 'command-post',
@@ -1610,8 +1611,9 @@ function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void
 }
 
 function evaluateFloor5RunEndAchievements(world: GameWorld, state: Floor5SiegeState): void {
-  if (state.phase.kind === 'CAPTURED') {
+  if (state.phase.kind === 'CAPTURED' && !state.runEndAchievementsEvaluated) {
     evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
+    state.runEndAchievementsEvaluated = true;
   }
 }
 

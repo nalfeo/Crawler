@@ -102,5 +102,10 @@ describe('Floor 5 achievement facts', () => {
     expect(world.goalFlags.get('floor5.siege.castleCaptured')).toBe(true);
     expect(world.achievements.unlockedIds.has('floor5-castle-captured')).toBe(true);
     expect(world.achievements.unlockedIds.has('floor5-clean-sweep')).toBe(true);
+    const pendingUnlocks = [...world.achievements.pendingUnlockIds];
+
+    world.floorObjectiveTick?.(world);
+
+    expect(world.achievements.pendingUnlockIds).toEqual(pendingUnlocks);
   });
 });
