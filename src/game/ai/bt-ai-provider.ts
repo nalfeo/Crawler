@@ -14,6 +14,7 @@ import {
   Companion,
   EnemyProjectile,
   AoeOnImpact,
+  BroadcastRelayRaider,
   BuildCurrencyPickup,
   FamilyMembership,
   Velocity,
@@ -1248,7 +1249,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
    *   one movement target per frame. Retreat > ArenaLockin > Interact >
-   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
+   *   Floor6RelayDefense > Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
    *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
    *   arena-lockin priority-slot decision.
    *
@@ -1285,6 +1286,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // recovery target, but above Progress on other floors so post-combat drops
         // are still collected before moving on.
         this.buildLootSweepBehavior('mid-run'),
+        this.buildFloor6RelayDefenseBehavior(),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
         // equipment, so it is treated as a quest objective rather than as loot
         // (loot sits at Priority 5, below Engage, which would let a gold coin
@@ -2392,6 +2394,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         ) {
           return false;
         }
+
         const tutorialLevelGrind =
           ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) &&
           (ctx.world.playerLevel.level ?? 0) < 2;
@@ -2417,6 +2420,30 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = plan.targetX;
         this.decision.targetY = plan.targetY;
         this.decision.reason = `Hunting enemy at distance ${nearest.distance.toFixed(1)}ft`;
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  private buildFloor6RelayDefenseBehavior(): BTNode {
+    return sequence(
+      'Floor6RelayDefense',
+      condition('Live Relay Raider', (ctx) => {
+        const target = this.findFloor6RelayDefenseTarget(ctx.world, ctx.playerX, ctx.playerY);
+        if (!target) {
+          return false;
+        }
+        ctx.blackboard['floor6RelayDefenseTarget'] = target;
+        return true;
+      }),
+      action('Intercept Relay Raider', (ctx) => {
+        const target = ctx.blackboard['floor6RelayDefenseTarget'] as WorldTarget;
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, target);
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
+        this.decision.reason = `Defending Floor 6 relay from raider ${String(target.eid)} — ${plan.reason}`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -6155,6 +6182,54 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private findFloor6RelayDefenseTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    const defense = world.floorExtendedState?.floor6Defense;
+    if (
+      world.floorId !== 'floor6' ||
+      !defense ||
+      defense.terminalOutcome !== null ||
+      (defense.phase.kind !== 'DEFEND' && defense.phase.kind !== 'FINALE')
+    ) {
+      return null;
+    }
+
+    const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+    const relay = defense.geometry.broadcastRelay.target;
+    const relayX = (relay.x + 0.5) * tileSizeFt;
+    const relayY = (relay.y + 0.5) * tileSizeFt;
+    const candidates: Array<WorldTarget & { relayDistance: number }> = [];
+
+    for (const eid of query(world.ecs, [BroadcastRelayRaider, Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const target = {
+        eid,
+        x,
+        y,
+        distance: Math.hypot(x - playerX, y - playerY),
+      };
+      if (!this.isTargetReachable(world, playerX, playerY, target)) continue;
+      candidates.push({
+        ...target,
+        relayDistance: Math.hypot(x - relayX, y - relayY),
+      });
+    }
+
+    candidates.sort(
+      (a, b) => a.relayDistance - b.relayDistance || a.distance - b.distance || a.eid - b.eid,
+    );
+    return candidates[0] ?? null;
   }
 
   private getWorldRoomId(world: GameWorld, x: number, y: number): number | null {
