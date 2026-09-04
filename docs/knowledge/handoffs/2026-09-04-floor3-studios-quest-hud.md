@@ -51,7 +51,6 @@ quests, hud-ux, mobile-ux
 - `npm run verify:fast` passed.
 - `npm run scope` reported `art_only=false`, `docs_only=false`,
   `gameplay_safe=false`.
-- Independent post-diff code review found no significant issues.
 - Visual-review geometry capture for the HUD reported zero deterministic
   blockers; Azure LLM scoring was unavailable because `AZURE_OPENAI_ENDPOINT`
   is not configured in this worktree.

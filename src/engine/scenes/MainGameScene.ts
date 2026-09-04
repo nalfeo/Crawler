@@ -1154,7 +1154,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private offMobileButtonScale?: () => void;
   private offMobileButtonSafeArea?: () => void;
+  /** Reapplies the safe-area-aware bottom-right Issue-button layout. */
   private applyMobileButtonScale?: (scale: number) => void;
+  /** Keeps the bottom-right Issue button above the live family HUD when needed. */
+  private repositionIssueButton?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -3380,6 +3383,25 @@ export class MainGameScene extends Phaser.Scene {
         this.openIssueReport();
       },
     ).setDepth(ISSUE_BUTTON_DEPTH);
+    const repositionIssueButton = (): void => {
+      const button = this.issueButton;
+      if (!button) return;
+      const insets = getSafeAreaInsets(this);
+      const x = GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - button.displayWidth;
+      let y = GAME.HEIGHT - MOBILE_CORNER_BUTTON_MARGIN - insets.bottom - button.displayHeight;
+      const familyPanel = this.hudUi?.getNavigationBounds().familyPanel;
+      if (
+        familyPanel &&
+        x < familyPanel.x + familyPanel.width &&
+        x + button.displayWidth > familyPanel.x &&
+        y < familyPanel.y + familyPanel.height &&
+        y + button.displayHeight > familyPanel.y
+      ) {
+        y = familyPanel.y - MOBILE_CORNER_BUTTON_MARGIN - button.displayHeight;
+      }
+      button.setPosition(x, y);
+    };
+    this.repositionIssueButton = repositionIssueButton;
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -3393,7 +3415,6 @@ export class MainGameScene extends Phaser.Scene {
       // Re-anchor to the current safe rect (rotation can change the insets).
       const top = cornerButtonTop();
       const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
-      const safe = getSafeAreaInsets(this);
       for (const button of [
         this.inventoryButton,
         this.equipButton,
@@ -3421,16 +3442,7 @@ export class MainGameScene extends Phaser.Scene {
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
       // Keep Issue independent from the left-side stack so it cannot cover
       // the skill HUD or interaction hint as the other buttons are revealed.
-      this.issueButton?.setPosition(
-        GAME.WIDTH -
-          MOBILE_CORNER_BUTTON_MARGIN -
-          safe.right -
-          (this.issueButton?.displayWidth ?? 0),
-        GAME.HEIGHT -
-          MOBILE_CORNER_BUTTON_MARGIN -
-          safe.bottom -
-          (this.issueButton?.displayHeight ?? 0),
-      );
+      repositionIssueButton();
       if (this.issueButton) {
         this.issueButtonLayoutApplied = true;
       }
@@ -5116,6 +5128,7 @@ export class MainGameScene extends Phaser.Scene {
     this.issueButton?.setVisible(canFileIssue);
     if (this.issueButton) {
       this.setIssueButtonCompact(panelOpen);
+      this.repositionIssueButton?.();
       if (panelOpen) {
         this.issueButton.setDepth(MODAL_DISMISS_BUTTON_DEPTH);
       } else if (this.hudHiddenForPanel === false) {

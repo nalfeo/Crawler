@@ -222,7 +222,6 @@ describe('MainGameScene UI exclusivity', () => {
       await waitForState(familyPage, (s) => s.safeContext, {
         label: 'floor2 safe-room surfaces unlocked',
       });
-
       const assertBottomRightNoOverlap = async (label: string): Promise<void> => {
         const issueBounds = await mainSceneProbe.getIssueButtonBounds(familyPage);
         expect(issueBounds, `Issue button should be visible (${label})`).not.toBeNull();
@@ -232,14 +231,38 @@ describe('MainGameScene UI exclusivity', () => {
         expect(issueBounds.x + issueBounds.width, `right-anchored (${label})`).toBeGreaterThan(
           GAME_W - 220,
         );
-        expect(issueBounds.y + issueBounds.height, `bottom-anchored (${label})`).toBeGreaterThan(
-          GAME_H - 220,
-        );
-        expect(issueBounds.y, `not parked at the top (${label})`).toBeGreaterThan(GAME_H / 2);
 
         const { surfaces } = await mainSceneProbe.getSafeAreaLayout(familyPage);
+        const familyPanel = surfaces.find((surface) => surface.name === 'familyPanel')?.bounds;
+        if (familyPanel) {
+          expect(issueBounds.y + issueBounds.height, `above family HUD (${label})`).toBeLessThan(
+            familyPanel.y,
+          );
+        } else {
+          expect(issueBounds.y + issueBounds.height, `bottom-anchored (${label})`).toBeGreaterThan(
+            GAME_H - 220,
+          );
+          expect(issueBounds.y, `not parked at the top (${label})`).toBeGreaterThan(GAME_H / 2);
+        }
+        const questSurfaceNames = new Set(
+          surfaces
+            .filter(
+              (surface) =>
+                surface.name === 'questTracker' || surface.name.startsWith('questArrowToggle:'),
+            )
+            .map((surface) => surface.name),
+        );
         for (const surface of surfaces) {
-          if (surface.name === 'issueButton') continue;
+          // The family panel occupies the same vertical band as the quest
+          // tracker by design; verify each supported surface in its own
+          // rendered state rather than treating two independent right-column
+          // layouts as simultaneous exclusion zones.
+          if (
+            surface.name === 'issueButton' ||
+            (familyPanel && questSurfaceNames.has(surface.name))
+          ) {
+            continue;
+          }
           expect(
             overlaps(issueBounds, surface.bounds),
             `Issue button must not cover ${surface.name} (${label})`,
@@ -248,6 +271,12 @@ describe('MainGameScene UI exclusivity', () => {
       };
 
       await assertBottomRightNoOverlap('no panel open');
+
+      await mainSceneProbe.activateFamilyRelationships(familyPage);
+      await expect
+        .poll(async () => (await mainSceneProbe.getFamilyHudState(familyPage)).panelVisible)
+        .toBe(true);
+      await assertBottomRightNoOverlap('family HUD active');
 
       await mainSceneProbe.requestInventoryToggle(familyPage);
       await waitForState(familyPage, (s) => s.inventoryOpen && s.issueButtonVisible, {
