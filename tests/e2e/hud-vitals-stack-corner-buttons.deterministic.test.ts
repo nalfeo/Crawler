@@ -38,6 +38,7 @@ const MAX_LOWER_STACK_GAP_RATIO = 0.15;
 const CORNER_BUTTON_SPACING_TOLERANCE = 1;
 const DEVICE_INSETS = { top: 0, right: 340, bottom: 100, left: 0 };
 const ZERO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
+const SAFE_AREA_EDGES = ['top', 'right', 'bottom', 'left'] as const;
 
 interface Bounds {
   x: number;
@@ -63,14 +64,16 @@ async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<
     window.dispatchEvent(new Event('resize'));
   }, insets);
   await page.waitForFunction(
-    ({ expectRight, expectBottom }) => {
+    ({ expectedEdges }) => {
       const layout = window.__mainSceneProbe?.getSafeAreaLayout();
       if (!layout) return false;
-      const rightReady = expectRight ? layout.insets.right > 0 : layout.insets.right === 0;
-      const bottomReady = expectBottom ? layout.insets.bottom > 0 : layout.insets.bottom === 0;
-      return rightReady && bottomReady;
+      return expectedEdges.every(([edge, shouldBeNonzero]) =>
+        shouldBeNonzero ? layout.insets[edge] > 0 : layout.insets[edge] === 0,
+      );
     },
-    { expectRight: insets.right > 0, expectBottom: insets.bottom > 0 },
+    {
+      expectedEdges: SAFE_AREA_EDGES.map((edge) => [edge, insets[edge] > 0] as const),
+    },
     { timeout: 5_000, polling: 100 },
   );
 }
@@ -80,18 +83,24 @@ async function waitForSurfaces(
   names: readonly string[],
   timeoutMs = 15_000,
 ): Promise<SafeAreaLayout> {
-  const deadline = Date.now() + timeoutMs;
-  let layout = await mainSceneProbe.getSafeAreaLayout(page);
-  while (!names.every((name) => layout.surfaces.some((surface) => surface.name === name))) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `timed out waiting for probe surfaces ${names.join(', ')} (have: ${layout.surfaces
-          .map((surface) => surface.name)
-          .join(', ')})`,
+  await page.waitForFunction(
+    (surfaceNames) => {
+      const layout = window.__mainSceneProbe?.getSafeAreaLayout();
+      return (
+        layout !== undefined &&
+        surfaceNames.every((name) => layout.surfaces.some((surface) => surface.name === name))
       );
-    }
-    await page.waitForTimeout(100);
-    layout = await mainSceneProbe.getSafeAreaLayout(page);
+    },
+    names,
+    { timeout: timeoutMs, polling: 100 },
+  );
+  const layout = await mainSceneProbe.getSafeAreaLayout(page);
+  if (!names.every((name) => layout.surfaces.some((surface) => surface.name === name))) {
+    throw new Error(
+      `timed out waiting for probe surfaces ${names.join(', ')} (have: ${layout.surfaces
+        .map((surface) => surface.name)
+        .join(', ')})`,
+    );
   }
   return layout;
 }

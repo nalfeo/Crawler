@@ -236,6 +236,8 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
+const ISSUE_BUTTON_LABEL = '🚩 Issue';
+const ISSUE_BUTTON_LABEL_COMPACT = '🚩';
 /**
  * Depth for the terminal action-status toast (run-bundle/RunStats completion
  * telemetry AND issue-filing submission results share this single slot). Must
@@ -3371,7 +3373,7 @@ export class MainGameScene extends Phaser.Scene {
     });
     this.issueButton = makeCornerButton(
       cornerButtonTop() + 392,
-      this.issueButtonCompact ? '🚩' : '🚩 Issue',
+      this.issueButtonCompact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL,
       () => {
         this.openIssueReport();
       },
@@ -5446,7 +5448,7 @@ export class MainGameScene extends Phaser.Scene {
       this.issueButtonCompact = compact;
       return;
     }
-    const label = compact ? '🚩' : '🚩 Issue';
+    const label = compact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL;
     if (this.issueButtonCompact === compact && this.issueButton.text === label) {
       return;
     }
