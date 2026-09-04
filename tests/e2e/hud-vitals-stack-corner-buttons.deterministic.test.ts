@@ -135,6 +135,34 @@ describe('real MainGameScene HUD vitals stack and corner buttons', () => {
           ).toBeLessThanOrEqual(GAME_H);
         }
 
+        const issue = shown.find((button) => button.id === 'issue');
+        expect(issue, 'Issue button must render with the unlocked surfaces').toBeDefined();
+        if (!issue) return;
+        const safeLayout = await mainSceneProbe.getSafeAreaLayout(page);
+        const margin = 16;
+        expect(issue.bounds.x).toBeGreaterThanOrEqual(
+          GAME_W - safeLayout.insets.right - margin - issue.bounds.width,
+        );
+        expect(issue.bounds.y).toBeGreaterThanOrEqual(
+          GAME_H - safeLayout.insets.bottom - margin - issue.bounds.height,
+        );
+        expect(issue.bounds.x + issue.bounds.width).toBeLessThanOrEqual(
+          GAME_W - safeLayout.insets.right - margin,
+        );
+        expect(issue.bounds.y + issue.bounds.height).toBeLessThanOrEqual(
+          GAME_H - safeLayout.insets.bottom - margin,
+        );
+        for (const surface of safeLayout.surfaces.filter(
+          ({ name }) => name === 'skillPanel' || name === 'interactionHint',
+        )) {
+          const overlaps =
+            issue.bounds.x < surface.bounds.x + surface.bounds.width &&
+            issue.bounds.x + issue.bounds.width > surface.bounds.x &&
+            issue.bounds.y < surface.bounds.y + surface.bounds.height &&
+            issue.bounds.y + issue.bounds.height > surface.bounds.y;
+          expect(overlaps, `Issue must not overlap ${surface.name}`).toBe(false);
+        }
+
         // Presentation, read off the *live* scene rather than source: every
         // rendered icon must be a colour-emoji code point, so no button falls
         // back to a smaller monochrome text glyph beside its neighbours. The

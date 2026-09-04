@@ -3384,6 +3384,7 @@ export class MainGameScene extends Phaser.Scene {
       // Re-anchor to the current safe rect (rotation can change the insets).
       const top = cornerButtonTop();
       const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
+      const safe = getSafeAreaInsets(this);
       for (const button of [
         this.inventoryButton,
         this.equipButton,
@@ -3410,23 +3411,18 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
-      const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      if (buttonScale > 1) {
-        const firstColumnWidth = Math.max(
-          ...[
-            this.inventoryButton,
-            this.equipButton,
-            this.achievementsButton,
-            this.floor3RosterButton,
-            this.floor3CommandButton,
-            this.abilitiesButton,
-            this.quartermasterButton,
-          ].map((button) => button?.displayWidth ?? 0),
-        );
-        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
-      } else {
-        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
-      }
+      // Keep Issue independent from the left-side stack so it cannot cover
+      // the skill HUD or interaction hint as the other buttons are revealed.
+      this.issueButton?.setPosition(
+        GAME.WIDTH -
+          MOBILE_CORNER_BUTTON_MARGIN -
+          safe.right -
+          (this.issueButton?.displayWidth ?? 0),
+        GAME.HEIGHT -
+          MOBILE_CORNER_BUTTON_MARGIN -
+          safe.bottom -
+          (this.issueButton?.displayHeight ?? 0),
+      );
     };
     applyMobileButtonScale(getUiScale(this));
     this.applyMobileButtonScale = applyMobileButtonScale;
@@ -5107,19 +5103,12 @@ export class MainGameScene extends Phaser.Scene {
 
     const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
-    // Panels are centered, so parking the Issue button in the opposite corner
-    // (top-right) while any panel is open keeps it clickable without ever
-    // overlapping panel content; it returns to its normal stacked corner
-    // position once every panel closes.
+    // Keep Issue independently anchored in the bottom-right safe area while
+    // panels are open so it remains clickable without covering their content.
     if (this.issueButton) {
       if (panelOpen) {
-        const insets = getSafeAreaInsets(this);
-        this.issueButton
-          .setDepth(MODAL_DISMISS_BUTTON_DEPTH)
-          .setPosition(
-            GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - this.issueButton.displayWidth,
-            MOBILE_CORNER_BUTTON_MARGIN + insets.top,
-          );
+        this.issueButton.setDepth(MODAL_DISMISS_BUTTON_DEPTH);
+        this.applyMobileButtonScale?.(getUiScale(this));
       } else if (this.hudHiddenForPanel === false) {
         this.issueButton.setDepth(ISSUE_BUTTON_DEPTH);
         this.applyMobileButtonScale?.(getUiScale(this));
