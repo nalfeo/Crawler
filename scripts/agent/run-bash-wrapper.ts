@@ -18,7 +18,7 @@ try {
   const shell = resolveBashShell();
   const scriptPath = shell.kind === 'wsl' ? windowsPathToWslPath(path.resolve(script)) : script;
   const env = shell.kind === 'wsl' ? envWithWslPassthrough(process.env) : process.env;
-  const result = spawnSync(shell.command, [scriptPath, ...args], {
+  const result = spawnSync(shell.command, [...shell.argsPrefix, scriptPath, ...args], {
     stdio: 'inherit',
     env,
   });

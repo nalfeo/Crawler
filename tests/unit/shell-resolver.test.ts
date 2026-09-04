@@ -46,7 +46,7 @@ describe('resolveBashShell', () => {
   it('keeps non-Windows behavior on ambient bash', () => {
     const { host, calls } = makeHost({ platform: 'linux' });
 
-    expect(resolveBashShell(host)).toEqual({ command: 'bash', kind: 'posix-bash' });
+    expect(resolveBashShell(host)).toEqual({ command: 'bash', kind: 'posix-bash', argsPrefix: [] });
     expect(calls).toEqual([]);
   });
 
@@ -57,11 +57,30 @@ describe('resolveBashShell', () => {
       existing: [gitBash, 'C:\\Windows\\System32\\bash.exe'],
     });
 
-    expect(resolveBashShell(host)).toEqual({ command: gitBash, kind: 'git-bash' });
+    expect(resolveBashShell(host)).toEqual({ command: gitBash, kind: 'git-bash', argsPrefix: [] });
     expect(calls).toEqual([]);
   });
 
-  it('falls back to a configured WSL shim when Git Bash is unavailable', () => {
+  it('falls back to configured wsl.exe when Git Bash is unavailable', () => {
+    const wsl = 'C:\\Windows\\System32\\wsl.exe';
+    const { host, calls } = makeHost({
+      env: { ProgramFiles: 'C:\\Program Files', WINDIR: 'C:\\Windows' },
+      existing: [wsl],
+      spawnStatus: 0,
+      spawnStdout: '__crawler_wsl_ready__',
+    });
+
+    expect(resolveBashShell(host)).toEqual({
+      command: wsl,
+      kind: 'wsl',
+      argsPrefix: ['-e', 'bash'],
+    });
+    expect(calls).toEqual([
+      { command: wsl, args: ['-e', 'bash', '-lc', 'printf __crawler_wsl_ready__'] },
+    ]);
+  });
+
+  it('falls back to legacy WSL bash shim when wsl.exe is unavailable', () => {
     const wsl = 'C:\\Windows\\System32\\bash.exe';
     const { host, calls } = makeHost({
       env: { ProgramFiles: 'C:\\Program Files', WINDIR: 'C:\\Windows' },
@@ -70,7 +89,7 @@ describe('resolveBashShell', () => {
       spawnStdout: '__crawler_wsl_ready__',
     });
 
-    expect(resolveBashShell(host)).toEqual({ command: wsl, kind: 'wsl' });
+    expect(resolveBashShell(host)).toEqual({ command: wsl, kind: 'wsl', argsPrefix: [] });
     expect(calls).toEqual([{ command: wsl, args: ['-lc', 'printf __crawler_wsl_ready__'] }]);
   });
 
@@ -131,6 +150,7 @@ describe('resolveBashShell', () => {
     expect(
       envWithWslPassthrough({
         PATH: 'C:\\Windows\\System32',
+        HOME: 'C:\\Users\\runner',
         WSLENV: 'EXISTING/u',
         VERIFY_FAST_TEST_STATIC_ONLY: '1',
         SCOPE_FILES_OVERRIDE: 'docs/readme.md',
