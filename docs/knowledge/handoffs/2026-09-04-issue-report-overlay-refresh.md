@@ -26,10 +26,22 @@ Issue-report picker before clearing the Issue-open pause sentinel and
 immediately refreshes overlay visibility, so the probe cannot observe
 `issueReportOpen=false` before `issueButton.visible` has been re-synchronized.
 
+Also fixed a second, unrelated sampling flake surfaced by CI on this branch:
+`floor3-ai-runner-dialog-autonomy` asserted the simulation resumed after each
+confirmed Floor 3 surface by searching the test's own 1.5s-interval snapshots
+for a `modalOpen=false && worldState='playing'` sample. At 16x speed an entire
+confirm -> resume -> next-modal window can fall between two polls, so the check
+could observe no resume even though the sim ran. The AI Runner lab now records a
+`resumed` surface-trace event on its own UI tick once a confirmed surface is
+observed unpaused with no modal open, and the test asserts on that event instead
+of on sampled snapshots.
+
 ## Files touched
 
 - `src/engine/scenes/MainGameScene.ts`
+- `src/labs/ai-runner-lab/index.ts`
 - `tests/unit/main-game-scene-simulation-pause.test.ts`
+- `tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts`
 - `docs/knowledge/handoffs/2026-09-04-issue-report-overlay-refresh.md`
 
 ## Verification
@@ -43,6 +55,9 @@ immediately refreshes overlay visibility, so the probe cannot observe
   passed (25/25).
 - `npm run verify:fast` — passed (812 files / 11484 tests; non-blocking data
   contract checks clean).
+- `npx vitest run --project e2e-game tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts` —
+  passed (previously failed in CI run 33833931218 with "simulation did not
+  resume after floor3-keep-companion").
 - `npm run verify:pr-prereqs` — initially failed because this handoff was
   missing; passed after adding this file.
 
