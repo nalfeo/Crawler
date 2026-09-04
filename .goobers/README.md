@@ -41,6 +41,7 @@ computed from `issues` events and the hourly sweep, never from a _blocker_
 closing — so that specific dependent is never a candidate `goobersIntakeEligibility`
 would independently claim, and it stays with legacy rather than becoming
 ownerless or dual-claimed.
+
 The workflow never merges a PR. Plan, implementation, and review each allow at
 most two attempts, and the run
 allows at most two gate repasses. After implementation commits, the workflow
