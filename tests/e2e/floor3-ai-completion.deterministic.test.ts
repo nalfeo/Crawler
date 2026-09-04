@@ -139,9 +139,13 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         }
 
         expect(pageErrors).toEqual([]);
-        expect(lastSnapshot).not.toBeNull();
+        if (!lastSnapshot) {
+          throw new Error(
+            `AI runner supplied no debug snapshot; pageErrors=${JSON.stringify(pageErrors)}`,
+          );
+        }
 
-        const trace = lastSnapshot!.floor3SurfaceTrace;
+        const trace = lastSnapshot.floor3SurfaceTrace;
         const traceCounts = Object.fromEntries(
           Array.from(new Set(trace.map((entry) => `${entry.kind}:${entry.action}`))).map((key) => [
             key,
@@ -173,14 +177,14 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
             (entry.action === 'confirmed' ? `(cb=${String(entry.confirmHandlerInvoked)})` : ''),
         );
         const context = JSON.stringify({
-          frame: lastSnapshot!.frame,
-          worldState: lastSnapshot!.worldState,
-          health: lastSnapshot!.health,
-          runOutcome: lastSnapshot!.runOutcome,
-          aliveOutsideStreakMs: lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs,
-          reason: lastSnapshot!.reason,
-          target: { x: lastSnapshot!.targetX, y: lastSnapshot!.targetY },
-          player: { x: lastSnapshot!.px, y: lastSnapshot!.py },
+          frame: lastSnapshot.frame,
+          worldState: lastSnapshot.worldState,
+          health: lastSnapshot.health,
+          runOutcome: lastSnapshot.runOutcome,
+          aliveOutsideStreakMs: lastSnapshot.floor3MaxAliveOutsideSpawnStreakMs,
+          reason: lastSnapshot.reason,
+          target: { x: lastSnapshot.targetX, y: lastSnapshot.targetY },
+          player: { x: lastSnapshot.px, y: lastSnapshot.py },
           traceCounts,
           surfaceHistory,
           transitionHistory,
@@ -192,7 +196,7 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         // own `getRunOutcome`, the same result headless `runHeadless` maps to
         // `RunStats.outcome === 'victory'`.
         expect(reachedCompletion, context).toBe(true);
-        expect(lastSnapshot!.runOutcome, context).toBe('cleared_floor');
+        expect(lastSnapshot.runOutcome, context).toBe('cleared_floor');
 
         // Every required Floor 3 surface opened AND was acknowledged.
         for (const kind of FLOOR3_REQUIRED_SURFACE_SEQUENCE) {
@@ -273,7 +277,7 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         // it for the required minimum streak.
         const leftSpawn = snapshots.some((sample) => sample.inSpawnRoom === false);
         expect(leftSpawn, context).toBe(true);
-        expect(lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs, context).toBeGreaterThanOrEqual(
+        expect(lastSnapshot.floor3MaxAliveOutsideSpawnStreakMs, context).toBeGreaterThanOrEqual(
           FLOOR3_MIN_ALIVE_OUTSIDE_SPAWN_MS,
         );
       } finally {
