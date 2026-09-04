@@ -52,6 +52,14 @@ check only** is skipped exactly once — edge-triggered, then the counter resets
 to 0. Fresh target acquisition is never gated and stays fully self-anchored, so
 combat viability is never reduced.
 
+The recall condition is additionally gated on `world.floorId === 'floor3'`
+(added during review, since `companionAISystem.ts` is shared by other floors —
+e.g. Floor 4 — and the reported behavior/fix is Floor-3-specific). Without this
+gate the change would silently alter companion behavior on every floor that
+uses the system, which is an unrelated balance change the non-goals explicitly
+forbid. `tests/ecs/companion-ai-system.test.ts` now includes a dedicated
+non-Floor-3 test proving a sustained-drift lock never breaks outside Floor 3.
+
 This was the fourth design attempted; the first three all caused real
 regressions in the headless pipeline (see Alternatives Considered). No new
 tuning constant was invented — both reused constants already exist in
@@ -79,6 +87,22 @@ legibility. This reuses the existing AI Runner debug/trace infrastructure
 introduced by merged PR #4183 (`AiRunnerDebugSnapshot`, `floor3SurfaceTrace`)
 rather than reimplementing parallel plumbing.
 
+Review found two gaps in the first cut, both fixed before publication:
+
+- The internal `getCompanionTelemetry()` data was only surfaced via canvas
+  overlay geometry and a pull-based debug snapshot, not an actual visible UI
+  element — so "parity with the player path visualization" wasn't backed by
+  anything a human or e2e probe could read directly. Added a visible
+  `#ai-companions` cell to the existing Decision-telemetry panel, populated
+  from the same `getCompanionTelemetry()` data every render tick, formatted as
+  `#<eid> <kind> → (x, y) · N pt path` per companion.
+- `getFloor3LossReason()` didn't gate on `world.floorId`, and checked
+  party-wipe before player-HP, misclassifying a simultaneous player-death +
+  party-wipe frame as `party-wiped` instead of `player-hp`. Fixed to return
+  `null` off Floor 3, and to check the player's own HP
+  (`world.stores.health.current[playerEid] <= 0`, read directly since the
+  Player entity persists post-death) before the party-wipe check.
+
 ### #4209 — Command button explainer
 
 Add a `floor3CommandUnlockNotified` latch plus a one-time `flashHint` toast in
@@ -86,6 +110,15 @@ Add a `floor3CommandUnlockNotified` latch plus a one-time `flashHint` toast in
 explaining that `[C]` / the `⚡ Command` button lets the player have their ready
 Companion use its signature ability. This mirrors the existing Abilities-unlock
 explainer pattern already shipped for consistency with repo UX conventions.
+
+Review found the original condition (`floor3PartyAvailable &&
+!floor3CommandUnlockNotified`) checked only `floorId === 'floor3'`, not actual
+companion-party availability, and could also fire while a blocking surface
+(dialog/menu) was open. Tightened to additionally require
+`!this.isBlockingSurfaceOpen()` and
+`resolvePartyMemberEids(this.world).length > 0` (the real recruited-roster
+check, not just the floor check), so the toast only fires once a companion is
+genuinely recruited and nothing is blocking the HUD.
 
 ## Consequences
 

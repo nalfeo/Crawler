@@ -121,8 +121,15 @@ export function companionAISystem(world: GameWorld): void {
     // across many targets and can never land a kill, which is what caused a
     // 'timeout' instead of a genuine recall in earlier iterations of this
     // fix.
+    //
+    // Scoped to Floor 3 only: #4206 was reported and validated exclusively
+    // against the Floor 3 kept-Companion experience. `companionAISystem` also
+    // runs on Floor 4 for its `TeamId.PLAYER` kept co-star, where this recall
+    // was never requested, designed for, or regression-tested — floor-gating
+    // keeps Floor 4's existing stale-lock behavior byte-identical to
+    // `origin/main` and avoids an unreviewed, unintended balance change there.
     let staleLockExpired = false;
-    if (teamId === TeamId.PLAYER) {
+    if (teamId === TeamId.PLAYER && world.floorId === 'floor3') {
       const pdx = playerX - x;
       const pdy = playerY - y;
       const isAway = pdx * pdx + pdy * pdy > rivalRangeSq;

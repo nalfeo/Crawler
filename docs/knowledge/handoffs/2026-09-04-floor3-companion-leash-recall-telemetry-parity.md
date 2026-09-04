@@ -59,14 +59,25 @@ Verification run below) rather than trusting any pre-merge test result.
     once (edge-triggered), then the counter resets. Fresh acquisition is never
     gated and remains fully self-anchored/unconditional.
   - `resetCompanionAIState()` now also clears `awayStreakByWorld`.
+  - **Review fix:** the recall condition is additionally gated on
+    `world.floorId === 'floor3'` — `companionAISystem.ts` is shared by other
+    floors (e.g. Floor 4), so an ungated recall would have been a silent
+    cross-floor balance change.
 - `tests/ecs/companion-ai-system.test.ts`
   - Replaces 3 outdated regression tests (written against an earlier, abandoned
-    design) with 5 new tests in `describe('sustained-drift stale-lock recall
+    design) with new tests in `describe('sustained-drift stale-lock recall
 (regression, #4206)')`: fresh-acquisition stays self-anchored even far from
-    the player; a stale lock holds before the grace window elapses; a stale
-    lock drops once the grace window is exceeded and recovers to `follow` when
-    nothing is left nearby; the streak counter resets once back in range;
-    NPC-owned (non-player) rosters never accumulate a drift streak.
+    the player; a stale lock holds before the grace window elapses; the streak
+    counter resets once back in range; NPC-owned (non-player) rosters never
+    accumulate a drift streak.
+  - **Review fix:** replaced the original "recovers to follow" test (which the
+    self-anchored range check alone already explained, making it worthless as
+    feature-specific proof) with two tests that actually isolate the new
+    logic: one keeps the original rival in self-anchored range throughout and
+    introduces a strictly-nearer second rival exactly at the edge-trigger
+    frame, asserting the decision switches (proving the recall genuinely
+    fired); the other proves the same scenario never breaks the lock outside
+    Floor 3 (Floor 4 stays byte-identical to clean-main).
 - `src/labs/ai-runner-lab/index.ts`
   - Adds `getCompanionTelemetry()` (per-companion decision/path fields
     mirroring the player's own telemetry shape), `drawCompanionOverlay()`
@@ -74,16 +85,51 @@ Verification run below) rather than trusting any pre-merge test result.
     `party-wiped`/`timeout`/`player-hp` game-over causes). Reuses the
     `AiRunnerDebugSnapshot`/`floor3SurfaceTrace` infrastructure merged in PR
     #4183 rather than reimplementing it.
+  - **Review fix (visible parity):** the original cut only exposed companion
+    telemetry via canvas overlay geometry and a pull-based debug snapshot —
+    not an actual visible UI element, so "parity with the player path
+    visualization" wasn't backed by anything readable. Added a visible
+    `#ai-companions` cell to the existing Decision-telemetry panel, refreshed
+    every render tick from the same `getCompanionTelemetry()` data.
+  - **Review fix (loss-reason gating/ordering):** `getFloor3LossReason()` now
+    returns `null` when `world.floorId !== 'floor3'` (matching its own doc
+    comment), and checks the player's own HP
+    (`world.stores.health.current[playerEid] <= 0`) **before** the party-wipe
+    check, fixing a misclassification of simultaneous player-death +
+    party-wipe frames as `party-wiped` instead of `player-hp`.
 - `src/engine/scenes/MainGameScene.ts`
   - Adds `floor3CommandUnlockNotified` latch + one-time `flashHint` explainer
     toast shown the first time `floor3PartyAvailable` becomes true.
+  - **Review fix:** tightened the toast condition to also require
+    `!this.isBlockingSurfaceOpen()` and
+    `resolvePartyMemberEids(this.world).length > 0` — the original condition
+    fired on floor-check alone, not actual companion-party availability, and
+    could fire while a dialog/menu was open.
+- `src/labs/main-scene-probe-lab/index.ts`
+  - Adds a `floor3CommandUnlockNotified` probe field so e2e tests can assert
+    the toast latch reliably. (The shared `interactionHint` text/visibility
+    slot is clobbered every frame by unrelated NPC-proximity logic in
+    `updateInteractions()`, so asserting on rendered toast text directly is
+    flaky — this is a pre-existing, out-of-scope limitation affecting all
+    `flashHint`-based unlock toasts, not something this PR fixes.)
 - `tests/unit/main-game-scene-mobile-ui.test.ts`
   - Asserts the explainer latch/text and its wiring to the Command button and
-    `[C]` key binding.
+    `[C]` key binding, updated for the tightened gating condition.
+- `tests/e2e/main-game-scene-floor3-party-ux.test.ts`
+  - New real-scene regression: the toast does NOT fire during the
+    loadout/starter-picker phase, and DOES fire once a companion is recruited
+    and no blocking surface remains (via the new probe latch).
 - `tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts`
   - Asserts a companion telemetry sample appears after starter-companion
     confirmation with `kind`/`x`/`y`/`targetX`/`targetY`/`targetDist`/`path` all
     populated and finite/non-empty.
+  - **Review fix:** additionally asserts the actual rendered `#ai-companions`
+    DOM cell text (not just the internal snapshot) contains the live
+    companion's eid and matches `/pt path/`, reading a fresh snapshot at that
+    point to avoid brittleness from Floor 3's companion-swap surface.
+- `tests/unit/ai-runner-companion-parity-wiring.test.ts` (new)
+  - 4 source-string canary tests covering the visible `#ai-companions` cell
+    wiring and the `getFloor3LossReason()` floor-gate/ordering fix.
 
 ## Real artifact evidence
 
@@ -107,22 +153,46 @@ Verification run below) rather than trusting any pre-merge test result.
 
 ## Verification run
 
-- `npx vitest run tests/ecs/companion-ai-system.test.ts --project unit`: 10/10
-  passed (5 original + 5 rewritten #4206 regression tests).
+- `npx vitest run tests/ecs/companion-ai-system.test.ts --project unit`: 11/11
+  passed (including the review-driven edge-trigger-proof and Floor-4
+  non-regression tests).
 - `npx vitest run tests/unit/main-game-scene-mobile-ui.test.ts --project unit`:
-  passed.
+  15/15 passed.
+- `npx vitest run tests/unit/ai-runner-companion-parity-wiring.test.ts --project unit`:
+  4/4 passed (new canary tests for the visible telemetry + loss-reason fixes).
 - `npx vitest run tests/headless/floor3-completion.test.ts --project headless`:
-  passed, `outcome: 'victory'`, re-run post-merge.
+  passed, `outcome: 'victory'`, re-run after all review fixes.
 - `npx vitest run tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts --project e2e`:
-  passed (64.7s), re-run fresh post-merge (mandatory hard-gate requirement —
-  not weakened in any way).
-- Additional post-merge regression sweep on touched-adjacent files: main-game-scene
-  corner-button-icons, simulation-pause, and hud-vitals-stack-corner-buttons
-  suites confirmed clean (the latter has zero diff vs. `origin/main` — untouched
-  by this branch, purely inherited from the merge).
-- `npm run verify:fast`: passed.
-- Lint, Prettier, and `npm run typecheck`: clean on all 6 changed files, both
-  pre- and post-merge.
+  passed (~54s), re-run fresh after all review fixes (mandatory hard-gate
+  requirement — not weakened in any way), including the new `#ai-companions`
+  DOM assertion.
+- `npx vitest run tests/e2e/main-game-scene-floor3-party-ux.test.ts --project e2e`:
+  passed (~9.3s).
+- `npm run typecheck`: clean (one transient template-literal/backtick syntax
+  bug introduced while adding an HTML comment inside the `ai-runner-lab`
+  template literal was caught and fixed here).
+- Lint (`eslint`) and Prettier: clean on all touched files.
+- `npm run verify:fast` and `npm run verify:pr-prereqs`: passed.
+
+## Review threads addressed
+
+GitHub's automated `copilot-pull-request-reviewer` flagged 5 substantive
+threads on PR #4235, all fixed with real code changes (not suppressed/
+allowlisted) and verified before reply:
+
+1. **#4209 toast over-fired** — gated only on `floorId==='floor3'`, not actual
+   party availability. Fixed: added `!isBlockingSurfaceOpen()` +
+   `resolvePartyMemberEids(...).length > 0`.
+2. **#4206 recall not floor-scoped (major)** — silently changed Floor 4
+   behavior. Fixed: added `world.floorId === 'floor3'` gate.
+3. **#4205 "parity" not backed by visible UI** — only internal
+   overlay/snapshot data existed. Fixed: added the visible `#ai-companions`
+   DOM cell.
+4. **`getFloor3LossReason()` floor-gate + ordering bug** — didn't gate on
+   floorId, misclassified simultaneous player-death + party-wipe. Fixed both.
+5. **#4206 regression test didn't isolate the new logic** — the pre-existing
+   self-anchored range check alone explained the assertions. Fixed: rewrote to
+   an edge-trigger-substitution proof plus a Floor-4 non-regression proof.
 
 ## Unresolved issues
 

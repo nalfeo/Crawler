@@ -90,7 +90,7 @@ import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
-import { shouldShowFloor3Party } from '../floor3-party-state.js';
+import { shouldShowFloor3Party, resolvePartyMemberEids } from '../floor3-party-state.js';
 import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
@@ -2886,7 +2886,22 @@ export class MainGameScene extends Phaser.Scene {
     // the corner button/key have never had any label/help text, so the first
     // time the button becomes available is the only reliable moment to teach
     // it without gating on an actual (possibly rejected) command attempt.
-    if (floor3PartyAvailable && !this.floor3CommandUnlockNotified) {
+    //
+    // `floor3PartyAvailable` only means "this is Floor 3" — it is true from
+    // the very first frame, before the starter-companion picker has even
+    // been confirmed. Gating on that alone would consume the one-shot latch
+    // while the intro/starter modal is still blocking, and the toast's fixed
+    // display window can expire long before the player actually has a
+    // Companion to command. Require an actual recruited party row (mirrors
+    // the same real party state the Command button and roster act on) and no
+    // blocking surface, so the explainer only fires once the player can
+    // genuinely read it and immediately try the thing it describes.
+    if (
+      floor3PartyAvailable &&
+      !this.floor3CommandUnlockNotified &&
+      !this.isBlockingSurfaceOpen() &&
+      resolvePartyMemberEids(this.world).length > 0
+    ) {
       this.floor3CommandUnlockNotified = true;
       this.flashHint(
         'Command unlocked! Press [C] or tap ⚡ Command to have your ready Companion use its signature ability.',

@@ -2252,10 +2252,24 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
    * doc comment) by re-deriving the same predicates `floor3Scenario.ts` and
    * `healthSystem.ts` used to set it, rather than adding new state — pure and
    * read-only, safe to call every frame regardless of floor or world state.
+   *
+   * Floor-gated on `floorId === 'floor3'` per the doc comment ("or is on a
+   * different floor"): the timeout goal flag and party-wipe predicate are
+   * Floor-3-specific concepts, so evaluating them on another floor would be
+   * meaningless even if `world.state` happened to be `'game_over'` there too.
+   *
+   * Player-HP is checked before the party-wipe predicate: a simultaneous
+   * player-death + party-wipe frame is the player's own HP reaching zero
+   * (`healthSystem.ts`), which is the more specific/actionable cause and must
+   * win over the party-wipe fallback, not the other way around.
    */
   const getFloor3LossReason = (world: GameWorld): AiRunnerDebugSnapshot['floor3LossReason'] => {
-    if (world.state !== 'game_over') return null;
+    if (world.floorId !== 'floor3' || world.state !== 'game_over') return null;
     if (world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true) return 'timeout';
+    const playerEid = query(world.ecs, [Player])[0];
+    const playerHealth =
+      playerEid !== undefined ? (world.stores.health.current[playerEid] ?? 0) : 0;
+    if (playerHealth <= 0) return 'player-hp';
     if (_isPartyWiped(world)) return 'party-wiped';
     return 'player-hp';
   };
@@ -2927,6 +2941,17 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
                 <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
                 <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
               </div>
+              <!--
+                #4205: companion decision/path parity with the player row
+                above — reads the same getCompanionTelemetry() snapshot the
+                world-space overlay (drawCompanionOverlay) already draws
+                from, but as an actual visible text readout rather than only
+                canvas geometry, so a user (not just a debug-snapshot
+                consumer) can see each companion's current decision + path.
+              -->
+              <div id="ai-companions-block" class="runner-decision-grid">
+                <div><strong>Companions:</strong> <span id="ai-companions">-</span></div>
+              </div>
               <details id="ai-tree-details" class="runner-tree-details"${openDetails.has('ai-tree-details') ? ' open' : ''}>
                 <summary id="ai-tree-details-summary">Decision tree</summary>
                 <div id="ai-tree"></div>
@@ -3357,6 +3382,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         nav.pathWaypoints.length > 0
           ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
           : 'No path';
+    }
+    // #4205: visible companion decision/path readout, parity with the
+    // player's Reason/Path cells above — one comma-joined summary per
+    // recruited companion so the panel scales with party size without new
+    // DOM elements per companion.
+    const companionsElem = document.getElementById('ai-companions');
+    if (companionsElem) {
+      const companions = world ? getCompanionTelemetry(world) : [];
+      companionsElem.textContent =
+        companions.length > 0
+          ? companions
+              .map(
+                (companion) =>
+                  `#${companion.eid} ${companion.kind} → (${companion.targetX}, ${companion.targetY}) · ${companion.path.length} pt path`,
+              )
+              .join('; ')
+          : 'None';
     }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {

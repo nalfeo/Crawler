@@ -151,6 +151,7 @@ describe('companionAISystem', () => {
 
     it('does not drop a stale lock before the sustained-drift grace window elapses', () => {
       const world = createTestWorld();
+      world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
       const rival = spawnRival(world, 14, 0);
@@ -172,45 +173,74 @@ describe('companionAISystem', () => {
       expect(decision?.targetEid).toBe(rival);
     });
 
-    it('drops a stale lock once sustained drift exceeds the grace window, and recovers to follow once nothing is left to fight', () => {
+    it('drops a stale lock once sustained drift exceeds the grace window, forcing a fresh nearest-rival scan', () => {
       const world = createTestWorld();
+      world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
-      const rival = spawnRival(world, 14, 0);
+      const rivalA = spawnRival(world, 14, 0);
 
       companionAISystem(world);
-      expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rival);
+      expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rivalA);
 
-      // Drag the pair far from the player and hold that for exactly the
-      // grace window. The rival stays close to the companion throughout
-      // (would keep a self-anchored lock forever, pre-fix) but is not close
-      // enough to the PLAYER — the lock must still hold up to (and
-      // including) the grace window itself, since fresh acquisition below
-      // would otherwise just re-find the same nearby rival and mask whether
-      // the recall logic engaged at all.
+      // Drag the companion+rivalA pair far from the player together, keeping
+      // rivalA within the companion's own self-anchored engagement range for
+      // the entire hold (dx stays 4) — the pre-existing self-anchored range
+      // check alone would therefore keep this lock valid forever, with or
+      // without the sustained-drift fix. Any eventual target switch here can
+      // only be explained by the new recall logic, not by rivalA becoming
+      // independently invalid.
       world.stores.position.x[companion] = 100;
-      world.stores.position.x[rival] = 104;
+      world.stores.position.x[rivalA] = 104;
       for (let i = 0; i < ENGAGEMENT_END_FRAMES; i += 1) {
         companionAISystem(world);
       }
-      expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rival);
+      // Still locked through (and including) the grace window itself.
+      expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rivalA);
 
-      // The rival independently leaves the companion's own self-anchored
-      // engagement range (e.g. it died or fled far away on its own) right as
-      // sustained drift crosses the grace window on this next tick — with
-      // nothing left nearby to reacquire, the sustained-drift recall must
-      // now surface as the leash-bounded follow decision.
-      world.stores.position.x[rival] = 10_000;
+      // Introduce a second, strictly-nearer rival exactly as the streak
+      // crosses the grace window on this next tick. A locked target is never
+      // displaced by a merely-nearer candidate (see the target-lock comment
+      // above) — so rivalB can only be picked up if the sustained-drift
+      // recall actually forces a fresh nearest-rival scan this frame. If the
+      // recall regresses to a no-op, the stale lock on rivalA would simply
+      // continue (rivalA is still self-anchored-valid) and rivalB would
+      // never be selected.
+      const rivalB = spawnRival(world, 101, 0);
       companionAISystem(world);
       const decision = getCompanionAIDecision(world, companion);
-      expect(decision?.kind).toBe('follow');
-      expect(decision?.targetEid).toBeDefined();
-      expect(decision?.x).toBe(0);
-      expect(decision?.y).toBe(0);
+      expect(decision?.kind).toBe('rival-primary');
+      expect(decision?.targetEid).toBe(rivalB);
+    });
+
+    it('does not apply the sustained-drift recall outside Floor 3, keeping other floors byte-identical to clean-main', () => {
+      const world = createTestWorld();
+      world.floorId = 'floor4';
+      spawnPlayer(world, 0, 0);
+      const companion = spawnCompanion(world, 10, 0);
+      const rivalA = spawnRival(world, 14, 0);
+
+      companionAISystem(world);
+      expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rivalA);
+
+      // Drag the pair far from the player and hold well past the grace
+      // window that would trigger a recall on Floor 3. #4206 was reported
+      // and validated exclusively for Floor 3; Floor 4's kept co-star (also
+      // `TeamId.PLAYER`) must keep its pre-existing stale-lock behavior
+      // unchanged, so the lock must never break here.
+      world.stores.position.x[companion] = 100;
+      world.stores.position.x[rivalA] = 104;
+      for (let i = 0; i < ENGAGEMENT_END_FRAMES + 5; i += 1) {
+        companionAISystem(world);
+      }
+      const decision = getCompanionAIDecision(world, companion);
+      expect(decision?.kind).toBe('rival-primary');
+      expect(decision?.targetEid).toBe(rivalA);
     });
 
     it('resets the sustained-drift counter once back in range, so a later dip never carries over', () => {
       const world = createTestWorld();
+      world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
       const rival = spawnRival(world, 14, 0);

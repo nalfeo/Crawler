@@ -216,6 +216,25 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
       expect(Number.isFinite(companion.targetDist)).toBe(true);
       expect(Array.isArray(companion.path)).toBe(true);
       expect(companion.path.length).toBeGreaterThan(0);
+
+      // #4205 (review follow-up): the parity claim must be a genuinely
+      // visible UI surface, not just an internal debug-snapshot/overlay-only
+      // reading — assert the actual rendered `#ai-companions` telemetry cell
+      // text mirrors a fresh live read of the same companion state (not the
+      // possibly-stale `companionSample` above, since Floor 3's
+      // `floor3-keep-companion` surface can swap which companion is active).
+      const liveSnapshot = await readSnapshot(page);
+      expect(liveSnapshot).not.toBeNull();
+      expect(liveSnapshot!.companions.length).toBeGreaterThan(0);
+      const liveCompanion = liveSnapshot!.companions[0]!;
+      const companionsCellText = await page.textContent('#ai-companions');
+      expect(
+        companionsCellText,
+        `#ai-companions telemetry cell was empty/placeholder while a companion was live; ${context}`,
+      ).not.toBe('-');
+      expect(companionsCellText).not.toBeNull();
+      expect(companionsCellText).toContain(`#${liveCompanion.eid}`);
+      expect(companionsCellText).toMatch(/pt path/);
     } finally {
       await closeQuietly(page);
     }
