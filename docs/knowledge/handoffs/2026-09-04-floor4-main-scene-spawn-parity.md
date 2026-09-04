@@ -28,18 +28,18 @@ Closed the observable gap in Floor 4 slice 2's acceptance contract: the existing
   - Did not add or duplicate Floor 4 gameplay behavior; the probe still boots through `createFloorGameConfig` + `createFloorMainSceneOptions`.
 - `tests/e2e/floor4-main-scene-spawning.deterministic.test.ts`
   - Added a focused real MainGameScene e2e regression at `floor=floor4&seed=404`.
-  - Unpauses the shipped scene path, waits for Act 1 `WAVES`, and asserts at least one wave released, enemies spawned, and live hostile entities exist.
+  - Unpauses the shipped scene path, waits for Act 1 `WAVES`, and asserts three manifest-cadence wave releases, enemies spawned, and live hostile entities exist.
 
 ## Verification run
 
 - `bash scripts/agent/preflight.sh` — passed (typecheck included).
 - `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts --reporter=verbose` — passed; 2 passed + 1 expected fail.
 - `npx vitest run --project e2e tests/e2e/floor4-ai-completion.deterministic.test.ts --reporter=verbose` — passed; 1 passed + 1 expected fail.
-- `npx vitest run --project e2e tests/e2e/floor4-main-scene-spawning.deterministic.test.ts --reporter=verbose` — passed; observed physical hostiles in the real MainGameScene probe path for seed 404.
+- `npx vitest run --project e2e tests/e2e/floor4-main-scene-spawning.deterministic.test.ts --reporter=verbose` — passed; observed three manifest-cadence wave releases and physical hostiles in the real MainGameScene probe path for seed 404.
 - `npx tsc --noEmit --pretty false` — passed.
-- `npx vitest run --project e2e tests/e2e/floor4-main-scene-spawning.deterministic.test.ts tests/e2e/floor4-arena-hud.deterministic.test.ts --reporter=verbose && npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts --reporter=verbose` — passed.
+- `npx vitest run --project e2e tests/e2e/floor4-main-scene-spawning.deterministic.test.ts tests/e2e/floor4-arena-hud.deterministic.test.ts --reporter=verbose && npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts --reporter=verbose` — passed before and after strengthening the cadence assertion.
 - `runtime-tools-secret_scanning` on changed files — no secrets detected.
-- `npm run verify:fast` — passed (long changed-test sweep, exit 0).
+- `npm run verify:fast` — passed twice (long changed-test sweeps, exit 0), including after the review-driven cadence assertion strengthening.
 
 ## Run bundle evidence
 
