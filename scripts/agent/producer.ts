@@ -9,7 +9,7 @@
  * Usage:
  *   npm run producer -- --triage "add bowling minigame"
  *   npm run producer -- --status
- *   npm run producer -- --shepherd-status --pr 1227
+ *   npm run producer -- --shepherd-status --pr 1227 --run 33730214117 --watch-exit 1
  */
 
 import * as fs from 'fs';
@@ -380,9 +380,77 @@ function handleStatus(): void {
 
 /**
  * Command: --shepherd-status
- * Query Shepherd watch status for a specific PR
+ * Query Shepherd watch status for a specific PR and, after completion, a run.
  */
-function handleShepherdStatus(prNumber: string): void {
+export interface ShepherdRun {
+  databaseId?: number;
+  status?: string;
+  conclusion?: string;
+  jobs?: Array<{ name?: string; conclusion?: string }>;
+}
+
+export interface ShepherdRunClassification {
+  outcome:
+    | 'success'
+    | 'failure'
+    | 'cancelled'
+    | 'action-required'
+    | 'neutral'
+    | 'skipped'
+    | 'stale'
+    | 'pending';
+  failedJobs: string[];
+  watcherJsonDisagreement: boolean;
+  /**
+   * Only a completed run whose JSON conclusion is a genuine failure justifies a
+   * `--log-failed` read. An in-flight run can already carry a failed job while
+   * the workflow still recovers or gets superseded, so its jobs are reported
+   * but never treated as a final verdict.
+   */
+  logsActionable: boolean;
+}
+
+export function classifyShepherdRun(
+  run: ShepherdRun,
+  watcherExitCode?: number,
+): ShepherdRunClassification {
+  const status = run.status?.toUpperCase();
+  const conclusion = run.conclusion?.toUpperCase();
+  const failedJobs = (run.jobs ?? [])
+    .filter((job) =>
+      ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(job.conclusion?.toUpperCase() ?? ''),
+    )
+    .map((job) => job.name ?? 'unnamed job');
+
+  const outcome =
+    status !== 'COMPLETED'
+      ? 'pending'
+      : conclusion === 'SUCCESS'
+        ? 'success'
+        : conclusion === 'CANCELLED'
+          ? 'cancelled'
+          : conclusion === 'ACTION_REQUIRED'
+            ? 'action-required'
+            : conclusion === 'NEUTRAL'
+              ? 'neutral'
+              : conclusion === 'SKIPPED'
+                ? 'skipped'
+                : conclusion === 'STALE'
+                  ? 'stale'
+                  : ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(conclusion ?? '')
+                    ? 'failure'
+                    : 'pending';
+
+  return {
+    outcome,
+    failedJobs,
+    watcherJsonDisagreement:
+      watcherExitCode !== undefined && watcherExitCode !== 0 && outcome === 'success',
+    logsActionable: outcome === 'failure' && failedJobs.length > 0,
+  };
+}
+
+function handleShepherdStatus(prNumber: string, runId?: string, watcherExitCode?: number): void {
   try {
     const viewRaw = execFileSync(
       'gh',
@@ -404,13 +472,7 @@ function handleShepherdStatus(prNumber: string): void {
       title?: string;
     };
     const checks = parsed.statusCheckRollup ?? [];
-    const failingConclusions = new Set([
-      'FAILURE',
-      'TIMED_OUT',
-      'CANCELLED',
-      'ACTION_REQUIRED',
-      'STARTUP_FAILURE',
-    ]);
+    const failingConclusions = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE']);
     const failingChecks = checks.filter(
       (check) => check.conclusion && failingConclusions.has(check.conclusion),
     ).length;
@@ -423,7 +485,45 @@ function handleShepherdStatus(prNumber: string): void {
     console.log(`Merge state: ${parsed.mergeStateStatus ?? 'UNKNOWN'}`);
     console.log(`Review decision: ${parsed.reviewDecision ?? 'PENDING'}`);
     console.log(`Checks: ${passingChecks} passing, ${failingChecks} failing`);
-    console.log('\nProducer handoff policy: Shepherd should run in reactive watch mode.');
+    if (!runId) {
+      console.log('\nRun status: supply --run <id> after completion for an authoritative verdict.');
+      return;
+    }
+
+    const runRaw = execFileSync(
+      'gh',
+      ['run', 'view', runId, '--json', 'databaseId,status,conclusion,jobs,url'],
+      { encoding: 'utf-8' },
+    );
+    const run = JSON.parse(runRaw) as ShepherdRun & { url?: string };
+    const classification = classifyShepherdRun(run, watcherExitCode);
+    console.log(
+      `Run #${run.databaseId ?? runId}: ${classification.outcome} (${run.status ?? 'UNKNOWN'}/${run.conclusion ?? 'UNKNOWN'})`,
+    );
+    if (run.url) console.log(run.url);
+    if (classification.failedJobs.length > 0) {
+      console.log(`Failed jobs: ${classification.failedJobs.join(', ')}`);
+      if (classification.logsActionable) {
+        console.log(`Inspect with: gh run view ${run.databaseId ?? runId} --log-failed`);
+      } else {
+        console.log(
+          `Run is ${classification.outcome}; these jobs are not an authoritative failure verdict yet.`,
+        );
+      }
+    }
+    if (classification.outcome === 'cancelled') {
+      console.log(
+        'Run was cancelled; confirm the latest run for this branch before diagnosing a failure.',
+      );
+    }
+    if (classification.outcome === 'action-required') {
+      console.log('Run is action-required; route it to CI Recovery retrigger/admin handling.');
+    }
+    if (classification.watcherJsonDisagreement) {
+      console.warn(
+        `WARN watcher-json-disagreement run=${run.databaseId ?? runId} watcher_exit=${watcherExitCode} status=${run.status} conclusion=${run.conclusion}`,
+      );
+    }
   } catch (err) {
     console.error(`Unable to query live PR status for #${prNumber}: ${err}`);
     process.exit(1);
@@ -924,6 +1024,8 @@ function main(): void {
       status: { type: 'boolean' },
       'shepherd-status': { type: 'boolean' },
       pr: { type: 'string' },
+      run: { type: 'string' },
+      'watch-exit': { type: 'string' },
       'force-publish': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -939,7 +1041,7 @@ Usage:
   npm run producer -- --triage "user request text"
   npm run producer -- --decompose "user request text"
   npm run producer -- --status
-  npm run producer -- --shepherd-status --pr <number>
+  npm run producer -- --shepherd-status --pr <number> [--run <id> --watch-exit <code>]
   npm run producer -- --force-publish --pr <number>
   npm run producer -- --help
 
@@ -947,7 +1049,7 @@ Commands:
   --triage <request>           Classify a request and output triage result
   --decompose <request>        Triage → Clarify → Decompose in one pass
   --status                     Show current orchestration status
-  --shepherd-status --pr <n>   Query Shepherd watch status for PR
+  --shepherd-status --pr <n>   Query Shepherd status; --run finalizes from run JSON
   --force-publish --pr <n>     Manually override publication criteria
   --help                       Show this help text
     `);
@@ -974,7 +1076,13 @@ Commands:
       console.error('Error: --shepherd-status requires --pr <number>');
       process.exit(1);
     }
-    handleShepherdStatus(values.pr);
+    const watcherExitCode =
+      values['watch-exit'] === undefined ? undefined : Number(values['watch-exit']);
+    if (watcherExitCode !== undefined && !Number.isInteger(watcherExitCode)) {
+      console.error('Error: --watch-exit must be an integer exit code');
+      process.exit(1);
+    }
+    handleShepherdStatus(values.pr, values.run, watcherExitCode);
     process.exit(0);
   }
 
