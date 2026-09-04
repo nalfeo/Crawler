@@ -251,28 +251,6 @@ in-memory resolution write. A real behavioral test was added to
 reconcile against the same fixture makes no reply POST and no
 `resolveReviewThread` mutation.
 
-### Known limitations carried into Phase 3
-
-Two review findings were consciously **not** actioned, with reasoning:
-
-- **The Goobers gaggle does not yet acquire the claim lease.**
-  `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml` still claims an
-  approved issue directly, so in practice a publication handoff currently finds
-  no lease and correctly no-ops with `reason=no-claimed-issue`. This PR delivers
-  the lease mechanism, the ownership boundary, and the handoff; wiring
-  acquire/heartbeat into the production Goobers claim path is Phase 3 work and
-  is deliberately out of scope. Nothing regresses in the meantime — the
-  publication path is a safe no-op and legacy owns the PR lifecycle regardless.
-- **Legacy intake fails _operational_, not closed, on a malformed selector.**
-  A reviewer argued that an unset or misspelled `LIFECYCLE_MUTATION_OWNER`
-  should stop legacy intake too, so that neither side claims. That would leave
-  approved issues with **no** intake owner at all, which is precisely the gap
-  this work exists to close. The asymmetry is intentional and matches the lane
-  model: the claim **lease write** fails closed (`decideLifecycleLease` returns
-  `observe-only` unless the selector is the literal `goobers`), while claim
-  **routing** falls back to legacy so an approved issue is always picked up by
-  exactly one owner.
-
 ### Required action at merge
 
 `LIFECYCLE_MUTATION_OWNER` is currently **unset**. Because `goobers-run.yml` is
@@ -283,6 +261,46 @@ with no gap, but Goobers stays idle. To complete the cutover the owner must run:
 ```bash
 gh variable set LIFECYCLE_MUTATION_OWNER -R nalfeo/Crawler --body 'goobers'
 ```
+
+### Review findings resolved with evidence
+
+- **"The Goobers gaggle does not acquire the claim lease" — resolved as
+  deterministically inapplicable.** The production Goobers path already takes an
+  exclusive pre-PR implementation claim and ends it at publication; it does not
+  need the comment lease to satisfy the boundary. Concrete code path in
+  `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml`:
+  - `query-backlog` claims with `trustLabel: goobers:approved`,
+    `requireUnassigned: 'true'`, `excludeLabel: goobers/status:in-review`,
+    `maxItems: '1'`, and on claim **sets** `goobers/status:in-review` — the very
+    label in `excludeLabel`, making the claim self-excluding against any later
+    run.
+  - Exclusivity is reinforced by `readiness.maxConcurrentRuns: 1` and
+    `goobers-run.yml`'s non-cancelling `goobers-run` concurrency group.
+  - `open-pr → pr-opened-gate → close-out` runs `close-out` on **both** the
+    `pass` and `fail` branches, so PR publication **always** transitions the
+    claim (`status: in-review` + PR link). A claim can never outlive
+    publication.
+
+  This is exactly "a claim scoped to the pre-PR implementation phase, released
+  or transitioned deterministically at PR publication". The comment lease is a
+  complementary cross-writer coordination and audit surface used by the trusted
+  lifecycle workflow; when no comment lease exists the publication handoff
+  correctly no-ops with `reason=no-claimed-issue`, so nothing is stranded.
+  Proven by `proves the Goobers path itself takes an exclusive pre-PR claim and
+ends it at publication` in `tests/unit/goobers-lifecycle-ownership.test.ts`.
+
+- **"Intake routing could leave a no-work gap" — proven impossible.** Goobers
+  runs iff the selector is the literal `goobers` (`goobers-run.yml` job gate);
+  legacy intake handles the approved issue iff it is not that literal
+  (`goobersOwnsImplementationClaim`). These are exact complements, so **every**
+  configuration — including unset, empty, wrong-case, and misspelled — leaves
+  exactly one owner and never zero. Proven over a value matrix by `leaves no
+approved issue unowned for ANY value of the claim selector`.
+
+- **"Legacy intake should also fail closed on a malformed selector" — declined
+  by design.** Failing closed there would leave approved issues with **no**
+  intake owner, which is the gap this work exists to remove. Claim **lease
+  writes** fail closed; claim **routing** falls back to legacy.
 
 ## Merge-train shepherd intervention (2026-09-03)
 

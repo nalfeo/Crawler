@@ -622,6 +622,71 @@ describe('Goobers lifecycle ownership', () => {
     expect(workflow('goobers-run.yml')).toContain("vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&");
   });
 
+  it('leaves no approved issue unowned for ANY value of the claim selector', () => {
+    // The no-work-gap proof. Goobers runs iff the selector is the literal
+    // `goobers` (the goobers-run.yml job gate); legacy intake handles the issue
+    // iff it is NOT that literal (goobersOwnsImplementationClaim). Those are
+    // exact complements, so every possible configuration — including unset,
+    // empty, and malformed — leaves exactly one owner and never zero.
+    expect(workflow('goobers-run.yml')).toContain("vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&");
+
+    for (const selector of [
+      'goobers',
+      'legacy',
+      'off',
+      '',
+      ' goobers',
+      'Goobers',
+      'GOOBERS',
+      'goobrs',
+      'true',
+      undefined,
+    ]) {
+      const goobersHandles = selector === 'goobers';
+      const legacyHandles = !goobersOwnsImplementationClaim({
+        LIFECYCLE_MUTATION_OWNER: selector,
+      });
+      expect([goobersHandles, legacyHandles].filter(Boolean)).toHaveLength(1);
+    }
+  });
+
+  it('proves the Goobers path itself takes an exclusive pre-PR claim and ends it at publication', () => {
+    // The implementation-claim boundary is satisfied by the production Goobers
+    // workflow, not only by the comment lease: `query-backlog` takes an
+    // exclusive claim and `open-pr` always transitions it.
+    const gaggle = parse(
+      fs.readFileSync(
+        path.join(repositoryRoot, '.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml'),
+        'utf8',
+      ),
+    );
+    const tasks = Object.fromEntries(
+      gaggle.spec.tasks.map((task: { name: string }) => [task.name, task]),
+    );
+    const gates = Object.fromEntries(
+      gaggle.spec.gates.map((gate: { name: string }) => [gate.name, gate]),
+    );
+
+    // Acquisition is exclusive: only approved, unassigned, not-already-claimed
+    // issues, one at a time...
+    const claim = tasks['query-backlog'];
+    expect(claim.inputs.trustLabel).toBe('goobers:approved');
+    expect(claim.inputs.requireUnassigned).toBe('true');
+    expect(claim.inputs.excludeLabel).toBe('goobers/status:in-review');
+    expect(claim.inputs.maxItems).toBe('1');
+    // ...and claiming SETS the very label named in excludeLabel, so the claim
+    // is self-excluding against any later run.
+    expect(claim.run.script).toContain("--add-label 'goobers/status:in-review'");
+    expect(gaggle.spec.readiness.maxConcurrentRuns).toBe(1);
+
+    // Publication deterministically ends the claim on EVERY branch, so a claim
+    // can never outlive PR publication.
+    expect(tasks['open-pr'].next).toBe('pr-opened-gate');
+    expect(gates['pr-opened-gate'].branches.pass).toBe('close-out');
+    expect(gates['pr-opened-gate'].branches.fail).toBe('close-out');
+    expect(tasks['close-out'].inputs.status).toBe('in-review');
+  });
+
   it('resolves closing issues within this repository and bounded', () => {
     const source = workflow('goobers-lifecycle-owner.yml');
     // A cross-repository closing reference must not alias a same-numbered
