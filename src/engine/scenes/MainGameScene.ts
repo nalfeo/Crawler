@@ -5835,6 +5835,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private finishIssueReport(): void {
     const wasPaused = this.issueReportPausedState;
+    this.issueReportPicker?.close();
     this.issueReportPausedState = undefined;
     if (!this.issueReportSubmitting && !this.issueReportRetryPayload) {
       this.issueReportRunId = undefined;
@@ -5842,6 +5843,7 @@ export class MainGameScene extends Phaser.Scene {
     if (wasPaused !== undefined) {
       this.setSimulationPaused(wasPaused);
     }
+    this.updateOverlayText();
   }
 
   /**
