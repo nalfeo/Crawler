@@ -591,8 +591,45 @@ describe('Goobers lifecycle ownership', () => {
       path.join(repositoryRoot, '.github/scripts/ci-recovery/reconcile.mjs'),
       'utf8',
     );
-    // Every review-thread mutation site must consult the lane.
-    expect(reconciler.match(/legacyReviewThreadWritesEnabled\(\)/g)).toHaveLength(3);
+
+    // Every review-thread WRITE must consult the lane. Rather than pinning a
+    // magic count (which would lock in an under-count and reject a correct
+    // fix), assert that each write endpoint is gated: the two outdated-marker
+    // reply POSTs, the follow-up-backlog reply, and the two resolve passes.
+    const replyPosts = reconciler.match(/comments\/\$\{replyCommentId\}\/replies/g) ?? [];
+    const resolveMutations = reconciler.match(/resolveReviewThread\(input:/g) ?? [];
+    const gates = reconciler.match(/legacyReviewThreadWritesEnabled\(\)/g) ?? [];
+    expect(replyPosts.length).toBe(3);
+    expect(resolveMutations.length).toBe(3);
+    expect(gates.length).toBeGreaterThanOrEqual(replyPosts.length + resolveMutations.length - 1);
+
+    // The gate must precede the in-memory resolution write. Skipping only the
+    // GraphQL call would mark a thread resolved without resolving it, dropping
+    // a real blocker and admitting the PR prematurely.
+    expect(reconciler).not.toContain('if (live && legacyReviewThreadWritesEnabled())');
+    for (const segment of reconciler.split('thread.isResolved = true;').slice(0, -1)) {
+      const guarded = segment.lastIndexOf('if (!legacyReviewThreadWritesEnabled()) continue;');
+      const resolveCall = segment.lastIndexOf('resolveReviewThread(input:');
+      expect(guarded).toBeGreaterThan(-1);
+      expect(guarded).toBeLessThan(resolveCall);
+    }
+  });
+
+  it('keeps Goobers intake gated on the claim lane so rollback cannot dual-write', () => {
+    // Legacy intake now defers only while Goobers owns the lane, so the Goobers
+    // entry point must be gated on the same literal or a rollback would leave
+    // both writers claiming the same approved issue.
+    expect(workflow('goobers-run.yml')).toContain("vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&");
+  });
+
+  it('resolves closing issues within this repository and bounded', () => {
+    const source = workflow('goobers-lifecycle-owner.yml');
+    // A cross-repository closing reference must not alias a same-numbered
+    // local issue.
+    expect(source).toContain('nodes { number repository { nameWithOwner } }');
+    expect(source).toContain('closingIssuesReferences(first:100)');
+    // More references than one page cannot prove which claim ends here.
+    expect(source).toContain("skip('unbounded-closing-references')");
   });
 
   it('hands approved-issue intake back to legacy on rollback', () => {

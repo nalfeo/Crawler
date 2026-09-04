@@ -1857,6 +1857,11 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   // with no trusted marker so the resolution pass below can resolve them.
   for (const thread of earlyUnresolved) {
     if (!thread.isOutdated) continue;
+    // Posting an ✅ Addressed reply is a review-thread write, so it belongs
+    // to the review-threads lane. Skipping the whole iteration (rather than
+    // just the POST) also avoids injecting the synthetic marker comment, which
+    // would otherwise make the resolution pass believe the thread was handled.
+    if (!legacyReviewThreadWritesEnabled()) continue;
     if (shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
     const comments = thread.comments?.nodes ?? [];
     const last = comments[comments.length - 1];
@@ -1907,7 +1912,11 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   // Thread-resolution pass: resolve any unresolved thread with a trusted marker.
   for (const thread of earlyUnresolved) {
     if (!shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
-    if (live && legacyReviewThreadWritesEnabled()) {
+    // Gate BEFORE the in-memory `isResolved` write below: skipping only the
+    // GraphQL call would mark the thread resolved locally without resolving it,
+    // dropping a genuine blocker and admitting the PR prematurely.
+    if (!legacyReviewThreadWritesEnabled()) continue;
+    if (live) {
       try {
         await assertExpectedMetadataUnchanged('resolve-thread');
         await graphql(
@@ -2310,6 +2319,8 @@ function shouldAutoPostOutdatedMarker(candidate) {
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
+  // Review-thread write: gated on the review-threads lane (see pass above).
+  if (!legacyReviewThreadWritesEnabled()) continue;
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {
@@ -2359,7 +2370,9 @@ for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
 for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
-  if (live && legacyReviewThreadWritesEnabled()) {
+  // Gate before the in-memory resolution write (see the early pass).
+  if (!legacyReviewThreadWritesEnabled()) continue;
+  if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
       pat,

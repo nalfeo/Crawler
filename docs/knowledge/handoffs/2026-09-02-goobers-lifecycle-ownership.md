@@ -216,6 +216,41 @@ with the runbook noting that a PR lane reporting `observe-only` when it was not
 migrated is a misconfiguration. **Operational note for the owner: keep that
 variable set to `true`; deleting it stops all legacy PR automation.**
 
+### Review round 2 (verification pass)
+
+Both reviewers re-verified the committed diff and confirmed findings 1–6 closed,
+with no residual path by which a fork or untrusted actor reaches a write. Both
+then independently found the **same** new gap, plus two follow-ons:
+
+7. **The review-thread lane gate covered only 3 of 5 write sites.** The two
+   auto-outdated-marker `✅ Addressed` reply POSTs were still gated only on
+   `live`, so migrating the lane in Phase 3 would have left legacy posting
+   replies — the same dual-writer class the gate was added to prevent. All five
+   write endpoints are now gated.
+8. **Gating the mutation alone would have falsely marked threads resolved.**
+   The resolve passes set `thread.isResolved = true` after the GraphQL call.
+   With the gate placed on the call only, a migrated lane would skip the resolve
+   but still mark the thread resolved in memory, dropping a genuine blocker and
+   letting the PR be admitted with an unresolved thread. The gate now runs
+   _before_ that in-memory write.
+9. **Rollback would have produced two claim writers.** Making legacy intake
+   conditional (finding 4) meant that on rollback both legacy _and_ the still
+   ungated `goobers-run.yml` would claim the same approved issue.
+   `goobers-run.yml` is now gated on the same literal selector.
+
+Also fixed from round 2: closing-issue discovery filtered to this repository
+(a cross-repository reference could alias a same-numbered local issue) and
+raised to `first:100` with an explicit fail-closed
+`unbounded-closing-references` path.
+
+**Test-quality fix:** the round-1 test pinned the gate count to exactly 3, which
+encoded the under-count and would have rejected the correct fix. It now asserts
+that every reply/resolve endpoint is gated and that the gate precedes the
+in-memory resolution write. A real behavioral test was added to
+`reconcile.test.mjs`: with `LIFECYCLE_OWNER_REVIEW_THREADS=goobers`, a live
+reconcile against the same fixture makes no reply POST and no
+`resolveReviewThread` mutation.
+
 ## Merge-train shepherd intervention (2026-09-03)
 
 Shepherded under shared lease
