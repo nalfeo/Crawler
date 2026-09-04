@@ -90,6 +90,7 @@ describe('companionCombatSystem', () => {
     expect(world.stores.health.current[wild]).toBe(100);
 
     world.stores.position.x[player] = FLOOR3_WILD_AGGRO_RANGE_FT;
+    world.frameCount += 1;
     companionAISystem(world);
     companionCombatSystem(world);
     expect(isEnemyHostileToPlayer(world, wild)).toBe(true);
@@ -124,11 +125,13 @@ describe('companionCombatSystem', () => {
     expect(world.stores.health.current[wild]).toBe(70);
 
     world.stores.position.x[player] = 2 + FLOOR3_WILD_AGGRO_RANGE_FT * 2 - 1;
+    world.frameCount += 1;
     companionAISystem(world);
     expect(isEnemyHostileToPlayer(world, wild)).toBe(true);
     expect(world.stores.health.current[wild]).toBe(70);
 
     world.stores.position.x[player] = 2 + FLOOR3_WILD_AGGRO_RANGE_FT * 2 + 1;
+    world.frameCount += 1;
     companionAISystem(world);
     expect(isEnemyHostileToPlayer(world, wild)).toBe(false);
     expect(world.stores.health.current[wild]).toBe(100);

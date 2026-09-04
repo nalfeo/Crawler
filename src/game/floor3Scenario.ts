@@ -326,7 +326,7 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     speed,
     FLOOR3_WILD_AGGRO_RANGE_FT,
     archetype.aiType === 'ranged' || archetype.aiType === 'support'
-      ? archetype.detectRange * 0.65
+      ? FLOOR3_WILD_AGGRO_RANGE_FT * 0.65
       : 0,
   );
   addComponent(world.ecs, eid, set(Team, { id: FLOOR3_WILD_TEAM_ID }));
