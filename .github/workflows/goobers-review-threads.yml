@@ -216,6 +216,10 @@ jobs:
               process.env.GITHUB_WORKSPACE,
               '.github/scripts/ci-recovery/github.mjs',
             )));
+            const state_ = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/ci-recovery/state.mjs',
+            )));
 
             const { decisions } = JSON.parse(
               fs.readFileSync('.goobers-review-threads/decision.json', 'utf8'),
@@ -293,18 +297,18 @@ jobs:
 
               if (decision.action === 'post-outdated-marker') {
                 // Marker-collision safety: re-check that no trusted marker was
-                // added to this thread since the decision was computed.
-                const comments = thread.comments?.nodes ?? [];
-                const last = comments[comments.length - 1];
+                // added to this thread since the decision was computed. Reuses
+                // the exact same trust predicate as reconcile.mjs and the
+                // decision module (state.mjs), so this re-check can never
+                // silently drift from the shared marker-trust definition.
+                const last = state_.effectiveLatestThreadComment(thread);
                 const hasTrustedMarkerAlready =
                   last &&
-                  /addressed\s+in/i.test(String(last.body || '')) &&
-                  (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(
+                  state_.extractAddressedMarkerSha(last.body) !== null &&
+                  (state_.TRUSTED_ASSOCIATIONS.has(
                     String(last.authorAssociation || '').toUpperCase(),
                   ) ||
-                    ['copilot-swe-agent[bot]', 'copilot-swe-agent', 'github-actions[bot]', 'copilot'].includes(
-                      String(last.author?.login || '').toLowerCase(),
-                    ));
+                    state_.TRUSTED_BOT_LOGINS.has(String(last.author?.login || '').toLowerCase()));
                 if (hasTrustedMarkerAlready) {
                   core.info(`skip post-outdated-marker thread=${decision.threadId} reason=marker-already-present`);
                   continue;
