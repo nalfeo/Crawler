@@ -135,6 +135,13 @@ export function createModalPickerUI(
   close(): void;
   isOpen(): boolean;
   getKind(): string | null;
+  /**
+   * True once the currently (or most recently) open picker's `onConfirm`
+   * hook has actually run — distinct from the picker having merely closed,
+   * which also happens with no `onConfirm` hook registered at all. Resets to
+   * `false` on every `open()` call.
+   */
+  wasConfirmedByCallback(): boolean;
   /** Content currently rendered by the real modal (automation/e2e read-only). */
   getContentSnapshot(): ModalPickerContentSnapshot | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
@@ -212,6 +219,16 @@ export function createModalPickerUI(
   let state: ModalPickerState<string> | null = null;
   let kind: string | null = null;
   let hooks: ModalPickerOpenHooks<string> | undefined;
+  /**
+   * True only once `hooks.onConfirm` has actually been invoked for the
+   * current `open()` call. This is intentionally distinct from the modal
+   * merely closing: `confirmModalPickerSelection` closes even when no
+   * `onConfirm` hook is registered at all, so callers that need proof the
+   * real callback executed (not just that the picker went away) must read
+   * this flag via `wasConfirmedByCallback()` instead of inferring it from
+   * `isOpen()` transitioning to false.
+   */
+  let confirmCallbackInvoked = false;
   const entries: RenderEntry<string>[] = [];
   const textNodes: Phaser.GameObjects.Text[] = [];
   let titleNode: Phaser.GameObjects.Text | undefined;
@@ -455,12 +472,17 @@ export function createModalPickerUI(
           const selectedOption = confirmed.options[confirmed.selectedIndex];
           let shouldClose = true;
           if (selectedOption) {
-            shouldClose =
-              hooks?.onConfirm?.({
+            const onConfirm = hooks?.onConfirm;
+            let confirmResult: boolean | void = undefined;
+            if (onConfirm) {
+              confirmResult = onConfirm({
                 option: selectedOption,
                 optionIndex: confirmed.selectedIndex,
                 source: 'pointer',
-              }) !== false;
+              });
+              confirmCallbackInvoked = true;
+            }
+            shouldClose = confirmResult !== false;
           }
           if (shouldClose) {
             close();
@@ -550,12 +572,17 @@ export function createModalPickerUI(
           const option = next.options[next.selectedIndex];
           let shouldClose = true;
           if (option) {
-            shouldClose =
-              hooks?.onConfirm?.({
+            const onConfirm = hooks?.onConfirm;
+            let confirmResult: boolean | void = undefined;
+            if (onConfirm) {
+              confirmResult = onConfirm({
                 option,
                 optionIndex: next.selectedIndex,
                 source: 'keyboard',
-              }) !== false;
+              });
+              confirmCallbackInvoked = true;
+            }
+            shouldClose = confirmResult !== false;
           }
           if (shouldClose) {
             close();
@@ -593,6 +620,7 @@ export function createModalPickerUI(
       state = createModalPickerState(config) as ModalPickerState<string>;
       kind = config.kind ?? null;
       hooks = nextHooks as ModalPickerOpenHooks<string> | undefined;
+      confirmCallbackInvoked = false;
       rerender();
     },
     handleKeyDown: onKeyDown,
@@ -602,6 +630,9 @@ export function createModalPickerUI(
     },
     getKind(): string | null {
       return kind;
+    },
+    wasConfirmedByCallback(): boolean {
+      return confirmCallbackInvoked;
     },
     getContentSnapshot(): ModalPickerContentSnapshot | null {
       if (!state) return null;

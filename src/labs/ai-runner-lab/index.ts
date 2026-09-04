@@ -712,6 +712,7 @@ interface RunnerSceneInternals {
     isOpen(): boolean;
     getKind(): string | null;
     handleKeyDown(event: KeyboardEvent): void;
+    wasConfirmedByCallback(): boolean;
   };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
@@ -1871,7 +1872,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }),
     );
     if (wasOpen && !modalPicker.isOpen()) {
-      if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+      // `wasConfirmedByCallback()` reflects whether the modal's real
+      // `onConfirm` hook actually ran, not just that the picker closed —
+      // `ModalPickerUI` also closes a confirmed selection when no
+      // `onConfirm` hook is registered at all, so recording on close alone
+      // would keep passing even if a required handler were removed.
+      if (
+        modalKind &&
+        FLOOR3_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
       }
       if (world.floorId === 'floor3') {
