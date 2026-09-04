@@ -97,6 +97,7 @@ import {
   _recruitCompanion,
 } from './floor3Recruiting.js';
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
+import { FLOOR3_WILD_AGGRO_RANGE_FT } from './systems/floor3WildHostility.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
@@ -323,7 +324,7 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     hp,
     resolveFloor3ArchetypeAiType(archetype),
     speed,
-    archetype.detectRange,
+    FLOOR3_WILD_AGGRO_RANGE_FT,
     archetype.aiType === 'ranged' || archetype.aiType === 'support'
       ? archetype.detectRange * 0.65
       : 0,
@@ -1267,6 +1268,7 @@ export function initializeFloor3Scenario(
   world.floorExtendedState = {
     floor3BiomeAffinities: AFFINITY_RING.slice(),
     ambientEnemyArchetypes: new Map<number, string>(),
+    floor3HostileWildEnemyEids: new Set<number>(),
     floor3Studios: initializeFloor3Studios(world, floorMap),
     floor3StarterOffer: starterOffer,
   };

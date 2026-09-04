@@ -12,7 +12,7 @@ than splitting publication, per the cross-cutting slice instruction.
 
 ## Systems touched
 
-ai-behavior-tree, hud-ux
+ai-behavior-tree, enemies, hud-ux
 
 ## Apples
 
@@ -204,3 +204,51 @@ allowlisted) and verified before reply:
   citing merged PR #4183 as evidence.
 - No unrelated Floor 3 balance tuning, enemy-AI redesign, or broader HUD
   redesign was made, per the explicit non-goals.
+
+## Follow-up: Floor 3 wild hostility design tweak
+
+Human follow-up on PR #4235 changed the scope from documentation-only to a
+runtime mechanics update:
+
+- Floor 3 wild mobs are no longer globally hostile. They become hostile only
+  while the player is within `tuning.floor3Companion.wildAggroRangeFt`.
+- The initial aggro range is 30 ft, derived from 3/4 of the normal horizontal
+  screen radius (`1280px / zoom 2 / 8px-per-foot = 80ft` visible width → 40ft
+  radius → 30ft).
+- Active wild mobs stay hostile through a hysteresis band, then disengage when
+  the player is more than `2 * wildAggroRangeFt` away.
+- Disengaging wild mobs heal to full health.
+- Player Companions target hostile wild mobs only; neutral/disengaged wilds are
+  ignored. Trainer/Studio/Final-Four opposing Companions remain valid rival
+  targets.
+
+Implementation notes:
+
+- `src/game/systems/floor3WildHostility.ts` owns the player-anchored hostile set
+  in `world.floorExtendedState.floor3HostileWildEnemyEids`.
+- `companionAISystem` updates that set before choosing targets, matching the
+  real Floor 3 system order where companion decisions must be available before
+  wild redirection and companion combat.
+- `floor3WildTargetRedirectSystem` redirects only hostile wild mobs toward party
+  Companions.
+- `enemyAISystem` idles non-hostile Floor 3 wild mobs, preventing the generic
+  player-aggro path from bypassing the new contract.
+- `isEnemyHostileToPlayer` now returns false for neutral Floor 3 wild mobs so
+  weapon/spell/homing target consumers agree with companion AI.
+- The official mechanics docs were updated in both
+  `docs/knowledge/game-design/floor3-companion-league.md` and
+  `.specify/specs/floor3-companion-league.md`.
+
+Additional verification for the follow-up:
+
+- `npx vitest run tests/game/floor3-companion-combat.test.ts tests/ecs/companion-ai-system.test.ts --project unit`:
+  17/17 passed.
+- `npx vitest run tests/unit/floor3-overworld.test.ts tests/game/progression-effects-coverage.test.ts tests/ecs/homing-system.test.ts --project unit`:
+  38/38 passed.
+- `npm run typecheck`: clean.
+- `npm run lint -- src/core/world.ts src/core/enemy-targeting.ts src/game/systems/floor3WildHostility.ts src/game/systems/companionAISystem.ts src/game/systems/floor3WildTargetRedirectSystem.ts src/game/enemyAISystem.ts src/game/floor3Scenario.ts tests/ecs/companion-ai-system.test.ts tests/game/floor3-companion-combat.test.ts`:
+  clean.
+- Prettier check on all touched runtime/test/doc files: clean.
+- Follow-up apple metric:
+  `docs/knowledge/metrics/apples/2026-09-04-floor3-wild-hostility.json` (3🍎
+  estimated, 3🍎 actual, exact).

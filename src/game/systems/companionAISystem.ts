@@ -1,8 +1,10 @@
 import { hasComponent, query } from 'bitecs';
 import { Companion, DeathTimer, Enemy, Player, Position, Team } from '../../core/components.js';
+import { isFloor3WildEnemy, isFloor3WildEnemyHostile } from '../../core/enemy-targeting.js';
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
+import { updateFloor3WildHostility } from './floor3WildHostility.js';
 
 export type CompanionTargetKind = 'rival-primary' | 'follow' | 'idle' | 'disabled';
 
@@ -53,6 +55,7 @@ export function companionAISystem(world: GameWorld): void {
 
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
+  updateFloor3WildHostility(world);
   const leash = tuning.factionRelations.friendlyLeashTiles;
   const rivalRangeFt = tuning.factionRelations.feudEngagementRadiusTiles * 4;
   const rivalRangeSq = rivalRangeFt * rivalRangeFt;
@@ -163,6 +166,11 @@ export function companionAISystem(world: GameWorld): void {
         !hasComponent(world.ecs, lockedEid, DeathTimer) &&
         (world.stores.team.id[lockedEid] ?? 0) !== teamId &&
         !(
+          teamId === TeamId.PLAYER &&
+          isFloor3WildEnemy(world, lockedEid) &&
+          !isFloor3WildEnemyHostile(world, lockedEid)
+        ) &&
+        !(
           hasComponent(world.ecs, lockedEid, Companion) &&
           (world.stores.companion.knockedOut[lockedEid] ?? 0) === 1
         ) &&
@@ -191,6 +199,13 @@ export function companionAISystem(world: GameWorld): void {
       if (other === eid) continue;
       if (hasComponent(world.ecs, other, DeathTimer)) continue;
       if ((world.stores.team.id[other] ?? 0) === teamId) continue;
+      if (
+        teamId === TeamId.PLAYER &&
+        isFloor3WildEnemy(world, other) &&
+        !isFloor3WildEnemyHostile(world, other)
+      ) {
+        continue;
+      }
       if (
         hasComponent(world.ecs, other, Companion) &&
         (world.stores.companion.knockedOut[other] ?? 0) === 1

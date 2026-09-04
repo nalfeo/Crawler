@@ -154,7 +154,7 @@ describe('companionAISystem', () => {
       world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
-      const rival = spawnRival(world, 14, 0);
+      const rival = spawnCompanion(world, 14, 0, TeamId.ENEMY);
 
       // First tick: both well within engagement range of the player — locks.
       companionAISystem(world);
@@ -178,7 +178,7 @@ describe('companionAISystem', () => {
       world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
-      const rivalA = spawnRival(world, 14, 0);
+      const rivalA = spawnCompanion(world, 14, 0, TeamId.ENEMY);
 
       companionAISystem(world);
       expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rivalA);
@@ -206,7 +206,7 @@ describe('companionAISystem', () => {
       // recall regresses to a no-op, the stale lock on rivalA would simply
       // continue (rivalA is still self-anchored-valid) and rivalB would
       // never be selected.
-      const rivalB = spawnRival(world, 101, 0);
+      const rivalB = spawnCompanion(world, 101, 0, TeamId.ENEMY);
       companionAISystem(world);
       const decision = getCompanionAIDecision(world, companion);
       expect(decision?.kind).toBe('rival-primary');
@@ -218,7 +218,7 @@ describe('companionAISystem', () => {
       world.floorId = 'floor4';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
-      const rivalA = spawnRival(world, 14, 0);
+      const rivalA = spawnCompanion(world, 14, 0, TeamId.ENEMY);
 
       companionAISystem(world);
       expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rivalA);
@@ -243,7 +243,7 @@ describe('companionAISystem', () => {
       world.floorId = 'floor3';
       spawnPlayer(world, 0, 0);
       const companion = spawnCompanion(world, 10, 0);
-      const rival = spawnRival(world, 14, 0);
+      const rival = spawnCompanion(world, 14, 0, TeamId.ENEMY);
 
       companionAISystem(world);
       expect(getCompanionAIDecision(world, companion)?.targetEid).toBe(rival);
