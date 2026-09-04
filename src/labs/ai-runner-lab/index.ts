@@ -14,6 +14,7 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getScenarioDefinition, isFloorPlayable } from '../../game/scenarioDefinitions.js';
 import {
   AIState,
   AIDecisionMode,
@@ -3102,6 +3103,21 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ).length;
     const effectiveFloor =
       world?.floorId !== undefined && hasFloorManifest(world.floorId) ? world.floorId : 'unknown';
+    // Mirrors headless `runHeadless`'s own outcome check (`scenarioOutcome ===
+    // 'cleared_floor' || world.floorScenario?.runSummary?.outcome ===
+    // 'cleared_floor'`): most floors report completion through the
+    // per-scenario `getRunOutcome` (goal-flag-driven, e.g. Floor 3's
+    // `FLOOR3_STAIRS_DISCOVERED_GOAL_ID`), while `floorScenario.runSummary`
+    // is only populated for the floors whose `confirm*StairDescend` calls
+    // `finalizeRunSummary` (Floor 1's timeout/clear path today). Without this,
+    // `runOutcome` silently stayed `null` for every other floor even after a
+    // real production win, which is exactly the field an e2e observer needs to
+    // confirm the SAME victory/exit outcome headless `RunStats.outcome`
+    // reports.
+    const scenarioRunOutcome =
+      world && effectiveFloor !== 'unknown' && isFloorPlayable(effectiveFloor)
+        ? getScenarioDefinition(effectiveFloor).getRunOutcome(world)
+        : null;
     return {
       frame: world?.frameCount ?? null,
       polls: pollCount,
@@ -3145,7 +3161,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       floor3AliveOutsideSpawnStreakMs,
       floor3MaxAliveOutsideSpawnStreakMs,
       floor3SurfaceTrace,
-      runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      runOutcome: scenarioRunOutcome ?? world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
       playerPersona: aiConfig.playerPersona,
