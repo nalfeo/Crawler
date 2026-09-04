@@ -16,4 +16,10 @@ runner:
     - GOOBERS_INTAKE_COHORT
     - GOOBERS_RESUME_BRANCH
 runConditions:
+  # 1 matches crawler-feature-pr's readiness.maxConcurrentRuns. Hosted CI does
+  # not raise this either: goobers-run.yml runs four SEPARATE single-capacity
+  # instance roots (2 matrix lanes x 2 slots) rather than one instance admitting
+  # several runs, so the four-workflow ceiling is a property of how many roots
+  # exist. Mirror that locally by starting a second instance root, not by
+  # raising this number.
   maxParallelRuns: 1

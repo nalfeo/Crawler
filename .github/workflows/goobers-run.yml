@@ -7,12 +7,47 @@ name: Goobers Run
 # Downloads a pinned, checksum-verified Goobers release binary
 # (no Go build step — see .github/workflows/goobers-validate.yml), scaffolds a
 # throwaway instance root in the runner's temp directory, materializes this
-# repo's versioned `.goobers/` source into it, and triggers the workflow via
-# `goobers run`, which blocks until the run reaches a terminal state.
+# repo's versioned `.goobers/` source into it, and triggers the workflow.
 #
-# This does not run a daemon and does not persist instance state between
-# dispatches; recovery is performed deterministically from the issue timeline
-# and the attached PR branch. See .goobers/README.md and README.md#goobers.
+# Runs as two matrix lanes (`strategy.matrix.lane: [1, 2]`, `max-parallel: 2`),
+# each on its own GitHub-hosted runner. Every lane holds TWO slots, and every
+# slot is a fully isolated Goobers instance root running its own blocking
+# `goobers run --github-progress` process concurrently with its sibling:
+#
+#   lane 1 slot 1   lane 1 slot 2   lane 2 slot 1   lane 2 slot 2
+#
+# 2 runners x 2 simultaneous issue workflows each = a hard ceiling of four
+# active issue workflows per dispatch. The ceiling is structural, not counted:
+# each slot root declares runConditions.maxParallelRuns: 1 and the workflow
+# declares readiness.maxConcurrentRuns: 1, so a slot is physically incapable of
+# admitting a second run, and there are exactly four slots.
+#
+# Separate instance roots (not a `goobers up` daemon) are what make the two
+# slots on one runner safe to run at once. Every mutable thing a run touches is
+# rooted at its instance root: the single-instance `scheduler/up.lock`, the
+# claim ledger + claim lock (`scheduler/claims.json`, `scheduler/claims.lock`),
+# the git working copies and their GIT_ASKPASS helper
+# (`gaggles/<gaggle>/workcopies/**`, Goobers internal/instance/instance.go and
+# cmd/goobers/runnerwiring.go), the telemetry/read DBs, and the run journals.
+# Upstream states the property directly — "Keying it by instance root keeps two
+# instances on one machine from sharing a store"
+# (internal/readservice/topology.go). No two slots ever write the same checkout.
+#
+# Exactly one slot (lane 1 slot 1) may carry recovery/resume metadata; the
+# other three always claim fresh backlog items through Goobers' provider-side
+# claim protocol, which settles concurrent claims deterministically by minimum
+# claim-breadcrumb comment id (providers/github_issues.go ClaimWorkItem), so
+# four independent instances never work the same issue. See .goobers/README.md
+# and README.md#goobers.
+#
+# The recovery target is resolved and RESERVED by a single `reserve` job that
+# both matrix legs declare in `needs:`, never by the legs themselves. That
+# `needs:` edge is the only thing that makes "reserved before any fresh claim"
+# an ordering guarantee rather than a race: the recovery branch of
+# crawler-feature-pr.yaml's query-backlog stage bypasses the provider claim
+# protocol entirely, so `goobers/status:in-review` is the sole barrier between
+# the resuming slot and the three fresh ones, and a leg that starts before the
+# label lands can claim the very issue the other leg is about to resume.
 
 on:
   issues:
@@ -48,18 +83,35 @@ on:
         default: false
 
 permissions:
+  # actions: read is what makes the cross-dispatch recovery single-flight below
+  # deterministic: the reserve job asks the Actions API whether another run of
+  # this same workflow is still live before it designates any recovery target.
+  actions: read
   checks: write
   contents: read
   issues: write
   pull-requests: write
 
 jobs:
-  run:
-    name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
+  # The whole dispatch's single ordering point. It resolves at most one recovery
+  # target, reserves it with `goobers/status:in-review`, PROVES that reservation
+  # is visible through the same provider read path `goobers backlog-query` uses,
+  # and only then completes. Every matrix leg of `run` declares
+  # `needs: reserve`, so no lane can start -- and therefore no fresh
+  # `backlog-query --claim` can run -- until the reservation has landed and been
+  # observed. Doing this inside the legs (as an early per-lane step) would NOT
+  # be equivalent: two legs start simultaneously, so leg 2's claim scan can run
+  # before leg 1's label write is visible, which is exactly the duplicate-work
+  # race this job exists to remove.
+  reserve:
+    name: Reserve Goobers recovery target
     # Goobers only claims and implements issues while it owns the
     # implementation-claim lane. Without this, a rollback to `legacy` would
     # leave BOTH Goobers and legacy intake claiming the same issue, which is
-    # exactly the dual-writer case the lane model exists to prevent.
+    # exactly the dual-writer case the lane model exists to prevent. Gating the
+    # ordering point rather than the lanes gates the WHOLE dispatch: every `run`
+    # leg declares `needs: reserve` with a plain (implicitly `success()`)
+    # condition, so a skipped reservation skips all four slots too.
     #
     # This is only the cheap coarse gate. Cohort membership (trusted opener,
     # telemetry, automation provenance, approval override) is decided by the
@@ -71,37 +123,114 @@ jobs:
       (github.event.issue.state == 'open' &&
       (github.event.action != 'labeled' ||
       github.event.label.name == 'goobers:approved')))
-    # Keep irrelevant issue-label events from entering the workflow-level
-    # pending slot and cancelling a queued schedule/manual run before this
-    # job-level `if` can skip them.
-    concurrency:
-      group: goobers-run
-      cancel-in-progress: false
     runs-on: ubuntu-latest
-    # Generous ceiling for a full plan -> implement -> review -> PR loop;
-    # the workflow's own maxConcurrentRuns/gates bound retries within this.
-    timeout-minutes: 90
+    # Read-only GitHub API work plus at most three small mutations; a tight
+    # ceiling keeps a wedged reservation from holding both lanes hostage for
+    # the `run` job's 90-minute budget.
+    timeout-minutes: 20
+    # Dispatch-wide single flight. The two lanes still get their own
+    # `goobers-run-lane-<n>` groups below; this group keeps a second dispatch
+    # from resolving a recovery target while this dispatch's lanes are still
+    # holding claims for it.
+    concurrency:
+      group: goobers-run-reserve
+      cancel-in-progress: false
     env:
-      GOOBERS_VERSION: ${{ inputs.goobers_version || 'goobers-dev-6d33b160' }}
-      GOOBERS_REPO: Agent-Clubhouse/Goobers
-      GOOBERS_INSTANCE: ${{ github.workspace }}/.goobers-instance
+      # Named here as well as on `run` purely so this job's messages can point
+      # at the one slot that will adopt the reservation. A test pins the two
+      # declarations to the same lane/slot so they cannot drift.
+      GOOBERS_RECOVERY_LANE: '1'
+      GOOBERS_RECOVERY_SLOT: '1'
       GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
       # Consumed by the canonical eligibility library, which fails closed on
       # anything other than the literal `goobers`.
       LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
       ISSUE_OWNER: nalfeo
+    outputs:
+      should_run: ${{ steps.recovery.outputs.should_run }}
+      recovery_issue: ${{ steps.recovery.outputs.recovery_issue }}
+      resume_pr: ${{ steps.recovery.outputs.resume_pr }}
+      resume_branch: ${{ steps.recovery.outputs.resume_branch }}
+      # The cohort has to cross a JOB boundary here, which `GITHUB_ENV` cannot
+      # do, so it is published as an output and re-exported by the adopting
+      # lane. The reserve step's revalidated verdict wins over the resolve
+      # step's earlier one so every downstream consumer (the claim fence in
+      # crawler-feature-pr.yaml) sees the run-start verdict rather than a value
+      # that may be stale by the time a lane starts.
+      intake_cohort: ${{ steps.reserve.outputs.intake_cohort || steps.recovery.outputs.intake_cohort }}
     steps:
-      - name: Checkout
+      - name: Fetch reservation tooling
+        # The lease reader below is checked-in code, not inline jq, so the trust
+        # rule and the marker grammar have exactly one implementation shared by
+        # every job that reads or writes a receipt. Sparse: this job needs the
+        # scripts, never the game source.
         uses: actions/checkout@v7
         with:
+          # Same ref expression as the `run` job's checkout, so a manual
+          # dispatch from a feature branch exercises that branch's own lease
+          # tooling instead of main's.
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          sparse-checkout: 'scripts/agent'
           persist-credentials: false
 
-      - name: Preserve trusted Goobers source
+      - name: Detect a live sibling dispatch
+        # The `goobers-run-reserve` concurrency group only holds for the length
+        # of THIS job, but a dispatch's lanes run for up to 90 minutes after it
+        # ends. So a second dispatch's reserve job can resolve a recovery
+        # target while the first dispatch's recovery slot is still resuming
+        # that very issue -- and the recovery path bypasses Goobers' provider
+        # claim protocol, so nothing else would settle it. The per-lane
+        # concurrency groups keep the four-slot ceiling globally (lane <n> of a
+        # second dispatch queues behind lane <n> of this one), but they do NOT
+        # keep two dispatches from designating the same issue: dispatch B's
+        # lane 1 can start the moment dispatch A's lane 1 ends while A's lane 2
+        # is still working, and both lanes' slots would then be pointed at the
+        # same issue.
+        #
+        # This check is the dispatch-level serialization for recovery
+        # designation only. It deliberately does NOT serialize the two matrix
+        # lanes within this dispatch (they stay concurrent) and it does not
+        # stop a dispatch from doing fresh work: four fresh slots are safe
+        # because `backlog-query --claim` settles concurrent claims
+        # provider-side. Because both reserve jobs share
+        # `concurrency: goobers-run-reserve`, this read is itself serialized
+        # against a sibling dispatch's reserve, so the answer cannot race.
+        id: singleflight
+        env:
+          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
         run: |
           set -euo pipefail
-          cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
-          echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
+          live=""
+          # Deliberately NOT --paginate: this endpoint returns runs
+          # newest-first, and paginating it would walk every historical run of
+          # this workflow on every dispatch. One page of 100 is a generous
+          # bound on "could a live run be older than this?" -- it would take
+          # 100 dispatches inside one run's 90-minute lifetime, and the lane
+          # concurrency groups already stop dispatches from piling up that
+          # fast. `.status != "completed"` (rather than an enumeration of live
+          # statuses) also catches queued, waiting, requested and pending.
+          if ! live="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/goobers-run.yml/runs?per_page=100&exclude_pull_requests=true" \
+              --jq '.workflow_runs[]
+                    | select(.status != "completed")
+                    | select((.id | tostring) != env.GITHUB_RUN_ID)
+                    | "\(.id) (\(.status))"'
+          )"; then
+            # Fail closed on the SAFE side: without proof that no sibling
+            # dispatch is live, this dispatch must not designate a recovery
+            # target. It can still do fresh work, which is claim-protected.
+            echo "::warning::Could not list live Goobers Run dispatches, so this dispatch cannot prove it is the only one. Skipping recovery designation; the four slots will still claim fresh backlog work atomically." >&2
+            echo "recovery_allowed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [ -n "$live" ]; then
+            echo "::notice::Another Goobers Run dispatch is still live ($(tr '\n' ' ' <<<"$live")). Only one dispatch at a time may own a recovery reservation, so this dispatch will claim fresh backlog work only. Watch the live run with: gh run watch $(head -n 1 <<<"$live" | cut -d' ' -f1) --repo ${GITHUB_REPOSITORY}"
+            echo "recovery_allowed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "No other live Goobers Run dispatch; this dispatch may resolve and reserve a recovery target."
+          echo "recovery_allowed=true" >> "${GITHUB_OUTPUT}"
 
       # Deliberately unconditional and ahead of target resolution: the
       # eligibility selector below runs on Node, including on runs that then
@@ -117,13 +246,52 @@ jobs:
           GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
           ISSUE_NUMBER: ${{ inputs.issue_number || github.event.issue.number }}
+          EXPLICIT_ISSUE_NUMBER: ${{ inputs.issue_number }}
           ABANDON_EXISTING: ${{ inputs.abandon_existing || 'false' }}
+          RECOVERY_ALLOWED: ${{ steps.singleflight.outputs.recovery_allowed }}
         run: |
           set -euo pipefail
           if [ -z "${GOOBERS_AUTH_TOKEN_SET}" ]; then
             echo "::error::Either GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required before recovery lookup; see README.md#goobers." >&2
             exit 1
           fi
+          # The durable, trusted, run+attempt-scoped reservation lease. An
+          # Actions run can report `completed` while a Setsid-detached stage
+          # descendant is still pushing, so "this issue's last dispatch is over"
+          # is NOT evidence that the issue is free. The receipt is.
+          # shellcheck source=scripts/agent/goobers-reservation-lease.sh
+          lease_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-reservation-lease.sh"
+          if ! . "$lease_lib"; then
+            echo "::error::Could not load ${lease_lib}, so this dispatch cannot tell whether an in-review issue is still leased by an earlier dispatch. Restore the file (it is checked in) and re-run: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
+
+          # 0 = no live lease, 1 = held by an undisposed adoption, 2 = the
+          # receipts could not be read or parsed. 2 is deliberately distinct
+          # from 1: both refuse, but only 2 means "retry may help".
+          lease_blocks_selection() {
+            local issue="$1" comments="" state="" run="" attempt="" comment_id=""
+            comments="$(mktemp)"
+            if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "$issue" "$comments"; then
+              rm -f "$comments"
+              return 2
+            fi
+            local record=""
+            if ! record="$(goobers_lease_state "$comments" "$issue")"; then
+              rm -f "$comments"
+              return 2
+            fi
+            rm -f "$comments"
+            IFS="$(printf '\t')" read -r state run attempt comment_id <<<"$record"
+            if [ "$state" = "adopted" ]; then
+              LEASE_HOLDER="Actions run ${run} attempt ${attempt} (receipt comment ${comment_id})"
+              return 1
+            fi
+            LEASE_HOLDER=""
+            return 0
+          }
+          LEASE_HOLDER=""
+
           if [ "${ABANDON_EXISTING}" = "true" ] && [ -z "${ISSUE_NUMBER}" ]; then
             echo "::error::abandon_existing=true requires an explicit issue_number; refusing to close an arbitrary recovered PR." >&2
             exit 1
@@ -142,22 +310,62 @@ jobs:
               --json number,state,labels,assignees,author > "${issue_file}"
             node .github/scripts/goobers/intake-selection.mjs --issue "${issue_file}"
           }
-          # Records the issue this run is accountable for. GITHUB_ENV is
-          # last-write-wins, so this can be re-stated (or cleared) as
-          # resolution narrows. It runs BEFORE any fallible lookup so that a
-          # pre-run failure is still attributable: without it, the failure
-          # handler cannot tell which issue to restore retry eligibility for
-          # and reports an unrecoverable claim instead.
-          persist_recovery_issue() {
-            echo "GOOBERS_RECOVERY_ISSUE=$1" >> "${GITHUB_ENV}"
-          }
-          if [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
-            persist_recovery_issue "${ISSUE_NUMBER}"
+          # Deliberately no `persist_recovery_issue` GITHUB_ENV helper here.
+          # GITHUB_ENV cannot reach the lanes (they are a separate job), and
+          # this job does not need it to stay attributable: the
+          # `recovery_issue` OUTPUT below is written before any fallible lookup
+          # AND before the reservation label is ever added, so the same
+          # invariant main protects holds structurally. If this job dies at any
+          # point after that write, `release-unstarted-reservation` reads the
+          # output on `always()` and releases a reservation no lane adopted.
+          #
+          # A sibling dispatch is live, so this one designates nothing. An
+          # explicitly requested issue is a human instruction, so it fails
+          # loudly instead of being silently downgraded to fresh work.
+          if [ "${RECOVERY_ALLOWED}" != "true" ]; then
+            if [ -n "${EXPLICIT_ISSUE_NUMBER}" ]; then
+              echo "::error::Refusing to resume issue #${EXPLICIT_ISSUE_NUMBER} while another Goobers Run dispatch is still live: two dispatches must never own the same recovery target, and the recovery path bypasses Goobers' provider claim protocol. Wait for the live dispatch to finish ('gh run list --workflow=goobers-run.yml --repo ${GITHUB_REPOSITORY}'), then retry with: gh workflow run goobers-run.yml -f issue_number=${EXPLICIT_ISSUE_NUMBER}" >&2
+              exit 1
+            fi
+            if [ -n "${ISSUE_NUMBER}" ]; then
+              echo "::notice::Not designating issue #${ISSUE_NUMBER} as this dispatch's recovery target while another dispatch is live; a fresh slot will claim it atomically instead."
+            fi
+            ISSUE_NUMBER=""
           fi
           find_open_dependency_blockers() {
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by" \
               --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
+          }
+          # Explicitly checked, never `for x in $(gh …)`: a command substitution
+          # inside `for` throws the exit status away, so an auth failure, an API
+          # outage or a secondary-rate-limit response would produce an EMPTY
+          # candidate list and read as "no recovery work" / "no eligible work"
+          # -- silently skipping recovery, or (worse, on the fresh scan)
+          # reporting an empty backlog when the backlog is full.
+          list_backlog_candidates() {
+            local what="$1"
+            shift
+            local captured="" errors="" err_file=""
+            err_file="$(mktemp)"
+            if ! captured="$("$@" 2> "$err_file")"; then
+              errors="$(tr '\n' ' ' < "$err_file")"
+              rm -f "$err_file"
+              echo "::error::Could not read ${what} from the GitHub API (${errors}). Refusing to continue on an unverified backlog: an empty list from a failed query is indistinguishable from a genuinely empty backlog, and this dispatch would either skip live recovery work or report 'no work' while the backlog is full. Check auth and rate limits with 'gh api rate_limit --repo ${GITHUB_REPOSITORY}', then retry with: gh workflow run goobers-run.yml" >&2
+              return 1
+            fi
+            # stderr is captured to a separate file, never folded into the
+            # candidate list: gh writes advisory notices there, and a notice
+            # spliced into the list would be handed to the lookups below as an
+            # issue number.
+            rm -f "$err_file"
+            printf '%s\n' "$captured"
+          }
+          require_candidate_number() {
+            if ! [[ "$1" =~ ^[0-9]+$ ]]; then
+              echo "::error::The GitHub API returned '$1' where ${2} expected an issue number. Refusing to act on an unrecognised backlog response; inspect it with 'gh api rate_limit --repo ${GITHUB_REPOSITORY}' and retry with: gh workflow run goobers-run.yml" >&2
+              return 1
+            fi
           }
           find_open_goobers_pr() {
             local issue_number="$1"
@@ -229,29 +437,69 @@ jobs:
               fi
             fi
           fi
-          if [ -z "${ISSUE_NUMBER}" ]; then
-            for candidate_issue in $(gh issue list --repo "${GITHUB_REPOSITORY}" \
-              --state open --label 'goobers/status:in-review' --limit 1000 --json number --jq '.[].number'); do
+          if [ -z "${ISSUE_NUMBER}" ] && [ "${RECOVERY_ALLOWED}" = "true" ]; then
+            recovery_candidates=""
+            if ! recovery_candidates="$(
+              list_backlog_candidates 'the open goobers/status:in-review recovery backlog' \
+                gh issue list --repo "${GITHUB_REPOSITORY}" \
+                --state open --label 'goobers/status:in-review' --limit 1000 \
+                --json number --jq '.[].number'
+            )"; then
+              exit 1
+            fi
+            while IFS= read -r candidate_issue; do
+              [ -n "$candidate_issue" ] || continue
+              require_candidate_number "$candidate_issue" 'the recovery scan' || exit 1
+              # LEASE GATE. `goobers/status:in-review` says an issue was
+              # reserved; it does not say whether the dispatch that reserved it
+              # ever handed it back. A prior dispatch whose reap or disposition
+              # failed leaves an ADOPTED-but-UNDISPOSED receipt, and its
+              # Setsid-detached stage descendants can outlive the Actions run
+              # that reported `completed` -- so re-adopting on the strength of
+              # the label alone is exactly how two agents end up pushing to one
+              # issue. Skip it and name the manual reconciliation.
+              lease_status=0
+              lease_blocks_selection "$candidate_issue" || lease_status=$?
+              if [ "$lease_status" = "1" ]; then
+                echo "::warning::Scheduled recovery skipped issue #${candidate_issue}: its reservation lease is still held by ${LEASE_HOLDER} with no disposal receipt, so a Goobers stage from that dispatch may still be pushing to it. Confirm nothing is running, then reconcile by hand: gh issue edit ${candidate_issue} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+                continue
+              fi
+              if [ "$lease_status" != "0" ]; then
+                exit 1
+              fi
               lookup_status=0
               candidate_pr="$(find_open_goobers_pr "$candidate_issue")" || lookup_status=$?
               if [ "$lookup_status" -ne 0 ]; then
                 exit "$lookup_status"
               fi
               if [ -n "${candidate_pr}" ]; then
-                blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
+                if ! blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"; then
+                  echo "::error::Could not read the dependency blockers of issue #${candidate_issue}, so it cannot be shown to be unblocked. Refusing to select it; retry with: gh workflow run goobers-run.yml" >&2
+                  exit 1
+                fi
                 if [ -n "${blocked_by}" ]; then
                   echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
                   continue
                 fi
                 ISSUE_NUMBER="${candidate_issue}"
                 INTAKE_COHORT="resume"
-                persist_recovery_issue "${ISSUE_NUMBER}"
-                echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr}."
+                echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr} (reservation lease: free)."
                 break
               fi
-            done
+            done <<<"$recovery_candidates"
           fi
           if [ -z "${ISSUE_NUMBER}" ]; then
+            # No resumable in-review target exists, so this dispatch has no
+            # recovery work. Deliberately do NOT designate a fresh backlog
+            # issue as this dispatch's target: the recovery path in
+            # crawler-feature-pr.yaml's query-backlog stage bypasses
+            # `goobers backlog-query --claim` entirely, so a preflight-picked
+            # fresh issue is invisible to Goobers' provider-side claim
+            # protocol and the fresh slots would race onto the same issue.
+            # All four slots claim atomically instead; this scan only answers
+            # "is any eligible work left at all?" so an empty backlog still
+            # exits before the costly setup steps in the `run` job.
+            #
             # Apply state/assignee filters and creation-order sort server-side
             # (GitHub search qualifiers) rather than paging `gh issue list`:
             # the REST issue-list endpoint truncates to 100 most-recently-updated
@@ -268,6 +516,8 @@ jobs:
             # returns at most 1000 results: without it, 1000 older ineligible
             # issues could hide the maintainer's approved queue entirely. The
             # selector de-duplicates the overlap by issue number.
+            eligible_fresh_issue=""
+            eligible_fresh_cohort=""
             approved_file="${RUNNER_TEMP}/goobers-intake-approved.json"
             parity_file="${RUNNER_TEMP}/goobers-intake-parity.json"
             candidates_file="${RUNNER_TEMP}/goobers-intake-candidates.json"
@@ -282,42 +532,79 @@ jobs:
                 "$@" \
                 -- '-label:"goobers/status:in-review" -label:"goobers/status:completed-existing-work"'
             }
-            search_open_unassigned --label 'goobers:approved' > "${approved_file}"
-            search_open_unassigned > "${parity_file}"
+            # Both queries go through the hardened wrapper: a failed search
+            # returns an EMPTY list, which is indistinguishable from a
+            # genuinely empty backlog and would make this dispatch report "no
+            # work" while the backlog is full.
+            if ! list_backlog_candidates 'the maintainer-approved Goobers queue' \
+              search_open_unassigned --label 'goobers:approved' > "${approved_file}"; then
+              exit 1
+            fi
+            if ! list_backlog_candidates 'the Goobers intake parity backlog' \
+              search_open_unassigned > "${parity_file}"; then
+              exit 1
+            fi
             jq -s 'add' "${approved_file}" "${parity_file}" > "${candidates_file}"
             node .github/scripts/goobers/intake-selection.mjs \
               --candidates "${candidates_file}" > "${selected_file}"
             while IFS=$'\t' read -r candidate_issue candidate_cohort; do
               [ -n "${candidate_issue}" ] || continue
-              blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"
+              require_candidate_number "$candidate_issue" 'the fresh eligibility scan' || exit 1
+              if ! blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"; then
+                echo "::error::Could not read the dependency blockers of issue #${candidate_issue}, so this dispatch cannot tell whether eligible fresh work exists. Refusing to report an empty backlog; retry with: gh workflow run goobers-run.yml" >&2
+                exit 1
+              fi
               if [ -n "${blocked_by}" ]; then
                 echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
                 continue
               fi
-              ISSUE_NUMBER="${candidate_issue}"
-              INTAKE_COHORT="${candidate_cohort}"
-              persist_recovery_issue "${ISSUE_NUMBER}"
-              echo "Selected eligible issue #${ISSUE_NUMBER} (cohort: ${INTAKE_COHORT})."
+              eligible_fresh_issue="${candidate_issue}"
+              eligible_fresh_cohort="${candidate_cohort}"
               break
             done < "${selected_file}"
-            if [ -z "${ISSUE_NUMBER}" ]; then
+            if [ -z "${eligible_fresh_issue}" ]; then
               echo "No unblocked issue in the Goobers intake cohort; skipping this run."
               echo "should_run=false" >> "${GITHUB_OUTPUT}"
               exit 0
             fi
+            echo "Eligible fresh backlog work exists (oldest unblocked: #${eligible_fresh_issue}, cohort: ${eligible_fresh_cohort}); no recovery target, so all four slots claim atomically."
+            exit 0
           fi
           if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; use workflow_dispatch issue_number with an integer." >&2
             exit 1
           fi
-          blocked_by="$(
-            find_open_dependency_blockers "${ISSUE_NUMBER}"
-          )"
+          # LEASE GATE for a directly named target (explicit issue_number, or
+          # the issue that carried the goobers:approved label event). The
+          # scheduled scan skips a held issue and moves on; a directly named one
+          # is an instruction, so it fails loudly rather than being silently
+          # dropped.
+          lease_status=0
+          lease_blocks_selection "${ISSUE_NUMBER}" || lease_status=$?
+          if [ "$lease_status" = "1" ]; then
+            echo "::error::Issue #${ISSUE_NUMBER} still carries an undisposed Goobers reservation lease held by ${LEASE_HOLDER}. That dispatch never proved its stage tree was reaped, so a Setsid-detached stage may still be pushing to this issue even though its Actions run reports completed. Refusing to hand it to a second agent. Confirm nothing is running, then reconcile by hand and retry: gh issue edit ${ISSUE_NUMBER} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review && gh workflow run goobers-run.yml -f issue_number=${ISSUE_NUMBER}" >&2
+            exit 1
+          fi
+          if [ "$lease_status" != "0" ]; then
+            exit 1
+          fi
+          if ! blocked_by="$(find_open_dependency_blockers "${ISSUE_NUMBER}")"; then
+            echo "::error::Could not read the dependency blockers of issue #${ISSUE_NUMBER}, so it cannot be shown to be unblocked. Refusing to reserve it; retry with: gh workflow run goobers-run.yml -f issue_number=${ISSUE_NUMBER}" >&2
+            exit 1
+          fi
           if [ -n "${blocked_by}" ]; then
             echo "::warning::Issue #${ISSUE_NUMBER} is blocked by open prerequisite issue(s): ${blocked_by}. Skipping before Goobers claim or repository mutation."
             echo "should_run=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
+
+          # One dispatch, one recovery target, resolved here and nowhere else.
+          # The matrix legs never re-resolve it: they read this job's outputs,
+          # and only lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT}
+          # adopts them ("Adopt the reserved recovery target"). Every other slot
+          # claims fresh backlog items through the provider claim protocol,
+          # which is what keeps 1 recovery + 3 fresh (or 4 fresh) unique.
+          echo "recovery_issue=${ISSUE_NUMBER}" >> "${GITHUB_OUTPUT}"
 
           lookup_status=0
           pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")" || lookup_status=$?
@@ -342,10 +629,11 @@ jobs:
             echo "Issue #${ISSUE_NUMBER} is eligible for Goobers intake (cohort: ${INTAKE_COHORT})."
           fi
 
-          {
-            echo "GOOBERS_RECOVERY_ISSUE=${ISSUE_NUMBER}"
-            echo "GOOBERS_INTAKE_COHORT=${INTAKE_COHORT}"
-          } >> "${GITHUB_ENV}"
+          # Deliberately an OUTPUT, not GITHUB_ENV. The matrix legs are separate
+          # jobs, so env cannot reach them; the adopting slot re-exports this
+          # into its own environment ("Adopt the reserved recovery target").
+          # The recovery issue travels the same way, via `recovery_issue`.
+          echo "intake_cohort=${INTAKE_COHORT}" >> "${GITHUB_OUTPUT}"
 
           if [ -z "${pr_number}" ]; then
             echo "No open Goobers PR cross-referenced from issue #${ISSUE_NUMBER}; starting a fresh branch."
@@ -373,197 +661,26 @@ jobs:
             exit 1
           fi
           {
-            echo "GOOBERS_RESUME_PR=${pr_number}"
-            echo "GOOBERS_RESUME_BRANCH=${branch}"
-          } >> "${GITHUB_ENV}"
+            echo "resume_pr=${pr_number}"
+            echo "resume_branch=${branch}"
+          } >> "${GITHUB_OUTPUT}"
           echo "Resuming open Goobers PR #${pr_number} on branch '${branch}'."
 
-      - name: Require Goobers auth token
-        if: steps.recovery.outputs.should_run != 'false'
-        # crawler-feature-pr's implement/push-branch stages declare
-        # repo:push; the built-in github.token only has contents: read on
-        # this job (see permissions:, above), so it can neither push a
-        # branch nor open a PR, and a GITHUB_TOKEN-authored push wouldn't
-        # trigger the normal CI workflow anyway. Fail fast with a clear
-        # message instead of letting goobers run fail deep into the run.
-        run: |
-          set -euo pipefail
-          if [ -z "${GOOBERS_AUTH_TOKEN_SET:-}" ]; then
-            echo "::error::GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
-            exit 1
-          fi
-        env:
-          GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
-
-      - name: Resolve pinned archive checksum
-        if: steps.recovery.outputs.should_run != 'false'
-        # Independent pin: this digest is reviewed and committed here, not
-        # fetched from the same mutable release as the archive. It must be
-        # updated (with a diff review of the new digest) whenever
-        # goobers_version's default changes. See
-        # .github/workflows/goobers-validate.yml for the shared list.
-        run: |
-          set -euo pipefail
-          case "${GOOBERS_VERSION}" in
-            goobers-dev-6d33b160)
-              echo "GOOBERS_ASSET=goobers_dev_linux_amd64.tar.gz" >> "$GITHUB_ENV"
-              echo "GOOBERS_SHA256=4758e471e845925c364621db61bdaddefc4a46f45de65aa1cf8a970e3376adde" >> "$GITHUB_ENV"
-              ;;
-            v0.3.3)
-              echo "GOOBERS_ASSET=goobers_v0.3.3_linux_amd64.tar.gz" >> "$GITHUB_ENV"
-              echo "GOOBERS_SHA256=47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82" >> "$GITHUB_ENV"
-              ;;
-            *)
-              echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-validate.yml) after independently verifying the release artifact." >&2
-              exit 1
-              ;;
-          esac
-
-      - name: Cache pinned Goobers archive
-        id: cache-goobers
-        if: steps.recovery.outputs.should_run != 'false'
-        uses: actions/cache@v4
-        with:
-          path: dl/goobers.tar.gz
-          key: goobers-archive-linux-amd64-${{ env.GOOBERS_VERSION }}-${{ env.GOOBERS_SHA256 }}
-
-      - name: Download pinned private Goobers draft
+      - name: Reserve the recovery target and comment on Goobers run start
+        id: reserve
         if: >-
           steps.recovery.outputs.should_run != 'false' &&
-          steps.cache-goobers.outputs.cache-hit != 'true' &&
-          env.GOOBERS_VERSION == 'goobers-dev-6d33b160'
-        env:
-          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
-        run: |
-          set -euo pipefail
-          mkdir -p dl
-          gh release download "${GOOBERS_VERSION}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "${GOOBERS_ASSET}" \
-            --output dl/goobers.tar.gz
-
-      - name: Download pinned public Goobers release
-        if: >-
-          steps.recovery.outputs.should_run != 'false' &&
-          steps.cache-goobers.outputs.cache-hit != 'true' &&
-          env.GOOBERS_VERSION != 'goobers-dev-6d33b160'
-        run: |
-          set -euo pipefail
-          mkdir -p dl
-          curl -fsSL -o dl/goobers.tar.gz \
-            "https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}/${GOOBERS_ASSET}"
-
-      - name: Verify archive against pinned checksum
-        if: steps.recovery.outputs.should_run != 'false'
-        # Always re-hash, including on a cache hit, so a poisoned/corrupted
-        # cache entry can't smuggle an unverified binary past this gate.
-        run: |
-          set -euo pipefail
-          echo "${GOOBERS_SHA256}  dl/goobers.tar.gz" | sha256sum --check --strict -
-
-      - name: Extract binary
-        if: steps.recovery.outputs.should_run != 'false'
-        run: |
-          set -euo pipefail
-          mkdir -p bin
-          tar -xzf dl/goobers.tar.gz -C bin goobers
-          chmod +x bin/goobers
-
-      - name: Verify binary version
-        if: steps.recovery.outputs.should_run != 'false'
-        run: |
-          set -euo pipefail
-          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
-          echo "$PWD/bin" >> "$GITHUB_PATH"
-
-      - name: Install project dependencies
-        if: steps.recovery.outputs.should_run != 'false'
-        run: npm ci
-
-      - name: Install Copilot CLI
-        if: steps.recovery.outputs.should_run != 'false'
-        # Pinned npm package install instead of piping the mutable
-        # https://gh.io/copilot-install script to bash: npm resolves this
-        # exact version+integrity hash from the registry metadata and
-        # verifies the tarball against it before it ever runs, so a
-        # compromised/updated installer script can't get code execution
-        # ahead of this job receiving credentials. The
-        # crawler-feature-pr workflow's producer/coder/reviewer goobers all
-        # declare harness: copilot. Headless PAT auth works as of Goobers
-        # #1996 as long as COPILOT_GITHUB_TOKEN is present in the ambient
-        # process environment before goobers run starts (see
-        # docs/guides/copilot-hosted-runner-auth-spike.md in the Goobers
-        # repo).
-        env:
-          COPILOT_CLI_VERSION: ${{ inputs.copilot_cli_version || '1.0.80' }}
-        run: |
-          set -euo pipefail
-          npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
-
-      - name: Validate .goobers source tree
-        if: steps.recovery.outputs.should_run != 'false'
-        run: goobers validate --source-tree "$GOOBERS_SOURCE"
-
-      - name: Scaffold throwaway instance root
-        if: steps.recovery.outputs.should_run != 'false'
-        run: |
-          set -euo pipefail
-          rm -rf "$GOOBERS_INSTANCE"
-          mkdir -p "$GOOBERS_INSTANCE/config"
-
-      - name: Materialize checked-in source into the instance
-        if: steps.recovery.outputs.should_run != 'false'
-        # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
-        # populated config/ tree. workflowSource records the checked-in source;
-        # `config materialize` applies .goobers/instance.yaml.example and
-        # replaces config/ with manifest.yaml + gaggles/.
-        run: |
-          set -euo pipefail
-          cat > "${GOOBERS_INSTANCE}/instance.yaml" <<EOF
-          apiVersion: goobers.dev/v1alpha1
-          kind: Instance
-          repos:
-            - provider: github
-              owner: ${{ github.repository_owner }}
-              name: ${{ github.event.repository.name }}
-              token:
-                env: GOOBERS_GITHUB_TOKEN
-          workflowSource:
-            kind: local-dir
-            path: ${GOOBERS_SOURCE}
-          credentials:
-            - capability: agent:model
-              token:
-                env: COPILOT_GITHUB_TOKEN
-          runner:
-            # GITHUB_TOKEN is deliberately absent: it is the job-scoped
-            # checks/issues/PR-write token used only by the top-level
-            # `goobers run --github-progress` process. Passing it through would
-            # hand it to every deterministic and agentic stage regardless of the
-            # capabilities that stage declared.
-            envPassthrough:
-              - GOOBERS_INSTANCE
-              - GOOBERS_RECOVERY_ISSUE
-              - GOOBERS_INTAKE_COHORT
-              - GOOBERS_RESUME_BRANCH
-              - GH_TOKEN
-              - GITHUB_REPOSITORY
-          runConditions:
-            maxParallelRuns: 1
-          EOF
-          goobers config materialize "$GOOBERS_INSTANCE"
-          goobers validate "$GOOBERS_INSTANCE"
-
-      - name: Comment on Goobers run start
-        if: steps.recovery.outputs.should_run != 'false'
+          steps.recovery.outputs.recovery_issue != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RESERVED_ISSUE: ${{ steps.recovery.outputs.recovery_issue }}
+          RESOLVED_INTAKE_COHORT: ${{ steps.recovery.outputs.intake_cohort }}
         run: |
           set -euo pipefail
 
-          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
+          issue_number="${RESERVED_ISSUE}"
           if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-            echo "::error::Cannot post the Goobers start comment because GOOBERS_RECOVERY_ISSUE is not numeric. Re-run with: gh workflow run goobers-run.yml -f issue_number=<issue-number>" >&2
+            echo "::error::Reservation reached with a non-numeric recovery target '${issue_number}'; that is a bug in this workflow's reserve job, not in the issue. Re-run the dispatch." >&2
             exit 1
           fi
 
@@ -578,11 +695,15 @@ jobs:
           # cohort selector the resolve step used, so a label/approval change
           # between resolution and claim cannot start work Goobers no longer
           # owns. Resumes are exempt for the reason documented in that step.
-          # The freshly revalidated cohort overwrites GOOBERS_INTAKE_COHORT so
-          # every downstream consumer (the claim fence in
-          # crawler-feature-pr.yaml) sees this run-start verdict rather than a
-          # value that may be stale from the earlier resolve step.
-          if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]; then
+          # The freshly revalidated cohort overwrites the job's `intake_cohort`
+          # output so every downstream consumer (the claim fence in
+          # crawler-feature-pr.yaml, reached via the adopting slot) sees this
+          # run-start verdict rather than a value that may be stale from the
+          # earlier resolve step.
+          if [ "${RESOLVED_INTAKE_COHORT:-}" != "resume" ]; then
+            # Handed over as a FILE, never piped on stdin: Actions' bash can
+            # hand the selector a non-blocking pipe, and a synchronous stdin
+            # read of one fails with EAGAIN.
             issue_file="${RUNNER_TEMP}/goobers-run-start-issue.json"
             printf '%s' "$issue_json" > "$issue_file"
             decision="$(node .github/scripts/goobers/intake-selection.mjs --issue "$issue_file")"
@@ -591,8 +712,8 @@ jobs:
               exit 1
             fi
             revalidated_cohort="$(jq -r '.cohort // ""' <<<"$decision")"
-            if [ -n "$revalidated_cohort" ] && [ "$revalidated_cohort" != "${GOOBERS_INTAKE_COHORT:-}" ]; then
-              echo "GOOBERS_INTAKE_COHORT=${revalidated_cohort}" >> "${GITHUB_ENV}"
+            if [ -n "$revalidated_cohort" ] && [ "$revalidated_cohort" != "${RESOLVED_INTAKE_COHORT:-}" ]; then
+              echo "intake_cohort=${revalidated_cohort}" >> "${GITHUB_OUTPUT}"
             fi
           fi
           blocked_by="$(
@@ -604,6 +725,59 @@ jobs:
             echo "::error::Issue #${issue_number} became blocked by open prerequisite issue(s): ${blocked_by}. No start comment or Goobers claim was created; retry after closing the blockers with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
             exit 1
           fi
+
+          # Reserve the recovery target. This job is a `needs:` prerequisite of
+          # BOTH matrix legs, so this write is ordered before every slot's
+          # `goobers backlog-query --claim`. The recovery branch of
+          # crawler-feature-pr.yaml's query-backlog stage does not go through
+          # Goobers' provider-side claim protocol, so this label is the only
+          # thing that keeps the three fresh slots off this issue: their claim
+          # scans exclude goobers/status:in-review (excludeLabels in that
+          # stage's inputs). Idempotent -- a scheduled resume target already
+          # carries it, and `gh issue edit --add-label` tolerates a label that
+          # is already set.
+          gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+            --add-label 'goobers/status:in-review'
+
+          # `needs:` orders the JOBS; this loop closes the remaining
+          # read-after-write gap by proving the reservation is observable
+          # through the very read a fresh claim performs. Goobers scans the
+          # backlog with the REST issues list filtered by the trust label and
+          # applies excludeLabels to each returned issue's own label array
+          # (providers/github.go's ListWorkItems plus
+          # cmd/goobers/backlogquery.go's scanBacklogEligibility), so this
+          # replays that exact query rather than a search-index query, which is
+          # only eventually consistent. Failing closed here costs one dispatch;
+          # succeeding optimistically costs duplicated agent work on one issue.
+          reservation_visible() {
+            local labels=""
+            if ! labels="$(
+              gh api --paginate -X GET \
+                "repos/${GITHUB_REPOSITORY}/issues" \
+                -f state=open -f labels='goobers:approved' -f per_page=100 \
+                --jq ".[] | select(.number == ${issue_number}) | .labels[].name"
+            )"; then
+              return 1
+            fi
+            if ! grep -qxF 'goobers:approved' <<<"$labels"; then
+              # Not a fresh-claim candidate at all any more (trust label
+              # removed, or the issue closed), so no slot can select it
+              # regardless of the reservation.
+              echo "Issue #${issue_number} is no longer an open goobers:approved candidate; no fresh slot can select it."
+              return 0
+            fi
+            grep -qxF 'goobers/status:in-review' <<<"$labels"
+          }
+          attempt=0
+          until reservation_visible; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 10 ]; then
+              echo "::error::Reserved issue #${issue_number} with goobers/status:in-review, but the label was still not visible through the backlog read path after ${attempt} attempts. Refusing to start any slot, because a fresh slot could otherwise claim the issue lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT} is about to resume. Confirm the label with 'gh issue view ${issue_number} --repo ${GITHUB_REPOSITORY} --json labels', then retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "Reserved issue #${issue_number} with goobers/status:in-review and confirmed it through the backlog read path; every fresh slot will now skip it."
 
           marker="<!-- crawler-goobers-run-start:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
           find_issue_comment_id() {
@@ -628,16 +802,439 @@ jobs:
 
           gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
 
+  run:
+    name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
+    # `needs: reserve` is the ordering guarantee, not a convenience: neither
+    # lane exists until the reservation has landed and been confirmed, so no
+    # fresh slot can claim the issue the recovery slot is about to resume.
+    needs: reserve
+    if: needs.reserve.outputs.should_run != 'false'
+    # Two GitHub-hosted lanes, each running two concurrent, fully isolated
+    # Goobers slots -- exactly four active issue workflows per dispatch and no
+    # more (GOOBERS_SLOTS below x this matrix). `max-parallel: 2` is explicit
+    # (not just the GH-hosted default) so both lanes really do run at the same
+    # time even if a future runner-pool policy narrows the default, and
+    # `fail-fast: false` keeps one lane's failure from cancelling the other
+    # lane's in-flight claims before they can be cleaned up.
+    strategy:
+      matrix:
+        lane: [1, 2]
+      max-parallel: 2
+      fail-fast: false
+    # Keep irrelevant issue-label events from entering the workflow-level
+    # pending slot and cancelling a queued schedule/manual run before this
+    # job-level `if` can skip them. Scoped per lane (not the single static
+    # `goobers-run` group the job used before the 2-lane split) so the two
+    # lanes run concurrently instead of serializing each other; each lane
+    # still stays single-flight against its own future dispatches, which is
+    # what keeps a later dispatch from overlapping this one's claims.
+    concurrency:
+      group: goobers-run-lane-${{ matrix.lane }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # Generous ceiling for a full plan -> implement -> review -> PR loop;
+    # the workflow's own maxConcurrentRuns/gates bound retries within this.
+    # "Run the workflow" self-bounds its slots at
+    # GOOBERS_SLOT_DEADLINE_SECONDS, well inside this ceiling, so journal
+    # upload, claim release and label cleanup always get to run rather than
+    # depending on this timeout to kill a stuck run.
+    timeout-minutes: 90
+    env:
+      GOOBERS_VERSION: ${{ inputs.goobers_version || 'goobers-dev-6d33b160' }}
+      GOOBERS_REPO: Agent-Clubhouse/Goobers
+      GOOBERS_LANE: ${{ matrix.lane }}
+      # The two concurrent slots this lane runs. Each name becomes an isolated
+      # instance root under GOOBERS_LANE_ROOT; two lanes x two slots is the
+      # hard maximum of four simultaneous issue workflows.
+      GOOBERS_SLOTS: '1 2'
+      GOOBERS_LANE_ROOT: ${{ github.workspace }}/.goobers-lane-${{ matrix.lane }}
+      # The single slot allowed to carry GOOBERS_RECOVERY_ISSUE/RESUME_*. Every
+      # other slot claims fresh backlog work, so a dispatch with a recovery
+      # target is 1 recovery + 3 fresh and one without is 4 fresh.
+      GOOBERS_RECOVERY_LANE: '1'
+      GOOBERS_RECOVERY_SLOT: '1'
+      # The job's own `timeout-minutes`, restated as data so "Run the workflow"
+      # can do arithmetic against the SAME budget the runner enforces. A test
+      # pins the two to each other so they cannot drift.
+      GOOBERS_JOB_TIMEOUT_MINUTES: '90'
+      # "Record job start" is the earliest a STEP can observe the clock, but the
+      # runner's `timeout-minutes` starts earlier than that: job scheduling,
+      # runner acquisition and the runner's own job bootstrap all precede the
+      # first step and are all inside the budget. Treating the first step's
+      # epoch as job start therefore UNDER-counts elapsed time, which shortens
+      # the cleanup window at the far end -- the one place an under-count is
+      # unsafe. This allowance is added to the observed elapsed time so the
+      # derived run window errs toward more cleanup headroom, never less.
+      GOOBERS_JOB_START_SLACK_SECONDS: '90'
+      # How often the deadline loop wakes to check whether every slot is done.
+      # The loop sleeps min(remaining, this), so the interval can never
+      # overshoot the deadline by up to a full interval.
+      GOOBERS_SLOT_POLL_SECONDS: '10'
+      # The runner's own post-job steps (post-checkout, cache save, artifact
+      # finalisation) run after the last step and are still inside
+      # `timeout-minutes`, so they are part of the cleanup reserve even though
+      # no `timeout-minutes` of ours bounds them.
+      GOOBERS_CLEANUP_POST_STEP_SECONDS: '180'
+      # Cleanup time carved out of the absolute job budget, NOT out of an
+      # optimistic guess about when the run step started, and NOT a hand-summed
+      # estimate of how long each cleanup step "should" take. It is the sum of
+      # HARD CEILINGS that the runner itself enforces:
+      #
+      #   deadline teardown inside "Run the workflow"
+      #     2 slots x (120s grace + 15s verify + 30s sweep slack)        =  330s
+      #   every cleanup step's own `timeout-minutes`, which the runner
+      #     enforces per step (host profile 2 + sentinel 1 + reap 3 +
+      #     journal upload 4 + disposition 5 + repaired upload 4 +
+      #     result comments 3 + disposal receipt 2 = 24 min)             = 1440s
+      #   runner post-job steps (GOOBERS_CLEANUP_POST_STEP_SECONDS)      =  180s
+      #                                                                   -----
+      #                                                                   1950s
+      #
+      # rounded up to 2100s of headroom. A structural test recomputes that sum
+      # from the workflow's own literals and fails if the reserve stops covering
+      # it, so the 90-minute job timeout provably cannot interrupt cleanup.
+      GOOBERS_CLEANUP_RESERVE_SECONDS: '2100'
+      # Upper bound on one slot's run window. The EFFECTIVE deadline is the
+      # smaller of this and (job budget - elapsed setup - startup slack -
+      # cleanup reserve), so a slow setup shortens the run instead of silently
+      # eating the cleanup window at the far end. 3300 + 2100 = the full 5400s
+      # job budget exactly, so even the capped case leaves the reserve intact.
+      GOOBERS_SLOT_DEADLINE_SECONDS: '3300'
+      GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
+    steps:
+      - name: Record job start
+        # First step, deliberately: the runner's `timeout-minutes` budget is
+        # measured from job start, but `SECONDS` inside "Run the workflow" only
+        # starts when that step's shell does. Everything between them --
+        # checkout, npm ci, the Copilot CLI install, instance materialization --
+        # is time the cleanup steps at the far end would otherwise lose. This
+        # is the earliest a step can observe, so it is the closest available
+        # proxy for job start, and it is only ever an under-estimate of elapsed
+        # time by the runner's own startup, which biases the derived deadline
+        # toward MORE cleanup headroom rather than less.
+        run: |
+          set -euo pipefail
+          echo "GOOBERS_JOB_START_EPOCH=$(date +%s)" >> "${GITHUB_ENV}"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Preserve trusted Goobers source
+        run: |
+          set -euo pipefail
+          cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
+          echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
+
+      - name: Adopt the reserved recovery target
+        # The reservation is resolved once, by the `reserve` job. This step is
+        # the ONLY place a lane takes ownership of it, and only lane
+        # GOOBERS_RECOVERY_LANE does. Every other lane leaves
+        # GOOBERS_RECOVERY_ISSUE/RESUME_* unset, so both of its slots take the
+        # plain `goobers backlog-query --claim` path -- and, just as
+        # importantly, its post-processing steps never synthesize a disposition
+        # record for an issue another lane owns.
+        #
+        # Adoption is also where the OWNERSHIP EVIDENCE is created. The receipt
+        # comment is written BEFORE any recovery metadata is exported, so a
+        # lane that fails to write it fails before starting a slot and leaves
+        # no receipt -- which is exactly the state that lets
+        # `release-unstarted-reservation` release the reservation safely. The
+        # aggregate `needs.run.result` of a two-leg matrix cannot distinguish
+        # "the recovery lane never adopted" from "the recovery lane adopted and
+        # its sibling failed", so that job reads this receipt instead of
+        # inferring ownership from a job result.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESERVED_ISSUE: ${{ needs.reserve.outputs.recovery_issue }}
+          RESERVED_RESUME_PR: ${{ needs.reserve.outputs.resume_pr }}
+          RESERVED_RESUME_BRANCH: ${{ needs.reserve.outputs.resume_branch }}
+          RESERVED_INTAKE_COHORT: ${{ needs.reserve.outputs.intake_cohort }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESERVED_ISSUE}" ]; then
+            echo "This dispatch reserved no recovery target; all four slots claim fresh backlog work atomically."
+            exit 0
+          fi
+          if [ "${GOOBERS_LANE}" != "${GOOBERS_RECOVERY_LANE}" ]; then
+            echo "Lane ${GOOBERS_LANE} does not own single-issue recovery; issue #${RESERVED_ISSUE} belongs to lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT}, and both of this lane's slots use fresh backlog claims."
+            exit 0
+          fi
+          # shellcheck source=scripts/agent/goobers-reservation-lease.sh
+          lease_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-reservation-lease.sh"
+          if ! . "$lease_lib"; then
+            echo "::error::Could not load ${lease_lib}, so this lane cannot prove the reservation on issue #${RESERVED_ISSUE} is free to adopt. Restore the file (it is checked in) and re-run: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
+          adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${RESERVED_ISSUE}")"
+
+          comments="$(mktemp)"
+          if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${RESERVED_ISSUE}" "$comments"; then
+            exit 1
+          fi
+          lease_record=""
+          if ! lease_record="$(goobers_lease_state "$comments" "${RESERVED_ISSUE}")"; then
+            exit 1
+          fi
+          IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt lease_comment <<<"$lease_record"
+
+          # CROSS-DISPATCH RE-ADOPTION GUARD. The reserve job checked this a few
+          # seconds ago; this re-check is what closes the window between the two
+          # jobs, and it is scoped to run id AND attempt so a re-run of a failed
+          # Actions run is a NEW lease rather than something the previous
+          # attempt's disposal already closed.
+          if [ "$lease_state" = "adopted" ] &&
+             { [ "$lease_run" != "${GITHUB_RUN_ID}" ] || [ "$lease_attempt" != "${GITHUB_RUN_ATTEMPT}" ]; }; then
+            echo "::error::Refusing to adopt reserved issue #${RESERVED_ISSUE}: it is still leased by $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment"). That dispatch never recorded a disposal receipt, so it could not prove its stage tree was reaped and a Setsid-detached stage may still be pushing to this issue. Confirm the earlier run's runner is clear, then reconcile by hand: gh issue edit ${RESERVED_ISSUE} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+
+          receipt_id=""
+          rm -f "$comments"
+          # Idempotent re-entry (a hand-retried step, a resumed job) is decided
+          # by the same reader every other lease decision uses, not by a
+          # standalone marker search. A marker search over every trusted comment
+          # would also match a marker that arrived inside another
+          # Actions-authored comment's free-form Goobers journal text, and this
+          # lane would then skip posting its receipt and later PATCH its
+          # disposal onto that comment. Resolving through `goobers_lease_state`
+          # makes the comment this lane adopts into, and the comment a disposal
+          # is later written to, the SAME comment by construction.
+          if [ "$lease_state" = "adopted" ] &&
+             [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
+            receipt_id="$lease_comment"
+          fi
+          if [ -z "$receipt_id" ]; then
+            receipt_body="$(mktemp)"
+            {
+              # The marker is the first line so ci-recovery-router's
+              # startsWith(body, '<!-- crawler-') filter suppresses this
+              # automation's own comment instead of routing it back in.
+              echo "$adopted_marker"
+              echo
+              echo "Goobers lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT} adopted the reservation on this issue and owns 'goobers/status:in-review' for the duration of Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."
+              echo
+              echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "- Until this comment also carries a disposal receipt, no other job **and no later dispatch** may remove the reservation label or re-adopt this issue."
+            } > "$receipt_body"
+            # A failure here fails the step BEFORE any recovery metadata is
+            # exported, so this lane never starts a recovery slot and the
+            # absent receipt correctly reads as "never adopted".
+            gh issue comment "$RESERVED_ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$receipt_body"
+            echo "Recorded the adoption receipt for issue #${RESERVED_ISSUE} on Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT} (previous lease: $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment"))."
+          else
+            echo "Adoption receipt for issue #${RESERVED_ISSUE} already exists on Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT} (comment ${receipt_id}); not posting a duplicate."
+          fi
+          {
+            echo "GOOBERS_RECOVERY_ISSUE=${RESERVED_ISSUE}"
+            echo "GOOBERS_INTAKE_COHORT=${RESERVED_INTAKE_COHORT}"
+            echo "GOOBERS_RESUME_PR=${RESERVED_RESUME_PR}"
+            echo "GOOBERS_RESUME_BRANCH=${RESERVED_RESUME_BRANCH}"
+          } >> "${GITHUB_ENV}"
+          echo "Lane ${GOOBERS_LANE} slot ${GOOBERS_RECOVERY_SLOT} adopted reserved issue #${RESERVED_ISSUE} (cohort '${RESERVED_INTAKE_COHORT:-unknown}', resume PR '${RESERVED_RESUME_PR:-none}', branch '${RESERVED_RESUME_BRANCH:-none}')."
+
+      - name: Require Goobers auth token
+        # crawler-feature-pr's implement/push-branch stages declare
+        # repo:push; the built-in github.token only has contents: read on
+        # this job (see permissions:, above), so it can neither push a
+        # branch nor open a PR, and a GITHUB_TOKEN-authored push wouldn't
+        # trigger the normal CI workflow anyway. Fail fast with a clear
+        # message instead of letting goobers run fail deep into the run.
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOBERS_AUTH_TOKEN_SET:-}" ]; then
+            echo "::error::GOOBERS_GITHUB_TOKEN or CRAWLER_CI_PAT secret is required (Settings -> Secrets and variables -> Actions) — it must have Contents/Issues/Pull-requests read-write on this repo. See README.md#goobers." >&2
+            exit 1
+          fi
+        env:
+          GOOBERS_AUTH_TOKEN_SET: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
+
+      - name: Resolve pinned archive checksum
+        # Independent pin: this digest is reviewed and committed here, not
+        # fetched from the same mutable release as the archive. It must be
+        # updated (with a diff review of the new digest) whenever
+        # goobers_version's default changes. See
+        # .github/workflows/goobers-validate.yml for the shared list.
+        run: |
+          set -euo pipefail
+          case "${GOOBERS_VERSION}" in
+            goobers-dev-6d33b160)
+              echo "GOOBERS_ASSET=goobers_dev_linux_amd64.tar.gz" >> "$GITHUB_ENV"
+              echo "GOOBERS_SHA256=4758e471e845925c364621db61bdaddefc4a46f45de65aa1cf8a970e3376adde" >> "$GITHUB_ENV"
+              ;;
+            v0.3.3)
+              echo "GOOBERS_ASSET=goobers_v0.3.3_linux_amd64.tar.gz" >> "$GITHUB_ENV"
+              echo "GOOBERS_SHA256=47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::No pinned SHA256 checksum for Goobers version '${GOOBERS_VERSION}'. Add a case for it to this step (and the matching one in goobers-validate.yml) after independently verifying the release artifact." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Cache pinned Goobers archive
+        id: cache-goobers
+        uses: actions/cache@v4
+        with:
+          path: dl/goobers.tar.gz
+          key: goobers-archive-linux-amd64-${{ env.GOOBERS_VERSION }}-${{ env.GOOBERS_SHA256 }}
+
+      - name: Download pinned private Goobers draft
+        if: >-
+          steps.cache-goobers.outputs.cache-hit != 'true' &&
+          env.GOOBERS_VERSION == 'goobers-dev-6d33b160'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          gh release download "${GOOBERS_VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${GOOBERS_ASSET}" \
+            --output dl/goobers.tar.gz
+
+      - name: Download pinned public Goobers release
+        if: >-
+          steps.cache-goobers.outputs.cache-hit != 'true' &&
+          env.GOOBERS_VERSION != 'goobers-dev-6d33b160'
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          curl -fsSL -o dl/goobers.tar.gz \
+            "https://github.com/${GOOBERS_REPO}/releases/download/${GOOBERS_VERSION}/${GOOBERS_ASSET}"
+
+      - name: Verify archive against pinned checksum
+        # Always re-hash, including on a cache hit, so a poisoned/corrupted
+        # cache entry can't smuggle an unverified binary past this gate.
+        run: |
+          set -euo pipefail
+          echo "${GOOBERS_SHA256}  dl/goobers.tar.gz" | sha256sum --check --strict -
+
+      - name: Extract binary
+        run: |
+          set -euo pipefail
+          mkdir -p bin
+          tar -xzf dl/goobers.tar.gz -C bin goobers
+          chmod +x bin/goobers
+
+      - name: Verify binary version
+        run: |
+          set -euo pipefail
+          ./bin/goobers --version | grep --fixed-strings "${GOOBERS_VERSION}"
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Install Copilot CLI
+        # Pinned npm package install instead of piping the mutable
+        # https://gh.io/copilot-install script to bash: npm resolves this
+        # exact version+integrity hash from the registry metadata and
+        # verifies the tarball against it before it ever runs, so a
+        # compromised/updated installer script can't get code execution
+        # ahead of this job receiving credentials. The
+        # crawler-feature-pr workflow's producer/coder/reviewer goobers all
+        # declare harness: copilot. Headless PAT auth works as of Goobers
+        # #1996 as long as COPILOT_GITHUB_TOKEN is present in the ambient
+        # process environment before goobers run starts (see
+        # docs/guides/copilot-hosted-runner-auth-spike.md in the Goobers
+        # repo).
+        env:
+          COPILOT_CLI_VERSION: ${{ inputs.copilot_cli_version || '1.0.80' }}
+        run: |
+          set -euo pipefail
+          npm install -g "@github/copilot@${COPILOT_CLI_VERSION}"
+
+      - name: Validate .goobers source tree
+        run: goobers validate --source-tree "$GOOBERS_SOURCE"
+
+      - name: Scaffold throwaway slot instance roots
+        # One isolated instance root per concurrent slot. Isolation is the
+        # whole concurrency mechanism: scheduler/up.lock, the claim ledger and
+        # its lock, the git workcopies + GIT_ASKPASS helper, the telemetry/read
+        # DBs and the run journals all live under the root, so two slots on one
+        # runner never touch the same file or the same checkout.
+        run: |
+          set -euo pipefail
+          rm -rf "$GOOBERS_LANE_ROOT"
+          for slot in ${GOOBERS_SLOTS}; do
+            mkdir -p "${GOOBERS_LANE_ROOT}/slot-${slot}/config"
+            echo "Scaffolded lane ${GOOBERS_LANE} slot ${slot} at ${GOOBERS_LANE_ROOT}/slot-${slot}."
+          done
+
+      - name: Materialize checked-in source into each slot instance
+        # Goobers v0.2.2 validates/runs an instance from instance.yaml plus a
+        # populated config/ tree. workflowSource records the checked-in source;
+        # `config materialize` applies .goobers/instance.yaml.example and
+        # replaces config/ with manifest.yaml + gaggles/. The manifest is
+        # written once and copied into every slot so the slots differ only by
+        # their root path.
+        run: |
+          set -euo pipefail
+          slot_manifest="${RUNNER_TEMP}/goobers-slot-instance.yaml"
+          cat > "${slot_manifest}" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${{ github.repository_owner }}
+              name: ${{ github.event.repository.name }}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          workflowSource:
+            kind: local-dir
+            path: ${GOOBERS_SOURCE}
+          credentials:
+            - capability: agent:model
+              token:
+                env: COPILOT_GITHUB_TOKEN
+          runner:
+            # GITHUB_TOKEN is deliberately absent: it is the job-scoped
+            # checks/issues/PR-write token used only by the top-level
+            # per-slot Goobers process that publishes hosted progress. Passing
+            # it through would hand those scopes to every deterministic and
+            # agentic stage regardless of the capabilities that stage declared.
+            # Backticks are avoided in this heredoc on purpose: the delimiter
+            # is unquoted (GOOBERS_SOURCE has to expand), so a backticked
+            # comment would be run as a command substitution while the
+            # manifest is written.
+            envPassthrough:
+              - GOOBERS_INSTANCE
+              - GOOBERS_RECOVERY_ISSUE
+              - GOOBERS_INTAKE_COHORT
+              - GOOBERS_RESUME_BRANCH
+              - GH_TOKEN
+              - GITHUB_REPOSITORY
+          runConditions:
+            # 1, deliberately: concurrency comes from four isolated slot roots,
+            # not from letting one instance admit two runs. A single-capacity
+            # instance makes "at most four active issue workflows" structural
+            # rather than counted -- there is no arithmetic that can drift.
+            # It also matches crawler-feature-pr's readiness.maxConcurrentRuns.
+            maxParallelRuns: 1
+          EOF
+          for slot in ${GOOBERS_SLOTS}; do
+            slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
+            cp "${slot_manifest}" "${slot_root}/instance.yaml"
+            goobers config materialize "$slot_root"
+            goobers validate "$slot_root"
+          done
+
       - name: Start Goobers host profile
         id: host-profile-start
-        if: steps.recovery.outputs.should_run != 'false'
         uses: ./.github/actions/host-profile
         with:
           mode: start
-          label: goobers-run
+          label: goobers-run-lane-${{ matrix.lane }}
 
       - name: Run the workflow
-        if: steps.recovery.outputs.should_run != 'false'
         env:
           # Ambient env, not runner.envPassthrough — required for the
           # CopilotAdapter preflight probe on a clean runner (see the
@@ -651,32 +1248,399 @@ jobs:
           GOOBERS_RECOVERY_ISSUE: ${{ env.GOOBERS_RECOVERY_ISSUE }}
           GOOBERS_INTAKE_COHORT: ${{ env.GOOBERS_INTAKE_COHORT }}
         run: |
-          set -euo pipefail
-          goobers run --github-progress "$GOOBERS_WORKFLOW" "$GOOBERS_INSTANCE"
+          # Deliberately not `set -e`: every slot must be waited on, logged and
+          # reported even when a sibling slot fails, and the step's own exit
+          # status is aggregated from the slots at the end.
+          set -uo pipefail
+
+          # Both of this lane's slots start at once, each a separate blocking
+          # `goobers run` against its OWN instance root. That is what makes this
+          # runner execute two independent issue workflows simultaneously: a
+          # bare `goobers run` holds its instance's scheduler/up.lock for its
+          # entire blocking wait (Goobers cmd/goobers/run.go), so two runs can
+          # only overlap if they are two different instances. They are.
+          #
+          # Exactly one slot in the whole dispatch (lane
+          # ${GOOBERS_RECOVERY_LANE}, slot ${GOOBERS_RECOVERY_SLOT}) keeps
+          # GOOBERS_RECOVERY_ISSUE/RESUME_*; every other slot unsets them in its
+          # own subshell so its query-backlog stage takes the plain
+          # `goobers backlog-query --claim` path and claims a distinct issue.
+          slot_table="${RUNNER_TEMP}/goobers-slots-lane-${GOOBERS_LANE}.tsv"
+          : > "$slot_table"
+
+          # Sourced BEFORE the first slot launches, not just before the deadline
+          # loop: the launch records each root's /proc start time with this
+          # library's `goobers_teardown_pid_start`, so the field a root is
+          # recorded from and the field the sweep verifies it against are the
+          # same one line of code.
+          #
+          # Whole-tree teardown, not `kill <goobers-run-pid>`. Goobers detaches
+          # every stage into its own SESSION (Setsid, not Setpgid --
+          # internal/platform/proc/proc_unix.go), and the runner dispatches an
+          # in-flight attempt on context.WithoutCancel (internal/runner/run.go),
+          # so signalling the CLI pid leaves the Copilot and verification
+          # children running while this job goes on to release provider claims
+          # and issue labels. The pinned build offers no daemon-free
+          # cancellation command -- `run cancel` needs a live `goobers up` to
+          # sweep scheduler/pending-cancels (cmd/goobers/runcancel.go) -- so the
+          # wrapper owns the teardown. It refuses to return success while any
+          # descendant survives, which is what makes "cleanup only runs after
+          # the tree is gone" true rather than hoped for.
+          # shellcheck source=scripts/agent/goobers-stage-teardown.sh
+          teardown_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-stage-teardown.sh"
+          if ! . "$teardown_lib"; then
+            echo "::error::Could not load ${teardown_lib}, so a slot that overruns its deadline could not be torn down safely. Restore the file (it is checked in) and re-run: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
+
+          # The slot deadline is derived BEFORE any slot starts, so a budget
+          # that cannot fit a run plus its cleanup refuses to start the run at
+          # all rather than starting one this job could not clean up after.
+          #
+          # The bound is ABSOLUTE, not relative to this step. `timeout-minutes`
+          # starts counting at job start, and everything before this step
+          # (checkout, npm ci, the Copilot CLI install, four instance
+          # materializations) already spent part of it. Anchoring the deadline
+          # at `SECONDS` alone would let a slow setup push the teardown, the
+          # journal uploads and every claim/label mutation past the job
+          # timeout -- the one failure mode where the runner kills the job
+          # while a claim is still held. So the run window is whatever is left
+          # of the job budget after the elapsed setup AND after reserving
+          # GOOBERS_CLEANUP_RESERVE_SECONDS for the sequential teardown and
+          # cleanup worst case, capped by the declared slot deadline.
+          require_positive_int() {
+            local name="$1" value="$2"
+            if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -le 0 ]; then
+              echo "::error::${name} must be a positive integer for the slot deadline arithmetic, got '${value}'. Fix it in .github/workflows/goobers-run.yml's \`run\` job env and re-run: gh workflow run goobers-run.yml" >&2
+              return 1
+            fi
+          }
+          require_positive_int GOOBERS_JOB_START_EPOCH "${GOOBERS_JOB_START_EPOCH:-}" || exit 1
+          require_positive_int GOOBERS_JOB_TIMEOUT_MINUTES "${GOOBERS_JOB_TIMEOUT_MINUTES:-}" || exit 1
+          require_positive_int GOOBERS_CLEANUP_RESERVE_SECONDS "${GOOBERS_CLEANUP_RESERVE_SECONDS:-}" || exit 1
+          require_positive_int GOOBERS_SLOT_DEADLINE_SECONDS "${GOOBERS_SLOT_DEADLINE_SECONDS:-}" || exit 1
+          require_positive_int GOOBERS_SLOT_POLL_SECONDS "${GOOBERS_SLOT_POLL_SECONDS:-}" || exit 1
+          # Zero is a legitimate value for the startup allowance (a test pins
+          # the arithmetic with it), so it is validated as a non-negative int
+          # rather than through require_positive_int.
+          if ! [[ "${GOOBERS_JOB_START_SLACK_SECONDS:-}" =~ ^[0-9]+$ ]]; then
+            echo "::error::GOOBERS_JOB_START_SLACK_SECONDS must be a non-negative integer for the slot deadline arithmetic, got '${GOOBERS_JOB_START_SLACK_SECONDS:-}'. Fix it in .github/workflows/goobers-run.yml's \`run\` job env and re-run: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
+
+          # "Record job start" is the earliest a step can read the clock, but
+          # the runner started counting `timeout-minutes` before that: job
+          # scheduling, runner acquisition and the runner bootstrap are all
+          # inside the budget and outside this anchor. Adding the startup
+          # allowance makes the elapsed figure an OVER-estimate, which shortens
+          # the run window and lengthens the cleanup window -- the safe
+          # direction, because the failure this whole calculation exists to
+          # prevent is the runner killing the job while a provider claim is
+          # still held.
+          job_observed_elapsed=$(( $(date +%s) - GOOBERS_JOB_START_EPOCH ))
+          if [ "$job_observed_elapsed" -lt 0 ]; then
+            job_observed_elapsed=0
+          fi
+          job_elapsed=$(( job_observed_elapsed + GOOBERS_JOB_START_SLACK_SECONDS ))
+          run_budget=$(( GOOBERS_JOB_TIMEOUT_MINUTES * 60 - job_elapsed - GOOBERS_CLEANUP_RESERVE_SECONDS ))
+          if [ "$run_budget" -gt "$GOOBERS_SLOT_DEADLINE_SECONDS" ]; then
+            run_budget="$GOOBERS_SLOT_DEADLINE_SECONDS"
+          fi
+          if [ "$run_budget" -le 0 ]; then
+            echo "::error::Lane ${GOOBERS_LANE} spent ${job_elapsed}s of its ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget before any slot started (${job_observed_elapsed}s observed + ${GOOBERS_JOB_START_SLACK_SECONDS}s runner-startup allowance), leaving nothing once ${GOOBERS_CLEANUP_RESERVE_SECONDS}s is reserved for teardown, journal upload and claim/label cleanup. Refusing to start a slot that could not be cleaned up. Inspect the setup steps' durations on this run, then retry with: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
+          echo "Lane ${GOOBERS_LANE} slot deadline: ${run_budget}s (job budget $((GOOBERS_JOB_TIMEOUT_MINUTES * 60))s - ${job_elapsed}s already spent (${job_observed_elapsed}s observed + ${GOOBERS_JOB_START_SLACK_SECONDS}s runner-startup allowance) - ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve, capped at GOOBERS_SLOT_DEADLINE_SECONDS=${GOOBERS_SLOT_DEADLINE_SECONDS}s)."
+          deadline=$((SECONDS + run_budget))
+
+          for slot in ${GOOBERS_SLOTS}; do
+            slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
+            slot_log="${RUNNER_TEMP}/goobers-slot-${GOOBERS_LANE}-${slot}.log"
+            recovery_slot=0
+            if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&
+               [ "${slot}" = "${GOOBERS_RECOVERY_SLOT}" ] &&
+               [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+              recovery_slot=1
+            fi
+            (
+              set -uo pipefail
+              # Per-slot instance identity. envPassthrough forwards
+              # GOOBERS_INSTANCE to every stage, and query-backlog uses it for
+              # `goobers backlog-query --claim`, so it must name THIS slot's
+              # root rather than a lane-wide one.
+              export GOOBERS_INSTANCE="$slot_root"
+              if [ "$recovery_slot" != "1" ]; then
+                unset GOOBERS_RECOVERY_ISSUE GOOBERS_RESUME_PR GOOBERS_RESUME_BRANCH
+              fi
+              exec goobers run --github-progress "$GOOBERS_WORKFLOW" "$slot_root"
+            ) >"$slot_log" 2>&1 &
+            slot_pid=$!
+            # Recorded HERE, one statement after the launch, because this is the
+            # only moment the pid provably still belongs to the process just
+            # started. (pid, start time) is unique for the life of a boot, so
+            # the teardown can refuse to signal a pid Linux recycled onto an
+            # unrelated process during the slot's tens-of-minutes run window.
+            # `0` can never equal a real start time, so a root that vanished
+            # before it could be read is treated as recycled -- refused, not
+            # guessed at -- and its descendants are still found by
+            # GOOBERS_INSTANCE.
+            slot_start="$(goobers_teardown_pid_start "$slot_pid")"
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+              "$slot" "$slot_pid" "$slot_log" "$recovery_slot" "${slot_start:-0}" >> "$slot_table"
+            echo "Lane ${GOOBERS_LANE} slot ${slot} started (pid ${slot_pid}, start ${slot_start:-unreadable}, recovery=${recovery_slot}, instance ${slot_root})."
+          done
+
+          slots_alive() {
+            local slot pid log recovery start
+            while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+              if kill -0 "$pid" 2>/dev/null; then
+                return 0
+              fi
+            done < "$slot_table"
+            return 1
+          }
+
+          # The slots whose tree the teardown could not prove gone. Tracked per
+          # slot, not as one lane-wide flag: a lane-wide flag would report a
+          # sibling slot that reaped cleanly as unreaped too, sending a human to
+          # hunt a process that is not there -- and would throw away that slot's
+          # real exit status.
+          unreaped_slots=" "
+          terminate_slots() {
+            local slot pid log recovery start status=0
+            while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+              if ! goobers_teardown_tree "${GOOBERS_LANE_ROOT}/slot-${slot}" 120 "${pid}:${start}"; then
+                status=1
+                unreaped_slots="${unreaped_slots}${slot} "
+              fi
+            done < "$slot_table"
+            return "$status"
+          }
+
+          # Self-bound well inside the job's budget so journal upload, provider
+          # claim release and stale-label cleanup always run. `deadline` was
+          # derived from the absolute job budget above, before any slot started.
+          #
+          # The wait sleeps min(remaining, poll interval) rather than a fixed
+          # interval: a fixed sleep overshoots the deadline by up to a full
+          # interval, and every second of overshoot is a second stolen from the
+          # cleanup reserve at the far end.
+          teardown_failed=0
+          while slots_alive; do
+            remaining=$(( deadline - SECONDS ))
+            if [ "$remaining" -le 0 ]; then
+              echo "::error::Lane ${GOOBERS_LANE} hit its ${run_budget}s slot deadline (derived from the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget minus ${job_elapsed}s of setup and a ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve) before every slot reached a terminal state. Tearing down each slot's whole stage process tree so journals upload and claims are released; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and retry with: gh workflow run goobers-run.yml" >&2
+              terminate_slots || teardown_failed=1
+              break
+            fi
+            if [ "$remaining" -lt "$GOOBERS_SLOT_POLL_SECONDS" ]; then
+              sleep "$remaining"
+            else
+              sleep "$GOOBERS_SLOT_POLL_SECONDS"
+            fi
+          done
+
+          overall=0
+          if [ "$teardown_failed" != "0" ]; then
+            overall=1
+          fi
+          while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+            status=0
+            case "$unreaped_slots" in
+              *" $slot "*)
+                # This slot's tree could NOT be proven gone, so its root may
+                # never exit. Blocking on it would burn the whole
+                # ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve and then
+                # the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job timeout would
+                # kill the job mid-flight -- the one failure mode that skips
+                # every cleanup step and strands a provider claim. The step
+                # fails NOW instead, and the always()-gated "Reap surviving
+                # Goobers stage processes" step below is what decides whether
+                # anything may be released.
+                status=1
+                echo "::error::Lane ${GOOBERS_LANE} could not prove slot ${slot}'s stage tree was terminated, so this step is NOT blocking on its root pid ${pid}: waiting on a process the teardown failed to kill would run until the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job timeout and skip every cleanup step. Failing now so \"Reap surviving Goobers stage processes\" runs; it will refuse to let any claim or label be released while a descendant survives. Inspect the runner with 'ps -eo pid,ppid,sess,args'." >&2
+                ;;
+              *)
+                # This slot's root is provably gone -- either no deadline fired
+                # and `slots_alive` went false, or the teardown verified nothing
+                # in its tree survived SIGKILL -- so this returns immediately
+                # with the slot's real exit status.
+                wait "$pid"
+                status=$?
+                ;;
+            esac
+            echo "::group::Lane ${GOOBERS_LANE} slot ${slot} (recovery=${recovery}) exited ${status}"
+            cat "$log" || true
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then
+              overall=1
+              echo "::error::Lane ${GOOBERS_LANE} slot ${slot} (${GOOBERS_LANE_ROOT}/slot-${slot}) exited ${status}. Its claim is released and its issue label restored by \"Handle no-work disposition\" below; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}, then retry with: gh workflow run goobers-run.yml" >&2
+            fi
+          done < "$slot_table"
+          exit "$overall"
 
       - name: Report Goobers host profile
         if: always() && steps.host-profile-start.outcome == 'success'
+        # Every cleanup step from here to the end of the job declares its own
+        # `timeout-minutes`. That is what turns GOOBERS_CLEANUP_RESERVE_SECONDS
+        # from an estimate into an enforced ceiling: the runner bounds each step
+        # itself, a structural test sums these declarations and asserts the
+        # reserve covers them, and the deadline arithmetic in "Run the workflow"
+        # subtracts that reserve from the job budget. The 90-minute job timeout
+        # therefore cannot interrupt cleanup -- a step that wedges is killed by
+        # its own bound, and the steps after it still run.
+        timeout-minutes: 2
         uses: ./.github/actions/host-profile
         with:
           mode: report
-          label: goobers-run
+          label: goobers-run-lane-${{ matrix.lane }}
+
+      - name: Reap surviving Goobers stage processes
+        id: reap-stage-processes
+        # Same teardown, on the path the deadline cannot cover: a cancelled or
+        # failed job. Actions terminates the step's own process group, which
+        # again does not reach a Setsid-detached stage, so without this the
+        # steps below would upload journals and release claims and labels while
+        # Copilot/verification children keep running. The sweep finds them
+        # through the GOOBERS_INSTANCE identity even after the `goobers run`
+        # root is gone, and it is a no-op (exit 0, nothing signalled) on the
+        # normal path where every slot already exited. It sits after the host
+        # profile so the profiled window stays exactly the run, and before the
+        # journal upload and every claim/label mutation below.
+        #
+        # This step is the single authoritative gate: "Handle no-work
+        # disposition" refuses to run unless it succeeded, so a surviving stage
+        # tree stops the release instead of merely warning about it. The
+        # deadline path funnels here too -- anything it failed to kill is still
+        # alive when this runs.
+        if: always()
+        timeout-minutes: 3
+        run: |
+          set -uo pipefail
+          teardown_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-stage-teardown.sh"
+          if ! . "$teardown_lib"; then
+            echo "::error::Could not load ${teardown_lib}, so surviving Goobers stage processes could not be reaped before this job released its claims and labels. Restore the file (it is checked in) and check the runner with 'ps -eo pid,ppid,sess,args'." >&2
+            exit 1
+          fi
+          overall=0
+          for slot in ${GOOBERS_SLOTS}; do
+            goobers_teardown_tree "${GOOBERS_LANE_ROOT}/slot-${slot}" 30 || overall=1
+          done
+          if [ "$overall" != "0" ]; then
+            echo "::error::Lane ${GOOBERS_LANE} could not prove every Goobers stage process was terminated, so \"Handle no-work disposition\" is being SKIPPED: releasing a provider claim or removing goobers/status:in-review while a stage is still pushing commits is worse than leaving them set. Clear the survivors on the runner, then reconcile the affected issue by hand -- 'gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review' -- and retry with: gh workflow run goobers-run.yml" >&2
+          fi
+          exit "$overall"
+
+      - name: Write slot diagnostics sentinel
+        id: slot-diagnostics
+        # Makes the journal artifacts GUARANTEED to exist.
+        #
+        # Both uploads below glob `slot-*/gaggles/*/runs/`, which matches only
+        # when a slot actually produced a run journal. Every failure mode that
+        # produces no journal -- a failed binary download, a failed instance
+        # materialization, a lane killed before its first stage -- is precisely
+        # the failure mode whose error messages and result comments point a
+        # human at that artifact. Those pointers were dangling: the artifact
+        # simply did not exist, and `if-no-files-found: warn` said so only in
+        # the log.
+        #
+        # This step writes one deterministic file per lane per slot before
+        # either upload, so the artifact always exists and always identifies
+        # which lane/slot/instance produced (or failed to produce) what. With
+        # that guarantee both uploads can use `if-no-files-found: error`, which
+        # turns "the evidence a comment references is missing" from a warning
+        # into a failure.
+        if: always()
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          for slot in ${GOOBERS_SLOTS}; do
+            slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
+            diagnostics_dir="${slot_root}/diagnostics"
+            mkdir -p "$diagnostics_dir"
+            {
+              echo "lane=${GOOBERS_LANE}"
+              echo "slot=${slot}"
+              echo "instance=${slot_root}"
+              echo "workflow=${GOOBERS_WORKFLOW}"
+              echo "actions-run=${GITHUB_RUN_ID}"
+              echo "actions-run-attempt=${GITHUB_RUN_ATTEMPT}"
+              echo "actions-run-url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "recovery-lane=${GOOBERS_RECOVERY_LANE} recovery-slot=${GOOBERS_RECOVERY_SLOT}"
+              echo "recovery-issue=${GOOBERS_RECOVERY_ISSUE:-none}"
+              echo "stage-tree-reap=${REAP_OUTCOME:-none}"
+              echo "instance-root-present=$([ -d "$slot_root" ] && echo yes || echo no)"
+              echo "run-journals:"
+              if [ -d "${slot_root}/gaggles" ]; then
+                find "${slot_root}/gaggles" -path '*/runs/*/events.jsonl' -type f |
+                  sort |
+                  sed 's/^/  /'
+              fi
+            } > "${diagnostics_dir}/slot-diagnostics.txt"
+            # A journal-less slot is the case this sentinel exists for, so say
+            # so inside the file rather than leaving an empty section.
+            if ! grep -q '^  ' "${diagnostics_dir}/slot-diagnostics.txt"; then
+              echo "  (none — this slot produced no run journal)" >> "${diagnostics_dir}/slot-diagnostics.txt"
+            fi
+            echo "Wrote ${diagnostics_dir}/slot-diagnostics.txt"
+          done
+        env:
+          REAP_OUTCOME: ${{ steps.reap-stage-processes.outcome }}
 
       - name: Upload run journal
         id: upload-run-journal
         if: always()
+        timeout-minutes: 4
         uses: actions/upload-artifact@v7
         with:
-          name: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
-          path: ${{ env.GOOBERS_INSTANCE }}/gaggles/*/runs/
-          if-no-files-found: warn
+          # The attempt is part of the name, not decoration: artifact names are
+          # unique per RUN, not per attempt, so re-running a failed run would
+          # collide with attempt 1's artifact and fail this upload — losing the
+          # journals for the very attempt someone re-ran to diagnose. Every
+          # message and comment that names an artifact names the same
+          # run+attempt key.
+          name: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-lane-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          # Every slot's journals, not just one instance root: the artifact
+          # tree keeps the slot-<n>/ prefix so each concurrent run is
+          # attributable to the slot that produced it. The diagnostics sentinel
+          # is listed first and is written unconditionally by the step above,
+          # which is what makes `if-no-files-found: error` correct here rather
+          # than a new failure mode: every message and result comment that
+          # names this artifact now names something that exists.
+          path: |
+            ${{ env.GOOBERS_LANE_ROOT }}/slot-*/diagnostics/
+            ${{ env.GOOBERS_LANE_ROOT }}/slot-*/gaggles/*/runs/
+          # GOOBERS_LANE_ROOT is `.goobers-lane-<n>` — a DOT directory, and the
+          # least common ancestor of both globs above, so it is the traversal
+          # root the uploader starts from. @actions/glob skips any item whose
+          # basename starts with `.` unless hidden files are included, and that
+          # test is applied to the search root itself: without this the globber
+          # would refuse to descend at all, find zero files, and (with
+          # `if-no-files-found: error`) fail every single run. Set here rather
+          # than by un-hiding the root because the dot prefix is what keeps four
+          # slot trees out of the repo working copy's own tooling.
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 30
 
       - name: Handle no-work disposition
-        if: always() && steps.recovery.outputs.should_run != 'false'
+        id: handle-disposition
+        # Gated on the reap, not just `always()`: every mutation below either
+        # retires a provider claim or removes goobers/status:in-review, and
+        # doing either while a stage process is still alive hands the issue to
+        # a second agent while the first keeps pushing. The reap step's
+        # ::error:: names the manual reconciliation for that case.
+        if: always() && steps.reap-stage-processes.outcome == 'success'
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
+          # The provider claim breadcrumb was written by the PAT identity, so
+          # the release must be authored by the same login. github.token is an
+          # App installation token whose GET /user is unsupported, which is what
+          # Goobers' claimWinner needs to resolve the marker author.
+          GOOBERS_CLAIM_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
         run: |
           set -euo pipefail
 
@@ -719,141 +1683,389 @@ jobs:
             return 0
           }
 
-          # Releasing the claim is the whole point of this step, so a failed
-          # release must name the manual remediation rather than surfacing a
-          # bare `gh` error.
-          release_claim() {
-            if ! gh issue edit "$1" --repo "$GITHUB_REPOSITORY" \
-              --remove-label 'goobers/status:in-review'; then
-              echo "::error::Could not remove goobers/status:in-review from issue #$1. Remove it manually, then retry with: gh workflow run goobers-run.yml -f issue_number=$1" >&2
+          # A run whose process was killed at the slot deadline (or died with the
+          # job) never appended run.finished, so its journal still claims the run
+          # is live and its worktree is still checked out. `goobers run abort` is
+          # Goobers' own daemon-down repair for exactly that state
+          # (cmd/goobers/run.go's runRunAbort): it appends
+          # run.finished(status=aborted) and finalizes the run's worktree. It is
+          # driven BEFORE release_claim_marker so a claim is never retired while
+          # the journal still reports a live run -- the claim ledger and the
+          # journal always agree by the time this step reports.
+          #
+          # The repair reports its own success/failure, but the AUTHORITY is
+          # always the journal re-read in process_run: a non-zero exit can be
+          # `run abort`'s "already terminal" business outcome for a run that
+          # finished between the read and this call. What is not tolerated is
+          # the end state -- a run with no verified terminal phase blocks every
+          # claim and label mutation for that run (see terminal_verified below).
+          force_terminal_journal() {
+            local slot_root="$1" run_id="$2"
+            local output=""
+            if ! command -v goobers >/dev/null 2>&1; then
+              echo "::warning::The goobers binary is unavailable, so non-terminal run ${run_id} (instance ${slot_root}) could not be marked aborted. Nothing will be released for it. Mark it manually with: goobers run abort ${run_id} ${slot_root}" >&2
               return 1
             fi
+            if output="$(goobers run abort "$run_id" "$slot_root" 2>&1)"; then
+              echo "Marked non-terminal run ${run_id} aborted before claim release: ${output}"
+              return 0
+            fi
+            echo "::warning::\`goobers run abort ${run_id} ${slot_root}\` did not mark the run aborted: ${output}. Re-reading its journal for a terminal phase before releasing anything." >&2
+            return 1
           }
 
-          events_file=""
-          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
-            events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
-          fi
-          events_input="/dev/null"
-          if [ -n "$events_file" ]; then
-            events_input="$(mktemp)"
-            jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
-            source_line_count="$(awk 'END { print NR }' "$events_file")"
-            valid_line_count="$(awk 'END { print NR }' "$events_input")"
-            if [ "$source_line_count" -ne "$valid_line_count" ]; then
-              echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) while determining issue disposition; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+          # Provider claim markers (the goobers:claimed label plus its claim
+          # breadcrumb comment) are normally retired in-process when a run
+          # reaches a terminal state (Goobers cmd/goobers/terminalclaimmarker.go)
+          # or by the issue-close-out stage. A run whose process never got
+          # there -- the slot deadline above, an OOM, a cancelled job -- would
+          # leave the marker behind, and because claimWinner resolves by the
+          # earliest surviving breadcrumb (providers/github_issues.go) that
+          # makes the issue permanently unclaimable. This repo runs no
+          # backlog-curation reconciliation pass to repair it later, so the
+          # release happens here. `backlog-query --release` is Goobers' own
+          # deterministic release path: it reads the slot's on-disk claim
+          # ledger, so it still works after the run process is gone, and it
+          # short-circuits with no network call at all when that run holds
+          # nothing (the ordinary case).
+          release_claim_marker() {
+            local slot_root="$1" run_id="$2"
+            local attempt=0 output=""
+            if ! command -v goobers >/dev/null 2>&1; then
+              echo "::error::The goobers binary is unavailable, so run ${run_id}'s provider claim marker cannot be released or even inspected (instance ${slot_root}). Nothing will be released or relabelled for this run. If its issue still carries goobers:claimed, clear it with: gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed" >&2
+              return 1
             fi
-          fi
-
-          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
-          if [ -z "$issue_number" ] && [ -n "$events_file" ]; then
-            issue_number="$(
-              jq -r 'select(.type == "stage.finished" and .stage == "query-backlog") | .outputs.id // empty' \
-                "$events_input" | tail -n 1
-            )"
-          fi
-
-          no_work_stage=""
-          no_work_disposition=""
-          if [ -n "$events_file" ]; then
-            no_work_stage="$(
-              jq -r 'select(.type == "stage.finished" and .status == "no-work") | .stage' \
-                "$events_input" | tail -n 1
-            )"
-            no_work_disposition="$(
-              jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
-                "$events_input" | tail -n 1
-            )"
-          fi
-
-          open_pr=""
-          pr_lookup_complete=false
-          stale_resume=false
-          if [ -n "${GOOBERS_RESUME_PR:-}" ]; then
-            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-              echo "::error::Goobers resumed PR #${GOOBERS_RESUME_PR}, but the claimed issue number could not be recovered. Preserving goobers/status:in-review; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
-              exit 1
-            fi
-            lookup_status=0
-            open_pr="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
-            if [ "$lookup_status" -ne 0 ]; then
-              exit "$lookup_status"
-            fi
-            pr_lookup_complete=true
-            if [ -n "$open_pr" ]; then
-              echo "Goobers resumed open PR #${open_pr}; preserving in-review ownership."
-              exit 0
-            fi
-            stale_resume=true
-            echo "::warning::Goobers resume PR #${GOOBERS_RESUME_PR} is no longer open; evaluating the journal and job status before releasing ownership."
-          fi
-
-          if [ -z "$no_work_stage" ] && { [ "$JOB_STATUS" = "failure" ] || [ "$JOB_STATUS" = "cancelled" ]; }; then
-            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-              if [ -z "$events_file" ]; then
-                # No journal means Goobers never started, so the gaggle's
-                # query-backlog claim never ran and no goobers/status:in-review
-                # label can exist for this run. Failing here would only bury
-                # the real failure under a second, false "stale claim" error.
-                echo "::notice::Goobers ended with ${JOB_STATUS} before any issue was claimed; no goobers/status:in-review label was created by this run, so retry eligibility is already intact."
-                exit 0
+            while [ "$attempt" -lt 3 ]; do
+              attempt=$((attempt + 1))
+              if output="$(
+                GOOBERS_RUN_ID="$run_id" \
+                GOOBERS_CRED_GITHUB_ISSUES_WRITE="${GOOBERS_CLAIM_TOKEN}" \
+                goobers backlog-query --release "$slot_root" 2>&1
+              )"; then
+                echo "Claim release for run ${run_id} (${slot_root}): ${output}"
+                return 0
               fi
-              echo "::error::Goobers ended with ${JOB_STATUS}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
-              exit 1
+              sleep 5
+            done
+            echo "::error::Could not release run ${run_id}'s Goobers provider claim marker after 3 attempts (instance ${slot_root}): ${output}. Its backlog item stays unclaimable until this is cleared: remove the goobers:claimed label with 'gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed' and delete that run's claim breadcrumb comment." >&2
+            return 1
+          }
+
+          # One run's full lifecycle bookkeeping. Called for EVERY run of EVERY
+          # slot on this lane -- never just the newest journal -- so a
+          # concurrent slot's claim can never be stranded on
+          # goobers/status:in-review.
+          process_run() {
+            local slot="$1" slot_root="$2" events_file="$3"
+            local run_id="" events_input="/dev/null"
+            local issue_number="" resume_pr="" run_phase="" run_outcome=""
+            local no_work_stage="" no_work_disposition=""
+            local open_pr="" pr_lookup_complete=false stale_resume=false
+            local source_line_count=0 valid_line_count=0
+            local lookup_status=0
+            local terminal_verified=true abort_reported=""
+
+            # Only the single recovery slot may inherit the pre-resolved
+            # recovery issue and resume PR; every other slot's issue is
+            # whatever its own query-backlog stage atomically claimed.
+            if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&
+               [ "${slot}" = "${GOOBERS_RECOVERY_SLOT}" ] &&
+               [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+              issue_number="${GOOBERS_RECOVERY_ISSUE}"
+              resume_pr="${GOOBERS_RESUME_PR:-}"
             fi
 
-            if [ "$pr_lookup_complete" != "true" ]; then
+            if [ -n "$events_file" ]; then
+              run_id="$(basename "$(dirname "$events_file")")"
+              events_input="$(mktemp)"
+              jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
+              source_line_count="$(awk 'END { print NR }' "$events_file")"
+              valid_line_count="$(awk 'END { print NR }' "$events_input")"
+              if [ "$source_line_count" -ne "$valid_line_count" ]; then
+                echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) from slot ${slot} run ${run_id} while determining issue disposition; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+              fi
+              if [ -z "$issue_number" ]; then
+                issue_number="$(
+                  jq -r 'select(.type == "stage.finished" and .stage == "query-backlog") | .outputs.id // empty' \
+                    "$events_input" | tail -n 1
+                )"
+              fi
+              no_work_stage="$(
+                jq -r 'select(.type == "stage.finished" and .status == "no-work") | .stage' \
+                  "$events_input" | tail -n 1
+              )"
+              no_work_disposition="$(
+                jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
+                  "$events_input" | tail -n 1
+              )"
+              # This run's OWN terminal phase, not the lane-wide job status:
+              # with concurrent slots, one slot failing must not make a sibling
+              # slot's healthy issue look failed (or vice versa).
+              run_phase="$(
+                jq -r 'select(.type == "run.finished") | .status // empty' \
+                  "$events_input" | tail -n 1
+              )"
+              if [ -z "$run_phase" ]; then
+                abort_reported="ok"
+                force_terminal_journal "$slot_root" "$run_id" || abort_reported="failed"
+                jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
+                run_phase="$(
+                  jq -r 'select(.type == "run.finished") | .status // empty' \
+                    "$events_input" | tail -n 1
+                )"
+                if [ -z "$run_phase" ]; then
+                  # The repair did not take. This run's journal still says it is
+                  # live, so nothing about it may be released: the claim ledger
+                  # would disagree with the journal, and removing
+                  # goobers/status:in-review here is what hands a possibly still
+                  # running issue to a second agent.
+                  terminal_verified=false
+                fi
+              fi
+            fi
+
+            case "$run_phase" in
+              completed) run_outcome="success" ;;
+              failed|aborted|escalated) run_outcome="failure" ;;
+              *)
+                # No run.finished at all: the run never reached a terminal
+                # state, so its process died or the job was cancelled.
+                if [ "$JOB_STATUS" = "cancelled" ]; then
+                  run_outcome="cancelled"
+                else
+                  run_outcome="failure"
+                fi
+                ;;
+            esac
+            echo "Slot ${slot} run ${run_id:-<no journal>}: issue=#${issue_number:-unknown} phase=${run_phase:-none} outcome=${run_outcome} no-work=${no_work_stage:-none}"
+
+            # BARRIER 1 -- a journal-bearing run with no verified terminal
+            # phase. `goobers run abort` either was unavailable or did not take,
+            # so the journal still reports a live run and the run's worktree is
+            # still checked out. Neither its provider claim nor its issue label
+            # may be touched: a claim retired against a live journal makes the
+            # ledger and the journal disagree, and removing
+            # goobers/status:in-review here is exactly how a second agent is
+            # handed an issue the first may still be pushing to. A preserved
+            # label is recoverable by hand; duplicated agent work is not.
+            if [ "$terminal_verified" != "true" ]; then
+              echo "::error::Slot ${slot} run ${run_id} (instance ${slot_root}) has no verified terminal run.finished after \`goobers run abort\` (${abort_reported:-not-attempted}), so its journal still reports a live run. Refusing to release its provider claim or change goobers/status:in-review on issue #${issue_number:-unknown}. Inspect artifacts '${{ steps.upload-run-journal.outputs.artifact-id }}' (pre-repair) and 'goobers-run-repaired-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}' (post-repair), repair it with 'goobers run abort ${run_id} ${slot_root}', then reconcile the issue by hand: gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+              return 1
+            fi
+
+            # BARRIER 2 -- the provider claim marker could not be retired. The
+            # claim outlives this job, so removing the status label now would
+            # publish an issue that no slot can ever claim again (claimWinner
+            # resolves by the earliest surviving breadcrumb). Stop before any
+            # label mutation rather than leaving that half-released state.
+            if [ -n "$run_id" ]; then
+              if ! release_claim_marker "$slot_root" "$run_id"; then
+                echo "::error::Slot ${slot} run ${run_id} still holds its Goobers provider claim, so no label change is safe for issue #${issue_number:-unknown}: an issue whose goobers/status:in-review was removed while its claim survives becomes permanently unclaimable. Preserved every label. Clear the claim first with 'gh issue edit ${issue_number:-<issue>} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed' and delete that run's claim breadcrumb comment, then retry with: gh workflow run goobers-run.yml" >&2
+                return 1
+              fi
+            fi
+
+            # An EXPECTED empty slot. Preflight only proves that at least one
+            # eligible issue exists; up to four slots then race for it through
+            # the provider claim protocol, so a slot can legitimately find the
+            # backlog already drained. Goobers reports that as a no-work
+            # `query-backlog` -- the claim stage itself -- with no issue id,
+            # which is deterministic proof that this run never claimed anything
+            # and therefore owns no label, no comment and no failure. It is a
+            # successful no-claim outcome, not an error.
+            if [ "$no_work_stage" = "query-backlog" ] && [ -z "$issue_number" ]; then
+              echo "Slot ${slot} run ${run_id} found no unclaimed backlog item (disposition '${no_work_disposition:-none}'); a sibling slot claimed the available work. No issue was claimed, so there is nothing to release or relabel."
+              return 0
+            fi
+
+            if [ -n "$resume_pr" ]; then
+              if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+                echo "::error::Goobers resumed PR #${resume_pr}, but the claimed issue number could not be recovered. Preserving goobers/status:in-review; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+                return 1
+              fi
               lookup_status=0
               open_pr="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
               if [ "$lookup_status" -ne 0 ]; then
-                exit "$lookup_status"
+                return "$lookup_status"
               fi
+              pr_lookup_complete=true
+              if [ -n "$open_pr" ]; then
+                echo "Goobers resumed open PR #${open_pr}; preserving in-review ownership."
+                return 0
+              fi
+              stale_resume=true
+              echo "::warning::Goobers resume PR #${resume_pr} is no longer open; evaluating the journal and this run's status before releasing ownership."
             fi
-            if [ -n "$open_pr" ]; then
-              echo "Goobers run ended with ${JOB_STATUS}, but open Goobers PR #${open_pr} preserves resumable work; preserving in-review ownership."
-              exit 0
+
+            if [ -z "$no_work_stage" ] && { [ "$run_outcome" = "failure" ] || [ "$run_outcome" = "cancelled" ]; }; then
+              if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+                if [ -z "$run_id" ]; then
+                  echo "Slot ${slot} produced no run journal and claimed no issue; nothing to release."
+                  return 0
+                fi
+                echo "::error::Slot ${slot} run ${run_id} ended with ${run_outcome}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+                return 1
+              fi
+
+              if [ "$pr_lookup_complete" != "true" ]; then
+                lookup_status=0
+                open_pr="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
+                if [ "$lookup_status" -ne 0 ]; then
+                  return "$lookup_status"
+                fi
+              fi
+              if [ -n "$open_pr" ]; then
+                echo "Slot ${slot} run ended with ${run_outcome}, but open Goobers PR #${open_pr} preserves resumable work; preserving in-review ownership."
+                return 0
+              fi
+
+              if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --remove-label 'goobers/status:in-review'; then
+                echo "::error::Could not remove goobers/status:in-review from issue #${issue_number} after slot ${slot} ended with ${run_outcome}; it stays ineligible for recovery until cleared with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+                return 1
+              fi
+              echo "::warning::Slot ${slot} run ended with ${run_outcome} for issue #${issue_number} without an open Goobers PR. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+              return 0
             fi
 
-            release_claim "$issue_number"
-            echo "::warning::Goobers run ended with ${JOB_STATUS} for issue #${issue_number} without an open Goobers PR. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
-            exit 0
-          fi
-
-          if [ -z "$no_work_stage" ]; then
-            if [ "$stale_resume" = "true" ]; then
-              release_claim "$issue_number"
-              echo "::warning::Goobers resume PR #${GOOBERS_RESUME_PR} closed during this run and no replacement PR or no-work disposition was recorded. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+            if [ -z "$no_work_stage" ]; then
+              if [ "$stale_resume" = "true" ]; then
+                if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                  --remove-label 'goobers/status:in-review'; then
+                  echo "::error::Could not remove goobers/status:in-review from issue #${issue_number} after its resume PR closed; clear it with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+                  return 1
+                fi
+                echo "::warning::Goobers resume PR #${resume_pr} closed during this run and no replacement PR or no-work disposition was recorded. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+              fi
+              return 0
             fi
-            exit 0
-          fi
-          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-            echo "::error::Goobers stage '${no_work_stage}' returned no-work, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
-            exit 1
+            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+              echo "::error::Goobers stage '${no_work_stage}' returned no-work in slot ${slot}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+              return 1
+            fi
+
+            if [ "$no_work_disposition" = "completed-existing-work" ]; then
+              gh label view 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+                gh label create 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" \
+                  --color '0e8a16' \
+                  --description 'Goobers determined the approved issue was already completed by existing work' ||
+                true
+              if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --add-label 'goobers/status:completed-existing-work' \
+                --remove-label 'goobers/status:in-review'; then
+                echo "::error::Could not mark issue #${issue_number} completed-existing-work; apply it manually with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --add-label goobers/status:completed-existing-work --remove-label goobers/status:in-review" >&2
+                return 1
+              fi
+              echo "::notice::Goobers stage '${no_work_stage}' reported completed-existing-work for issue #${issue_number}; marked it ineligible for scheduled recovery."
+              return 0
+            fi
+
+            if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+              --remove-label 'goobers/status:in-review'; then
+              echo "::error::Could not remove goobers/status:in-review from issue #${issue_number} after an invalid no-work; clear it with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+              return 1
+            fi
+            echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+            return 0
+          }
+
+          # Enumerate every run journal of every slot on this lane. Selecting
+          # only the newest journal is what would strand a concurrent slot's
+          # claim on goobers/status:in-review, so the enumeration is
+          # exhaustive by construction.
+          run_records="$(mktemp)"
+          : > "$run_records"
+          for slot in ${GOOBERS_SLOTS}; do
+            slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
+            [ -d "${slot_root}/gaggles" ] || continue
+            find "${slot_root}/gaggles" -path '*/runs/*/events.jsonl' -type f |
+              sort |
+              while IFS= read -r found_events; do
+                [ -n "$found_events" ] || continue
+                printf '%s\t%s\t%s\n' "$slot" "$slot_root" "$found_events"
+              done >> "$run_records"
+          done
+
+          # Journal presence is tracked for the RECOVERY SLOT SPECIFICALLY, not
+          # for the lane. The reserved issue already carries
+          # goobers/status:in-review and belongs to exactly one slot, so it needs
+          # a disposition whenever THAT slot produced no journal (a failed binary
+          # download, a failed instance validation, a slot killed before its
+          # first stage). Keying the synthesis off "the lane produced no journal
+          # at all" let a healthy SIBLING slot's journal satisfy the check: the
+          # reserved issue then got no disposition, this step still exited 0, and
+          # "Record reservation disposal" — which is gated on that exit status —
+          # wrote a disposal receipt claiming a clean hand-back that had never
+          # happened, publishing the issue to the next dispatch.
+          if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] && [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+            if ! awk -F'\t' -v slot="${GOOBERS_RECOVERY_SLOT}" \
+              '$1 == slot { found = 1 } END { exit(found ? 0 : 1) }' "$run_records"; then
+              # The artifact these messages point at is guaranteed to exist even
+              # in this exact case: "Write slot diagnostics sentinel" writes one
+              # file per slot before either upload, and both uploads use
+              # if-no-files-found: error.
+              printf '%s\t%s\t%s\n' \
+                "${GOOBERS_RECOVERY_SLOT}" \
+                "${GOOBERS_LANE_ROOT}/slot-${GOOBERS_RECOVERY_SLOT}" \
+                "" >> "$run_records"
+            fi
           fi
 
-          if [ "$no_work_disposition" = "completed-existing-work" ]; then
-            gh label view 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
-              gh label create 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" \
-                --color '0e8a16' \
-                --description 'Goobers determined the approved issue was already completed by existing work'
-            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
-              --add-label 'goobers/status:completed-existing-work' \
-              --remove-label 'goobers/status:in-review'
-            echo "::notice::Goobers stage '${no_work_stage}' reported completed-existing-work for issue #${issue_number}; marked it ineligible for scheduled recovery."
-            exit 0
+          overall=0
+          processed=0
+          recovery_processed=0
+          while IFS="$(printf '\t')" read -r record_slot record_root record_events; do
+            processed=$((processed + 1))
+            if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&
+               [ "$record_slot" = "${GOOBERS_RECOVERY_SLOT}" ] &&
+               [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+              recovery_processed=1
+            fi
+            process_run "$record_slot" "$record_root" "$record_events" || overall=1
+          done < "$run_records"
+          # The disposal receipt is written on this step's exit status alone, so
+          # "the reserved issue was dispositioned" has to be an assertion rather
+          # than an assumption about the enumeration above.
+          if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&
+             [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ] && [ "$recovery_processed" != "1" ]; then
+            echo "::error::Lane ${GOOBERS_LANE} owns the reservation on issue #${GOOBERS_RECOVERY_ISSUE}, but slot ${GOOBERS_RECOVERY_SLOT} was never dispositioned, so no decision was made about goobers/status:in-review. Refusing to report a clean run: that would let \"Record reservation disposal\" publish the issue to the next dispatch on the strength of a disposition that never ran. That is a bug in this workflow's slot enumeration; reconcile the issue by hand: gh issue edit ${GOOBERS_RECOVERY_ISSUE} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            overall=1
           fi
+          echo "Processed ${processed} Goobers run(s) across lane ${GOOBERS_LANE}'s slots (${GOOBERS_SLOTS})."
+          exit "$overall"
 
-          release_claim "$issue_number"
-          echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
+      - name: Upload repaired run journal
+        id: upload-repaired-run-journal
+        # The artifact uploaded before this step is the journal as the runs
+        # LEFT it, which for a killed run is a journal with no run.finished at
+        # all. `goobers run abort` appends that terminal event during "Handle
+        # no-work disposition", so the evidence a human needs to audit a
+        # deadline/abort case only exists after that step. Uploading it under a
+        # second, deterministically named artifact (rather than moving the
+        # first upload later) keeps both states: the pre-repair journal is
+        # still captured even when the disposition step is skipped by a failed
+        # reap, and the post-repair journal is captured even when the
+        # disposition step fails.
+        if: always()
+        timeout-minutes: 4
+        uses: actions/upload-artifact@v7
+        with:
+          name: goobers-run-repaired-${{ inputs.workflow || 'crawler-feature-pr' }}-lane-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.GOOBERS_LANE_ROOT }}/slot-*/diagnostics/
+            ${{ env.GOOBERS_LANE_ROOT }}/slot-*/gaggles/*/runs/
+          # Same dot-directory root as the pre-repair upload; see its comment.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Comment on Goobers run result
-        if: >-
-          always() &&
-          steps.recovery.outputs.should_run != 'false'
+        if: always()
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
-          ARTIFACT_NAME: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-${{ github.run_id }}
+          ARTIFACT_NAME: goobers-run-${{ inputs.workflow || 'crawler-feature-pr' }}-lane-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
 
@@ -896,162 +2108,208 @@ jobs:
             return 0
           }
 
-          issue_number="${GOOBERS_RECOVERY_ISSUE:-}"
-          events_file=""
-          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
-            events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
-          fi
-          events_input="/dev/null"
-          if [ -n "$events_file" ]; then
-            events_input="$(mktemp)"
-            jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
-            source_line_count="$(awk 'END { print NR }' "$events_file")"
-            valid_line_count="$(awk 'END { print NR }' "$events_input")"
-            if [ "$source_line_count" -ne "$valid_line_count" ]; then
-              echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) while building the result comment; inspect artifact '${ARTIFACT_NAME}'." >&2
-            fi
-          fi
+          # One result comment per Goobers run, for EVERY run of EVERY slot on
+          # this lane. Latest-run-only reporting would leave a concurrent
+          # slot's issue with no terminal comment at all.
+          report_run() {
+            local slot="$1" slot_root="$2" events_file="$3"
+            local run_id="" events_input="/dev/null"
+            local issue_number="" resume_pr="" run_phase="" display_status=""
+            local pr_number="" pr_url="" pr_resolution_error="" pr_stage_succeeded=""
+            local journal_pr_url="" run_ids="" terminal_summary=""
+            local source_line_count=0 valid_line_count=0
+            local marker="" body="" existing_comment_id="" lookup_status=0
 
-          if ! [[ "$issue_number" =~ ^[0-9]+$ ]] && [ -n "$events_file" ]; then
-            issue_number="$(
+            if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&
+               [ "${slot}" = "${GOOBERS_RECOVERY_SLOT}" ] &&
+               [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+              issue_number="${GOOBERS_RECOVERY_ISSUE}"
+              resume_pr="${GOOBERS_RESUME_PR:-}"
+            fi
+
+            if [ -n "$events_file" ]; then
+              run_id="$(basename "$(dirname "$events_file")")"
+              events_input="$(mktemp)"
+              jq -Rrc 'try fromjson catch empty' "$events_file" > "$events_input"
+              source_line_count="$(awk 'END { print NR }' "$events_file")"
+              valid_line_count="$(awk 'END { print NR }' "$events_input")"
+              if [ "$source_line_count" -ne "$valid_line_count" ]; then
+                echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) from slot ${slot} run ${run_id} while building the result comment; inspect artifact '${ARTIFACT_NAME}'." >&2
+              fi
+            fi
+            run_ids="$run_id"
+
+            if ! [[ "$issue_number" =~ ^[0-9]+$ ]] && [ -n "$events_file" ]; then
+              issue_number="$(
+                jq -r '
+                  if .externalRef? and .externalRef.kind == "issue" then
+                    .externalRef.id
+                  elif .type == "stage.finished" and .stage == "query-backlog" then
+                    .outputs.id // empty
+                  else
+                    empty
+                  end
+                ' "$events_input" | tail -n 1
+              )"
+            fi
+            if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+              echo "No numeric claimed issue found for slot ${slot} run ${run_id:-<none>} in GOOBERS_RECOVERY_ISSUE or the Goobers journal; skipping issue comment."
+              return 0
+            fi
+
+            pr_stage_succeeded="$(
               jq -r '
-                if .externalRef? and .externalRef.kind == "issue" then
-                  .externalRef.id
-                elif .type == "stage.finished" and .stage == "query-backlog" then
-                  .outputs.id // empty
+                select(
+                  .type == "stage.finished" and
+                  .stage == "open-pr" and
+                  .status == "success"
+                )
+                | "true"
+              ' "$events_input" | tail -n 1
+            )"
+            pr_number="$(
+              jq -r '
+                if (
+                  .type == "stage.finished" and
+                  .stage == "open-pr" and
+                  .status == "success"
+                ) then
+                  .outputs.prNumber // empty
+                elif (
+                  .type == "ref.touched" and
+                  .stage == "open-pr" and
+                  .externalRef.kind == "pr"
+                ) then
+                  .externalRef.id // empty
                 else
                   empty
                 end
               ' "$events_input" | tail -n 1
             )"
-          fi
-          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-            echo "No numeric claimed issue found in GOOBERS_RECOVERY_ISSUE or the Goobers journal; skipping issue comment."
-            exit 0
-          fi
-
-          pr_number=""
-          pr_url=""
-          pr_resolution_error=""
-          pr_stage_succeeded="$(
-            jq -r '
-              select(
-                .type == "stage.finished" and
-                .stage == "open-pr" and
-                .status == "success"
-              )
-              | "true"
-            ' "$events_input" | tail -n 1
-          )"
-          pr_number="$(
-            jq -r '
-              if (
-                .type == "stage.finished" and
-                .stage == "open-pr" and
-                .status == "success"
-              ) then
-                .outputs.prNumber // empty
-              elif (
-                .type == "ref.touched" and
-                .stage == "open-pr" and
-                .externalRef.kind == "pr"
-              ) then
-                .externalRef.id // empty
-              else
-                empty
-              end
-            ' "$events_input" | tail -n 1
-          )"
-          journal_pr_url="$(
-            jq -r '
-              select(
-                .type == "stage.finished" and
-                .stage == "open-pr" and
-                .status == "success"
-              )
-              | .outputs["pull-request-url"] // empty
-            ' "$events_input" | tail -n 1
-          )"
-          if [ -z "$pr_number" ] && [[ "$journal_pr_url" =~ /pull/([0-9]+)$ ]]; then
-            pr_number="${BASH_REMATCH[1]}"
-          fi
-          if [ -z "$pr_number" ]; then
-            pr_number="${GOOBERS_RESUME_PR:-}"
-          fi
-          if [ -z "$pr_number" ]; then
-            lookup_status=0
-            pr_number="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
-            if [ "$lookup_status" -ne 0 ]; then
-              pr_number=""
-              pr_resolution_error="Goobers could not determine whether issue #${issue_number} has an open same-repository PR because its timeline or a referenced PR was unreadable. Inspect artifact '${ARTIFACT_NAME}' and retry this workflow."
+            journal_pr_url="$(
+              jq -r '
+                select(
+                  .type == "stage.finished" and
+                  .stage == "open-pr" and
+                  .status == "success"
+                )
+                | .outputs["pull-request-url"] // empty
+              ' "$events_input" | tail -n 1
+            )"
+            if [ -z "$pr_number" ] && [[ "$journal_pr_url" =~ /pull/([0-9]+)$ ]]; then
+              pr_number="${BASH_REMATCH[1]}"
             fi
-          fi
-
-          if [ -n "$pr_resolution_error" ]; then
-            :
-          elif [ -n "$pr_number" ] && ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
-            pr_resolution_error="Goobers reported non-numeric PR identifier '${pr_number}' for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and the issue timeline."
-            pr_number=""
-          elif [ -n "$pr_number" ]; then
-            pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
-          elif [ "$pr_stage_succeeded" = "true" ] || [ -n "${GOOBERS_RESUME_PR:-}" ]; then
-            pr_resolution_error="Goobers completed a PR-producing run for issue #${issue_number}, but no PR number could be recovered from the journal, resume metadata, or issue timeline. Inspect artifact '${ARTIFACT_NAME}'."
-          fi
-
-          run_ids=""
-          if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
-            run_ids="$(find "$GOOBERS_INSTANCE/gaggles" -mindepth 3 -maxdepth 3 -type d -path '*/runs/*' -printf '%f\n' | sort | paste -sd ', ' -)"
-          fi
-          terminal_summary="$(
-            jq -r '
-              select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
-              | [
-                  (.type // ""),
-                  ("stage=" + (.stage // "-")),
-                  ("status=" + (.status // .result.status // "-")),
-                  ("code=" + (.error.code // .result.error.code // "-")),
-                  (.error.message // .result.error.message // .result.summary // "")
-                ]
-              | map(select(. != "" and . != "code=-"))
-              | join(" | ")
-            ' "$events_input" | tail -n 8
-          )"
-          display_status="$JOB_STATUS"
-          if [ -n "$pr_resolution_error" ]; then
-            display_status="failure"
-          fi
-
-          marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
-          body="$(mktemp)"
-          {
-            echo "$marker"
-            echo
-            echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${display_status}**."
-            echo
-            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            if [ -n "$pr_url" ]; then
-              echo "- Pull request: #${pr_number} — ${pr_url}"
+            if [ -z "$pr_number" ]; then
+              pr_number="${resume_pr}"
             fi
-            echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
-            echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
-            echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
-            if [ -n "$terminal_summary" ]; then
-              echo
-              echo "Terminal journal events:"
-              echo '```'
-              echo "$terminal_summary"
-              echo '```'
-            else
-              echo
-              echo "Terminal journal events: none recorded."
+            if [ -z "$pr_number" ]; then
+              lookup_status=0
+              pr_number="$(find_open_goobers_pr "$issue_number")" || lookup_status=$?
+              if [ "$lookup_status" -ne 0 ]; then
+                pr_number=""
+                pr_resolution_error="Goobers could not determine whether issue #${issue_number} has an open same-repository PR because its timeline or a referenced PR was unreadable. Inspect artifact '${ARTIFACT_NAME}' and retry this workflow."
+              fi
             fi
+
             if [ -n "$pr_resolution_error" ]; then
-              echo
-              echo "### PR resolution failure"
-              echo
-              echo "$pr_resolution_error"
+              :
+            elif [ -n "$pr_number" ] && ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+              pr_resolution_error="Goobers reported non-numeric PR identifier '${pr_number}' for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and the issue timeline."
+              pr_number=""
+            elif [ -n "$pr_number" ]; then
+              pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
+            elif [ "$pr_stage_succeeded" = "true" ] || [ -n "${resume_pr}" ]; then
+              pr_resolution_error="Goobers completed a PR-producing run for issue #${issue_number}, but no PR number could be recovered from the journal, resume metadata, or issue timeline. Inspect artifact '${ARTIFACT_NAME}'."
             fi
-          } > "$body"
+
+            terminal_summary="$(
+              jq -r '
+                select(.type == "stage.finished" or .type == "error" or .type == "run.finished")
+                | [
+                    (.type // ""),
+                    ("stage=" + (.stage // "-")),
+                    ("status=" + (.status // .result.status // "-")),
+                    ("code=" + (.error.code // .result.error.code // "-")),
+                    (.error.message // .result.error.message // .result.summary // "")
+                  ]
+                | map(select(. != "" and . != "code=-"))
+                | join(" | ")
+                | gsub("[\r\n]+"; " ")
+              ' "$events_input" | tail -n 8
+            )"
+            # This run's own terminal phase drives the reported status, not the
+            # lane-wide job status: one slot failing must not report failure on
+            # a sibling slot's healthy issue.
+            run_phase="$(
+              jq -r 'select(.type == "run.finished") | .status // empty' \
+                "$events_input" | tail -n 1
+            )"
+            case "$run_phase" in
+              completed) display_status="success" ;;
+              failed|aborted|escalated) display_status="$run_phase" ;;
+              *) display_status="$JOB_STATUS" ;;
+            esac
+            if [ -n "$pr_resolution_error" ]; then
+              display_status="failure"
+            fi
+
+            # The marker is keyed by the Goobers run, not just the Actions run:
+            # up to four runs share one Actions run id, and a shared key would
+            # make every slot overwrite the previous slot's comment. The attempt
+            # is part of the key too, because each attempt uploads its own
+            # journal artifact and this comment names it — a re-run overwriting
+            # attempt 1's comment would leave a pointer to an artifact that
+            # belongs to a different attempt.
+            marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT} lane=${GOOBERS_LANE} slot=${slot} goobers-run=${run_id:-none} workflow=${GOOBERS_WORKFLOW} -->"
+            body="$(mktemp)"
+            {
+              echo "$marker"
+              echo
+              echo "Goobers GitHub Actions run for \`${GOOBERS_WORKFLOW}\` finished with **${display_status}**."
+              echo
+              echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo "- Lane/slot: \`${GOOBERS_LANE}/${slot}\` (instance \`${slot_root}\`)"
+              if [ -n "$pr_url" ]; then
+                echo "- Pull request: #${pr_number} — ${pr_url}"
+              fi
+              echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
+              echo "- Slot diagnostics: \`slot-${slot}/diagnostics/slot-diagnostics.txt\` inside that artifact (written for every slot whether or not it produced a journal)"
+              echo "- Goobers run id(s): \`${run_ids:-unknown}\`"
+              echo "- Source ref: \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA}\`"
+              if [ -n "$terminal_summary" ]; then
+                echo
+                echo "Terminal journal events:"
+                echo '```'
+                echo "$terminal_summary"
+                echo '```'
+              else
+                echo
+                echo "Terminal journal events: none recorded."
+              fi
+              if [ -n "$pr_resolution_error" ]; then
+                echo
+                echo "### PR resolution failure"
+                echo
+                echo "$pr_resolution_error"
+              fi
+            } > "$body"
+
+            existing_comment_id="$(find_issue_comment_id "$marker")"
+            if [ -n "$existing_comment_id" ]; then
+              jq -Rs '{body: .}' "$body" |
+                gh api --silent --method PATCH \
+                  "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -
+              echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID} slot ${slot}."
+            else
+              gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+            fi
+
+            if [ -n "$pr_resolution_error" ]; then
+              echo "::error::${pr_resolution_error}" >&2
+              return 1
+            fi
+            return 0
+          }
 
           find_issue_comment_id() {
             gh api --paginate --slurp \
@@ -1059,17 +2317,273 @@ jobs:
               jq -r --arg marker "$1" \
                 '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
           }
-          existing_comment_id="$(find_issue_comment_id "$marker")"
-          if [ -n "$existing_comment_id" ]; then
-            jq -Rs '{body: .}' "$body" |
-              gh api --silent --method PATCH \
-                "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -
-            echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID}."
-          else
-            gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+
+          # Same exhaustive enumeration as "Handle no-work disposition": every
+          # slot, every run, never newest-journal-only selection.
+          run_records="$(mktemp)"
+          : > "$run_records"
+          for slot in ${GOOBERS_SLOTS}; do
+            slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
+            [ -d "${slot_root}/gaggles" ] || continue
+            find "${slot_root}/gaggles" -path '*/runs/*/events.jsonl' -type f |
+              sort |
+              while IFS= read -r found_events; do
+                [ -n "$found_events" ] || continue
+                printf '%s\t%s\t%s\n' "$slot" "$slot_root" "$found_events"
+              done >> "$run_records"
+          done
+          # ...including the per-RECOVERY-SLOT journal check. A sibling slot's
+          # journal must not stand in for the recovery slot's: the reserved
+          # issue would then get no terminal comment at all, which is silence on
+          # the one issue a human is most likely to be watching. The comment
+          # names the journal artifact and the per-slot diagnostics file inside
+          # it, both of which the sentinel step guarantees exist for this case.
+          if [ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] && [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]; then
+            if ! awk -F'\t' -v slot="${GOOBERS_RECOVERY_SLOT}" \
+              '$1 == slot { found = 1 } END { exit(found ? 0 : 1) }' "$run_records"; then
+              printf '%s\t%s\t%s\n' \
+                "${GOOBERS_RECOVERY_SLOT}" \
+                "${GOOBERS_LANE_ROOT}/slot-${GOOBERS_RECOVERY_SLOT}" \
+                "" >> "$run_records"
+            fi
           fi
 
-          if [ -n "$pr_resolution_error" ]; then
-            echo "::error::${pr_resolution_error}" >&2
+          overall=0
+          reported=0
+          while IFS="$(printf '\t')" read -r record_slot record_root record_events; do
+            reported=$((reported + 1))
+            report_run "$record_slot" "$record_root" "$record_events" || overall=1
+          done < "$run_records"
+          echo "Reported ${reported} Goobers run(s) across lane ${GOOBERS_LANE}'s slots (${GOOBERS_SLOTS})."
+          exit "$overall"
+
+      - name: Record reservation disposal
+        # The other half of the ownership evidence written at adoption. It
+        # appends the disposal marker to the adoption receipt ONLY when this
+        # lane can prove both halves of a safe hand-back:
+        #
+        #   * the stage tree was reaped (nothing of this run is still running),
+        #   * and the run disposition was applied (claims retired, label state
+        #     decided by the run's own journal).
+        #
+        # Anything else leaves the receipt adopted-but-undisposed, which is the
+        # state `release-unstarted-reservation` refuses to release. That is the
+        # whole point: `needs.run.result` is the AGGREGATE of two matrix legs,
+        # so it cannot distinguish "the recovery lane never adopted" from "the
+        # recovery lane adopted, its reap failed, and a descendant may still be
+        # pushing" -- and in the second case removing goobers/status:in-review
+        # would hand a live issue to the next dispatch.
+        if: always() && env.GOOBERS_RECOVERY_ISSUE != ''
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REAP_OUTCOME: ${{ steps.reap-stage-processes.outcome }}
+          DISPOSITION_OUTCOME: ${{ steps.handle-disposition.outcome }}
+        run: |
+          set -euo pipefail
+
+          issue_number="${GOOBERS_RECOVERY_ISSUE}"
+          # shellcheck source=scripts/agent/goobers-reservation-lease.sh
+          lease_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-reservation-lease.sh"
+          if ! . "$lease_lib"; then
+            echo "::error::Could not load ${lease_lib}, so this lane cannot record the disposal receipt for issue #${issue_number}. The lease stays adopted-and-undisposed, which correctly blocks every other job and later dispatch from touching it; reconcile by hand once the runner is clear: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
             exit 1
           fi
+          adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
+          disposed_marker="$(goobers_lease_marker disposed "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
+
+          if [ "${REAP_OUTCOME}" != "success" ] || [ "${DISPOSITION_OUTCOME}" != "success" ]; then
+            echo "::error::Lane ${GOOBERS_LANE} adopted reserved issue #${issue_number} but could not prove a safe hand-back (stage-tree reap: ${REAP_OUTCOME:-none}, run disposition: ${DISPOSITION_OUTCOME:-none}). Leaving the adoption receipt undisposed so no other job -- and no later dispatch -- removes goobers/status:in-review or re-adopts the issue while a stage process may still be running. Confirm the runner is clear ('ps -eo pid,ppid,sess,args'), then reconcile by hand: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+
+          comments="$(mktemp)"
+          if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
+            exit 1
+          fi
+          # The receipt to append to is resolved through the SAME reader the
+          # guards use, so the comment this disposal is written into is by
+          # construction the comment a later read will see the disposal in. A
+          # standalone marker search could instead land on another
+          # Actions-authored comment whose free-form Goobers journal text
+          # happened to carry the adoption marker, destroying that comment and
+          # leaving the real receipt undisposed.
+          lease_record=""
+          if ! lease_record="$(goobers_lease_state "$comments" "${issue_number}")"; then
+            rm -f "$comments"
+            exit 1
+          fi
+          rm -f "$comments"
+          IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt receipt_id <<<"$lease_record"
+
+          if [ "$lease_state" = "disposed" ] &&
+             [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
+            echo "::notice::The disposal receipt for issue #${issue_number} on Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT} is already recorded (comment ${receipt_id}); nothing to do."
+            exit 0
+          fi
+          if [ "$lease_state" != "adopted" ] ||
+             [ "$lease_run" != "${GITHUB_RUN_ID}" ] || [ "$lease_attempt" != "${GITHUB_RUN_ATTEMPT}" ]; then
+            echo "::error::Lane ${GOOBERS_LANE} finished its disposition for reserved issue #${issue_number}, but its adoption receipt (Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}) could not be found on the issue under the GitHub Actions identity — the latest trusted lease there is $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$receipt_id"). Refusing to claim a clean hand-back that cannot be evidenced; 'release-unstarted-reservation' will treat this dispatch as never having adopted the reservation. Verify the issue's labels by hand: gh issue view ${issue_number} --repo ${GITHUB_REPOSITORY} --json labels" >&2
+            exit 1
+          fi
+
+          receipt_body="$(mktemp)"
+          {
+            echo "$adopted_marker"
+            echo
+            echo "$disposed_marker"
+            echo
+            echo "Goobers lane ${GOOBERS_LANE} slot ${GOOBERS_RECOVERY_SLOT} completed the reservation lifecycle for this issue on Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}: its stage tree was reaped and its run disposition applied, so this lane's label state is authoritative and the issue is free for a later dispatch."
+            echo
+            echo "- Actions run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "$receipt_body"
+          jq -Rs '{body: .}' "$receipt_body" |
+            gh api --silent --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/issues/comments/${receipt_id}" --input -
+          echo "Recorded the disposal receipt for issue #${issue_number} on Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}."
+
+  # Splitting the reservation into its own job introduced two new ways to strand
+  # a label, both closed here. `reserve` succeeds and then either the workflow
+  # is cancelled while `run` is still queued, or lane
+  # GOOBERS_RECOVERY_LANE fails before its "Adopt the reserved recovery target"
+  # step (checkout, source preservation, a job timeout, a lost runner) -- in
+  # both cases the lane's always()-gated "Handle no-work disposition" never
+  # learns the issue number, so nothing releases the reservation. This job fires
+  # for every non-success `run` result and applies the same rule that step would
+  # have applied for a journal-less recovery slot: keep goobers/status:in-review
+  # when an open Goobers PR still holds resumable work, release it otherwise.
+  # A successful `run` is deliberately excluded: its lane owns the disposition.
+  #
+  # `needs.run.result` is the AGGREGATE of two matrix legs, so it can never be
+  # the authority on ownership: it reads `failure` both when the recovery lane
+  # never adopted the reservation AND when the recovery lane adopted it, failed
+  # its reap, and may still have a live descendant -- and it reads `failure` for
+  # a healthy recovery lane whose SIBLING lane failed. Releasing on the job
+  # result alone therefore removes the label out from under a live owner. This
+  # job reads the adoption/disposal receipt instead, and only releases on
+  # deterministic proof that the reservation was either never adopted or
+  # adopted and cleanly disposed.
+  release-unstarted-reservation:
+    name: Release an unstarted Goobers reservation
+    needs: [reserve, run]
+    if: >-
+      always() &&
+      needs.reserve.outputs.recovery_issue != '' &&
+      (needs.run.result == 'skipped' ||
+      needs.run.result == 'cancelled' ||
+      needs.run.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Named here as well as on `reserve`/`run` so this job's messages point at
+      # the one slot that can have adopted the reservation. A test pins all
+      # three declarations together so they cannot drift.
+      GOOBERS_RECOVERY_LANE: '1'
+      GOOBERS_RECOVERY_SLOT: '1'
+    steps:
+      - name: Fetch reservation tooling
+        uses: actions/checkout@v7
+        with:
+          # Same ref expression as the `run` job's checkout, so a manual
+          # dispatch from a feature branch exercises that branch's own lease
+          # tooling instead of main's.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
+          sparse-checkout: 'scripts/agent'
+          persist-credentials: false
+
+      - name: Release the reservation when no lane ever owned it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESERVED_ISSUE: ${{ needs.reserve.outputs.recovery_issue }}
+          RUN_RESULT: ${{ needs.run.result }}
+        run: |
+          set -euo pipefail
+
+          issue_number="${RESERVED_ISSUE}"
+          if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Reservation guard reached with a non-numeric recovery target '${issue_number}'; that is a bug in this workflow, not in the issue." >&2
+            exit 1
+          fi
+
+          # Ownership evidence first, and it is the gate for everything below.
+          # The adoption receipt is written by the recovery lane BEFORE it
+          # exports any recovery metadata, so its absence is deterministic
+          # proof that no lane ever took the reservation. The disposal marker is
+          # appended only after that lane proved its stage tree was reaped and
+          # its disposition applied, so its presence is deterministic proof that
+          # the lane already owns the outcome.
+          #
+          # Both halves are read through the shared lease library, which matches
+          # a receipt only on a WHOLE LINE of a comment written by the GitHub
+          # Actions identity. Issue comments are public and this marker text is
+          # predictable, so a substring match over every comment would let any
+          # account that can comment forge either half -- a forged disposal
+          # would hand a live issue to a second agent.
+          # shellcheck source=scripts/agent/goobers-reservation-lease.sh
+          lease_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-reservation-lease.sh"
+          if ! . "$lease_lib"; then
+            echo "::error::Could not load ${lease_lib}, so this job cannot tell whether a lane adopted the reservation on issue #${issue_number}. Preserving goobers/status:in-review; clear it manually only after confirming no Goobers stage is still running: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+
+          comments="$(mktemp)"
+          if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
+            echo "::error::Could not read the reservation receipts on issue #${issue_number} after the run job was ${RUN_RESULT}, so this job cannot tell whether a lane adopted the reservation. Preserving goobers/status:in-review; clear it manually only after confirming no Goobers stage is still running: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+          lease_record=""
+          if ! lease_record="$(goobers_lease_state "$comments" "$issue_number")"; then
+            exit 1
+          fi
+          rm -f "$comments"
+          IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt lease_comment <<<"$lease_record"
+
+          if [ "$lease_state" = "adopted" ]; then
+            if [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
+              echo "::error::Reserved issue #${issue_number} WAS adopted by lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT} in this dispatch, but that lane never recorded a disposal receipt, so it could not prove its stage tree was reaped and its disposition applied. Refusing to remove goobers/status:in-review while a Goobers stage may still be pushing to this issue. Confirm the runner is clear, then reconcile by hand: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            else
+              echo "::error::Reserved issue #${issue_number} is leased by $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment") -- a DIFFERENT dispatch that never recorded a disposal receipt. Refusing to remove goobers/status:in-review on its behalf. Confirm that run's runner is clear, then reconcile by hand: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            fi
+            exit 1
+          fi
+
+          if [ "$lease_state" = "disposed" ] &&
+             [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
+            echo "::notice::Lane ${GOOBERS_RECOVERY_LANE} adopted reserved issue #${issue_number} and recorded a clean disposal, so its own label state is authoritative even though the run job was ${RUN_RESULT}. Nothing to release."
+            exit 0
+          fi
+
+          echo "No undisposed adoption receipt for issue #${issue_number} (latest lease: $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment")); Actions run ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT} never took ownership of the reservation, so releasing it cannot race a live owner."
+
+          candidates=""
+          if ! candidates="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" |
+              jq -r --arg repo_url "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null and .source.issue.repository_url == $repo_url) | .source.issue.number'
+          )"; then
+            echo "::error::Could not read same-repository PR cross-references for reserved issue #${issue_number} after the run job was ${RUN_RESULT}; preserving goobers/status:in-review. Clear it manually if no Goobers PR exists: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+
+          while read -r candidate; do
+            [ -n "$candidate" ] || continue
+            if ! details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository 2>&1)"; then
+              echo "::error::Could not inspect same-repository PR #${candidate} for reserved issue #${issue_number} (${details}), so the reservation cannot be released safely. Preserving goobers/status:in-review; clear it manually if no Goobers PR exists: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+              exit 1
+            fi
+            state="$(jq -r '.state' <<<"$details")"
+            branch="$(jq -r '.headRefName' <<<"$details")"
+            repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
+            if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+              echo "::notice::The Goobers run job was ${RUN_RESULT}, but open Goobers PR #${candidate} still holds resumable work for issue #${issue_number}; preserving goobers/status:in-review."
+              exit 0
+            fi
+          done <<<"$candidates"
+
+          if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+            --remove-label 'goobers/status:in-review'; then
+            echo "::error::Could not remove goobers/status:in-review from reserved issue #${issue_number} after the run job was ${RUN_RESULT}; it stays ineligible for recovery until cleared with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+            exit 1
+          fi
+          echo "::warning::The Goobers run job was ${RUN_RESULT}, so reserved issue #${issue_number} has no live owner and no open Goobers PR. Restored retry eligibility; retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"

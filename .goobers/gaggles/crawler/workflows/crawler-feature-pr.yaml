@@ -8,6 +8,20 @@ spec:
   displayName: Crawler feature (approved issue to reviewed PR)
   triggers:
     - type: manual
+  # maxConcurrentRuns: 1, deliberately. goobers-run.yml gets its concurrency
+  # from four fully isolated instance roots (2 matrix lanes x 2 slots), not
+  # from letting one instance admit several runs, so the "at most four active
+  # issue workflows" ceiling is structural: each slot root is physically
+  # incapable of admitting a second run. Raising this would let a single slot
+  # exceed its share and turn a hard ceiling into arithmetic that can drift.
+  # `readiness.desiredConcurrentRuns` is deliberately absent for the same
+  # reason, and because it only has an effect when a `backlog-item` (or
+  # schedule + update-behind-pr) trigger wires a demand counter the scheduler
+  # polls for auto-refill (Goobers cmd/goobers/runnerwiring_counters.go's
+  # buildBacklogCounter); a `manual`-only trigger never gets one. `goobers run
+  # <workflow>` still dispatches this workflow manually regardless of its
+  # declared trigger type, so keeping `type: manual` does not affect
+  # recovery/manual dispatch.
   readiness:
     maxConcurrentRuns: 1
   runControls:
@@ -66,7 +80,18 @@ spec:
       inputs:
         trustLabel: 'goobers:approved'
         requireUnassigned: 'true'
-        excludeLabel: 'goobers/status:in-review'
+        # Plural `excludeLabels` is the key `goobers backlog-query` actually
+        # reads (cmd/goobers/backlogquery.go's providerInput("excludeLabels")).
+        # It is what keeps a fresh concurrent claim off an issue that another
+        # slot is already resuming: goobers-run.yml's `reserve` job -- which
+        # both matrix lanes declare in `needs:` -- labels its one recovery
+        # target goobers/status:in-review and confirms the label through this
+        # same read path before any lane exists, and the recovery branch above
+        # bypasses the provider claim protocol entirely, so this exclusion is
+        # the only thing standing between the two.
+        # completed-existing-work is excluded for the same reason the Actions
+        # preflight excludes it: that issue is finished, not claimable.
+        excludeLabels: 'goobers/status:in-review,goobers/status:completed-existing-work'
         maxItems: '1'
         resultFile: 'claimed-item.json'
       capabilities:
