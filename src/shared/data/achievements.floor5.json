@@ -1,0 +1,62 @@
+[
+  {
+    "id": "floor5-breach-opened",
+    "floor": 5,
+    "title": "Wall Audit Failed",
+    "popupText": "New achievement: Wall Audit Failed!",
+    "unlockCriteria": "Breach the Floor 5 outer wall with the Ratings Ram.",
+    "details": "Unlocks from the authoritative Floor 5 wall-breached goal flag once the breach transaction commits.",
+    "directorFlavor": "The Ratings Ram filed exactly one complaint and delivered it directly through masonry. Security insists the wall was compliant five seconds ago; the hole says otherwise. Production has reclassified the courtyard as an open-plan workspace. Keep moving before Facilities bills you for structural innovation.",
+    "iconId": "achv-floor5-breach-opened-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor5WallBreached", "value": true }]
+  },
+  {
+    "id": "floor5-castle-captured",
+    "floor": 5,
+    "title": "Hostile Takeover",
+    "popupText": "New achievement: Hostile Takeover!",
+    "unlockCriteria": "Capture the throne and finish Floor 5.",
+    "details": "Unlocks only when the capture transaction succeeds and the run ends as a Floor 5 clear.",
+    "directorFlavor": "The Crown Auditor signed off in blood, the Regent stopped objecting, and you converted a siege into ownership paperwork. The throne was never decorative; it was a binding clause with excellent acoustics for panic. Every camera on set just switched from defensive coverage to coronation framing. The regent's seal is cooling on the floor while Legal rewrites the word trespasser into proprietor. Siege crews are pretending this was the plan because production hates admitting contestants can improvise better than meetings. The balcony lights came up like they were waiting for your signature. Sponsors love a hostile acquisition when the castle changes hands before the ad break. The former staff will receive severance in the traditional dungeon format: silence, dust, and a very pointed lack of keys. This floor started as someone else's castle and ended as your liability.",
+    "iconId": "achv-floor5-castle-captured-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "none" },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "floor5CastleCaptured",
+        "value": true,
+        "phase": "run_end_clear"
+      },
+      { "type": "booleanIs", "fact": "runClearedFloor", "value": true, "phase": "run_end_clear" }
+    ]
+  },
+  {
+    "id": "floor5-clean-sweep",
+    "floor": 5,
+    "title": "Command Post Intact",
+    "popupText": "New achievement: Command Post Intact!",
+    "unlockCriteria": "Capture the throne without the Command Post dropping below the approved health floor.",
+    "details": "Unlocks only when Floor 5 clears and the Command Post health floor gate remains satisfied at terminal capture.",
+    "directorFlavor": "You ran a full coup while the Command Post stayed pristine enough for investors to call it sustainable. No emergency rebuild segment, no sympathy arc, no desperate overtime montage: just clean execution and immaculate receipts. The audience expected a pyrrhic mess and got a case study in controlled violence instead. Every defensive camera kept waiting for the headquarters shot where smoke billows, staff scatter, and someone important says this changes everything. It never came. The Command Post simply kept standing there, rude and intact, while the castle changed ownership around it. Accounting hates this because it means your method scales. Legal hates it because the paperwork now describes success as repeatable. The sponsors are already pitching Command Post Intact as a leadership seminar for people who confuse safety margins with cowardice. The live audience booed for three seconds, then realized flawless siege logistics are still violence and came roaring back. Production lost the easy disaster package and had to cut a prestige segment about controlled objectives instead. The Regent's remaining supporters are calling it dishonorable, which is what losing factions say when the winner also preserves infrastructure. Keep smiling; the sponsors just discovered competence can be marketable.",
+    "iconId": "achv-floor5-clean-sweep-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "none" },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "floor5CleanSweep",
+        "value": true,
+        "phase": "run_end_clear"
+      },
+      {
+        "type": "booleanIs",
+        "fact": "floor5CastleCaptured",
+        "value": true,
+        "phase": "run_end_clear"
+      }
+    ]
+  }
+]

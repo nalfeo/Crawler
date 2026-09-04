@@ -1147,6 +1147,20 @@ export const floorManifestDefSchema = z
               .strict(),
           })
           .strict(),
+        releaseGate: z
+          .object({
+            completionRateTarget: z.number().min(0).max(1),
+            maxMedianDurationFrames: z.number().int().positive(),
+            maxP95DurationFrames: z.number().int().positive(),
+            minimumCommandPostHealthPct: z.number().min(0).max(1),
+            minimumRamSurvivalRate: z.number().min(0).max(1),
+            maxLiveHostilesOnTerminal: z.number().int().nonnegative(),
+            maxPathStalls: z.number().int().nonnegative(),
+            maxFrameCostMs: z.number().positive(),
+            stallBackstopFrames: z.number().int().positive(),
+            cleanSweepMinCommandPostHealthPct: z.number().min(0).max(1),
+          })
+          .strict(),
         rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
       })
       .strict()
@@ -1231,6 +1245,22 @@ export const floorManifestDefSchema = z
             path: ['finale', 'summons', 'maxTotal'],
             message:
               'Floor 5 Regent summon cap must admit every authored trigger wave (maxTotal >= perTriggerCount * triggers)',
+          });
+        }
+        const gate = floor5.releaseGate;
+        if (gate.maxP95DurationFrames < gate.maxMedianDurationFrames) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['releaseGate', 'maxP95DurationFrames'],
+            message: 'Floor 5 release-gate p95 duration must be >= median duration target',
+          });
+        }
+        if (gate.cleanSweepMinCommandPostHealthPct < gate.minimumCommandPostHealthPct) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['releaseGate', 'cleanSweepMinCommandPostHealthPct'],
+            message:
+              'Floor 5 clean-sweep Command Post floor must be >= the general release-gate floor',
           });
         }
       })

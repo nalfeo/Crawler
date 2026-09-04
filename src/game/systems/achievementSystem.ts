@@ -29,6 +29,7 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../lootbox-materials-reward-resolver.js';
+import { floor5Manifest } from '../../shared/floor-manifest.js';
 
 /**
  * Pre-computed set of Floor 2 weapon base IDs for category-weighted reward
@@ -180,6 +181,9 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     (world.floor === 2 &&
       (world.floorExtendedState?.familyState?.staircaseDiscovered === true ||
         world.goalFlags.get('floor2.objective.staircaseDiscovered') === true)) ||
+    (world.floor === 5 &&
+      world.goalFlags.get('floor5.siege.castleCaptured') === true &&
+      world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED') ||
     (world.floor === 6 &&
       world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
       world.floorExtendedState.floor6Defense.exit.confirmed === true);
@@ -238,6 +242,22 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
+  const floor5State = world.floor === 5 ? world.floorExtendedState?.floor5Siege : undefined;
+  const floor5ReleaseGate = floor5Manifest.floor5?.releaseGate;
+  const floor5CommandPostMaxHealth = floor5State?.structures['command-post'].maxHealth ?? 0;
+  const floor5CommandPostHealthPct =
+    floor5State && floor5CommandPostMaxHealth > 0
+      ? floor5State.commandPostHealth / floor5CommandPostMaxHealth
+      : 0;
+  const floor5CastleCaptured = Boolean(
+    world.floor === 5 &&
+    world.goalFlags.get('floor5.siege.castleCaptured') === true &&
+    floor5State?.phase.kind === 'CAPTURED',
+  );
+  const floor5CleanSweep =
+    floor5CastleCaptured === true &&
+    floor5ReleaseGate !== undefined &&
+    floor5CommandPostHealthPct >= floor5ReleaseGate.cleanSweepMinCommandPostHealthPct;
 
   return {
     numberFacts: {
@@ -269,6 +289,10 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       allPresentFamiliesNeutralOrBetter,
       allPresentFamiliesEngagedInCombat,
       allPresentFamilyBossesEngaged,
+      floor5WallBreached:
+        world.floor === 5 && world.goalFlags.get('floor5.siege.wallBreached') === true,
+      floor5CastleCaptured,
+      floor5CleanSweep,
       floor6RelayBriefed:
         world.floor === 6 && world.goalFlags.get('floor6.defense.briefed') === true,
       floor6FirstWaveCleared:

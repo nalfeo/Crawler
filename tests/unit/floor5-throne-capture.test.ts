@@ -11,6 +11,7 @@ import {
 } from '../../src/core/index.js';
 import {
   getFloor5CaptureMarkerState,
+  getFloor5SiegeRunStats,
   initializeFloor5Scenario,
   requestFloor5ThroneCapture,
   siegeFinaleSystem,
@@ -126,6 +127,39 @@ describe('Floor 5 throne capture interaction', () => {
     const marker = getFloor5CaptureMarkerState(world)!;
     expect(marker.visible).toBe(false);
     expect(marker.locked).toBe(true);
+  });
+
+  it('seeds release telemetry with the initial MUSTER phase and validates the first transition', () => {
+    const { world, state } = createFloor5World();
+    const initialTrace = state.trace[0]!;
+
+    expect(initialTrace.phase.kind).toBe('MUSTER');
+    expect(initialTrace.frame).toBe(0);
+    expect(getFloor5SiegeRunStats(world)?.releaseGate.phaseDurations).toEqual([
+      {
+        kind: 'MUSTER',
+        enteredFrame: 0,
+        exitedFrame: 0,
+        durationFrames: 0,
+      },
+    ]);
+
+    world.frameCount = 1;
+    state.trace.push({
+      ...initialTrace,
+      phase: { kind: 'BREACH' },
+      reason: 'test-invalid-first-transition',
+      frame: world.frameCount,
+    });
+
+    const stats = getFloor5SiegeRunStats(world)!;
+    expect(stats.releaseGate.phaseDurations[0]).toEqual({
+      kind: 'MUSTER',
+      enteredFrame: 0,
+      exitedFrame: 1,
+      durationFrames: 1,
+    });
+    expect(stats.releaseGate.structuralViolations.phaseOrderViolations).toBe(1);
   });
 
   it('keeps the finale stance system inert until the breach latches', () => {
