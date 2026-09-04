@@ -390,7 +390,15 @@ export interface ShepherdRun {
 }
 
 export interface ShepherdRunClassification {
-  outcome: 'success' | 'failure' | 'cancelled' | 'action-required' | 'pending';
+  outcome:
+    | 'success'
+    | 'failure'
+    | 'cancelled'
+    | 'action-required'
+    | 'neutral'
+    | 'skipped'
+    | 'stale'
+    | 'pending';
   failedJobs: string[];
   watcherJsonDisagreement: boolean;
 }
@@ -416,7 +424,15 @@ export function classifyShepherdRun(
           ? 'cancelled'
           : conclusion === 'ACTION_REQUIRED'
             ? 'action-required'
-            : 'failure';
+            : conclusion === 'NEUTRAL'
+              ? 'neutral'
+              : conclusion === 'SKIPPED'
+                ? 'skipped'
+                : conclusion === 'STALE'
+                  ? 'stale'
+                  : ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE'].includes(conclusion ?? '')
+                    ? 'failure'
+                    : 'pending';
 
   return {
     outcome,

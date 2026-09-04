@@ -152,6 +152,9 @@ describe('renderTriage()', () => {
     it.each([
       ['cancelled', 'cancelled'],
       ['action_required', 'action-required'],
+      ['neutral', 'neutral'],
+      ['skipped', 'skipped'],
+      ['stale', 'stale'],
     ] as const)('reports %s separately from a failure', (conclusion, outcome) => {
       expect(classifyShepherdRun({ status: 'completed', conclusion })).toMatchObject({
         outcome,
