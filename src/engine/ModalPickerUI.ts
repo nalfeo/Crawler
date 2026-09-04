@@ -223,6 +223,10 @@ export function createModalPickerUI(
    * nothing about the surface's behaviour — a modal with no `onConfirm` closes
    * identically — so acceptance gates that must fail when a required dialog
    * callback is deleted read this counter instead of the close transition.
+   *
+   * Counts every dispatch, including one whose callback returned `false` to
+   * keep the modal open: it measures that the callback ran, not that the
+   * modal closed.
    */
   let confirmHandlerInvocations = 0;
   const entries: RenderEntry<string>[] = [];
@@ -467,17 +471,14 @@ export function createModalPickerUI(
         if (confirmed.status === 'confirmed' && confirmed.selectedIndex !== null) {
           const selectedOption = confirmed.options[confirmed.selectedIndex];
           let shouldClose = true;
-          if (selectedOption) {
-            const onConfirm = hooks?.onConfirm;
-            if (onConfirm) {
-              confirmHandlerInvocations += 1;
-              shouldClose =
-                onConfirm({
-                  option: selectedOption,
-                  optionIndex: confirmed.selectedIndex,
-                  source: 'pointer',
-                }) !== false;
-            }
+          if (selectedOption && hooks?.onConfirm) {
+            confirmHandlerInvocations += 1;
+            shouldClose =
+              hooks.onConfirm({
+                option: selectedOption,
+                optionIndex: confirmed.selectedIndex,
+                source: 'pointer',
+              }) !== false;
           }
           if (shouldClose) {
             close();
@@ -566,17 +567,14 @@ export function createModalPickerUI(
         if (next.status === 'confirmed' && next.selectedIndex !== null) {
           const option = next.options[next.selectedIndex];
           let shouldClose = true;
-          if (option) {
-            const onConfirm = hooks?.onConfirm;
-            if (onConfirm) {
-              confirmHandlerInvocations += 1;
-              shouldClose =
-                onConfirm({
-                  option,
-                  optionIndex: next.selectedIndex,
-                  source: 'keyboard',
-                }) !== false;
-            }
+          if (option && hooks?.onConfirm) {
+            confirmHandlerInvocations += 1;
+            shouldClose =
+              hooks.onConfirm({
+                option,
+                optionIndex: next.selectedIndex,
+                source: 'keyboard',
+              }) !== false;
           }
           if (shouldClose) {
             close();
