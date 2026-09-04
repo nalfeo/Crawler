@@ -28,6 +28,7 @@ import {
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
 import { DISPATCH_ACTION, selectTerminalAction } from './dispatch-table.mjs';
 import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
+import { PHASE, renderLifecycleComment } from './pr-lifecycle.mjs';
 import {
   REVIEW_CONFLICT_MARKER,
   REVIEW_REQUEST_MARKER,
@@ -12711,6 +12712,151 @@ test('closing feature issue with planning-only diff quarantines before lifecycle
     ),
     false,
     'acceptance mismatch must not post a Copilot repair task',
+  );
+});
+
+function closingIssueGraphql(nodes) {
+  return (_url, body) => {
+    const query = String(body?.query || '');
+    if (query.includes('closingIssuesReferences')) {
+      return {
+        body: {
+          data: {
+            repository: {
+              pullRequest: {
+                closingIssuesReferences: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes,
+                },
+              },
+            },
+          },
+        },
+      };
+    }
+    return { body: gqlNoThreads() };
+  };
+}
+
+const ACCEPTANCE_ISSUE_NODE = {
+  id: 'ISSUE_3915',
+  number: 3915,
+  title: 'Full CI Recovery acceptance-scope feature',
+  body: '## Acceptance criteria\n- Compare closing-issue acceptance scope before admission.\n- Add deterministic regression tests.',
+  state: 'OPEN',
+  labels: { nodes: [{ name: 'enhancement' }] },
+  repository: { nameWithOwner: `${OWNER}/${REPO}` },
+};
+
+test('failed pull-files hydration defers the acceptance-scope check instead of quarantining', async (t) => {
+  const comments = [];
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Implement CI Recovery acceptance-scope feature',
+        body: 'Fixes nalfeo/Crawler#3915',
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      status: 500,
+      body: { message: 'Server Error' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7100 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: closingIssueGraphql([ACCEPTANCE_ISSUE_NODE]),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closing-issue-acceptance-deferred pr=#42/);
+  assert.equal(
+    /quarantined closing-issue-acceptance/.test(stdout),
+    false,
+    'a transient pull-files failure must not be read as missing acceptance evidence',
+  );
+});
+
+test('resolved closing-issue acceptance mismatch clears a stale quarantine without a new push', async (t) => {
+  const lifecycleComment = {
+    id: 7200,
+    author_association: 'OWNER',
+    user: { login: 'nalfeo' },
+    body: renderLifecycleComment({
+      prNumber: PR_NUM,
+      phase: PHASE.QUARANTINED,
+      blockReason: 'closing-issue-acceptance-mismatch:#3915 missing executable diff and test diff',
+      headSha: HEAD_SHA,
+      updatedAt: '2026-09-03T00:00:00.000Z',
+    }),
+  };
+  const comments = [lifecycleComment];
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Plan CI Recovery acceptance-scope feature',
+        // The owner downgraded the closing keyword instead of pushing a new head.
+        body: 'Refs nalfeo/Crawler#3915',
+        changed_files: 1,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [{ filename: 'docs/knowledge/handoffs/2026-09-03-ci-recovery-scope-plan.md' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-repairing' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7300 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: closingIssueGraphql([]),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closing-issue-acceptance-quarantine-cleared pr=#42/);
+  assert.equal(
+    /quarantined closing-issue-acceptance/.test(stdout),
+    false,
+    'a resolved mismatch must not re-quarantine the PR',
   );
 });
 

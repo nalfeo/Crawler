@@ -22,15 +22,25 @@ deterministic admission/quarantine coverage.
 - CI Recovery now hydrates closing issue bodies from
   `closingIssuesReferences`.
 - Added a deterministic acceptance-scope evaluator for closing issues with an
-  `Acceptance criteria` section. It quarantines feature closures that lack both
-  executable and test evidence in the current PR diff, while skipping
-  documentation-only issues and non-closing references.
+  `Acceptance criteria` section. Evidence is evaluated per closing issue: when
+  the criteria name repository paths, the diff must touch that issue's own
+  paths (so unrelated source/test churn cannot satisfy it, and a multi-issue PR
+  cannot pass every issue by implementing one); when they name none, the
+  coarser diff-shape signal (some executable change and some test change) is
+  used. Documentation-only issues (by label or `Docs:` title convention only —
+  never by body prose) and non-closing references are skipped.
 - Wired the evaluator before lifecycle admission so planning-only PRs that use
   `Fixes` / `Closes` / `Resolves` for feature issues enter the existing
   non-blocking quarantine lifecycle with an actionable missing-evidence reason.
 - Made lifecycle admission ignore stale lifecycle phases whose stored head SHA
   no longer matches the current PR head, so a new push can re-run the
-  head-bound scope check and transition out of quarantine when fixed.
+  head-bound scope check and transition out of quarantine when fixed. A
+  metadata-only fix (downgrading `Fixes` to `Refs`, which keeps the same head)
+  also clears the quarantine: once the mismatch is gone, the recorded
+  closing-issue quarantine is invalidated and the PR returns to `repairing`.
+- A failed `pulls/{n}/files` hydration now defers the check instead of reading
+  the empty file list as absent evidence, so a transient API failure can never
+  quarantine a healthy feature PR.
 
 ## Files touched
 

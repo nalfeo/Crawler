@@ -19,6 +19,7 @@ import {
   selfRecoveryWorkflowRunIds,
   effectiveLatestThreadComment,
   evaluateClosingIssueAcceptanceScope,
+  isClosingIssueAcceptanceBlockReason,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -3043,6 +3044,10 @@ const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
 let changedFiles = [];
+// Distinguishes "this PR really changed nothing relevant" from "the pull-files
+// request failed". A transient API failure must never be read as absent
+// evidence, or a healthy feature PR gets quarantined instead of retried.
+let changedFilesHydrated = true;
 if (Number(pr.changed_files || 0) > 0) {
   try {
     changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
@@ -3052,14 +3057,22 @@ if (Number(pr.changed_files || 0) > 0) {
       `warn pull-files pr=#${prNumber} status=${status} reason=${String(error?.message || error || 'unknown')}\n`,
     );
     changedFiles = [];
+    changedFilesHydrated = false;
   }
 }
 const skipSubstantiveReview = shouldSkipSubstantiveReview(pr, changedFiles);
-const closingIssueAcceptanceMismatch = evaluateClosingIssueAcceptanceScope({
-  pr,
-  closingIssues,
-  changedFiles,
-});
+const closingIssueAcceptanceMismatch = changedFilesHydrated
+  ? evaluateClosingIssueAcceptanceScope({
+      pr,
+      closingIssues,
+      changedFiles,
+    })
+  : null;
+if (!changedFilesHydrated) {
+  process.stdout.write(
+    `closing-issue-acceptance-deferred pr=#${prNumber} reason=pull-files-hydration-failed\n`,
+  );
+}
 if (closingIssueAcceptanceMismatch) {
   blockers.push({
     kind: closingIssueAcceptanceMismatch.kind,
@@ -3518,6 +3531,7 @@ if (
 // comments are logged; a malformed trusted comment keeps currentLifecyclePhase null
 // (evaluatePhase derives phase from live facts, which is safe and conservative).
 let currentLifecyclePhase = null;
+let staleClosingIssueAcceptanceQuarantine = false;
 {
   const isTrustedLifecycleAuthor = (comment) => {
     if (!comment) return false;
@@ -3538,12 +3552,31 @@ let currentLifecyclePhase = null;
       // Lifecycle phases are head-bound: a new push must re-run head-scoped
       // admission checks instead of inheriting a stale quarantine/queue verdict.
       currentLifecyclePhase = record?.headSha === pr.head.sha ? (record?.phase ?? null) : null;
+      // A closing-issue acceptance quarantine can also be cleared by metadata
+      // alone (downgrading `Fixes` to `Refs` keeps the same head SHA). Once the
+      // mismatch is gone, the recorded quarantine is stale and must not pin the
+      // PR out of admission forever. Every other quarantine branch exits before
+      // this point, so reaching here with such a record means it is resolved.
+      if (
+        currentLifecyclePhase === PHASE.QUARANTINED &&
+        !closingIssueAcceptanceMismatch &&
+        isClosingIssueAcceptanceBlockReason(record?.blockReason)
+      ) {
+        currentLifecyclePhase = null;
+        staleClosingIssueAcceptanceQuarantine = true;
+      }
     } catch {
       // Malformed lifecycle comment from a trusted source — log and continue.
       // evaluatePhase will receive null and derive the phase from live facts.
       process.stdout.write(`lifecycle-comment-parse-error pr=#${prNumber}\n`);
     }
   }
+}
+if (staleClosingIssueAcceptanceQuarantine) {
+  process.stdout.write(
+    `closing-issue-acceptance-quarantine-cleared pr=#${prNumber} reason=mismatch-resolved\n`,
+  );
+  await applyPrLifecycle(PHASE.REPAIRING, 'closing-issue-acceptance-resolved');
 }
 const lifecyclePrFacts = {
   state: pr.state,

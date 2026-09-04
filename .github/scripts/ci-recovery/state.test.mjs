@@ -255,6 +255,93 @@ test('closing-issue acceptance scope skips related references and documentation-
   );
 });
 
+test('closing-issue acceptance scope is issue-scoped when acceptance criteria name paths', () => {
+  const scopedIssue = featureIssue({
+    number: 4100,
+    body: [
+      '## Acceptance criteria',
+      '- [ ] Implement the gate in `.github/scripts/ci-recovery/state.mjs`.',
+      '- [ ] Run `npm run test:guards`.',
+    ].join('\n'),
+  });
+
+  // Unrelated executable + test files must not satisfy an issue that names its own paths.
+  const bypass = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [scopedIssue],
+    changedFiles: [
+      { filename: 'src/game/unrelated.ts' },
+      { filename: 'tests/unit/unrelated.test.ts' },
+    ],
+  });
+  assert.ok(bypass, 'unrelated source+test evidence must not satisfy a path-scoped issue');
+  assert.match(bypass.missing.join(' '), /acceptance paths/);
+  assert.match(bypass.missing.join(' '), /state\.mjs/);
+
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' } },
+      closingIssues: [scopedIssue],
+      changedFiles: [{ filename: '.github/scripts/ci-recovery/state.mjs' }],
+    }),
+    null,
+    'touching a named acceptance path satisfies that issue',
+  );
+});
+
+test('closing-issue acceptance scope evaluates every closing issue independently', () => {
+  const implemented = featureIssue({
+    number: 4101,
+    body: '## Acceptance criteria\n- [ ] Change `src/game/alpha.ts`.',
+  });
+  const unimplemented = featureIssue({
+    number: 4102,
+    body: '## Acceptance criteria\n- [ ] Change `src/game/beta.ts`.',
+  });
+
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [implemented, unimplemented],
+    changedFiles: [{ filename: 'src/game/alpha.ts' }, { filename: 'tests/unit/alpha.test.ts' }],
+  });
+
+  assert.ok(result, 'a PR closing several issues must not pass by implementing one');
+  assert.equal(result.issueNumber, 4102);
+});
+
+test('closing-issue acceptance scope counts composite actions as executable evidence', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' } },
+      closingIssues: [featureIssue()],
+      changedFiles: [
+        { filename: '.github/actions/setup-node/action.yml' },
+        { filename: 'tests/unit/setup-node.test.ts' },
+      ],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope ignores docs-only prose in an issue body', () => {
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [
+      featureIssue({
+        body: [
+          'This work is not docs-only; it needs runtime changes.',
+          '## Acceptance criteria',
+          '- [ ] Add the runtime admission check.',
+        ].join('\n'),
+      }),
+    ],
+    changedFiles: [{ filename: 'docs/knowledge/handoffs/2026-09-03-plan.md' }],
+  });
+
+  assert.ok(result, 'issue prose must not exempt a feature issue from the gate');
+  assert.deepEqual(result.missing, ['executable diff', 'test diff']);
+});
+
 test('closing-issue acceptance scope blocker identity is head-bound', () => {
   const args = {
     closingIssues: [featureIssue()],

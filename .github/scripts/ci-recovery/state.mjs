@@ -87,6 +87,19 @@ export function shouldSkipSubstantiveReview(pr, changedFiles) {
   );
 }
 
+const CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX = 'closing-issue-acceptance-mismatch:';
+
+/**
+ * True when a lifecycle block reason was produced by the closing-issue
+ * acceptance-scope gate, so a quarantine can be invalidated once the mismatch
+ * is gone (for example after the closing keyword is downgraded to `Refs`).
+ */
+export function isClosingIssueAcceptanceBlockReason(reason) {
+  return String(reason ?? '')
+    .trim()
+    .startsWith(CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX);
+}
+
 function normalizedLabelNames(issue) {
   return (issue?.labels?.nodes || issue?.labels || [])
     .map((label) => compact(label?.name ?? label).toLowerCase())
@@ -104,9 +117,10 @@ function isDocumentationOnlyIssue(issue) {
   ) {
     return true;
   }
-  if (/^(?:docs?|documentation)\s*:/i.test(String(issue?.title || '').trim())) return true;
-  const text = `${issue?.title || ''}\n${issue?.body || ''}`.toLowerCase();
-  return /\b(?:docs?|documentation)[- ]only\b/.test(text);
+  // Authoritative signals only: labels, or the explicit `Docs:` / `Documentation-only:`
+  // title convention. Scanning the issue body would let arbitrary prose ("this is not
+  // docs-only") silently exempt a feature issue from this gate.
+  return /^(?:docs?|documentation)(?:[- ]only)?\s*:/i.test(String(issue?.title || '').trim());
 }
 
 function acceptanceLinesFromBody(body) {
@@ -137,22 +151,55 @@ function isExecutableEvidencePath(path) {
     path.startsWith('scripts/') ||
     path.startsWith('.github/scripts/') ||
     path.startsWith('.github/workflows/') ||
+    path.startsWith('.github/actions/') ||
     path === 'package.json' ||
     path === 'package-lock.json'
   );
 }
 
 /**
+ * Repository paths named inside the acceptance criteria, used as the issue-scoped
+ * expectation set. Only backticked tokens that look like repository paths (they
+ * contain a `/`) are considered, so prose and commands never become expectations.
+ */
+function acceptanceScopePaths(acceptanceLines) {
+  const expected = new Set();
+  for (const line of acceptanceLines) {
+    for (const match of String(line).matchAll(/`([^`\n]+)`/g)) {
+      const token = match[1]
+        .trim()
+        .replace(/^\/+/, '')
+        .replace(/[.,;:)\]]+$/, '')
+        .replace(/\/\*+$/, '');
+      if (!token || /\s/.test(token) || !token.includes('/')) continue;
+      if (!/^[\w.@-]+(?:\/[\w.@-]+)+$/.test(token)) continue;
+      expected.add(token.replace(/\/+$/, ''));
+    }
+  }
+  return [...expected];
+}
+
+function matchesExpectedPath(changedPath, expectedPath) {
+  return changedPath === expectedPath || changedPath.startsWith(`${expectedPath}/`);
+}
+
+/**
  * Returns a head-bound quarantine blocker when a PR closes a non-documentation
- * issue with acceptance criteria but lacks either executable or test diff
- * evidence. `closingIssues` is GitHub's `closingIssuesReferences` node shape,
+ * issue with acceptance criteria that the current diff demonstrably does not
+ * cover. `closingIssues` is GitHub's `closingIssuesReferences` node shape,
  * `changedFiles` is the pull-files REST shape, and `null` means admission may
  * proceed to the other lifecycle checks.
+ *
+ * Evidence is evaluated per closing issue, so a PR that closes several issues
+ * cannot pass them all by implementing one:
+ *  - when the acceptance criteria name repository paths, the diff must touch at
+ *    least one of that issue's own paths (issue-scoped evidence);
+ *  - when they name none, no deterministic issue-scoped expectation exists, so
+ *    the coarser diff-shape signal (some executable change and some test change)
+ *    is the only thing this gate can assert.
  */
 export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changedFiles } = {}) {
   const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
-  const hasExecutableEvidence = paths.some(isExecutableEvidencePath);
-  const hasTestEvidence = paths.some(isTestEvidencePath);
   const headSha = compact(pr?.head?.sha ?? pr?.headSha);
 
   for (const issue of closingIssues || []) {
@@ -160,9 +207,19 @@ export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changed
     const acceptanceLines = acceptanceLinesFromBody(issue?.body);
     if (acceptanceLines.length === 0) continue;
 
+    const expectedPaths = acceptanceScopePaths(acceptanceLines);
     const missing = [];
-    if (!hasExecutableEvidence) missing.push('executable diff');
-    if (!hasTestEvidence) missing.push('test diff');
+    if (expectedPaths.length > 0) {
+      const covered = paths.some((path) =>
+        expectedPaths.some((expected) => matchesExpectedPath(path, expected)),
+      );
+      if (!covered) {
+        missing.push(`diff coverage for the acceptance paths (${expectedPaths.join(', ')})`);
+      }
+    } else {
+      if (!paths.some(isExecutableEvidencePath)) missing.push('executable diff');
+      if (!paths.some(isTestEvidencePath)) missing.push('test diff');
+    }
     if (missing.length === 0) continue;
 
     const issueNumber = Number(issue?.number);
@@ -179,7 +236,7 @@ export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changed
       acceptanceLines,
       summary: compact(summary),
       blockReason: compact(
-        `closing-issue-acceptance-mismatch:${issueLabel} missing ${missingText}`,
+        `${CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX}${issueLabel} missing ${missingText}`,
       ),
     };
   }
