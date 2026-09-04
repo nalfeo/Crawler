@@ -71,7 +71,7 @@ function advanceMain(work, branchName, fileName, contents) {
   git(work, ['checkout', branchName]);
 }
 
-function setupReconciledShepherdRepo(branchName = 'copilot/ratings-ram-recovery') {
+function setupRepoWithReconciliationMerge(branchName = 'copilot/ratings-ram-recovery') {
   const root = mkdtempSync(path.join(tmpdir(), 'crawler-main-sync-'));
   const remote = path.join(root, 'remote.git');
   const work = path.join(root, 'work');
@@ -182,7 +182,7 @@ test('conflicting rebase aborts and restores the original branch', (t) => {
 });
 
 test('recovery branch with existing mainline reconciliation merges preserves merge history across repeated main advances', (t) => {
-  const { root, work, branchName, firstMergeSha } = setupReconciledShepherdRepo();
+  const { root, work, branchName, firstMergeSha } = setupRepoWithReconciliationMerge();
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
   advanceMain(work, branchName, 'main-two.txt', 'main two\n');
@@ -204,7 +204,7 @@ test('recovery branch with existing mainline reconciliation merges preserves mer
 });
 
 test('conflicting merge-preserving sync aborts and restores the original shepherd branch', (t) => {
-  const { root, work, branchName } = setupReconciledShepherdRepo();
+  const { root, work, branchName } = setupRepoWithReconciliationMerge();
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const headBefore = git(work, ['rev-parse', 'HEAD']);
   git(work, ['checkout', 'main']);
@@ -226,7 +226,7 @@ test('conflicting merge-preserving sync aborts and restores the original shepher
 });
 
 test('dedicated shepherd ownership branch prefix does not require an extra marker segment', (t) => {
-  const { root, work, branchName } = setupReconciledShepherdRepo('ci-recovery/fix-timeout');
+  const { root, work, branchName } = setupRepoWithReconciliationMerge('ci-recovery/fix-timeout');
   t.after(() => rmSync(root, { recursive: true, force: true }));
   advanceMain(work, branchName, 'main-two.txt', 'main two\n');
 
@@ -237,7 +237,7 @@ test('dedicated shepherd ownership branch prefix does not require an extra marke
 });
 
 test('ordinary branch with an existing merge keeps the default rebase strategy', (t) => {
-  const { root, work, branchName } = setupReconciledShepherdRepo();
+  const { root, work, branchName } = setupRepoWithReconciliationMerge();
   t.after(() => rmSync(root, { recursive: true, force: true }));
   git(work, ['branch', '-m', branchName, 'fix/recovery-timeout-bug']);
   const headBefore = git(work, ['rev-parse', 'HEAD']);
