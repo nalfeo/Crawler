@@ -21,7 +21,7 @@ function makeFloor6DefenseWorld() {
   const player = spawnPlayer(world, 0, 0);
   createFloorMainSceneOptions('floor6').configureWorld!(world, player);
   floor6DefenseDirectorSystem(world);
-  world.floorMap = undefined;
+  world.floorMap = null;
   return { world, player };
 }
 
