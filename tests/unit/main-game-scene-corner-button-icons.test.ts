@@ -27,8 +27,8 @@ const SOURCE = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf8');
 const EXPECTED_TEXT_PRESENTATION_ICONS = ['✕'];
 
 function stringConstantValue(name: string): string | null {
-  const match = new RegExp(`const ${name} = ['"]([^'"]+)['"];`).exec(SOURCE);
-  return match?.[1] ?? null;
+  const match = new RegExp(`const ${name} = (?:'([^']+)'|"([^"]+)");`).exec(SOURCE);
+  return match?.[1] ?? match?.[2] ?? null;
 }
 
 function cornerButtonLabels(): string[] {
@@ -70,6 +70,9 @@ const EXPECTED_LABELS = [
 
 describe('MainGameScene corner-button icons', () => {
   const labels = cornerButtonLabels();
+  const iconLabels = [...labels, stringConstantValue('ISSUE_BUTTON_LABEL_COMPACT')].filter(
+    (label): label is string => label !== null,
+  );
 
   it('finds every corner button label', () => {
     expect(labels).toEqual(EXPECTED_LABELS);
@@ -77,7 +80,7 @@ describe('MainGameScene corner-button icons', () => {
   });
 
   it('renders every icon as colour emoji except the documented close glyph', () => {
-    const textPresentation = labels
+    const textPresentation = iconLabels
       .map((label) => iconOf(label))
       .filter((icon) => !/^\p{Emoji_Presentation}$/u.test(icon) && !icon.endsWith('\uFE0F'));
 
@@ -89,7 +92,7 @@ describe('MainGameScene corner-button icons', () => {
     // Unicode `Emoji` property (e.g. U+2694 ⚔️); on anything else — notably
     // U+2691 ⚑ BLACK FLAG, which has no standardized emoji-variation sequence
     // — the selector is inert and the glyph stays platform-dependent.
-    for (const label of labels) {
+    for (const label of iconLabels) {
       const icon = iconOf(label);
       if (!icon.endsWith('\uFE0F')) {
         continue;
@@ -97,6 +100,6 @@ describe('MainGameScene corner-button icons', () => {
       const base = [...icon][0]!;
       expect(/^\p{Emoji}$/u.test(base), `${label}: U+FE0F on a non-emoji base glyph`).toBe(true);
     }
-    expect(labels.some((label) => label.includes('\u2691'))).toBe(false);
+    expect(iconLabels.some((label) => label.includes('\u2691'))).toBe(false);
   });
 });
