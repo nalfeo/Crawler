@@ -70,6 +70,7 @@
     "sprites:brief-batch": "tsx scripts/sprites/brief-batch-cli.ts",
     "sprites:synth": "tsx scripts/sprites/synth-cli.ts",
     "sprites:batch": "tsx scripts/sprites/batch-cli.ts",
+    "sprites:backlog": "tsx scripts/sprites/batch-cli.ts --backlog-floors 1,2,3 --limit 5 --judge-budget-usd 5 --reset-budget",
     "sprites:asset-plan": "tsx scripts/sprites/asset-plan-cli.ts",
     "sprites:plan-drafts": "tsx scripts/sprites/plan-drafts-cli.ts",
     "sprites:enqueue": "tsx scripts/sprites/queue-cli.ts",
