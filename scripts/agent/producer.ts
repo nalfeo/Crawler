@@ -401,6 +401,13 @@ export interface ShepherdRunClassification {
     | 'pending';
   failedJobs: string[];
   watcherJsonDisagreement: boolean;
+  /**
+   * Only a completed run whose JSON conclusion is a genuine failure justifies a
+   * `--log-failed` read. An in-flight run can already carry a failed job while
+   * the workflow still recovers or gets superseded, so its jobs are reported
+   * but never treated as a final verdict.
+   */
+  logsActionable: boolean;
 }
 
 export function classifyShepherdRun(
@@ -439,6 +446,7 @@ export function classifyShepherdRun(
     failedJobs,
     watcherJsonDisagreement:
       watcherExitCode !== undefined && watcherExitCode !== 0 && outcome === 'success',
+    logsActionable: outcome === 'failure' && failedJobs.length > 0,
   };
 }
 
@@ -495,7 +503,13 @@ function handleShepherdStatus(prNumber: string, runId?: string, watcherExitCode?
     if (run.url) console.log(run.url);
     if (classification.failedJobs.length > 0) {
       console.log(`Failed jobs: ${classification.failedJobs.join(', ')}`);
-      console.log(`Inspect with: gh run view ${run.databaseId ?? runId} --log-failed`);
+      if (classification.logsActionable) {
+        console.log(`Inspect with: gh run view ${run.databaseId ?? runId} --log-failed`);
+      } else {
+        console.log(
+          `Run is ${classification.outcome}; these jobs are not an authoritative failure verdict yet.`,
+        );
+      }
     }
     if (classification.outcome === 'cancelled') {
       console.log(

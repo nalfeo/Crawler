@@ -17,9 +17,18 @@ the completed run JSON reports success, and is logged as
 `watcher-json-disagreement`.
 
 The Shepherd status helper now distinguishes genuine failed jobs from
-`cancelled`, `action_required`, and non-failure terminal conclusions. The
-playbook directs operators to make one final JSON read after completion and to
-inspect logs only after that read identifies a real failure.
+`cancelled`, `action_required`, and non-failure terminal conclusions. A failed
+job on a run that has not completed (or that was cancelled) is reported but
+never recommends a `--log-failed` read, so only a JSON-confirmed failure is
+treated as a verdict. The
+playbook directs operators to make one final JSON read after completion — issued
+by the producer command itself, so the recipe never takes a second, divergent
+snapshot — and to inspect logs only after that read identifies a real failure.
+
+Scope is Shepherd status tooling only. Floor 3 AI-runner, scene interaction, lab,
+E2E, and CI-timeout changes briefly appeared in this branch's diff because the
+branch trailed `main`; they belong to PR #4183 and are unchanged here. Syncing
+`main` cleared them from the diff.
 
 ## Files touched
 

@@ -132,6 +132,25 @@ describe('renderTriage()', () => {
         outcome: 'success',
         failedJobs: [],
         watcherJsonDisagreement: true,
+        logsActionable: false,
+      });
+    });
+
+    it('does not treat a failed job in a still-running run as an actionable verdict', () => {
+      expect(
+        classifyShepherdRun({
+          databaseId: 33730214117,
+          status: 'in_progress',
+          jobs: [
+            { name: 'Unit tests', conclusion: 'failure' },
+            { name: 'E2E', conclusion: null as unknown as string },
+          ],
+        }),
+      ).toEqual({
+        outcome: 'pending',
+        failedJobs: ['Unit tests'],
+        watcherJsonDisagreement: false,
+        logsActionable: false,
       });
     });
 
@@ -146,6 +165,22 @@ describe('renderTriage()', () => {
         outcome: 'failure',
         failedJobs: ['Unit tests'],
         watcherJsonDisagreement: false,
+        logsActionable: true,
+      });
+    });
+
+    it('does not make logs actionable for a cancelled run carrying a failed job', () => {
+      expect(
+        classifyShepherdRun({
+          status: 'completed',
+          conclusion: 'cancelled',
+          jobs: [{ name: 'E2E', conclusion: 'failure' }],
+        }),
+      ).toEqual({
+        outcome: 'cancelled',
+        failedJobs: ['E2E'],
+        watcherJsonDisagreement: false,
+        logsActionable: false,
       });
     });
 

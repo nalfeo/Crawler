@@ -154,7 +154,7 @@ notification, make exactly one bounded JSON read and classify that result:
 ```powershell
 gh pr checks <n>                              # quick view (CANCELLED shows as fail)
 gh run list --branch <branch> --limit 15      # find the real run + its status
-gh run view <run-id> --json databaseId,status,conclusion,jobs,url
+# the producer command performs the single authoritative run JSON read itself
 npm run producer -- --shepherd-status --pr <n> --run <run-id> --watch-exit <code>
 ```
 
