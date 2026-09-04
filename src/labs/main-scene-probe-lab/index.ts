@@ -32,7 +32,15 @@ import {
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Enemy, Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import {
+  Enemy,
+  Glowing,
+  Harvestable,
+  Health,
+  Homing,
+  Position,
+  Prop,
+} from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
 import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
 import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
@@ -109,6 +117,8 @@ import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
+import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -149,6 +159,15 @@ function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor6' {
   return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' || raw === 'floor6'
     ? raw
     : 'floor1';
+}
+
+function readSeedOverride(): number {
+  const raw = new URLSearchParams(window.location.search).get('seed');
+  if (raw === null) {
+    return PROBE_SEED;
+  }
+  const seed = Number(raw);
+  return Number.isInteger(seed) ? seed : PROBE_SEED;
 }
 
 /** The single shared status-aura Graphics layer, if the bridge has created it. */
@@ -634,6 +653,18 @@ export interface MainSceneState {
   readonly simulationPaused: boolean;
   /** Number of top-level Phaser display objects on the scene. */
   readonly displayObjectCount: number;
+  /** Live world seed used by the real MainGameScene boot path. */
+  readonly worldSeed: number | null;
+  /** Live fixed-step simulation frame count. */
+  readonly frameCount: number | null;
+  /** Live fixed-step simulation elapsed milliseconds. */
+  readonly elapsedMs: number | null;
+  /** Live ECS entities with the Enemy tag. */
+  readonly enemyCount: number;
+  /** Live ECS entities with Enemy + Health and positive HP. */
+  readonly livingEnemyCount: number;
+  /** Floor 4 arena telemetry, when the probe booted Floor 4. */
+  readonly floor4Arena: Floor4ArenaRunStats | null;
   /** Live player position in FEET (sim space), or null before spawn. */
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
@@ -1546,7 +1577,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   let autoDrivenForProbe = false;
   const sceneOptions = {
     ...baseOptions,
-    worldSeed: PROBE_SEED,
+    worldSeed: readSeedOverride(),
     isAutoDriven: () => autoDrivenForProbe,
     ...(ambientOverride !== null
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
@@ -1659,6 +1690,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const abilityLoadoutSectionHeaderLabel =
         scene?.abilityLoadoutUI?.getVisibleSectionHeaderLabel?.() ?? null;
       const currentAnnouncement = scene?.hudUi?.getCurrentAnnouncement?.() ?? null;
+      const enemyEids = world ? query(world.ecs, [Enemy]) : [];
+      const livingEnemyEids = world
+        ? query(world.ecs, [Enemy, Health]).filter(
+            (enemyEid) => (world.stores.health.current[enemyEid] ?? 0) > 0,
+          )
+        : [];
       const equippedActiveAbilityIds =
         eid >= 0
           ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
@@ -1715,6 +1752,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
         displayObjectCount: phaserScene?.children.list.length ?? 0,
+        worldSeed: world?.seed ?? null,
+        frameCount: world?.frameCount ?? null,
+        elapsedMs: world?.elapsedMs ?? null,
+        enemyCount: enemyEids.length,
+        livingEnemyCount: livingEnemyEids.length,
+        floor4Arena: world ? (getFloor4ArenaRunStats(world) ?? null) : null,
         playerFeet,
         cameraCenter: cameraCenter(),
         floorId: world?.floorId ?? null,
