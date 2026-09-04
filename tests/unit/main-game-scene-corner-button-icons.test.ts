@@ -39,9 +39,13 @@ function cornerButtonLabels(): string[] {
     labels.push(match[1]!);
     match = pattern.exec(SOURCE);
   }
-  const issueLabel = stringConstantValue('ISSUE_BUTTON_LABEL');
-  if (issueLabel && /\bISSUE_BUTTON_LABEL_COMPACT\b\s*:\s*\bISSUE_BUTTON_LABEL\b/.test(SOURCE)) {
-    labels.push(issueLabel);
+  const issueLabelTernary =
+    /this\.issueButtonCompact\s*\?\s*(ISSUE_BUTTON_LABEL(?:_COMPACT)?)\b\s*:\s*(ISSUE_BUTTON_LABEL(?:_COMPACT)?)\b/.exec(
+      SOURCE,
+    );
+  const issueInitialLabel = issueLabelTernary ? stringConstantValue(issueLabelTernary[2]!) : null;
+  if (issueInitialLabel) {
+    labels.push(issueInitialLabel);
   }
   return labels;
 }
