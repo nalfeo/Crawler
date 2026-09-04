@@ -59,7 +59,7 @@ function hasMainlineParent(cwd, parents, mainRef, runGit) {
   try {
     return parents.some((parent) => gitIsAncestor(cwd, parent, mainRef, runGit));
   } catch (error) {
-    throw new Error(`Could not inspect merge parent ancestry: ${error.message}`);
+    throw new Error(`Could not inspect merge parent ancestry: ${error.message}`, { cause: error });
   }
 }
 
@@ -91,7 +91,9 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
     mergeBase = runGit(cwd, ['merge-base', 'HEAD', mainRef]);
   } catch (error) {
     if (!isExpectedGitNegative(error)) {
-      throw new Error(`Could not find merge base with ${mainRef}: ${error.message}`);
+      throw new Error(`Could not find merge base with ${mainRef}: ${error.message}`, {
+        cause: error,
+      });
     }
     return false;
   }
@@ -100,7 +102,9 @@ function hasMainlineReconciliationMerge(cwd, mainRef, runGit) {
   try {
     merges = runGit(cwd, ['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]);
   } catch (error) {
-    throw new Error(`Could not inspect merge commits since ${mergeBase}: ${error.message}`);
+    throw new Error(`Could not inspect merge commits since ${mergeBase}: ${error.message}`, {
+      cause: error,
+    });
   }
   if (!merges) return false;
 
