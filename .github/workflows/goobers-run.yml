@@ -51,10 +51,15 @@ permissions:
 jobs:
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
+    # Goobers only claims and implements approved issues while it owns the
+    # implementation-claim lane. Without this, a rollback to `legacy` would
+    # leave BOTH Goobers and legacy intake claiming the same issue, which is
+    # exactly the dual-writer case the lane model exists to prevent.
     if: >-
-      github.event_name != 'issues' ||
+      vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&
+      (github.event_name != 'issues' ||
       (github.event.label.name == 'goobers:approved' &&
-      github.event.issue.state == 'open')
+      github.event.issue.state == 'open'))
     # Keep irrelevant issue-label events from entering the workflow-level
     # pending slot and cancelling a queued schedule/manual run before this
     # job-level `if` can skip them.

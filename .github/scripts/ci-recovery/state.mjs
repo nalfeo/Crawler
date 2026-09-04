@@ -9,6 +9,15 @@ export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 export const AUTOMATION_STALE_MINUTES = 30;
+
+/**
+ * Review-thread reply/resolve is its own lifecycle lane. Legacy keeps writing
+ * unless the lane is explicitly migrated with the literal `goobers`, so an
+ * unset or malformed selector can never take the lane dark (fail-operational).
+ */
+export function legacyReviewThreadWritesEnabled(env = process.env) {
+  return String(env.LIFECYCLE_OWNER_REVIEW_THREADS ?? '') !== 'goobers';
+}
 // Hard ceiling on how long a still-running agent session may defer the
 // automation-stale ceiling. Past this age the session check is treated as hung
 // and the normal retry/release ladder resumes, so a wedged session can never

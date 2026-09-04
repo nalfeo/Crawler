@@ -2,87 +2,178 @@
 
 ## Purpose
 
-This runbook documents the rollback bridge for legacy CI lifecycle mutation paths during the Goobers migration. The repository currently keeps the bridge enabled because Goobers does not yet own all four reconciliation, review-thread, and merge-train mutation lanes. The bridge must remain enabled until those lanes pass Phase 3 soak criteria and the Phase 4 rollback drill and dependency gate are complete.
+This runbook documents lane ownership and the emergency rollback bridge for
+Crawler's automation during the Goobers migration.
 
-## Steady-state operation
+The migration is **hybrid by design and has no downtime phase.** Ownership is
+tracked per lane, and every lane always has exactly one writer:
 
-- `LEGACY_CI_MUTATION_BRIDGE_ENABLED` defaults to `false` in code, but the repository-level variable is currently `true` during migration.
-- While the repository-level variable is `true`, direct legacy lifecycle mutations remain available as the rollback path; Goobers is not yet the sole lifecycle owner.
-- Do not disable the bridge until all four Goobers mutation lanes pass Phase 3 soak criteria, the Phase 4 rollback drill is complete, and the Phase 4 dependency gate is unblocked.
-- After that gate, set the variable to `false` and confirm the workflows skip direct mutation work while Goobers owns the lifecycle path.
+| Lane                                     | Phase 2 owner | Selector                         |
+| ---------------------------------------- | ------------- | -------------------------------- |
+| Implementation claim (approved issue→PR) | **Goobers**   | `LIFECYCLE_MUTATION_OWNER`       |
+| CI Recovery router + reconciliation      | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    |
+| Review-thread reply/resolve              | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` |
+| Auto-rebase branch updates               | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  |
+| Merge-train admission + promotion        | legacy        | `LIFECYCLE_OWNER_MERGE_TRAIN`    |
 
-## When to activate the emergency bridge
+## The ownership boundary
 
-The bridge is already enabled for the migration safety window. Keep it enabled until the Phase 4 exit gate is satisfied; after decommissioning, re-enable it only for a bounded incident or controlled rollback drill.
+Goobers owns **approved-issue intake and implementation, up to and including PR
+creation, publication, and readiness.** The moment a PR is published, the claim
+is handed off and legacy automation owns the PR lifecycle end to end.
 
-Examples:
-
-- direct PR lifecycle mutation stalls while Goobers is offline or misrouted;
-- a critical PR handoff requires an immediate legacy mutation while Goobers is under repair;
-- an explicit rollback drill requires a controlled fallback execution.
-
-Before the Phase 4 exit gate, disabling the bridge is not permitted because it would remove the only implemented fallback for lifecycle mutation lanes.
-
-## How to enable the bridge
-
-Run:
-
-```bash
-gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED -R nalfeo/Crawler --body 'true'
-gh variable set CI_RECOVERY_MODE -R nalfeo/Crawler --body 'live'
+```
+approved issue ──► Goobers claims ──► implementation ──► PR published
+                                                             │
+                                                   claim released (handoff)
+                                                             │
+                                                             ▼
+                          legacy: CI Recovery · review threads · rebase · merge train
 ```
 
-Then validate the workflow logs and confirm the legacy mutation path runs again (with `CI_RECOVERY_MODE=live` for representative mutation coverage).
+The claim lease exists only to stop two implementers picking up the same
+approved issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
+by a PR or head SHA, and **no PR-lifecycle lane consults it**. That is what
+guarantees there is no gap: legacy automation is live for a published PR whether
+or not a claim ever existed.
 
-## Expected behavior while active
+## Fail directions (deliberately opposite)
 
-- Legacy mutation code executes as the available rollback path.
-- Mutation throughput may be slower than the eventual Goobers-only path.
-- Operators must treat the bridge as temporary migration infrastructure and record any changes to its state.
+- **Claim lane fails closed.** `LIFECYCLE_MUTATION_OWNER` must be exactly
+  `goobers` or `legacy`. Any other value — unset, misspelled, wrong case,
+  padded — disables _both_ claim writers. Duplicate implementation work is the
+  expensive failure, so ambiguity means nobody writes.
+- **PR-lifecycle lanes fail operational.** A lane selector migrates only on the
+  literal `goobers`; unset or malformed leaves **legacy** in charge. A typo can
+  never silently take CI Recovery, review threads, rebasing, or the merge train
+  offline.
 
-## How to disable the bridge and resume steady state
+`LEGACY_CI_MUTATION_BRIDGE_ENABLED` is the **global emergency kill switch for
+legacy mutation** and is independent of Goobers. It stays `true` in steady
+state. Cutting the claim lane over to Goobers does **not** require changing it —
+that decoupling is what removed the old global-shutdown behavior.
 
-Run:
+## Cut over the claim lane to Goobers
+
+No drain and no bridge change is required, because no legacy lane is affected.
+
+> **Required after merging the Phase 2 PR.** `LIFECYCLE_MUTATION_OWNER` starts
+> unset, and `goobers-run.yml` is gated on the literal `goobers`. Until the
+> variable is set, approved-issue intake routes to **legacy** — a safe,
+> single-writer state with no gap, but Goobers stays idle.
+
+```bash
+gh variable set LIFECYCLE_MUTATION_OWNER -R nalfeo/Crawler --body 'goobers'
+```
+
+Verify:
+
+1. Dispatch `Goobers Lifecycle Owner` with `operation=acquire` and the approved
+   `issue_number`; the artifact reports `status=acquired` and the managed
+   comment names the same issue.
+2. Publish a PR that closes that issue and confirm the run reports
+   `status=handed-off` and the claim comment is gone.
+3. Confirm CI Recovery, auto-rebase, and the merge train **still mutate as
+   normal** — they must not log `observe-only`.
+
+## Migrate one PR-lifecycle lane (Phase 3)
+
+Move lanes one at a time; each lane is independent and never dual-written.
+
+```bash
+gh variable set LIFECYCLE_OWNER_MERGE_TRAIN -R nalfeo/Crawler --body 'goobers'
+```
+
+The legacy workflow for that lane immediately reports `observe-only` while every
+other lane keeps running. Roll a lane back by deleting the variable or setting
+it to `legacy`.
+
+## Roll back claim ownership
+
+```bash
+gh variable set LIFECYCLE_MUTATION_OWNER -R nalfeo/Crawler --body 'legacy'
+```
+
+Goobers claim runs then report `observe-only`. PR-lifecycle lanes are unaffected
+because they were never gated on this selector.
+
+## Emergency kill switch
+
+Only for a bounded incident, and understanding that it stops **all** legacy
+mutation at once:
 
 ```bash
 gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED -R nalfeo/Crawler --body 'false'
-gh variable set CI_RECOVERY_MODE -R nalfeo/Crawler --body 'dry-run'
 ```
 
-Only run this after the Phase 4 exit gate is satisfied. Confirm the workflows resume their default skip behavior and that all four Goobers mutation lanes own the lifecycle path.
+Restore with `true` as soon as the incident is contained. If it stays off beyond
+a short window, fix the root cause rather than leaving PR automation dark.
+
+## Goobers claim-lease contract
+
+- Scope: one lower-cased `repository#issue-<n>` key.
+- Operations: `acquire`, `heartbeat`, `handoff`, `release`.
+- TTL: `LIFECYCLE_LEASE_TTL_SECONDS` (120–3600, default 300), measured from the
+  GitHub API server timestamp refreshed immediately before the decision.
+- Persistence: one `<!-- crawler-lifecycle-lease:v1 -->` comment, registered in
+  `.github/scripts/ci-recovery/markers.mjs` with every other managed marker.
+- Trust boundary: only comments from trusted authors (automation bots, owners,
+  members, collaborators) are counted, so a drive-by comment can neither forge
+  an active claim nor poison claim state.
+- Contention: an unexpired different lease wins; the contender emits
+  `status=contended` and does not write.
+- Takeover: an expired claim is replaced deterministically.
+- Corruption: malformed or duplicate managed comments disable writes.
+- Handoff: requires a PR URL in this repository; anything else is rejected with
+  `reason=invalid-handoff-target`. A replayed publication event is idempotent
+  and reports `status=handed-off`, `reason=already-released`.
+
+Each run uploads its input and decision artifact, and the apply step logs a
+`LIFECYCLE_OWNERSHIP_DECISION` JSON record with status, reason, and lock key.
 
 ## Monitoring and operational checks
 
 Monitor these signals during active incidents:
 
+- `LIFECYCLE_OWNERSHIP_DECISION` status/reason counts, especially contention;
+- malformed or duplicate claim-marker warnings;
 - merge-train and ci-recovery workflow success rate;
 - PR mutation latencies;
 - branch update or label application failures;
 - any repeated "stalled PR" or recovery queue backlog signals.
 
-If the bridge stays active beyond a short incident window, investigate the Goobers root cause instead of leaving the legacy path enabled.
+A PR-lifecycle lane logging `observe-only` when you did **not** migrate it is a
+misconfiguration, not expected behavior — check that lane's selector.
 
 ## Rollback drill sequence
 
-1. Confirm the bridge is currently enabled for the migration safety window, or record the incident that requires re-enabling it.
-2. Enable the bridge with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'true'`.
-3. Set recovery mode live with `gh variable set CI_RECOVERY_MODE ... 'live'`.
-4. Trigger a representative PR lifecycle mutation under the legacy path.
-5. Verify the mutation succeeds and workflow logs show both active bridge routing and `CI_RECOVERY_MODE=live`.
-6. Disable the bridge again with `gh variable set LEGACY_CI_MUTATION_BRIDGE_ENABLED ... 'false'`.
-7. Restore dry-run mode with `gh variable set CI_RECOVERY_MODE ... 'dry-run'`.
-8. If the Phase 4 exit gate is complete, disable the bridge and validate the system returns to Goobers-only steady-state behavior; otherwise leave it enabled.
+1. Record the test issue number and the PR it produces.
+2. Acquire a claim for the issue and verify `status=acquired`.
+3. Publish the PR; verify `status=handed-off` and that the claim comment is
+   deleted.
+4. Verify CI Recovery, auto-rebase, and the merge train act on that PR normally
+   during and after the handoff — this is the no-gap proof.
+5. Set `LIFECYCLE_MUTATION_OWNER=legacy`; verify a Goobers acquire reports
+   `observe-only` while every PR lane still mutates.
+6. Restore `LIFECYCLE_MUTATION_OWNER=goobers` and re-verify one acquire.
+7. Verify a malformed selector (for example `goobrs`) disables both claim
+   writers and leaves all PR lanes running.
 
-Document the run IDs, timestamps, and the exact mutated PR in the incident or drill record.
+Document the run IDs, timestamps, and the exact mutated PR in the incident or
+drill record.
 
 ## Known limitations
 
-The emergency bridge is intentionally bounded. Legacy code paths do not carry the full Goobers feature set (for example, newer lifecycle semantics or shepherd-lease flows), so the bridge remains a last-resort recovery lane and not a supported steady-state mode.
+Phase 2 transfers **only** the pre-PR implementation claim. Merge-train
+promotion, review-thread closure, auto-rebase, and CI Recovery state mutations
+all remain legacy-owned and fully operational; each moves independently in
+Phase 3 via its own lane selector.
 
 ## Post-incident review checklist
 
 - What failed in Goobers?
-- Why was the bridge necessary?
-- Was the bridge enabled only for the shortest possible window?
-- Did the system return to `LEGACY_CI_MUTATION_BRIDGE_ENABLED=false`?
+- Was any lane left without a writer at any point?
+- Was the emergency bridge enabled only for the shortest possible window?
+- Did the system return to `LIFECYCLE_MUTATION_OWNER=goobers` with
+  `LEGACY_CI_MUTATION_BRIDGE_ENABLED=true` and all PR lanes on legacy?
 - Was the root cause recorded and fixed before closing the incident?

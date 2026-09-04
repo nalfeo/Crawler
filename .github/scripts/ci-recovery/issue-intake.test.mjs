@@ -34,6 +34,8 @@ test('issue intake workflow subscribes to reopened issues', () => {
   assert.match(workflow, /types:\s*\[opened,\s*reopened,\s*closed\]/);
 });
 
+process.env.LIFECYCLE_MUTATION_OWNER = 'goobers';
+
 test('issue intake accepts only trusted opener and label combinations', () => {
   const cases = [
     { name: 'maintainer', login: 'nalfeo', labels: [], eligible: true },
@@ -1203,6 +1205,30 @@ test('intakeOpenedIssue rejects a telemetry-labeled dependent even from the unbl
     false,
     'telemetry guard must short-circuit before the dependency query',
   );
+});
+
+test('legacy intake reclaims goobers:approved issues when the claim lane rolls back', async () => {
+  // Rollback must not leave approved issues without an intake owner.
+  const goobersIssue = {
+    number: 123,
+    user: { login: 'nalfeo' },
+    labels: [{ name: 'goobers:approved' }],
+  };
+  const previous = process.env.LIFECYCLE_MUTATION_OWNER;
+  try {
+    process.env.LIFECYCLE_MUTATION_OWNER = 'goobers';
+    assert.equal(issueIntakeEligibility(goobersIssue, 'nalfeo').eligible, false);
+    for (const rolledBack of ['legacy', '', 'off', 'Goobers']) {
+      process.env.LIFECYCLE_MUTATION_OWNER = rolledBack;
+      assert.equal(
+        issueIntakeEligibility(goobersIssue, 'nalfeo').eligible,
+        true,
+        `legacy intake must resume for LIFECYCLE_MUTATION_OWNER=${rolledBack}`,
+      );
+    }
+  } finally {
+    process.env.LIFECYCLE_MUTATION_OWNER = previous;
+  }
 });
 
 test('intakeOpenedIssue rejects a Goobers-owned dependent even from the unblock sweep', async () => {
