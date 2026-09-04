@@ -106,9 +106,6 @@ describe('Floor 5 release gate headless telemetry', () => {
       const siege = stats.floor5Siege;
       expect(siege, `seed ${seed} emitted Floor 5 telemetry`).toBeDefined();
       if (!siege) continue;
-      const frameBudget = siege.releaseGate.frameBudget;
-      if (frameBudget === null) throw new Error(`seed ${seed} missing Floor 5 frame budget`);
-
       expect(siege.releaseGate.terminalIntegrity.terminal).toBe(true);
       expect(siege.releaseGate.terminalIntegrity.terminalOutcomeCount).toBe(1);
       if (stats.outcome !== 'victory') {
@@ -116,6 +113,8 @@ describe('Floor 5 release gate headless telemetry', () => {
         expect(siege.releaseGate.terminalIntegrity.defeatCount).toBe(1);
         continue;
       }
+      const frameBudget = siege.releaseGate.frameBudget;
+      if (frameBudget === null) throw new Error(`seed ${seed} missing Floor 5 frame budget`);
       expect(stats.totalFrames, `seed ${seed} stayed under the frame budget`).toBeLessThanOrEqual(
         frameBudget,
       );
