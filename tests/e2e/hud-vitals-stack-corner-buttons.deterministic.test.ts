@@ -94,15 +94,7 @@ async function waitForSurfaces(
     names,
     { timeout: timeoutMs, polling: 100 },
   );
-  const layout = await mainSceneProbe.getSafeAreaLayout(page);
-  if (!names.every((name) => layout.surfaces.some((surface) => surface.name === name))) {
-    throw new Error(
-      `timed out waiting for probe surfaces ${names.join(', ')} (have: ${layout.surfaces
-        .map((surface) => surface.name)
-        .join(', ')})`,
-    );
-  }
-  return layout;
+  return mainSceneProbe.getSafeAreaLayout(page);
 }
 
 function overlaps(a: Bounds, b: Bounds): boolean {

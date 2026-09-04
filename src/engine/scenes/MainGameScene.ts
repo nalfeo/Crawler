@@ -5452,9 +5452,15 @@ export class MainGameScene extends Phaser.Scene {
     if (this.issueButtonCompact === compact && this.issueButton.text === label) {
       return;
     }
-    this.issueButtonCompact = compact;
+    const previousCompact = this.issueButtonCompact;
     this.issueButton.setText(label);
-    this.applyMobileButtonScale?.(getUiScale(this));
+    const relayout = this.applyMobileButtonScale;
+    if (!relayout) {
+      this.issueButtonCompact = previousCompact;
+      return;
+    }
+    this.issueButtonCompact = compact;
+    relayout(getUiScale(this));
   }
 
   private nextIssueReportRunId(): string {
