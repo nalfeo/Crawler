@@ -98,6 +98,74 @@ telemetry, and route `DIRTY` branches to explicit conflict recovery instead of
 force-pushing. This keeps long-lived evaluation PRs current without weakening
 their human gate.
 
+## Phase 2 redesign: hybrid ownership, no downtime (2026-09-04)
+
+The repository owner added a hard requirement after the first implementation was
+already green: **there must be no migration phase where pipeline pieces stop
+working.** The original design failed that requirement and was rebuilt.
+
+### What was wrong
+
+Every legacy PR-lifecycle workflow was gated on the single global pair
+`LIFECYCLE_MUTATION_OWNER == 'legacy' && LEGACY_CI_MUTATION_BRIDGE_ENABLED ==
+'true'`, and the Goobers claim required `owner=goobers` **plus** the bridge set
+to `false`. Those two conditions are mutually exclusive, so selecting Goobers
+necessarily turned CI Recovery, review threads, auto-rebase, and the merge train
+observe-only at the same instant — a full PR-automation outage for the whole of
+Phase 2.
+
+Worse, `LIFECYCLE_MUTATION_OWNER` is **unset** in this repository today. The
+gates would have evaluated false on merge, so legacy automation would have gone
+dark the moment the PR landed, before anyone ran a cutover.
+
+### The revised design
+
+Ownership is now resolved **per lane**, and the two lane families fail in
+deliberately opposite directions:
+
+| Lane                                | Phase 2 owner | Selector                         | Invalid config |
+| ----------------------------------- | ------------- | -------------------------------- | -------------- |
+| Implementation claim (issue → PR)   | Goobers       | `LIFECYCLE_MUTATION_OWNER`       | fails closed   |
+| CI Recovery router + reconciliation | legacy        | `LIFECYCLE_OWNER_CI_RECOVERY`    | stays legacy   |
+| Review-thread reply/resolve         | legacy        | `LIFECYCLE_OWNER_REVIEW_THREADS` | stays legacy   |
+| Auto-rebase branch updates          | legacy        | `LIFECYCLE_OWNER_BRANCH_UPDATE`  | stays legacy   |
+| Merge-train admission + promotion   | legacy        | `LIFECYCLE_OWNER_MERGE_TRAIN`    | stays legacy   |
+
+The claim lane fails closed because duplicate implementation work is the
+expensive failure. Every PR-lifecycle lane fails _operational_ because those
+lanes are required for PRs to move at all — a typo must never take one dark.
+`LEGACY_CI_MUTATION_BRIDGE_ENABLED` is now purely the global emergency kill
+switch for legacy mutation and is fully decoupled from Goobers, so the cutover
+no longer touches it.
+
+### The handoff
+
+The lease is no longer a PR lifecycle lease. It is scoped to the **approved
+issue** (`<owner>/<repo>#issue-<n>`) and covers only pre-PR implementation. At
+PR publication the workflow resolves the closing issue from GitHub's own
+`closingIssuesReferences` and performs a deterministic `handoff` that deletes
+the claim marker. No PR-lifecycle lane consults the claim, so legacy automation
+is live for the published PR either way — the handoff is an audit record, not a
+gate. A replayed publication event is idempotent.
+
+`goobers-lifecycle-owner.yml` therefore no longer triggers on `synchronize` or
+`closed`, and its concurrency group moved from the shared PR group to
+`crawler-implementation-claim-*` so the claim lane can never serialize behind or
+stall PR automation. `ci-recovery.yml` returns to its original
+`crawler-ci-pr-*` group.
+
+### Proof
+
+`tests/unit/goobers-lifecycle-ownership.test.ts` asserts the full matrix:
+Phase 2 steady state (Goobers claim + legacy on every PR lane); exactly one
+writer per lane; malformed claim config failing closed _while every PR lane
+keeps its legacy writer_; each Phase 3 lane migrating independently with no dual
+writer; rollback restoring legacy claim ownership; the kill switch stopping all
+legacy lanes without promoting Goobers; and the end-to-end handoff contract
+including idempotent replay and rejection of out-of-repository handoff targets.
+`workflow-gating.test.mjs` asserts each legacy workflow is gated on its own lane
+variable and that the claim selector appears in none of them.
+
 ## Merge-train shepherd intervention (2026-09-03)
 
 Shepherded under shared lease

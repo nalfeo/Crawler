@@ -22,12 +22,59 @@ export function lifecycleMutationOwner(value) {
   return value === 'goobers' || value === 'legacy' ? value : 'off';
 }
 
-export function lifecycleWriterEnabled({ owner, legacyBridgeEnabled }, actor) {
-  const selected = lifecycleMutationOwner(owner);
-  if (legacyBridgeEnabled !== 'true' && legacyBridgeEnabled !== 'false') return false;
-  if (selected === 'goobers') return actor === 'goobers' && legacyBridgeEnabled === 'false';
-  if (selected === 'legacy') return actor === 'legacy' && legacyBridgeEnabled === 'true';
-  return false;
+/**
+ * Mutation lanes. Ownership is resolved per lane so a migration can move one
+ * lane at a time. `implementation-claim` is the only lane Phase 2 hands to
+ * Goobers; every other lane is a PR-lifecycle lane that legacy automation still
+ * owns until its own Phase 3 migration.
+ */
+export const LIFECYCLE_CLAIM_LANE = 'implementation-claim';
+export const LIFECYCLE_PR_LANES = Object.freeze([
+  'ci-recovery',
+  'review-threads',
+  'branch-update',
+  'merge-train',
+]);
+export const LIFECYCLE_LANES = Object.freeze([LIFECYCLE_CLAIM_LANE, ...LIFECYCLE_PR_LANES]);
+
+/**
+ * Resolve the single writer for one lane.
+ *
+ * The two lane families fail in deliberately opposite directions:
+ *
+ * - `implementation-claim` fails **closed** (`off`). Two writers racing the
+ *   same claim would duplicate implementation work, so anything other than the
+ *   literal `goobers`/`legacy` selector disables the lane entirely.
+ * - Every PR-lifecycle lane fails **operational** (`legacy`). These lanes are
+ *   required for PRs to keep moving, so an unset, misspelled, or malformed
+ *   selector must never silently take the lane offline. Only the literal
+ *   `goobers` migrates a lane; everything else leaves legacy in charge.
+ *
+ * This asymmetry is the whole point: selecting Goobers for the claim lane can
+ * never disable an unmigrated PR-lifecycle lane, so the cutover has no gap.
+ */
+export function lifecycleLaneOwner(lane, config = {}) {
+  if (lane === LIFECYCLE_CLAIM_LANE) return lifecycleMutationOwner(config.owner);
+  if (!LIFECYCLE_PR_LANES.includes(lane)) return 'off';
+  return config.laneOwners?.[lane] === 'goobers' ? 'goobers' : 'legacy';
+}
+
+/**
+ * `LEGACY_CI_MUTATION_BRIDGE_ENABLED` remains the global emergency kill switch
+ * for every legacy mutation: it must be the literal `true` for legacy to write
+ * anything. It does NOT gate Goobers, so the claim lane and the legacy lanes
+ * are independently controlled.
+ */
+export function lifecycleLaneWriterEnabled(lane, config, actor) {
+  const owner = lifecycleLaneOwner(lane, config);
+  if (owner === 'off' || owner !== actor) return false;
+  if (actor === 'legacy') return config?.legacyBridgeEnabled === 'true';
+  return actor === 'goobers';
+}
+
+/** Claim-lane writer check retained for the ownership workflow's trust fences. */
+export function lifecycleWriterEnabled(config, actor) {
+  return lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, config, actor);
 }
 
 /**
@@ -54,8 +101,8 @@ export function selectLifecycleLeaseComments(comments) {
   );
 }
 
-export function lifecycleLeaseKey({ repository, prNumber, headSha }) {
-  return `${String(repository).toLowerCase()}#${Number(prNumber)}@${String(headSha).toLowerCase()}`;
+export function lifecycleLeaseKey({ repository, issueNumber }) {
+  return `${String(repository).toLowerCase()}#issue-${Number(issueNumber)}`;
 }
 
 export function renderLifecycleLease(lease) {
@@ -63,12 +110,15 @@ export function renderLifecycleLease(lease) {
   return [
     LIFECYCLE_LEASE_MARKER,
     `${LIFECYCLE_LEASE_DATA_PREFIX}${encoded} -->`,
-    '## Lifecycle ownership lease',
+    '## Implementation claim lease',
     '',
     `- Owner: \`${lease.owner}\``,
-    `- PR/head: \`#${lease.prNumber}@${lease.headSha}\``,
+    `- Issue: \`#${lease.issueNumber}\``,
     `- Lease: \`${lease.leaseId}\``,
     `- Expires: \`${lease.expiresAt}\``,
+    '',
+    '_Scoped to pre-PR implementation. Released at PR publication, after which',
+    'legacy automation owns the PR lifecycle._',
   ].join('\n');
 }
 
@@ -91,8 +141,8 @@ export function parseLifecycleLease(body) {
     if (
       lease?.version !== 1 ||
       lease?.owner !== 'goobers' ||
-      !Number.isInteger(lease?.prNumber) ||
-      !/^[0-9a-f]{40}$/i.test(lease?.headSha) ||
+      !Number.isInteger(lease?.issueNumber) ||
+      lease.issueNumber < 1 ||
       typeof lease?.repository !== 'string' ||
       typeof lease?.leaseId !== 'string' ||
       !Number.isFinite(Date.parse(lease?.acquiredAt)) ||
@@ -106,7 +156,7 @@ export function parseLifecycleLease(body) {
   }
 }
 
-function result(status, reason, input, lease = null, writeAction = 'none') {
+function result(status, reason, input, lease = null, writeAction = 'none', extra = {}) {
   return {
     status,
     reason,
@@ -114,43 +164,47 @@ function result(status, reason, input, lease = null, writeAction = 'none') {
     lease,
     writeAction,
     observable: true,
+    ...extra,
   };
 }
 
+const LEASE_OPERATIONS = ['acquire', 'heartbeat', 'handoff', 'release'];
+
+/**
+ * Decide the next state of the pre-PR implementation claim lease.
+ *
+ * The lease exists only to stop two implementers claiming the same approved
+ * issue. It is deliberately NOT a PR-lifecycle lease: `handoff` releases it at
+ * PR publication, and no PR-lifecycle lane consults it, so legacy automation
+ * takes over the published PR with no gap and no dual writer.
+ */
 export function decideLifecycleLease(input) {
   const repository = String(input.repository ?? '').trim();
-  const headRepository = String(input.headRepository ?? '').trim();
-  const headSha = String(input.headSha ?? '')
-    .trim()
-    .toLowerCase();
-  const liveHeadSha = String(input.liveHeadSha ?? '')
-    .trim()
-    .toLowerCase();
-  const prNumber = Number(input.prNumber);
+  const issueNumber = Number(input.issueNumber);
   const leaseId = String(input.leaseId ?? '').trim();
   const operation = String(input.operation ?? '').trim();
   const now = String(input.now ?? '').trim();
-  const scope = { repository, prNumber, headSha };
+  const prUrl = String(input.prUrl ?? '').trim();
+  const scope = { repository, issueNumber };
 
   if (!lifecycleWriterEnabled(input, 'goobers')) {
     return result('observe-only', 'goobers-not-selected', scope);
   }
-  if (!repository || repository.toLowerCase() !== headRepository.toLowerCase()) {
-    return result('rejected', 'fork', scope);
-  }
   if (
-    !Number.isInteger(prNumber) ||
-    prNumber < 1 ||
-    !/^[0-9a-f]{40}$/.test(headSha) ||
-    !/^[0-9a-f]{40}$/.test(liveHeadSha) ||
+    !repository ||
+    !Number.isInteger(issueNumber) ||
+    issueNumber < 1 ||
     !leaseId ||
-    !['acquire', 'heartbeat', 'release'].includes(operation) ||
+    !LEASE_OPERATIONS.includes(operation) ||
     !Number.isFinite(Date.parse(now))
   ) {
     return result('rejected', 'invalid-input', scope);
   }
-  if (liveHeadSha !== headSha) {
-    return result('rejected', 'stale-head', scope);
+  // A handoff is the audit record of "Goobers finished; legacy owns the PR
+  // now", so it is only meaningful with a PR in this same repository.
+  const expectedPrPrefix = `https://github.com/${repository.toLowerCase()}/pull/`;
+  if (operation === 'handoff' && !prUrl.toLowerCase().startsWith(expectedPrPrefix)) {
+    return result('rejected', 'invalid-handoff-target', scope);
   }
 
   const markerComments = Array.isArray(input.markerComments) ? input.markerComments : [];
@@ -170,16 +224,36 @@ export function decideLifecycleLease(input) {
   const sameScope = currentLease && lifecycleLeaseKey(currentLease) === lifecycleLeaseKey(scope);
   const active = currentLease && Date.parse(currentLease.expiresAt) > Date.parse(now);
 
-  if (operation === 'release') {
-    if (!currentLease) return result('released', 'already-released', scope);
-    if (!sameScope || currentLease.leaseId !== leaseId) {
-      return result('contended', 'lease-not-held', scope, currentLease);
+  if (operation === 'release' || operation === 'handoff') {
+    const handedOff = operation === 'handoff';
+    const extra = handedOff ? { prUrl } : {};
+    if (!currentLease) {
+      // Idempotent: a replayed publication event must still report the
+      // terminal state rather than failing the handoff.
+      return result(
+        handedOff ? 'handed-off' : 'released',
+        'already-released',
+        scope,
+        null,
+        'none',
+        extra,
+      );
     }
-    return {
-      ...result('released', 'lease-released', scope, null, 'delete'),
-      expectedCommentId: current.id,
-      expectedLeaseId: currentLease.leaseId,
-    };
+    if (!sameScope || currentLease.leaseId !== leaseId) {
+      return result('contended', 'lease-not-held', scope, currentLease, 'none', extra);
+    }
+    return result(
+      handedOff ? 'handed-off' : 'released',
+      handedOff ? 'handoff-complete' : 'lease-released',
+      scope,
+      null,
+      'delete',
+      {
+        ...extra,
+        expectedCommentId: current.id,
+        expectedLeaseId: currentLease.leaseId,
+      },
+    );
   }
 
   if (operation === 'heartbeat') {
@@ -196,8 +270,7 @@ export function decideLifecycleLease(input) {
     version: 1,
     owner: 'goobers',
     repository,
-    prNumber,
-    headSha,
+    issueNumber,
     leaseId,
     acquiredAt,
     expiresAt: new Date(
@@ -213,11 +286,10 @@ export function decideLifecycleLease(input) {
     : sameScope && active
       ? 'lease-renewed'
       : 'lease-takeover';
-  return {
-    ...result(status, reason, scope, lease, current ? 'update' : 'create'),
+  return result(status, reason, scope, lease, current ? 'update' : 'create', {
     expectedCommentId: current?.id ?? null,
     expectedLeaseId: currentLease?.leaseId ?? null,
-  };
+  });
 }
 
 function parseArgs(argv) {

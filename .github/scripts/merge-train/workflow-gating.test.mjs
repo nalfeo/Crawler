@@ -69,15 +69,27 @@ test('ci-recovery-incidents.yml routes scheduled CI regardless of MERGE_TRAIN_EN
   assert.doesNotMatch(routeIncident, /MERGE_TRAIN_ENABLED/);
 });
 
-test('lifecycle ownership requires one exact owner and keeps legacy paths observe-only otherwise', () => {
-  for (const content of [mergeTrain, ciRecovery, autoRebase, ciRecoveryRouter]) {
-    assert.match(content, /LIFECYCLE_MUTATION_OWNER/);
+test('each legacy lane is gated on its own owner, never the claim selector', () => {
+  // The no-downtime contract: selecting Goobers for the pre-PR implementation
+  // claim must not turn any unmigrated PR-lifecycle lane observe-only.
+  const lanes = [
+    [mergeTrain, 'LIFECYCLE_OWNER_MERGE_TRAIN'],
+    [ciRecovery, 'LIFECYCLE_OWNER_CI_RECOVERY'],
+    [autoRebase, 'LIFECYCLE_OWNER_BRANCH_UPDATE'],
+    [ciRecoveryRouter, 'LIFECYCLE_OWNER_CI_RECOVERY'],
+  ];
+  for (const [content, laneVar] of lanes) {
     assert.match(content, /LEGACY_CI_MUTATION_BRIDGE_ENABLED/);
-    assert.match(
-      content,
-      /LIFECYCLE_MUTATION_OWNER == 'legacy' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
-    );
     assert.match(content, /observe-only/);
+    // Legacy keeps writing unless THIS lane migrated to Goobers.
+    assert.ok(
+      content.includes(
+        `vars.${laneVar} != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`,
+      ),
+      `${laneVar} lane gate missing`,
+    );
+    // The claim-lane selector must never gate a PR-lifecycle lane.
+    assert.doesNotMatch(content, /vars\.LIFECYCLE_MUTATION_OWNER/);
   }
 
   assert.match(mergeTrain, /Observe legacy merge-train triggers without mutation/);
@@ -86,27 +98,33 @@ test('lifecycle ownership requires one exact owner and keeps legacy paths observ
   assert.match(ciRecoveryRouter, /Observe legacy CI-recovery triggers without dispatch/);
   assert.match(
     ciRecoveryRouter,
-    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
+    /name: Dispatch per-PR reconciliation[\s\S]*if: vars\.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars\.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'/,
   );
 });
 
-test('Goobers ownership uses the shared PR lifecycle queue and rechecks trust before writes', () => {
-  assert.match(
-    goobersLifecycleOwner,
-    /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \|\| github\.event\.pull_request\.number/,
-  );
+test('Goobers claim ownership is issue-scoped, handed off at publication, and trust-checked', () => {
+  // Claim concurrency is its own group so it can never serialize behind, or
+  // stall, PR-lifecycle automation.
+  assert.match(goobersLifecycleOwner, /group: crawler-implementation-claim-/);
   assert.match(goobersLifecycleOwner, /cancel-in-progress: false/);
   assert.match(goobersLifecycleOwner, /queue: max/);
-  assert.match(ciRecovery, /group: crawler-pr-lifecycle-\$\{\{ inputs\.pr_number \}\}/);
+  assert.match(ciRecovery, /group: crawler-ci-pr-\$\{\{ inputs\.pr_number \}\}/);
   assert.match(ciRecovery, /queue: max/);
-  assert.match(goobersLifecycleOwner, /headRepository: pull\.head\.repo\?\.full_name/);
-  assert.match(goobersLifecycleOwner, /liveHeadSha: pull\.head\.sha/);
+
+  // Publication is a handoff, not a lease acquisition.
+  assert.match(goobersLifecycleOwner, /types: \[opened, ready_for_review\]/);
+  assert.doesNotMatch(goobersLifecycleOwner, /synchronize/);
+  assert.match(goobersLifecycleOwner, /- handoff/);
+  assert.match(goobersLifecycleOwner, /closingIssuesReferences/);
+  assert.match(goobersLifecycleOwner, /issueNumber/);
+  // No PR-head fence remains, because the claim never covers a PR lifecycle.
+  assert.doesNotMatch(goobersLifecycleOwner, /liveHeadSha: pull\.head\.sha/);
+
   assert.match(goobersLifecycleOwner, /getRepoVariable/);
   assert.match(goobersLifecycleOwner, /lifecycleWriterEnabled/);
-  assert.match(goobersLifecycleOwner, /pull\.head\.sha/);
   assert.match(goobersLifecycleOwner, /markers\.length !== 1/);
   // Both marker scans must go through the trusted-author filter so an external
-  // commenter cannot forge or poison the lease state.
+  // commenter cannot forge or poison the claim state.
   assert.equal(goobersLifecycleOwner.match(/selectLifecycleLeaseComments\(comments\)/g)?.length, 2);
   assert.doesNotMatch(goobersLifecycleOwner, /startsWith\(ownership\.LIFECYCLE_LEASE_MARKER/);
   assert.match(goobersLifecycleOwner, /Refresh lease clock from GitHub server/);

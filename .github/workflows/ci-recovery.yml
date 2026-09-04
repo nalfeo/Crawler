@@ -46,7 +46,7 @@ on:
         type: string
 
 concurrency:
-  group: crawler-pr-lifecycle-${{ inputs.pr_number }}
+  group: crawler-ci-pr-${{ inputs.pr_number }}
   queue: max
 
 permissions:
@@ -84,15 +84,16 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Observe legacy CI recovery without mutation
-        if: vars.LIFECYCLE_MUTATION_OWNER != 'legacy' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY == 'goobers' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
         run: |
-          echo "Legacy CI recovery is observe-only. LIFECYCLE_MUTATION_OWNER=${{ vars.LIFECYCLE_MUTATION_OWNER || 'off' }}; no direct PR mutation is permitted."
+          echo "Legacy CI recovery is observe-only. LIFECYCLE_OWNER_CI_RECOVERY=${{ vars.LIFECYCLE_OWNER_CI_RECOVERY || 'legacy' }}; bridge=${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}; no direct PR mutation is permitted."
 
       - name: Reconcile PR or update shepherd lease
         id: legacy-reconcile
-        if: vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
           LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
+          LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS || 'legacy' }}
           CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,7 +114,7 @@ jobs:
 
       - name: Capture immutable CI Recovery decision
         id: capture-legacy-decision
-        if: always() && vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: always() && vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         continue-on-error: true
         uses: actions/github-script@v7
         env:

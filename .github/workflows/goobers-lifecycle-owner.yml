@@ -1,36 +1,46 @@
 name: Goobers Lifecycle Owner
-run-name: Goobers lifecycle ${{ inputs.operation || (github.event.action == 'closed' && 'release' || 'acquire') }} for PR #${{ inputs.pr_number || github.event.pull_request.number }}
+run-name: Goobers implementation claim ${{ inputs.operation || 'handoff' }} for issue #${{ inputs.issue_number || 'auto' }}
 
+# Phase 2 boundary: Goobers owns the PRE-PR implementation claim only --
+# approved-issue intake through PR publication. It deliberately does NOT hold a
+# PR-lifecycle lease. At publication the claim is handed off (released) and
+# legacy automation owns CI recovery, review threads, rebasing, and the merge
+# train with no gap and no dual writer.
 on:
+  # Publication is the handoff point, not a lease-acquisition point.
   pull_request_target:
-    types: [opened, reopened, synchronize, ready_for_review, closed]
+    types: [opened, ready_for_review]
   workflow_dispatch:
     inputs:
       operation:
-        description: Lifecycle lease operation
+        description: Implementation claim operation
         required: true
         default: acquire
         type: choice
         options:
           - acquire
           - heartbeat
+          - handoff
           - release
-      pr_number:
-        description: Pull request number
+      issue_number:
+        description: Approved issue being implemented
         required: true
         type: string
-      expected_head_sha:
-        description: Exact PR head SHA validated by the caller
-        required: true
+      pr_url:
+        description: Published PR URL (required for handoff)
+        required: false
+        default: ''
         type: string
       lease_id:
-        description: Existing lease identifier for heartbeat or release
+        description: Existing lease identifier for heartbeat, handoff, or release
         required: false
         default: ''
         type: string
 
 concurrency:
-  group: crawler-pr-lifecycle-${{ inputs.pr_number || github.event.pull_request.number || 'invalid' }}
+  # Scoped to the claim subject (the issue), NOT to a PR, so this workflow can
+  # never serialize behind or stall PR-lifecycle automation.
+  group: crawler-implementation-claim-${{ inputs.issue_number || github.event.pull_request.number || 'invalid' }}
   cancel-in-progress: false
   queue: max
 
@@ -59,10 +69,11 @@ jobs:
         id: ownership-input
         uses: actions/github-script@v7
         env:
-          REQUESTED_OPERATION: ${{ inputs.operation || (github.event.action == 'closed' && 'release' || 'acquire') }}
-          REQUESTED_PR: ${{ inputs.pr_number || github.event.pull_request.number }}
-          REQUESTED_HEAD: ${{ inputs.expected_head_sha || github.event.pull_request.head.sha }}
+          REQUESTED_OPERATION: ${{ inputs.operation || 'handoff' }}
+          REQUESTED_ISSUE: ${{ inputs.issue_number }}
+          REQUESTED_PR_URL: ${{ inputs.pr_url }}
           REQUESTED_LEASE: ${{ inputs.lease_id }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
           LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
         with:
@@ -74,19 +85,46 @@ jobs:
               process.env.GITHUB_WORKSPACE,
               '.github/scripts/lifecycle-ownership.mjs',
             )));
-            const prNumber = Number(process.env.REQUESTED_PR);
-            if (!Number.isInteger(prNumber) || prNumber < 1) {
-              throw new Error(`Invalid PR number: ${process.env.REQUESTED_PR}`);
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const operation = process.env.REQUESTED_OPERATION;
+            let issueNumber = Number(process.env.REQUESTED_ISSUE);
+            let prUrl = process.env.REQUESTED_PR_URL || '';
+
+            // On a publication event the claim subject is the approved issue the
+            // PR closes. Resolving it from GitHub's own closing references (not
+            // free-text parsing) keeps the handoff deterministic.
+            if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+              const prNumber = Number(process.env.EVENT_PR_NUMBER);
+              if (!Number.isInteger(prNumber) || prNumber < 1) {
+                throw new Error('No issue_number input and no pull request in context.');
+              }
+              const linked = await github.graphql(
+                `query($owner:String!,$repo:String!,$pr:Int!){
+                  repository(owner:$owner,name:$repo){
+                    pullRequest(number:$pr){
+                      url
+                      closingIssuesReferences(first:10){ nodes { number } }
+                    }
+                  }
+                }`,
+                { owner: context.repo.owner, repo: context.repo.repo, pr: prNumber },
+              );
+              const pull = linked.repository.pullRequest;
+              prUrl = prUrl || pull.url;
+              issueNumber = pull.closingIssuesReferences.nodes[0]?.number ?? 0;
+              if (!issueNumber) {
+                // Nothing was claimed, so there is nothing to hand off. Legacy
+                // PR-lifecycle automation is already live either way.
+                core.info('LIFECYCLE_OWNERSHIP_DECISION {"status":"observe-only","reason":"no-claimed-issue"}');
+                core.setOutput('skip', 'true');
+                return;
+              }
             }
-            const pull = (await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            })).data;
+
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
+              issue_number: issueNumber,
               per_page: 100,
             });
             const markerComments = ownership
@@ -95,18 +133,15 @@ jobs:
             const currentLease = markerComments.length === 1
               ? ownership.parseLifecycleLease(markerComments[0].body)
               : null;
-            const operation = process.env.REQUESTED_OPERATION;
             const leaseId = process.env.REQUESTED_LEASE ||
-              (operation === 'release' ? currentLease?.leaseId : '') ||
+              (operation === 'release' || operation === 'handoff' ? currentLease?.leaseId : '') ||
               `goobers:${context.runId}:${process.env.GITHUB_RUN_ATTEMPT || '1'}`;
             const input = {
               owner: process.env.LIFECYCLE_MUTATION_OWNER,
               legacyBridgeEnabled: process.env.LEGACY_CI_MUTATION_BRIDGE_ENABLED,
-              repository: `${context.repo.owner}/${context.repo.repo}`,
-              headRepository: pull.head.repo?.full_name || '',
-              prNumber,
-              headSha: process.env.REQUESTED_HEAD,
-              liveHeadSha: pull.head.sha || '',
+              repository,
+              issueNumber,
+              prUrl,
               leaseId,
               operation,
               now: '',
@@ -118,10 +153,11 @@ jobs:
               '.goobers-lifecycle/input.json',
               `${JSON.stringify(input, null, 2)}\n`,
             );
-            core.setOutput('pr-number', String(prNumber));
-            core.setOutput('head-sha', input.headSha);
+            core.setOutput('skip', 'false');
+            core.setOutput('issue-number', String(issueNumber));
 
       - name: Download pinned Goobers release
+        if: steps.ownership-input.outputs.skip != 'true'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/goobers-lifecycle-bin"
@@ -133,6 +169,7 @@ jobs:
           echo "$RUNNER_TEMP/goobers-lifecycle-bin" >> "$GITHUB_PATH"
 
       - name: Materialize ownership-only Goobers instance
+        if: steps.ownership-input.outputs.skip != 'true'
         run: |
           set -euo pipefail
           GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
@@ -168,6 +205,7 @@ jobs:
           goobers validate "$GOOBERS_INSTANCE"
 
       - name: Refresh lease clock from GitHub server
+        if: steps.ownership-input.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -187,6 +225,7 @@ jobs:
             fs.writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
 
       - name: Run authoritative Goobers ownership decision
+        if: steps.ownership-input.outputs.skip != 'true'
         env:
           GOOBERS_GITHUB_TOKEN: ${{ github.token }}
           GOOBERS_LIFECYCLE_INPUT_FILE: ${{ github.workspace }}/.goobers-lifecycle/input.json
@@ -197,6 +236,7 @@ jobs:
           goobers run crawler-lifecycle-owner "$GOOBERS_INSTANCE"
 
       - name: Extract ownership decision
+        if: steps.ownership-input.outputs.skip != 'true'
         run: |
           set -euo pipefail
           GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
@@ -216,9 +256,9 @@ jobs:
 
       - name: Apply fenced ownership lease
         uses: actions/github-script@v7
+        if: steps.ownership-input.outputs.skip != 'true'
         env:
-          PR_NUMBER: ${{ steps.ownership-input.outputs.pr-number }}
-          EXPECTED_HEAD_SHA: ${{ steps.ownership-input.outputs.head-sha }}
+          ISSUE_NUMBER: ${{ steps.ownership-input.outputs.issue-number }}
         with:
           script: |
             const fs = require('node:fs');
@@ -262,26 +302,24 @@ jobs:
               return;
             }
 
-            const prNumber = Number(process.env.PR_NUMBER);
-            const pull = (await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: prNumber,
-            })).data;
+            // The claim subject is the issue, so the apply-time fence is the
+            // issue identity plus the marker identity checked below. There is no
+            // PR head fence because this lease never covers a PR lifecycle.
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+              core.warning('Missing issue scope before lease write; skipping mutation.');
+              return;
+            }
             const repository = `${context.repo.owner}/${context.repo.repo}`.toLowerCase();
-            if (
-              String(pull.head.repo?.full_name || '').toLowerCase() !== repository ||
-              String(pull.head.sha || '').toLowerCase() !==
-                String(process.env.EXPECTED_HEAD_SHA || '').toLowerCase()
-            ) {
-              core.warning('PR repository or head changed before lease write; skipping mutation.');
+            if (String(decision.lockKey || '') !== `${repository}#issue-${issueNumber}`) {
+              core.warning('Decision scope does not match the requested issue; skipping mutation.');
               return;
             }
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
+              issue_number: issueNumber,
               per_page: 100,
             });
             const markers = ownership.selectLifecycleLeaseComments(comments);
@@ -293,7 +331,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: prNumber,
+                issue_number: issueNumber,
                 body: ownership.renderLifecycleLease(decision.lease),
               });
               return;

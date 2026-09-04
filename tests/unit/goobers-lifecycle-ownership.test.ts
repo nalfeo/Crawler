@@ -8,7 +8,12 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const {
   decideLifecycleLease,
   isTrustedLifecycleLeaseComment,
+  LIFECYCLE_CLAIM_LANE,
+  LIFECYCLE_LANES,
   LIFECYCLE_LEASE_MARKER,
+  LIFECYCLE_PR_LANES,
+  lifecycleLaneOwner,
+  lifecycleLaneWriterEnabled,
   lifecycleLeaseTtlSeconds,
   lifecycleWriterEnabled,
   parseLifecycleLease,
@@ -17,21 +22,24 @@ const {
 } = await import(path.join(repositoryRoot, '.github/scripts/lifecycle-ownership.mjs'));
 const markers = await import(path.join(repositoryRoot, '.github/scripts/ci-recovery/markers.mjs'));
 
-const headSha = 'a'.repeat(40);
+function workflow(name: string) {
+  return fs.readFileSync(path.join(repositoryRoot, '.github/workflows', name), 'utf8');
+}
+
 const base = {
   owner: 'goobers',
-  legacyBridgeEnabled: 'false',
+  legacyBridgeEnabled: 'true',
   repository: 'nalfeo/Crawler',
-  headRepository: 'nalfeo/Crawler',
-  prNumber: 42,
-  headSha,
-  liveHeadSha: headSha,
+  issueNumber: 3843,
   leaseId: 'goobers:100:1',
   operation: 'acquire',
   now: '2026-09-02T03:00:00.000Z',
   ttlSeconds: '300',
-  markerComments: [],
+  markerComments: [] as Array<{ id: number; body: string }>,
 };
+
+/** Phase 2 steady state: Goobers claims, legacy still runs every PR lane. */
+const PHASE_2 = { owner: 'goobers', legacyBridgeEnabled: 'true' };
 
 function markerComment(
   leaseId: string,
@@ -44,8 +52,7 @@ function markerComment(
       version: 1,
       owner: 'goobers',
       repository: base.repository,
-      prNumber: base.prNumber,
-      headSha,
+      issueNumber: base.issueNumber,
       leaseId,
       acquiredAt: base.now,
       expiresAt,
@@ -73,40 +80,126 @@ describe('Goobers lifecycle ownership', () => {
     expect(LIFECYCLE_LEASE_MARKER).toBe(markers.LIFECYCLE_LEASE_MARKER);
     expect(markers.MANAGED_COMMENT_MARKERS).toContain(markers.LIFECYCLE_LEASE_MARKER);
     expect(markers.MANAGED_COMMENT_MARKERS).toContain(markers.LIFECYCLE_LEASE_DATA_PREFIX);
-    expect(renderLifecycleLease({ ...base, owner: 'goobers', version: 1 })).toContain(
+    expect(renderLifecycleLease(decideLifecycleLease(base).lease)).toContain(
       markers.LIFECYCLE_LEASE_DATA_PREFIX,
     );
   });
 
-  it('keeps the owner workflow startup-valid and isolated at runtime', () => {
-    const workflow = fs.readFileSync(
-      path.join(repositoryRoot, '.github/workflows/goobers-lifecycle-owner.yml'),
-      'utf8',
-    );
+  // ---------------------------------------------------------------------------
+  // Lane ownership: the no-downtime contract
+  // ---------------------------------------------------------------------------
 
-    // `runner.*` is not available in `jobs.<id>.env`, which makes the whole
-    // workflow file startup-invalid (zero jobs, run named by file path).
-    expect(workflow).not.toMatch(/\$\{\{[^}]*\brunner\.temp\b[^}]*\}\}/);
-    expect(
-      workflow.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-lifecycle-instance"$/gm),
-    ).toHaveLength(3);
-    expect(workflow.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
+  it('keeps every PR-lifecycle lane on legacy while Goobers owns the claim lane', () => {
+    expect(lifecycleLaneOwner(LIFECYCLE_CLAIM_LANE, PHASE_2)).toBe('goobers');
+    expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, PHASE_2, 'goobers')).toBe(true);
+    expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, PHASE_2, 'legacy')).toBe(false);
 
-    // Goobers v0.3.3 materialization requires an existing instance `config/`,
-    // and the runner must only see this workflow's own gaggle definition.
-    expect(workflow).toContain('mkdir -p "$GOOBERS_INSTANCE/config"');
-    expect(workflow).toContain(
-      'cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml',
-    );
-    expect(workflow).not.toMatch(/cp\s+(?:-[^\s]+\s+)*\.goobers\/?\s/);
-    expect(workflow).not.toContain('path: ${GITHUB_WORKSPACE}/.goobers');
-    expect(workflow).toMatch(
-      /path: \.goobers-lifecycle\/\s+if-no-files-found: error\s+include-hidden-files: true/,
-    );
+    for (const lane of LIFECYCLE_PR_LANES) {
+      expect(lifecycleLaneOwner(lane, PHASE_2)).toBe('legacy');
+      expect(lifecycleLaneWriterEnabled(lane, PHASE_2, 'legacy')).toBe(true);
+      expect(lifecycleLaneWriterEnabled(lane, PHASE_2, 'goobers')).toBe(false);
+    }
   });
 
+  it('never leaves a lane without exactly one writer in Phase 2', () => {
+    for (const lane of LIFECYCLE_LANES) {
+      const writers = (['goobers', 'legacy'] as const).filter((actor) =>
+        lifecycleLaneWriterEnabled(lane, PHASE_2, actor),
+      );
+      expect(writers).toHaveLength(1);
+    }
+  });
+
+  it('fails closed only for the claim lane and never disables an unrelated required lane', () => {
+    // Every one of these is a malformed/partial configuration of the CLAIM
+    // selector. None of them may take a PR-lifecycle lane offline.
+    for (const owner of ['', 'typo', 'Goobers', ' goobers', 'LEGACY', undefined]) {
+      const config = { owner, legacyBridgeEnabled: 'true' };
+      expect(lifecycleLaneOwner(LIFECYCLE_CLAIM_LANE, config)).toBe('off');
+      expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, config, 'goobers')).toBe(false);
+      expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, config, 'legacy')).toBe(false);
+
+      for (const lane of LIFECYCLE_PR_LANES) {
+        expect(lifecycleLaneWriterEnabled(lane, config, 'legacy')).toBe(true);
+      }
+    }
+
+    // A malformed lane selector also fails operational, never dark.
+    for (const laneOwner of ['', 'goobrs', 'Goobers', ' goobers', 'legacy', undefined]) {
+      const config = { ...PHASE_2, laneOwners: { 'merge-train': laneOwner } };
+      expect(lifecycleLaneOwner('merge-train', config)).toBe('legacy');
+      expect(lifecycleLaneWriterEnabled('merge-train', config, 'legacy')).toBe(true);
+    }
+  });
+
+  it('migrates each Phase 3 lane independently without creating dual writers', () => {
+    for (const migrating of LIFECYCLE_PR_LANES) {
+      const config = { ...PHASE_2, laneOwners: { [migrating]: 'goobers' } };
+
+      expect(lifecycleLaneWriterEnabled(migrating, config, 'goobers')).toBe(true);
+      expect(lifecycleLaneWriterEnabled(migrating, config, 'legacy')).toBe(false);
+
+      for (const untouched of LIFECYCLE_PR_LANES.filter((lane: string) => lane !== migrating)) {
+        expect(lifecycleLaneWriterEnabled(untouched, config, 'legacy')).toBe(true);
+        expect(lifecycleLaneWriterEnabled(untouched, config, 'goobers')).toBe(false);
+      }
+
+      for (const lane of LIFECYCLE_LANES) {
+        const writers = (['goobers', 'legacy'] as const).filter((actor) =>
+          lifecycleLaneWriterEnabled(lane, config, actor),
+        );
+        expect(writers).toHaveLength(1);
+      }
+    }
+  });
+
+  it('restores legacy claim ownership on rollback and honours the emergency kill switch', () => {
+    const rollback = { owner: 'legacy', legacyBridgeEnabled: 'true' };
+    expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, rollback, 'legacy')).toBe(true);
+    expect(lifecycleLaneWriterEnabled(LIFECYCLE_CLAIM_LANE, rollback, 'goobers')).toBe(false);
+    for (const lane of LIFECYCLE_PR_LANES) {
+      expect(lifecycleLaneWriterEnabled(lane, rollback, 'legacy')).toBe(true);
+    }
+
+    // Kill switch: bridge off stops every legacy mutation lane at once.
+    for (const bridge of ['false', '', 'tru', undefined]) {
+      const killed = { owner: 'legacy', legacyBridgeEnabled: bridge };
+      for (const lane of LIFECYCLE_LANES) {
+        expect(lifecycleLaneWriterEnabled(lane, killed, 'legacy')).toBe(false);
+      }
+    }
+    // The kill switch never silently promotes Goobers into a legacy lane.
+    for (const lane of LIFECYCLE_PR_LANES) {
+      expect(
+        lifecycleLaneWriterEnabled(
+          lane,
+          { owner: 'legacy', legacyBridgeEnabled: 'false' },
+          'goobers',
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('keeps the claim-lane writer check decoupled from the legacy bridge', () => {
+    // Regression: the original design required bridge=false for Goobers, which
+    // forced every legacy lane offline the moment Goobers was selected.
+    expect(
+      lifecycleWriterEnabled({ owner: 'goobers', legacyBridgeEnabled: 'true' }, 'goobers'),
+    ).toBe(true);
+    expect(
+      lifecycleWriterEnabled({ owner: 'goobers', legacyBridgeEnabled: 'false' }, 'goobers'),
+    ).toBe(true);
+    expect(
+      lifecycleWriterEnabled({ owner: 'goobers', legacyBridgeEnabled: 'true' }, 'legacy'),
+    ).toBe(false);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Claim lease behaviour
+  // ---------------------------------------------------------------------------
+
   it('keeps the Goobers task decision-only', () => {
-    const workflow = parse(
+    const definition = parse(
       fs.readFileSync(
         path.join(
           repositoryRoot,
@@ -115,7 +208,7 @@ describe('Goobers lifecycle ownership', () => {
         'utf8',
       ),
     );
-    const task = workflow.spec.tasks.find(
+    const task = definition.spec.tasks.find(
       (candidate: { name: string }) => candidate.name === 'decide-ownership',
     );
 
@@ -124,48 +217,13 @@ describe('Goobers lifecycle ownership', () => {
     expect(task.run.script).toContain('.github/scripts/lifecycle-ownership.mjs');
   });
 
-  it('selects exactly one writer and fails closed on invalid knob combinations', () => {
-    expect(
-      lifecycleWriterEnabled({ owner: 'goobers', legacyBridgeEnabled: 'false' }, 'goobers'),
-    ).toBe(true);
-    expect(
-      lifecycleWriterEnabled({ owner: 'goobers', legacyBridgeEnabled: 'false' }, 'legacy'),
-    ).toBe(false);
-    expect(lifecycleWriterEnabled({ owner: 'legacy', legacyBridgeEnabled: 'true' }, 'legacy')).toBe(
-      true,
-    );
-    expect(
-      lifecycleWriterEnabled({ owner: 'legacy', legacyBridgeEnabled: 'true' }, 'goobers'),
-    ).toBe(false);
-
-    for (const config of [
-      { owner: '', legacyBridgeEnabled: 'false' },
-      { owner: 'typo', legacyBridgeEnabled: 'true' },
-      { owner: 'goobers', legacyBridgeEnabled: 'true' },
-      { owner: 'legacy', legacyBridgeEnabled: 'false' },
-      { owner: 'Goobers', legacyBridgeEnabled: 'false' },
-      { owner: ' goobers', legacyBridgeEnabled: 'false' },
-      { owner: 'goobers', legacyBridgeEnabled: 'tru' },
-      { owner: 'goobers', legacyBridgeEnabled: 'FALSE' },
-      { owner: 'goobers', legacyBridgeEnabled: ' false ' },
-      { owner: 'goobers', legacyBridgeEnabled: '' },
-      { owner: 'goobers', legacyBridgeEnabled: undefined },
-      { owner: 'LEGACY', legacyBridgeEnabled: 'true' },
-      { owner: 'legacy', legacyBridgeEnabled: 'True' },
-      { owner: undefined, legacyBridgeEnabled: 'false' },
-    ]) {
-      expect(lifecycleWriterEnabled(config, 'goobers')).toBe(false);
-      expect(lifecycleWriterEnabled(config, 'legacy')).toBe(false);
-    }
-  });
-
-  it('acquires, renders, parses, and renews the same lease idempotently', () => {
+  it('acquires, renders, parses, and renews the same claim idempotently', () => {
     const acquired = decideLifecycleLease(base);
     expect(acquired).toMatchObject({
       status: 'acquired',
       reason: 'lease-created',
       writeAction: 'create',
-      lockKey: `nalfeo/crawler#42@${headSha}`,
+      lockKey: 'nalfeo/crawler#issue-3843',
     });
 
     const rendered = renderLifecycleLease(acquired.lease);
@@ -187,67 +245,52 @@ describe('Goobers lifecycle ownership', () => {
   });
 
   it('retains the active incumbent and deterministically permits expired takeover', () => {
-    const contended = decideLifecycleLease({
-      ...base,
-      leaseId: 'goobers:200:1',
-      markerComments: [markerComment(base.leaseId)],
-    });
-    expect(contended).toMatchObject({
+    expect(
+      decideLifecycleLease({
+        ...base,
+        leaseId: 'goobers:200:1',
+        markerComments: [markerComment(base.leaseId)],
+      }),
+    ).toMatchObject({
       status: 'contended',
       reason: 'active-lease',
       writeAction: 'none',
       lease: { leaseId: base.leaseId },
     });
 
-    const takeover = decideLifecycleLease({
-      ...base,
-      leaseId: 'goobers:200:1',
-      now: '2026-09-02T03:06:00.000Z',
-      markerComments: [markerComment(base.leaseId)],
-    });
-    expect(takeover).toMatchObject({
+    expect(
+      decideLifecycleLease({
+        ...base,
+        leaseId: 'goobers:200:1',
+        now: '2026-09-02T03:06:00.000Z',
+        markerComments: [markerComment(base.leaseId)],
+      }),
+    ).toMatchObject({
       status: 'acquired',
       reason: 'lease-takeover',
       writeAction: 'update',
       expectedCommentId: 7,
       expectedLeaseId: base.leaseId,
-      lease: {
-        leaseId: 'goobers:200:1',
-        acquiredAt: '2026-09-02T03:06:00.000Z',
-      },
+      lease: { leaseId: 'goobers:200:1', acquiredAt: '2026-09-02T03:06:00.000Z' },
     });
   });
 
-  it('rejects forks with the same result shape as same-repo input validation', () => {
-    expect(decideLifecycleLease({ ...base, headRepository: 'attacker/Crawler' })).toMatchObject({
-      status: 'rejected',
-      reason: 'fork',
-      writeAction: 'none',
-      observable: true,
-    });
-    expect(decideLifecycleLease({ ...base, headSha: 'short', liveHeadSha: 'short' })).toMatchObject(
-      {
+  it('rejects malformed claim input without mutating', () => {
+    for (const override of [
+      { issueNumber: 0 },
+      { issueNumber: Number.NaN },
+      { repository: '' },
+      { leaseId: '' },
+      { operation: 'promote' },
+      { now: 'not-a-date' },
+    ]) {
+      expect(decideLifecycleLease({ ...base, ...override })).toMatchObject({
         status: 'rejected',
         reason: 'invalid-input',
         writeAction: 'none',
         observable: true,
-      },
-    );
-  });
-
-  it('rejects a stale caller head against the live PR head before deciding a lease', () => {
-    expect(decideLifecycleLease({ ...base, liveHeadSha: 'b'.repeat(40) })).toMatchObject({
-      status: 'rejected',
-      reason: 'stale-head',
-      writeAction: 'none',
-      lease: null,
-      observable: true,
-    });
-    expect(decideLifecycleLease({ ...base, liveHeadSha: '' })).toMatchObject({
-      status: 'rejected',
-      reason: 'invalid-input',
-      writeAction: 'none',
-    });
+      });
+    }
   });
 
   it('counts only trusted authors when reading lease marker comments', () => {
@@ -272,17 +315,6 @@ describe('Goobers lifecycle ownership', () => {
     );
     expect(selectLifecycleLeaseComments([trusted, forged, poisoned])).toEqual([trusted]);
     expect(selectLifecycleLeaseComments([forged, poisoned])).toEqual([]);
-    expect(
-      decideLifecycleLease({
-        ...base,
-        markerComments: selectLifecycleLeaseComments([forged, poisoned]).map(
-          (comment: { id: number; body: string }) => ({
-            id: comment.id,
-            body: comment.body,
-          }),
-        ),
-      }),
-    ).toMatchObject({ status: 'acquired', reason: 'lease-created' });
   });
 
   it('fails closed on malformed or duplicate marker state', () => {
@@ -300,16 +332,18 @@ describe('Goobers lifecycle ownership', () => {
     ).toMatchObject({ status: 'contended', reason: 'duplicate-lease-state' });
   });
 
-  it('makes the kill switch immediately observe-only and requires the exact holder to release', () => {
-    const current = markerComment(base.leaseId);
+  it('is observe-only when Goobers does not own the claim lane', () => {
     expect(
       decideLifecycleLease({
         ...base,
         owner: 'legacy',
-        legacyBridgeEnabled: 'true',
-        markerComments: [current],
+        markerComments: [markerComment(base.leaseId)],
       }),
     ).toMatchObject({ status: 'observe-only', reason: 'goobers-not-selected' });
+  });
+
+  it('requires the exact holder to release the claim', () => {
+    const current = markerComment(base.leaseId);
     expect(
       decideLifecycleLease({
         ...base,
@@ -326,5 +360,163 @@ describe('Goobers lifecycle ownership', () => {
       writeAction: 'delete',
       expectedCommentId: 7,
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Publication handoff: approved issue -> Goobers -> PR -> legacy, with no gap
+  // ---------------------------------------------------------------------------
+
+  it('hands the claim off at PR publication and leaves no Goobers writer behind', () => {
+    const current = markerComment(base.leaseId);
+    const prUrl = 'https://github.com/nalfeo/Crawler/pull/4091';
+
+    const handoff = decideLifecycleLease({
+      ...base,
+      operation: 'handoff',
+      prUrl,
+      markerComments: [current],
+    });
+    expect(handoff).toMatchObject({
+      status: 'handed-off',
+      reason: 'handoff-complete',
+      writeAction: 'delete',
+      expectedCommentId: 7,
+      expectedLeaseId: base.leaseId,
+      lease: null,
+      prUrl,
+    });
+
+    // After the handoff the claim marker is gone, so a later acquire for the
+    // same issue starts clean rather than colliding with a stale PR lease.
+    expect(decideLifecycleLease({ ...base, markerComments: [] })).toMatchObject({
+      status: 'acquired',
+      reason: 'lease-created',
+    });
+  });
+
+  it('makes a replayed publication handoff idempotent', () => {
+    expect(
+      decideLifecycleLease({
+        ...base,
+        operation: 'handoff',
+        prUrl: 'https://github.com/nalfeo/Crawler/pull/4091',
+        markerComments: [],
+      }),
+    ).toMatchObject({
+      status: 'handed-off',
+      reason: 'already-released',
+      writeAction: 'none',
+    });
+  });
+
+  it('refuses a handoff that does not point at a PR in this repository', () => {
+    for (const prUrl of [
+      '',
+      'https://github.com/attacker/Crawler/pull/1',
+      'https://example.com/nalfeo/Crawler/pull/1',
+      'https://github.com/nalfeo/Crawler/issues/1',
+    ]) {
+      expect(
+        decideLifecycleLease({
+          ...base,
+          operation: 'handoff',
+          prUrl,
+          markerComments: [markerComment(base.leaseId)],
+        }),
+      ).toMatchObject({
+        status: 'rejected',
+        reason: 'invalid-handoff-target',
+        writeAction: 'none',
+      });
+    }
+  });
+
+  it('keeps PR-lifecycle lanes live throughout the whole handoff sequence', () => {
+    const current = markerComment(base.leaseId);
+    const sequence = [
+      { operation: 'acquire', markerComments: [] },
+      { operation: 'heartbeat', markerComments: [current] },
+      {
+        operation: 'handoff',
+        prUrl: 'https://github.com/nalfeo/Crawler/pull/4091',
+        markerComments: [current],
+      },
+    ];
+
+    for (const step of sequence) {
+      const decision = decideLifecycleLease({ ...base, ...step });
+      expect(decision.status).not.toBe('rejected');
+      // The invariant that matters: at no point in the claim lifecycle does a
+      // PR-lifecycle lane lose its legacy writer.
+      for (const lane of LIFECYCLE_PR_LANES) {
+        expect(lifecycleLaneWriterEnabled(lane, PHASE_2, 'legacy')).toBe(true);
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Workflow wiring
+  // ---------------------------------------------------------------------------
+
+  it('gates each legacy workflow on its own lane, not the claim selector', () => {
+    const laneGates: Array<[string, string]> = [
+      ['ci-recovery.yml', 'LIFECYCLE_OWNER_CI_RECOVERY'],
+      ['ci-recovery-router.yml', 'LIFECYCLE_OWNER_CI_RECOVERY'],
+      ['merge-train.yml', 'LIFECYCLE_OWNER_MERGE_TRAIN'],
+      ['auto-rebase-prs.yml', 'LIFECYCLE_OWNER_BRANCH_UPDATE'],
+    ];
+
+    for (const [file, laneVar] of laneGates) {
+      const source = workflow(file);
+      // Selecting Goobers for the claim lane must not appear in a legacy gate.
+      expect(source).not.toContain("vars.LIFECYCLE_MUTATION_OWNER == 'legacy'");
+      expect(source).not.toContain("vars.LIFECYCLE_MUTATION_OWNER != 'legacy'");
+      // Legacy runs unless that specific lane migrated to Goobers.
+      expect(source).toContain(
+        `vars.${laneVar} != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`,
+      );
+    }
+  });
+
+  it('keeps the owner workflow scoped to the pre-PR claim and its publication handoff', () => {
+    const source = workflow('goobers-lifecycle-owner.yml');
+    const parsed = parse(source);
+
+    // Publication is a handoff trigger only -- never synchronize/closed, which
+    // would make this a PR-lifecycle lease again.
+    expect(parsed.on.pull_request_target.types).toEqual(['opened', 'ready_for_review']);
+    expect(parsed.on.workflow_dispatch.inputs.operation.options).toEqual([
+      'acquire',
+      'heartbeat',
+      'handoff',
+      'release',
+    ]);
+    expect(parsed.on.workflow_dispatch.inputs.issue_number).toBeDefined();
+    expect(parsed.on.workflow_dispatch.inputs.pr_number).toBeUndefined();
+
+    // Claim concurrency must not share the PR-lifecycle group, or the claim
+    // lane could stall PR automation.
+    expect(parsed.concurrency.group).toContain('crawler-implementation-claim-');
+    expect(workflow('ci-recovery.yml')).toContain('group: crawler-ci-pr-');
+
+    // Startup validity regressions (see PR #4132 / #4157).
+    expect(source).not.toMatch(/\$\{\{[^}]*\brunner\.temp\b[^}]*\}\}/);
+    expect(
+      source.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-lifecycle-instance"$/gm),
+    ).toHaveLength(3);
+    expect(source.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
+    expect(source).toContain('mkdir -p "$GOOBERS_INSTANCE/config"');
+    expect(source).toContain('cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml');
+    expect(source).not.toMatch(/cp\s+(?:-[^\s]+\s+)*\.goobers\/?\s/);
+    expect(source).not.toContain('path: ${GITHUB_WORKSPACE}/.goobers');
+    expect(source).toMatch(
+      /path: \.goobers-lifecycle\/\s+if-no-files-found: error\s+include-hidden-files: true/,
+    );
+  });
+
+  it('passes the review-thread lane owner into the legacy reconciler', () => {
+    expect(workflow('ci-recovery.yml')).toContain(
+      "LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS || 'legacy' }}",
+    );
   });
 });

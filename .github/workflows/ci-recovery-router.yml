@@ -83,12 +83,12 @@ jobs:
           persist-credentials: false
 
       - name: Observe legacy CI-recovery triggers without dispatch
-        if: vars.LIFECYCLE_MUTATION_OWNER != 'legacy' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY == 'goobers' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
         run: |
           echo "Legacy CI Recovery Router is observe-only. Trigger=${{ github.event_name }}; no direct recovery dispatch is permitted."
 
       - name: Dispatch per-PR reconciliation
-        if: vars.LIFECYCLE_MUTATION_OWNER == 'legacy' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}

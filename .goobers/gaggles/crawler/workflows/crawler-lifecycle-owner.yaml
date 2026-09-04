@@ -5,7 +5,7 @@ metadata:
   name: crawler-lifecycle-owner
 spec:
   gaggle: crawler
-  displayName: Crawler lifecycle ownership lease
+  displayName: Crawler implementation claim lease
   triggers:
     - type: manual
   readiness:
@@ -14,7 +14,10 @@ spec:
   tasks:
     - name: decide-ownership
       type: deterministic
-      goal: Decide the single lifecycle lease owner without directly mutating GitHub.
+      goal: >-
+        Decide the single pre-PR implementation claim owner without directly
+        mutating GitHub. Scoped to the approved issue and released at PR
+        publication so legacy automation owns the PR lifecycle.
       run:
         script: |
           set -eu

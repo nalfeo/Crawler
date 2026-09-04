@@ -39,22 +39,41 @@ The workflow has no write-capable permissions and makes no repository, issue,
 or PR mutation call.
 
 Phase 2 adds `crawler-lifecycle-owner`, the authoritative deterministic
-claim/heartbeat/release decision path for PR/head leases. The hosted
-`goobers-lifecycle-owner.yml` wrapper supplies a GitHub workflow-run timestamp,
-serializes on the same per-PR concurrency group as CI Recovery, and revalidates
-the live repository, head SHA, owner selector, bridge setting, and current lease
-before persisting the decision in one managed PR comment. The Goobers workflow
-itself has no GitHub mutation capability. Active contention and malformed or
-duplicate lease state fail closed and remain visible in the uploaded decision
-artifact.
+acquire/heartbeat/handoff/release decision path for the **pre-PR implementation
+claim**. The boundary is explicit:
 
-`LIFECYCLE_MUTATION_OWNER` is an exact owner selector, not a truthy flag.
-Goobers writes require `goobers` plus
-`LEGACY_CI_MUTATION_BRIDGE_ENABLED=false`; legacy writes require `legacy` plus
-the bridge set to `true`. Unset, invalid, or inconsistent combinations disable
-both writers. See
+- **Goobers owns** approved-issue intake and the implementation work, up to and
+  including PR creation, publication, and readiness.
+- **At PR publication the claim is handed off.** The claim lease is deleted and
+  legacy automation owns the PR lifecycle from that moment: CI Recovery and
+  reconciliation state, review-thread reply/resolve, auto-rebase branch updates,
+  and merge-train admission plus promotion/eviction.
+
+The claim lease exists only to stop two implementers claiming the same approved
+issue. It is deliberately **not** a PR-lifecycle lease, it is keyed by the issue
+(`<owner>/<repo>#issue-<n>`), and no PR-lifecycle lane consults it. The hosted
+`goobers-lifecycle-owner.yml` wrapper supplies a GitHub workflow-run timestamp,
+serializes on its own `crawler-implementation-claim-*` group (never the PR
+group, so it cannot stall PR automation), and revalidates the owner selector and
+current marker before persisting the decision in one managed comment. The
+Goobers workflow itself has no GitHub mutation capability. Contention and
+malformed or duplicate marker state fail closed and stay visible in the uploaded
+decision artifact.
+
+**Ownership is per lane, so a cutover has no downtime.**
+`LIFECYCLE_MUTATION_OWNER` selects the owner of the implementation-claim lane
+**only**: exactly `goobers` or `legacy`, anything else disables both claim
+writers (fail closed, because duplicate implementation work is the costly
+failure). Every PR-lifecycle lane has its own selector
+(`LIFECYCLE_OWNER_CI_RECOVERY`, `LIFECYCLE_OWNER_REVIEW_THREADS`,
+`LIFECYCLE_OWNER_BRANCH_UPDATE`, `LIFECYCLE_OWNER_MERGE_TRAIN`) that defaults to
+`legacy` and only migrates on the literal `goobers`. A misconfigured or unset
+lane selector therefore leaves legacy in charge rather than silently taking a
+required lane offline. `LEGACY_CI_MUTATION_BRIDGE_ENABLED` remains the global
+emergency kill switch for legacy mutation and is independent of Goobers, so
+selecting Goobers for the claim lane never requires disabling it. See
 [`docs/runbooks/ci-mutation-bridge-runbook.md`](../docs/runbooks/ci-mutation-bridge-runbook.md)
-for the drain-first cutover and rollback procedure.
+for the cutover, per-lane Phase 3 migration, and rollback procedure.
 Runtime journals remain outside this source tree; only retries within one
 Actions job share its throwaway instance.
 
