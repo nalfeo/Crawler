@@ -21,10 +21,13 @@
  * `PhaserBridge`, production `BehaviorTreeAI`) through only its public
  * controls — the floor/seed query params and the speed/run-toggle buttons —
  * then polls the lab's own `window.__aiRunnerDebug()` telemetry until
- * `runOutcome === 'cleared_floor'` (the same `floorScenario.runSummary`
- * field the headless gate's `runHeadless` maps to `RunStats.outcome ===
- * 'victory'` — see `scenario.getRunOutcome`/`finalizeRunSummary` in
- * `src/game/floorScenario.ts` and the `cleared_floor` check in
+ * `runOutcome === 'cleared_floor'`. On Floor 3 that value comes from the
+ * scenario's own `getRunOutcome(world)` (`src/game/floor3Scenario.ts`) —
+ * `world.floorScenario.runSummary.outcome` stays null off Floor 1, which is
+ * exactly why this PR adds the scenario-level lookup to the lab's debug
+ * snapshot, with `runSummary` kept only as the Floor-1 fallback. It is the
+ * same `getRunOutcome` result the headless gate's `runHeadless` maps to
+ * `RunStats.outcome === 'victory'` (see the `cleared_floor` check in
  * `src/game/ai/headless-runner.ts`). No gameplay keys, clicks, or direct
  * scene/world/ECS mutation are ever supplied after the run starts.
  *
@@ -39,6 +42,7 @@ import type { AiRunnerDebugSnapshot } from '../../src/labs/ai-runner-lab/index.j
 import {
   FLOOR3_COMPLETION_SEED,
   FLOOR3_COMPLETION_START_PLAYER_LEVEL,
+  FLOOR3_EXPECTED_SURFACE_ORDER,
   FLOOR3_MIN_ALIVE_OUTSIDE_SPAWN_MS,
   FLOOR3_REQUIRED_SURFACE_SEQUENCE,
   FLOOR3_SURFACE_EXPECTED_COUNTS,
@@ -140,6 +144,30 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
             trace.filter((entry) => `${entry.kind}:${entry.action}` === key).length,
           ]),
         );
+        // Failure output has to say WHERE the run stopped, not just that it
+        // did: the compact per-transition history below keeps every objective
+        // decision and modal identity change observed across the whole run,
+        // and the full ordered surface trace keeps the event sequence, so a
+        // regression can be localized without re-running the browser.
+        const transitionHistory: string[] = [];
+        let previousTransitionKey: string | null = null;
+        for (const sample of snapshots) {
+          const key = [
+            sample.worldState,
+            sample.state,
+            sample.reason,
+            sample.modalOpen ? (sample.modalKind ?? '__anonymous__') : 'no-modal',
+            sample.inSpawnRoom === null ? 'spawn?' : sample.inSpawnRoom ? 'spawn' : 'outside',
+          ].join('|');
+          if (key === previousTransitionKey) continue;
+          previousTransitionKey = key;
+          transitionHistory.push(`f${sample.frame} ${key}`);
+        }
+        const surfaceHistory = trace.map(
+          (entry) =>
+            `f${entry.frame ?? '?'} ${entry.action}:${entry.kind}` +
+            (entry.action === 'confirmed' ? `(cb=${String(entry.confirmHandlerInvoked)})` : ''),
+        );
         const context = JSON.stringify({
           frame: lastSnapshot!.frame,
           worldState: lastSnapshot!.worldState,
@@ -150,16 +178,18 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
           target: { x: lastSnapshot!.targetX, y: lastSnapshot!.targetY },
           player: { x: lastSnapshot!.px, y: lastSnapshot!.py },
           traceCounts,
+          surfaceHistory,
+          transitionHistory,
         });
 
         // The real production victory/exit outcome (`cleared_floor`) —
         // reached by the AI's own navigation, not asserted via any
-        // mocked/forced completion. This is the same field headless
-        // `runHeadless` maps to `RunStats.outcome === 'victory'`.
+        // mocked/forced completion. On Floor 3 this comes from the scenario's
+        // own `getRunOutcome`, the same result headless `runHeadless` maps to
+        // `RunStats.outcome === 'victory'`.
         expect(lastSnapshot!.runOutcome, context).toBe('cleared_floor');
 
-        // Every required Floor 3 surface opened AND was acknowledged through
-        // its real callback, in the documented order.
+        // Every required Floor 3 surface opened AND was acknowledged.
         for (const kind of FLOOR3_REQUIRED_SURFACE_SEQUENCE) {
           expect(
             firstEventIndex(trace, kind, 'opened'),
@@ -181,17 +211,32 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
             expectedCount,
           );
         }
-        for (let i = 1; i < FLOOR3_REQUIRED_SURFACE_SEQUENCE.length; i += 1) {
-          const previous = FLOOR3_REQUIRED_SURFACE_SEQUENCE[i - 1]!;
-          const current = FLOOR3_REQUIRED_SURFACE_SEQUENCE[i]!;
+
+        // Full order, not just first occurrences: the complete opened and
+        // confirmed kind sequences must match the contract's observed season
+        // structure (all 6 Studio cards, 5 poach offers, 4 Final Four rounds,
+        // the keep-a-Companion pick, the exit). Comparing first indices alone
+        // would accept a run that interleaved the Final Four with unfinished
+        // Studios.
+        expect(
+          trace.filter((entry) => entry.action === 'opened').map((entry) => entry.kind),
+          `opened surface order; ${context}`,
+        ).toEqual([...FLOOR3_EXPECTED_SURFACE_ORDER]);
+        expect(
+          trace.filter((entry) => entry.action === 'confirmed').map((entry) => entry.kind),
+          `confirmed surface order; ${context}`,
+        ).toEqual([...FLOOR3_EXPECTED_SURFACE_ORDER]);
+
+        // Each confirmation ran the surface's REAL `onConfirm` callback.
+        // Closing the modal on Enter proves nothing on its own — a modal
+        // whose callback was deleted closes identically — so this reads the
+        // production `ModalPickerUI`'s own dispatch counter, making the gate
+        // fail if any required Floor 3 dialog callback is removed.
+        for (const event of trace.filter((entry) => entry.action === 'confirmed')) {
           expect(
-            firstEventIndex(trace, previous, 'opened'),
-            `${previous} should open before ${current}; ${context}`,
-          ).toBeLessThan(firstEventIndex(trace, current, 'opened'));
-          expect(
-            firstEventIndex(trace, previous, 'confirmed'),
-            `${previous} should confirm before ${current}; ${context}`,
-          ).toBeLessThan(firstEventIndex(trace, current, 'confirmed'));
+            event.confirmHandlerInvoked,
+            `${event.kind} confirmed without dispatching its onConfirm callback; ${context}`,
+          ).toBe(true);
         }
 
         // Simulation genuinely resumed (no lingering modal, world back to

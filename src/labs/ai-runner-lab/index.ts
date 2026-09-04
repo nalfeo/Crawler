@@ -664,6 +664,13 @@ export interface AiRunnerDebugSnapshot {
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
+    /**
+     * For a `confirmed` event: whether the modal's own `onConfirm` callback
+     * actually ran (as opposed to the modal merely closing on Enter, which a
+     * callback-less modal also does). `null` on `opened` events and when the
+     * scene's picker does not expose the counter.
+     */
+    confirmHandlerInvoked: boolean | null;
   }>;
   runOutcome: string | null;
   /**
@@ -714,6 +721,12 @@ interface RunnerSceneInternals {
     isOpen(): boolean;
     getKind(): string | null;
     handleKeyDown(event: KeyboardEvent): void;
+    /**
+     * Real `onConfirm`-dispatch counter (see `createModalPickerUI`). Optional
+     * so a scene stub without the accessor still type-checks; the Floor 3
+     * surface trace then reports `confirmHandlerInvoked: null`.
+     */
+    getConfirmHandlerInvocationCount?(): number;
   };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
@@ -936,6 +949,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
+    confirmHandlerInvoked: boolean | null;
   }> = [];
   const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
     'floor3-intro',
@@ -1864,6 +1878,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     kind: string,
     action: 'opened' | 'confirmed',
+    confirmHandlerInvoked: boolean | null = null,
   ): void => {
     floor3SurfaceTrace.push({
       kind,
@@ -1871,6 +1886,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       frame: world.frameCount ?? null,
       gameMs: world.elapsedMs ?? null,
       worldState: world.state ?? null,
+      confirmHandlerInvoked,
     });
     if (floor3SurfaceTrace.length > 128) {
       floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - 128);
@@ -1883,6 +1899,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     modalKind: string | null,
   ): void => {
     const wasOpen = modalPicker.isOpen();
+    // Sampled around the Enter press so the trace can distinguish "the modal
+    // closed" from "the surface's real `onConfirm` callback ran" — a modal
+    // whose callback was deleted still closes.
+    const confirmHandlerCountBefore = modalPicker.getConfirmHandlerInvocationCount?.() ?? null;
     modalPicker.handleKeyDown(
       new KeyboardEvent('keydown', {
         code: 'Enter',
@@ -1892,8 +1912,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }),
     );
     if (wasOpen && !modalPicker.isOpen()) {
+      const confirmHandlerCountAfter = modalPicker.getConfirmHandlerInvocationCount?.() ?? null;
+      const confirmHandlerInvoked =
+        confirmHandlerCountBefore === null || confirmHandlerCountAfter === null
+          ? null
+          : confirmHandlerCountAfter > confirmHandlerCountBefore;
       if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
-        recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+        recordFloor3SurfaceEvent(world, modalKind, 'confirmed', confirmHandlerInvoked);
       }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;

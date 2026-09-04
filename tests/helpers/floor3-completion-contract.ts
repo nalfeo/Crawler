@@ -63,5 +63,29 @@ export const FLOOR3_SURFACE_EXPECTED_COUNTS: Record<Floor3SurfaceKind, number> =
   'floor3-stair-descend': 1,
 };
 
+/**
+ * The complete, order-exact sequence of blocking Floor 3 surfaces a full
+ * production run presents — not just the first occurrence of each kind.
+ *
+ * Comparing only first occurrences would accept a run that, say, showed one
+ * Studio card and one poach offer, then jumped to the Final Four before the
+ * remaining Studios: first-index ordering and per-kind totals would both still
+ * hold. This is the sequence observed end-to-end on the committed seed by both
+ * halves of the gate: the briefing and starter pick, all six Studio versus
+ * cards (announced as the league unlocks them, before any Trainer is beaten),
+ * the five poach offers that fill the roster to the 6-Companion party lock,
+ * the four ordered Final Four rounds, the keep-a-Companion pick, and the exit
+ * confirmation.
+ */
+export const FLOOR3_EXPECTED_SURFACE_ORDER: readonly Floor3SurfaceKind[] = [
+  'floor3-intro',
+  'floor3-starter',
+  ...Array.from({ length: 6 }, () => 'floor3-studio-versus' as const),
+  ...Array.from({ length: 5 }, () => 'floor3-poach' as const),
+  ...Array.from({ length: 4 }, () => 'floor3-final-four-versus' as const),
+  'floor3-keep-companion',
+  'floor3-stair-descend',
+];
+
 /** Minimum consecutive simulated milliseconds alive outside the spawn room. */
 export const FLOOR3_MIN_ALIVE_OUTSIDE_SPAWN_MS = 10_000;
