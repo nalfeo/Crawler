@@ -91,6 +91,14 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       expect(beforeStarter.hudVisible).toBe(false);
       expect(beforeStarter.rowNames).toEqual([]);
 
+      // Regression (#4209): the Command explainer toast must never fire
+      // before a Companion is actually recruited — `floorId === 'floor3'`
+      // alone is true from this very first loadout frame, so a floor-only
+      // gate would burn the one-shot latch while the starter modal still
+      // blocks the player from reading it.
+      const loadoutState = await mainSceneProbe.getState(page);
+      expect(loadoutState.floor3CommandUnlockNotified).toBe(false);
+
       // Resolve the real Floor 3 intro, then the starter picker through the shipped modals.
       await page.keyboard.press('Enter');
       await waitForModalTitle(
@@ -121,6 +129,18 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       expect(docked.rowNames.some((name) => name.includes('f3.'))).toBe(false);
       expect(docked.commandCapacity).toBeGreaterThanOrEqual(1);
       expect(docked.commandsInUse).toBe(0);
+
+      // Regression (#4209): now that a Companion is recruited and the versus
+      // card is dismissed (no blocking surface left), the Command explainer
+      // must actually fire — proving the gate isn't simply permanently
+      // suppressed, only correctly delayed until it is genuinely readable.
+      // The shared `interactionHint` text itself is transient and can be
+      // clobbered by an unrelated nearby-NPC "Talk" hint within a frame or
+      // two, so the one-shot latch is the reliable observation surface.
+      await waitForState(page, (s) => s.floor3CommandUnlockNotified, {
+        timeoutMs: 10_000,
+        label: 'Floor 3 Command-unlocked explainer toast latch',
+      });
 
       await waitForState(page, (s) => s.floor3RosterButtonVisible && s.floor3CommandButtonVisible, {
         timeoutMs: 10_000,

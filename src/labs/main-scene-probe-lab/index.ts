@@ -374,6 +374,14 @@ interface MainSceneInternals {
    * `actionStatusText` probe. Read-only probe surface.
    */
   interactionHint?: { readonly visible: boolean; readonly text: string };
+  /**
+   * One-shot latch for the #4209 Command-explainer toast. Read-only probe
+   * surface: proves the explainer condition was satisfied and fired even
+   * though the shared `interactionHint` text is transient and can be
+   * clobbered by an unrelated nearby-NPC "Talk" hint on the very next frame
+   * (see `interactionHint` above).
+   */
+  floor3CommandUnlockNotified?: boolean;
   getIssueButtonBounds?(): ScreenBounds | null;
   getIssueButtonCompactLabel?(): string;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
@@ -692,6 +700,13 @@ export interface MainSceneState {
   readonly interactionHintVisible: boolean;
   /** Exact text of the shared transient hint, or `null` when hidden/unset. */
   readonly interactionHintText: string | null;
+  /**
+   * Whether the #4209 Command-explainer toast has fired at least once this
+   * session. See {@link MainSceneInternals.floor3CommandUnlockNotified} for
+   * why this latch, not `interactionHintText`, is the reliable way to prove
+   * the toast fired.
+   */
+  readonly floor3CommandUnlockNotified: boolean;
 }
 
 /**
@@ -1758,6 +1773,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         actionStatusToastText: scene?.actionStatusText?.text ?? null,
         interactionHintVisible: scene?.interactionHint?.visible ?? false,
         interactionHintText: scene?.interactionHint?.text ?? null,
+        floor3CommandUnlockNotified: scene?.floor3CommandUnlockNotified ?? false,
       };
     },
 

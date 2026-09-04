@@ -15,6 +15,7 @@ import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfi
 import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flow-field.js';
 import type { TileMap } from '../core/map/TileMap.js';
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
+import { isFloor3WildEnemy, isFloor3WildEnemyHostile } from '../core/enemy-targeting.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import type { GameWorld } from '../core/world.js';
@@ -2071,6 +2072,13 @@ export function enemyAISystem(world: GameWorld): void {
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+    if (isFloor3WildEnemy(world, eid) && !isFloor3WildEnemyHostile(world, eid)) {
+      applyIdleWander(world, eid, speed);
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
+      continue;
+    }
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
