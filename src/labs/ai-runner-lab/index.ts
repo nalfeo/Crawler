@@ -3114,6 +3114,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     // real production win, which is exactly the field an e2e observer needs to
     // confirm the SAME victory/exit outcome headless `RunStats.outcome`
     // reports.
+    //
+    // Safe to prefer `scenarioRunOutcome` over `runSummary.outcome` for every
+    // floor: both are typed as exactly `ScenarioRunOutcome` ('cleared_floor' |
+    // 'failed_timeout', see `src/shared/scenario-presentation.ts` and
+    // `FloorRunSummary` in `src/shared/floor-types.ts`), and Floor 1's own
+    // `getFloor1RunOutcome` reads `runSummary.outcome` directly — so for the
+    // one floor where `runSummary` was already populated, this is a no-op.
     const scenarioRunOutcome =
       world && effectiveFloor !== 'unknown' && isFloorPlayable(effectiveFloor)
         ? getScenarioDefinition(effectiveFloor).getRunOutcome(world)
