@@ -951,6 +951,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     worldState: string | null;
     confirmHandlerInvoked: boolean | null;
   }> = [];
+  const FLOOR3_SURFACE_TRACE_LIMIT = 512;
   const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
     'floor3-intro',
     'floor3-starter',
@@ -1888,8 +1889,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       worldState: world.state ?? null,
       confirmHandlerInvoked,
     });
-    if (floor3SurfaceTrace.length > 128) {
-      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - 128);
+    // Bounded, but well above the ~38 events a full production Floor 3 run
+    // emits: the acceptance gate compares the COMPLETE ordered sequence, so a
+    // cap that could evict the earliest events would turn a regression into a
+    // confusing truncated-prefix mismatch instead of pointing at the real
+    // first divergence.
+    if (floor3SurfaceTrace.length > FLOOR3_SURFACE_TRACE_LIMIT) {
+      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - FLOOR3_SURFACE_TRACE_LIMIT);
     }
   };
 

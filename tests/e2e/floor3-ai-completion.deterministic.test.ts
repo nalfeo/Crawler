@@ -235,7 +235,10 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
         for (const event of trace.filter((entry) => entry.action === 'confirmed')) {
           expect(
             event.confirmHandlerInvoked,
-            `${event.kind} confirmed without dispatching its onConfirm callback; ${context}`,
+            event.confirmHandlerInvoked === null
+              ? `${event.kind} confirmation could not be verified: the scene's modal picker did ` +
+                  `not expose getConfirmHandlerInvocationCount(); ${context}`
+              : `${event.kind} confirmed without dispatching its onConfirm callback; ${context}`,
           ).toBe(true);
         }
 
