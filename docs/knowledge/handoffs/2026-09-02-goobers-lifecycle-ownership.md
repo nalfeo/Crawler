@@ -251,6 +251,39 @@ in-memory resolution write. A real behavioral test was added to
 reconcile against the same fixture makes no reply POST and no
 `resolveReviewThread` mutation.
 
+### Known limitations carried into Phase 3
+
+Two review findings were consciously **not** actioned, with reasoning:
+
+- **The Goobers gaggle does not yet acquire the claim lease.**
+  `.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml` still claims an
+  approved issue directly, so in practice a publication handoff currently finds
+  no lease and correctly no-ops with `reason=no-claimed-issue`. This PR delivers
+  the lease mechanism, the ownership boundary, and the handoff; wiring
+  acquire/heartbeat into the production Goobers claim path is Phase 3 work and
+  is deliberately out of scope. Nothing regresses in the meantime — the
+  publication path is a safe no-op and legacy owns the PR lifecycle regardless.
+- **Legacy intake fails _operational_, not closed, on a malformed selector.**
+  A reviewer argued that an unset or misspelled `LIFECYCLE_MUTATION_OWNER`
+  should stop legacy intake too, so that neither side claims. That would leave
+  approved issues with **no** intake owner at all, which is precisely the gap
+  this work exists to close. The asymmetry is intentional and matches the lane
+  model: the claim **lease write** fails closed (`decideLifecycleLease` returns
+  `observe-only` unless the selector is the literal `goobers`), while claim
+  **routing** falls back to legacy so an approved issue is always picked up by
+  exactly one owner.
+
+### Required action at merge
+
+`LIFECYCLE_MUTATION_OWNER` is currently **unset**. Because `goobers-run.yml` is
+now gated on the literal `goobers`, merging this PR routes approved-issue intake
+to **legacy** until the variable is set. That is a safe, single-writer state
+with no gap, but Goobers stays idle. To complete the cutover the owner must run:
+
+```bash
+gh variable set LIFECYCLE_MUTATION_OWNER -R nalfeo/Crawler --body 'goobers'
+```
+
 ## Merge-train shepherd intervention (2026-09-03)
 
 Shepherded under shared lease

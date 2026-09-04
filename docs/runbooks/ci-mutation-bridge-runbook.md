@@ -57,6 +57,11 @@ that decoupling is what removed the old global-shutdown behavior.
 
 No drain and no bridge change is required, because no legacy lane is affected.
 
+> **Required after merging the Phase 2 PR.** `LIFECYCLE_MUTATION_OWNER` starts
+> unset, and `goobers-run.yml` is gated on the literal `goobers`. Until the
+> variable is set, approved-issue intake routes to **legacy** — a safe,
+> single-writer state with no gap, but Goobers stays idle.
+
 ```bash
 gh variable set LIFECYCLE_MUTATION_OWNER -R nalfeo/Crawler --body 'goobers'
 ```

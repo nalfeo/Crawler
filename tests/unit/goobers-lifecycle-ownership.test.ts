@@ -630,6 +630,16 @@ describe('Goobers lifecycle ownership', () => {
     expect(source).toContain('closingIssuesReferences(first:100)');
     // More references than one page cannot prove which claim ends here.
     expect(source).toContain("skip('unbounded-closing-references')");
+
+    // The truncation guard must precede candidate classification, or a claim
+    // that only appears past page one is reported as "no claim" instead of the
+    // honest fail-closed reason.
+    const truncation = source.indexOf("skip('unbounded-closing-references')");
+    const ambiguous = source.indexOf("skip('ambiguous-claimed-issues')");
+    const noClaim = source.indexOf("skip('no-claimed-issue')");
+    expect(truncation).toBeGreaterThan(-1);
+    expect(truncation).toBeLessThan(ambiguous);
+    expect(truncation).toBeLessThan(noClaim);
   });
 
   it('hands approved-issue intake back to legacy on rollback', () => {

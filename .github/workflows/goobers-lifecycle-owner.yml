@@ -159,6 +159,14 @@ jobs:
                 core.info(`LIFECYCLE_OWNERSHIP_DECISION ${JSON.stringify(decision)}`);
                 core.setOutput('skip', 'true');
               }
+              // Check truncation BEFORE classifying candidates: a claim that only
+              // appears past the first page would otherwise be misreported as
+              // "no claim" instead of the honest fail-closed reason.
+              if (pull.closingIssuesReferences.pageInfo?.hasNextPage) {
+                core.warning('PR has more closing references than one page; refusing to hand off.');
+                skip('unbounded-closing-references');
+                return;
+              }
               if (claimed.length > 1) {
                 // Ambiguous: refuse to guess which claim this publication ends.
                 core.warning(`PR closes multiple claimed issues (${claimed.join(', ')}); refusing to hand off.`);
@@ -169,13 +177,6 @@ jobs:
                 // Nothing was claimed, so there is nothing to hand off. Legacy
                 // PR-lifecycle automation is already live either way.
                 skip('no-claimed-issue');
-                return;
-              }
-              if (pull.closingIssuesReferences.pageInfo?.hasNextPage) {
-                // Cannot prove which claim this publication ends without the
-                // full reference set, so fail closed rather than guess.
-                core.warning('PR has more closing references than one page; refusing to hand off.');
-                skip('unbounded-closing-references');
                 return;
               }
               issueNumber = claimed[0];
