@@ -139,7 +139,7 @@ export function createModalPickerUI(
    * Number of confirmations that dispatched the opener's `onConfirm` callback
    * (automation/e2e read-only). Never decreases while the UI lives.
    */
-  getConfirmHandlerInvocationCount?(): number;
+  getConfirmHandlerInvocationCount(): number;
   /** Content currently rendered by the real modal (automation/e2e read-only). */
   getContentSnapshot(): ModalPickerContentSnapshot | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;

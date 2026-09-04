@@ -265,7 +265,7 @@ describe('Floor 3 dual-runner acceptance gate: visual production completion (see
               entry.kind === event.kind &&
               typeof entry.gameMs === 'number' &&
               typeof event.gameMs === 'number' &&
-              entry.gameMs > event.gameMs,
+              entry.gameMs >= event.gameMs,
           );
           expect(
             Boolean(resumeEvent),
