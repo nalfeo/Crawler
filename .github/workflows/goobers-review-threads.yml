@@ -281,6 +281,7 @@ jobs:
 
             const emptyReachableCommitShas = new Set();
             const postedOutdatedMarkers = new Set();
+            let reviewAfterPostedMarkers = null;
 
             for (const decision of decisions) {
               // Re-fetch both the head SHA and the thread state immediately
@@ -338,8 +339,8 @@ jobs:
                   continue;
                 }
                 if (decision.requiresPostedMarker) {
-                  const refreshedReview = await currentThreads();
-                  thread = refreshedReview.threads.find(
+                  reviewAfterPostedMarkers ??= await currentThreads();
+                  thread = reviewAfterPostedMarkers.threads.find(
                     (candidate) => candidate.id === decision.threadId,
                   );
                   if (!thread || thread.isResolved) {
