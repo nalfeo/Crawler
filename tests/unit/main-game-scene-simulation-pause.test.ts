@@ -63,6 +63,21 @@ describe('MainGameScene simulation pause / step accounting', () => {
     expect(source).toContain('this.setSimulationPaused(wasPaused);');
   });
 
+  it('closes the issue picker before refreshing overlay visibility', () => {
+    const finishStart = source.indexOf('private finishIssueReport(): void {');
+    expect(finishStart).toBeGreaterThan(-1);
+
+    const finishEnd = source.indexOf('\n  }', finishStart);
+    const finishSource = source.slice(finishStart, finishEnd);
+    const closeIndex = finishSource.indexOf('this.issueReportPicker?.close();');
+    const clearIndex = finishSource.indexOf('this.issueReportPausedState = undefined;');
+    const refreshIndex = finishSource.indexOf('this.updateOverlayText();');
+
+    expect(closeIndex).toBeGreaterThan(-1);
+    expect(clearIndex).toBeGreaterThan(closeIndex);
+    expect(refreshIndex).toBeGreaterThan(clearIndex);
+  });
+
   it('does not reopen the issue flow while a submission remains in flight', () => {
     expect(source).toContain('this.issueReportSubmitting ||');
     expect(source).toContain('!this.issueReportSubmitting &&');
