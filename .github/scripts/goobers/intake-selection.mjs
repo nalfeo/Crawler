@@ -183,10 +183,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   try {
     raw = readInput(source);
   } catch (error) {
+    const remediation =
+      source === '-'
+        ? "intake-selection: pass an explicit file path instead of '-' " +
+          '(e.g. `gh issue view ... > "$f" && node .github/scripts/goobers/intake-selection.mjs --issue "$f"`).\n'
+        : '';
     process.stderr.write(
-      `intake-selection: could not read issue JSON from '${source}': ${error.message}\n` +
-        "intake-selection: pass an explicit file path instead of '-' " +
-        '(e.g. `gh issue view ... > "$f" && node .github/scripts/goobers/intake-selection.mjs --issue "$f"`).\n',
+      `intake-selection: could not read issue JSON from '${source}': ${error.message}\n${remediation}`,
     );
     process.exit(2);
   }

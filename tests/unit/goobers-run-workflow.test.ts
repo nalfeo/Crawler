@@ -723,10 +723,12 @@ describe('Goobers automatic dispatch and recovery', () => {
   it('posts separate durable start and result comments with explicit run and PR links', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
+    const recovery = steps.find((step) => step.name === 'Resolve Goobers recovery target');
     const start = steps.find((step) => step.name === 'Comment on Goobers run start');
     const run = steps.find((step) => step.name === 'Run the workflow');
     const result = steps.find((step) => step.name === 'Comment on Goobers run result');
 
+    expect(recovery?.id).toBe('recovery');
     expect(start).toBeDefined();
     expect(result).toBeDefined();
     expect(start).not.toBe(result);
@@ -751,7 +753,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(start?.run).toContain('find_issue_comment_id');
     expect(start?.run).toContain('gh issue comment "$issue_number"');
 
-    expect(result?.if).toBe('always()');
+    expect(result?.if).toBe("always() && steps.recovery.outputs.should_run != 'false'");
     expect(result?.env).toMatchObject({
       GH_TOKEN: '${{ github.token }}',
       JOB_STATUS: '${{ job.status }}',
@@ -786,8 +788,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     const script = result?.run ?? '';
     const issueResolutionIndex = script.indexOf('issue_number="${GOOBERS_RECOVERY_ISSUE:-}"');
     const journalLookupIndex = script.indexOf('events_file=""');
-
     expect(issueResolutionIndex).toBeGreaterThanOrEqual(0);
+    expect(journalLookupIndex).toBeGreaterThanOrEqual(0);
     expect(issueResolutionIndex).toBeLessThan(journalLookupIndex);
     expect(script).toContain('events_input="/dev/null"');
     expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');

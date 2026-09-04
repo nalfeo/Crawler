@@ -847,7 +847,9 @@ jobs:
           echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
 
       - name: Comment on Goobers run result
-        if: always()
+        if: >-
+          always() &&
+          steps.recovery.outputs.should_run != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}

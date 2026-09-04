@@ -42,7 +42,8 @@ wait, so a transient scheduling detail killed the whole run.
 - **Defense in depth:** `readAllSync()` replaces `readFileSync(0)` and loops
   through `EAGAIN` with a bounded (30s) deadline, so `--issue -` is safe for any
   future caller. Read failures are now reported separately from parse failures,
-  and the read error names the file-path remediation.
+  and stdin read errors name the file-path remediation without attaching that
+  irrelevant advice to errors from explicit file paths.
 
 ### 2. The claimed issue number was recorded only _after_ every fallible lookup
 
@@ -60,6 +61,9 @@ with a manual-cleanup error on top of the real failure.
   Goobers never started, so the gaggle's `query-backlog` claim never ran and no
   `goobers/status:in-review` label can exist — it now emits a notice and exits 0
   instead of burying the real failure under a false stale-claim error.
+- Clean `should_run=false` skips no longer post a misleading successful result
+  comment, while failures in the recovery step still report against the issue
+  persisted before the fallible lookup.
 - All three claim releases go through one `release_claim()` helper that names
   the manual remediation command if the release itself fails.
 
@@ -100,6 +104,7 @@ This matches the code path: the in-review label is applied by the gaggle's
 - `readAllSync` reassembles a chunk-split payload; times out with an actionable
   message rather than hanging.
 - The CLI produces identical output from a real stdin pipe and from a file path.
+- Explicit file-read failures do not receive stdin-only remediation.
 - The workflow must never reintroduce `--issue -`; both selector call sites must
   read a file.
 
@@ -108,6 +113,8 @@ This matches the code path: the in-review label is applied by the gaggle's
 - The explicitly named issue is persisted before `find_open_goobers_pr` and
   before `decide_issue` can fail; sweep selections persist too; fall-through
   clears the attribution.
+- The result comment skips clean no-work/ineligible exits but remains enabled
+  when target resolution itself fails.
 - A failure before Goobers starts leaves no stale claim, and the no-journal
   branch precedes the unrecoverable-issue error.
 

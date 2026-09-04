@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -405,6 +405,16 @@ test('the CLI parses real piped `gh` JSON and an explicit file path identically'
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('the CLI only recommends a file path when stdin could not be read', () => {
+  const script = path.resolve('.github/scripts/goobers/intake-selection.mjs');
+  const missing = path.join(os.tmpdir(), 'goobers-intake-file-that-does-not-exist.json');
+  const result = spawnSync(process.execPath, [script, '--issue', missing], { encoding: 'utf8' });
+
+  assert.equal(result.status, 2);
+  assert.ok(result.stderr.includes(`could not read issue JSON from '${missing}'`));
+  assert.doesNotMatch(result.stderr, /pass an explicit file path instead of '-'/);
 });
 
 test('goobers-run hands the selector a file, never a pipe on stdin', () => {
