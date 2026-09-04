@@ -659,7 +659,7 @@ export interface AiRunnerDebugSnapshot {
   floor3MaxAliveOutsideSpawnStreakMs: number;
   floor3SurfaceTrace: ReadonlyArray<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
@@ -691,7 +691,6 @@ export interface AiRunnerDebugSnapshot {
 declare global {
   interface Window {
     __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
-    __aiRunnerJumpToStairs?: () => boolean;
   }
 }
 
@@ -713,6 +712,7 @@ interface RunnerSceneInternals {
     isOpen(): boolean;
     getKind(): string | null;
     handleKeyDown(event: KeyboardEvent): void;
+    wasConfirmedByCallback(): boolean;
   };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
@@ -931,11 +931,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
   }> = [];
+  // Kinds confirmed but not yet observed running again. Resume evidence is
+  // recorded here, on the lab's own UI tick, so an observer never has to catch
+  // the un-paused window with its own polling interval.
+  const floor3PendingResumeKinds = new Set<string>();
   const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
     'floor3-intro',
     'floor3-starter',
@@ -1327,25 +1331,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     movePlayerTo(pos.x, pos.y);
-  };
-
-  const jumpToStairsForDebug = (): boolean => {
-    const scene = getScene();
-    const world = scene?.world;
-    const playerEid = findPlayerEid();
-    if (!scene || !world || playerEid === undefined) {
-      return false;
-    }
-    const pos = resolveJumpPosition(world, 'staircase-room');
-    if (!pos) {
-      return false;
-    }
-    const moved = movePlayerTo(pos.x, pos.y);
-    if (moved) {
-      scene.advanceSimulationFrames(1);
-      scene.queuedInteraction = true;
-    }
-    return moved;
   };
 
   const applyQuestDebug = (): void => {
@@ -1783,6 +1768,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     floor3AliveOutsideSpawnStreakMs = 0;
     floor3MaxAliveOutsideSpawnStreakMs = 0;
     floor3SurfaceTrace.length = 0;
+    floor3PendingResumeKinds.clear();
     pathGraphics?.destroy();
     pathGraphics = null;
     flowFieldGraphics?.destroy();
@@ -1862,7 +1848,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const recordFloor3SurfaceEvent = (
     world: GameWorld,
     kind: string,
-    action: 'opened' | 'confirmed',
+    action: 'opened' | 'confirmed' | 'resumed',
   ): void => {
     floor3SurfaceTrace.push({
       kind,
@@ -1891,8 +1877,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }),
     );
     if (wasOpen && !modalPicker.isOpen()) {
-      if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+      // `wasConfirmedByCallback()` reflects whether the modal's real
+      // `onConfirm` hook actually ran, not just that the picker closed —
+      // `ModalPickerUI` also closes a confirmed selection when no
+      // `onConfirm` hook is registered at all, so recording on close alone
+      // would keep passing even if a required handler were removed.
+      if (
+        modalKind &&
+        FLOOR3_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+        floor3PendingResumeKinds.add(modalKind);
       }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;
@@ -1922,6 +1918,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
       }
       previousFloor3ModalKind = activeModalKind;
+    }
+
+    if (
+      world.floorId === 'floor3' &&
+      floor3PendingResumeKinds.size > 0 &&
+      activeModalKind === null &&
+      world.state === 'playing'
+    ) {
+      for (const kind of floor3PendingResumeKinds) {
+        recordFloor3SurfaceEvent(world, kind, 'resumed');
+      }
+      floor3PendingResumeKinds.clear();
     }
 
     if (world.state === 'loadout') {
@@ -3156,7 +3164,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   if (typeof window !== 'undefined') {
     window.__aiRunnerDebug = buildDebugSnapshot;
-    window.__aiRunnerJumpToStairs = jumpToStairsForDebug;
   }
 
   const updateInterval = setInterval(() => {
@@ -3262,7 +3269,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     window.removeEventListener('keydown', onKeyDown);
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
-      delete window.__aiRunnerJumpToStairs;
     }
     recorderControls.destroy();
     disposeHardwareInput();
