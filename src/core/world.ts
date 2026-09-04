@@ -154,6 +154,8 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /** Floor 3 wild mobs currently inside the player-anchored hostility band. */
+  floor3HostileWildEnemyEids?: Set<number>;
   /** ECS entity id of Floor 3's Professor-like onboarding host NPC. */
   floor3CompanionProfessorNpcEid?: number;
   /**

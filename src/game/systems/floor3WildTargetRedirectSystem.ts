@@ -1,11 +1,14 @@
 import { hasComponent, query } from 'bitecs';
 import { Companion, DeathTimer, Enemy, Position, Team } from '../../core/components.js';
+import { isFloor3WildEnemyHostile } from '../../core/enemy-targeting.js';
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import { setCompanionAIDecision } from './companionAISystem.js';
+import { updateFloor3WildHostility } from './floor3WildHostility.js';
 
 /** Makes Floor 3 wilds engage the player's Companions instead of the Wrangler. */
 export function floor3WildTargetRedirectSystem(world: GameWorld): void {
+  updateFloor3WildHostility(world);
   const party = query(world.ecs, [Companion, Enemy, Position, Team]).filter(
     (eid) =>
       !hasComponent(world.ecs, eid, DeathTimer) &&
@@ -18,7 +21,8 @@ export function floor3WildTargetRedirectSystem(world: GameWorld): void {
     if (
       hasComponent(world.ecs, eid, Companion) ||
       hasComponent(world.ecs, eid, DeathTimer) ||
-      (world.stores.team.id[eid] ?? 0) !== TeamId.ENEMY
+      (world.stores.team.id[eid] ?? 0) !== TeamId.ENEMY ||
+      !isFloor3WildEnemyHostile(world, eid)
     ) {
       continue;
     }
