@@ -53,32 +53,37 @@ interface SafeAreaLayout {
 }
 
 async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<void> {
-  const expectedInsets = await page.evaluate((values) => {
-    for (const [edge, value] of Object.entries(values)) {
-      document.documentElement.style.setProperty(
-        `--crawler-safe-area-inset-${edge}`,
-        `${value}px`,
-        'important',
-      );
-    }
-    const canvas = document.querySelector('canvas')?.getBoundingClientRect();
-    if (!canvas) {
-      return null;
-    }
-    const scaleX = 1280 / canvas.width;
-    const scaleY = 720 / canvas.height;
-    const canvasRight = canvas.x + canvas.width;
-    const canvasBottom = canvas.y + canvas.height;
-    const clampX = (overlap: number): number => Math.min(1280, Math.max(0, overlap) * scaleX);
-    const clampY = (overlap: number): number => Math.min(720, Math.max(0, overlap) * scaleY);
-    window.dispatchEvent(new Event('resize'));
-    return {
-      top: clampY(values.top - canvas.y),
-      right: clampX(canvasRight - (window.innerWidth - values.right)),
-      bottom: clampY(canvasBottom - (window.innerHeight - values.bottom)),
-      left: clampX(values.left - canvas.x),
-    };
-  }, insets);
+  const expectedInsets = await page.evaluate(
+    ({ values, design }) => {
+      for (const [edge, value] of Object.entries(values)) {
+        document.documentElement.style.setProperty(
+          `--crawler-safe-area-inset-${edge}`,
+          `${value}px`,
+          'important',
+        );
+      }
+      const canvas = document.querySelector('canvas')?.getBoundingClientRect();
+      if (!canvas) {
+        return null;
+      }
+      const scaleX = design.width / canvas.width;
+      const scaleY = design.height / canvas.height;
+      const canvasRight = canvas.x + canvas.width;
+      const canvasBottom = canvas.y + canvas.height;
+      const clampX = (overlap: number): number =>
+        Math.min(design.width, Math.max(0, overlap) * scaleX);
+      const clampY = (overlap: number): number =>
+        Math.min(design.height, Math.max(0, overlap) * scaleY);
+      window.dispatchEvent(new Event('resize'));
+      return {
+        top: clampY(values.top - canvas.y),
+        right: clampX(canvasRight - (window.innerWidth - values.right)),
+        bottom: clampY(canvasBottom - (window.innerHeight - values.bottom)),
+        left: clampX(values.left - canvas.x),
+      };
+    },
+    { values: insets, design: { width: GAME_W, height: GAME_H } },
+  );
   if (!expectedInsets) {
     throw new Error('safe-area inset test could not find the Phaser canvas');
   }

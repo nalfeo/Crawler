@@ -5449,6 +5449,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private setIssueButtonCompact(compact: boolean): void {
     if (!this.issueButton) {
+      // Preserve the requested initial label for corner-button construction;
+      // once created, the text guard below catches any label/state divergence.
       this.issueButtonCompact = compact;
       return;
     }
