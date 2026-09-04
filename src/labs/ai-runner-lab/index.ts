@@ -14,6 +14,7 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getScenarioDefinition, isFloorPlayable } from '../../game/scenarioDefinitions.js';
 import {
   AIState,
   AIDecisionMode,
@@ -659,10 +660,17 @@ export interface AiRunnerDebugSnapshot {
   floor3MaxAliveOutsideSpawnStreakMs: number;
   floor3SurfaceTrace: ReadonlyArray<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
+    /**
+     * For a `confirmed` event: whether the modal's own `onConfirm` callback
+     * actually ran (as opposed to the modal merely closing on Enter, which a
+     * callback-less modal also does). `null` on `opened` events and when the
+     * scene's picker does not expose the counter.
+     */
+    confirmHandlerInvoked: boolean | null;
   }>;
   runOutcome: string | null;
   /**
@@ -713,6 +721,12 @@ interface RunnerSceneInternals {
     isOpen(): boolean;
     getKind(): string | null;
     handleKeyDown(event: KeyboardEvent): void;
+    /**
+     * Real `onConfirm`-dispatch counter (see `createModalPickerUI`). Optional
+     * so a scene stub without the accessor still type-checks; the Floor 3
+     * surface trace then reports `confirmHandlerInvoked: null`.
+     */
+    getConfirmHandlerInvocationCount?(): number;
   };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
@@ -926,16 +940,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   let previousFloor3ModalKind: string | null = null;
+  const pendingFloor3ResumeKinds: string[] = [];
   let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
   let floor3AliveOutsideSpawnStreakMs = 0;
   let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
+    confirmHandlerInvoked: boolean | null;
   }> = [];
+  const FLOOR3_SURFACE_TRACE_LIMIT = 512;
   const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
     'floor3-intro',
     'floor3-starter',
@@ -1779,6 +1796,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
     previousFloor3ModalKind = null;
+    pendingFloor3ResumeKinds.length = 0;
     floor3AliveOutsideSpawnStreakStartMs = null;
     floor3AliveOutsideSpawnStreakMs = 0;
     floor3MaxAliveOutsideSpawnStreakMs = 0;
@@ -1862,7 +1880,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const recordFloor3SurfaceEvent = (
     world: GameWorld,
     kind: string,
-    action: 'opened' | 'confirmed',
+    action: 'opened' | 'confirmed' | 'resumed',
+    confirmHandlerInvoked: boolean | null = null,
   ): void => {
     floor3SurfaceTrace.push({
       kind,
@@ -1870,9 +1889,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       frame: world.frameCount ?? null,
       gameMs: world.elapsedMs ?? null,
       worldState: world.state ?? null,
+      confirmHandlerInvoked,
     });
-    if (floor3SurfaceTrace.length > 128) {
-      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - 128);
+    // Bounded, but well above the ~53 events a full production Floor 3 run
+    // emits: the acceptance gate compares the COMPLETE ordered sequence, so a
+    // cap that could evict the earliest events would turn a regression into a
+    // confusing truncated-prefix mismatch instead of pointing at the real
+    // first divergence.
+    if (floor3SurfaceTrace.length > FLOOR3_SURFACE_TRACE_LIMIT) {
+      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - FLOOR3_SURFACE_TRACE_LIMIT);
     }
   };
 
@@ -1882,6 +1907,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     modalKind: string | null,
   ): void => {
     const wasOpen = modalPicker.isOpen();
+    // Sampled around the Enter press so the trace can distinguish "the modal
+    // closed" from "the surface's real `onConfirm` callback ran" — a modal
+    // whose callback was deleted still closes.
+    const confirmHandlerCountBefore = modalPicker.getConfirmHandlerInvocationCount?.() ?? null;
     modalPicker.handleKeyDown(
       new KeyboardEvent('keydown', {
         code: 'Enter',
@@ -1891,8 +1920,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }),
     );
     if (wasOpen && !modalPicker.isOpen()) {
+      const confirmHandlerCountAfter = modalPicker.getConfirmHandlerInvocationCount?.() ?? null;
+      const confirmHandlerInvoked =
+        confirmHandlerCountBefore === null || confirmHandlerCountAfter === null
+          ? null
+          : confirmHandlerCountAfter > confirmHandlerCountBefore;
       if (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
-        recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+        recordFloor3SurfaceEvent(world, modalKind, 'confirmed', confirmHandlerInvoked);
+        if (modalKind !== 'floor3-stair-descend') {
+          pendingFloor3ResumeKinds.push(modalKind);
+        }
       }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;
@@ -1917,6 +1954,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world) ?? null;
     const activeModalKind =
       modalPicker?.isOpen() === true ? (modalPicker.getKind() ?? '__anonymous__') : null;
+    if (
+      world.floorId === 'floor3' &&
+      world.state === 'playing' &&
+      activeModalKind === null &&
+      pendingFloor3ResumeKinds.length > 0
+    ) {
+      for (const kind of pendingFloor3ResumeKinds.splice(0)) {
+        recordFloor3SurfaceEvent(world, kind, 'resumed');
+      }
+    }
     if (world.floorId === 'floor3' && activeModalKind !== previousFloor3ModalKind) {
       if (activeModalKind && FLOOR3_AUTO_MODAL_KINDS.has(activeModalKind)) {
         recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
@@ -3102,6 +3149,28 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     ).length;
     const effectiveFloor =
       world?.floorId !== undefined && hasFloorManifest(world.floorId) ? world.floorId : 'unknown';
+    // Mirrors headless `runHeadless`'s own outcome check (`scenarioOutcome ===
+    // 'cleared_floor' || world.floorScenario?.runSummary?.outcome ===
+    // 'cleared_floor'`): most floors report completion through the
+    // per-scenario `getRunOutcome` (goal-flag-driven, e.g. Floor 3's
+    // `FLOOR3_STAIRS_DISCOVERED_GOAL_ID`), while `floorScenario.runSummary`
+    // is only populated for the floors whose `confirm*StairDescend` calls
+    // `finalizeRunSummary` (Floor 1's timeout/clear path today). Without this,
+    // `runOutcome` silently stayed `null` for every other floor even after a
+    // real production win, which is exactly the field an e2e observer needs to
+    // confirm the SAME victory/exit outcome headless `RunStats.outcome`
+    // reports.
+    //
+    // Safe to prefer `scenarioRunOutcome` over `runSummary.outcome` for every
+    // floor: both are typed as exactly `ScenarioRunOutcome` ('cleared_floor' |
+    // 'failed_timeout', see `src/shared/scenario-presentation.ts` and
+    // `FloorRunSummary` in `src/shared/floor-types.ts`), and Floor 1's own
+    // `getFloor1RunOutcome` reads `runSummary.outcome` directly — so for the
+    // one floor where `runSummary` was already populated, this is a no-op.
+    const scenarioRunOutcome =
+      world && effectiveFloor !== 'unknown' && isFloorPlayable(effectiveFloor)
+        ? getScenarioDefinition(effectiveFloor).getRunOutcome(world)
+        : null;
     return {
       frame: world?.frameCount ?? null,
       polls: pollCount,
@@ -3145,7 +3214,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       floor3AliveOutsideSpawnStreakMs,
       floor3MaxAliveOutsideSpawnStreakMs,
       floor3SurfaceTrace,
-      runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      runOutcome: scenarioRunOutcome ?? world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
       playerPersona: aiConfig.playerPersona,
