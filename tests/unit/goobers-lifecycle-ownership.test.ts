@@ -78,6 +78,33 @@ describe('Goobers lifecycle ownership', () => {
     );
   });
 
+  it('keeps the owner workflow startup-valid and isolated at runtime', () => {
+    const workflow = fs.readFileSync(
+      path.join(repositoryRoot, '.github/workflows/goobers-lifecycle-owner.yml'),
+      'utf8',
+    );
+
+    // `runner.*` is not available in `jobs.<id>.env`, which makes the whole
+    // workflow file startup-invalid (zero jobs, run named by file path).
+    expect(workflow).not.toMatch(/\$\{\{[^}]*\brunner\.temp\b[^}]*\}\}/);
+    expect(
+      workflow.match(/^\s*GOOBERS_INSTANCE="\$RUNNER_TEMP\/goobers-lifecycle-instance"$/gm),
+    ).toHaveLength(3);
+    expect(workflow.match(/^\s*export GOOBERS_INSTANCE$/gm)).toHaveLength(3);
+
+    // Goobers v0.3.3 materialization requires an existing instance `config/`,
+    // and the runner must only see this workflow's own gaggle definition.
+    expect(workflow).toContain('mkdir -p "$GOOBERS_INSTANCE/config"');
+    expect(workflow).toContain(
+      'cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml',
+    );
+    expect(workflow).not.toMatch(/cp\s+(?:-[^\s]+\s+)*\.goobers\/?\s/);
+    expect(workflow).not.toContain('path: ${GITHUB_WORKSPACE}/.goobers');
+    expect(workflow).toMatch(
+      /path: \.goobers-lifecycle\/\s+if-no-files-found: error\s+include-hidden-files: true/,
+    );
+  });
+
   it('keeps the Goobers task decision-only', () => {
     const workflow = parse(
       fs.readFileSync(

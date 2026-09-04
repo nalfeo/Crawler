@@ -47,7 +47,6 @@ jobs:
     env:
       GOOBERS_VERSION: v0.3.3
       GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
-      GOOBERS_INSTANCE: ${{ runner.temp }}/goobers-lifecycle-instance
       LIFECYCLE_LEASE_TTL_SECONDS: ${{ vars.LIFECYCLE_LEASE_TTL_SECONDS || '300' }}
     steps:
       - name: Checkout trusted ownership implementation
@@ -136,8 +135,15 @@ jobs:
       - name: Materialize ownership-only Goobers instance
         run: |
           set -euo pipefail
-          mkdir -p "$GOOBERS_INSTANCE"
-          cat > "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          GOOBERS_SOURCE="$RUNNER_TEMP/goobers-lifecycle-source"
+          export GOOBERS_INSTANCE
+          mkdir -p "$GOOBERS_INSTANCE/config" "$GOOBERS_SOURCE/gaggles/crawler/workflows"
+          cp .goobers/manifest.yaml "$GOOBERS_SOURCE/manifest.yaml"
+          cp .goobers/gaggles/crawler/gaggle.yaml "$GOOBERS_SOURCE/gaggles/crawler/gaggle.yaml"
+          cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml \
+            "$GOOBERS_SOURCE/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml"
+          cat > "$GOOBERS_SOURCE/instance.yaml.example" <<EOF
           apiVersion: goobers.dev/v1alpha1
           kind: Instance
           repos:
@@ -146,14 +152,17 @@ jobs:
               name: ${GITHUB_REPOSITORY#*/}
               token:
                 env: GOOBERS_GITHUB_TOKEN
-          workflowSource:
-            kind: local-dir
-            path: ${GITHUB_WORKSPACE}/.goobers
           runner:
             envPassthrough:
               - GOOBERS_LIFECYCLE_INPUT_FILE
           runConditions:
             maxParallelRuns: 1
+          EOF
+          cp "$GOOBERS_SOURCE/instance.yaml.example" "$GOOBERS_INSTANCE/instance.yaml"
+          cat >> "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          workflowSource:
+            kind: local-dir
+            path: ${GOOBERS_SOURCE}
           EOF
           goobers config materialize "$GOOBERS_INSTANCE"
           goobers validate "$GOOBERS_INSTANCE"
@@ -181,11 +190,17 @@ jobs:
         env:
           GOOBERS_GITHUB_TOKEN: ${{ github.token }}
           GOOBERS_LIFECYCLE_INPUT_FILE: ${{ github.workspace }}/.goobers-lifecycle/input.json
-        run: goobers run crawler-lifecycle-owner "$GOOBERS_INSTANCE"
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          export GOOBERS_INSTANCE
+          goobers run crawler-lifecycle-owner "$GOOBERS_INSTANCE"
 
       - name: Extract ownership decision
         run: |
           set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          export GOOBERS_INSTANCE
           events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
           jq -r 'select(.type == "stage.finished" and .stage == "decide-ownership") | .outputs.decision' \
             "$events_file" | tail -n 1 | jq '{ decision: . }' > .goobers-lifecycle/decision.json
@@ -314,3 +329,4 @@ jobs:
           name: goobers-lifecycle-${{ github.run_id }}
           path: .goobers-lifecycle/
           if-no-files-found: error
+          include-hidden-files: true
