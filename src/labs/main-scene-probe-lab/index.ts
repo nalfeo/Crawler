@@ -50,7 +50,8 @@ import {
 } from '../../core/systems/bossChestRewards.js';
 import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
-import { acceptQuest, setTrackedQuest } from '../../core/systems/questSystem.js';
+import { acceptQuest, getActiveQuests, setTrackedQuest } from '../../core/systems/questSystem.js';
+import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -1127,6 +1128,21 @@ export interface MainSceneProbeApi {
     readonly y: number;
     readonly rotation: number;
   }>;
+  /**
+   * Active quest ids from the real world's quest log (`world.questLog`) — the
+   * same source `HudQuestTracker` reads (issue #4208: proves a floor's
+   * objective is driven through the canonical quest system, not a bespoke
+   * one-off HUD surface).
+   */
+  getActiveQuestIds(): string[];
+  /** Canonical waypoint projections for active quests in the real world. */
+  getQuestWaypointIds(): string[];
+  /** Canonical waypoint positions for active quests in the real world. */
+  getQuestWaypointStates(): ReadonlyArray<{
+    readonly questId: string;
+    readonly x: number;
+    readonly y: number;
+  }>;
   /** Seed all active merchant + Spell Broker NPC-return arrows through the real scene's world. */
   primeMerchantAndSpellBrokerQuestArrows(): void;
   /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
@@ -1875,6 +1891,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('interactionHint', scene?.getInteractionHintBounds?.());
       push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
       push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);
+      push('issueButton', scene?.getIssueButtonBounds?.());
       return {
         insets: phaserScene ? getSafeAreaInsets(phaserScene) : ZERO_SAFE_AREA_INSETS,
         surfaces,
@@ -2290,6 +2307,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           },
         ];
       });
+    },
+
+    getActiveQuestIds: (): string[] => {
+      const world = getScene()?.world;
+      if (!world) {
+        return [];
+      }
+      return getActiveQuests(world).map((quest) => quest.questId);
+    },
+    getQuestWaypointIds: (): string[] => {
+      const scene = getScene();
+      if (!scene?.world) {
+        return [];
+      }
+      return getQuestWaypoints(scene.world, playerEidOf(scene)).map((waypoint) => waypoint.questId);
+    },
+    getQuestWaypointStates: () => {
+      const scene = getScene();
+      if (!scene?.world) {
+        return [];
+      }
+      return getQuestWaypoints(scene.world, playerEidOf(scene)).map((waypoint) => ({
+        questId: waypoint.questId,
+        x: waypoint.x,
+        y: waypoint.y,
+      }));
     },
 
     getMinimapRadarWaypointArrowIds: (): string[] =>

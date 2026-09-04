@@ -24,6 +24,7 @@ describe('quest content packs', () => {
     expect(getQuestPacks().map((pack) => pack.packId)).toEqual([
       'floor1',
       'floor2',
+      'floor3',
       'floor5-siege',
       'floor6-defense',
     ]);

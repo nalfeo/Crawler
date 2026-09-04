@@ -7,6 +7,7 @@ import {
   mainSceneProbe,
   waitForState,
 } from './helpers/main-scene-probe.js';
+import { GAME_H, GAME_W } from './e2e-constants.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -203,6 +204,87 @@ describe('MainGameScene UI exclusivity', () => {
       );
     } finally {
       await closeQuietly(smallContext);
+    }
+  });
+
+  it('anchors the Issue button bottom-right and never overlaps a supported HUD surface', async () => {
+    // Floor 2 activates the bottom-right family-relationships panel, so
+    // booting there exercises the tightest supported-surface set (#4210).
+    const familyContext = await browser.newContext({ viewport: { width: GAME_W, height: GAME_H } });
+    const familyPage = await familyContext.newPage();
+    try {
+      await loadMainSceneProbeLab(familyPage, { floor: 'floor2' });
+      await mainSceneProbe.resolveLoadout(familyPage);
+      await waitForState(familyPage, (s) => s.worldState === 'playing' && s.simulationPaused, {
+        label: 'floor2 loadout resolved + simulation paused',
+      });
+      await mainSceneProbe.unlockSafeRoomSurfaces(familyPage);
+      await waitForState(familyPage, (s) => s.safeContext, {
+        label: 'floor2 safe-room surfaces unlocked',
+      });
+      const assertBottomRightNoOverlap = async (label: string): Promise<void> => {
+        const issueBounds = await mainSceneProbe.getIssueButtonBounds(familyPage);
+        expect(issueBounds, `Issue button should be visible (${label})`).not.toBeNull();
+        if (!issueBounds) return;
+        // Bottom-right anchored: right/bottom edges close to the safe rect's
+        // right/bottom edges, not parked in the top-right minimap/tracker zone.
+        expect(issueBounds.x + issueBounds.width, `right-anchored (${label})`).toBeGreaterThan(
+          GAME_W - 220,
+        );
+
+        const { surfaces } = await mainSceneProbe.getSafeAreaLayout(familyPage);
+        const familyPanel = surfaces.find((surface) => surface.name === 'familyPanel')?.bounds;
+        if (familyPanel) {
+          expect(issueBounds.y + issueBounds.height, `above family HUD (${label})`).toBeLessThan(
+            familyPanel.y,
+          );
+        } else {
+          expect(issueBounds.y + issueBounds.height, `bottom-anchored (${label})`).toBeGreaterThan(
+            GAME_H - 220,
+          );
+          expect(issueBounds.y, `not parked at the top (${label})`).toBeGreaterThan(GAME_H / 2);
+        }
+        const questSurfaceNames = new Set(
+          surfaces
+            .filter(
+              (surface) =>
+                surface.name === 'questTracker' || surface.name.startsWith('questArrowToggle:'),
+            )
+            .map((surface) => surface.name),
+        );
+        for (const surface of surfaces) {
+          // The family panel occupies the same vertical band as the quest
+          // tracker by design; verify each supported surface in its own
+          // rendered state rather than treating two independent right-column
+          // layouts as simultaneous exclusion zones.
+          if (
+            surface.name === 'issueButton' ||
+            (familyPanel && questSurfaceNames.has(surface.name))
+          ) {
+            continue;
+          }
+          expect(
+            overlaps(issueBounds, surface.bounds),
+            `Issue button must not cover ${surface.name} (${label})`,
+          ).toBe(false);
+        }
+      };
+
+      await assertBottomRightNoOverlap('no panel open');
+
+      await mainSceneProbe.activateFamilyRelationships(familyPage);
+      await expect
+        .poll(async () => (await mainSceneProbe.getFamilyHudState(familyPage)).panelVisible)
+        .toBe(true);
+      await assertBottomRightNoOverlap('family HUD active');
+
+      await mainSceneProbe.requestInventoryToggle(familyPage);
+      await waitForState(familyPage, (s) => s.inventoryOpen && s.issueButtonVisible, {
+        label: 'inventory opened with Issue button visible',
+      });
+      await assertBottomRightNoOverlap('inventory panel open');
+    } finally {
+      await closeQuietly(familyContext);
     }
   });
 
