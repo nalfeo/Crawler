@@ -38,7 +38,7 @@ async function readSnapshot(page: Page): Promise<AiRunnerDebugSnapshot | null> {
 function firstEventIndex(
   trace: readonly SurfaceEvent[],
   kind: SurfaceKind,
-  action: 'opened' | 'confirmed',
+  action: 'opened' | 'confirmed' | 'resumed',
 ) {
   return trace.findIndex((entry) => entry.kind === kind && entry.action === action);
 }
@@ -46,7 +46,7 @@ function firstEventIndex(
 function eventCount(
   trace: readonly SurfaceEvent[],
   kind: SurfaceKind,
-  action: 'opened' | 'confirmed',
+  action: 'opened' | 'confirmed' | 'resumed',
 ): number {
   return trace.filter((entry) => entry.kind === kind && entry.action === action).length;
 }
@@ -168,20 +168,19 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         );
       }
 
-      for (const event of trace.filter(
-        (entry) => entry.action === 'confirmed' && entry.kind !== 'floor3-stair-descend',
-      )) {
-        const resumeSample = snapshots.find(
-          (sample) =>
-            typeof sample.gameMs === 'number' &&
-            typeof event.gameMs === 'number' &&
-            sample.gameMs > event.gameMs &&
-            sample.modalOpen === false &&
-            sample.worldState === 'playing',
+      // Resume evidence comes from the lab's own tick-recorded `resumed`
+      // events, not from this test's polling snapshots: at 16x speed a whole
+      // confirm -> resume -> next-modal window can fit between two polls, which
+      // made snapshot sampling flaky.
+      for (let i = 0; i < trace.length; i += 1) {
+        const event = trace[i]!;
+        if (event.action !== 'confirmed' || event.kind === 'floor3-stair-descend') continue;
+        const resumed = trace.some(
+          (entry, index) => index > i && entry.action === 'resumed' && entry.kind === event.kind,
         );
         expect(
-          Boolean(resumeSample),
-          `simulation did not resume after ${event.kind} at ${event.gameMs}ms`,
+          resumed,
+          `simulation did not resume after ${event.kind} at ${event.gameMs}ms; ${context}`,
         ).toBe(true);
       }
 

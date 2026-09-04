@@ -659,7 +659,7 @@ export interface AiRunnerDebugSnapshot {
   floor3MaxAliveOutsideSpawnStreakMs: number;
   floor3SurfaceTrace: ReadonlyArray<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
@@ -931,11 +931,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
     kind: string;
-    action: 'opened' | 'confirmed';
+    action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
     gameMs: number | null;
     worldState: string | null;
   }> = [];
+  // Kinds confirmed but not yet observed running again. Resume evidence is
+  // recorded here, on the lab's own UI tick, so an observer never has to catch
+  // the un-paused window with its own polling interval.
+  const floor3PendingResumeKinds = new Set<string>();
   const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
     'floor3-intro',
     'floor3-starter',
@@ -1764,6 +1768,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     floor3AliveOutsideSpawnStreakMs = 0;
     floor3MaxAliveOutsideSpawnStreakMs = 0;
     floor3SurfaceTrace.length = 0;
+    floor3PendingResumeKinds.clear();
     pathGraphics?.destroy();
     pathGraphics = null;
     flowFieldGraphics?.destroy();
@@ -1843,7 +1848,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const recordFloor3SurfaceEvent = (
     world: GameWorld,
     kind: string,
-    action: 'opened' | 'confirmed',
+    action: 'opened' | 'confirmed' | 'resumed',
   ): void => {
     floor3SurfaceTrace.push({
       kind,
@@ -1883,6 +1888,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         modalPicker.wasConfirmedByCallback()
       ) {
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+        floor3PendingResumeKinds.add(modalKind);
       }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;
@@ -1912,6 +1918,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
       }
       previousFloor3ModalKind = activeModalKind;
+    }
+
+    if (
+      world.floorId === 'floor3' &&
+      floor3PendingResumeKinds.size > 0 &&
+      activeModalKind === null &&
+      world.state === 'playing'
+    ) {
+      for (const kind of floor3PendingResumeKinds) {
+        recordFloor3SurfaceEvent(world, kind, 'resumed');
+      }
+      floor3PendingResumeKinds.clear();
     }
 
     if (world.state === 'loadout') {
