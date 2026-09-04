@@ -1007,6 +1007,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private spellsUnlockNotified = false;
 
+  /** Latch so the Floor 3 Command-verb explainer toast only shows once (#4209). */
+  private floor3CommandUnlockNotified = false;
+
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
 
@@ -2877,6 +2880,16 @@ export class MainGameScene extends Phaser.Scene {
       this.spellsUnlockNotified = true;
       this.flashHint(
         'Abilities unlocked! Press [B] or tap Skills in a safe room to configure your bar.',
+      );
+    }
+    // Explains the Command verb's action *before* first activation (#4209):
+    // the corner button/key have never had any label/help text, so the first
+    // time the button becomes available is the only reliable moment to teach
+    // it without gating on an actual (possibly rejected) command attempt.
+    if (floor3PartyAvailable && !this.floor3CommandUnlockNotified) {
+      this.floor3CommandUnlockNotified = true;
+      this.flashHint(
+        'Command unlocked! Press [C] or tap ⚡ Command to have your ready Companion use its signature ability.',
       );
     }
 

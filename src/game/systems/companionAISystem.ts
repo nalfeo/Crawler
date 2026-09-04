@@ -15,6 +15,7 @@ export interface CompanionAIDecision {
 }
 
 const decisionsByWorld = new WeakMap<GameWorld, Map<number, CompanionAIDecision>>();
+const awayStreakByWorld = new WeakMap<GameWorld, Map<number, number>>();
 
 /** Public read: the last companion AI decision computed for `eid`. */
 export function getCompanionAIDecision(
@@ -38,6 +39,7 @@ export function setCompanionAIDecision(
 /** Test/lab helper to clear cached companion decisions. */
 export function resetCompanionAIState(world: GameWorld): void {
   decisionsByWorld.delete(world);
+  awayStreakByWorld.delete(world);
 }
 
 export function companionAISystem(world: GameWorld): void {
@@ -56,6 +58,22 @@ export function companionAISystem(world: GameWorld): void {
   const rivalRangeSq = rivalRangeFt * rivalRangeFt;
   const companions = query(world.ecs, [Enemy, Companion, Position]);
   const candidates = query(world.ecs, [Enemy, Position, Team]);
+  const awayStreak = awayStreakByWorld.get(world) ?? new Map<number, number>();
+  awayStreakByWorld.set(world, awayStreak);
+  // #4206: a target-lock (see below) can chain a companion from fight to
+  // fight indefinitely, drifting it arbitrarily far from the player over
+  // time even though each individual hop stays within `rivalRangeSq` of the
+  // companion's own position. Track how long the player's own companions
+  // have been continuously beyond that same self-anchored engagement radius
+  // from the PLAYER (not from themselves) and, once that exceeds the
+  // existing `engagementEndFrames` grace window already used elsewhere for
+  // Floor 3 companion recovery pacing, drop a stale lock so the companion
+  // re-evaluates against its CURRENT surroundings instead of continuing an
+  // old chase. This never removes the companion's ability to fight back —
+  // the fresh-acquisition scan below always runs unconditionally — it only
+  // prevents an unbounded chain of individually-reasonable engagements from
+  // pulling a companion off the leash forever.
+  const engagementEndFrames = tuning.floor3Companion.engagementEndFrames;
 
   // Ranged/support archetypes are the only ones stamped with a positive
   // `attackRange` (see floor3Scenario.ts's recruit/spawn helpers) — they kite
@@ -86,6 +104,31 @@ export function companionAISystem(world: GameWorld): void {
     const y = world.stores.position.y[eid] ?? 0;
     const isMeleeAttacker = (world.stores.enemyBehavior.attackRange[eid] ?? 0) <= 0;
 
+    // #4206 sustained-drift tracking (player's own party only — an NPC-owned
+    // roster has no "player" to drift away from). This is edge-triggered —
+    // it fires exactly once when the away-streak first crosses the grace
+    // window, then resets so the companion's next lock (on whatever it
+    // reacquires this frame) gets its own full, undisturbed sticky window.
+    // A level-triggered version (forcing a break on every frame while still
+    // away) reproduces the exact thrashing bug the stale-lock reuse below
+    // exists to prevent — recomputing "nearest" every frame spreads damage
+    // across many targets and can never land a kill, which is what caused a
+    // 'timeout' instead of a genuine recall in earlier iterations of this
+    // fix.
+    let staleLockExpired = false;
+    if (teamId === TeamId.PLAYER) {
+      const pdx = playerX - x;
+      const pdy = playerY - y;
+      const isAway = pdx * pdx + pdy * pdy > rivalRangeSq;
+      const streak = isAway ? (awayStreak.get(eid) ?? 0) + 1 : 0;
+      staleLockExpired = streak > engagementEndFrames;
+      if (staleLockExpired) awayStreak.delete(eid);
+      else if (streak > 0) awayStreak.set(eid, streak);
+      else awayStreak.delete(eid);
+    } else if (awayStreak.has(eid)) {
+      awayStreak.delete(eid);
+    }
+
     // Target-lock: a rival recomputed strictly-nearest every single frame
     // thrashes between several similarly-close mobs, spreading hits across
     // all of them instead of concentrating fire on one — the companion can
@@ -96,7 +139,11 @@ export function companionAISystem(world: GameWorld): void {
     // dies, is knocked out, leaves engagement range, or is an evasive target
     // this attacker can never actually reach.
     const previous = previousDecisions.get(eid);
-    if (previous?.kind === 'rival-primary' && previous.targetEid !== undefined) {
+    if (
+      !staleLockExpired &&
+      previous?.kind === 'rival-primary' &&
+      previous.targetEid !== undefined
+    ) {
       const lockedEid = previous.targetEid;
       const stillValid =
         candidates.includes(lockedEid) &&

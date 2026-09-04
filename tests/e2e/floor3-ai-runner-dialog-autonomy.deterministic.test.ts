@@ -116,6 +116,7 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         worldState: lastSnapshot!.worldState,
         health: lastSnapshot!.health,
         runOutcome: lastSnapshot!.runOutcome,
+        floor3LossReason: lastSnapshot!.floor3LossReason,
         aliveOutsideStreakMs: lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs,
         reason: lastSnapshot!.reason,
         target: { x: lastSnapshot!.targetX, y: lastSnapshot!.targetY },
@@ -187,6 +188,34 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
       const leftSpawn = snapshots.some((sample) => sample.inSpawnRoom === false);
       expect(leftSpawn).toBe(true);
       expect(lastSnapshot!.floor3MaxAliveOutsideSpawnStreakMs).toBeGreaterThanOrEqual(10_000);
+
+      // #4205: once a starter companion is confirmed, the AI Runner debug
+      // snapshot must expose that companion's current decision + path with
+      // parity to the player's own targetX/targetY/path telemetry above —
+      // proven here in the real scene, not a lab-only unit test.
+      const starterConfirmedGameMs = trace.find(
+        (entry) => entry.kind === 'floor3-starter' && entry.action === 'confirmed',
+      )?.gameMs;
+      expect(typeof starterConfirmedGameMs).toBe('number');
+      const companionSample = snapshots.find(
+        (sample) =>
+          typeof sample.gameMs === 'number' &&
+          sample.gameMs > starterConfirmedGameMs! &&
+          sample.companions.length > 0,
+      );
+      expect(
+        Boolean(companionSample),
+        `no snapshot after starter confirm (${starterConfirmedGameMs}ms) reported a companion; ${context}`,
+      ).toBe(true);
+      const companion = companionSample!.companions[0]!;
+      expect(typeof companion.kind).toBe('string');
+      expect(Number.isFinite(companion.x)).toBe(true);
+      expect(Number.isFinite(companion.y)).toBe(true);
+      expect(Number.isFinite(companion.targetX)).toBe(true);
+      expect(Number.isFinite(companion.targetY)).toBe(true);
+      expect(Number.isFinite(companion.targetDist)).toBe(true);
+      expect(Array.isArray(companion.path)).toBe(true);
+      expect(companion.path.length).toBeGreaterThan(0);
     } finally {
       await closeQuietly(page);
     }
