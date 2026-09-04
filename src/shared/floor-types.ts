@@ -1066,6 +1066,7 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  runEndAchievementsEvaluated: boolean;
   readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   waveCursor: Record<Floor5SiegeTeam, number>;
@@ -1199,6 +1200,44 @@ export interface Floor5SiegeRunStats {
   readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
   readonly checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  readonly releaseGate: {
+    readonly activeTimeBudgetMs: number | null;
+    readonly frameBudget: number | null;
+    readonly completionRateTarget: number;
+    readonly maxMedianDurationFrames: number;
+    readonly maxP95DurationFrames: number;
+    readonly minimumCommandPostHealthPct: number;
+    readonly minimumRamSurvivalRate: number;
+    readonly maxLiveHostilesOnTerminal: number;
+    readonly maxPathStalls: number;
+    readonly maxFrameCostMs: number;
+    readonly observedFrameCostMs: number | null;
+    readonly stallBackstopFrames: number;
+    readonly cleanSweepMinCommandPostHealthPct: number;
+    readonly commandPostHealthPct: number;
+    readonly ramSurvivedBreach: boolean;
+    readonly liveHostilesOnTerminal: number;
+    readonly phaseDurations: readonly {
+      readonly kind: Floor5SiegePhaseKind;
+      readonly enteredFrame: number;
+      readonly exitedFrame: number;
+      readonly durationFrames: number;
+    }[];
+    readonly terminalIntegrity: {
+      readonly terminal: boolean;
+      readonly terminalOutcomeCount: number;
+      readonly capturedCount: number;
+      readonly defeatCount: number;
+    };
+    readonly structuralViolations: {
+      readonly unreachableObjectives: number;
+      readonly phaseOrderViolations: number;
+      readonly invalidTargetAllegianceEvents: number;
+      readonly navigationMismatchCount: number;
+      readonly unboundedSpawnDebt: number;
+      readonly nonTerminalRuns: number;
+    };
+  };
 }
 
 export type Floor6DefensePhaseKind = 'SETUP' | 'DEFEND' | 'BREAK' | 'FINALE' | 'VICTORY' | 'DEFEAT';

@@ -87,6 +87,169 @@ export function shouldSkipSubstantiveReview(pr, changedFiles) {
   );
 }
 
+const CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX = 'closing-issue-acceptance-mismatch:';
+
+/**
+ * True when a lifecycle block reason was produced by the closing-issue
+ * acceptance-scope gate, so a quarantine can be invalidated once the mismatch
+ * is gone (for example after the closing keyword is downgraded to `Refs`).
+ */
+export function isClosingIssueAcceptanceBlockReason(reason) {
+  return String(reason ?? '')
+    .trim()
+    .startsWith(CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX);
+}
+
+function normalizedLabelNames(issue) {
+  return (issue?.labels?.nodes || issue?.labels || [])
+    .map((label) => compact(label?.name ?? label).toLowerCase())
+    .filter(Boolean);
+}
+
+function isDocumentationOnlyIssue(issue) {
+  const labels = normalizedLabelNames(issue);
+  if (
+    labels.some((label) =>
+      /^(?:docs?|documentation)(?:[-_: ]only)?$|^(?:type|kind)[:/ -](?:docs?|documentation)$/.test(
+        label,
+      ),
+    )
+  ) {
+    return true;
+  }
+  // Authoritative signals only: labels, or the explicit `Docs:` / `Documentation-only:`
+  // title convention. Scanning the issue body would let arbitrary prose ("this is not
+  // docs-only") silently exempt a feature issue from this gate.
+  return /^(?:docs?|documentation)(?:[- ]only)?\s*:/i.test(String(issue?.title || '').trim());
+}
+
+function acceptanceLinesFromBody(body) {
+  const lines = String(body || '').split(/\r?\n/);
+  const start = lines.findIndex((line) => /^#{1,6}\s*acceptance(?:\s+criteria)?\b/i.test(line));
+  if (start < 0) return [];
+  const accepted = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^#{1,6}\s*\S/.test(line)) break;
+    const cleaned = line.replace(/^\s*(?:[-*+]|\d+[.)])\s*(?:\[[ xX]\]\s*)?/, '').trim();
+    if (cleaned) accepted.push(cleaned);
+  }
+  return accepted;
+}
+
+function isTestEvidencePath(path) {
+  return (
+    path.startsWith('tests/') ||
+    path.includes('/tests/') ||
+    /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path)
+  );
+}
+
+function isExecutableEvidencePath(path) {
+  if (isTestEvidencePath(path)) return false;
+  return (
+    path.startsWith('src/') ||
+    path.startsWith('scripts/') ||
+    path.startsWith('.github/scripts/') ||
+    path.startsWith('.github/workflows/') ||
+    path.startsWith('.github/actions/') ||
+    path === 'package.json' ||
+    path === 'package-lock.json'
+  );
+}
+
+const ACCEPTANCE_SCOPE_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', '.github/', 'public/'];
+
+/**
+ * Repository paths named inside the acceptance criteria, used as the issue-scoped
+ * expectation set. Only backticked tokens under a known top-level source root are
+ * considered, so prose, shell commands, and package specifiers (`@scope/pkg`)
+ * never become hard diff requirements.
+ */
+function acceptanceScopePaths(acceptanceLines) {
+  const expected = new Set();
+  for (const line of acceptanceLines) {
+    for (const match of String(line).matchAll(/`([^`\n]+)`/g)) {
+      const token = match[1]
+        .trim()
+        .replace(/^\.\//, '')
+        .replace(/^\/+/, '')
+        .replace(/[.,;:)\]]+$/, '')
+        .replace(/\/\*+$/, '')
+        .replace(/\/+$/, '');
+      if (!token || /\s/.test(token)) continue;
+      if (!ACCEPTANCE_SCOPE_ROOTS.some((root) => token.startsWith(root))) continue;
+      if (!/^[\w.-]+(?:\/[\w.-]+)+$/.test(token)) continue;
+      expected.add(token);
+    }
+  }
+  return [...expected];
+}
+
+function matchesExpectedPath(changedPath, expectedPath) {
+  return changedPath === expectedPath || changedPath.startsWith(`${expectedPath}/`);
+}
+
+/**
+ * Returns a head-bound quarantine blocker when a PR closes a non-documentation
+ * issue with acceptance criteria that the current diff demonstrably does not
+ * cover. `closingIssues` is GitHub's `closingIssuesReferences` node shape,
+ * `changedFiles` is the pull-files REST shape, and `null` means admission may
+ * proceed to the other lifecycle checks.
+ *
+ * Evidence is evaluated per closing issue, so a PR that closes several issues
+ * cannot pass them all by implementing one:
+ *  - when the acceptance criteria name repository paths, the diff must touch at
+ *    least one of that issue's own paths (issue-scoped evidence);
+ *  - when they name none, no deterministic issue-scoped expectation exists, so
+ *    the coarser diff-shape signal (some executable change and some test change)
+ *    is the only thing this gate can assert.
+ */
+export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changedFiles } = {}) {
+  const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
+  const headSha = compact(pr?.head?.sha ?? pr?.headSha);
+
+  for (const issue of closingIssues || []) {
+    if (isDocumentationOnlyIssue(issue)) continue;
+    const acceptanceLines = acceptanceLinesFromBody(issue?.body);
+    if (acceptanceLines.length === 0) continue;
+
+    const expectedPaths = acceptanceScopePaths(acceptanceLines);
+    const missing = [];
+    if (expectedPaths.length > 0) {
+      const covered = paths.some((path) =>
+        expectedPaths.some((expected) => matchesExpectedPath(path, expected)),
+      );
+      if (!covered) {
+        missing.push(`diff coverage for the acceptance paths (${expectedPaths.join(', ')})`);
+      }
+    } else {
+      if (!paths.some(isExecutableEvidencePath)) missing.push('executable diff');
+      if (!paths.some(isTestEvidencePath)) missing.push('test diff');
+    }
+    if (missing.length === 0) continue;
+
+    const issueNumber = Number(issue?.number);
+    const issueLabel = Number.isInteger(issueNumber) ? `#${issueNumber}` : compact(issue?.title);
+    const acceptanceSummary = acceptanceLines.slice(0, 2).join('; ');
+    const missingText = missing.join(' and ');
+    const summary = `Closing issue ${issueLabel} has acceptance criteria, but this PR is missing ${missingText} evidence before admission: ${acceptanceSummary}`;
+    return {
+      kind: 'closing-issue-acceptance',
+      id: `closing-issue-acceptance:${headSha || 'unknown-head'}:${issueLabel}`,
+      issueNumber: Number.isInteger(issueNumber) ? issueNumber : null,
+      headSha,
+      missing,
+      acceptanceLines,
+      summary: compact(summary),
+      blockReason: compact(
+        `${CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX}${issueLabel} missing ${missingText}`,
+      ),
+    };
+  }
+
+  return null;
+}
+
 export function admissionWaitReasons(
   requiredChecks,
   reviews,

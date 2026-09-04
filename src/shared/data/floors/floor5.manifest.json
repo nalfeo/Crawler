@@ -165,6 +165,18 @@
         "interactionRadiusFt": 6.0
       }
     },
+    "releaseGate": {
+      "completionRateTarget": 0.9,
+      "maxMedianDurationFrames": 3000,
+      "maxP95DurationFrames": 3200,
+      "minimumCommandPostHealthPct": 0.7,
+      "minimumRamSurvivalRate": 0.9,
+      "maxLiveHostilesOnTerminal": 0,
+      "maxPathStalls": 0,
+      "maxFrameCostMs": 16.67,
+      "stallBackstopFrames": 1200,
+      "cleanSweepMinCommandPostHealthPct": 0.8
+    },
     "rngStreams": ["waves", "heroes", "tasks", "dressing", "rewards"]
   }
 }

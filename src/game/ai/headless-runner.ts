@@ -2059,6 +2059,7 @@ export async function runHeadless(
     const playerHealth = world.stores.health.current[playerEid] ?? 0;
     const currentHealthPercent = playerHealth / playerMaxHealth;
 
+    const observedFloor5FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : null;
     const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
     const crashStats: RunStats = assembleRunStats({
       totalFrames: frameCount,
@@ -2121,7 +2122,7 @@ export async function runHeadless(
       ),
       floor3Progression: buildFloor3Progression(),
       floor4Arena: getFloor4ArenaRunStats(world),
-      floor5Siege: getFloor5SiegeRunStats(world),
+      floor5Siege: getFloor5SiegeRunStats(world, observedFloor5FrameCostMs),
       floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
       denBoss: denBossTracker.getDiagnostics(),
       startingWeapon,
@@ -2158,6 +2159,7 @@ export async function runHeadless(
 
   const wallTimeMs = Date.now() - startTime;
   const fps = (frameCount / wallTimeMs) * 1000;
+  const observedFloor5FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : null;
   const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
   const playerHealth = world.stores.health.current[playerEid] ?? 0;
@@ -2236,7 +2238,7 @@ export async function runHeadless(
     ),
     floor3Progression: buildFloor3Progression(),
     floor4Arena: getFloor4ArenaRunStats(world),
-    floor5Siege: getFloor5SiegeRunStats(world),
+    floor5Siege: getFloor5SiegeRunStats(world, observedFloor5FrameCostMs),
     floor6Defense: getFloor6DefenseRunStats(world, observedFloor6FrameCostMs),
     denBoss: denBossTracker.getDiagnostics(),
     startingWeapon,

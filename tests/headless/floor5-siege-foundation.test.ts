@@ -130,7 +130,9 @@ describe('Floor 5 siege foundation real pipeline', () => {
 
     expect(world.floorId).toBe('floor5');
     expect(world.floorExtendedState?.floor5Siege?.phase.kind).toBe('MUSTER');
-    expect(getFloor5SiegeRunStats(world)?.trace).toEqual([]);
+    expect(getFloor5SiegeRunStats(world)?.trace.map((entry) => entry.phase.kind)).toEqual([
+      'MUSTER',
+    ]);
     expect(world.floorMap?.rooms.some((room) => room.label === 'throne-room')).toBe(true);
     expect(world.rng.next()).toBe(untouched.rng.next());
   });
@@ -191,7 +193,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     );
   });
 
-  it('emits the same empty deterministic phase trace in windowed and headless setup', async () => {
+  it('emits the same deterministic initial phase trace in windowed and headless setup', async () => {
     const windowedWorld = createTestWorld({ seed: 505 });
     const player = spawnPlayer(windowedWorld, 0, 0);
     createFloorMainSceneOptions('floor5').configureWorld!(windowedWorld, player);
@@ -209,7 +211,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     });
 
     expect(headless.floor5Siege).toEqual(windowedStats);
-    expect(headless.floor5Siege?.trace).toEqual([]);
+    expect(headless.floor5Siege?.trace.map((entry) => entry.phase.kind)).toEqual(['MUSTER']);
     expect(headlessMap).toEqual(serializeFloor5Map(windowedWorld.floorMap));
   });
 
@@ -375,6 +377,16 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(state.lastWorldElapsedMs).toBe(7_000);
     expect(getFloor5SiegeRunStats(world)?.trace).toEqual([
       {
+        phase: { kind: 'MUSTER' },
+        reason: 'floor5-initialized',
+        frame: 0,
+        worldElapsedMs: 0,
+        commandPostHealth: 1000,
+        engineState: 'LOCKED',
+        breachState: 'SEALED',
+        heroState: 'PENDING',
+      },
+      {
         phase: { kind: 'DEFEAT' },
         reason: 'command-post-destroyed',
         frame: 42,
@@ -393,7 +405,7 @@ describe('Floor 5 siege foundation real pipeline', () => {
     world.elapsedMs = 9_000;
     siegeDirectorSystem(world);
 
-    expect(state.trace).toHaveLength(1);
+    expect(state.trace.map((entry) => entry.phase.kind)).toEqual(['MUSTER', 'DEFEAT']);
     expect(state.lastWorldElapsedMs).toBe(7_000);
   });
 
@@ -518,13 +530,13 @@ describe('Floor 5 siege foundation real pipeline', () => {
     world.state = 'paused';
     siegeDirectorSystem(world);
     expect(state.phase.kind).toBe('MUSTER');
-    expect(state.trace).toEqual([]);
+    expect(state.trace.map((entry) => entry.phase.kind)).toEqual(['MUSTER']);
 
     world.state = 'playing';
     state.commandPostHealth = 1;
     siegeDirectorSystem(world);
     expect(state.phase.kind).toBe('MUSTER');
-    expect(state.trace).toEqual([]);
+    expect(state.trace.map((entry) => entry.phase.kind)).toEqual(['MUSTER']);
   });
 
   it('projects terminal capture to the canonical goal flag', () => {
