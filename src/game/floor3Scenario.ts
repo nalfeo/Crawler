@@ -28,6 +28,7 @@ import {
 import { addSetPieceProp, spawnNpc } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
+import { acceptQuest } from '../core/systems/questSystem.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   getFloorEnemyPack,
@@ -51,7 +52,12 @@ import {
   FLOOR3_FINAL_FOUR_SET_PIECE_ID,
   floor3SetPieceIdForStudio,
 } from '../shared/data/floor3/set-pieces.js';
-import { selectFloor3FinalFour, selectFloor3Studios } from '../shared/data/floor3/studios.js';
+import {
+  floor3StudioDefeatGoalId,
+  floor3StudioQuestId,
+  selectFloor3FinalFour,
+  selectFloor3Studios,
+} from '../shared/data/floor3/studios.js';
 import { getSetPieceDef, isStructuralSetPieceProp } from '../shared/set-piece-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import {
@@ -129,6 +135,10 @@ export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
 export const FLOOR3_STAIRS_DISCOVERED_GOAL_ID = 'floor3-stairs-discovered';
 export const FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID = 'floor3-final-four-unlock';
+// Re-exported for existing callers/tests — definition lives in the shared
+// data layer so `src/core/systems/questWaypoints.ts` can resolve it too
+// without violating the core → game layer boundary.
+export { floor3StudioDefeatGoalId };
 /** First Team id used by Studio trainers — two per Studio, none overlap `TeamId`'s 0..2. */
 const FLOOR3_STUDIO_TEAM_BASE = 10;
 /** First Team id used by Final Four handlers — one per handler. */
@@ -144,11 +154,6 @@ const FLOOR3_FINAL_FOUR_TEAM_BASE = 30;
  * reachable at floor start (threshold 0).
  */
 const FLOOR3_STUDIO_UNLOCK_LEVELS: readonly number[] = [0, 2, 4, 6, 8, 10];
-
-/** Per-Studio goal flag latched true once that Studio's rosters are wiped. */
-export function floor3StudioDefeatGoalId(studioId: string): string {
-  return `floor3-studio-${studioId}-defeated`;
-}
 
 /** Per-Studio goal flag latched true once that Studio's unlock threshold is met and its roster has spawned. */
 function floor3StudioUnlockGoalId(studioId: string): string {
@@ -1162,6 +1167,7 @@ export function floor3ObjectiveTick(world: GameWorld): void {
         if (world.playerLevel.level < studio.unlockLevel) continue;
         studio.unlocked = true;
         setGoalFlag(world, floor3StudioUnlockGoalId(studio.id), true);
+        acceptQuest(world, floor3StudioQuestId(studio.id));
         spawnFloor3StudioRoster(world, studio);
       }
       if (!_isEncounterTeamsWiped(world, studio.teamIds)) continue;
