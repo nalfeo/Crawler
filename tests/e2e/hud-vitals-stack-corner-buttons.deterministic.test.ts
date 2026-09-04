@@ -62,7 +62,17 @@ async function applySafeAreaInsets(page: Page, insets = DEVICE_INSETS): Promise<
     }
     window.dispatchEvent(new Event('resize'));
   }, insets);
-  await page.waitForTimeout(400);
+  await page.waitForFunction(
+    ({ expectRight, expectBottom }) => {
+      const layout = window.__mainSceneProbe?.getSafeAreaLayout();
+      if (!layout) return false;
+      const rightReady = expectRight ? layout.insets.right > 0 : layout.insets.right === 0;
+      const bottomReady = expectBottom ? layout.insets.bottom > 0 : layout.insets.bottom === 0;
+      return rightReady && bottomReady;
+    },
+    { expectRight: insets.right > 0, expectBottom: insets.bottom > 0 },
+    { timeout: 5_000, polling: 100 },
+  );
 }
 
 async function waitForSurfaces(

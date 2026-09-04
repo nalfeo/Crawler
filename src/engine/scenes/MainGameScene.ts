@@ -3369,9 +3369,13 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
-      this.openIssueReport();
-    }).setDepth(ISSUE_BUTTON_DEPTH);
+    this.issueButton = makeCornerButton(
+      cornerButtonTop() + 392,
+      this.issueButtonCompact ? '🚩' : '🚩 Issue',
+      () => {
+        this.openIssueReport();
+      },
+    ).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -5438,11 +5442,16 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private setIssueButtonCompact(compact: boolean): void {
-    if (!this.issueButton || this.issueButtonCompact === compact) {
+    if (!this.issueButton) {
+      this.issueButtonCompact = compact;
+      return;
+    }
+    const label = compact ? '🚩' : '🚩 Issue';
+    if (this.issueButtonCompact === compact && this.issueButton.text === label) {
       return;
     }
     this.issueButtonCompact = compact;
-    this.issueButton.setText(compact ? '🚩' : '🚩 Issue');
+    this.issueButton.setText(label);
     this.applyMobileButtonScale?.(getUiScale(this));
   }
 
