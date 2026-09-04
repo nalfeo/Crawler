@@ -161,6 +161,23 @@ describe('buildSpriteBacklogPlan', () => {
     ).toThrow('no eligible judged brief');
   });
 
+  it('rejects retry requests that exceed the backlog limit', () => {
+    expect(() =>
+      buildSpriteBacklogPlan({
+        briefs: [brief('first', 1), brief('second', 1)],
+        manifestEntries: {},
+        dislikedSpriteNames: new Set(),
+        placeholderReport: { placeholderOnly: [] },
+        retrySources: new Map([
+          ['first', 'disliked'],
+          ['second', 'missing'],
+        ]),
+        floors: new Set([1]),
+        limit: 1,
+      }),
+    ).toThrow('retry count exceeds backlog limit');
+  });
+
   it('persists a passing result immediately as pending human review', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-state-'));
     try {
@@ -337,8 +354,11 @@ describe('prepareSpriteBacklog retry state', () => {
 
   it('prioritizes a queued pending-overlay dislike', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-pending-dislike-'));
+    const originalCopilotHome = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = root;
     const pendingPath = resolvePendingAnnotationsPath(root);
     try {
+      expect(pendingPath.startsWith(`${root}${path.sep}`)).toBe(true);
       mkdirSync(path.join(root, 'briefs', 'items'), { recursive: true });
       mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
       mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
@@ -376,7 +396,11 @@ describe('prepareSpriteBacklog retry state', () => {
       ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
-      rmSync(pendingPath, { force: true });
+      if (originalCopilotHome === undefined) {
+        delete process.env.COPILOT_HOME;
+      } else {
+        process.env.COPILOT_HOME = originalCopilotHome;
+      }
     }
   });
 });
