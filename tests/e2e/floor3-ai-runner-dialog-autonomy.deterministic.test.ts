@@ -92,30 +92,14 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
           eventCount(trace, 'floor3-final-four-versus', 'confirmed') === 4;
         const hasKeepConfirm = eventCount(trace, 'floor3-keep-companion', 'confirmed') === 1;
         const hasOutside10s = snapshot.floor3MaxAliveOutsideSpawnStreakMs >= 10_000;
-        if (!hasStairConfirm && hasEveryRepeatedSurface && hasKeepConfirm && hasOutside10s) {
-          for (let stairPoll = 0; stairPoll < 30; stairPoll += 1) {
-            await page.evaluate(() => {
-              const jumpToStairs = (window as { __aiRunnerJumpToStairs?: () => boolean })
-                .__aiRunnerJumpToStairs;
-              if (!jumpToStairs?.()) {
-                throw new Error('AI Runner stair jump is unavailable');
-              }
-            });
-            await page.waitForTimeout(100);
-            const stairSnapshot = await readSnapshot(page);
-            if (!stairSnapshot) continue;
-            snapshots.push(stairSnapshot);
-            lastSnapshot = stairSnapshot;
-            if (
-              eventCount(stairSnapshot.floor3SurfaceTrace, 'floor3-stair-descend', 'confirmed') ===
-              1
-            ) {
-              break;
-            }
-          }
-          continue;
-        }
-        if (hasStairConfirm && hasEveryRepeatedSurface && hasOutside10s) break;
+        if (
+          snapshot.worldState === 'safe_room' &&
+          hasStairConfirm &&
+          hasEveryRepeatedSurface &&
+          hasKeepConfirm &&
+          hasOutside10s
+        )
+          break;
       }
 
       expect(pageErrors).toEqual([]);
@@ -137,6 +121,16 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
         target: { x: lastSnapshot!.targetX, y: lastSnapshot!.targetY },
         player: { x: lastSnapshot!.px, y: lastSnapshot!.py },
         traceCounts,
+        trace,
+        quests: lastSnapshot!.quests,
+        objectiveHistory: snapshots.slice(-20).map((sample) => ({
+          frame: sample.frame,
+          gameMs: sample.gameMs,
+          state: sample.state,
+          reason: sample.reason,
+          target: { x: sample.targetX, y: sample.targetY },
+          player: { x: sample.px, y: sample.py },
+        })),
       });
 
       for (const kind of REQUIRED_SEQUENCE) {
@@ -158,6 +152,10 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
       expect(eventCount(trace, 'floor3-final-four-versus', 'confirmed')).toBe(4);
       expect(eventCount(trace, 'floor3-stair-descend', 'opened')).toBe(1);
       expect(eventCount(trace, 'floor3-stair-descend', 'confirmed')).toBe(1);
+      expect(
+        lastSnapshot!.worldState,
+        `Floor 3 did not reach the post-exit safe room; ${context}`,
+      ).toBe('safe_room');
 
       for (let i = 1; i < REQUIRED_SEQUENCE.length; i += 1) {
         const previous = REQUIRED_SEQUENCE[i - 1]!;

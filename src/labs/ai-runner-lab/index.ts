@@ -691,7 +691,6 @@ export interface AiRunnerDebugSnapshot {
 declare global {
   interface Window {
     __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
-    __aiRunnerJumpToStairs?: () => boolean;
   }
 }
 
@@ -1327,25 +1326,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     movePlayerTo(pos.x, pos.y);
-  };
-
-  const jumpToStairsForDebug = (): boolean => {
-    const scene = getScene();
-    const world = scene?.world;
-    const playerEid = findPlayerEid();
-    if (!scene || !world || playerEid === undefined) {
-      return false;
-    }
-    const pos = resolveJumpPosition(world, 'staircase-room');
-    if (!pos) {
-      return false;
-    }
-    const moved = movePlayerTo(pos.x, pos.y);
-    if (moved) {
-      scene.advanceSimulationFrames(1);
-      scene.queuedInteraction = true;
-    }
-    return moved;
   };
 
   const applyQuestDebug = (): void => {
@@ -3156,7 +3136,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
   if (typeof window !== 'undefined') {
     window.__aiRunnerDebug = buildDebugSnapshot;
-    window.__aiRunnerJumpToStairs = jumpToStairsForDebug;
   }
 
   const updateInterval = setInterval(() => {
@@ -3262,7 +3241,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     window.removeEventListener('keydown', onKeyDown);
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
-      delete window.__aiRunnerJumpToStairs;
     }
     recorderControls.destroy();
     disposeHardwareInput();
