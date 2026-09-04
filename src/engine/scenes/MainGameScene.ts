@@ -236,6 +236,8 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
+export const ISSUE_BUTTON_LABEL = '🚩 Issue';
+export const ISSUE_BUTTON_LABEL_COMPACT = '🚩';
 /**
  * Depth for the terminal action-status toast (run-bundle/RunStats completion
  * telemetry AND issue-filing submission results share this single slot). Must
@@ -722,6 +724,8 @@ export class MainGameScene extends Phaser.Scene {
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
+  private issueButtonCompact = false;
+  private issueButtonLayoutApplied = false;
   private issueReportPausedState?: boolean;
   private issueReportDescription = '';
   private issueReportIncludeLogs = true;
@@ -1824,6 +1828,10 @@ export class MainGameScene extends Phaser.Scene {
     }
     const bounds = this.issueButton.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getIssueButtonCompactLabel(): string {
+    return ISSUE_BUTTON_LABEL_COMPACT;
   }
 
   getAchievementsButtonBounds(): ScreenBounds | null {
@@ -3368,9 +3376,13 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
-      this.openIssueReport();
-    }).setDepth(ISSUE_BUTTON_DEPTH);
+    this.issueButton = makeCornerButton(
+      cornerButtonTop() + 392,
+      this.issueButtonCompact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL,
+      () => {
+        this.openIssueReport();
+      },
+    ).setDepth(ISSUE_BUTTON_DEPTH);
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -3384,6 +3396,7 @@ export class MainGameScene extends Phaser.Scene {
       // Re-anchor to the current safe rect (rotation can change the insets).
       const top = cornerButtonTop();
       const left = MOBILE_CORNER_BUTTON_MARGIN + getSafeAreaInsets(this).left;
+      const safe = getSafeAreaInsets(this);
       for (const button of [
         this.inventoryButton,
         this.equipButton,
@@ -3410,22 +3423,20 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
-      const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      if (buttonScale > 1) {
-        const firstColumnWidth = Math.max(
-          ...[
-            this.inventoryButton,
-            this.equipButton,
-            this.achievementsButton,
-            this.floor3RosterButton,
-            this.floor3CommandButton,
-            this.abilitiesButton,
-            this.quartermasterButton,
-          ].map((button) => button?.displayWidth ?? 0),
-        );
-        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
-      } else {
-        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      // Keep Issue independent from the left-side stack so it cannot cover
+      // the skill HUD or interaction hint as the other buttons are revealed.
+      this.issueButton?.setPosition(
+        GAME.WIDTH -
+          MOBILE_CORNER_BUTTON_MARGIN -
+          safe.right -
+          (this.issueButton?.displayWidth ?? 0),
+        GAME.HEIGHT -
+          MOBILE_CORNER_BUTTON_MARGIN -
+          safe.bottom -
+          (this.issueButton?.displayHeight ?? 0),
+      );
+      if (this.issueButton) {
+        this.issueButtonLayoutApplied = true;
       }
     };
     applyMobileButtonScale(getUiScale(this));
@@ -5107,22 +5118,12 @@ export class MainGameScene extends Phaser.Scene {
 
     const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
-    // Panels are centered, so parking the Issue button in the opposite corner
-    // (top-right) while any panel is open keeps it clickable without ever
-    // overlapping panel content; it returns to its normal stacked corner
-    // position once every panel closes.
     if (this.issueButton) {
+      this.setIssueButtonCompact(panelOpen);
       if (panelOpen) {
-        const insets = getSafeAreaInsets(this);
-        this.issueButton
-          .setDepth(MODAL_DISMISS_BUTTON_DEPTH)
-          .setPosition(
-            GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - this.issueButton.displayWidth,
-            MOBILE_CORNER_BUTTON_MARGIN + insets.top,
-          );
+        this.issueButton.setDepth(MODAL_DISMISS_BUTTON_DEPTH);
       } else if (this.hudHiddenForPanel === false) {
         this.issueButton.setDepth(ISSUE_BUTTON_DEPTH);
-        this.applyMobileButtonScale?.(getUiScale(this));
       }
     }
 
@@ -5448,6 +5449,32 @@ export class MainGameScene extends Phaser.Scene {
       issueSubmitting: this.issueReportSubmitting,
       hasTerminalRunOutcome: this.hasReachedScenarioRunOutcome(),
     });
+  }
+
+  private setIssueButtonCompact(compact: boolean): void {
+    if (!this.issueButton) {
+      // Preserve the requested initial label for corner-button construction;
+      // once created, the text guard below catches any label/state divergence.
+      this.issueButtonCompact = compact;
+      return;
+    }
+    const label = compact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL;
+    if (
+      this.issueButtonLayoutApplied &&
+      this.issueButtonCompact === compact &&
+      this.issueButton.text === label
+    ) {
+      return;
+    }
+    this.issueButton.setText(label);
+    this.issueButtonCompact = compact;
+    const relayout = this.applyMobileButtonScale;
+    if (relayout) {
+      this.issueButtonLayoutApplied = false;
+      relayout(getUiScale(this));
+    } else {
+      this.issueButtonLayoutApplied = true;
+    }
   }
 
   private nextIssueReportRunId(): string {
