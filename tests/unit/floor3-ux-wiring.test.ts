@@ -107,8 +107,8 @@ describe('Floor 3 UX surface wiring', () => {
   });
 
   it('gates both verbs on the Floor 3 party being present', () => {
-    expect(mainGameSceneSource).toContain(
-      "import { shouldShowFloor3Party } from '../floor3-party-state.js';",
+    expect(mainGameSceneSource).toMatch(
+      /import \{[^}]*shouldShowFloor3Party[^}]*\} from '\.\.\/floor3-party-state\.js';/,
     );
     expect(mainGameSceneSource).toContain(
       'const floor3PartyAvailable = shouldShowFloor3Party(this.world);',

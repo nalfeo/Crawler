@@ -146,3 +146,44 @@ describe('HUD panel UX consistency', () => {
     expect(source).toContain('this.clearPendingInteractionInput();');
   });
 });
+
+describe('Floor 3 Command button explainer (regression, #4209)', () => {
+  const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+  it('explains the ⚡ Command action once, the first time it becomes available', () => {
+    // The ⚡ Command corner button had no label/help/aria text at all, so a
+    // player had no way to learn it triggers a companion's signature ability
+    // without pressing it blind. Fixed via the same one-time flashHint latch
+    // pattern already used for Inventory/Equipment/Abilities unlocks.
+    expect(source).toContain('private floor3CommandUnlockNotified = false;');
+    expect(source).toContain(
+      'if (\n      floor3PartyAvailable &&\n      !this.floor3CommandUnlockNotified &&\n      !this.isBlockingSurfaceOpen() &&\n      resolvePartyMemberEids(this.world).length > 0\n    ) {',
+    );
+    expect(source).toContain('this.floor3CommandUnlockNotified = true;');
+    expect(source).toContain(
+      "'Command unlocked! Press [C] or tap ⚡ Command to have your ready Companion use its signature ability.',",
+    );
+  });
+
+  it('gates the explainer on actual party recruitment, not just being on Floor 3 (regression, #4209 review)', () => {
+    // `floor3PartyAvailable` alone is `floorId === 'floor3'` — true from the
+    // very first loadout frame, before any Companion is recruited. Gating
+    // only on that would burn the one-shot latch while the starter modal is
+    // still blocking, and the toast's fixed display window could expire
+    // before the player has anything to command.
+    expect(source).toContain(
+      "import { shouldShowFloor3Party, resolvePartyMemberEids } from '../floor3-party-state.js';",
+    );
+  });
+
+  it('the explainer is wired to the actual ⚡ Command button and its [C] key binding', () => {
+    expect(source).toContain(
+      "this.floor3CommandButton = makeCornerButton(cornerButtonTop() + 224, '⚡ Command', () => {",
+    );
+    expect(source).toContain('this.requestCompanionCommand();');
+    expect(source).toContain('private keyCommand?: Phaser.Input.Keyboard.Key;');
+    expect(source).toContain(
+      'this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);',
+    );
+  });
+});

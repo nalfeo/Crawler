@@ -26,6 +26,7 @@ import {
   Npc,
   PartySlot,
   Team,
+  RallyPoint,
   HARVEST_RANGE_FT,
   computeMoveSpeed,
   type FamilyId,
@@ -7751,16 +7752,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     encounter: Floor3EncounterState,
     reason: string,
   ): ProgressTarget | null {
-    const anchor = this.resolveFloor3EncounterAnchor(world, encounter);
-    if (anchor) {
-      const target = this.createProgressTarget(anchor.x, anchor.y, playerX, playerY, reason);
-      if (
-        target.distance <= DIRECT_MOVE_EPSILON_FT ||
-        this.isTargetReachable(world, playerX, playerY, target)
-      ) {
-        return target;
-      }
-    }
     const activeEnemy = this.findNearestFloor3EncounterEnemy(
       world,
       playerX,
@@ -7777,7 +7768,42 @@ export class BehaviorTreeAI implements AIInputProvider {
         activeEnemy.eid,
       );
     }
+
+    const anchor = this.resolveFloor3EncounterAnchor(world, encounter);
+    if (anchor) {
+      const target = this.createProgressTarget(anchor.x, anchor.y, playerX, playerY, reason);
+      if (
+        target.distance <= DIRECT_MOVE_EPSILON_FT ||
+        this.isTargetReachable(world, playerX, playerY, target)
+      ) {
+        return target;
+      }
+    }
     return null;
+  }
+
+  private resolveNearestRallyPoint(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const rallyPoints = query(world.ecs, [RallyPoint, Position]);
+    let best: ProgressTarget | null = null;
+    for (const eid of rallyPoints) {
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const target = this.createProgressTarget(
+        x,
+        y,
+        playerX,
+        playerY,
+        'Regrouping at a rally point',
+      );
+      if (best === null || target.distance < best.distance) {
+        best = target;
+      }
+    }
+    return best;
   }
 
   private findFloor3ProgressObjective(
@@ -7816,16 +7842,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (partyCount > 1 && knockedOutPartyCount > 0 && knockedOutPartyCount < partyCount) {
-      const rallyAnchor = resolveNearestSafeAnchor(world, playerX, playerY);
-      if (rallyAnchor) {
-        return this.createProgressTarget(
-          rallyAnchor.x,
-          rallyAnchor.y,
-          playerX,
-          playerY,
-          'Regrouping at a rally point to recover Companions',
-        );
-      }
+      const rallyPoint = this.resolveNearestRallyPoint(world, playerX, playerY);
+      if (rallyPoint) return rallyPoint;
     }
 
     if (state.finalFour.unlocked && !state.finalFour.defeated) {

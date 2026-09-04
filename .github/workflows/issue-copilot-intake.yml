@@ -23,4 +23,8 @@ jobs:
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           ISSUE_OWNER: nalfeo
+          # Legacy intake defers `goobers:approved` issues only while Goobers
+          # owns the implementation-claim lane. On rollback this selector hands
+          # approved-issue intake back to legacy instead of leaving it ownerless.
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
         run: node .github/scripts/ci-recovery/issue-intake.mjs
