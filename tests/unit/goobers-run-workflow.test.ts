@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +8,7 @@ import {
   GOOBERS_RUN_START_MARKER_PREFIX,
   GOOBERS_RUN_RESULT_MARKER_PREFIX,
 } from '../../.github/scripts/ci-recovery/markers.mjs';
+import { bashEnv } from '../helpers/bash-script-path';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -450,6 +452,55 @@ describe('Goobers automatic dispatch and recovery', () => {
     // GOOBERS_INSTANCE has to reach each stage as THAT slot's root, because
     // query-backlog passes it to `goobers backlog-query --claim`.
     expect(readGeneratedEnvPassthrough(materialize?.run)).toContain('GOOBERS_INSTANCE');
+  });
+
+  it('passes the materialized isolated-slot root to the nested backlog claim', () => {
+    const definition = loadYaml<GoobersDefinition>(
+      '.goobers',
+      'gaggles',
+      'crawler',
+      'workflows',
+      'crawler-feature-pr.yaml',
+    );
+    const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+    const queryScript = definition.spec.tasks.find((task) => task.name === 'query-backlog')?.run
+      ?.script;
+    expect(queryScript).toBeDefined();
+
+    // `goobers config materialize` replaces the temporary slot manifest with
+    // this checked-in instance.yaml.example. Model the executor's default-deny
+    // passthrough from that runtime manifest, then execute the real stage script
+    // from a different cwd just as Goobers does for a stage worktree.
+    const isolatedRoot = '/tmp/crawler/.goobers-lane-1/slot-1';
+    const ambient: Record<string, string> = { GOOBERS_INSTANCE: isolatedRoot };
+    const stageEnv = Object.fromEntries(
+      (instance.runner?.envPassthrough ?? [])
+        .filter((name) => ambient[name] !== undefined)
+        .map((name) => [name, ambient[name]!]),
+    );
+    const harness = `
+goobers() {
+  printf '%s\\n' "$@"
+  [ "$#" -eq 3 ] &&
+    [ "$1" = "backlog-query" ] &&
+    [ "$2" = "--claim" ] &&
+    [ "$3" = "${isolatedRoot}" ] &&
+    [ "$PWD" != "$3" ]
+}
+${queryScript}
+`;
+    const result = spawnSync('bash', ['-c', harness], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      env: bashEnv({
+        GOOBERS_INSTANCE: stageEnv.GOOBERS_INSTANCE,
+        GOOBERS_INSTANCE_ROOT: undefined,
+        GOOBERS_RECOVERY_ISSUE: undefined,
+      }),
+    });
+
+    expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout.trim().split(/\r?\n/)).toEqual(['backlog-query', '--claim', isolatedRoot]);
   });
 
   it('bounds every slot inside the job timeout so cleanup and upload always run', () => {
@@ -1069,10 +1120,10 @@ describe('Goobers automatic dispatch and recovery', () => {
       'workspaceBranch',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
-    // GOOBERS_INSTANCE is Actions-only (set + envPassthrough'd by goobers-run.yml);
-    // the documented local instance.yaml.example does not pass it through, so the
-    // fresh-claim command must fall back to GOOBERS_INSTANCE_ROOT (the value a local
-    // Goobers run always has) and finally '.' rather than crashing under `set -eu`.
+    // Hosted slots export GOOBERS_INSTANCE and instance.yaml.example passes it
+    // through. A local/manual run need not export that Actions-owned identity,
+    // so the command still falls back to the runner-injected
+    // GOOBERS_INSTANCE_ROOT and finally '.' rather than crashing under `set -eu`.
     expect(tasks.get('query-backlog')?.run?.script).toContain(
       'goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"',
     );
@@ -1640,6 +1691,7 @@ describe('Goobers automatic dispatch and recovery', () => {
       'GITHUB_REPOSITORY',
     ]);
     expect(instance.runner?.envPassthrough).toEqual([
+      'GOOBERS_INSTANCE',
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',

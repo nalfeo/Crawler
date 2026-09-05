@@ -12,6 +12,7 @@ credentials:
       env: COPILOT_GITHUB_TOKEN
 runner:
   envPassthrough:
+    - GOOBERS_INSTANCE
     - GOOBERS_RECOVERY_ISSUE
     - GOOBERS_INTAKE_COHORT
     - GOOBERS_RESUME_BRANCH
