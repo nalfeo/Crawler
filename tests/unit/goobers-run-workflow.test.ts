@@ -212,7 +212,7 @@ function resolveRelativeImport(fromRepoFile: string, specifier: string): string 
   ];
   return (
     candidates.find((candidate) => {
-      if (candidate.startsWith('..')) return false;
+      if (candidate === '..' || candidate.startsWith('../')) return false;
       // Must be an existing *file*: a directory that shares a module's name
       // (`./lib` next to `lib.mjs`) would otherwise satisfy the bare `base`
       // candidate and silently truncate the import walk.
@@ -227,9 +227,19 @@ function collectTransitiveRepoFiles(entryFiles: string[]): {
   unresolved: string[];
 } {
   const moduleExtensions = new Set(['.mjs', '.cjs', '.js', '.ts']);
-  // `import ... from '<x>'`, bare `import '<x>'`, `export ... from '<x>'`,
-  // dynamic `import('<x>')` and CommonJS `require('<x>')`.
-  const specifierPattern = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*['"]([^'"]+)['"]/g;
+  // Statement forms (`import ... from '<x>'`, bare `import '<x>'`,
+  // `export ... from '<x>'`) are anchored to the start of a line, and the call
+  // forms (`import('<x>')`, `require('<x>')`) require the call parenthesis, so
+  // prose in a doc comment or a path quoted inside an error message is not
+  // mistaken for a real dependency edge.
+  const specifierPatterns = [
+    // `import ... from '<x>'` / `export ... from '<x>'`, including the
+    // multi-line named form. The gap excludes `;` and quotes so it cannot run
+    // past the end of one statement.
+    /(?:^|\n)[ \t]*(?:import|export)\b[^;'"]*?\bfrom[ \t]*['"]([^'"]+)['"]/g,
+    /(?:^|\n)[ \t]*import[ \t]*['"]([^'"]+)['"]/g,
+    /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]/g,
+  ];
   const files = new Set<string>();
   const unresolved: string[] = [];
   const queue = [...entryFiles];
@@ -242,14 +252,17 @@ function collectTransitiveRepoFiles(entryFiles: string[]): {
     const absolute = path.join(REPO_ROOT, repoFile);
     if (!existsSync(absolute)) continue;
 
-    for (const match of readFileSync(absolute, 'utf8').matchAll(specifierPattern)) {
-      const specifier = match[1];
-      if (!specifier?.startsWith('.')) continue;
-      const resolved = resolveRelativeImport(repoFile, specifier);
-      if (resolved) {
-        queue.push(resolved);
-      } else {
-        unresolved.push(`${repoFile} -> ${specifier}`);
+    const source = readFileSync(absolute, 'utf8');
+    for (const specifierPattern of specifierPatterns) {
+      for (const match of source.matchAll(specifierPattern)) {
+        const specifier = match[1];
+        if (!specifier?.startsWith('.')) continue;
+        const resolved = resolveRelativeImport(repoFile, specifier);
+        if (resolved) {
+          queue.push(resolved);
+        } else {
+          unresolved.push(`${repoFile} -> ${specifier}`);
+        }
       }
     }
   }
@@ -335,6 +348,11 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect.arrayContaining([
         '.github/scripts/goobers/intake-selection.mjs',
         '.github/scripts/ci-recovery/issue-intake-lib.mjs',
+        // Reached only through the multi-line named import in
+        // `issue-intake-lib.mjs`, so these also pin that the walk parses that
+        // statement form.
+        '.github/scripts/ci-recovery/markers.mjs',
+        '.github/scripts/ci-recovery/state.mjs',
       ]),
     );
   });
