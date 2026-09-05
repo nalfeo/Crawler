@@ -43,11 +43,11 @@ ci-policy
 - `docs/runbooks/ci-mutation-bridge-runbook.md`: new "Phase 4 — decommission"
   section (preconditions table, rollback-drill procedure, steady-state and
   emergency operations post-decommission), plus a Known-limitations pointer.
-- `.github/scripts/lifecycle-decommission.test.mjs` (new): 12 tests covering
+- `.github/scripts/lifecycle-decommission.test.mjs` (new): 13 tests covering
   fail-closed inputs, literal-`goobers`-only lane migration, soak arithmetic,
   rollback-activation windowing, drill evidence rules, bounded-bridge and
-  branch-protection requirements, and all three surface findings against the
-  **real** workflow files.
+  branch-protection requirements, all three surface findings against the
+  **real** workflow files, and CLI argument validation.
 
 ## Mutation-surface detection
 
@@ -77,7 +77,7 @@ inside `reconcile.mjs` (`legacyReviewThreadWritesEnabled`), already covered by
 
 ## Verification
 
-- `node --test .github/scripts/lifecycle-decommission.test.mjs` — 12/12 pass
+- `node --test .github/scripts/lifecycle-decommission.test.mjs` — 13/13 pass
 - `node .github/scripts/lifecycle-decommission.mjs` — reports the real surface
   (4 workflows, 5 gated mutation steps, zero findings) and `ready: false` with
   the honest blocker list; exit 0

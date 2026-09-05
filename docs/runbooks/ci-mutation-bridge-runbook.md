@@ -202,8 +202,12 @@ record `result: "fail"`, fix the root cause, restart the soak.
 - Goobers is the only writer for every lifecycle lane. Lane selectors stay on
   `goobers`; a selector reverting to `legacy` after decommission is a
   misconfiguration, not a rollback, because the legacy path is gone.
-- `npm run check:legacy-decommission` keeps running as a regression gate: it
-  fails if any legacy mutation path returns ungated.
+- The surface property is enforced in CI by
+  `.github/scripts/lifecycle-decommission.test.mjs`, which runs under
+  `npm run test:guards` (the `ci.yml` guard job and `scripts/agent/verify.sh`):
+  a legacy mutation path that returns ungated, or is removed while its lane is
+  still legacy-owned, fails the build. `npm run check:legacy-decommission` is
+  the operator-facing view of the same evaluation and is run manually.
 - Branch-protection required checks name the final Goobers contexts recorded in
   `branchProtection.requiredChecks`.
 
