@@ -26,15 +26,21 @@ import path from 'node:path';
 import {
   ASSET_CHECKIN_LABEL,
   CheckinError,
+  reconcileQueuedContent,
   type CheckinAsset,
   type CheckinManifest,
   type CheckinRunnerDeps,
+  type DurableQueueAssetInspection,
   type Exec,
   type ExecResult,
   type QueuedAssetCheckin,
 } from './checkin.js';
 import { parseAssetIssueBody } from './asset-issues.js';
-import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
+import {
+  assertSafeManifestKey,
+  composeManifestFromShards,
+  shardPathForKey,
+} from './generated-shards.js';
 
 export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
@@ -264,6 +270,85 @@ function makeListQueuedAssets(
   };
 }
 
+function makeInspectDurableQueueAsset(
+  repoRoot: string,
+): NonNullable<CheckinRunnerDeps['inspectDurableQueueAsset']> {
+  return async (asset): Promise<DurableQueueAssetInspection> => {
+    assertSafeManifestKey(asset.manifestKey);
+    if (
+      !asset.assetPath.startsWith('generated/') ||
+      asset.assetPath.includes('\\') ||
+      asset.assetPath
+        .split('/')
+        .some((segment) => segment === '' || segment === '.' || segment === '..')
+    ) {
+      throw new Error(`Unsafe generated asset path: "${asset.assetPath}"`);
+    }
+
+    const branch = 'assets/queue';
+    const inspectionRef = `refs/queue-inspect/${randomUUID()}`;
+    const listed = await realExec(
+      'git',
+      ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`],
+      { cwd: repoRoot },
+    );
+    if (listed.code !== 0) {
+      throw new CheckinError(
+        'git-failed',
+        `Failed to inspect ${branch}: ${listed.stderr || listed.stdout || 'git ls-remote failed'}`,
+      );
+    }
+    if (listed.stdout.trim() === '') return { reconciliation: 'new', branch };
+
+    const fetched = await realExec(
+      'git',
+      ['fetch', '--no-tags', 'origin', `+refs/heads/${branch}:${inspectionRef}`],
+      { cwd: repoRoot },
+    );
+    if (fetched.code !== 0) {
+      throw new CheckinError(
+        'git-failed',
+        `Failed to fetch ${branch}: ${fetched.stderr || fetched.stdout || 'git fetch failed'}`,
+      );
+    }
+
+    try {
+      const shardPath = `public/assets/generated/entries/${asset.manifestKey}.json`;
+      const pngPath = `public/assets/${asset.assetPath}`;
+      const [shard, png] = await Promise.all([
+        realExec('git', ['show', `${inspectionRef}:${shardPath}`], { cwd: repoRoot }),
+        realExec('git', ['cat-file', '-e', `${inspectionRef}:${pngPath}`], { cwd: repoRoot }),
+      ]);
+      if (shard.code !== 0 && png.code !== 0) return { reconciliation: 'new', branch };
+      if (shard.code !== 0 || png.code !== 0) return { reconciliation: 'ambiguous', branch };
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(shard.stdout);
+      } catch {
+        return { reconciliation: 'ambiguous', branch };
+      }
+      if (typeof parsed !== 'object' || parsed === null) {
+        return { reconciliation: 'ambiguous', branch };
+      }
+      const queuedAssetPath = (parsed as { assetPath?: unknown }).assetPath;
+      const queuedHash = (parsed as { contentHash?: unknown }).contentHash;
+      if (queuedAssetPath !== asset.assetPath) {
+        return { reconciliation: 'content-conflict', branch };
+      }
+      return {
+        reconciliation: reconcileQueuedContent(
+          typeof queuedHash === 'string' ? { contentHash: queuedHash } : {},
+          asset.contentHash,
+        ),
+        branch,
+      };
+    } finally {
+      await realExec('git', ['update-ref', '-d', inspectionRef], { cwd: repoRoot });
+    }
+  };
+}
+
 /**
  * How long (ms) before an unrenewed lock is considered abandoned/crashed.
  * Must be comfortably longer than LOCK_HEARTBEAT_MS.
@@ -415,6 +500,7 @@ export function createDefaultCheckinDeps(
     },
     readManifest: makeReadManifest(repoRoot),
     listQueuedAssets: makeListQueuedAssets(repoRoot),
+    inspectDurableQueueAsset: makeInspectDurableQueueAsset(repoRoot),
     withCrossProcessLock: makeCheckinFileLock(repoRoot),
     env,
   };

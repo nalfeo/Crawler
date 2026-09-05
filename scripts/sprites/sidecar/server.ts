@@ -2398,6 +2398,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const listQueuedAssets =
       checkinDeps.listQueuedAssets ??
       (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+    const inspectDurableQueueAsset =
+      checkinDeps.inspectDurableQueueAsset ??
+      (() => Promise.resolve({ reconciliation: 'new' as const, branch: 'assets/queue' }));
 
     // Serialized with /approve and /checkin (concern #5) — see
     // withCheckinMutationLock's docstring for why this can't deadlock.
@@ -2441,6 +2444,45 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (reconciledBefore !== undefined && 'error' in reconciledBefore) {
           return reconciledBefore;
         }
+        let durableQueue;
+        try {
+          durableQueue = await inspectDurableQueueAsset({
+            manifestKey: identity.variantId,
+            assetPath: identity.assetPath,
+            contentHash: identity.contentHash,
+          });
+        } catch (err) {
+          return mapCheckinError(reply, err);
+        }
+        if (
+          durableQueue.reconciliation === 'ambiguous' ||
+          durableQueue.reconciliation === 'content-conflict'
+        ) {
+          reply.code(409);
+          return {
+            error:
+              durableQueue.reconciliation === 'ambiguous'
+                ? 'ambiguous-queued-content'
+                : 'content-conflict',
+            message:
+              durableQueue.reconciliation === 'ambiguous'
+                ? `${identity.assetPath} is present on ${durableQueue.branch}, but its exact content cannot be verified. Repair the queue entry before re-accepting this variant.`
+                : `${identity.assetPath} is present on ${durableQueue.branch} with different content. Approve a different variant, or reconcile the queue branch first.`,
+          };
+        }
+        const durableQueuedResponse =
+          durableQueue.reconciliation === 'duplicate'
+            ? ({
+                state: 'queued',
+                existing: true,
+                briefId: identity.briefId,
+                variantIndex,
+                assetPath: identity.assetPath,
+                queueBranch: durableQueue.branch,
+                assetCount: 1,
+              } satisfies AcceptedResponse)
+            : undefined;
+        const existingQueuedResponse = durableQueuedResponse ?? reconciledBefore;
         const lifecycleReplacement = {
           manifestKey: identity.variantId,
           conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
@@ -2458,7 +2500,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         let response: unknown;
         try {
           await makeCheckinFileLock(deps.repoRoot)(async () => {
-            if (reconciledBefore !== undefined) {
+            if (existingQueuedResponse !== undefined) {
               const conceptScope = new Set([lifecycleReplacement.conceptId]);
               const preflightPlan = loadDislikedLifecyclePlan(
                 deps.repoRoot,
@@ -2466,7 +2508,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                 conceptScope,
               );
               if (!requiresLifecycleQueue(preflightPlan, identity.variantId)) {
-                response = reconciledBefore;
+                response = existingQueuedResponse;
                 return;
               }
             }

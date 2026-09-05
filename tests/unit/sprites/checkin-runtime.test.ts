@@ -6,6 +6,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +15,10 @@ import {
   buildQueuedAssetMap,
 } from '../../../scripts/sprites/checkin-runtime.js';
 import { ASSET_CHECKIN_MARKER, type CheckinAsset } from '../../../scripts/sprites/checkin.js';
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
 
 function writeJson(filePath: string, data: unknown): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -154,6 +159,61 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     // No manifestKey to project — the shard-copy step must be skipped entirely
     // rather than touching (or corrupting) the base copy.
     expect(readFileSync(preexistingShard, 'utf8')).toBe(shardBefore);
+  });
+});
+
+describe('assets/queue identity inspection', () => {
+  const cleanups: string[] = [];
+
+  afterEach(() => {
+    for (const root of cleanups.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it('recognizes exact queued shard and PNG pairs by recorded content hash', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'checkin-queue-inspect-'));
+    cleanups.push(root);
+    const origin = path.join(root, 'origin.git');
+    const live = path.join(root, 'live');
+    mkdirSync(origin);
+    mkdirSync(live);
+    git(origin, 'init', '--bare', '-b', 'main');
+    git(live, 'init', '-b', 'main');
+    git(live, 'config', 'user.email', 'test@example.com');
+    git(live, 'config', 'user.name', 'Queue Inspect Test');
+    git(live, 'remote', 'add', 'origin', origin);
+    writeFileSync(path.join(live, 'README.md'), 'base\n');
+    git(live, 'add', 'README.md');
+    git(live, 'commit', '-m', 'base');
+    git(live, 'push', '-u', 'origin', 'main');
+
+    const manifestKey = 'nested/demo-var-1';
+    const assetPath = 'generated/nested/demo-var-1.png';
+    writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
+      briefId: 'demo',
+      spriteName: manifestKey,
+      assetPath,
+      variantIndex: 1,
+      contentHash: 'expected-hash',
+    });
+    const pngPath = path.join(live, 'public', 'assets', ...assetPath.split('/'));
+    mkdirSync(path.dirname(pngPath), { recursive: true });
+    writeFileSync(pngPath, 'PNG');
+    git(live, 'add', '-A');
+    git(live, 'commit', '-m', 'queue asset');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+
+    const inspect = createDefaultCheckinDeps(live).inspectDurableQueueAsset!;
+    await expect(
+      inspect({ manifestKey, assetPath, contentHash: 'expected-hash' }),
+    ).resolves.toEqual({
+      reconciliation: 'duplicate',
+      branch: 'assets/queue',
+    });
+    await expect(inspect({ manifestKey, assetPath, contentHash: 'other-hash' })).resolves.toEqual({
+      reconciliation: 'content-conflict',
+      branch: 'assets/queue',
+    });
+    expect(git(live, 'for-each-ref', '--format=%(refname)', 'refs/queue-inspect')).toBe('');
   });
 });
 

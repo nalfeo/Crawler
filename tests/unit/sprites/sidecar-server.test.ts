@@ -1698,6 +1698,69 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(existsSync(path.join(generatedDir, `${unrelatedKey}.png`))).toBe(true);
   });
 
+  it('returns an exact assets/queue acceptance without filing unrelated changed assets', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    const unrelatedKey = 'unrelated-var-0';
+    writeShard(generatedDir, unrelatedKey, {
+      briefId: 'unrelated',
+      spriteName: unrelatedKey,
+      assetPath: `generated/${unrelatedKey}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/unrelated/run-0',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    writeFileSync(path.join(generatedDir, `${unrelatedKey}.png`), Buffer.from('UNRELATED'));
+
+    const checkinDeps = makeCheckinDeps(
+      new Map<string, QueuedAssetCheckin>(),
+      undefined,
+      [
+        `public/assets/generated/${briefId}-var-1.png`,
+        `public/assets/generated/${unrelatedKey}.png`,
+        '',
+      ].join('\n'),
+    );
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'duplicate' as const,
+      branch: 'assets/queue',
+    }));
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: { ...checkinDeps, inspectDurableQueueAsset },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      queueBranch: 'assets/queue',
+      assetCount: 1,
+    });
+    expect(res.json().issueUrl).toBeUndefined();
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith({
+      manifestKey: `${briefId}-var-1`,
+      assetPath: `generated/${briefId}-var-1.png`,
+      contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+    });
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+    expect(existsSync(path.join(generatedDir, `${unrelatedKey}.png`))).toBe(true);
+  });
+
   it('returns a structured refusal when accept cannot prove run durability', async () => {
     await app.close();
     app = buildServer({

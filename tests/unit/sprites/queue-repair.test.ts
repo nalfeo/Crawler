@@ -195,6 +195,26 @@ function queueTombstonedDeletion(live: string, key: string): void {
   }
 }
 
+function replaceQueueAnnotations(live: string, raw: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-annotations-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    writeFileSync(path.join(queue, 'public/assets/generated/sprite-editor-annotations.json'), raw);
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'corrupt queue annotations');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
 function jsonAt(cwd: string, ref: string, file: string): unknown {
   return JSON.parse(
     execFileSync('git', ['show', `${ref}:${file}`], {
@@ -506,6 +526,34 @@ describe('runQueueRepair (real git)', () => {
       ).rejects.toMatchObject({
         kind: 'source-invalid',
         message: expect.stringContaining('would resurrect pending lifecycle deletion(s): alpha'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(() =>
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
+      ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair when pending queue deletions have malformed annotation structure',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      queueTombstonedDeletion(live, 'alpha');
+      replaceQueueAnnotations(live, JSON.stringify({ version: 1, sprites: [] }));
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('must contain an object-valued "sprites" map'),
       });
 
       git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');

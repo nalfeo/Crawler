@@ -311,6 +311,15 @@ export interface CheckinRunnerDeps {
   readonly readManifest?: () => Promise<CheckinManifest>;
   /** Open asset-checkin issues keyed by asset path for durable queue deduplication. */
   readonly listQueuedAssets?: () => Promise<ReadonlyMap<string, QueuedAssetCheckin>>;
+  /**
+   * Inspect the canonical assets/queue branch for one exact asset identity.
+   * Production provides this alongside legacy issue discovery; tests may omit it.
+   */
+  readonly inspectDurableQueueAsset?: (asset: {
+    readonly manifestKey: string;
+    readonly assetPath: string;
+    readonly contentHash?: string;
+  }) => Promise<DurableQueueAssetInspection>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
   /** Clock. Defaults to `() => new Date()`. */
@@ -358,6 +367,11 @@ export interface QueuedAssetCheckin {
   readonly contentHash?: string;
 }
 
+export interface DurableQueueAssetInspection {
+  readonly reconciliation: QueuedContentReconciliation;
+  readonly branch: string;
+}
+
 export interface PreparedAssetCheckin {
   readonly plan: AssetCheckinPlan;
   readonly queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
@@ -388,7 +402,7 @@ export interface PreparedAssetCheckin {
 export type QueuedContentReconciliation = 'new' | 'duplicate' | 'content-conflict' | 'ambiguous';
 
 export function reconcileQueuedContent(
-  queued: QueuedAssetCheckin | undefined,
+  queued: Pick<QueuedAssetCheckin, 'contentHash'> | undefined,
   contentHash: string | undefined,
 ): QueuedContentReconciliation {
   if (!queued) return 'new';

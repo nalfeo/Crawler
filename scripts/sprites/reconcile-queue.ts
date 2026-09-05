@@ -241,14 +241,19 @@ export function partitionLifecycleDeletions(
       }`,
     );
   }
-  const sprites =
-    typeof parsed === 'object' &&
-    parsed !== null &&
-    typeof (parsed as { sprites?: unknown }).sprites === 'object' &&
-    (parsed as { sprites?: unknown }).sprites !== null &&
-    !Array.isArray((parsed as { sprites?: unknown }).sprites)
-      ? ((parsed as { sprites: Record<string, unknown> }).sprites ?? {})
-      : {};
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { sprites?: unknown }).sprites !== 'object' ||
+    (parsed as { sprites?: unknown }).sprites === null ||
+    Array.isArray((parsed as { sprites?: unknown }).sprites)
+  ) {
+    throw new ReconcileError(
+      'invalid-state',
+      `${ANNOTATIONS_PATH} must contain an object-valued "sprites" map on assets/queue.`,
+    );
+  }
+  const sprites = (parsed as { sprites: Record<string, unknown> }).sprites;
   const deleted = new Set(deletedPaths);
   const authorized: AuthorizedLifecycleDeletion[] = [];
   const rejected: RejectedLifecycleDeletion[] = [];

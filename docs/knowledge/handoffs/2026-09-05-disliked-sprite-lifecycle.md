@@ -131,6 +131,20 @@ sprite-pipeline, sprite-workflow
   reconciler, and real `runHeadless` tests; typecheck passed; repository closure
   remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
   0 reference updates; and `verify:fast` passed 661/661 changed tests.
+- The final durability review made `/accept` reconcile the exact manifest key,
+  manifest-directed PNG path, and recorded content hash against both legacy
+  issues and the canonical `assets/queue` branch before mutation. Production
+  inspection uses a unique temporary Git ref so concurrent sessions cannot
+  overwrite a shared remote-tracking ref. Exact matches return the existing
+  queue record without sweeping unrelated changed art; partial pairs,
+  unverifiable hashes, and content conflicts fail closed.
+- Queue repair now rejects structurally malformed lifecycle annotations instead
+  of interpreting them as an empty authority map, so rebuilding from `main`
+  cannot resurrect a tombstone-authorized deletion. The focused queue,
+  reconciler, sidecar, and real-Git inspection matrix passed 277/277; lifecycle
+  closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
+  0 pending / 0 reference updates; and the final changed-test `verify:fast`
+  selection passed 810/810.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.
