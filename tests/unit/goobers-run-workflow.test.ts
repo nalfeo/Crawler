@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -162,6 +162,113 @@ function extractPinnedSha(script: string | null | undefined): string | null {
   return match?.[1] ?? null;
 }
 
+function readSparseCheckoutPaths(step: GoobersActionsStep | undefined): string[] {
+  const sparseCheckout = step?.with?.['sparse-checkout'];
+  if (typeof sparseCheckout !== 'string') {
+    return [];
+  }
+  return sparseCheckout
+    .split(/\r?\n/)
+    .map((entry) => entry.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+function extractReferencedRepoFiles(steps: GoobersActionsStep[]): string[] {
+  const references = new Set<string>();
+  const repoFilePattern =
+    /(?:\$\{GITHUB_WORKSPACE\}\/)?((?:\.github|scripts)\/[A-Za-z0-9._/-]+\.(?:cjs|js|json|mjs|sh|ts|yaml|yml))/g;
+
+  for (const step of steps) {
+    for (const match of step.run?.matchAll(repoFilePattern) ?? []) {
+      if (match[1]) {
+        references.add(match[1]);
+      }
+    }
+  }
+  return [...references].sort();
+}
+
+function sparseCheckoutIncludes(repoFile: string, sparsePaths: string[]): boolean {
+  return sparsePaths.some(
+    (sparsePath) => repoFile === sparsePath || repoFile.startsWith(`${sparsePath}/`),
+  );
+}
+
+/**
+ * A sparse cone only populates the directories it names, so a script the
+ * workflow invokes by path is not enough: every module that script pulls in --
+ * including siblings of a *different* directory, like the `ci-recovery`
+ * eligibility library the Goobers intake selector imports -- has to be in the
+ * cone too, or the step dies with `ERR_MODULE_NOT_FOUND` at run time.
+ */
+function resolveRelativeImport(fromRepoFile: string, specifier: string): string | null {
+  const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromRepoFile), specifier));
+  const candidates = [
+    base,
+    ...['.mjs', '.cjs', '.js', '.ts'].flatMap((extension) => [
+      `${base}${extension}`,
+      path.posix.join(base, `index${extension}`),
+    ]),
+  ];
+  return (
+    candidates.find((candidate) => {
+      if (candidate === '..' || candidate.startsWith('../')) return false;
+      // Must be an existing *file*: a directory that shares a module's name
+      // (`./lib` next to `lib.mjs`) would otherwise satisfy the bare `base`
+      // candidate and silently truncate the import walk.
+      const absolute = path.join(REPO_ROOT, candidate);
+      return existsSync(absolute) && statSync(absolute).isFile();
+    }) ?? null
+  );
+}
+
+function collectTransitiveRepoFiles(entryFiles: string[]): {
+  files: string[];
+  unresolved: string[];
+} {
+  const moduleExtensions = new Set(['.mjs', '.cjs', '.js', '.ts']);
+  // Statement forms (`import ... from '<x>'`, bare `import '<x>'`,
+  // `export ... from '<x>'`) are anchored to the start of a line, and the call
+  // forms (`import('<x>')`, `require('<x>')`) require the call parenthesis, so
+  // prose in a doc comment or a path quoted inside an error message is not
+  // mistaken for a real dependency edge.
+  const specifierPatterns = [
+    // `import ... from '<x>'` / `export ... from '<x>'`, including the
+    // multi-line named form. The gap excludes `;` and quotes so it cannot run
+    // past the end of one statement.
+    /(?:^|\n)[ \t]*(?:import|export)\b[^;'"]*?\bfrom[ \t]*['"]([^'"]+)['"]/g,
+    /(?:^|\n)[ \t]*import[ \t]*['"]([^'"]+)['"]/g,
+    /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]/g,
+  ];
+  const files = new Set<string>();
+  const unresolved: string[] = [];
+  const queue = [...entryFiles];
+
+  while (queue.length > 0) {
+    const repoFile = queue.shift() as string;
+    if (files.has(repoFile)) continue;
+    files.add(repoFile);
+    if (!moduleExtensions.has(path.posix.extname(repoFile))) continue;
+    const absolute = path.join(REPO_ROOT, repoFile);
+    if (!existsSync(absolute)) continue;
+
+    const source = readFileSync(absolute, 'utf8');
+    for (const specifierPattern of specifierPatterns) {
+      for (const match of source.matchAll(specifierPattern)) {
+        const specifier = match[1];
+        if (!specifier?.startsWith('.')) continue;
+        const resolved = resolveRelativeImport(repoFile, specifier);
+        if (resolved) {
+          queue.push(resolved);
+        } else {
+          unresolved.push(`${repoFile} -> ${specifier}`);
+        }
+      }
+    }
+  }
+  return { files: [...files].sort(), unresolved };
+}
+
 describe('Goobers automatic dispatch and recovery', () => {
   it('dispatches immediately for eligible issue events and performs an hourly recovery sweep', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
@@ -190,6 +297,64 @@ describe('Goobers automatic dispatch and recovery', () => {
       group: 'goobers-run-lane-${{ matrix.lane }}',
       'cancel-in-progress': false,
     });
+  });
+
+  it('includes every checked-in file — and its transitive imports — used after a sparse checkout', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const sparseJobs = Object.entries(workflow.jobs).filter(([, job]) =>
+      job?.steps?.some((step) => readSparseCheckoutPaths(step).length > 0),
+    );
+    const requiredByJob = new Map<string, string[]>();
+
+    expect(sparseJobs.map(([jobName]) => jobName)).toEqual(
+      expect.arrayContaining(['release-unstarted-reservation', 'reserve']),
+    );
+    for (const [jobName, job] of sparseJobs) {
+      const steps = job?.steps ?? [];
+      const checkoutIndex = steps.findIndex((step) => readSparseCheckoutPaths(step).length > 0);
+      const sparsePaths = readSparseCheckoutPaths(steps[checkoutIndex]);
+      const referencedFiles = extractReferencedRepoFiles(steps.slice(checkoutIndex + 1));
+
+      expect(
+        referencedFiles,
+        `"${jobName}" sparse job must reference checked-in tooling`,
+      ).not.toEqual([]);
+      for (const repoFile of referencedFiles) {
+        expect(
+          existsSync(path.join(REPO_ROOT, repoFile)),
+          `"${jobName}" references missing repository file "${repoFile}"`,
+        ).toBe(true);
+      }
+
+      const { files: requiredFiles, unresolved } = collectTransitiveRepoFiles(referencedFiles);
+      requiredByJob.set(jobName, requiredFiles);
+      expect(
+        unresolved,
+        `"${jobName}" pulls in relative imports that do not resolve on disk: ${unresolved.join(', ')}`,
+      ).toEqual([]);
+
+      for (const repoFile of requiredFiles) {
+        expect(
+          sparseCheckoutIncludes(repoFile, sparsePaths),
+          `"${jobName}" needs "${repoFile}" at run time (directly or via an import chain), but sparse-checkout includes only: ${sparsePaths.join(', ')}. Add the file or its parent directory to that checkout.`,
+        ).toBe(true);
+      }
+    }
+
+    // The regression this test was written for: the reserve job invokes the
+    // intake selector, which imports the `ci-recovery` eligibility library, so
+    // both cones have to be checked out.
+    expect(requiredByJob.get('reserve')).toEqual(
+      expect.arrayContaining([
+        '.github/scripts/goobers/intake-selection.mjs',
+        '.github/scripts/ci-recovery/issue-intake-lib.mjs',
+        // Reached only through the multi-line named import in
+        // `issue-intake-lib.mjs`, so these also pin that the walk parses that
+        // statement form.
+        '.github/scripts/ci-recovery/markers.mjs',
+        '.github/scripts/ci-recovery/state.mjs',
+      ]),
+    );
   });
 
   it('runs two lanes of two isolated slots each — exactly four simultaneous issue workflows', () => {
@@ -1773,26 +1938,21 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(script).not.toContain('contains($marker)');
     }
     // Both jobs that read the lease must actually have the library on disk.
-    // Asserted by CONTAINMENT, not equality: the reserve job also needs
-    // `.github/scripts` for the intake selector, and pinning the pattern list
-    // literally here is what let the missing selector root ship green.
-    // tests/unit/goobers-workflow-checkout-contract.test.ts derives the full
-    // required set from the steps themselves.
-    const sparseList = (value: string | boolean | undefined): string[] =>
-      typeof value === 'string'
-        ? value
-            .split('\n')
-            .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
-            .filter((entry) => entry.length > 0)
-        : [];
+    // The asymmetry is deliberate. `release-unstarted-reservation` only ever
+    // needs the lease script, so its cone is pinned exactly -- widening it
+    // should be a conscious edit here. `reserve` additionally invokes the
+    // intake selector, so its cone legitimately carries more entries and is
+    // only checked for the lease path; the sparse-checkout coverage test above
+    // is what proves the rest of that cone is complete.
     expect(
-      sparseList(
-        workflow.jobs['release-unstarted-reservation']?.steps?.[0]?.with?.['sparse-checkout'],
-      ),
-    ).toContain('scripts/agent');
-    expect(sparseList(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout'])).toContain(
-      'scripts/agent',
-    );
+      readSparseCheckoutPaths(workflow.jobs['release-unstarted-reservation']?.steps?.[0]),
+    ).toStrictEqual(['scripts/agent']);
+    expect(readSparseCheckoutPaths(workflow.jobs.reserve?.steps?.[0])).toContain('scripts/agent');
+    // Neither assertion here derives the FULL required cone; that is
+    // tests/unit/goobers-workflow-checkout-contract.test.ts, which reads every
+    // repo path a job actually executes out of the steps themselves. Pinning
+    // this list literally for `reserve` is what let the missing selector root
+    // ship green.
   });
 
   it('trusts only the GitHub Actions identity and only whole-line receipts', () => {
