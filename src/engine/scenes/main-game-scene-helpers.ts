@@ -25,6 +25,7 @@ import {
 } from '../../shared/npc-types.js';
 import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
   type NpcQuestIndicatorState,
   type ShopkeeperStage,
 } from '../../shared/quest-types.js';
@@ -285,8 +286,9 @@ export function resolveDialogueLines(
       spellbookClaimed:
         world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
         world.featureUnlocks.spells === true,
+      merchantQuestStarted: world.questLog.has(FLOOR1_SHOP_QUEST_ID),
     });
-    if (brokerLines) {
+    if (brokerLines !== undefined && brokerLines !== null) {
       return [...brokerLines];
     }
   }

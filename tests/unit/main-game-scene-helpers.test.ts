@@ -28,7 +28,11 @@ import {
   SHOPKEEPER_SHOP_DIALOGUE,
   selectSpellBrokerDialogue,
 } from '../../src/shared/npc-types.js';
-import { FLOOR1_LEAVE_FLOOR_QUEST_ID, type ShopkeeperStage } from '../../src/shared/quest-types.js';
+import {
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+  type ShopkeeperStage,
+} from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 /**
@@ -352,11 +356,35 @@ describe('resolveDialogueLines', () => {
     ]);
   });
 
+  it('omits only the spell broker tail-reference until the merchant quest is active', () => {
+    const world = createTestWorld();
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+
+    world.questLog.set(FLOOR1_SHOP_QUEST_ID, {
+      questId: FLOOR1_SHOP_QUEST_ID,
+      status: 'active',
+      tracked: true,
+      progress: {},
+      done: {},
+    });
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
+    );
+  });
+
   it('returns the locked line for a gated spell quest giver', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: false })!,
+      ...selectSpellBrokerDialogue({
+        locked: true,
+        spellbookClaimed: false,
+        merchantQuestStarted: false,
+      })!,
     ]);
   });
 
@@ -366,17 +394,22 @@ describe('resolveDialogueLines', () => {
     world.featureUnlocks.spells = true;
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...selectSpellBrokerDialogue({ locked: false, spellbookClaimed: true })!,
+      ...selectSpellBrokerDialogue({
+        locked: false,
+        spellbookClaimed: true,
+        merchantQuestStarted: false,
+      })!,
     ]);
   });
 
-  it('keeps the authored spell broker intro until the spell unlock is actually live', () => {
+  it('keeps the authored spell broker intro available before the merchant quest', () => {
     const world = createTestWorld();
     world.goalFlags.set('floor1-boss-spellbook-claimed', true);
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
-    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
-      getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),
-    );
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
   });
 
   it('prefers the locked line over the post-claim line for the spell broker', () => {
@@ -385,12 +418,23 @@ describe('resolveDialogueLines', () => {
     world.featureUnlocks.spells = true;
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...selectSpellBrokerDialogue({ locked: true, spellbookClaimed: true })!,
+      ...selectSpellBrokerDialogue({
+        locked: true,
+        spellbookClaimed: true,
+        merchantQuestStarted: false,
+      })!,
     ]);
   });
 
   it('falls back to authored spell broker dialogue before the spellbook is claimed', () => {
     const world = createTestWorld();
+    world.questLog.set(FLOOR1_SHOP_QUEST_ID, {
+      questId: FLOOR1_SHOP_QUEST_ID,
+      status: 'active',
+      tracked: true,
+      progress: {},
+      done: {},
+    });
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
       getNpcDef('spell-quest-giver')!.dialogue.map((line) => line.text),

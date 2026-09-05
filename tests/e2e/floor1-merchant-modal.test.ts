@@ -133,4 +133,19 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
       );
     }
   });
+
+  it('keeps the unlocked pre-merchant Broker actionable without mentioning the tail', async () => {
+    await loadResolvedScene();
+    const broker = await mainSceneProbe.primeSpellBrokerQuestIntro(page);
+    expect(broker, 'unlocked Floor 1 Spell Broker should be spawned').not.toBeNull();
+    expect(await mainSceneProbe.getActiveQuestIds(page)).not.toContain('floor1-shopkeeper-errand');
+
+    await mainSceneProbe.queueInteraction(page);
+    const state = await waitForState(page, (s) => s.conversationOpen && !s.modalOpen, {
+      label: 'pre-merchant Spell Broker dialogue opened through MainGameScene',
+    });
+    expect(state.conversationLines).toHaveLength(2);
+    expect(state.conversationLines.join(' ')).not.toContain('tail');
+    expect(await mainSceneProbe.getActiveQuestIds(page)).toContain('floor1-boss-battle');
+  });
 });

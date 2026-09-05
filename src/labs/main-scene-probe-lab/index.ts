@@ -403,6 +403,7 @@ interface MainSceneInternals {
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
+  activeConversationLines?: readonly string[];
   queuedInteraction?: boolean;
   queuedAbilitiesToggle?: boolean;
   requestInventoryToggle?(): void;
@@ -635,6 +636,8 @@ export interface MainSceneState {
   readonly conversationOpen: boolean;
   /** Active NPC dialogue line index, or null when no conversation is open. */
   readonly conversationLineIndex: number | null;
+  /** Active NPC dialogue lines as rendered by the real scene. */
+  readonly conversationLines: readonly string[];
   /** Current corner-button visibility (safe-room panel shortcuts). */
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
@@ -1135,6 +1138,8 @@ export interface MainSceneProbeApi {
     readonly firstSpellId: string | null;
     readonly offerCount: number;
   } | null;
+  /** Arrange the unlocked Broker before the merchant errand, then park at the Broker. */
+  primeSpellBrokerQuestIntro(): ProbePoint | null;
   /**
    * Design-space safe-area insets currently in force plus the bounds of every
    * edge-anchored screen-space surface, so an e2e gate can assert none of them
@@ -1710,6 +1715,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         conversationNpcEid !== null
           ? (world?.npcs.get(conversationNpcEid)?.dialogueIndex ?? 0)
           : null;
+      const conversationLines = scene?.activeConversationLines ?? [];
       return {
         worldState: world?.state ?? null,
         playerEid: eid,
@@ -1731,6 +1737,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
         conversationLineIndex,
+        conversationLines: [...conversationLines],
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
@@ -2916,6 +2923,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
       return { position: { x, y }, firstSpellId, offerCount: offers.length };
+    },
+
+    primeSpellBrokerQuestIntro: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let brokerEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = instance.defId === 'spell-quest-giver';
+        if (instance.nearbyPlayer) {
+          brokerEid = npcEid;
+        }
+      }
+      if (brokerEid === null) {
+        return null;
+      }
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.questLog.delete(FLOOR1_SHOP_QUEST_ID);
+      const x = world.stores.position.x[brokerEid] ?? 0;
+      const y = world.stores.position.y[brokerEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { x, y };
     },
 
     queueInteraction: () => {
