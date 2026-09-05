@@ -5,11 +5,19 @@ import { selectSpellBrokerDialogue } from '../../src/shared/npc-types.js';
 const NONE = {
   locked: false,
   spellbookClaimed: false,
+  merchantQuestStarted: false,
 } as const;
 
 describe('selectSpellBrokerDialogue', () => {
-  it('returns null (use default authored dialogue) when unlocked and unclaimed', () => {
-    expect(selectSpellBrokerDialogue(NONE)).toBeNull();
+  it('omits only the tail-reference line until the merchant quest is active', () => {
+    expect(selectSpellBrokerDialogue(NONE)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+  });
+
+  it('allows the default authored dialogue once the merchant quest is active', () => {
+    expect(selectSpellBrokerDialogue({ ...NONE, merchantQuestStarted: true })).toBeNull();
   });
 
   it('returns the locked line while the Goon has not cleared the player', () => {
@@ -27,7 +35,13 @@ describe('selectSpellBrokerDialogue', () => {
   });
 
   it('prioritises the locked line over the post-claim line', () => {
-    expect(selectSpellBrokerDialogue({ locked: true, spellbookClaimed: true })).toEqual([
+    expect(
+      selectSpellBrokerDialogue({
+        locked: true,
+        spellbookClaimed: true,
+        merchantQuestStarted: false,
+      }),
+    ).toEqual([
       "Not yet. The Goon clears you, the Merchant dresses you, *then* you're my problem. That's the order.",
       "I didn't write the order. I'd have written it differently. I'd have written a lot of things differently.",
     ]);
