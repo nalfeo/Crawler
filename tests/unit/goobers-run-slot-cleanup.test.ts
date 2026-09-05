@@ -2545,6 +2545,19 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
     // The receipt it writes is scoped to THIS run and attempt.
     expect(result.log).toContain(adoptedMarker('999', '1', '42'));
   });
+
+  it('preserves empty resume and lease fields through JSONL adoption staging', () => {
+    const result = runReceiptStep('Adopt reserved slot assignments', 'run', [[]], {
+      RESERVED_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
+    });
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain(
+      "Lane 1 slot 1 adopted reserved issue #42 (cohort 'approved', resume PR 'none').",
+    );
+    expect(result.stdout).not.toContain("resume PR 'free'");
+    expect(result.log).toContain(adoptedMarker('999', '1', '42'));
+  });
 });
 
 /**

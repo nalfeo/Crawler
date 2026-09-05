@@ -14,6 +14,7 @@ ci-policy
 - The oldest live Goobers dispatch now retains reservation ownership when a newer dispatch is queued, preventing mutual suppression during a dispatch burst.
 - An explicit-abandon recovery publishes a provisional slot assignment before closing its PR or deleting its branch, then clears its resume metadata in the final assignment map.
 - The executable slot-concurrency suite now skips on workstations without `jq`.
+- Adoption staging uses JSONL rather than tab-delimited fields, preserving empty resume and lease values across its validation and receipt passes.
 
 ## Validation
 

@@ -1882,9 +1882,7 @@ ${queryScript}
     // Validate all assignments before writing the first receipt, so one blocked
     // later slot cannot leave an earlier slot adopted but unstarted.
     const receiptIndex = adoptScript.indexOf('gh issue comment "$issue_number"');
-    const validationIndex = adoptScript.indexOf(
-      "printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n'",
-    );
+    const validationIndex = adoptScript.indexOf('jq -cn');
     expect(receiptIndex).toBeGreaterThanOrEqual(0);
     expect(validationIndex).toBeGreaterThanOrEqual(0);
     expect(receiptIndex).toBeGreaterThan(validationIndex);
@@ -2124,7 +2122,12 @@ ${queryScript}
     expect(script).toContain('any(.[]; .issue == $issue)');
     expect(script).toContain('[ "$(jq \'length\' <<<"$ASSIGNMENTS")" -lt 4 ]');
     const adoptScript = adopt?.run ?? '';
-    expect(adoptScript).toContain('done < <(jq -c \'.[]\' <<<"$RESERVED_ASSIGNMENTS")');
+    expect(adoptScript).toContain('leaseComment: $leaseComment');
+    expect(adoptScript).toContain('while IFS= read -r staged_assignment; do');
+    expect(adoptScript).toContain(
+      'lease_comment="$(jq -r \'.leaseComment\' <<<"$staged_assignment")"',
+    );
+    expect(adoptScript).not.toContain('IFS="$(printf \'\\t\')" read -r lane slot');
     expect(adoptScript).toContain('done < "$assignment_file"');
     expect(adoptScript).toContain('goobers_lease_marker adopted');
     expect(script).toContain('No unblocked issue in the Goobers intake cohort; skipping this run.');

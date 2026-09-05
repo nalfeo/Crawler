@@ -874,7 +874,7 @@ jobs:
           RESERVED_ASSIGNMENTS: ${{ needs.reserve.outputs.slot_assignments }}
         run: |
           set -euo pipefail
-          assignment_file="${RUNNER_TEMP}/goobers-slot-assignments-lane-${GOOBERS_LANE}.tsv"
+          assignment_file="${RUNNER_TEMP}/goobers-slot-assignments-lane-${GOOBERS_LANE}.jsonl"
           : > "$assignment_file"
           lease_lib="${GITHUB_WORKSPACE}/scripts/agent/goobers-reservation-lease.sh"
           if ! . "$lease_lib"; then
@@ -906,12 +906,32 @@ jobs:
               echo "::error::Refusing to adopt reserved issue #${issue_number} for lane ${lane} slot ${slot}: it is still leased by $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment"). Confirm the earlier runner is clear before reconciling its labels." >&2
               exit 1
             fi
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-              "$lane" "$slot" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" \
-              "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment" >> "$assignment_file"
+            jq -cn \
+              --argjson lane "$lane" \
+              --argjson slot "$slot" \
+              --arg issue "$issue_number" \
+              --arg cohort "$cohort" \
+              --arg resumePr "$resume_pr" \
+              --arg resumeBranch "$resume_branch" \
+              --arg leaseState "$lease_state" \
+              --arg leaseRun "$lease_run" \
+              --arg leaseAttempt "$lease_attempt" \
+              --arg leaseComment "$lease_comment" \
+              '{lane: $lane, slot: $slot, issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, leaseState: $leaseState, leaseRun: $leaseRun, leaseAttempt: $leaseAttempt, leaseComment: $leaseComment}' \
+              >> "$assignment_file"
           done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
-          while IFS="$(printf '\t')" read -r lane slot issue_number cohort resume_pr resume_branch lease_state lease_run lease_attempt lease_comment; do
+          while IFS= read -r staged_assignment; do
+            lane="$(jq -r '.lane' <<<"$staged_assignment")"
+            slot="$(jq -r '.slot' <<<"$staged_assignment")"
+            issue_number="$(jq -r '.issue' <<<"$staged_assignment")"
+            cohort="$(jq -r '.cohort' <<<"$staged_assignment")"
+            resume_pr="$(jq -r '.resumePr' <<<"$staged_assignment")"
+            resume_branch="$(jq -r '.resumeBranch' <<<"$staged_assignment")"
+            lease_state="$(jq -r '.leaseState' <<<"$staged_assignment")"
+            lease_run="$(jq -r '.leaseRun' <<<"$staged_assignment")"
+            lease_attempt="$(jq -r '.leaseAttempt' <<<"$staged_assignment")"
+            lease_comment="$(jq -r '.leaseComment' <<<"$staged_assignment")"
             adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
             receipt_id=""
             if [ "$lease_state" = "adopted" ] &&
