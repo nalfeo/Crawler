@@ -269,6 +269,7 @@ function runStep(stepName: string, options: RunStepOptions = {}): Harness {
       GITHUB_REF_NAME: 'main',
       GITHUB_SHA: 'deadbeef',
       ARTIFACT_NAME: 'goobers-journal-artifact',
+      RUN_JOURNAL_ARTIFACT_ID: '12345',
       // The lane job as a whole failed (slot 2's run died); the per-run
       // outcome must still be derived from each run's own journal.
       JOB_STATUS: 'failure',

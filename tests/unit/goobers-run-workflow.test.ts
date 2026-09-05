@@ -580,6 +580,28 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(commands).not.toContain('--force');
   });
 
+  it('keeps oversized shell steps free of GitHub expression interpolation', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const oversizedSteps = Object.values(workflow.jobs)
+      .flatMap((job) => job?.steps ?? [])
+      .filter((step) => (step.run?.length ?? 0) > 21_000);
+    const disposition = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Handle no-work disposition',
+    );
+
+    expect(oversizedSteps.map((step) => step.name)).toContain('Handle no-work disposition');
+    for (const step of oversizedSteps) {
+      expect(
+        step.run,
+        `"${step.name}" exceeds GitHub's 21,000-character expression limit`,
+      ).not.toContain('${{');
+    }
+    expect(disposition?.env?.RUN_JOURNAL_ARTIFACT_ID).toBe(
+      '${{ steps.upload-run-journal.outputs.artifact-id }}',
+    );
+    expect(disposition?.run).toContain("'${RUN_JOURNAL_ARTIFACT_ID}'");
+  });
+
   it('treats an expected empty slot as a successful no-claim outcome', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];

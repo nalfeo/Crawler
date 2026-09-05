@@ -1659,6 +1659,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}
           GOOBERS_RESUME_PR: ${{ env.GOOBERS_RESUME_PR }}
+          RUN_JOURNAL_ARTIFACT_ID: ${{ steps.upload-run-journal.outputs.artifact-id }}
           # The provider claim breadcrumb was written by the PAT identity, so
           # the release must be authored by the same login. github.token is an
           # App installation token whose GET /user is unsupported, which is what
@@ -1850,7 +1851,7 @@ jobs:
               source_line_count="$(awk 'END { print NR }' "$events_file")"
               valid_line_count="$(awk 'END { print NR }' "$events_input")"
               if [ "$source_line_count" -ne "$valid_line_count" ]; then
-                echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) from slot ${slot} run ${run_id} while determining issue disposition; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+                echo "::warning::Ignored $((source_line_count - valid_line_count)) malformed Goobers journal line(s) from slot ${slot} run ${run_id} while determining issue disposition; inspect artifact '${RUN_JOURNAL_ARTIFACT_ID}'." >&2
               fi
               if [ -z "$issue_number" ]; then
                 issue_number="$(
@@ -1917,7 +1918,7 @@ jobs:
             # handed an issue the first may still be pushing to. A preserved
             # label is recoverable by hand; duplicated agent work is not.
             if [ "$terminal_verified" != "true" ]; then
-              echo "::error::Slot ${slot} run ${run_id} (instance ${slot_root}) has no verified terminal run.finished after \`goobers run abort\` (${abort_reported:-not-attempted}), so its journal still reports a live run. Refusing to release its provider claim or change goobers/status:in-review on issue #${issue_number:-unknown}. Inspect artifacts '${{ steps.upload-run-journal.outputs.artifact-id }}' (pre-repair) and 'goobers-run-repaired-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}' (post-repair), repair it with 'goobers run abort ${run_id} ${slot_root}', then reconcile the issue by hand: gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+              echo "::error::Slot ${slot} run ${run_id} (instance ${slot_root}) has no verified terminal run.finished after \`goobers run abort\` (${abort_reported:-not-attempted}), so its journal still reports a live run. Refusing to release its provider claim or change goobers/status:in-review on issue #${issue_number:-unknown}. Inspect artifacts '${RUN_JOURNAL_ARTIFACT_ID}' (pre-repair) and 'goobers-run-repaired-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}' (post-repair), repair it with 'goobers run abort ${run_id} ${slot_root}', then reconcile the issue by hand: gh issue edit <issue> --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
               return 1
             fi
 
@@ -1948,7 +1949,7 @@ jobs:
 
             if [ -n "$resume_pr" ]; then
               if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-                echo "::error::Goobers resumed PR #${resume_pr}, but the claimed issue number could not be recovered. Preserving goobers/status:in-review; inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}'." >&2
+                echo "::error::Goobers resumed PR #${resume_pr}, but the claimed issue number could not be recovered. Preserving goobers/status:in-review; inspect artifact '${RUN_JOURNAL_ARTIFACT_ID}'." >&2
                 return 1
               fi
               lookup_status=0
@@ -1971,7 +1972,7 @@ jobs:
                   echo "Slot ${slot} produced no run journal and claimed no issue; nothing to release."
                   return 0
                 fi
-                echo "::error::Slot ${slot} run ${run_id} ended with ${run_outcome}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+                echo "::error::Slot ${slot} run ${run_id} ended with ${run_outcome}, but the claimed issue number could not be recovered. Inspect artifact '${RUN_JOURNAL_ARTIFACT_ID}' and remove the stale goobers/status:in-review label manually." >&2
                 return 1
               fi
 
@@ -2008,7 +2009,7 @@ jobs:
               return 0
             fi
             if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
-              echo "::error::Goobers stage '${no_work_stage}' returned no-work in slot ${slot}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
+              echo "::error::Goobers stage '${no_work_stage}' returned no-work in slot ${slot}, but the claimed issue number could not be recovered. Inspect artifact '${RUN_JOURNAL_ARTIFACT_ID}' and remove the stale goobers/status:in-review label manually." >&2
               return 1
             fi
 
