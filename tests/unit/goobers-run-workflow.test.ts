@@ -689,6 +689,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(sharedQuery).not.toContain("--label 'goobers:approved'");
     expect(recovery).toContain("search_open_unassigned --label 'goobers:approved'");
     expect(recovery).toContain('jq -s \'add\' "${approved_file}" "${parity_file}"');
+    expect(recovery).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
+    expect(recovery).toContain('ISSUE_NUMBER="${candidate_issue}"');
+    expect(recovery).toContain('INTAKE_COHORT="${candidate_cohort}"');
     expect(start).not.toContain('index("goobers:approved") != null');
     expect(workflow.jobs.reserve?.env?.LIFECYCLE_MUTATION_OWNER).toBe(
       '${{ vars.LIFECYCLE_MUTATION_OWNER }}',
@@ -876,16 +879,22 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     // The fresh scan runs BOTH cohort queries through the hardened wrapper (a
     // failed search must never read as an empty backlog), hands them to the
-    // canonical selector, and records only `eligible_fresh_issue`.
+    // canonical selector, reserves legacy-parity issues that provider claims
+    // cannot see, and records approved work only as `eligible_fresh_issue`.
     expect(recoveryStep?.run).toMatch(
       /list_backlog_candidates 'the maintainer-approved Goobers queue'[\s\S]*search_open_unassigned --label 'goobers:approved' > "\$\{approved_file\}"[\s\S]*list_backlog_candidates 'the Goobers intake parity backlog'[\s\S]*intake-selection\.mjs[\s\S]*find_open_dependency_blockers "\$\{candidate_issue\}"[\s\S]*continue[\s\S]*eligible_fresh_issue="\$\{candidate_issue\}"[\s\S]*done < "\$\{selected_file\}"/,
     );
-    // ...and it must NOT designate that issue as this dispatch's target. The
-    // recovery branch of query-backlog bypasses the provider claim protocol,
-    // so a preflight-picked fresh issue would be invisible to it and the four
-    // slots would race onto the same issue. They claim atomically instead.
+    expect(recoveryStep?.run).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
+    expect(recoveryStep?.run).toContain('ISSUE_NUMBER="${candidate_issue}"');
+    expect(recoveryStep?.run).toContain('INTAKE_COHORT="${candidate_cohort}"');
+    expect(recoveryStep?.run).toContain('plain fresh claims require goobers:approved');
+    // ...and it must NOT designate an approved fresh issue as this dispatch's
+    // target. The recovery branch of query-backlog bypasses the provider claim
+    // protocol, so a preflight-picked approved issue would be invisible to it
+    // and the four slots would race onto the same issue. They claim atomically
+    // instead.
     const freshScan = (recoveryStep?.run ?? '').slice(
-      (recoveryStep?.run ?? '').indexOf('eligible_fresh_issue=""'),
+      (recoveryStep?.run ?? '').indexOf('eligible_fresh_issue="${candidate_issue}"'),
       (recoveryStep?.run ?? '').indexOf('Eligible fresh backlog work exists'),
     );
     expect(freshScan).not.toBe('');
@@ -1578,6 +1587,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     // Listing runs needs actions:read, and the check is only meaningful if the
     // permission is actually granted.
     expect(workflow.permissions?.actions).toBe('read');
+    expect(detect?.env?.GH_TOKEN).toBe('${{ github.token }}');
 
     // Fails closed on the safe side: an unreadable run list means "assume a
     // sibling is live" (no recovery designation), never "assume we are alone".
@@ -1863,11 +1873,14 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(adoptGateIndex).toBeGreaterThanOrEqual(0);
     expect(adoptExportIndex).toBeGreaterThan(adoptGateIndex);
 
-    // The scheduled fresh-backlog scan may only answer "is there work?"; it
-    // must not promote a fresh issue into ISSUE_NUMBER, because the recovery
-    // path bypasses Goobers' provider claim protocol and a fresh slot would
-    // race onto the same issue.
+    // The scheduled fresh-backlog scan may only answer "is there approved
+    // work?" for provider-claimable issues; legacy-parity issues must be
+    // promoted into the single reserved target because plain fresh claims can
+    // only see goobers:approved.
     expect(script).toContain('eligible_fresh_issue=""');
+    expect(script).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
+    expect(script).toContain('ISSUE_NUMBER="${candidate_issue}"');
+    expect(script).toContain('INTAKE_COHORT="${candidate_cohort}"');
     expect(script).toContain('eligible_fresh_issue="${candidate_issue}"');
     expect(script).not.toContain(
       'ISSUE_NUMBER="${candidate_issue}"\n              echo "Selected fresh approved issue',
@@ -1887,6 +1900,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(startScript).toMatch(
       /gh issue edit "\$issue_number" --repo "\$GITHUB_REPOSITORY" \\\n\s*--add-label 'goobers\/status:in-review'/,
     );
+    expect(startScript).toContain('[ "${RESOLVED_INTAKE_COHORT:-}" = "legacy-parity" ]');
+    expect(startScript).toContain('gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}"');
     expect(job?.needs).toBe('reserve');
     const definition = loadYaml<GoobersDefinition>(
       '.goobers',

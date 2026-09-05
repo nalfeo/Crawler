@@ -197,7 +197,7 @@ jobs:
         # against a sibling dispatch's reserve, so the answer cannot race.
         id: singleflight
         env:
-          GH_TOKEN: ${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           live=""
@@ -487,15 +487,15 @@ jobs:
           fi
           if [ -z "${ISSUE_NUMBER}" ]; then
             # No resumable in-review target exists, so this dispatch has no
-            # recovery work. Deliberately do NOT designate a fresh backlog
-            # issue as this dispatch's target: the recovery path in
-            # crawler-feature-pr.yaml's query-backlog stage bypasses
-            # `goobers backlog-query --claim` entirely, so a preflight-picked
-            # fresh issue is invisible to Goobers' provider-side claim
-            # protocol and the fresh slots would race onto the same issue.
-            # All four slots claim atomically instead; this scan only answers
-            # "is any eligible work left at all?" so an empty backlog still
-            # exits before the costly setup steps in the `run` job.
+            # recovery work. Approved fresh work stays on Goobers'
+            # provider-side claim protocol: a preflight-picked approved issue
+            # is invisible to that protocol and the fresh slots would race onto
+            # the same issue if we designated it here. Legacy-parity work is
+            # different: it is canonical intake, but it may not carry the
+            # provider's goobers:approved trust label, so a plain atomic claim
+            # can never pick it up. In that case this job reserves the selected
+            # parity issue as the one dispatch-level target and the other three
+            # slots keep claiming fresh approved work atomically.
             #
             # Apply state/assignee filters and creation-order sort server-side
             # (GitHub search qualifiers) rather than paging `gh issue list`:
@@ -555,17 +555,26 @@ jobs:
                 echo "::warning::Scheduled recovery skipped blocked issue #${candidate_issue}: ${blocked_by}." >&2
                 continue
               fi
+              if [ "${candidate_cohort}" = "legacy-parity" ]; then
+                ISSUE_NUMBER="${candidate_issue}"
+                INTAKE_COHORT="${candidate_cohort}"
+                echo "Scheduled intake selected legacy-parity issue #${ISSUE_NUMBER}; reserving it for lane ${GOOBERS_RECOVERY_LANE} slot ${GOOBERS_RECOVERY_SLOT} because plain fresh claims require goobers:approved."
+                break
+              fi
               eligible_fresh_issue="${candidate_issue}"
               eligible_fresh_cohort="${candidate_cohort}"
               break
             done < "${selected_file}"
-            if [ -z "${eligible_fresh_issue}" ]; then
+            if [ -n "${ISSUE_NUMBER}" ]; then
+              :
+            elif [ -z "${eligible_fresh_issue}" ]; then
               echo "No unblocked issue in the Goobers intake cohort; skipping this run."
               echo "should_run=false" >> "${GITHUB_OUTPUT}"
               exit 0
+            else
+              echo "Eligible fresh backlog work exists (oldest unblocked: #${eligible_fresh_issue}, cohort: ${eligible_fresh_cohort}); no recovery target, so all four slots claim atomically."
+              exit 0
             fi
-            echo "Eligible fresh backlog work exists (oldest unblocked: #${eligible_fresh_issue}, cohort: ${eligible_fresh_cohort}); no recovery target, so all four slots claim atomically."
-            exit 0
           fi
           if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "::error::Issue number '${ISSUE_NUMBER}' is not numeric; use workflow_dispatch issue_number with an integer." >&2
@@ -748,6 +757,16 @@ jobs:
           # succeeding optimistically costs duplicated agent work on one issue.
           reservation_visible() {
             local labels=""
+            if [ "${RESOLVED_INTAKE_COHORT:-}" = "legacy-parity" ]; then
+              if ! labels="$(
+                gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}" \
+                  --json labels --jq '.labels[].name'
+              )"; then
+                return 1
+              fi
+              grep -qxF 'goobers/status:in-review' <<<"$labels"
+              return
+            fi
             if ! labels="$(
               gh api --paginate -X GET \
                 "repos/${GITHUB_REPOSITORY}/issues" \

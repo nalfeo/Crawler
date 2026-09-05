@@ -1928,6 +1928,9 @@ gh() {
       ;;
     *timeline*) printf '[]\\n' ;;
   esac
+  if [[ "$*" == *" --input -"* ]]; then
+    cat > /dev/null
+  fi
   return 0
 }
 `;
