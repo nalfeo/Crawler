@@ -34,6 +34,21 @@ describe('SpritePipelineTimingCollector', () => {
     );
   });
 
+  it('memoizes snapshots across repeat reads until the collector changes', async () => {
+    const samples = [0, 5, 10, 12, 14, 18];
+    const timing = new SpritePipelineTimingCollector(() => samples.shift() ?? Number.NaN);
+
+    await timing.measure('provider', async () => 'generated');
+    const first = timing.snapshot();
+    const second = timing.snapshot();
+
+    expect(second).toBe(first);
+    expect(first.invalidSamples).toBe(0);
+
+    await timing.measure('judging', async () => 'judged');
+    expect(timing.snapshot()).not.toBe(first);
+  });
+
   it('fails open when an injected clock throws or moves backwards', async () => {
     const samples: Array<number | Error> = [0, 10, 5, new Error('clock unavailable')];
     const timing = new SpritePipelineTimingCollector(() => {

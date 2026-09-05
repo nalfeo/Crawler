@@ -58,19 +58,28 @@ export class SpritePipelineTimingCollector {
 
   private invalidSamples = 0;
   private readonly runStartedAt: number | null;
+  private snapshotDirty = true;
+  private cachedSnapshot: SpritePipelineTimingSnapshot | null = null;
 
   constructor(private readonly nowMs: MonotonicNow = () => performance.now()) {
     this.runStartedAt = this.start();
   }
 
-  start(): number | null {
+  private readNow(): number | null {
     try {
       const value = this.nowMs();
       if (Number.isFinite(value)) return value;
     } catch {
       // Timing is observational and must never change pipeline behavior.
     }
+    return null;
+  }
+
+  start(): number | null {
+    const value = this.readNow();
+    if (value !== null) return value;
     this.invalidSamples++;
+    this.snapshotDirty = true;
     return null;
   }
 
@@ -81,14 +90,17 @@ export class SpritePipelineTimingCollector {
       completedAt = this.nowMs();
     } catch {
       this.invalidSamples++;
+      this.snapshotDirty = true;
       return;
     }
     const elapsed = completedAt - startedAt;
     if (!Number.isFinite(elapsed) || elapsed < 0) {
       this.invalidSamples++;
+      this.snapshotDirty = true;
       return;
     }
     this.durations[stage] += elapsed;
+    this.snapshotDirty = true;
   }
 
   async measure<T>(stage: SpritePipelineTimingStage, operation: () => Promise<T>): Promise<T> {
@@ -101,8 +113,12 @@ export class SpritePipelineTimingCollector {
   }
 
   snapshot(): SpritePipelineTimingSnapshot {
+    if (this.cachedSnapshot !== null && !this.snapshotDirty) {
+      return this.cachedSnapshot;
+    }
+
     const stages = { ...this.durations };
-    const completedAt = this.start();
+    const completedAt = this.readNow();
     const measuredStagesMs = SPRITE_PIPELINE_TIMING_STAGES.filter(
       (stage) => stage !== 'runOrchestration',
     ).reduce((total, stage) => total + stages[stage], 0);
@@ -112,13 +128,18 @@ export class SpritePipelineTimingCollector {
         stages.runOrchestration = elapsed - measuredStagesMs;
       } else {
         this.invalidSamples++;
+        this.snapshotDirty = true;
       }
     }
-    return {
+
+    const snapshot = {
       scope: 'initial-run',
       totalMs: SPRITE_PIPELINE_TIMING_STAGES.reduce((total, stage) => total + stages[stage], 0),
       stages,
       invalidSamples: this.invalidSamples,
-    };
+    } satisfies SpritePipelineTimingSnapshot;
+    this.cachedSnapshot = snapshot;
+    this.snapshotDirty = false;
+    return snapshot;
   }
 }
