@@ -72,7 +72,7 @@ const mocks = vi.hoisted(() => {
   const approveFrameSequence = vi.fn(() => {
     throw new ApproveError('already-approved', 'player-walk-cycle already approved');
   });
-  const approveIconBatch = vi.fn(() => [
+  const approveIconBatch = vi.fn((_options: { readonly allowHardBlocked?: boolean }) => [
     {
       briefId: 'achv-icons',
       spriteName: 'achv-first-bonk',
@@ -584,5 +584,41 @@ describe('approve-cli --icon-batch lifecycle routing', () => {
     // Approval and publication still happen, inside the transaction.
     expect(mocks.approveIconBatch).toHaveBeenCalledOnce();
     expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+    // Default is fail-closed: no override unless the operator asks for one.
+    expect(mocks.approveIconBatch.mock.calls[0]?.[0]).toMatchObject({
+      allowHardBlocked: false,
+    });
+  });
+
+  /**
+   * Regression: `--allow-hard-blocked` was parsed and then dropped on the floor
+   * for `--icon-batch`, so a documented, conscious human override silently did
+   * nothing and the approval still failed with `hard-blocked`.
+   */
+  it('forwards --allow-hard-blocked to approveIconBatch', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-override-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+
+    const exitCode = await main([runDir, '--icon-batch', '--allow-hard-blocked'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    expect(mocks.approveIconBatch.mock.calls[0]?.[0]).toMatchObject({
+      allowHardBlocked: true,
+    });
   });
 });

@@ -26,7 +26,7 @@ import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-conce
 import { hashStringToSeed, SeededRandom } from '../../src/shared/random.js';
 import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
-import { isPlaceholderManifestEntry, normalizeConcept } from './placeholder-audit.js';
+import { isPlaceholderManifestEntry } from './placeholder-audit.js';
 
 /** Bump when the selection algorithm changes in a way that alters output. */
 export const SELECTOR_VERSION = 'v1' as const;
@@ -154,7 +154,12 @@ function toEligible(
   const quality = 0.65 * sensorRatio + 0.35 * judgeQuality;
   return {
     entry,
-    concept: normalizeConcept(entry.briefId),
+    // The SAME normalized concept id used for the dislike/self exclusions above.
+    // A second normalization here would let a design remap (`angry-roomba-v2` ↔
+    // `angry-roomba-mk2`) collapse under one key and be excluded under another,
+    // so a 3-ref set could ship two variants of one concept while a disliked
+    // concept slipped back into the pool.
+    concept: conceptId,
     type: entry.type,
     weight: WEIGHT_FLOOR + quality,
   };

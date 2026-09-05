@@ -394,6 +394,29 @@ export interface ApproveVariantOptions {
 }
 
 /**
+ * Project the judge scorecard that gets PERSISTED on an approved manifest entry.
+ *
+ * When a human consciously overrides a hard-block, the stored `hardBlocked`
+ * flag is cleared to `false` and `humanHardBlockOverride: true` records the
+ * conscious decision. Without the clear, `npm run check:manifest-hard-blocked`
+ * (the CI invariant) rejects the very entry the operator just authorized, so a
+ * legitimate `--allow-hard-blocked` approval would ship an instantly-red repo.
+ *
+ * Shared by `approveVariant` AND `approveIconBatch` so the two acceptance
+ * paths can never diverge on what an override durably means.
+ */
+export function resolveApprovedJudgeScorecard(
+  scorecard: NonNullable<ManifestEntry['judgeScorecard']> | null | undefined,
+  allowHardBlocked: boolean,
+): ManifestEntry['judgeScorecard'] {
+  const resolved = scorecard ?? null;
+  if (resolved && allowHardBlocked && resolved.hardBlocked === true) {
+    return { ...resolved, hardBlocked: false, humanHardBlockOverride: true };
+  }
+  return resolved;
+}
+
+/**
  * Approve one variant of one run. Pure given (`now`, `fs`).
  *
  * Steps:
@@ -604,17 +627,10 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     sensorScore,
     judgeScore,
     sensorBreakdown: candidate.breakdown,
-    judgeScorecard: (() => {
-      const sc = candidate.judgeScorecard ?? null;
-      // When a human consciously overrides a hard-block, clear the hardBlocked
-      // flag so the CI invariant (check-manifest-hard-blocked) doesn't reject
-      // the entry. Persist humanHardBlockOverride as durable evidence of the
-      // conscious override decision.
-      if (sc && options.allowHardBlocked && sc.hardBlocked === true) {
-        return { ...sc, hardBlocked: false, humanHardBlockOverride: true };
-      }
-      return sc;
-    })(),
+    judgeScorecard: resolveApprovedJudgeScorecard(
+      candidate.judgeScorecard ?? null,
+      options.allowHardBlocked === true,
+    ),
     type,
     contentHash,
     ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
@@ -1323,7 +1339,10 @@ export interface ApproveIconBatchOptions {
    * When `true`, cells with `judgeScorecard.hardBlocked === true` are approved
    * despite the judge veto. Defaults to `false` (fail-closed).
    * Reserved for conscious human overrides; automated batch runs must not set
-   * this flag.
+   * this flag. Mirrors `approveVariant`: the persisted scorecard has
+   * `hardBlocked` cleared and `humanHardBlockOverride` set (see
+   * {@link resolveApprovedJudgeScorecard}) so the override does not immediately
+   * fail `npm run check:manifest-hard-blocked`.
    */
   readonly allowHardBlocked?: boolean;
 }
@@ -1468,7 +1487,10 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
       sensorScore,
       judgeScore,
       sensorBreakdown: candidate?.breakdown,
-      judgeScorecard: candidate?.judgeScorecard ?? null,
+      judgeScorecard: resolveApprovedJudgeScorecard(
+        candidate?.judgeScorecard ?? null,
+        options.allowHardBlocked === true,
+      ),
       type,
       contentHash,
       ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),

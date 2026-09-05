@@ -91,6 +91,22 @@ export async function main(argv: readonly string[]): Promise<number> {
       createDefaultReconcileDeps(parsed.repoRoot),
       parsed.options,
     );
+    // Deterministic, actionable surface for refused lifecycle deletions. The
+    // cycle still promoted every unrelated asset, so this would otherwise be
+    // buried in the result JSON.
+    for (const rejection of result.rejectedLifecycleDeletions ?? []) {
+      process.stderr.write(
+        `reconcile-queue REFUSED lifecycle deletion "${rejection.annotationKey}": ` +
+          `${rejection.reason} Withheld: ${rejection.paths.join(', ') || '(none)'}.\n` +
+          `  Unrelated art still promoted, but EVERY lifecycle deletion and ` +
+          `public/assets/generated/sprite-editor-annotations.json were withheld this cycle so ` +
+          `main cannot gain a tombstone whose art is still present.\n` +
+          `  Fix: on assets/queue, either delete both ` +
+          `public/assets/generated/entries/${rejection.annotationKey}.json and its PNG together, ` +
+          `or drop the "${rejection.annotationKey}" tombstone from the annotations file. Verify ` +
+          `with \`npm run sprites:disliked-lifecycle -- --dry-run\`.\n`,
+      );
+    }
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   } catch (err) {

@@ -38,6 +38,7 @@ import {
   findLandedPromotion,
   formatSourceTrailers,
   isArtSurfacePath,
+  partitionLifecycleDeletions,
   parseSourceTrailers,
   ReconcileError,
   runReconcile,
@@ -185,6 +186,97 @@ describe('selectAuthorizedLifecycleDeletions', () => {
         }),
       ),
     ).toThrow(/does not match the current main shard/);
+  });
+});
+
+/**
+ * A single bad tombstone used to throw straight out of `runReconcile`, so one
+ * corrupt lifecycle record aborted the whole hourly cycle and every unrelated,
+ * perfectly valid promotion with it. Refusal must stay absolute per deletion,
+ * but scoped to that deletion.
+ */
+describe('partitionLifecycleDeletions (per-tombstone fail-closed)', () => {
+  const tombstone = (key: string, overrides: Record<string, unknown> = {}) => ({
+    disliked: true,
+    tombstone: {
+      manifestKey: key,
+      conceptId: 'queue-goon',
+      assetPath: `generated/${key}.png`,
+      sourceRun: `generated/runs/${key}/run-0`,
+      variantIndex: 0,
+      annotationKeys: [key],
+      ...overrides,
+    },
+  });
+  const pathsFor = (key: string): string[] => [
+    `public/assets/generated/entries/${key}.json`,
+    `public/assets/generated/${key}.png`,
+  ];
+
+  it('withholds a half-deleted pair by its exact deleted path and still authorizes the healthy one', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'partial-var-1': tombstone('partial-var-1'),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), 'public/assets/generated/entries/partial-var-1.json'],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toEqual([
+      {
+        annotationKey: 'partial-var-1',
+        reason: expect.stringContaining('shard and PNG must be deleted together'),
+        paths: ['public/assets/generated/entries/partial-var-1.json'],
+      },
+    ]);
+  });
+
+  it('withholds a malformed tombstone without discarding an unrelated valid deletion', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'broken-var-1': tombstone('broken-var-1', { variantIndex: 'not-a-number' }),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), ...pathsFor('broken-var-1')],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.annotationKey).toBe('broken-var-1');
+    expect(rejected[0]?.reason).toMatch(/Invalid disliked-sprite tombstone/);
+    expect(rejected[0]?.paths).toEqual(pathsFor('broken-var-1').sort());
+  });
+
+  it('never authorizes a traversal asset path', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: { evil: tombstone('evil', { assetPath: 'generated/../../etc/passwd' }) },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      ['public/assets/generated/entries/evil.json'],
+      document,
+    );
+
+    expect(authorized).toEqual([]);
+    expect(rejected[0]?.annotationKey).toBe('evil');
+    // The traversal path is never named as a withheld path — only the safe one.
+    expect(rejected[0]?.paths).toEqual(['public/assets/generated/entries/evil.json']);
+  });
+
+  it('still throws on an unparseable annotations document', () => {
+    expect(() => partitionLifecycleDeletions([], 'not json')).toThrow(/invalid JSON/);
   });
 });
 
@@ -1610,6 +1702,167 @@ describe('runReconcile (real git)', () => {
     expect(() =>
       gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
     ).toThrow();
+  });
+
+  /**
+   * Regression (B2, partial pair): a half-deleted lifecycle pair on the queue
+   * used to throw out of `runReconcile`, so the hourly cycle promoted NOTHING —
+   * unrelated approved art included. The bad deletion must be refused on its
+   * own, reported deterministically, and the unrelated art must still land.
+   */
+  it('(c4) refuses a half-deleted lifecycle pair and still promotes unrelated art', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-partial-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const genDir = path.join(wt, 'public', 'assets', 'generated');
+      // Only the shard is deleted; the PNG stays. The pair is incomplete.
+      rmSync(path.join(genDir, 'entries', `${key}.json`));
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      // Unrelated, perfectly valid new art in the same queue commit.
+      writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
+        assetPath: 'generated/unrelated-var-0.png',
+        spriteName: 'unrelated-var-0',
+        contentHash: TEST_CONTENT_HASH,
+        sourceRun: 'generated/runs/unrelated-var-0/run-0',
+        variantIndex: 0,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue: half-deleted pair + unrelated art');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    // The cycle still runs and lands the unrelated asset.
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    // The refusal is surfaced, names the key, and names the withheld path.
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      {
+        annotationKey: key,
+        reason: expect.stringContaining('shard and PNG must be deleted together'),
+        paths: [`public/assets/generated/entries/${key}.json`],
+      },
+    ]);
+    // Fail-closed, atomically: the deletion AND the annotations document that
+    // authorizes it are both withheld, so `main` never gains a dangling
+    // tombstone whose art is still present.
+    expect(result.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(result.withheldPaths).toContain(
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    // Shard still present on the promotion: the deletion was never applied.
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toContain(key);
+    expect(() =>
+      gitSync(
+        liveDir,
+        'show',
+        'origin/assets/promote:public/assets/generated/sprite-editor-annotations.json',
+      ),
+    ).toThrow();
+  });
+
+  /**
+   * Regression (B2, shard mismatch): a tombstone whose provenance no longer
+   * matches `main`'s shard is stale. Refusing it must not abort the cycle.
+   */
+  it('(c5) refuses a stale shard-mismatched deletion and still promotes unrelated art', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-stale-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const genDir = path.join(wt, 'public', 'assets', 'generated');
+      rmSync(path.join(genDir, `${key}.png`));
+      rmSync(path.join(genDir, 'entries', `${key}.json`));
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              // main's shard says `run-0`; this tombstone describes different art.
+              sourceRun: `generated/runs/${key}/a-different-run`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
+        assetPath: 'generated/unrelated-var-0.png',
+        spriteName: 'unrelated-var-0',
+        contentHash: TEST_CONTENT_HASH,
+        sourceRun: 'generated/runs/unrelated-var-0/run-0',
+        variantIndex: 0,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue: stale tombstone + unrelated art');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    expect(result.rejectedLifecycleDeletions).toHaveLength(1);
+    expect(result.rejectedLifecycleDeletions?.[0]?.annotationKey).toBe(key);
+    expect(result.rejectedLifecycleDeletions?.[0]?.reason).toMatch(
+      /does not match the current main shard/,
+    );
+    expect(result.rejectedLifecycleDeletions?.[0]?.paths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      `public/assets/generated/${key}.png`,
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).not.toBe('');
   });
 
   it('(d) returns to a no-op after the promote PR squash-merges into main', async () => {

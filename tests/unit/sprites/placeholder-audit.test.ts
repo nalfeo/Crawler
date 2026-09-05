@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ManifestEntry } from '../../../src/shared/generated-assets.js';
+import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
 import {
   MOB_PLACEHOLDER_SPRITE_ID,
   buildPlaceholderAudit,
@@ -81,6 +82,38 @@ describe('normalizeConcept', () => {
 
   it('leaves a bare concept untouched', () => {
     expect(normalizeConcept('slime')).toBe('slime');
+  });
+
+  /**
+   * Regression: tooling and the runtime variant pools must agree about what
+   * "the same concept" means. `normalizeConcept` used to be a second,
+   * hand-rolled `-vN` stripper, so it silently disagreed with
+   * `normalizeGeneratedSpriteConceptId` on the explicit design remaps and on a
+   * legacy `npc-` prefix — which is how a placeholder and its real replacement
+   * (or a dislike and its brief) landed in different buckets.
+   */
+  it('honours the shared design-name remap instead of stripping the lineage tag', () => {
+    expect(normalizeConcept('angry-roomba-v2')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('angry-roomba-v2-var-1')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('angry-roomba-mk2')).toBe('angry-roomba-mk2');
+  });
+
+  it('strips the legacy npc- prefix like the runtime concept id does', () => {
+    expect(normalizeConcept('npc-guide')).toBe('guide');
+  });
+
+  it('matches normalizeGeneratedSpriteConceptId for every bare kebab id', () => {
+    for (const id of [
+      'iron-sword',
+      'iron-sword-v1',
+      'iron-sword-var-3',
+      'slime-king-v2-var-3',
+      'angry-roomba-v2',
+      'angry-roomba-v2-var-1',
+      'npc-guide',
+    ]) {
+      expect(normalizeConcept(id)).toBe(normalizeGeneratedSpriteConceptId(id));
+    }
   });
 });
 

@@ -226,10 +226,17 @@ function mergePendingAnnotations(
   tracked: SpriteAnnotationsDocument,
   pending: Readonly<Record<string, PendingAnnotationRecord>>,
   pendingDislikedKeys: ReadonlySet<string>,
+  isKeyInScope: (key: string) => boolean,
 ): { document: SpriteAnnotationsDocument; promotedCount: number } {
   const sprites: Record<string, SpriteAnnotation> = { ...tracked.sprites };
   let promotedCount = 0;
   for (const key of [...pendingDislikedKeys].sort()) {
+    // Scope gate FIRST: promoting an out-of-scope pending dislike would make a
+    // narrow acceptance publish curation the human never accepted for a concept
+    // they never touched (and, once tracked, arm that concept for deletion by
+    // the next sweep). The repo-wide CLI passes no scope, so it still promotes
+    // every pending dislike.
+    if (!isKeyInScope(key)) continue;
     const record = pending[key];
     const annotation = record?.annotation;
     if (annotation?.disliked !== true) continue;
@@ -411,7 +418,35 @@ export function buildDislikedLifecyclePlan(
 ): DislikedLifecyclePlan {
   const pending = input.pendingAnnotations ?? {};
   const pendingKeys = input.pendingDislikedKeys ?? new Set<string>();
-  const promoted = mergePendingAnnotations(input.trackedAnnotations, pending, pendingKeys);
+  const inScope = (conceptId: string): boolean =>
+    input.conceptScope === undefined || input.conceptScope.has(conceptId);
+  /**
+   * True when an ANNOTATION key belongs to a concept this plan may mutate.
+   *
+   * A key is in scope when EITHER derivation of its concept is: the manifest
+   * entry's `briefId` (authoritative while the art exists, and the same key the
+   * removal grouping below uses) or the bare key itself (the only thing a
+   * tombstoned or stale key has left — and the id an icon-batch acceptance
+   * declares, since those entries carry the BATCH brief id, not the icon's).
+   * The union keeps a narrow acceptance from touching an unrelated concept
+   * without accidentally excluding the very art being accepted.
+   */
+  const isKeyInScope = (key: string): boolean => {
+    if (input.conceptScope === undefined) return true;
+    const briefId = input.manifestEntries[key]?.briefId;
+    return (
+      (briefId !== undefined &&
+        briefId !== '' &&
+        inScope(normalizeGeneratedSpriteConceptId(briefId))) ||
+      inScope(normalizeGeneratedSpriteConceptId(key))
+    );
+  };
+  const promoted = mergePendingAnnotations(
+    input.trackedAnnotations,
+    pending,
+    pendingKeys,
+    isKeyInScope,
+  );
   const { reconciled, unresolved } = reconcileDislikes(promoted.document, input.manifestEntries);
   const dislikedKeys = new Set(reconciled.map((item) => item.manifestKey));
   const groups = new Map<string, Array<[string, ManifestEntry]>>();
@@ -431,8 +466,6 @@ export function buildDislikedLifecyclePlan(
     bucket.push(replacement);
     replacementsByConcept.set(replacement.conceptId, bucket);
   }
-  const inScope = (conceptId: string): boolean =>
-    input.conceptScope === undefined || input.conceptScope.has(conceptId);
 
   for (const [conceptId, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
     const disliked = group.filter(([key]) => dislikedKeys.has(key));
@@ -507,13 +540,29 @@ export function buildDislikedLifecyclePlan(
       tombstone: undefined,
     };
   }
-  for (const key of unresolved) {
-    if (!inScope(normalizeGeneratedSpriteConceptId(key))) continue;
+  const unresolvedKeys = new Set(unresolved);
+  for (const key of unresolvedKeys) {
+    if (!isKeyInScope(key)) continue;
     const annotation = sprites[key] ?? {};
     sprites[key] = {
       ...annotation,
       reconciliation: { outcome: 'unmatched', annotationKey: key },
     };
+  }
+  // A key that USED to be unmatched and now reconciles (its shard came back, or
+  // provenance finally pins it, or the human cleared the dislike) must have the
+  // stale marker retracted — otherwise the Sprite Editor keeps warning about a
+  // reconciliation failure that no longer exists, forever. Emitted as an OWN
+  // property holding `undefined` so `toQueueCommitAnnotationUpdates` /
+  // `mergeSpriteAnnotationUpdates` forward it as an intentional DELETE, while a
+  // key that never owned `reconciliation` still leaves the queue tip alone.
+  for (const [key, annotation] of Object.entries(sprites)) {
+    if (unresolvedKeys.has(key)) continue;
+    if (!Object.hasOwn(annotation, 'reconciliation') || annotation.reconciliation === undefined) {
+      continue;
+    }
+    if (!isKeyInScope(key)) continue;
+    sprites[key] = { ...annotation, reconciliation: undefined };
   }
   for (const removal of removals) {
     const notes = removal.annotationKeys.map((key) => sprites[key]).filter(Boolean);

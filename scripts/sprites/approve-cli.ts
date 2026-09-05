@@ -402,6 +402,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
               manifestPath,
               publicAssetsDir,
               repoRoot,
+              allowHardBlocked: parsed.allowHardBlocked,
             }),
           publish: async (entries, plan) => {
             // Best-effort LLM tag enrichment for each approved icon. Never blocks.

@@ -9,14 +9,10 @@ import {
 import path from 'node:path';
 
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
-import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
+import { normalizeSpriteConceptKey } from '../../src/shared/sprite-concepts.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief } from './load-brief.js';
-import {
-  isPlaceholderManifestEntry,
-  normalizeConcept,
-  type PlaceholderAuditReport,
-} from './placeholder-audit.js';
+import { isPlaceholderManifestEntry, type PlaceholderAuditReport } from './placeholder-audit.js';
 import { runPlaceholderAudit } from './placeholder-audit-cli.js';
 import {
   readPendingDislikedSpriteNames,
@@ -157,11 +153,11 @@ export function buildSpriteBacklogPlan(input: BuildSpriteBacklogPlanInput): Spri
   for (const spriteName of input.dislikedSpriteNames) {
     const entry = input.manifestEntries[spriteName];
     if (entry && !isPlaceholderManifestEntry(entry)) {
-      dislikedConcepts.add(normalizeGeneratedSpriteConceptId(entry.briefId || spriteName));
+      dislikedConcepts.add(normalizeSpriteConceptKey(entry.briefId || spriteName));
     } else {
       // Deleted disliked sprites remain as annotation tombstones. Their keys
       // still carry the normalized concept demand needed to regenerate art.
-      dislikedConcepts.add(normalizeGeneratedSpriteConceptId(spriteName));
+      dislikedConcepts.add(normalizeSpriteConceptKey(spriteName));
     }
   }
 
@@ -247,7 +243,10 @@ export function collectBacklogBriefs(repoRoot: string): {
     try {
       const loaded = loadBrief(briefPath, { projectRoot: repoRoot }).brief;
       briefs.push({
-        concept: normalizeConcept(loaded.name),
+        // Indexed with the SAME canonical key the dislike/missing demands use,
+        // so a brief for a remapped design (`angry-roomba-v2` →
+        // `angry-roomba-mk2`) is found instead of being reported as blocked.
+        concept: normalizeSpriteConceptKey(loaded.name),
         name: loaded.name,
         path: briefPath,
         floor: loaded.floor,
@@ -303,7 +302,7 @@ export function prepareSpriteBacklog(
   if (options.retryConcepts && options.retryConcepts.length > 0) {
     const pendingReview = { ...state.pendingReview };
     for (const concept of options.retryConcepts) {
-      const normalizedConcept = normalizeConcept(concept);
+      const normalizedConcept = normalizeSpriteConceptKey(concept);
       const pending = pendingReview[normalizedConcept];
       if (!pending) {
         throw new Error(`cannot retry "${normalizedConcept}": it is not pending human review`);

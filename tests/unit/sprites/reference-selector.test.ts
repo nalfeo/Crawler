@@ -433,6 +433,58 @@ describe('selectReferences — concept collapse + quality weighting', () => {
     expect(result.eligibleCount).toBe(1);
   });
 
+  /**
+   * Regression: the collapse key MUST be the same normalized concept id used by
+   * the dislike/self exclusions. When it was a second, hand-rolled "strip -vN"
+   * normalizer, an explicit design remap (`angry-roomba-v2` → `angry-roomba-mk2`)
+   * grouped under `angry-roomba` while the exclusion matched `angry-roomba-mk2`,
+   * so the two aliases of ONE design could both reach a 3-ref set.
+   */
+  it('collapses design-remap aliases of one concept into a single reference', () => {
+    const candidates: ManifestEntry[] = [
+      entry({
+        briefId: 'angry-roomba-v2',
+        type: 'enemy',
+        spriteName: 'angry-roomba-v2-var-1',
+        judgeScore: '3',
+      }),
+      entry({
+        briefId: 'angry-roomba-mk2',
+        type: 'enemy',
+        spriteName: 'angry-roomba-mk2-var-0',
+        judgeScore: '5',
+      }),
+      entry({ briefId: 'other-goon', type: 'enemy', spriteName: 'other-goon-var-0' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'enemy',
+      count: 3,
+      seed: SEED,
+    });
+    expect(result.eligibleCount).toBe(2);
+    expect(new Set(names(result.selected))).toEqual(
+      new Set(['angry-roomba-mk2-var-0', 'other-goon-var-0']),
+    );
+  });
+
+  it('excludes a remapped alias when the disliked concept names its canonical id', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'angry-roomba-v2', type: 'enemy', spriteName: 'angry-roomba-v2-var-1' }),
+      entry({ briefId: 'other-goon', type: 'enemy', spriteName: 'other-goon-var-0' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'enemy',
+      count: 3,
+      seed: SEED,
+      dislikedConceptIds: new Set(['angry-roomba-mk2']),
+    });
+    expect(names(result.selected)).toEqual(['other-goon-var-0']);
+  });
+
   it('yields distinct concepts across a 3-ref set', () => {
     const candidates: ManifestEntry[] = [
       ...[0, 1, 2].map((i) =>

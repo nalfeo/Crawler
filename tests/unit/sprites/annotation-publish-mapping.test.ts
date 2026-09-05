@@ -15,7 +15,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { toQueueCommitAnnotationUpdates } from '../../../scripts/sprites/disliked-lifecycle.js';
+import {
+  buildDislikedLifecyclePlan,
+  toQueueCommitAnnotationUpdates,
+} from '../../../scripts/sprites/disliked-lifecycle.js';
 import { mergeSpriteAnnotationUpdates } from '../../../scripts/sprites/queue-commit-runtime.js';
 
 const roots: string[] = [];
@@ -155,5 +158,66 @@ describe('lifecycle annotation → queue-commit publication mapping', () => {
       outcome: 'unmatched',
       annotationKey: 'rat-var-0',
     });
+  });
+
+  /**
+   * End-to-end regression (B4): plan → mapper → queue tip. A key that was
+   * published as `unmatched` and later reconciles must have the marker RETRACTED
+   * on the durable tip, not just locally. Before the plan emitted an explicit
+   * own-property clear, the mapper's `Object.hasOwn` branch was unreachable for
+   * `reconciliation`, so a resolved key kept warning forever.
+   */
+  it('retracts a published reconciliation marker end-to-end once the key resolves', async () => {
+    const root = makeQueueTip();
+    // The tip already carries an unmatched marker for a key that has since
+    // reappeared in the manifest.
+    await mergeSpriteAnnotationUpdates(root, [
+      {
+        key: 'faerie-boss-var-9',
+        favorite: false,
+        disliked: true,
+        comment: '',
+        reconciliation: { outcome: 'unmatched', annotationKey: 'faerie-boss-var-9' },
+      },
+    ]);
+    expect(readTip(root)['faerie-boss-var-9']?.reconciliation).toBeDefined();
+
+    const manifestEntry = {
+      briefId: 'faerie-boss',
+      spriteName: 'faerie-boss-var-9',
+      assetPath: 'generated/faerie-boss-var-9.png',
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/faerie-boss/run-9',
+      variantIndex: 9,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    };
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: { 'faerie-boss-var-9': manifestEntry },
+      trackedAnnotations: {
+        version: 1,
+        sprites: {
+          'faerie-boss-var-9': {
+            favorite: false,
+            disliked: true,
+            comment: '',
+            reconciliation: { outcome: 'unmatched', annotationKey: 'faerie-boss-var-9' },
+          },
+        },
+      },
+      readReferenceFiles: false,
+    });
+
+    await mergeSpriteAnnotationUpdates(
+      root,
+      toQueueCommitAnnotationUpdates(plan.annotationUpdates),
+    );
+
+    // Marker gone from the durable tip; the pre-existing, untouched tombstone
+    // on an unrelated key is still preserved.
+    expect(Object.hasOwn(readTip(root)['faerie-boss-var-9']!, 'reconciliation')).toBe(false);
+    expect(readTip(root)['rat-var-0']?.tombstone).toEqual(QUEUE_TIP_TOMBSTONE);
   });
 });

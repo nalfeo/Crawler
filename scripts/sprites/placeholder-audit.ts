@@ -27,6 +27,7 @@
  */
 
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import { normalizeSpriteConceptKey } from '../../src/shared/sprite-concepts.js';
 
 /** The shared generic placeholder spriteId every un-arted mob falls back to. */
 export const MOB_PLACEHOLDER_SPRITE_ID = 'mob-placeholder';
@@ -131,6 +132,11 @@ export interface PlaceholderAuditInput {
  * Normalize an art name down to its bare concept so a placeholder and its real
  * replacement collapse to the same key.
  *
+ * Thin alias for the shared {@link normalizeSpriteConceptKey}: keeping ONE
+ * implementation is what stops the audit, the reference selector, the sprite
+ * backlog, and the runtime variant pools from disagreeing about which ids are
+ * the same concept (notably across the explicit design remaps).
+ *
  * Examples:
  *   `slime-queen-var-0` -> `slime-queen`
  *   `iron-sword-v1`        -> `iron-sword`
@@ -139,13 +145,7 @@ export interface PlaceholderAuditInput {
  *   `npc.guide`            -> `guide`
  */
 export function normalizeConcept(name: string): string {
-  const lastSegment = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : name;
-  return lastSegment
-    .trim()
-    .toLowerCase()
-    .replace(/-var-\d+$/, '')
-    .replace(/-v\d+$/, '')
-    .replace(/-placeholder$/, '');
+  return normalizeSpriteConceptKey(name);
 }
 
 /** True when a manifest entry is a placeholder rather than real generated art. */

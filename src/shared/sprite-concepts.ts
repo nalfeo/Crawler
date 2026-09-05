@@ -40,3 +40,35 @@ export function normalizeGeneratedSpriteConceptId(id: string): string {
   const withoutVariant = id.replace(VARIANT_SUFFIX, '');
   return normalizeSpriteLineageId(withoutVariant).replace(LEGACY_NPC_PREFIX, '');
 }
+
+const PLACEHOLDER_SUFFIX = /-placeholder$/;
+
+/**
+ * Canonical concept key for TOOLING that groups or indexes art by concept
+ * (reference selection, the placeholder audit, the sprite backlog).
+ *
+ * It is deliberately {@link normalizeGeneratedSpriteConceptId} plus the extra
+ * tolerance tooling inputs need — a namespaced id (`enemy.slime`), mixed case,
+ * or a `-placeholder` stand-in name — so a tooling key and the runtime concept
+ * key can never disagree. Sharing one implementation is what keeps the explicit
+ * {@link SPRITE_DESIGN_NAME_REMAP} entries (e.g. `angry-roomba-v2` →
+ * `angry-roomba-mk2`) honoured by every grouping site: a second, hand-rolled
+ * "strip -vN" regex would silently split a remapped design into two concepts,
+ * so one side excludes/indexes art the other side does not.
+ *
+ * For a bare lowercase kebab id this is EXACTLY
+ * {@link normalizeGeneratedSpriteConceptId}.
+ *
+ * Examples:
+ *   `slime-queen-var-0`       -> `slime-queen`
+ *   `iron-sword-v1`           -> `iron-sword`
+ *   `aether-dust-placeholder` -> `aether-dust`
+ *   `enemy.slime`             -> `slime`
+ *   `npc.guide` / `npc-guide` -> `guide`
+ *   `angry-roomba-v2-var-1`   -> `angry-roomba-mk2`
+ */
+export function normalizeSpriteConceptKey(name: string): string {
+  const lastSegment = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : name;
+  const lowered = lastSegment.trim().toLowerCase();
+  return normalizeGeneratedSpriteConceptId(lowered).replace(PLACEHOLDER_SUFFIX, '');
+}

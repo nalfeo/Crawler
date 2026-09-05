@@ -110,6 +110,16 @@ export interface ReconcileResult {
    * workflow log rather than silently dropped.
    */
   readonly withheldPaths?: readonly string[];
+  /**
+   * Queue-side lifecycle deletions this cycle REFUSED (malformed tombstone,
+   * half-deleted shard/PNG pair, or a tombstone that no longer matches the
+   * shard on `main`). Deterministically ordered. A non-empty list means the
+   * whole lifecycle transaction — every deletion AND the annotations document —
+   * was withheld this cycle while unrelated art still promoted, so `main` can
+   * never gain a tombstone whose art is still present. Repair the named key on
+   * `assets/queue` to unblock it.
+   */
+  readonly rejectedLifecycleDeletions?: readonly RejectedLifecycleDeletion[];
 }
 
 export interface ReconcileDeps {
@@ -163,14 +173,48 @@ export interface AuthorizedLifecycleDeletion {
   readonly paths: readonly [string, string];
 }
 
+/** A queue-side lifecycle deletion this cycle REFUSES to promote. */
+export interface RejectedLifecycleDeletion {
+  /** Annotation key (== tombstone `manifestKey`) whose deletion was refused. */
+  readonly annotationKey: string;
+  /** Deterministic, human-actionable reason. */
+  readonly reason: string;
+  /**
+   * The exact queue-side deleted paths withheld because of this rejection,
+   * sorted. Empty when the tombstone was too malformed to name a path.
+   */
+  readonly paths: readonly string[];
+}
+
+export interface LifecycleDeletionPartition {
+  readonly authorized: readonly AuthorizedLifecycleDeletion[];
+  readonly rejected: readonly RejectedLifecycleDeletion[];
+}
+
+/** True for a `generated/`-relative asset path with no traversal segments. */
+function isSafeQueueAssetPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.startsWith('generated/') &&
+    !value.includes('\\') &&
+    !value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  );
+}
+
 /**
- * Select only complete shard+PNG deletion pairs authorized by a tracked
- * lifecycle tombstone. Unrelated queue deletions remain ignored.
+ * Partition queue-side deletions into the complete shard+PNG pairs a tracked
+ * lifecycle tombstone authorizes, and the ones this cycle refuses.
+ *
+ * PER-TOMBSTONE, never all-or-nothing: one malformed or half-deleted tombstone
+ * used to throw straight out of `runReconcile`, aborting the whole hourly cycle
+ * so unrelated, perfectly valid art never promoted. Refusal is still absolute —
+ * a rejected deletion is NEVER applied — it just no longer takes the rest of the
+ * queue down with it. Unrelated queue deletions (no tombstone) remain ignored.
  */
-export function selectAuthorizedLifecycleDeletions(
+export function partitionLifecycleDeletions(
   deletedPaths: readonly string[],
   annotationsJson: string,
-): readonly AuthorizedLifecycleDeletion[] {
+): LifecycleDeletionPartition {
   let parsed: unknown;
   try {
     parsed = JSON.parse(annotationsJson);
@@ -192,6 +236,7 @@ export function selectAuthorizedLifecycleDeletions(
       : {};
   const deleted = new Set(deletedPaths);
   const authorized: AuthorizedLifecycleDeletion[] = [];
+  const rejected: RejectedLifecycleDeletion[] = [];
   for (const [annotationKey, rawAnnotation] of Object.entries(sprites).sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
@@ -201,33 +246,39 @@ export function selectAuthorizedLifecycleDeletions(
         : undefined;
     if (typeof tombstone !== 'object' || tombstone === null) continue;
     const value = tombstone as Partial<LifecycleDeletionTombstone>;
+    const shardPath = `public/assets/generated/entries/${annotationKey}.json`;
     if (
       value.manifestKey !== annotationKey ||
-      typeof value.assetPath !== 'string' ||
-      !value.assetPath.startsWith('generated/') ||
-      value.assetPath.includes('\\') ||
-      value.assetPath
-        .split('/')
-        .some((segment) => segment === '' || segment === '.' || segment === '..') ||
+      !isSafeQueueAssetPath(value.assetPath) ||
       typeof value.sourceRun !== 'string' ||
       typeof value.variantIndex !== 'number' ||
       !Number.isInteger(value.variantIndex) ||
       value.variantIndex < 0
     ) {
-      throw new ReconcileError(
-        'invalid-state',
-        `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
-      );
+      // Withhold exactly the deleted paths this broken tombstone could name.
+      // An unnameable path cannot be promoted anyway: only AUTHORIZED pairs are
+      // ever `git rm`-ed, so refusing here is already fail-closed.
+      const candidatePaths = [
+        shardPath,
+        ...(isSafeQueueAssetPath(value.assetPath) ? [`public/assets/${value.assetPath}`] : []),
+      ].filter((candidate) => deleted.has(candidate));
+      rejected.push({
+        annotationKey,
+        reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
+        paths: [...new Set(candidatePaths)].sort(),
+      });
+      continue;
     }
-    const shardPath = `public/assets/generated/entries/${value.manifestKey}.json`;
     const assetPath = `public/assets/${value.assetPath}`;
     const shardDeleted = deleted.has(shardPath);
     const assetDeleted = deleted.has(assetPath);
     if (shardDeleted !== assetDeleted) {
-      throw new ReconcileError(
-        'invalid-state',
-        `Lifecycle deletion for "${annotationKey}" is incomplete on assets/queue: shard and PNG must be deleted together.`,
-      );
+      rejected.push({
+        annotationKey,
+        reason: `Lifecycle deletion for "${annotationKey}" is incomplete on assets/queue: shard and PNG must be deleted together.`,
+        paths: [shardDeleted ? shardPath : assetPath],
+      });
+      continue;
     }
     if (shardDeleted) {
       authorized.push({
@@ -241,6 +292,23 @@ export function selectAuthorizedLifecycleDeletions(
       });
     }
   }
+  return { authorized, rejected };
+}
+
+/**
+ * Select only complete shard+PNG deletion pairs authorized by a tracked
+ * lifecycle tombstone. Unrelated queue deletions remain ignored.
+ *
+ * Throwing wrapper over {@link partitionLifecycleDeletions} for callers that
+ * genuinely want an all-or-nothing answer.
+ */
+export function selectAuthorizedLifecycleDeletions(
+  deletedPaths: readonly string[],
+  annotationsJson: string,
+): readonly AuthorizedLifecycleDeletion[] {
+  const { authorized, rejected } = partitionLifecycleDeletions(deletedPaths, annotationsJson);
+  const first = rejected[0];
+  if (first !== undefined) throw new ReconcileError('invalid-state', first.reason);
   return authorized;
 }
 
@@ -1644,6 +1712,20 @@ export async function runReconcile(
     // the result (and therefore in the workflow log) so a genuinely-blocked
     // approval is visible instead of silently dropped.
     const withheld = new Set<string>();
+    const rejectedLifecycleDeletions: RejectedLifecycleDeletion[] = [];
+    /**
+     * Deterministic result field for refused lifecycle deletions. Omitted
+     * entirely when nothing was refused, so a healthy cycle's JSON is unchanged.
+     */
+    const refusedDeletionsField = (): Pick<ReconcileResult, 'rejectedLifecycleDeletions'> =>
+      rejectedLifecycleDeletions.length === 0
+        ? {}
+        : {
+            rejectedLifecycleDeletions: [...rejectedLifecycleDeletions].sort(
+              (a, b) =>
+                a.annotationKey.localeCompare(b.annotationKey) || a.reason.localeCompare(b.reason),
+            ),
+          };
     const keepPromotable = async (
       ref: string,
       candidates: readonly string[],
@@ -1699,7 +1781,11 @@ export async function runReconcile(
             annotationsAreJson = false;
           }
           if (annotationsAreJson) {
-            candidates = selectAuthorizedLifecycleDeletions(deletedPaths, annotations.stdout);
+            // Per-tombstone partition: a single broken tombstone is refused on
+            // its own instead of throwing the whole hourly cycle away.
+            const partition = partitionLifecycleDeletions(deletedPaths, annotations.stdout);
+            candidates = partition.authorized;
+            rejectedLifecycleDeletions.push(...partition.rejected);
           }
         }
         const annotationWillLand = queueVsMainArt.includes(ANNOTATIONS_PATH);
@@ -1711,14 +1797,21 @@ export async function runReconcile(
           ]);
           if (current.code === 0) baseAnnotations = current.stdout;
         }
-        const baseAuthorized = new Set(
-          baseAnnotations === ''
-            ? []
-            : selectAuthorizedLifecycleDeletions(
+        let baseAuthorized = new Set<string>();
+        if (baseAnnotations !== '') {
+          try {
+            // Only the AUTHORIZED half matters here: a tombstone already broken
+            // on `main` cannot corroborate anything, and must not abort the run.
+            baseAuthorized = new Set(
+              partitionLifecycleDeletions(
                 candidates.flatMap((candidate) => candidate.paths),
                 baseAnnotations,
-              ).map((candidate) => candidate.tombstone.manifestKey),
-        );
+              ).authorized.map((candidate) => candidate.tombstone.manifestKey),
+            );
+          } catch {
+            baseAuthorized = new Set<string>();
+          }
+        }
         const accepted: AuthorizedLifecycleDeletion[] = [];
         for (const candidate of candidates) {
           if (!annotationWillLand && !baseAuthorized.has(candidate.tombstone.manifestKey)) {
@@ -1729,10 +1822,39 @@ export async function runReconcile(
             'show',
             `${baseRef}:${candidate.paths[0]}`,
           ]);
-          assertLifecycleDeletionMatchesShard(candidate, shard.code === 0 ? shard.stdout : null);
+          try {
+            assertLifecycleDeletionMatchesShard(candidate, shard.code === 0 ? shard.stdout : null);
+          } catch (error) {
+            rejectedLifecycleDeletions.push({
+              annotationKey: candidate.tombstone.manifestKey,
+              reason: error instanceof Error ? error.message : String(error),
+              paths: [...candidate.paths].sort(),
+            });
+            continue;
+          }
           accepted.push(candidate);
         }
         queueLifecycleDeletions = accepted;
+
+        if (rejectedLifecycleDeletions.length > 0) {
+          // FAIL CLOSED, ATOMICALLY. The annotations document and the art
+          // deletions it authorizes are ONE transaction: landing the tombstones
+          // without their deletions (or vice-versa) leaves `main` dangling and
+          // red under the lifecycle closure gate. So when ANY deletion in this
+          // cycle is refused, withhold every lifecycle deletion AND the
+          // annotations file, and let unrelated art keep promoting.
+          for (const deletion of candidates) {
+            for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+          }
+          for (const rejection of rejectedLifecycleDeletions) {
+            for (const deletionPath of rejection.paths) withheld.add(deletionPath);
+          }
+          queueLifecycleDeletions = [];
+          if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+            queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+            withheld.add(ANNOTATIONS_PATH);
+          }
+        }
       }
     }
 
@@ -1782,6 +1904,7 @@ export async function runReconcile(
         tidiedQueue: tidyUp.queueReset,
         tidiedBranches: tidyUp.deletedBranches,
         withheldPaths: [...withheld].sort(),
+        ...refusedDeletionsField(),
       };
     }
 
@@ -1832,6 +1955,8 @@ export async function runReconcile(
           promoteBranch,
           tidiedQueue: tidyUp.queueReset,
           tidiedBranches: tidyUp.deletedBranches,
+          withheldPaths: [...withheld].sort(),
+          ...refusedDeletionsField(),
         };
       }
 
@@ -2080,6 +2205,7 @@ export async function runReconcile(
       tidiedQueue: tidyUp.queueReset,
       tidiedBranches: tidyUp.deletedBranches,
       withheldPaths: [...withheld].sort(),
+      ...refusedDeletionsField(),
     };
   });
 }

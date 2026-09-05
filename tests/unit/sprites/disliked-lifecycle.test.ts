@@ -1,12 +1,13 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ManifestEntry } from '../../../src/shared/generated-assets.js';
 import {
   applyDislikedLifecyclePlan,
   buildDislikedLifecyclePlan,
+  loadDislikedLifecyclePlan,
   resolveDislikedReferenceExclusions,
   runAcceptedDislikedLifecycleTransaction,
   validateDislikedLifecycleClosure,
@@ -360,6 +361,171 @@ describe('disliked sprite lifecycle planning', () => {
         }),
       }),
     ).toThrow(/ambiguous.*a, b/i);
+  });
+
+  /**
+   * Regression (scope): pending curation promotion used to run BEFORE any scope
+   * check, so a narrow acceptance of `rat` published the human's un-reviewed
+   * pending dislike of `bat` into the tracked document — arming a concept the
+   * human never touched for deletion by the next sweep.
+   */
+  it('does not promote an out-of-scope pending dislike during a scoped acceptance', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        'rat-var-1': entry('rat', 1),
+        'bat-var-0': entry('bat', 0),
+        'bat-var-1': entry('bat', 1),
+      },
+      trackedAnnotations: annotations({}),
+      pendingAnnotations: {
+        'rat-var-0': {
+          base: null,
+          annotation: { favorite: false, disliked: true, comment: 'in scope' },
+        },
+        'bat-var-0': {
+          base: null,
+          annotation: { favorite: false, disliked: true, comment: 'unrelated' },
+        },
+      },
+      pendingDislikedKeys: new Set(['rat-var-0', 'bat-var-0']),
+      replacements: [
+        { manifestKey: 'rat-var-2', conceptId: 'rat', assetPath: 'generated/rat-var-2.png' },
+      ],
+      conceptScope: new Set(['rat']),
+    });
+
+    expect(plan.promotedPendingCount).toBe(1);
+    expect(plan.removed.map((item) => item.manifestKey)).toEqual(['rat-var-0']);
+    // The unrelated concept is untouched: no annotation, no deferral, no update.
+    expect(plan.annotations.sprites['bat-var-0']).toBeUndefined();
+    expect(plan.deferredGroups).toEqual([]);
+    expect(plan.annotationUpdates.map((update) => update.key)).not.toContain('bat-var-0');
+  });
+
+  /**
+   * An icon-batch acceptance scopes by the ICON id, but every cell's manifest
+   * entry carries the shared BATCH `briefId`. Scoping must therefore consider
+   * the bare key too, or the very icon being accepted falls out of its own
+   * scope and its pending dislike is never cleared.
+   */
+  it('keeps an icon-batch cell in scope even though its briefId is the shared batch id', () => {
+    const root = makeRoot();
+    const iconEntry = entry('achv-icons-batch-01', 0, {
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+    });
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: { 'achv-first-bonk': iconEntry },
+      trackedAnnotations: annotations({}),
+      pendingAnnotations: {
+        'achv-first-bonk': {
+          base: null,
+          annotation: { favorite: false, disliked: true, comment: 'redo' },
+        },
+      },
+      pendingDislikedKeys: new Set(['achv-first-bonk']),
+      replacements: [
+        {
+          manifestKey: 'achv-first-bonk',
+          conceptId: 'achv-first-bonk',
+          assetPath: 'generated/achv-first-bonk.png',
+        },
+      ],
+      conceptScope: new Set(['achv-first-bonk']),
+    });
+
+    expect(plan.promotedPendingCount).toBe(1);
+    // The accepted replacement's own dislike is cleared by the acceptance.
+    expect(plan.annotations.sprites['achv-first-bonk']?.disliked).toBe(false);
+    expect(plan.removed).toEqual([]);
+  });
+
+  it('still promotes every pending dislike for the repo-wide (unscoped) sweep', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        'rat-var-1': entry('rat', 1),
+        'bat-var-0': entry('bat', 0),
+        'bat-var-1': entry('bat', 1),
+      },
+      trackedAnnotations: annotations({}),
+      pendingAnnotations: {
+        'rat-var-0': { base: null, annotation: { favorite: false, disliked: true, comment: '' } },
+        'bat-var-0': { base: null, annotation: { favorite: false, disliked: true, comment: '' } },
+      },
+      pendingDislikedKeys: new Set(['rat-var-0', 'bat-var-0']),
+    });
+
+    expect(plan.promotedPendingCount).toBe(2);
+    expect(plan.removed.map((item) => item.manifestKey)).toEqual(['bat-var-0', 'rat-var-0']);
+  });
+
+  /**
+   * Regression (B4): an `unmatched` reconciliation marker was written but never
+   * retracted, so once a key resolved — its shard came back, provenance finally
+   * pinned it, or the human cleared the dislike — the Sprite Editor kept warning
+   * about a reconciliation failure that no longer existed, permanently.
+   */
+  it('retracts a reconciliation marker once the key resolves, as an explicit own-property clear', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      // The key's shard is back, so the annotation reconciles again. The group
+      // is all-disliked, so nothing is removed — the ONLY change this plan
+      // proposes is retracting the stale marker.
+      manifestEntries: { 'faerie-boss-var-9': entry('faerie-boss', 9) },
+      trackedAnnotations: annotations({
+        'faerie-boss-var-9': {
+          disliked: true,
+          reconciliation: { outcome: 'unmatched', annotationKey: 'faerie-boss-var-9' },
+        },
+      }),
+    });
+
+    expect(plan.unresolvedAnnotationKeys).toEqual([]);
+    expect(plan.removed).toEqual([]);
+    const resolved = plan.annotations.sprites['faerie-boss-var-9']!;
+    // Own property holding `undefined` — the wire shape that means "DELETE this
+    // field on the queue tip", as opposed to an absent field that means "leave
+    // whatever the tip holds alone".
+    expect(Object.hasOwn(resolved, 'reconciliation')).toBe(true);
+    expect(resolved.reconciliation).toBeUndefined();
+    const update = plan.annotationUpdates.find((item) => item.key === 'faerie-boss-var-9');
+    expect(update).toBeDefined();
+    expect(Object.hasOwn(update!, 'reconciliation')).toBe(true);
+  });
+
+  it('leaves an out-of-scope reconciliation marker for the repo-wide sweep to retract', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'bat-var-9': entry('bat', 9),
+        'rat-var-0': entry('rat', 0),
+      },
+      trackedAnnotations: annotations({
+        'bat-var-9': {
+          disliked: false,
+          reconciliation: { outcome: 'unmatched', annotationKey: 'bat-var-9' },
+        },
+      }),
+      replacements: [
+        { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+      ],
+      conceptScope: new Set(['rat']),
+    });
+
+    expect(plan.annotations.sprites['bat-var-9']?.reconciliation).toEqual({
+      outcome: 'unmatched',
+      annotationKey: 'bat-var-9',
+    });
+    expect(plan.annotationUpdates.map((update) => update.key)).not.toContain('bat-var-9');
   });
 });
 
@@ -952,5 +1118,126 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(() => validateDislikedLifecycleClosure(root, plan)).toThrow(
       /exact reference to rat-var-1 remains/,
     );
+  });
+});
+
+/**
+ * The HARD zero-dangling gate.
+ *
+ * `sprites:disliked-lifecycle --dry-run` is the deterministic check that the
+ * historical tombstone ledger is still closed. It used to run ONLY when the
+ * plan proposed no removals, which silently retired the check for exactly the
+ * repos that had lifecycle work pending — the state in which a dangling
+ * tombstone is most likely. It now always validates the historical ledger with
+ * `removed: []` so this plan's own (not-yet-applied) removals, whose shard and
+ * PNG legitimately still exist, are not scored as dangling.
+ */
+describe('disliked sprite lifecycle dry-run closure gate', () => {
+  it('validates historical tombstones even when the plan proposes removals', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+
+    // A pending removal: real, present art that the plan WILL delete on apply.
+    const doomed = entry('rat', 0);
+    const survivor = entry('rat', 1);
+    writeShard(generatedDir, doomed.spriteName, doomed);
+    writeShard(generatedDir, survivor.spriteName, survivor);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
+    writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'good');
+
+    // A DANGLING historical tombstone: it claims `bat-var-0` was deleted, but
+    // the PNG is still on disk.
+    writeFileSync(path.join(generatedDir, 'bat-var-0.png'), 'should-not-exist');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'rat-var-0': { disliked: true },
+          'bat-var-0': {
+            disliked: true,
+            tombstone: {
+              manifestKey: 'bat-var-0',
+              conceptId: 'bat',
+              assetPath: 'generated/bat-var-0.png',
+              sourceRun: 'generated/runs/bat/run-0',
+              variantIndex: 0,
+              annotationKeys: ['bat-var-0'],
+            },
+          },
+        },
+      }),
+    );
+
+    const { main } = await import('../../../scripts/sprites/disliked-lifecycle-cli.js');
+    const errors: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation((chunk: string | Uint8Array) => {
+        errors.push(String(chunk));
+        return true;
+      });
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      const exitCode = await main(['--dry-run'], root);
+      expect(exitCode).toBe(2);
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+
+    const message = errors.join('');
+    // The plan DID propose a removal, and the historical ledger was still
+    // checked — and named the offending path, not just "something is wrong".
+    expect(message).toContain('PNG still exists at generated/bat-var-0.png');
+    expect(message).toContain('--dry-run');
+    // The pre-apply removal's own still-present art is NOT reported as dangling.
+    expect(message).not.toContain('rat-var-0');
+  });
+
+  it('passes on a repo whose only tombstones are genuinely closed', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'bat-var-0': {
+            disliked: true,
+            tombstone: {
+              manifestKey: 'bat-var-0',
+              conceptId: 'bat',
+              assetPath: 'generated/bat-var-0.png',
+              sourceRun: 'generated/runs/bat/run-0',
+              variantIndex: 0,
+              annotationKeys: ['bat-var-0'],
+            },
+          },
+        },
+      }),
+    );
+
+    const { main } = await import('../../../scripts/sprites/disliked-lifecycle-cli.js');
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      expect(await main(['--dry-run'], root)).toBe(0);
+    } finally {
+      stdout.mockRestore();
+    }
+  });
+
+  /**
+   * REPO GATE. Runs the real closure validation against this repository's own
+   * annotation ledger on every `npm run test:sprites`, so a dangling tombstone
+   * cannot reach `main` even if nobody remembers to run the CLI. Deterministic:
+   * pure filesystem reads plus an exact-token scan, no network, no LLM.
+   */
+  it('the repository itself has zero dangling lifecycle tombstones', () => {
+    const repoRoot = process.cwd();
+    const plan = loadDislikedLifecyclePlan(repoRoot);
+    expect(() =>
+      validateDislikedLifecycleClosure(repoRoot, { ...plan, removed: [] }),
+    ).not.toThrow();
   });
 });
