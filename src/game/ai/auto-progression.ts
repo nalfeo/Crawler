@@ -65,6 +65,7 @@ import {
 } from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
+import { confirmFloor4GreenRoomInteraction } from '../floor4Scenario.js';
 import { confirmFloor6StairDescend, isFloor6ExitDescendable } from '../floor6Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -470,6 +471,23 @@ export function autoFloor3ProgressionSystem(
   if (allowDirectStairDescend) {
     confirmFloor3StairDescend(world, playerEid);
   }
+}
+
+/**
+ * Drive Floor 4's ONE public Green Room exit interaction the way a player does.
+ *
+ * `confirmFloor4GreenRoomInteraction` is the exact action the real
+ * `MainGameScene` confirmation modal invokes (`ScenarioDefinition.onStairDescend`
+ * for Floor 4), and it is a no-op until the player stands inside the published
+ * marker's interaction radius — so this driver cannot advance an act from a
+ * position the human prompt would have withheld, and cannot reach a phase the
+ * human path cannot reach.
+ */
+export function autoFloor4ProgressionSystem(world: GameWorld, playerEid: number): void {
+  if (world.floorId !== 'floor4') {
+    return;
+  }
+  confirmFloor4GreenRoomInteraction(world, playerEid);
 }
 
 /**

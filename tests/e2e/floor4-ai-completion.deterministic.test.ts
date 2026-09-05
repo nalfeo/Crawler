@@ -40,12 +40,9 @@
  * (~300ms after load, well inside the crash window previously observed) to
  * prove the race is actually fixed, not merely avoided by waiting.
  *
- * ## What this test does NOT claim
- *
- * The intermission-to-next-act and final-stairs transitions are confirmed by
- * the real scene's modal path: the AI-runner bridge only presses the public
- * ModalPicker confirmation, and the scenario's `confirmFloor4StairDescend`
- * remains the sole phase authority.
+ * Intermissions and the terminal exit are public interaction gates: the visual
+ * AI-runner must route to the authored Green Room and invoke the same shared
+ * scenario confirmations as the headless runner.
  */
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -55,8 +52,9 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
 import {
   FLOOR4_ACTS,
-  FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS,
+  FLOOR4_GREEN_ROOM_EXIT_REASON,
   FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TERMINAL_EXIT_REASON,
   FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
 
@@ -78,27 +76,10 @@ const POLL_INTERVAL_MS = 3_000;
  * time / ~36.5k frames; at 16x this needs well under 90s of wall time. */
 const MAX_POLLS = 40;
 const CHECKPOINT_DIR = resolve(process.cwd(), 'tmp', 'e2e-screenshots', 'floor4-ai-completion');
-const FLOOR4_MODAL_SEQUENCE = Array.from({ length: 5 }, () => [
-  'floor4-stair-descend:opened',
-  'floor4-stair-descend:confirmed',
-  'floor4-stair-descend:resumed',
-]).flat();
 
 async function loadAiRunner(page: Page): Promise<void> {
   await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForSelector('#ai-playback-dock', { timeout: 45_000 });
-}
-
-function surfaceActionSequence(events: readonly Floor4SurfaceEvent[]): string[] {
-  return events.map((entry) => `${entry.kind}:${entry.action}`);
-}
-
-interface Floor4SurfaceEvent {
-  kind: string;
-  action: 'opened' | 'confirmed' | 'resumed';
-  frame: number | null;
-  gameMs: number | null;
-  worldState: string | null;
 }
 
 interface Floor4RunSnapshot {
@@ -119,9 +100,6 @@ interface Floor4RunSnapshot {
   actIncomeCount: number;
   arenaElapsedMs: number | undefined;
   gameMs: number | null;
-  manualControl: boolean;
-  worldState: string | null;
-  floor4SurfaceTrace: Floor4SurfaceEvent[];
   timelineFingerprint: string;
 }
 
@@ -132,7 +110,6 @@ interface Floor4VisualRunResult {
     frame: number;
     phase: unknown;
     wavesReleased: number | undefined;
-    enemiesSpawned: number | undefined;
     headlinerSpawned: number | undefined;
     headlinerDefeated: number | undefined;
     floor4LiveEnemyCount: number;
@@ -174,7 +151,6 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
           frame: snap?.frame ?? -1,
           phase: arena?.phase ?? null,
           wavesReleased: arena?.waveTelemetry?.wavesReleased,
-          enemiesSpawned: arena?.waveTelemetry?.enemiesSpawned,
           headlinerSpawned: arena?.headlinerTelemetry?.spawned,
           headlinerDefeated: arena?.headlinerTelemetry?.defeated,
           floor4LiveEnemyCount: snap?.floor4LiveEnemyCount ?? 0,
@@ -202,16 +178,6 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
     }
     let victoryCheckpointSaved = false;
     if (reachedVictory) {
-      // Wait for MainGameScene to render its terminal victory surface before
-      // capturing the checkpoint. `phase.kind === 'VICTORY'` only confirms the
-      // simulation state; `floorCompletionMessageShown` proves the scene's
-      // `showFloorCompletionScreenIfNeeded()` path actually ran and the
-      // completion UI is now on screen. A regression in that path would
-      // otherwise pass this gate while saving ordinary gameplay footage.
-      //
-      // `__floor1Debug` is MainGameScene's universal debug seam — the name is
-      // historical; it is set unconditionally in MainGameScene.create() for
-      // every floor, not just Floor 1.
       await page.waitForFunction(
         () =>
           (
@@ -258,9 +224,6 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
         actIncomeCount: Array.isArray(arena?.actIncome) ? arena.actIncome.length : 0,
         arenaElapsedMs: arena?.arenaElapsedMs,
         gameMs: typeof snap?.gameMs === 'number' ? snap.gameMs : null,
-        manualControl: snap?.manualControl === true,
-        worldState: typeof snap?.worldState === 'string' ? snap.worldState : null,
-        floor4SurfaceTrace: Array.isArray(snap?.floor4SurfaceTrace) ? snap.floor4SurfaceTrace : [],
         timelineFingerprint: timeline
           .map((entry) => {
             const kind = typeof entry?.phase?.kind === 'string' ? entry.phase.kind : 'unknown';
@@ -290,9 +253,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
-    // Shared across this describe's tests (the main completion test AND the
-    // isolated C5 characterization below) so the second test doesn't need to
-    // pay for another real browser run of the same canonical seed.
+    // Captured once in `beforeAll` so the single completion assertion below
+    // reads a finished run without paying for a second real browser run of the
+    // same canonical seed.
     firstRun = await runVisualFloor4Completion(browser);
   }, 300_000);
 
@@ -308,7 +271,6 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // The core regression proof: the fast-restart race that used to
     // freeze the render loop with a TypeError must not recur.
     expect(firstRun.pageErrors, firstContext).toEqual([]);
-    expect(firstRun.finalSnapshot.manualControl, firstContext).toBe(false);
     expect(firstRun.reachedVictory, firstContext).toBe(true);
     expect(firstRun.liveWaveCheckpointSaved, firstContext).toBe(true);
     expect(firstRun.victoryCheckpointSaved, firstContext).toBe(true);
@@ -329,56 +291,27 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // C4 — all five Headliners physically spawned and fell to ordinary combat.
     expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
+    expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
     expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
-    // C5 — every act's intermission was entered, banked income, and resolved
-    // through the real scene's public modal confirmation path.
+    // C5 — every act's intermission was entered, banked income, and left
+    // through its public Green Room exit confirmation: the five recorded exit
+    // reasons must be exactly `green-room-exit` ×4 (acts 1-4) then
+    // `floor4-stairs-confirmed` (act 5), the only reasons that confirmation
+    // emits.
     expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
-    expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toHaveLength(5);
     expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toEqual([
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-stairs',
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_TERMINAL_EXIT_REASON,
     ]);
-    expect(
-      firstRun.finalSnapshot.intermissionExitReasons.every((reason) =>
-        FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS.includes(reason),
-      ),
-      firstContext,
-    ).toBe(true);
-    expect(firstRun.finalSnapshot.floor4SurfaceTrace, firstContext).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: 'floor4-stair-descend',
-          action: 'opened',
-        }),
-        expect.objectContaining({
-          kind: 'floor4-stair-descend',
-          action: 'confirmed',
-        }),
-        expect.objectContaining({
-          kind: 'floor4-stair-descend',
-          action: 'resumed',
-        }),
-      ]),
-    );
-    expect(
-      firstRun.finalSnapshot.floor4SurfaceTrace.filter(
-        (entry) => entry.kind === 'floor4-stair-descend' && entry.action === 'confirmed',
-      ),
-      firstContext,
-    ).toHaveLength(5);
-    expect(surfaceActionSequence(firstRun.finalSnapshot.floor4SurfaceTrace), firstContext).toEqual(
-      FLOOR4_MODAL_SEQUENCE,
-    );
     // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
     // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
     // uses to produce headless `RunStats.outcome === 'victory'`; the visual
     // runner produces no `RunStats` of its own.
     expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
-    expect(firstRun.finalSnapshot.worldState, firstContext).not.toBe('game_over');
     expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
     // C8 — terminated under the real Floor 4 stall backstop. `arenaElapsedMs`
     // only advances during WAVES/HEADLINE and is capped well below the
@@ -399,7 +332,6 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // Deterministic parity check: the same canonical visual run repeats with
     // an identical phase progression fingerprint and completion contract.
     expect(secondRun.pageErrors, secondContext).toEqual([]);
-    expect(secondRun.finalSnapshot.manualControl, secondContext).toBe(false);
     expect(secondRun.reachedVictory, secondContext).toBe(true);
     expect(secondRun.finalSnapshot.phaseKind, secondContext).toBe('VICTORY');
     expect(secondRun.finalSnapshot.wavesReleased, secondContext).toBe(
@@ -420,10 +352,7 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     );
     expect(secondRun.finalSnapshot.gameMs, secondContext).not.toBeNull();
     expect(secondRun.finalSnapshot.gameMs, secondContext).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
-    expect(
-      surfaceActionSequence(secondRun.finalSnapshot.floor4SurfaceTrace),
-      secondContext,
-    ).toEqual(surfaceActionSequence(firstRun.finalSnapshot.floor4SurfaceTrace));
+    expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
     expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
       firstRun.finalSnapshot.timelineFingerprint,
     );

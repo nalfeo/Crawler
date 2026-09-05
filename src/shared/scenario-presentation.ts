@@ -185,6 +185,14 @@ export interface ScenarioPresentationContract<TWorld> {
   /** Copy for the stair-descend confirmation prompt. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
   /**
+   * Per-world override of {@link stairConfirmation}, for scenarios whose single
+   * exit affordance narrates more than one continuation (Floor 4's Green Room
+   * exit opens the next act during acts 1-4 and ends the broadcast on the
+   * terminal intermission). Returning `null` falls back to the static copy, so
+   * scenarios with one fixed prompt need not implement it.
+   */
+  readonly getStairConfirmation?: (world: TWorld) => ScenarioStairConfirmationCopy | null;
+  /**
    * Copy for the starter-loadout picker. Absent for scenarios that present
    * their own loadout surface or offer no starter choice, in which case the
    * generic picker stays closed.

@@ -256,11 +256,10 @@ Two constraints shape everything:
   price bands, and the arena/Green Room geometry parameters.
 - **FR8.3** Floor 4 sets `objectives.*` to zero — it has no kill/gold/junk gate — and gates
   all intermission exits through the scenario's `onStairDescend`, which returns `false` outside
-  an `INTERMISSION` phase. For acts 1–4 it records a `WAVES` transition (break exit to the
-  next act) via `confirmFloor4StairDescend`; for act 5 it records the `VICTORY` transition
-  (the terminal stairs descent). The exit marker is placed at the authored Green Room center
-  and the production AI routes to it — the proximity check is against a fixed authored
-  position, not the player's live coordinates.
+  an `INTERMISSION` phase or while the player is outside the fixed Green Room exit marker.
+  For acts 1–4 `confirmFloor4GreenRoomInteraction` records a `WAVES` transition; for act 5 it
+  records `VICTORY`. The marker is derived from the authored safe-room bounds, and production
+  AI routes to that fixed position before confirming the public interaction.
 - **FR8.4** `timer.durationMs` is a **hard stall backstop on `world.elapsedMs`**, not a
   broadcast countdown. Because `resolveFloorTimerRemainingMs`
   (`src/engine/floor-timer-state.ts`) derives from `world.elapsedMs`, which advances during
@@ -413,14 +412,12 @@ rehearsal: headline windows were marked cleared immediately, and each intermissi
 auto-advanced after a short deterministic hold. This was deliberately non-conformant
 with the final FR2.2 triggers.
 
-**Slice 4 replaces the slice-2 rehearsal hand-off for all five intermissions.**
-The visual AI-runner path now routes every intermission exit (acts 1–4 break exits
-and the act-5 terminal stairs) through the real `ModalPickerUI` callback, which
-calls `confirmFloor4StairDescend` on the public `ScenarioDefinition.onStairDescend`
-hook. The intermission timer auto-advance no longer completes Floor 4 acts. The
-Green Room / shop transaction remains slice 5; until that lands, the break
-transaction is still only the authored stair confirmation, but the confirmation now
-flows through the real scene UI rather than a rehearsal timer.
+**The playable-completion work replaces the slice-2 rehearsal hand-off for all five
+intermissions.** The visual AI-runner routes to the authored Green Room exit and
+confirms the real `ModalPickerUI` callback, which invokes
+`confirmFloor4GreenRoomInteraction` through
+`ScenarioDefinition.onStairDescend`. Acts 1–4 open the next act and act 5 takes
+the terminal stairs; the intermission timer no longer advances either path.
 
 The arena clock still obeys FR1.2/FR1.3 during the rehearsal: it advances only in
 `WAVES`/`HEADLINE`, holds during `COUNTDOWN` and `INTERMISSION`, and reaches

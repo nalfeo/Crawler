@@ -23,13 +23,9 @@
  * `tests/e2e/floor4-ai-completion.deterministic.test.ts`. Keep the tags and
  * the table in sync — the table is the mapping of record.
  *
- * ## What this test does NOT claim
- *
- * Floor 4's intermission-to-next-act and final-stairs transitions now go
- * through `confirmFloor4StairDescend`, the same scenario authority invoked by
- * the visual MainGameScene confirmation modal. The headless runner has no DOM,
- * so it calls that scenario hook directly once it becomes valid; the hook is a
- * no-op before the authored intermission hold elapses.
+ * Intermissions and the terminal exit are now public interaction gates: the
+ * production AI must physically route to the authored Green Room and invoke the
+ * same scenario confirmations exposed to the visual presentation layer.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -38,8 +34,9 @@ import { getPersonaConfig } from '../../src/game/ai/personas.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import {
   FLOOR4_ACTS,
-  FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS,
+  FLOOR4_GREEN_ROOM_EXIT_REASON,
   FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TERMINAL_EXIT_REASON,
   FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
 
@@ -137,11 +134,12 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // `overtimeStarted` staying zero shows no out-of-band finisher ran).
     expect(arena!.headlinerTelemetry.spawned, telemetryFailure).toBe(5);
     expect(arena!.headlinerTelemetry.defeated, telemetryFailure).toBe(5);
+    expect(arena!.headlinerTelemetry.chestsForceResolved, telemetryFailure).toBe(0);
     expect(arena!.headlinerTelemetry.overtimeStarted, telemetryFailure).toBe(0);
     expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
 
     // C5 — every act's intermission was entered, banked its act income, and
-    // resolved via the public scenario confirmation hook.
+    // resolved through the public Green Room / terminal exit confirmations.
     expect(phaseActs(timeline, 'INTERMISSION'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     expect(
       arena!.actIncome.map((entry) => entry.act),
@@ -154,18 +152,12 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
       .filter((reason): reason is string => reason !== undefined);
     expect(intermissionExitReasons, telemetryFailure).toHaveLength(5);
     expect(intermissionExitReasons, telemetryFailure).toEqual([
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-green-room-exit',
-      'public-stairs',
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_TERMINAL_EXIT_REASON,
     ]);
-    expect(
-      intermissionExitReasons.every((reason) =>
-        FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS.includes(reason),
-      ),
-      telemetryFailure,
-    ).toBe(true);
 
     // C6 — the phase trace actually reached the terminal VICTORY phase.
     expect(arena!.phase.kind, telemetryFailure).toBe('VICTORY');

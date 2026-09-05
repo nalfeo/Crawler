@@ -6050,7 +6050,8 @@ export class MainGameScene extends Phaser.Scene {
 
     const hasScenarioPresentationStairs =
       this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
-      this.options.scenarioPresentation.stairConfirmation !== undefined;
+      (this.options.scenarioPresentation.stairConfirmation !== undefined ||
+        this.options.scenarioPresentation.getStairConfirmation !== undefined);
     // Floors with either legacy floor scenarios, extended floor state, or an
     // explicit scenario-presentation stair contract can respond to interactions.
     if (
@@ -6142,7 +6143,12 @@ export class MainGameScene extends Phaser.Scene {
     // The confirmation copy is required for the affordance, not just for the
     // modal: offering a "Descend" hint the scene cannot follow through on
     // would silently swallow the interact press.
-    const stairConfirmation = this.options.scenarioPresentation?.stairConfirmation;
+    // Scenarios whose single exit affordance narrates more than one
+    // continuation (Floor 4's Green Room exit) resolve their copy per-world;
+    // everyone else keeps the static prompt.
+    const stairConfirmation =
+      this.options.scenarioPresentation?.getStairConfirmation?.(this.world) ??
+      this.options.scenarioPresentation?.stairConfirmation;
     const nearStairs =
       stairConfirmation !== undefined &&
       stairMarker !== undefined &&

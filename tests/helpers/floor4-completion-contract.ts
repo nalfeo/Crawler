@@ -60,11 +60,8 @@ export const FLOOR4_STALL_BACKSTOP_MS: number = (() => {
   return durationMs;
 })();
 
-/**
- * C5's public-interaction reasons: these are recorded only by
- * `confirmFloor4StairDescend`, the same scenario authority invoked by the real
- * MainGameScene confirmation modal and the headless runner's scenario exit
- * bridge. The old slice-2 timer reasons must never reappear in completion
- * gates.
- */
-export const FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS = ['public-green-room-exit', 'public-stairs'];
+/** C5's public Green Room continuation reason for acts 1–4. */
+export const FLOOR4_GREEN_ROOM_EXIT_REASON = 'green-room-exit';
+
+/** C6/C7's public terminal confirmation reason for act 5. */
+export const FLOOR4_TERMINAL_EXIT_REASON = 'floor4-stairs-confirmed';

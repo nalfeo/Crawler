@@ -27,11 +27,12 @@ import {
 } from '../../src/game/floor3Scenario.js';
 import {
   arenaDirectorSystem,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
 import { floor6DefenseDirectorSystem } from '../../src/game/floor6Scenario.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import { RoomRole } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -332,12 +333,25 @@ describe('scenario definitions', () => {
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
     });
 
-    it('floor4 returns cleared_floor on rehearsal victory with matching presentation copy', () => {
+    it('floor4 returns cleared_floor after confirmed Green Room victory with matching presentation copy', () => {
       const scenario = getScenarioDefinition('floor4');
       const world = createTestWorld({ seed: 44, floor: 4 });
       const player = spawnPlayer(world, 0, 0);
       const phase = getFloorManifest('floor4')!.floor4!.phase;
       initializeFloor4Scenario(world, player);
+      const movePlayerToGreenRoom = (): void => {
+        const greenRoom = world.floorMap?.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+        if (!greenRoom || !world.floorMap) {
+          throw new Error('expected a Green Room');
+        }
+        const target = world.floorMap.tileToWorld(
+          Math.floor(greenRoom.bounds.x + greenRoom.bounds.width / 2),
+          Math.floor(greenRoom.bounds.y + greenRoom.bounds.height / 2),
+        );
+        world.stores.position.x[player] = target.x;
+        world.stores.position.y[player] = target.y;
+        world.playerInSafeRoom = true;
+      };
 
       expect(scenario.getRunOutcome(world)).toBeNull();
       world.elapsedMs += phase.countdownMs;
@@ -353,7 +367,27 @@ describe('scenario definitions', () => {
         arenaDirectorSystem(world);
         world.elapsedMs += phase.intermissionMs;
         arenaDirectorSystem(world);
-        expect(confirmFloor4StairDescend(world)).toBe(true);
+        movePlayerToGreenRoom();
+        // The public scene path: a marker is published for EVERY intermission,
+        // its prompt narrates the continuation it performs, and confirming it
+        // (`onStairDescend`, what the real MainGameScene modal invokes) is what
+        // advances the act — acts 1-4 included, so a human never stalls.
+        const marker = scenario.getStairMarkerState?.(world);
+        expect(marker?.visible).toBe(true);
+        expect(marker?.locked).toBe(false);
+        const confirmation = scenario.getStairConfirmation?.(world);
+        expect(confirmation?.kind).toBe(
+          act < phase.actCount ? 'floor4-green-room-exit' : 'floor4-stair-descend',
+        );
+        expect(scenario.onStairDescend?.(world, player)).toBe(true);
+        expect(world.floorExtendedState?.floor4Arena?.phase).toEqual(
+          act < phase.actCount ? { kind: 'WAVES', act: act + 1 } : { kind: 'VICTORY' },
+        );
+        if (act < phase.actCount) {
+          // The shared confirmation stays gated: it only resolves during an
+          // intermission, so a second press mid-act does nothing.
+          expect(confirmFloor4GreenRoomInteraction(world, player)).toBe(false);
+        }
       }
 
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
@@ -484,59 +518,19 @@ describe('scenario definitions', () => {
       expect(visible!.locked).toBe(false);
       expect(scenario.onStairDescend!(world, player)).toBe(true);
     });
-
-    it('floor4 break marker appears only after the intermission hold and confirms through the scenario hook', () => {
-      const scenario = getScenarioDefinition('floor4');
-      const world = createTestWorld({ seed: 44, floor: 4 });
-      const player = spawnPlayer(world, 10, 20);
-      const phase = getFloorManifest('floor4')!.floor4!.phase;
-      initializeFloor4Scenario(world, player);
-
-      world.elapsedMs += phase.countdownMs;
-      arenaDirectorSystem(world);
-      world.elapsedMs += phase.waveWindowMs;
-      arenaDirectorSystem(world);
-      const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
-      expect(activeHeadliner).not.toBeUndefined();
-      world.stores.health.current[activeHeadliner!] = 0;
-      arenaDirectorSystem(world);
-      world.elapsedMs += phase.headlineWindowMs;
-      arenaDirectorSystem(world);
-
-      const hidden = scenario.getStairMarkerState!(world);
-      expect(hidden).not.toBeNull();
-      expect(hidden!.visible).toBe(false);
-      expect(hidden!.locked).toBe(true);
-      expect(hidden!.radiusFt).toBe(FLOOR2_STAIR_MARKER_RADIUS_FT);
-      expect(hidden).not.toHaveProperty('depth');
-      expect(hidden).not.toHaveProperty('color');
-      expect(scenario.onStairDescend!(world, player)).toBe(false);
-
-      world.elapsedMs += phase.intermissionMs;
-      arenaDirectorSystem(world);
-      const visible = scenario.getStairMarkerState!(world);
-      expect(visible!.visible).toBe(true);
-      expect(visible!.locked).toBe(false);
-      expect(visible!.label).toContain('EXIT');
-      expect(scenario.onStairDescend!(world, player)).toBe(true);
-      expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
-    });
   });
 
   describe('semantic stair-descend confirmation presentation', () => {
-    it('floor1, floor2, floor4, and floor6 declare distinct, non-empty confirmation copy', () => {
+    it('floor1, floor2, and floor6 declare distinct, non-empty confirmation copy', () => {
       const floor1 = getScenarioDefinition('floor1').stairConfirmation;
       const floor2 = getScenarioDefinition('floor2').stairConfirmation;
-      const floor4 = getScenarioDefinition('floor4').stairConfirmation;
       const floor6 = getScenarioDefinition('floor6').stairConfirmation;
       expect(floor1).toBeDefined();
       expect(floor2).toBeDefined();
-      expect(floor4).toBeDefined();
       expect(floor6).toBeDefined();
       expect(floor1).not.toEqual(floor2);
-      expect(floor4).not.toEqual(floor2);
       expect(floor6).not.toEqual(floor1);
-      for (const copy of [floor1, floor2, floor4, floor6]) {
+      for (const copy of [floor1, floor2, floor6]) {
         expect(copy!.title.length).toBeGreaterThan(0);
         expect(copy!.subtitle.length).toBeGreaterThan(0);
         expect(copy!.body.length).toBeGreaterThan(0);

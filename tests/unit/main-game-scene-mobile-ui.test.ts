@@ -65,6 +65,18 @@ describe('MainGameScene NPC tap targeting', () => {
       'tappedNpcEid !== null && !tappedNpcInvalidated\n          ? tappedNpcEid\n          : nearNpcEid;',
     );
   });
+
+  // Floor 4's one exit affordance narrates two different continuations (next
+  // act vs. terminal broadcast exit), so the scene must resolve its prompt copy
+  // per-world; a static-only lookup would leave acts 1-4 with no human prompt.
+  it('resolves the stair confirmation copy per world before falling back to static copy', () => {
+    expect(source).toContain(
+      'this.options.scenarioPresentation?.getStairConfirmation?.(this.world) ??\n      this.options.scenarioPresentation?.stairConfirmation;',
+    );
+    expect(source).toContain(
+      '(this.options.scenarioPresentation.stairConfirmation !== undefined ||\n        this.options.scenarioPresentation.getStairConfirmation !== undefined)',
+    );
+  });
 });
 
 describe('HUD panel UX consistency', () => {
