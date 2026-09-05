@@ -1720,6 +1720,9 @@ ${queryScript}
     expect(recovery?.run).not.toContain('gh pr checkout "${pr_number}"');
     expect(recovery?.run).toContain('gh pr close "${pr_number}"');
     expect(recovery?.run).toContain('starting over');
+    expect(recovery?.run).toContain('publish_assignments()');
+    expect(recovery?.run).toMatch(/publish_assignments\s+gh pr close "\$\{pr_number\}"/);
+    expect(recovery?.run).toContain('.resumePr = "" | .resumeBranch = ""');
     expect(recovery?.run).toContain(
       'append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"',
     );
@@ -1876,13 +1879,13 @@ ${queryScript}
     const disposeScript = dispose?.run ?? '';
     const guardScript = guard?.run ?? '';
 
-    // The receipt is written BEFORE the lane exports any recovery metadata, so
-    // a lane that could not write it never starts a recovery slot — which is
-    // what makes "no receipt" deterministic proof of "never adopted".
+    // Validate all assignments before writing the first receipt, so one blocked
+    // later slot cannot leave an earlier slot adopted but unstarted.
     const receiptIndex = adoptScript.indexOf('gh issue comment "$issue_number"');
-    const exportIndex = adoptScript.indexOf("printf '%s\\t%s\\t%s\\t%s\\t%s\\n'");
+    const validationIndex = adoptScript.indexOf("printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n'");
     expect(receiptIndex).toBeGreaterThanOrEqual(0);
-    expect(exportIndex).toBeGreaterThan(receiptIndex);
+    expect(validationIndex).toBeGreaterThanOrEqual(0);
+    expect(receiptIndex).toBeGreaterThan(validationIndex);
     // The marker grammar lives in one checked-in library, never inline, so a
     // writer and a reader cannot drift apart. It is scoped to run id AND
     // attempt: a re-run keeps the same run id, and its adoption must be a NEW
@@ -1892,11 +1895,11 @@ ${queryScript}
     );
     expect(adoptScript).toContain('scripts/agent/goobers-reservation-lease.sh');
     // Cross-dispatch re-adoption guard: an undisposed lease from ANY other
-    // run/attempt stops this lane before it exports recovery metadata.
+    // run/attempt stops this lane before it writes any receipt.
     expect(adoptScript).toContain('if [ "$lease_state" = "adopted" ] &&');
     expect(adoptScript).toContain('Refusing to adopt reserved issue');
     const guardIndex = adoptScript.indexOf('Refusing to adopt reserved issue');
-    expect(guardIndex).toBeLessThan(exportIndex);
+    expect(guardIndex).toBeLessThan(receiptIndex);
 
     // Disposal is recorded only on proof of BOTH a clean reap and a clean
     // disposition; anything else leaves the receipt adopted-but-undisposed.
@@ -2118,7 +2121,8 @@ ${queryScript}
     expect(script).toContain('any(.[]; .issue == $issue)');
     expect(script).toContain('[ "$(jq \'length\' <<<"$ASSIGNMENTS")" -lt 4 ]');
     const adoptScript = adopt?.run ?? '';
-    expect(adoptScript).toContain('GOOBERS_SLOT_ASSIGNMENTS_FILE');
+    expect(adoptScript).toContain('done < <(jq -c \'.[]\' <<<"$RESERVED_ASSIGNMENTS")');
+    expect(adoptScript).toContain('done < "$assignment_file"');
     expect(adoptScript).toContain('goobers_lease_marker adopted');
     expect(script).toContain('No unblocked issue in the Goobers intake cohort; skipping this run.');
     expect(script).toContain('should_run=false');

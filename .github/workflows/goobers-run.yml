@@ -210,13 +210,16 @@ jobs:
           # 100 dispatches inside one run's 90-minute lifetime, and the lane
           # concurrency groups already stop dispatches from piling up that
           # fast. `.status != "completed"` (rather than an enumeration of live
-          # statuses) also catches queued, waiting, requested and pending.
+          # statuses) also catches queued, waiting, requested and pending. Only
+          # an older live run owns the dispatch: a newer queued run must not
+          # suppress its older sibling before either has reserved any work.
           if ! live="$(
             gh api \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/goobers-run.yml/runs?per_page=100&exclude_pull_requests=true" \
               --jq '.workflow_runs[]
                     | select(.status != "completed")
                     | select((.id | tostring) != env.GITHUB_RUN_ID)
+                    | select((.id | tonumber) < (env.GITHUB_RUN_ID | tonumber))
                     | "\(.id) (\(.status))"'
           )"; then
             # Fail closed: without proof that no sibling dispatch is live, this
@@ -431,6 +434,9 @@ jobs:
                 <<<"$ASSIGNMENTS"
             )"
           }
+          publish_assignments() {
+            echo "slot_assignments=${ASSIGNMENTS}" >> "${GITHUB_OUTPUT}"
+          }
 
           scan_fresh_candidates() {
             local approved_file="${RUNNER_TEMP}/goobers-intake-approved.json"
@@ -583,10 +589,21 @@ jobs:
                 exit 1
               fi
               if [ "${ABANDON_EXISTING}" = "true" ]; then
+                # The close/delete below are destructive. Preserve this
+                # assignment first so an always()-gated release can reconcile
+                # the existing reservation if either mutation or a later
+                # selector check fails.
+                append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"
+                publish_assignments
                 gh pr close "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
                   --comment "Goobers recovery instructed to abandon this partial-progress PR; a fresh run will start from the issue."
                 gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${RESUME_BRANCH}"
                 echo "Abandoned open Goobers PR #${pr_number} by explicit instruction; starting over."
+                ASSIGNMENTS="$(
+                  jq -c --arg issue "${ISSUE_NUMBER}" \
+                    'map(if .issue == $issue then .resumePr = "" | .resumeBranch = "" else . end)' \
+                    <<<"$ASSIGNMENTS"
+                )"
                 RESUME_PR=""
                 RESUME_BRANCH=""
               else
@@ -636,7 +653,7 @@ jobs:
             exit 0
           fi
 
-          echo "slot_assignments=${ASSIGNMENTS}" >> "${GITHUB_OUTPUT}"
+          publish_assignments
           echo "Planned $(jq 'length' <<<"$ASSIGNMENTS") explicit Goobers slot assignment(s): $(jq -r 'map("lane \(.lane) slot \(.slot) -> #\(.issue) (\(.cohort))") | join(", ")' <<<"$ASSIGNMENTS")."
 
       - name: Reserve explicit slot assignments and comment on Goobers run start
@@ -850,9 +867,8 @@ jobs:
 
       - name: Adopt reserved slot assignments
         # Every issue was selected and labelled by the serialized reserve job.
-        # This lane now writes one durable adoption receipt per assigned slot
-        # before any Goobers process starts. The assignment TSV is the only
-        # source of per-slot issue/cohort/resume metadata for launch and cleanup.
+        # This lane validates every assigned slot before it writes any durable
+        # adoption receipt or starts a Goobers process.
         env:
           GH_TOKEN: ${{ github.token }}
           RESERVED_ASSIGNMENTS: ${{ needs.reserve.outputs.slot_assignments }}
@@ -873,11 +889,16 @@ jobs:
             cohort="$(jq -r '.cohort' <<<"$assignment")"
             resume_pr="$(jq -r '.resumePr' <<<"$assignment")"
             resume_branch="$(jq -r '.resumeBranch' <<<"$assignment")"
-            adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
 
             comments="$(mktemp)"
-            goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"
-            lease_record="$(goobers_lease_state "$comments" "${issue_number}")"
+            if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
+              rm -f "$comments"
+              exit 1
+            fi
+            if ! lease_record="$(goobers_lease_state "$comments" "${issue_number}")"; then
+              rm -f "$comments"
+              exit 1
+            fi
             rm -f "$comments"
             IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt lease_comment <<<"$lease_record"
             if [ "$lease_state" = "adopted" ] &&
@@ -885,7 +906,23 @@ jobs:
               echo "::error::Refusing to adopt reserved issue #${issue_number} for lane ${lane} slot ${slot}: it is still leased by $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment"). Confirm the earlier runner is clear before reconciling its labels." >&2
               exit 1
             fi
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$lane" "$slot" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" >> "$assignment_file"
+          done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
+          while IFS="$(printf '\t')" read -r lane slot issue_number cohort resume_pr resume_branch; do
+            adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
+            comments="$(mktemp)"
+            if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
+              rm -f "$comments"
+              exit 1
+            fi
+            if ! lease_record="$(goobers_lease_state "$comments" "${issue_number}")"; then
+              rm -f "$comments"
+              exit 1
+            fi
+            rm -f "$comments"
+            IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt lease_comment <<<"$lease_record"
             receipt_id=""
             if [ "$lease_state" = "adopted" ] &&
                [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
@@ -903,11 +940,8 @@ jobs:
               } > "$receipt_body"
               gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$receipt_body"
             fi
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-              "$slot" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" >> "$assignment_file"
             echo "Lane ${lane} slot ${slot} adopted reserved issue #${issue_number} (cohort '${cohort}', resume PR '${resume_pr:-none}')."
-          done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
-          echo "GOOBERS_SLOT_ASSIGNMENTS_FILE=${assignment_file}" >> "${GITHUB_ENV}"
+          done < "$assignment_file"
 
       - name: Require Goobers auth token
         # crawler-feature-pr's implement/push-branch stages declare
@@ -2327,7 +2361,7 @@ jobs:
           disposed_marker="$(goobers_lease_marker disposed "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
 
           if [ "${REAP_OUTCOME}" != "success" ] || [ "${DISPOSITION_OUTCOME}" != "success" ]; then
-            echo "::error::Lane ${GOOBERS_LANE} adopted reserved issue #${issue_number} but could not prove a safe hand-back (stage-tree reap: ${REAP_OUTCOME:-none}, run disposition: ${DISPOSITION_OUTCOME:-none}). Leaving the adoption receipt undisposed so no other job -- and no later dispatch -- removes goobers/status:in-review or re-adopts the issue while a stage process may still be running. Confirm the runner is clear ('ps -eo pid,ppid,sess,args'), then reconcile by hand: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
+            echo "::error::Lane ${GOOBERS_LANE} cannot record the disposal receipt for issue #${issue_number} (slot ${assignment_slot}): the lane-level stage-tree reap was '${REAP_OUTCOME:-none}' and run disposition was '${DISPOSITION_OUTCOME:-none}'. At least one slot's stage tree may still be running. Leaving the adoption receipt undisposed prevents any other job or later dispatch from removing goobers/status:in-review or re-adopting the issue. Confirm the runner is clear ('ps -eo pid,ppid,sess,args'), then reconcile by hand: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers:claimed --remove-label goobers/status:in-review" >&2
             return 1
           fi
 

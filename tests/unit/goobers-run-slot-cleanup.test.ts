@@ -832,7 +832,7 @@ function jobBudgetEnv(overrides: Record<string, string> = {}): Record<string, st
   };
 }
 
-describe.skipIf(!hasBash)('goobers-run.yml slot concurrency', () => {
+describe.skipIf(!hasJq)('goobers-run.yml slot concurrency', () => {
   it('runs both explicitly assigned slots at the same time on isolated roots', () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'goobers-run-'));
     const binDir = path.join(workdir, 'bin');
@@ -1807,6 +1807,13 @@ const LIVE_SIBLING_RUN = {
     { id: 222, status: 'completed' },
   ],
 };
+const NEWER_SIBLING_RUN = {
+  workflow_runs: [
+    { id: 1001, status: 'queued' },
+    { id: 999, status: 'in_progress' },
+    { id: 222, status: 'completed' },
+  ],
+};
 
 describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight', () => {
   it('allows recovery when this dispatch is the only live one', () => {
@@ -1826,6 +1833,14 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     // The workflow's own jq filter did the selecting: the sibling is named and
     // this dispatch's own run id is excluded.
     expect(result.stdout).toContain('111');
+  });
+
+  it('allows the oldest live dispatch to reserve work when a newer run is queued', () => {
+    const result = runReserveStep('Detect a live sibling dispatch', NEWER_SIBLING_RUN, {});
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.output).toContain('recovery_allowed=true');
+    expect(result.stdout).not.toContain('1001');
   });
 
   it('fails closed on an unreadable run list', () => {
