@@ -138,9 +138,9 @@ sprite-pipeline, sprite-workflow
   overwrite a shared remote-tracking ref. Exact matches return the existing
   queue record without sweeping unrelated changed art; partial pairs,
   unverifiable hashes, and content conflicts fail closed.
-- Queue repair now rejects structurally malformed lifecycle annotations instead
-  of interpreting them as an empty authority map, so rebuilding from `main`
-  cannot resurrect a tombstone-authorized deletion. The focused queue,
+- Queue repair now rejects structurally malformed, empty, or missing lifecycle
+  annotations instead of interpreting them as an empty authority map, so
+  rebuilding from `main` cannot resurrect a tombstone-authorized deletion. The focused queue,
   reconciler, sidecar, and real-Git inspection matrix passed 277/277; lifecycle
   closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
   0 pending / 0 reference updates; and the final changed-test `verify:fast`

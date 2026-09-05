@@ -195,12 +195,20 @@ function queueTombstonedDeletion(live: string, key: string): void {
   }
 }
 
-function replaceQueueAnnotations(live: string, raw: string): void {
+function replaceQueueAnnotations(live: string, raw: string | null): void {
   const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-annotations-'));
   try {
     git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
     git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
-    writeFileSync(path.join(queue, 'public/assets/generated/sprite-editor-annotations.json'), raw);
+    const annotationsPath = path.join(
+      queue,
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    if (raw === null) {
+      rmSync(annotationsPath);
+    } else {
+      writeFileSync(annotationsPath, raw);
+    }
     git(queue, 'add', '-A');
     git(queue, 'commit', '-m', 'corrupt queue annotations');
     const sha = git(queue, 'rev-parse', 'HEAD').trim();
@@ -554,6 +562,37 @@ describe('runQueueRepair (real git)', () => {
       ).rejects.toMatchObject({
         kind: 'source-invalid',
         message: expect.stringContaining('must contain an object-valued "sprites" map'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(() =>
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
+      ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it.each([
+    ['empty', ''],
+    ['missing', null],
+  ] as const)(
+    'refuses repair when pending queue deletions have an %s annotations document',
+    async (_case, annotations) => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      queueTombstonedDeletion(live, 'alpha');
+      replaceQueueAnnotations(live, annotations);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('Cannot validate pending lifecycle deletions'),
       });
 
       git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
