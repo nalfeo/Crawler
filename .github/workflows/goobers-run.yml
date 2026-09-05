@@ -163,9 +163,7 @@ jobs:
         # The lease reader below is checked-in code, not inline jq, so the trust
         # rule and the marker grammar have exactly one implementation shared by
         # every job that reads or writes a receipt. Sparse: this job needs the
-        # shared lease scripts, the canonical intake selector, and the
-        # `ci-recovery` eligibility library that selector imports — never game
-        # source.
+        # reservation scripts and canonical intake selector, never game source.
         uses: actions/checkout@v7
         with:
           # Same ref expression as the `run` job's checkout, so a manual
@@ -174,8 +172,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.event.repository.default_branch }}
           sparse-checkout: |
             scripts/agent
-            .github/scripts/goobers
-            .github/scripts/ci-recovery
+            .github/scripts
           persist-credentials: false
 
       - name: Detect a live sibling dispatch
