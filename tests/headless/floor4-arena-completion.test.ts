@@ -25,22 +25,11 @@
  *
  * ## What this test does NOT claim
  *
- * Floor 4's intermission-to-next-act and final-stairs transitions are
- * currently driven by `arenaDirectorSystem`'s own phase timer
- * (`'slice2-auto-green-room-exit'` / `'slice2-auto-stairs'` in the phase
- * timeline) rather than a per-decision AI interaction with a physical Green
- * Room exit or stairs prop — see the code comment on `arenaDirectorSystem`'s
- * `INTERMISSION` case and `.specify/specs/floor4-arena.md`'s slice table
- * ("slice 5 — Green Room" is the real transaction slice, not yet built).
- * That auto-advance is identical in both headless and the visual AI-runner
- * (it lives in the shared `src/game/floor4Scenario.ts`, not a headless-only
- * or lab-only special case — see slice-2's runtime-parity requirement in the
- * epic), so it is not a *runner-only* shortcut, but it is not yet the
- * "resolves through its public scenario/UI interaction" contract slice 1 of
- * the epic ultimately wants either. This test asserts the current, honest
- * behavior (waves and Headliners are genuine combat; intermission/stairs
- * advance on a shared timer) rather than a stronger claim this session did
- * not implement. See the handoff for the full gap analysis.
+ * Floor 4's intermission-to-next-act and final-stairs transitions now go
+ * through `confirmFloor4StairDescend`, the same scenario authority invoked by
+ * the visual MainGameScene confirmation modal. The headless runner has no DOM,
+ * so it calls that scenario hook directly once it becomes valid; the hook is a
+ * no-op before the authored intermission hold elapses.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -49,7 +38,7 @@ import { getPersonaConfig } from '../../src/game/ai/personas.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import {
   FLOOR4_ACTS,
-  FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
+  FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS,
   FLOOR4_STALL_BACKSTOP_MS,
   FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
@@ -151,9 +140,8 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(arena!.headlinerTelemetry.overtimeStarted, telemetryFailure).toBe(0);
     expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
 
-    // C5 — partially met (see the dedicated shortfall test below for the
-    // gap): every act's intermission was entered AND resolved (each has a
-    // successor timeline entry) and banked its act income.
+    // C5 — every act's intermission was entered, banked its act income, and
+    // resolved via the public scenario confirmation hook.
     expect(phaseActs(timeline, 'INTERMISSION'), telemetryFailure).toEqual([...FLOOR4_ACTS]);
     expect(
       arena!.actIncome.map((entry) => entry.act),
@@ -165,6 +153,19 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
       )
       .filter((reason): reason is string => reason !== undefined);
     expect(intermissionExitReasons, telemetryFailure).toHaveLength(5);
+    expect(intermissionExitReasons, telemetryFailure).toEqual([
+      'public-green-room-exit',
+      'public-green-room-exit',
+      'public-green-room-exit',
+      'public-green-room-exit',
+      'public-stairs',
+    ]);
+    expect(
+      intermissionExitReasons.every((reason) =>
+        FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS.includes(reason),
+      ),
+      telemetryFailure,
+    ).toBe(true);
 
     // C6 — the phase trace actually reached the terminal VICTORY phase.
     expect(arena!.phase.kind, telemetryFailure).toBe('VICTORY');
@@ -179,36 +180,6 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     expect(stats.gameTimeMs, telemetryFailure).toBeLessThan(FLOOR4_STALL_BACKSTOP_MS);
     expect(stats.totalFrames, telemetryFailure).toBeLessThan(MAX_FRAMES);
   });
-
-  // C5 (not yet met) — isolated as an expected-failure characterization
-  // rather than folded into the "completes" test above, so nothing here can
-  // be mistaken for evidence the criterion passes. `FLOOR4_AUTO_INTERMISSION_
-  // EXIT_REASONS` is the shared-timer allowlist; the criterion's actual bar
-  // is that at least one intermission resolves for a reason OUTSIDE that
-  // allowlist (a real Green Room/stairs interaction). Today every exit is in
-  // the allowlist, so the inner assertion fails — `it.fails` records that as
-  // the expected, documented result. Once a future slice adds the real
-  // interaction, the inner assertion starts passing, which flips `it.fails`
-  // into an *unexpected* pass and breaks this test — forcing whoever ships
-  // that slice to drop `.fails` here and flip the C5 row in the spec table
-  // to "met" in the same change. Reuses the same shared `stats` from
-  // `beforeAll` rather than driving a second full headless run.
-  it.fails(
-    'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
-    () => {
-      const timeline = stats.floor4Arena!.timeline;
-      const intermissionExitReasons = timeline
-        .map((entry, index) =>
-          timeline[index - 1]?.phase.kind === 'INTERMISSION' ? entry.reason : undefined,
-        )
-        .filter((reason): reason is string => reason !== undefined);
-      expect(
-        intermissionExitReasons.some(
-          (reason) => !FLOOR4_AUTO_INTERMISSION_EXIT_REASONS.includes(reason),
-        ),
-      ).toBe(true);
-    },
-  );
 
   it('is deterministic: an identical seed produces byte-identical completion telemetry', async () => {
     const first = await runFloor4(CANONICAL_SEED);

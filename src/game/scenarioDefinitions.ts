@@ -60,6 +60,7 @@ import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
   arenaDirectorSystem,
   confirmFloor4StairDescend,
+  getFloor4StairMarkerState,
   initializeFloor4Scenario,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
@@ -536,6 +537,15 @@ const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   confirmDescription: 'You win!',
 };
 
+const FLOOR_4_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  kind: 'floor4-stair-descend',
+  title: 'Leave the break?',
+  subtitle: 'The Green Room is clear.',
+  body: 'The Director is ready to roll the next cue. Confirm to exit the break.',
+  confirmLabel: 'Continue the broadcast',
+  confirmDescription: 'Resume the Main Event.',
+};
+
 /**
  * Floor 5's exit prompt is the throne capture. The copy is deliberately explicit
  * that this is a SEPARATE act from defeating Regent Emeritus (spec `FR7.4`).
@@ -959,6 +969,8 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+      getStairMarkerState: getFloor4StairMarkerState,
+      stairConfirmation: FLOOR_4_STAIR_CONFIRMATION,
     },
   ],
   [

@@ -16,9 +16,10 @@
  * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
  *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
  *   generic floor HUD timer.
- * - **Rehearsal intermissions auto-advance.** Until Green Room/shop slices ship,
- *   intermissions hold briefly then advance automatically, with final act
- *   intermission auto-transitioning to VICTORY.
+ * - **Intermissions wait for the public scene confirmation.** Until Green
+ *   Room/shop slices ship, the break transaction is still only the authored
+ *   hold, but leaving it goes through the scenario stair/exit contract instead
+ *   of an invisible timer.
  * - **Waves never touch `world.rng` (FR3.2/FR7.1/FR7.4).** Manifests come from
  *   per-wave derived streams in `src/shared/floor4-waves.ts`; releasing,
  *   debting and cutting consume no randomness at all, so cap pressure and
@@ -74,7 +75,8 @@ import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/r
 import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { TeamId } from '../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, TeamId } from '../shared/constants.js';
+import type { ScenarioStairMarkerState } from '../shared/scenario-presentation.js';
 import {
   ABILITY_MILESTONE_LEVELS,
   formForLevel,
@@ -1287,19 +1289,6 @@ export function arenaDirectorSystem(world: GameWorld): void {
           phaseConfig.intermissionMs - state.phaseElapsedMs,
         );
       }
-      if (state.phaseElapsedMs < phaseConfig.intermissionMs) {
-        break;
-      }
-      if (nextAct) {
-        recordFloor4PhaseTransition(
-          world,
-          state,
-          { kind: 'WAVES', act: nextAct },
-          'slice2-auto-green-room-exit',
-        );
-      } else {
-        recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'slice2-auto-stairs');
-      }
       break;
     }
     case 'OVERTIME': {
@@ -1343,13 +1332,61 @@ export function arenaDirectorSystem(world: GameWorld): void {
 }
 
 /**
- * Floor 4's stairs are gated on `INTERMISSION(5)` (FR8.3). That phase arrives
- * with the final Green Room transaction. Slice 2 exposes the phase check even
- * though its rehearsal director auto-takes those stairs after a short hold.
+ * Floor 4's public break-exit/stairs confirmation is gated on an intermission
+ * whose authored hold has elapsed. Acts 1-4 resume the next wave window; act 5
+ * takes the terminal stairs into victory.
  */
 export function confirmFloor4StairDescend(world?: GameWorld): boolean {
-  const phase = world ? floor4ArenaState(world)?.phase : undefined;
-  return phase?.kind === 'INTERMISSION' && phase.act === 5;
+  if (!world) {
+    return false;
+  }
+  const state = floor4ArenaState(world);
+  if (!state || state.phase.kind !== 'INTERMISSION') {
+    return false;
+  }
+  if (state.phaseElapsedMs < getFloor4Config().phase.intermissionMs) {
+    return false;
+  }
+  const nextAct = nextFloor4Act(state.phase.act);
+  if (nextAct) {
+    recordFloor4PhaseTransition(
+      world,
+      state,
+      { kind: 'WAVES', act: nextAct },
+      'public-green-room-exit',
+    );
+  } else {
+    recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'public-stairs');
+  }
+  return true;
+}
+
+export function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
+  const state = floor4ArenaState(world);
+  if (!state || state.phase.kind !== 'INTERMISSION' || !world.floorMap) {
+    return null;
+  }
+  const layout = computeShowcaseArenaLayout(showcaseArenaOptionsFromConfig(world.floorMap.config));
+  const tileSizeFt = world.floorMap.config.tileSizeFt;
+  const playerEid = query(world.ecs, [Player])[0];
+  const positionFt =
+    playerEid !== undefined && hasComponent(world.ecs, playerEid, Position)
+      ? {
+          x: world.stores.position.x[playerEid] ?? 0,
+          y: world.stores.position.y[playerEid] ?? 0,
+        }
+      : {
+          x: (layout.greenRoom.x + layout.greenRoom.width / 2) * tileSizeFt,
+          y: (layout.greenRoom.y + layout.greenRoom.height / 2) * tileSizeFt,
+        };
+  const ready = state.phaseElapsedMs >= getFloor4Config().phase.intermissionMs;
+  return {
+    positionFt,
+    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    visible: ready,
+    locked: !ready,
+    label: state.phase.act === 5 ? '▼ STAIRS' : '▶ EXIT BREAK',
+  };
 }
 
 export function initializeFloor4Scenario(

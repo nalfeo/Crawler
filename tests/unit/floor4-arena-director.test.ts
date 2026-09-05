@@ -52,7 +52,7 @@ describe('arenaDirectorSystem', () => {
     ]);
   });
 
-  it('advances the empty-arena rehearsal through five deterministic acts to victory', () => {
+  it('advances the empty-arena rehearsal through five confirmed acts to victory', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;
 
@@ -62,6 +62,7 @@ describe('arenaDirectorSystem', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      expect(confirmFloor4StairDescend(world)).toBe(true);
     }
 
     const state = world.floorExtendedState!.floor4Arena!;
@@ -102,9 +103,11 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
 
     advance(world, 1);
-    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
 
+    expect(confirmFloor4StairDescend(world)).toBe(true);
+    expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
     advance(world, 1);
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission + 1);
   });
@@ -124,6 +127,8 @@ describe('arenaDirectorSystem', () => {
 
     advance(world, phase.intermissionMs);
 
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(confirmFloor4StairDescend(world)).toBe(true);
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
     expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit).toBeUndefined();
     expect(world.floorExtendedState!.floor4GreenRoom?.retiredVisitCount).toBe(1);
@@ -131,7 +136,7 @@ describe('arenaDirectorSystem', () => {
     expect(firstVisit).toBeDefined();
   });
 
-  it('allows stair descent only during the final intermission window', () => {
+  it('allows break exit only after each intermission hold', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;
 
@@ -141,14 +146,16 @@ describe('arenaDirectorSystem', () => {
       advance(world, phase.waveWindowMs);
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
-      advance(world, phase.intermissionMs);
       expect(confirmFloor4StairDescend(world)).toBe(false);
+      advance(world, phase.intermissionMs);
+      expect(confirmFloor4StairDescend(world)).toBe(true);
     }
     advance(world, phase.waveWindowMs);
     defeatActiveHeadliner(world);
     advance(world, phase.headlineWindowMs);
 
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 5 });
+    advance(world, phase.intermissionMs);
     expect(confirmFloor4StairDescend(world)).toBe(true);
   });
 
@@ -405,10 +412,10 @@ describe('arenaDirectorSystem', () => {
     advance(world, phase.headlineWindowMs - 1);
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
 
-    // Advancing through act 2's waves cascades through the rest of act 1's
-    // intermission and re-snapshots actBaseline from act 1's real,
-    // sim-produced cumulative totals (not a hand-authored fixture) the
-    // instant act 2's WAVES phase opens.
+    advance(world, phase.intermissionMs);
+    expect(confirmFloor4StairDescend(world)).toBe(true);
+    // Act 2's WAVES entry re-snapshots actBaseline from act 1's real,
+    // sim-produced cumulative totals (not a hand-authored fixture).
     runActWaves();
     defeatActiveHeadliner(world);
     advance(world, phase.headlineWindowMs - 1);

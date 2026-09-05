@@ -61,13 +61,10 @@ export const FLOOR4_STALL_BACKSTOP_MS: number = (() => {
 })();
 
 /**
- * C5's recorded shortfall: the phase-transition reasons the arena director
- * currently uses to leave an `INTERMISSION`. Both are the shared timer-driven
- * auto-advance, not a public Green Room/stairs interaction. The Green Room
- * slice that replaces them must update this list, both gates, and the contract
- * table in the spec together — which is exactly why the gates assert it.
+ * C5's public-interaction reasons: these are recorded only by
+ * `confirmFloor4StairDescend`, the same scenario authority invoked by the real
+ * MainGameScene confirmation modal and the headless runner's scenario exit
+ * bridge. The old slice-2 timer reasons must never reappear in completion
+ * gates.
  */
-export const FLOOR4_AUTO_INTERMISSION_EXIT_REASONS = [
-  'slice2-auto-green-room-exit',
-  'slice2-auto-stairs',
-];
+export const FLOOR4_PUBLIC_INTERMISSION_EXIT_REASONS = ['public-green-room-exit', 'public-stairs'];
