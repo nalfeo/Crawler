@@ -1197,10 +1197,23 @@ embedded `run:` scripts, `npm run docs:check`, `npm run verify:fast`,
 `npm run verify:pr-prereqs`, and a final clean
 `npm run sync:main -- --reason pre-publish`.
 
+### Post-sync review finding — removed recovery helper survived in one branch
+
+**Finding.** Main's recovery-target refactor removed `persist_recovery_issue`,
+but synchronization left one call in the issue-event path used when the
+canonical selector rejects the event issue. An ordinary ineligible issue event
+therefore exited 127 instead of falling through to the recovery sweep.
+
+**Resolution.** Removed the obsolete call; clearing the local `ISSUE_NUMBER` is
+the complete required state transition because no recovery target was claimed.
+An executable regression now runs the real `Resolve Goobers recovery target`
+step with a closed issue fixture and asserts a successful, mutation-free
+fallthrough. Focused Goobers tests pass: 109 passed / 2 platform skips.
+
 ## Residual notes
 
 No unresolved correctness caveat: every independent-review finding above — all
-**five** rounds — is fixed in this branch, not deferred. The notes below are
+**six** rounds — is fixed in this branch, not deferred. The notes below are
 operating characteristics of the approved design, or honest limits of local
 verification.
 
@@ -1276,11 +1289,12 @@ Estimated 3, actual 3 — exact. Tooling-only workflow/config/test change, cappe
 per the DevOps persona's tooling ceiling regardless of the amount of upstream
 source verification required to ground the design, and regardless of the
 post-review rework (a preflight reservation job, a process-tree teardown script,
-a trusted durable-lease library, and **five** rounds of review fixes covering
+a trusted durable-lease library, and **six** rounds of review fixes covering
 reservation ownership evidence, cross-dispatch lease durability, marker
 spoofing, journal-text marker injection and same-comment disposal binding,
 terminal-repair barriers, empty-slot handling, fail-closed backlog reads,
 guaranteed and hidden-file-inclusive diagnostics artifacts, per-attempt artifact
 naming, per-recovery-slot disposition, non-blocking teardown failure, root pid
-identity, deterministic clock injection and the rootless cancellation reap)
+identity, deterministic clock injection, the rootless cancellation reap, and
+the ineligible issue-event fallthrough)
 folded into the same change.

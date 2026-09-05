@@ -431,9 +431,6 @@ jobs:
               else
                 echo "::notice::Issue #${ISSUE_NUMBER} is not in the Goobers intake cohort ($(jq -r '.reason' <<<"${decision}")); falling through to the recovery sweep without claiming it."
                 ISSUE_NUMBER=""
-                # Nothing was claimed for the event's issue, so this run must
-                # not be attributed to it any more.
-                persist_recovery_issue ""
               fi
             fi
           fi

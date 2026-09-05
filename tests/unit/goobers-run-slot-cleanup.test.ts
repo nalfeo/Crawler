@@ -1713,7 +1713,11 @@ gh() {
     *state,labels,assignees*)
       # gh issue view for the canonical selector. It reads number/author too,
       # so the payload must carry them or every issue reads as ineligible.
-      printf '{"number":42,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"}}\\n'
+      if [ "\${ISSUE_FIXTURE_ELIGIBLE:-1}" = "1" ]; then
+        printf '{"number":42,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"}}\\n'
+      else
+        printf '{"number":42,"state":"CLOSED","labels":[],"assignees":[],"author":{"login":"nalfeo"}}\\n'
+      fi
       ;;
   esac
   return 0
@@ -1854,6 +1858,20 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     });
     expect(allowed.status, `stderr:\n${allowed.stderr}`).toBe(0);
     expect(allowed.output).toContain('recovery_issue=42');
+  });
+
+  it('falls through safely when an issue event is outside the intake cohort', () => {
+    const result = runReserveStep('Resolve Goobers recovery target', SELF_RUN_ONLY, {
+      GITHUB_EVENT_NAME: 'issues',
+      ISSUE_NUMBER: '42',
+      ISSUE_FIXTURE_ELIGIBLE: '0',
+    });
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('is not in the Goobers intake cohort');
+    expect(result.stderr).not.toContain('command not found');
+    expect(result.output).not.toContain('recovery_issue=42');
+    expect(result.log).not.toContain('gh issue edit');
   });
 
   it('fails an explicit resume request instead of silently downgrading it', () => {
