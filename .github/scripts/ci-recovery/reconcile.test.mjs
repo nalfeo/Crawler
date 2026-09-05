@@ -6635,7 +6635,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile files unassigned follow-up backlog issue and resolves matching review thread', async (t) => {
+test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migrated review-threads lane', async (t) => {
   const sourceIssueNumber = 3120;
   const followupReviewCommentId = '3810312490';
   const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
@@ -6726,6 +6726,7 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
   const { code, stdout, stderr } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
+    LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
@@ -6757,6 +6758,16 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
   assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
   assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
   assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    0,
+    'follow-up backlog repair needs issue context that Goobers does not receive yet',
+  );
 });
 
 test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {
@@ -17034,4 +17045,96 @@ test('review-threads lane migrated to Goobers stops every legacy thread write', 
 
   assert.doesNotMatch(stdout, /posted outdated-marker/);
   assert.doesNotMatch(stdout, /resolved thread=thread-outdated-lane/);
+
+  // The migrated lane must get exactly one dispatch opportunity per run, no
+  // matter how many of the five legacy call sites are reached.
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    1,
+    'goobers-review-threads.yml must be dispatched exactly once when the lane is migrated',
+  );
+  assert.equal(reviewThreadsDispatchCalls[0].body?.inputs?.pr_number, String(PR_NUM));
+});
+
+test('review-threads lane left on legacy never dispatches goobers-review-threads', async (t) => {
+  const reviewCommentId = '9876543211';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99998, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-legacy',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live-legacy',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { stdout } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    0,
+    'goobers-review-threads.yml must never be dispatched while the lane stays legacy',
+  );
+  assert.doesNotMatch(stdout, /would-dispatch goobers-review-threads/);
 });

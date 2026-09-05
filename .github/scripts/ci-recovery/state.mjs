@@ -982,6 +982,20 @@ export function shouldDispatchMergeTrainFill(alreadyQueued) {
   return !alreadyQueued;
 }
 
+// A review-thread root comment's `url` embeds the REST comment id as a
+// `#discussion_r<id>` fragment (GraphQL exposes only the discussion URL, not
+// the REST id needed to POST a reply). Shared by reconcile.mjs and the
+// Goobers review-threads decision path so both compute the same reply target
+// from the same thread shape.
+export const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+
+/** Extracts the REST reply-comment id from a review-thread root comment's
+ *  `url`, or null when the url does not carry a `#discussion_r<id>` fragment. */
+export function reviewThreadReplyCommentId(url) {
+  const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
+  return match?.[1] ?? null;
+}
+
 export const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 export const TRUSTED_BOT_LOGINS = new Set([
   'copilot-swe-agent[bot]',
