@@ -242,6 +242,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'HOUR_MS', // milliseconds per hour; a unit conversion, not a behavior knob
   // lifecycle-decommission.mjs
   'DEFAULT_SOAK_DAYS', // fallback Goobers-only soak length; overridden by --soak-days or the committed evidence record, not by an env var
+  'SUPPORTED_STATE_VERSION', // schema version of the committed decommission evidence record; a compatibility marker, not a knob
   // sweep-budget.mjs
   'SWEEP_POOL_SIZE', // max concurrent sweep runs in the pool
   'ACCOUNT_RUNNER_LIMIT', // GitHub Free account-level runner concurrency limit

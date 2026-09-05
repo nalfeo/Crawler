@@ -149,10 +149,18 @@ The surface scan exits non-zero (`2`) on either state that is never safe:
 - `ungated-legacy-mutation` — a legacy mutation step not gated on **its own**
   lane selector plus `LEGACY_CI_MUTATION_BRIDGE_ENABLED`. That is a dual writer
   the moment the lane migrates.
-- `decommissioned-without-migration` — a legacy mutation path deleted while the
-  record still shows the lane as legacy-owned. That leaves the lane with **zero**
-  writers and takes PR automation dark. This is the mistake Phase 4 must not
-  make, so it is enforced deterministically rather than reviewed by eye.
+- `decommissioned-without-migration` — a registered legacy mutation entrypoint is
+  gone while the readiness decision is not yet `ready`. That leaves the lane
+  short a writer and can take PR automation dark. This is the mistake Phase 4
+  must not make, so it is enforced deterministically rather than reviewed by eye.
+  Two properties matter here:
+  - Presence is tracked **per registered entrypoint**, not as an aggregate step
+    count, so deleting `merge-train/reconcile.mjs` is reported even though
+    `merge-train/quarantine-repair.mjs` still matches in the same workflow.
+  - Removal is licensed by the **full readiness decision**, not by lane ownership
+    alone. Flipping a lane selector to `goobers` does not by itself permit
+    deleting its fallback while the soak, rollback drill, or branch-protection
+    update are still outstanding.
 
 The `review-threads` lane has no workflow-level surface entry because its gate
 lives inside `reconcile.mjs` (`legacyReviewThreadWritesEnabled`); it is covered
@@ -162,14 +170,15 @@ by `.github/scripts/ci-recovery/reconcile.test.mjs`.
 
 `npm run check:legacy-decommission` reports `ready` only when **all** hold:
 
-| Blocker                                       | Cleared by                                                                              |
-| --------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `lane-not-migrated:<lane>`                    | Every PR-lifecycle lane selector observed as the literal `goobers`, recorded per lane.  |
-| `soak-not-started` / `soak-incomplete`        | `soak.startedAt` set at full migration, and `requiredDays` (default 14) elapsed.        |
-| `rollback-activation:<at>`                    | No rollback activation at or after `soak.startedAt` — a rollback restarts the soak.     |
-| `rollback-drill-*`                            | A `pass` drill completed **after** the soak start, with its workflow run IDs recorded.  |
-| `emergency-bridge-not-retained` / `-window-*` | `LEGACY_CI_MUTATION_BRIDGE_ENABLED` retained with a declared, unexpired `boundedUntil`. |
-| `branch-protection-not-updated`               | Branch-protection required checks updated to the final Goobers contexts and recorded.   |
+| Blocker                                       | Cleared by                                                                                                                                                                              |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lane-not-migrated:<lane>`                    | Every PR-lifecycle lane selector observed as the literal `goobers`, recorded per lane.                                                                                                  |
+| `invalid-state:<field>:<reason>`              | The record conforms to the versioned schema: `version` is `1`, IDs/checks are non-empty strings, and no past-event timestamp is later than now. Any violation short-circuits readiness. |
+| `soak-not-started` / `soak-incomplete`        | `soak.startedAt` set at full migration, and `requiredDays` (default 14) elapsed.                                                                                                        |
+| `rollback-activation:<at>`                    | No rollback activation at or after `soak.startedAt` — a rollback restarts the soak.                                                                                                     |
+| `rollback-drill-*`                            | A `pass` drill completed **after** the soak start, with its workflow run IDs recorded.                                                                                                  |
+| `emergency-bridge-not-retained` / `-window-*` | `LEGACY_CI_MUTATION_BRIDGE_ENABLED` retained with a declared, unexpired `boundedUntil`.                                                                                                 |
+| `branch-protection-not-updated`               | Branch-protection required checks updated to the final Goobers contexts and recorded.                                                                                                   |
 
 Update the record in a PR as each precondition is met. The live source of truth
 for a lane owner remains its repository variable; the record is the durable,

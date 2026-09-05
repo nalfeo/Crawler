@@ -26,6 +26,7 @@ import { LIFECYCLE_PR_LANES } from './lifecycle-ownership.mjs';
 
 export const DEFAULT_SOAK_DAYS = 14;
 export const DEFAULT_STATE_PATH = '.github/lifecycle/decommission-state.json';
+export const SUPPORTED_STATE_VERSION = 1;
 const DAY_MS = 86_400_000;
 
 /**
@@ -110,6 +111,89 @@ function laneOwnersFrom(state) {
   return lanes && typeof lanes === 'object' && !Array.isArray(lanes) ? lanes : {};
 }
 
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const isNonEmptyString = (value) => typeof value === 'string' && value.trim() !== '';
+
+/**
+ * Validate the committed evidence against the versioned schema *before* any
+ * readiness rule runs.
+ *
+ * The readiness rules below are satisfaction checks, not type checks: given
+ * `runIds: [null]` or a non-array `rollbackActivations` they would happily
+ * report `ready: true` on evidence that attests to nothing. This validator is
+ * what makes the fail-closed contract real — anything structurally wrong, and
+ * any past-event timestamp that has not happened yet, is a hard blocker.
+ *
+ * Only structural violations are reported here. A field that is well-typed but
+ * merely unsatisfied (`result: 'not-run'`, `requiredChecks: []`) stays with the
+ * readiness rules so the operator still sees the specific remaining work.
+ */
+function validateEvidenceSchema(state, nowMs) {
+  const problems = [];
+  const invalid = (field, reason) => problems.push(`invalid-state:${field}:${reason}`);
+
+  if (state.version !== SUPPORTED_STATE_VERSION) invalid('version', 'unsupported');
+
+  // A past event recorded in the future is either a clock error or a forged
+  // attestation; either way it is not evidence.
+  const pastInstant = (field, value) => {
+    if (value === null || value === undefined) return;
+    if (!isIsoInstant(value)) {
+      invalid(field, 'not-an-instant');
+      return;
+    }
+    if (Date.parse(value) > nowMs) invalid(field, 'in-the-future');
+  };
+
+  pastInstant('observedAt', state.observedAt);
+
+  if (state.lanes !== undefined && !isPlainObject(state.lanes)) invalid('lanes', 'not-an-object');
+
+  if (state.soak !== undefined && !isPlainObject(state.soak)) invalid('soak', 'not-an-object');
+  else pastInstant('soak.startedAt', state.soak?.startedAt);
+
+  if (state.rollbackActivations !== undefined) {
+    if (!Array.isArray(state.rollbackActivations)) {
+      // Previously coerced to `[]`, which silently erased every activation.
+      invalid('rollbackActivations', 'not-an-array');
+    } else {
+      state.rollbackActivations.forEach((activation, index) => {
+        if (!isPlainObject(activation)) invalid(`rollbackActivations[${index}]`, 'not-an-object');
+      });
+    }
+  }
+
+  if (state.rollbackDrill !== undefined) {
+    if (!isPlainObject(state.rollbackDrill)) invalid('rollbackDrill', 'not-an-object');
+    else {
+      pastInstant('rollbackDrill.completedAt', state.rollbackDrill.completedAt);
+      const runIds = state.rollbackDrill.runIds;
+      if (runIds !== undefined && !Array.isArray(runIds))
+        invalid('rollbackDrill.runIds', 'not-an-array');
+      else if (Array.isArray(runIds) && !runIds.every(isNonEmptyString))
+        invalid('rollbackDrill.runIds', 'not-all-non-empty-strings');
+    }
+  }
+
+  if (state.emergencyBridge !== undefined && !isPlainObject(state.emergencyBridge))
+    invalid('emergencyBridge', 'not-an-object');
+
+  if (state.branchProtection !== undefined) {
+    if (!isPlainObject(state.branchProtection)) invalid('branchProtection', 'not-an-object');
+    else {
+      const checks = state.branchProtection.requiredChecks;
+      if (checks !== undefined && !Array.isArray(checks))
+        invalid('branchProtection.requiredChecks', 'not-an-array');
+      else if (Array.isArray(checks) && !checks.every(isNonEmptyString))
+        invalid('branchProtection.requiredChecks', 'not-all-non-empty-strings');
+    }
+  }
+
+  return problems;
+}
+
 /**
  * Decide whether the legacy lifecycle mutation paths may be decommissioned.
  *
@@ -132,6 +216,17 @@ export function decideLegacyDecommission({ state, now, soakDays } = {}) {
     return {
       ready: false,
       blockers: ['invalid-state'],
+      soak: { startedAt: null, requiredDays, elapsedDays: null },
+    };
+  }
+
+  const schemaProblems = validateEvidenceSchema(state, nowMs);
+  if (schemaProblems.length > 0) {
+    // Evidence that does not conform to the schema cannot be reasoned about at
+    // all, so readiness is never evaluated against it.
+    return {
+      ready: false,
+      blockers: schemaProblems,
       soak: { startedAt: null, requiredDays, elapsedDays: null },
     };
   }
@@ -243,27 +338,56 @@ function normalizeGate(value) {
  * - `ungated-legacy-mutation`: a legacy mutation step that is not gated on its
  *   own lane selector plus the emergency bridge flag. That is a dual writer the
  *   moment the lane migrates.
- * - `decommissioned-without-migration`: the legacy mutation path is gone (step
- *   or whole workflow) while the committed record still shows the lane as
- *   legacy-owned. That leaves the lane with zero writers.
+ * - `decommissioned-without-migration`: a registered legacy mutation entrypoint
+ *   is gone (step or whole workflow) while the committed evidence does not yet
+ *   clear decommission. That leaves the lane with a missing writer.
+ *
+ * Presence is tracked *per registered entrypoint*, never as one aggregate
+ * count: `merge-train.yml` registers both `reconcile.mjs` and
+ * `quarantine-repair.mjs`, so deleting either one must be reported even though
+ * the other still matches.
+ *
+ * Removal is gated on the full readiness decision, not on lane ownership alone
+ * — otherwise the advertised migration → soak → drill → branch-protection gate
+ * would not actually protect deletion.
  *
  * `workflows` maps workflow file name to raw YAML text; a name absent from the
  * map is treated as a deleted workflow.
  */
-export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
-  const laneOwners = laneOwnersFrom(state);
+export function evaluateLegacyMutationSurface({ workflows, state, now, soakDays } = {}) {
   const files = workflows && typeof workflows === 'object' ? workflows : {};
+  const decision = decideLegacyDecommission({
+    state,
+    now: now ?? new Date().toISOString(),
+    soakDays,
+  });
   const findings = [];
   const entries = [];
 
   for (const surface of LEGACY_MUTATION_SURFACE) {
     const text = files[surface.workflow];
+    const stepsByEntrypoint = new Map(surface.entrypoints.map((entrypoint) => [entrypoint, 0]));
     const entry = {
       workflow: surface.workflow,
       lane: surface.lane,
       selector: surface.selector,
       present: typeof text === 'string',
       mutationSteps: 0,
+      entrypoints: [],
+      missingEntrypoints: [],
+    };
+    // Every entry keeps the same shape for consumers, including the unparseable
+    // case, where "missing" is deliberately empty: unreadable is not removed.
+    const finish = (unparseable = false) => {
+      entry.entrypoints = surface.entrypoints.map((entrypoint) => ({
+        entrypoint: String(entrypoint),
+        steps: stepsByEntrypoint.get(entrypoint) ?? 0,
+      }));
+      entry.missingEntrypoints = unparseable
+        ? []
+        : entry.entrypoints.filter((item) => item.steps === 0).map((item) => item.entrypoint);
+      entry.decommissioned = !unparseable && entry.mutationSteps === 0;
+      entries.push(entry);
     };
 
     if (typeof text === 'string') {
@@ -277,18 +401,20 @@ export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
           lane: surface.lane,
           detail: error instanceof Error ? error.message : String(error),
         });
-        // An unreadable workflow is never evidence that the path was removed,
-        // and every entry must keep the same shape for consumers.
-        entry.decommissioned = false;
-        entries.push(entry);
+        finish(true);
         continue;
       }
       const jobs = document?.jobs && typeof document.jobs === 'object' ? document.jobs : {};
       for (const [jobName, job] of Object.entries(jobs)) {
         for (const step of Array.isArray(job?.steps) ? job.steps : []) {
           const body = stepMutationText(step);
-          if (!surface.entrypoints.some((entrypoint) => matchesEntrypoint(body, entrypoint)))
-            continue;
+          const matched = surface.entrypoints.filter((entrypoint) =>
+            matchesEntrypoint(body, entrypoint),
+          );
+          if (matched.length === 0) continue;
+          for (const entrypoint of matched) {
+            stepsByEntrypoint.set(entrypoint, (stepsByEntrypoint.get(entrypoint) ?? 0) + 1);
+          }
           entry.mutationSteps += 1;
           if (!laneGateSatisfied(effectiveGate(job, step), surface.selector)) {
             findings.push({
@@ -304,27 +430,29 @@ export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
       }
     }
 
-    entry.decommissioned = entry.mutationSteps === 0;
-    if (entry.decommissioned && laneOwners[surface.lane] !== 'goobers') {
-      // A present workflow with no matching step is far more often a renamed
-      // entrypoint than a real removal, so say which one the operator is
-      // looking at instead of asserting the path is gone.
+    finish();
+    if (entry.missingEntrypoints.length > 0 && !decision.ready) {
+      // A present workflow with an unmatched entrypoint is far more often a
+      // rename than a real removal, so say which one the operator is looking at
+      // instead of asserting the path is gone.
       const cause = entry.present
-        ? `workflow still exists but no registered entrypoint (${surface.entrypoints
-            .map(String)
-            .join(', ')}) matched — if the entrypoint moved, update LEGACY_MUTATION_SURFACE`
+        ? `workflow still exists but registered entrypoint(s) (${entry.missingEntrypoints.join(
+            ', ',
+          )}) did not match — if the entrypoint moved, update LEGACY_MUTATION_SURFACE`
         : 'workflow file is gone';
       findings.push({
         kind: 'decommissioned-without-migration',
         workflow: surface.workflow,
         lane: surface.lane,
-        detail: `${cause}; the lane is still legacy-owned in ${DEFAULT_STATE_PATH}, so removing this path leaves it with no writer`,
+        missingEntrypoints: entry.missingEntrypoints,
+        detail: `${cause}; ${DEFAULT_STATE_PATH} does not clear decommission (${decision.blockers.join(
+          ', ',
+        )}), so removing this path leaves the lane without a writer`,
       });
     }
-    entries.push(entry);
   }
 
-  return { ok: findings.length === 0, entries, findings };
+  return { ok: findings.length === 0, entries, findings, decision };
 }
 
 function readWorkflows(directory) {
@@ -415,16 +543,19 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     );
     process.exit(2);
   }
+  const now = nowArg ?? new Date().toISOString();
+  const soakDays = soakDaysArg === undefined ? undefined : Number(soakDaysArg);
   const surface = evaluateLegacyMutationSurface({
     workflows: readWorkflows(path.join(repoRoot, '.github/workflows')),
     state,
+    now,
+    soakDays,
   });
-  const decision = decideLegacyDecommission({
-    state,
-    now: nowArg ?? new Date().toISOString(),
-    soakDays: soakDaysArg === undefined ? undefined : Number(soakDaysArg),
-  });
-  process.stdout.write(`${JSON.stringify({ decision, surface }, null, 2)}\n`);
+  // The surface scan already computed the decision from the same inputs; reuse
+  // it so the two halves of the report can never disagree.
+  const decision = surface.decision;
+  const { decision: _reused, ...surfaceReport } = surface;
+  process.stdout.write(`${JSON.stringify({ decision, surface: surfaceReport }, null, 2)}\n`);
 
   if (!surface.ok) {
     for (const finding of surface.findings) {
