@@ -262,6 +262,22 @@ function walkReferenceFiles(repoRoot: string): string[] {
   return files.sort((a, b) => a.localeCompare(b));
 }
 
+function exactReferencePattern(value: string): RegExp {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9_-])${escaped}(?=$|[^A-Za-z0-9_-])`, 'gu');
+}
+
+function replaceExactReference(text: string, before: string, after: string): string {
+  return text.replace(
+    exactReferencePattern(before),
+    (_match, prefix: string) => `${prefix}${after}`,
+  );
+}
+
+function containsExactReference(text: string, value: string): boolean {
+  return exactReferencePattern(value).test(text);
+}
+
 function replaceExactReferences(
   repoRoot: string,
   removals: readonly LifecycleRemoval[],
@@ -280,7 +296,7 @@ function replaceExactReferences(
     for (const [removed, replacement] of [...replacements].sort(
       ([a], [b]) => b.length - a.length || a.localeCompare(b),
     )) {
-      after = after.replaceAll(removed, replacement);
+      after = replaceExactReference(after, removed, replacement);
     }
     if (after !== before) updates.push({ path: file, before, after });
   }
@@ -515,12 +531,39 @@ export function validateDislikedLifecycleClosure(
     ANNOTATIONS_RELATIVE_PATH,
   );
   const failures: string[] = [];
+  const removals = new Map<
+    string,
+    Pick<LifecycleRemoval, 'manifestKey' | 'conceptId' | 'assetPath'>
+  >(plan.removed.map((removal) => [removal.manifestKey, removal]));
+  for (const [annotationKey, annotation] of Object.entries(annotations.sprites)) {
+    const rawTombstone = (annotation as { readonly tombstone?: unknown }).tombstone;
+    if (rawTombstone === undefined) continue;
+    if (typeof rawTombstone !== 'object' || rawTombstone === null) {
+      failures.push(`annotation tombstone is invalid for ${annotationKey}`);
+      continue;
+    }
+    const tombstone = rawTombstone as Partial<DislikedSpriteTombstone>;
+    if (typeof tombstone.manifestKey === 'string' && removals.has(tombstone.manifestKey)) continue;
+    if (
+      tombstone.manifestKey !== annotationKey ||
+      typeof tombstone.conceptId !== 'string' ||
+      typeof tombstone.assetPath !== 'string'
+    ) {
+      failures.push(`annotation tombstone is invalid for ${annotationKey}`);
+      continue;
+    }
+    removals.set(tombstone.manifestKey, {
+      manifestKey: tombstone.manifestKey,
+      conceptId: tombstone.conceptId,
+      assetPath: tombstone.assetPath,
+    });
+  }
 
   const referenceContents = walkReferenceFiles(repoRoot).map((file) => ({
     file,
     text: readFileSync(file, 'utf8'),
   }));
-  for (const removal of plan.removed) {
+  for (const removal of removals.values()) {
     if (manifest.entries[removal.manifestKey] !== undefined) {
       failures.push(`manifest shard still exists for ${removal.manifestKey}`);
     }
@@ -536,7 +579,10 @@ export function validateDislikedLifecycleClosure(
     }
     for (const reference of referenceContents) {
       const text = reference.text;
-      if (text.includes(removal.manifestKey) || text.includes(removal.assetPath)) {
+      if (
+        containsExactReference(text, removal.manifestKey) ||
+        containsExactReference(text, removal.assetPath)
+      ) {
         failures.push(
           `exact reference to ${removal.manifestKey} remains in ${path.relative(
             repoRoot,

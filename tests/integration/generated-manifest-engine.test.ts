@@ -451,14 +451,14 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
 
     // The exact pinned generated keys each welcome-room NPC resolves to. The
     // approved variants differ per NPC (Goon var-1, Merchant var-3, Broker
-    // var-1) — pinned per def id (not a variant roll) so this stays
+    // var-2) — pinned per def id (not a variant roll) so this stays
     // deterministic. Cross-checked against GENERATED_KEY_BY_NPC_DEF below so a
     // rename on EITHER side — the wiring map or the shipped manifest — fails
     // loudly here.
     const expectedByDef: Record<string, string> = {
       'tutorial-goon': 'welcome-goon-var-1',
       shopkeeper: 'sweaty-merchant-var-3',
-      'spell-quest-giver': 'npc-spell-broker-var-1',
+      'spell-quest-giver': 'spell-broker-var-2',
     };
 
     // 1) Each pinned key exists in the shipped manifest as its own texture and

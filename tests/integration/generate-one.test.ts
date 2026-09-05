@@ -299,6 +299,14 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     expect(result.summary.variantCount).toBe(4);
     expect(existsSync(path.join(result.runDir, 'processed'))).toBe(false);
     expect(existsSync(path.join(result.runDir, 'raw'))).toBe(false);
+    expect(
+      existsSync(
+        path.join(root, 'public', 'assets', 'generated', 'entries', 'iron-sword-var-0.json'),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(root, 'public', 'assets', 'generated', 'iron-sword-var-0.png')),
+    ).toBe(false);
 
     // Identity + variation metadata is still captured for auditability.
     expect(typeof result.summary.runId).toBe('string');

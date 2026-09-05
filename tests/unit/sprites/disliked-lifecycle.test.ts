@@ -65,6 +65,7 @@ describe('disliked sprite lifecycle planning', () => {
     const entries = {
       'npc-welcome-goon-var-0': entry('npc-welcome-goon', 0),
       'welcome-goon-var-1': entry('welcome-goon', 1),
+      'welcome-goon-v2-var-2': entry('welcome-goon-v2', 2),
       'bent-pipe-var-1': entry('bent-pipe', 1),
       'bent-pipe-var-5': entry('bent-pipe', 5),
     };
@@ -73,13 +74,17 @@ describe('disliked sprite lifecycle planning', () => {
       manifestEntries: entries,
       trackedAnnotations: annotations({
         'npc-welcome-goon-var-0': { disliked: true },
+        'welcome-goon-v2-var-2': { disliked: true },
         'bent-pipe-var-1': { disliked: true },
         'bent-pipe-var-5': { disliked: true },
       }),
     });
 
-    expect(plan.removed.map((item) => item.manifestKey)).toEqual(['npc-welcome-goon-var-0']);
-    expect(plan.removed[0]?.replacementKey).toBe('welcome-goon-var-1');
+    expect(plan.removed.map((item) => item.manifestKey)).toEqual([
+      'npc-welcome-goon-var-0',
+      'welcome-goon-v2-var-2',
+    ]);
+    expect(plan.removed.every((item) => item.replacementKey === 'welcome-goon-var-1')).toBe(true);
     expect(plan.retainedGroups).toEqual([
       {
         conceptId: 'bent-pipe',
@@ -232,16 +237,46 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(() => validateDislikedLifecycleClosure(root, plan)).not.toThrow();
   });
 
+  it('repoints only exact pins without corrupting longer variant identifiers', () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 1);
+    const survivor = entry('rat', 2);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeShard(generatedDir, survivor.spriteName, survivor);
+    writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'bad');
+    writeFileSync(path.join(generatedDir, 'rat-var-2.png'), 'good');
+    const pinPath = path.join(root, 'src', 'pins.json');
+    writeFileSync(pinPath, '{"pin":"rat-var-1","unrelated":"rat-var-10"}\n');
+
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        [disliked.spriteName]: disliked,
+        [survivor.spriteName]: survivor,
+      },
+      trackedAnnotations: annotations({ 'rat-var-1': { disliked: true } }),
+    });
+    applyDislikedLifecyclePlan(root, plan);
+
+    expect(readFileSync(pinPath, 'utf8')).toBe('{"pin":"rat-var-2","unrelated":"rat-var-10"}\n');
+    expect(() => validateDislikedLifecycleClosure(root, plan)).not.toThrow();
+  });
+
   it('rolls back approval and cleanup when durable publication fails', async () => {
     const root = makeRoot();
     const generatedDir = path.join(root, 'public', 'assets', 'generated');
     const disliked = entry('rat', 0);
     writeShard(generatedDir, disliked.spriteName, disliked);
     writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
-    writeFileSync(
-      path.join(generatedDir, 'sprite-editor-annotations.json'),
-      JSON.stringify({ version: 1, sprites: { 'rat-var-0': { disliked: true } } }),
-    );
+    const annotationsPath = path.join(generatedDir, 'sprite-editor-annotations.json');
+    const originalAnnotations = JSON.stringify({
+      version: 1,
+      sprites: { 'rat-var-0': { disliked: true, comment: 'replace me' } },
+    });
+    writeFileSync(annotationsPath, originalAnnotations);
+    const pinPath = path.join(root, 'src', 'pins.json');
+    writeFileSync(pinPath, '{"pin":"rat-var-1"}\n');
 
     await expect(
       runAcceptedDislikedLifecycleTransaction({
@@ -265,6 +300,8 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(existsSync(path.join(generatedDir, 'rat-var-0.png'))).toBe(true);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-1.json'))).toBe(false);
     expect(existsSync(path.join(generatedDir, 'rat-var-1.png'))).toBe(false);
+    expect(readFileSync(annotationsPath, 'utf8')).toBe(originalAnnotations);
+    expect(readFileSync(pinPath, 'utf8')).toBe('{"pin":"rat-var-1"}\n');
   });
 
   it('deletes a retained all-disliked group when a replacement is explicitly accepted', async () => {
@@ -313,7 +350,61 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(publishedRemovalKeys).toEqual(['rat-var-0', 'rat-var-1']);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-0.json'))).toBe(false);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-1.json'))).toBe(false);
+    expect(existsSync(path.join(generatedDir, 'rat-var-0.png'))).toBe(false);
+    expect(existsSync(path.join(generatedDir, 'rat-var-1.png'))).toBe(false);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-2.json'))).toBe(true);
+    expect(() => validateDislikedLifecycleClosure(root, result.plan)).not.toThrow();
+  });
+
+  it('validates historical tombstones when a post-apply plan has no new removals', () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'rat-var-0': {
+            disliked: true,
+            tombstone: {
+              manifestKey: 'rat-var-0',
+              conceptId: 'rat',
+              assetPath: 'generated/rat-var-0.png',
+              sourceRun: 'generated/runs/rat/run-0',
+              variantIndex: 0,
+              annotationKeys: ['rat-var-0'],
+            },
+          },
+        },
+      }),
+    );
+    const pinPath = path.join(root, 'src', 'pins.json');
+    writeFileSync(pinPath, '{"pin":"rat-var-0"}\n');
+    const cleanPlan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {},
+      trackedAnnotations: annotations({
+        'rat-var-0': {
+          disliked: true,
+          tombstone: {
+            manifestKey: 'rat-var-0',
+            conceptId: 'rat',
+            assetPath: 'generated/rat-var-0.png',
+            sourceRun: 'generated/runs/rat/run-0',
+            variantIndex: 0,
+            annotationKeys: ['rat-var-0'],
+          },
+        },
+      }),
+    });
+
+    expect(cleanPlan.removed).toEqual([]);
+    expect(() => validateDislikedLifecycleClosure(root, cleanPlan)).toThrow(
+      /exact reference to rat-var-0 remains/,
+    );
+
+    writeFileSync(pinPath, '{"pin":"rat-var-1"}\n');
+    expect(() => validateDislikedLifecycleClosure(root, cleanPlan)).not.toThrow();
   });
 
   it('aborts acceptance before mutation when removal requires a source pin repoint', async () => {

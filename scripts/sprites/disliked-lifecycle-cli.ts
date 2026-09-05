@@ -7,6 +7,7 @@ import {
   applyDislikedLifecyclePlan,
   loadDislikedLifecyclePlan,
   summarizeDislikedLifecycle,
+  validateDislikedLifecycleClosure,
 } from './disliked-lifecycle.js';
 
 export async function main(argv: readonly string[], repoRoot: string): Promise<number> {
@@ -30,7 +31,11 @@ export async function main(argv: readonly string[], repoRoot: string): Promise<n
       process.stdout.write(
         `${JSON.stringify({ mode: dryRun ? 'dry-run' : 'apply', ...summary }, null, 2)}\n`,
       );
-      if (apply) applyDislikedLifecyclePlan(repoRoot, plan);
+      if (apply) {
+        applyDislikedLifecyclePlan(repoRoot, plan);
+      } else if (plan.removed.length === 0) {
+        validateDislikedLifecycleClosure(repoRoot, plan);
+      }
     };
     if (apply) {
       await makeCheckinFileLock(repoRoot)(run);
