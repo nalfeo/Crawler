@@ -59,7 +59,7 @@ sprite-pipeline, sprite-workflow
   pre-hardening migration. Each records the deleted shard's `sourceRun` and
   `variantIndex` corroboration; future lifecycle runs cannot reuse name
   similarity as deletion authority.
-- Final post-sync lifecycle/runtime matrix: 586 passed, 1 intentional
+- Final post-review lifecycle/runtime matrix: 673 passed, 1 intentional
   environment-gated skip; Sprite Editor persistence tests passed 9/9 and all
   nine lifecycle requirements passed.
 - Review fixes isolated cosmetic variant rolls from gameplay RNG, shared the
@@ -67,6 +67,12 @@ sprite-pipeline, sprite-workflow
   preserved cumulative tombstone-authorized queue deletions across later
   approvals and queue repair, paired nested shard/PNG promotion paths
   atomically, and made variant identity resolution fail closed before approval.
+- Every explicit human acceptance surface now uses the same concept-scoped
+  lifecycle transaction, including sidecar accept, frame sequences, and icon
+  batches. Queue-tip tombstones preserve absent-vs-explicit-clear semantics,
+  stale unresolved dislikes are conservatively excluded from generation
+  references without gaining deletion authority, and closure still checks every
+  historical tombstone in a single bounded scan per live reference file.
 - `npm run typecheck` and `npm run verify:fast` passed after the final
   pre-publication rebase.
 - The originating worktree confirmed all five unapproved generated
