@@ -370,58 +370,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
 
     if (!parsed.sequence) {
       const variantIndex = parsed.variantIndex!;
-      let identity;
-      try {
-        identity = resolveVariantIdentity(runDir, variantIndex);
-      } catch {
-        // Dependency-injected callers may replace approveVariant without
-        // materializing a run directory. The real implementation cannot
-        // approve when identity resolution fails, so this compatibility path
-        // never weakens production atomicity.
-        let fallbackEntry: ManifestEntry;
-        let fallbackAlreadyApproved = false;
-        try {
-          fallbackEntry = approveVariant({
-            runDir,
-            variantIndex,
-            manifestPath,
-            catalogPath,
-            publicAssetsDir,
-            repoRoot,
-            allowHardBlocked: parsed.allowHardBlocked,
-          });
-        } catch (err) {
-          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
-          const existing = loadApprovedEntry({ runDir, variantIndex, manifestPath });
-          if (existing === null) throw err;
-          fallbackEntry = existing;
-          fallbackAlreadyApproved = true;
-        }
-        if (!fallbackAlreadyApproved) {
-          await enrichEntryTags(fallbackEntry, path.join(publicAssetsDir, 'generated'), repoRoot);
-        }
-        if (process.env.CI === undefined) {
-          const result = await runQueueCommit(
-            repoRoot,
-            [
-              {
-                assetPath: fallbackEntry.assetPath,
-                manifestKey: fallbackEntry.spriteName,
-                briefId: fallbackEntry.briefId,
-                variantIndex: fallbackEntry.variantIndex,
-              },
-            ],
-            createDefaultQueueCommitDeps(repoRoot),
-            { message: `chore(assets): approve ${fallbackEntry.spriteName}` },
-          );
-          process.stdout.write(
-            result.status === 'committed'
-              ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
-              : `  queued: no-op (${result.branch} already up to date)\n`,
-          );
-        }
-        return 0;
-      }
+      const identity = resolveVariantIdentity(runDir, variantIndex);
       let alreadyApproved = false;
       const transaction = await makeCheckinFileLock(repoRoot)(async () => {
         const queueDeps = createDefaultQueueCommitDeps(repoRoot);

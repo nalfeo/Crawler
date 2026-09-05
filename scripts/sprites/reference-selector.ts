@@ -115,6 +115,7 @@ function toEligible(
   dislikedSpriteNames: ReadonlySet<string>,
 ): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
+  if (entry.disliked === true) return null;
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
   if (
     normalizeGeneratedSpriteConceptId(entry.briefId) ===

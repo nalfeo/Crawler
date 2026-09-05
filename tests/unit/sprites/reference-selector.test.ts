@@ -191,6 +191,19 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual([good.spriteName]);
   });
 
+  it('excludes manifest-disliked sprites without an annotation overlay', () => {
+    const disliked = entry({ briefId: 'bad-reference', type: 'item', disliked: true });
+    const good = entry({ briefId: 'good-reference', type: 'item' });
+    const result = selectReferences({
+      candidates: [disliked, good],
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+    });
+    expect(names(result.selected)).toEqual([good.spriteName]);
+  });
+
   it('excludes placeholders (all three placeholder signals)', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),

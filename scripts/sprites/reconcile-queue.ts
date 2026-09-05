@@ -627,11 +627,11 @@ export async function filterPromotablePaths(
   // seen by main) passes — landing a shard whose `contentHash` describes the
   // withheld PNG while main still holds the superseding bytes.
   const pngFromShard = (p: string): string | undefined => {
-    const m = /^(public\/assets\/generated\/entries\/)([^/]+)\.json$/.exec(p);
-    return m ? `public/assets/generated/${m[2]}.png` : undefined;
+    const m = /^public\/assets\/generated\/entries\/(.+)\.json$/.exec(p);
+    return m ? `public/assets/generated/${m[1]}.png` : undefined;
   };
   const shardFromPng = (p: string): string | undefined => {
-    const m = /^public\/assets\/generated\/([^/]+)\.png$/.exec(p);
+    const m = /^public\/assets\/generated\/(.+)\.png$/.exec(p);
     return m ? `public/assets/generated/entries/${m[1]}.json` : undefined;
   };
 

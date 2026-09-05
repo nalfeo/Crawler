@@ -929,9 +929,13 @@ function seedQueueWithArt(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+      const pngPath = path.join(genDir, `${key}.png`);
+      const shardPath = path.join(entriesDir, `${key}.json`);
+      mkdirSync(path.dirname(pngPath), { recursive: true });
+      mkdirSync(path.dirname(shardPath), { recursive: true });
+      writeFileSync(pngPath, PNG_BYTES);
       // One self-contained shard per asset — the sharded source of truth.
-      writeJson(path.join(entriesDir, `${key}.json`), {
+      writeJson(shardPath, {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
@@ -1036,8 +1040,12 @@ function addArtDirectlyToMain(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      writeFileSync(path.join(genDir, `${key}.png`), bytes);
-      writeJson(path.join(entriesDir, `${key}.json`), {
+      const pngPath = path.join(genDir, `${key}.png`);
+      const shardPath = path.join(entriesDir, `${key}.json`);
+      mkdirSync(path.dirname(pngPath), { recursive: true });
+      mkdirSync(path.dirname(shardPath), { recursive: true });
+      writeFileSync(pngPath, bytes);
+      writeJson(shardPath, {
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
@@ -1086,6 +1094,8 @@ function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: stri
     const genDir = path.join(wt, 'public', 'assets', 'generated');
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
+    mkdirSync(path.dirname(path.join(genDir, `${key}.png`)), { recursive: true });
+    mkdirSync(path.dirname(path.join(entriesDir, `${key}.json`)), { recursive: true });
     // PNG goes back to original bytes (A→B→A).
     writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
     // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
@@ -1689,36 +1699,39 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
-  it('(d5) ATOMIC: withholds PNG AND shard together on A→B→A re-approval', async () => {
-    // The A→B→A split-brain bug: main previously carried PNG blob A; later
-    // moved to blob B; source is re-approved back to blob A with a freshly-
-    // stamped shard. Without atomicity the stale PNG is withheld but the new
-    // shard blob passes — `check:asset-integrity` would then fail because the
-    // promoted shard's `contentHash` describes A while main still holds B.
-    const { root, liveDir } = setupRepos();
-    cleanups.push(root);
-    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    const gh = new FakeGh();
+  it.each(['skull-mace-var-2', 'equipment/weapon/moon-scythe'])(
+    '(d5) ATOMIC: withholds PNG AND shard together on A→B→A re-approval for %s',
+    async (key) => {
+      // The A→B→A split-brain bug: main previously carried PNG blob A; later
+      // moved to blob B; source is re-approved back to blob A with a freshly-
+      // stamped shard. Without atomicity the stale PNG is withheld but the new
+      // shard blob passes — `check:asset-integrity` would then fail because the
+      // promoted shard's `contentHash` describes A while main still holds B.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      seedQueueWithArt(liveDir, [key]);
+      const gh = new FakeGh();
 
-    // Phase 1: original bytes (A) land on main.
-    const first = await runReconcile(liveDir, realDeps(gh));
-    expect(first.status).toBe('pr-open');
-    simulateSquashMerge(liveDir, gh, first.prNumber!);
+      // Phase 1: original bytes (A) land on main.
+      const first = await runReconcile(liveDir, realDeps(gh));
+      expect(first.status).toBe('pr-open');
+      simulateSquashMerge(liveDir, gh, first.prNumber!);
 
-    // Phase 2: main moves on to blob B via an independent flow.
-    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+      // Phase 2: main moves on to blob B via an independent flow.
+      addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES);
 
-    // Phase 3: queue is re-approved back to blob A with a FRESH shard blob.
-    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, 'skull-mace-var-2');
+      // Phase 3: queue is re-approved back to blob A with a FRESH shard blob.
+      reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key);
 
-    const second = await runReconcile(liveDir, realDeps(gh));
-    // Both the PNG (stale) and its paired shard (fresh but atomically linked)
-    // must be withheld — no partial promotion that breaks asset integrity.
-    expect(second.status).toBe('noop');
-    expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
-    expect(second.withheldPaths).toContain('public/assets/generated/entries/skull-mace-var-2.json');
-    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
-  });
+      const second = await runReconcile(liveDir, realDeps(gh));
+      // Both the PNG (stale) and its paired shard (fresh but atomically linked)
+      // must be withheld — no partial promotion that breaks asset integrity.
+      expect(second.status).toBe('noop');
+      expect(second.withheldPaths).toContain(`public/assets/generated/${key}.png`);
+      expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+      expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+    },
+  );
 
   it('(e) reuses an already-open promote PR without creating a duplicate', async () => {
     const { root, liveDir } = setupRepos();

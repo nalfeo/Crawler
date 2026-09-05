@@ -72,6 +72,12 @@ const mocks = vi.hoisted(() => {
   const approveFrameSequence = vi.fn(() => {
     throw new ApproveError('already-approved', 'player-walk-cycle already approved');
   });
+  const resolveVariantIdentity = vi.fn(() => ({
+    briefId: FAKE_ENTRY.briefId,
+    variantId: FAKE_ENTRY.spriteName,
+    assetPath: FAKE_ENTRY.assetPath,
+    contentHash: 'a'.repeat(64),
+  }));
 
   return {
     runQueueCommit,
@@ -79,6 +85,7 @@ const mocks = vi.hoisted(() => {
     loadApprovedFrameSequenceEntry,
     approveVariant,
     approveFrameSequence,
+    resolveVariantIdentity,
     ApproveError,
     FAKE_ENTRY,
     FAKE_SEQUENCE_ENTRY,
@@ -120,9 +127,35 @@ vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
     loadApprovedEntry: mocks.loadApprovedEntry,
     approveFrameSequence: mocks.approveFrameSequence,
     loadApprovedFrameSequenceEntry: mocks.loadApprovedFrameSequenceEntry,
+    resolveVariantIdentity: mocks.resolveVariantIdentity,
     ApproveError: mocks.ApproveError,
   };
 });
+
+const lifecycle = vi.hoisted(() => ({
+  runAcceptedDislikedLifecycleTransaction: vi.fn(
+    async (options: {
+      approve: () => unknown;
+      publish: (
+        approved: unknown,
+        plan: { removed: never[]; retainedGroups: never[]; annotationUpdates: never[] },
+      ) => Promise<void>;
+    }) => {
+      const approved = options.approve();
+      const plan = { removed: [], retainedGroups: [], annotationUpdates: [] };
+      await options.publish(approved, plan);
+      return { approved, plan };
+    },
+  ),
+}));
+
+vi.mock('../../../scripts/sprites/disliked-lifecycle.js', () => ({
+  runAcceptedDislikedLifecycleTransaction: lifecycle.runAcceptedDislikedLifecycleTransaction,
+}));
+
+vi.mock('../../../scripts/sprites/checkin-runtime.js', () => ({
+  makeCheckinFileLock: vi.fn(() => async (run: () => Promise<unknown>) => run()),
+}));
 
 // ── import the subject under test AFTER mocks are registered ───────────────
 const { main } = await import('../../../scripts/sprites/approve-cli.js');
@@ -145,6 +178,8 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     delete process.env.CI;
     mocks.runQueueCommit.mockClear();
     mocks.approveVariant.mockClear();
+    mocks.resolveVariantIdentity.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
     durability.ensureRunDurable.mockClear();
     durability.resolvePublicationDurableStore.mockClear();
   });
@@ -166,6 +201,7 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     const commitOrder = mocks.runQueueCommit.mock.invocationCallOrder[0] ?? 0;
     expect(durableOrder).toBeLessThan(approveOrder);
     expect(durableOrder).toBeLessThan(commitOrder);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
   });
 
   it('passes the run coordinates parsed from the run dir', async () => {
@@ -174,6 +210,19 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(durability.ensureRunDurable).toHaveBeenCalledWith(
       expect.objectContaining({ briefId: 'iron-sword', runId: 'run-01' }),
     );
+  });
+
+  it('fails closed when variant identity resolution fails', async () => {
+    mocks.resolveVariantIdentity.mockImplementationOnce(() => {
+      throw new Error('missing variant provenance');
+    });
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(1);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).not.toHaveBeenCalled();
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
   it('fails closed with exit code 5 and never publishes when the run is not durable', async () => {
