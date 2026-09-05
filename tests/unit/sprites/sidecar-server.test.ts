@@ -1548,6 +1548,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       copyArtSurface: async () => undefined,
       removeDir: async () => undefined,
       listQueuedAssets: async () => new Map(queued),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       readManifest: () =>
         Promise.resolve(
           composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
@@ -2188,6 +2192,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       // reconciliation read (before approveVariant ever runs).
       listQueuedAssets: () =>
         Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom')),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       env: {},
     };
     app = buildServer({
@@ -2288,6 +2296,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
         return Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom'));
       },
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       readManifest: () =>
         Promise.resolve(
           composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
@@ -3286,6 +3298,10 @@ describe('store-backed /approve hydration parity', () => {
       copyArtSurface: async () => undefined,
       removeDir: async () => undefined,
       listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       readManifest: () =>
         Promise.resolve(
           composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
@@ -3309,6 +3325,34 @@ describe('store-backed /approve hydration parity', () => {
       checkinDeps: acceptCheckinDeps(),
     });
   }
+
+  it('/accept fails closed before mutation when canonical queue inspection is unavailable', async () => {
+    await app.close();
+    const { inspectDurableQueueAsset: _omitted, ...incompleteDeps } = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: incompleteDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'accept-failed',
+      message: 'Canonical assets/queue inspection is unavailable.',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
 
   it('/accept preserves the manual anchor, brief type, and durable sourceRun too', async () => {
     await app.close();

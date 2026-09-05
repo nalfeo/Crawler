@@ -318,12 +318,17 @@ export interface CheckinRunnerDeps {
    * Inspect the canonical assets/queue branch for one exact asset identity.
    * Production provides this alongside legacy issue discovery; tests may omit it.
    */
-  readonly inspectDurableQueueAsset?: (asset: {
-    readonly manifestKey: string;
-    readonly assetPath: string;
-    readonly contentHash?: string;
-    readonly manifestEntry?: Readonly<Record<string, unknown>>;
-  }) => Promise<DurableQueueAssetInspection>;
+  readonly inspectDurableQueueAsset?: (
+    asset: DurableQueueAssetIdentity,
+  ) => Promise<DurableQueueAssetInspection>;
+  /**
+   * Inspect a batch against one immutable assets/queue snapshot. Production
+   * supplies this so multi-asset check-ins do not refetch a moving branch once
+   * per asset; tests may omit it and use the single-asset hook above.
+   */
+  readonly inspectDurableQueueAssets?: (
+    assets: readonly DurableQueueAssetIdentity[],
+  ) => Promise<readonly DurableQueueAssetInspection[]>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
   /** Clock. Defaults to `() => new Date()`. */
@@ -374,6 +379,13 @@ export interface QueuedAssetCheckin {
 export interface DurableQueueAssetInspection {
   readonly reconciliation: QueuedContentReconciliation;
   readonly branch: string;
+}
+
+export interface DurableQueueAssetIdentity {
+  readonly manifestKey: string;
+  readonly assetPath: string;
+  readonly contentHash?: string;
+  readonly manifestEntry?: Readonly<Record<string, unknown>>;
 }
 
 export interface PreparedAssetCheckin {
@@ -465,21 +477,36 @@ export async function prepareAssetCheckin(
   const queuedAssets = deps.listQueuedAssets
     ? await deps.listQueuedAssets()
     : new Map<string, QueuedAssetCheckin>();
-
-  const assets: CheckinAsset[] = [];
-  for (const asset of changedAssets) {
-    const queued = queuedAssets.get(asset.assetPath);
-    const legacyReconciliation = reconcileQueuedContent(queued, asset.contentHash);
+  const durableIdentities = changedAssets.map((asset): DurableQueueAssetIdentity => {
     const manifestKey = asset.manifestKey ?? manifestKeyFromAssetPath(asset.assetPath);
     const manifestEntry = manifest.entries?.[manifestKey];
-    const durableInspection = deps.inspectDurableQueueAsset
-      ? await deps.inspectDurableQueueAsset({
-          manifestKey,
-          assetPath: asset.assetPath,
-          ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
-          ...(manifestEntry !== undefined ? { manifestEntry } : {}),
-        })
-      : { reconciliation: 'new' as const, branch: 'assets/queue' };
+    return {
+      manifestKey,
+      assetPath: asset.assetPath,
+      ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
+      ...(manifestEntry !== undefined ? { manifestEntry } : {}),
+    };
+  });
+  const durableBatch = deps.inspectDurableQueueAssets
+    ? await deps.inspectDurableQueueAssets(durableIdentities)
+    : undefined;
+  if (durableBatch !== undefined && durableBatch.length !== changedAssets.length) {
+    throw new CheckinError(
+      'git-failed',
+      `Canonical assets/queue inspection returned ${durableBatch.length} result(s) for ` +
+        `${changedAssets.length} asset(s).`,
+    );
+  }
+
+  const assets: CheckinAsset[] = [];
+  for (const [index, asset] of changedAssets.entries()) {
+    const queued = queuedAssets.get(asset.assetPath);
+    const legacyReconciliation = reconcileQueuedContent(queued, asset.contentHash);
+    const durableInspection =
+      durableBatch?.[index] ??
+      (deps.inspectDurableQueueAsset
+        ? await deps.inspectDurableQueueAsset(durableIdentities[index]!)
+        : { reconciliation: 'new' as const, branch: 'assets/queue' });
     const states = [
       {
         reconciliation: legacyReconciliation,

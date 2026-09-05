@@ -176,6 +176,36 @@ function addQueueAsset(live: string, key: string): void {
   }
 }
 
+function replaceSelectedQueueAsset(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-selected-asset-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff]);
+    const generated = path.join(queue, 'public', 'assets', 'generated');
+    mkdirSync(path.join(generated, 'entries'), { recursive: true });
+    writeFileSync(path.join(generated, `${key}.png`), bytes);
+    writeJson(path.join(generated, 'entries', `${key}.json`), {
+      assetPath: `generated/${key}.png`,
+      spriteName: key,
+      sourceRun: `generated/runs/${key}/later-run`,
+      variantIndex: 0,
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+    });
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later selected queue asset edit');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
 function addQueueAnnotation(live: string, key: string): void {
   const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-later-annotation-'));
   try {
@@ -622,6 +652,27 @@ describe('runQueueRepair (real git)', () => {
   );
 
   it(
+    'refuses repair before it can overwrite a later edit to a selected asset',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      replaceSelectedQueueAsset(live, RECOVERY_GROUP_KEYS[0]);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('later queue edit(s) to selected path(s)'),
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
     'refuses repair before it can discard a later unrelated queue annotation',
     async () => {
       const { root, source, sourceSha, live } = setup();
@@ -641,6 +692,27 @@ describe('runQueueRepair (real git)', () => {
         message: expect.stringContaining(
           'would discard later queue annotation(s): later-annotation',
         ),
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can overwrite a later edit to a selected annotation',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAnnotation(live, RECOVERY_ANNOTATION_KEYS[0]!);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('later queue annotation edit(s)'),
       });
     },
     GIT_TIMEOUT_MS,

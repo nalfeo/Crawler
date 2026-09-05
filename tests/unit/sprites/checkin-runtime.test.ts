@@ -5,7 +5,7 @@
  * manifest/catalog-merge behavior is proven end-to-end, not just wired.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -214,6 +214,7 @@ describe('assets/queue identity inspection', () => {
       reconciliation: 'duplicate',
       branch: 'assets/queue',
     });
+
     await expect(
       inspect({ manifestKey, assetPath, contentHash, manifestEntry: queuedEntry }),
     ).resolves.toEqual({
@@ -261,6 +262,55 @@ describe('assets/queue identity inspection', () => {
       branch: 'assets/queue',
     });
     expect(git(live, 'for-each-ref', '--format=%(refname)', 'refs/queue-inspect')).toBe('');
+  });
+
+  it('fetches one immutable queue snapshot for a multi-asset inspection', async () => {
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const contentHash = createHash('sha256').update(pngBytes).digest('hex');
+    const entries = Object.fromEntries(
+      ['first-var-0', 'second-var-0'].map((manifestKey) => [
+        manifestKey,
+        {
+          spriteName: manifestKey,
+          assetPath: `generated/${manifestKey}.png`,
+          contentHash,
+        },
+      ]),
+    );
+    const exec = vi.fn(async (_command: string, args: readonly string[]) => {
+      if (args[0] === 'ls-remote') {
+        return { code: 0, stdout: `${'a'.repeat(40)}\trefs/heads/assets/queue\n`, stderr: '' };
+      }
+      if (args[0] === 'fetch' || args[0] === 'update-ref') {
+        return { code: 0, stdout: '', stderr: '' };
+      }
+      if (args[0] === 'show') {
+        const target = args[1] ?? '';
+        const manifestKey = /entries\/(.+)\.json$/u.exec(target)?.[1];
+        if (manifestKey !== undefined && entries[manifestKey] !== undefined) {
+          return { code: 0, stdout: JSON.stringify(entries[manifestKey]), stderr: '' };
+        }
+        if (target.endsWith('.png')) {
+          return { code: 0, stdout: '', stderr: '', stdoutBytes: pngBytes };
+        }
+      }
+      return { code: 1, stdout: '', stderr: 'unexpected command' };
+    });
+    const inspectBatch = createDefaultCheckinDeps('/repo', {}, exec).inspectDurableQueueAssets!;
+    const assets = Object.entries(entries).map(([manifestKey, manifestEntry]) => ({
+      manifestKey,
+      assetPath: manifestEntry.assetPath,
+      contentHash,
+      manifestEntry,
+    }));
+
+    await expect(inspectBatch(assets)).resolves.toEqual([
+      { reconciliation: 'duplicate', branch: 'assets/queue' },
+      { reconciliation: 'duplicate', branch: 'assets/queue' },
+    ]);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'ls-remote')).toHaveLength(1);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'fetch')).toHaveLength(1);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'update-ref')).toHaveLength(1);
   });
 });
 

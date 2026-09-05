@@ -22,11 +22,19 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unapproveVariant, UnapproveError } from './approve.js';
+import { createDefaultCheckinDeps } from './checkin-runtime.js';
+import type { CheckinRunnerDeps } from './checkin.js';
+import { composeManifestFromShards } from './generated-shards.js';
 
 interface ParsedArgs {
   readonly variantId: string;
   readonly keepAsset: boolean;
 }
+
+type UnapproveQueueDeps = Pick<
+  CheckinRunnerDeps,
+  'listQueuedAssets' | 'inspectDurableQueueAsset' | 'withCrossProcessLock'
+>;
 
 function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   if (argv.length === 0) {
@@ -61,7 +69,11 @@ function parseArgs(argv: ReadonlyArray<string>): ParsedArgs {
   return { variantId, keepAsset };
 }
 
-export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<number> {
+export async function main(
+  argv: ReadonlyArray<string>,
+  cwd: string,
+  injectedDeps?: UnapproveQueueDeps,
+): Promise<number> {
   let parsed: ParsedArgs;
   try {
     parsed = parseArgs(argv);
@@ -76,12 +88,48 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   const catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
   try {
-    const entry = unapproveVariant({
-      variantId: parsed.variantId,
-      manifestPath,
-      catalogPath,
-      publicAssetsDir,
-      deleteAsset: !parsed.keepAsset,
+    const deps = injectedDeps ?? createDefaultCheckinDeps(repoRoot);
+    const withLock = deps.withCrossProcessLock ?? ((run) => run());
+    const entry = await withLock(async () => {
+      const manifestEntry = composeManifestFromShards(path.join(publicAssetsDir, 'generated'))
+        .entries[parsed.variantId];
+      if (manifestEntry === undefined) {
+        throw new UnapproveError('not-found', `Manifest entry not found: ${parsed.variantId}`);
+      }
+
+      const queued = deps.listQueuedAssets ? await deps.listQueuedAssets() : new Map();
+      const legacy = queued.get(manifestEntry.assetPath);
+      if (legacy !== undefined) {
+        throw new Error(
+          `${manifestEntry.assetPath} is already queued for check-in (${legacy.issueUrl}). ` +
+            'Close or retract that issue before unapproving it.',
+        );
+      }
+      if (deps.inspectDurableQueueAsset === undefined) {
+        throw new Error('Canonical assets/queue inspection is unavailable.');
+      }
+      const durable = await deps.inspectDurableQueueAsset({
+        manifestKey: parsed.variantId,
+        assetPath: manifestEntry.assetPath,
+        ...(manifestEntry.contentHash !== undefined
+          ? { contentHash: manifestEntry.contentHash }
+          : {}),
+        manifestEntry,
+      });
+      if (durable.reconciliation !== 'new') {
+        throw new Error(
+          `${manifestEntry.assetPath} cannot be unapproved while canonical ${durable.branch} ` +
+            `reports ${durable.reconciliation}. Reconcile or remove the queued asset first.`,
+        );
+      }
+
+      return unapproveVariant({
+        variantId: parsed.variantId,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        deleteAsset: !parsed.keepAsset,
+      });
     });
     const deleted = !parsed.keepAsset;
     process.stdout.write(

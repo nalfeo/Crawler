@@ -251,6 +251,21 @@ sprite-pipeline, sprite-workflow
   queue-repair matrix passed 357/357; typecheck passed; persisted closure passed;
   and the full dry-run inventory remained 0 removable / 20 retained /
   7 unresolved / 0 deferred / 0 pending / 0 reference updates.
+- The final shepherd review batch closes the remaining queue race windows.
+  Multi-asset check-in now fetches one immutable `assets/queue` snapshot for the
+  entire batch; standalone unapproval checks both legacy and canonical queues
+  under the cross-process check-in lock; injected acceptance dependencies fail
+  closed when canonical inspection is absent; and one-time queue repair aborts
+  rather than overwriting newer edits to selected asset paths or annotation
+  keys. The exact-head lifecycle matrix passed 274 tests with one intentional
+  environment-gated skip, typecheck and browser build passed, the default
+  shipped-registry headless pipeline reached Floor 1 victory at seed 7 with no
+  failed quests, and `verify:fast` passed 843/843 changed tests.
+- Final persisted closure remains clean. The deterministic dry-run inventory is
+  0 removable variants, 20 retained all-disliked groups, 7 unresolved stale
+  annotation keys, 0 deferred groups, 0 pending promotions, and 0 reference
+  updates. No generated run artifact is tracked by the aggregate branch, and
+  the five unapproved review candidates remain outside this publication unit.
 
 ## PR #3234 generic extraction audit
 

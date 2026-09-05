@@ -2327,13 +2327,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // already in either the legacy issue queue or canonical assets/queue,
       // evicting the local copy would not remove the durable queued copy.
       const assetPath = entry.assetPath;
-      const defaultCheckinDeps = createDefaultCheckinDeps(deps.repoRoot, env);
-      const checkinDeps = deps.checkinDeps ?? defaultCheckinDeps;
+      const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
       const listQueuedAssets =
         checkinDeps.listQueuedAssets ??
         (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
-      const inspectDurableQueueAsset =
-        checkinDeps.inspectDurableQueueAsset ?? defaultCheckinDeps.inspectDurableQueueAsset;
+      const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
       let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
       try {
         queuedAssets = await listQueuedAssets();
@@ -2466,9 +2464,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const listQueuedAssets =
       checkinDeps.listQueuedAssets ??
       (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
-    const inspectDurableQueueAsset =
-      checkinDeps.inspectDurableQueueAsset ??
-      (() => Promise.resolve({ reconciliation: 'new' as const, branch: 'assets/queue' }));
+    const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
+    if (inspectDurableQueueAsset === undefined) {
+      reply.code(500);
+      return {
+        error: 'accept-failed',
+        message: 'Canonical assets/queue inspection is unavailable.',
+      };
+    }
 
     // Serialized with /approve and /checkin (concern #5) — see
     // withCheckinMutationLock's docstring for why this can't deadlock.

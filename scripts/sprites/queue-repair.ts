@@ -472,6 +472,33 @@ export async function runQueueRepair(
           `Recovery source ${immutableSourceSha} does not contain ${missingSelectedPath}.`,
         );
       }
+      const conflictingSelectedPaths: string[] = [];
+      for (const selectedPath of [...selectedPaths].sort()) {
+        const queueBlob = await git(deps.exec, repoRoot, [
+          'rev-parse',
+          `${queueRef}:${selectedPath}`,
+        ]);
+        if (queueBlob.code !== 0) continue;
+        const [mainBlob, sourceBlob] = await Promise.all([
+          git(deps.exec, repoRoot, ['rev-parse', `${mainRef}:${selectedPath}`]),
+          mustGit(deps.exec, repoRoot, ['rev-parse', `${sourceRef}:${selectedPath}`]),
+        ]);
+        const queueOid = queueBlob.stdout.trim();
+        if (
+          queueOid !== sourceBlob.trim() &&
+          (mainBlob.code !== 0 || queueOid !== mainBlob.stdout.trim())
+        ) {
+          conflictingSelectedPaths.push(selectedPath);
+        }
+      }
+      if (conflictingSelectedPaths.length > 0) {
+        throw new QueueRepairError(
+          'source-invalid',
+          `Selective recovery would overwrite later queue edit(s) to selected path(s): ${conflictingSelectedPaths.join(
+            ', ',
+          )}. Promote or preserve those edits before retrying this one-time repair.`,
+        );
+      }
       // Audit is evidence, not a mere path listing: validate every selected
       // PNG/shard pair against its contentHash before printing an applyable JSON
       // snapshot. This worktree is local-only and never stages or pushes.
@@ -533,10 +560,23 @@ export async function runQueueRepair(
       if (queueAnnotations.code === 0 && queueAnnotations.stdout.trim() !== '') {
         const mainSprites = parseAnnotationDocument(mainAnnotations, mainSha);
         const queueSprites = parseAnnotationDocument(queueAnnotations.stdout, queueSha);
+        const sourceSprites = parseAnnotationDocument(sourceAnnotations, sourceSha);
         const recoveryKeys = new Set(updates.map((update) => update.key));
-        const unrelatedKeys = changedAnnotationKeys(mainSprites, queueSprites).filter(
-          (key) => !recoveryKeys.has(key),
+        const changedKeys = changedAnnotationKeys(mainSprites, queueSprites);
+        const conflictingRecoveryKeys = changedKeys.filter(
+          (key) =>
+            recoveryKeys.has(key) &&
+            JSON.stringify(queueSprites[key]) !== JSON.stringify(sourceSprites[key]),
         );
+        if (conflictingRecoveryKeys.length > 0) {
+          throw new QueueRepairError(
+            'source-invalid',
+            `Selective recovery would overwrite later queue annotation edit(s): ${conflictingRecoveryKeys.join(
+              ', ',
+            )}. Promote or preserve those annotations before retrying this one-time repair.`,
+          );
+        }
+        const unrelatedKeys = changedKeys.filter((key) => !recoveryKeys.has(key));
         if (unrelatedKeys.length > 0) {
           throw new QueueRepairError(
             'source-invalid',
