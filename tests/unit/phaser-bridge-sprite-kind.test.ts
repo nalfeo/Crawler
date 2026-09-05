@@ -522,7 +522,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     // Three DISTINCT keys — the whole point of the feature (no shared villager).
     expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-var-1');
     expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-var-3');
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     const keys = [
       pickGeneratedNpcTextureKey('tutorial-goon'),
       pickGeneratedNpcTextureKey('shopkeeper'),
@@ -543,7 +543,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     );
     expect(indices.every((n) => Number.isInteger(n))).toBe(true);
     expect(new Set(indices).size).toBeGreaterThan(1);
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).not.toBe('npc-spell-broker-var-0');
   });
 

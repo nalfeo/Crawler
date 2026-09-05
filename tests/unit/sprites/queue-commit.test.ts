@@ -215,6 +215,33 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('applies explicitly authorized lifecycle removals inside the queue transaction', async () => {
+    const { exec } = makeFakeExec(happyResponder);
+    const removed: string[] = [];
+    const result = await runQueueCommit(
+      '/repo',
+      [asset()],
+      controlDeps(exec, {
+        removeArtSurface: (_worktree, removals) => {
+          removed.push(...removals.map((item) => item.manifestKey));
+          return Promise.resolve();
+        },
+      }),
+      {
+        message: 'm',
+        removals: [
+          {
+            assetPath: 'generated/old-blade.png',
+            manifestKey: 'old-blade',
+          },
+        ],
+      },
+    );
+
+    expect(result.status).toBe('committed');
+    expect(removed).toEqual(['old-blade']);
+  });
+
   it('rejects clean paths that escape the staged generated/ surface (silent no-op guard)', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     // Traversal-free, absolute-free POSIX paths — but OUTSIDE `generated/`, so

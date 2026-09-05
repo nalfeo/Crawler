@@ -9,6 +9,7 @@ import {
 import path from 'node:path';
 
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief } from './load-brief.js';
 import {
@@ -155,8 +156,13 @@ export function buildSpriteBacklogPlan(input: BuildSpriteBacklogPlanInput): Spri
 
   for (const spriteName of input.dislikedSpriteNames) {
     const entry = input.manifestEntries[spriteName];
-    if (!entry || isPlaceholderManifestEntry(entry)) continue;
-    dislikedConcepts.add(normalizeConcept(entry.briefId || spriteName));
+    if (entry && !isPlaceholderManifestEntry(entry)) {
+      dislikedConcepts.add(normalizeGeneratedSpriteConceptId(entry.briefId || spriteName));
+    } else {
+      // Deleted disliked sprites remain as annotation tombstones. Their keys
+      // still carry the normalized concept demand needed to regenerate art.
+      dislikedConcepts.add(normalizeGeneratedSpriteConceptId(spriteName));
+    }
   }
 
   const missingConcepts = new Set(

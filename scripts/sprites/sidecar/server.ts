@@ -82,7 +82,7 @@ import {
   type CheckinRunnerDeps,
   type QueuedAssetCheckin,
 } from '../checkin.js';
-import { createDefaultCheckinDeps } from '../checkin-runtime.js';
+import { createDefaultCheckinDeps, makeCheckinFileLock } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
@@ -138,6 +138,8 @@ import {
   isGeneratedCatalogId,
 } from '../../../src/shared/generated-catalog.js';
 import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
+import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
+import { runAcceptedDislikedLifecycleTransaction } from '../disliked-lifecycle.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from '../store/types.js';
@@ -1979,8 +1981,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // locked call — avoids deadlock.
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
-      let entry: ManifestEntry;
-      let alreadyApproved = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -1991,70 +1991,100 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(403);
           return { error: 'forbidden-path' };
         }
-        try {
-          entry = approveVariant({
-            runDir,
-            variantIndex,
-            manifestPath,
-            catalogPath,
-            publicAssetsDir,
+        const identity = resolveVariantIdentity(runDir, variantIndex);
+        let alreadyApproved = false;
+        let queueCommit: QueueCommitResult | { status: 'failed'; error: string } = {
+          status: 'noop',
+          branch: 'assets/queue',
+          attempts: 0,
+        };
+        const queueDeps = createDefaultQueueCommitDeps(deps.repoRoot, env);
+        const transaction = await makeCheckinFileLock(deps.repoRoot)(() =>
+          runAcceptedDislikedLifecycleTransaction({
             repoRoot: deps.repoRoot,
-          });
-        } catch (err) {
-          // Failed-push retry gap: a prior approval succeeded LOCALLY (so this
-          // re-approve is a no-op `already-approved`) but its best-effort durable
-          // queue-commit may never have pushed to assets/queue. Rather than
-          // return a bare 409 that can never re-attempt the push, load the stored
-          // manifest entry and fall through to re-run the queue-commit below so a
-          // retry actually persists the asset remotely.
-          if (err instanceof ApproveError && err.kind === 'already-approved') {
-            const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
-            if (stored === null) {
-              // The manifest entry is genuinely gone — nothing to re-queue.
-              reply.code(409);
-              return { error: err.kind, message: err.message };
-            }
-            entry = stored;
-            alreadyApproved = true;
-          } else {
-            throw err;
-          }
-        }
+            replacement: {
+              manifestKey: identity.variantId,
+              conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+              assetPath: identity.assetPath,
+            },
+            approve: () => {
+              try {
+                return approveVariant({
+                  runDir,
+                  variantIndex,
+                  manifestPath,
+                  catalogPath,
+                  publicAssetsDir,
+                  repoRoot: deps.repoRoot,
+                });
+              } catch (err) {
+                if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+                const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+                if (stored === null) throw err;
+                alreadyApproved = true;
+                return stored;
+              }
+            },
+            publish: async (entry, plan) => {
+              try {
+                queueCommit = await runQueueCommit(
+                  deps.repoRoot,
+                  [
+                    {
+                      assetPath: entry.assetPath,
+                      manifestKey: entry.spriteName,
+                      briefId: entry.briefId,
+                      variantIndex: entry.variantIndex,
+                    },
+                  ],
+                  { ...queueDeps, withCrossProcessLock: (run) => run() },
+                  {
+                    message: `chore(assets): approve ${entry.spriteName}`,
+                    removals: plan.removed.map((removal) => ({
+                      assetPath: removal.assetPath,
+                      manifestKey: removal.manifestKey,
+                    })),
+                    annotations: plan.annotationUpdates.map((update) =>
+                      update.delete === true
+                        ? update
+                        : {
+                            ...update,
+                            favorite: update.favorite ?? false,
+                            disliked: update.disliked ?? false,
+                            comment: update.comment ?? '',
+                            tombstone: update.tombstone ? { ...update.tombstone } : undefined,
+                          },
+                    ),
+                  },
+                );
+              } catch (error) {
+                if (plan.removed.length > 0) throw error;
+                const message = error instanceof Error ? error.message : String(error);
+                req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
+                queueCommit = { status: 'failed', error: message };
+              }
+            },
+          }),
+        );
+        return {
+          ...transaction.approved,
+          ...(alreadyApproved ? { alreadyApproved: true } : {}),
+          queueCommit,
+          lifecycle: {
+            removedCount: transaction.plan.removed.length,
+            retainedGroupCount: transaction.plan.retainedGroups.length,
+          },
+        };
       } catch (err) {
-        return mapApproveError(reply, err);
+        if (err instanceof ApproveError) return mapApproveError(reply, err);
+        reply.code(500);
+        return {
+          error: err instanceof QueueCommitError ? err.kind : 'approve-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
       } finally {
         hydrated?.cleanup();
       }
-
-      // Durably persist the approved asset onto the remote assets/queue branch so
-      // the edit survives across sessions/worktrees/processes. Runs on the fresh
-      // approval AND on an `already-approved` retry (above) so a previously-failed
-      // push can be re-attempted. Best-effort: the local approve already
-      // succeeded, so a queue-commit failure is surfaced in the response (and
-      // logged) rather than rolling back. The route already refuses on CI above,
-      // so the primitive's CI guard never fires here.
-      let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
-      try {
-        queueCommit = await runQueueCommit(
-          deps.repoRoot,
-          [
-            {
-              assetPath: entry.assetPath,
-              manifestKey: entry.spriteName,
-              briefId: entry.briefId,
-              variantIndex: entry.variantIndex,
-            },
-          ],
-          createDefaultQueueCommitDeps(deps.repoRoot, env),
-          { message: `chore(assets): approve ${entry.spriteName}` },
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
-        queueCommit = { status: 'failed', error: message };
-      }
-
-      return { ...entry, ...(alreadyApproved ? { alreadyApproved: true } : {}), queueCommit };
     });
   });
 

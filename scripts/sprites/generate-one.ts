@@ -73,6 +73,7 @@ import {
   selectReferences,
   SELECTOR_VERSION,
 } from './reference-selector.js';
+import { resolveDislikedManifestKeys } from './disliked-lifecycle.js';
 import { SpritePipelineTimingCollector, type MonotonicNow } from './pipeline-timing.js';
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
@@ -409,6 +410,14 @@ export async function generateSheetCore(
         isSafeGeneratedAssetPath(entry.assetPath) &&
         referenceAssetExists(resolveAssetPath(entry.assetPath)),
     );
+    const dislikedAnnotationKeys = new Set([
+      ...loadDislikedReferenceNames(),
+      ...loadPendingDislikedReferenceNames(),
+    ]);
+    const dislikedSpriteNames = resolveDislikedManifestKeys(
+      Object.fromEntries(presentCandidates.map((entry) => [entry.spriteName, entry])),
+      dislikedAnnotationKeys,
+    );
     const selection = selectReferences({
       candidates: presentCandidates,
       briefName: brief.name,
@@ -418,10 +427,7 @@ export async function generateSheetCore(
       // Union the durably-tracked dislikes with anything queued-but-not-yet
       // -promoted, so a sprite disliked moments ago cannot slip back in as a
       // reference before the reconciler catches up.
-      dislikedSpriteNames: new Set([
-        ...loadDislikedReferenceNames(),
-        ...loadPendingDislikedReferenceNames(),
-      ]),
+      dislikedSpriteNames,
     });
     if (selection.selected.length === 0) {
       if (presentCandidates.length === 0 && brief.type === 'icon') {

@@ -223,7 +223,7 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual(['good-v1-var-0']);
   });
 
-  it('excludes the brief itself by EXACT briefId but allows other variants of the concept', () => {
+  it('excludes the target brief and every same-normalized-concept alias', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'lamp-v2', type: 'item', spriteName: 'lamp-v2-var-0' }),
       entry({ briefId: 'lamp-v1', type: 'item', spriteName: 'lamp-v1-var-0' }),
@@ -235,8 +235,23 @@ describe('selectReferences — eligibility filtering', () => {
       count: 3,
       seed: SEED,
     });
-    // … excludes v2's own approved variant but CAN reference v1.
-    expect(names(result.selected)).toEqual(['lamp-v1-var-0']);
+    expect(names(result.selected)).toEqual([]);
+  });
+
+  it('keeps explicit design-name remaps distinct while excluding legacy npc aliases', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'npc-welcome-goon', type: 'character' }),
+      entry({ briefId: 'welcome-goon-v2', type: 'character' }),
+      entry({ briefId: 'angry-roomba-v2', type: 'character' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'welcome-goon-v3',
+      briefType: 'character',
+      count: 3,
+      seed: SEED,
+    });
+    expect(names(result.selected)).toEqual(['angry-roomba-v2-var-0']);
   });
 
   it('excludes entries whose assetPath is not under generated/', () => {

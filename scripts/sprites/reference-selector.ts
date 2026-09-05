@@ -22,6 +22,7 @@
  * candidates to those whose PNG exists on disk, then passes the survivors here.
  */
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import { hashStringToSeed, SeededRandom } from '../../src/shared/random.js';
 import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
@@ -115,7 +116,12 @@ function toEligible(
 ): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
-  if (entry.briefId === briefName) return null; // exact self — a v2 may still ref v1
+  if (
+    normalizeGeneratedSpriteConceptId(entry.briefId) ===
+    normalizeGeneratedSpriteConceptId(briefName)
+  ) {
+    return null;
+  }
   // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`
   // path. `startsWith('generated/')` alone would let `generated/../kenney/...`
   // through and resolve outside the generated tree.

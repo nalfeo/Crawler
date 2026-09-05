@@ -149,6 +149,100 @@ export interface ReconcileOptions {
 
 const DEFAULT_REMOTE = 'origin';
 const DEFAULT_QUEUE_BRANCH = 'assets/queue';
+const ANNOTATIONS_PATH = 'public/assets/generated/sprite-editor-annotations.json';
+
+interface LifecycleDeletionTombstone {
+  readonly manifestKey: string;
+  readonly assetPath: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
+}
+
+export interface AuthorizedLifecycleDeletion {
+  readonly tombstone: LifecycleDeletionTombstone;
+  readonly paths: readonly [string, string];
+}
+
+/**
+ * Select only complete shard+PNG deletion pairs authorized by a tracked
+ * lifecycle tombstone. Unrelated queue deletions remain ignored.
+ */
+export function selectAuthorizedLifecycleDeletions(
+  deletedPaths: readonly string[],
+  annotationsJson: string,
+): readonly AuthorizedLifecycleDeletion[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(annotationsJson);
+  } catch (error) {
+    throw new ReconcileError(
+      'invalid-state',
+      `${ANNOTATIONS_PATH} is invalid JSON on assets/queue: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const sprites =
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    typeof (parsed as { sprites?: unknown }).sprites === 'object' &&
+    (parsed as { sprites?: unknown }).sprites !== null &&
+    !Array.isArray((parsed as { sprites?: unknown }).sprites)
+      ? ((parsed as { sprites: Record<string, unknown> }).sprites ?? {})
+      : {};
+  const deleted = new Set(deletedPaths);
+  const authorized: AuthorizedLifecycleDeletion[] = [];
+  for (const [annotationKey, rawAnnotation] of Object.entries(sprites).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const tombstone =
+      typeof rawAnnotation === 'object' && rawAnnotation !== null
+        ? (rawAnnotation as { tombstone?: unknown }).tombstone
+        : undefined;
+    if (typeof tombstone !== 'object' || tombstone === null) continue;
+    const value = tombstone as Partial<LifecycleDeletionTombstone>;
+    if (
+      value.manifestKey !== annotationKey ||
+      typeof value.assetPath !== 'string' ||
+      !value.assetPath.startsWith('generated/') ||
+      value.assetPath.includes('\\') ||
+      value.assetPath
+        .split('/')
+        .some((segment) => segment === '' || segment === '.' || segment === '..') ||
+      typeof value.sourceRun !== 'string' ||
+      typeof value.variantIndex !== 'number' ||
+      !Number.isInteger(value.variantIndex) ||
+      value.variantIndex < 0
+    ) {
+      throw new ReconcileError(
+        'invalid-state',
+        `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
+      );
+    }
+    const shardPath = `public/assets/generated/entries/${value.manifestKey}.json`;
+    const assetPath = `public/assets/${value.assetPath}`;
+    const shardDeleted = deleted.has(shardPath);
+    const assetDeleted = deleted.has(assetPath);
+    if (shardDeleted !== assetDeleted) {
+      throw new ReconcileError(
+        'invalid-state',
+        `Lifecycle deletion for "${annotationKey}" is incomplete on assets/queue: shard and PNG must be deleted together.`,
+      );
+    }
+    if (shardDeleted) {
+      authorized.push({
+        tombstone: {
+          manifestKey: value.manifestKey,
+          assetPath: value.assetPath,
+          sourceRun: value.sourceRun,
+          variantIndex: value.variantIndex,
+        },
+        paths: [shardPath, assetPath],
+      });
+    }
+  }
+  return authorized;
+}
 const DEFAULT_PROMOTE_BRANCH = 'assets/promote';
 const DEFAULT_BASE_BRANCH = 'main';
 
@@ -786,7 +880,7 @@ export async function computeClosingIssueNumbers(
  * currently AGREES with `main` drops out of its own AM set, so the other source
  * always wins the overlay — and `main` flips between the two, every hour,
  * forever. Observed live on
- * `public/assets/generated/entries/gnome-boss-var-7.json`, where `assets/queue`
+ * `public/assets/generated/entries/<key>.json`, where `assets/queue`
  * and `assets/checkin-20260801-181522-7be968` held one blob while `main` and
  * `assets/checkin-20260731-204023-b1e0cb` held another; PRs #2704 and #2706
  * (one hour apart) carried an identical 100-file set with exactly inverse
@@ -1505,11 +1599,11 @@ export async function runReconcile(
     //    the merge-base of main and queue is still pre-squash, so a three-dot
     //    diff would still show the already-landed art forever (PR reopens in a
     //    loop). Two-dot correctly reports "queue's art already in main" ⇒ noop.
-    //    --diff-filter=AM limits to Added/Modified paths: files present on main
-    //    but ABSENT from queue (D = deleted-in-queue) are skipped deliberately —
-    //    they are art that reached main via an independent flow (e.g. the legacy
-    //    asset-PR) that queue never saw; promoting a D would revert them, which
-    //    is a data-loss bug. We only promote what queue positively contributes.
+    //    Added/Modified paths remain the normal contribution surface. Files
+    //    present on main but absent from queue (D = deleted-in-queue) are ignored
+    //    unless a tracked lifecycle tombstone authorizes the exact shard+PNG pair
+    //    and matches the current main shard. This keeps independent-flow art safe
+    //    while allowing explicit disliked-sprite transactions to converge.
     //    --no-renames is REQUIRED: git's rename heuristic would otherwise pair a
     //    file deleted-in-queue (a main-only asset, our intended D) with a
     //    content-identical file added-in-queue (genuinely-new queue art, our
@@ -1531,6 +1625,7 @@ export async function runReconcile(
     };
 
     let queueVsMainArt: readonly string[] = [];
+    let queueLifecycleDeletions: readonly AuthorizedLifecycleDeletion[] = [];
     if (queueRef !== null) {
       const delta = await mustGit(deps.exec, repoRoot, [
         'diff',
@@ -1546,6 +1641,92 @@ export async function runReconcile(
       // do not clobber a main-side change the queue never saw (see
       // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
       queueVsMainArt = await keepPromotable(queueRef, parseNameOnly(delta));
+
+      const deleted = await mustGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-only',
+        '--diff-filter=D',
+        baseRef,
+        queueRef,
+        '--',
+        'public/assets/generated/',
+      ]);
+      const deletedPaths = parseNameOnly(deleted);
+      if (deletedPaths.length > 0) {
+        const annotations = await runGit(deps.exec, repoRoot, [
+          'show',
+          `${queueRef}:${ANNOTATIONS_PATH}`,
+        ]);
+        let candidates: readonly AuthorizedLifecycleDeletion[] = [];
+        if (annotations.code === 0 && annotations.stdout.trim() !== '') {
+          let annotationsAreJson = true;
+          try {
+            JSON.parse(annotations.stdout);
+          } catch {
+            // An unreadable audit cannot authorize deletion. Preserve the
+            // reconciler's historical safe behavior: ignore queue-side deletes.
+            annotationsAreJson = false;
+          }
+          if (annotationsAreJson) {
+            candidates = selectAuthorizedLifecycleDeletions(deletedPaths, annotations.stdout);
+          }
+        }
+        const annotationWillLand = queueVsMainArt.includes(ANNOTATIONS_PATH);
+        let baseAnnotations = '';
+        if (!annotationWillLand && candidates.length > 0) {
+          const current = await runGit(deps.exec, repoRoot, [
+            'show',
+            `${baseRef}:${ANNOTATIONS_PATH}`,
+          ]);
+          if (current.code === 0) baseAnnotations = current.stdout;
+        }
+        const baseAuthorized = new Set(
+          baseAnnotations === ''
+            ? []
+            : selectAuthorizedLifecycleDeletions(
+                candidates.flatMap((candidate) => candidate.paths),
+                baseAnnotations,
+              ).map((candidate) => candidate.tombstone.manifestKey),
+        );
+        const accepted: AuthorizedLifecycleDeletion[] = [];
+        for (const candidate of candidates) {
+          if (!annotationWillLand && !baseAuthorized.has(candidate.tombstone.manifestKey)) {
+            for (const deletionPath of candidate.paths) withheld.add(deletionPath);
+            continue;
+          }
+          const shard = await runGit(deps.exec, repoRoot, [
+            'show',
+            `${baseRef}:${candidate.paths[0]}`,
+          ]);
+          let entry: {
+            readonly spriteName?: unknown;
+            readonly assetPath?: unknown;
+            readonly sourceRun?: unknown;
+            readonly variantIndex?: unknown;
+          };
+          try {
+            entry = JSON.parse(shard.stdout) as typeof entry;
+          } catch {
+            entry = {};
+          }
+          const tombstone = candidate.tombstone;
+          if (
+            shard.code !== 0 ||
+            entry.spriteName !== tombstone.manifestKey ||
+            entry.assetPath !== tombstone.assetPath ||
+            entry.sourceRun !== tombstone.sourceRun ||
+            entry.variantIndex !== tombstone.variantIndex
+          ) {
+            throw new ReconcileError(
+              'invalid-state',
+              `Lifecycle tombstone for "${tombstone.manifestKey}" does not match the current main shard; refusing stale deletion.`,
+            );
+          }
+          accepted.push(candidate);
+        }
+        queueLifecycleDeletions = accepted;
+      }
     }
 
     // 3b. Compute art deltas for each orphaned branch (two-dot AM only, art
@@ -1580,7 +1761,11 @@ export async function runReconcile(
       if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
     }
 
-    if (queueVsMainArt.length === 0 && orphanedPathsByBranch.length === 0) {
+    if (
+      queueVsMainArt.length === 0 &&
+      queueLifecycleDeletions.length === 0 &&
+      orphanedPathsByBranch.length === 0
+    ) {
       // Queue's art surface already matches main and no orphaned branches
       // contribute new art. This noop path does NOT reset assets/queue; any
       // safe retirement already happened in the leased tidy-up step above.
@@ -1604,14 +1789,21 @@ export async function runReconcile(
       await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
 
       // Overlay ONLY the art surface from the queue tip. `git checkout <ref> --
-      // <specific-paths>` takes exactly those paths from queue (all of which the
-      // --diff-filter=AM above guarantees exist in queueRef — no D/deleted paths
-      // are in the list), leaving everything else in main's worktree untouched.
+      // <specific-paths>` takes exactly the AM paths from queue, leaving
+      // everything else in main's worktree untouched. Separately authorized
+      // lifecycle deletions are applied immediately afterward.
       // This prevents reverting art that reached main via an independent flow
       // (e.g. the legacy asset-PR) without ever being committed to the queue.
       if (queueVsMainArt.length > 0 && queueRef !== null) {
         await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
         await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
+      }
+      if (queueLifecycleDeletions.length > 0) {
+        await mustGit(deps.exec, worktree, [
+          'rm',
+          '--',
+          ...queueLifecycleDeletions.flatMap((deletion) => deletion.paths),
+        ]);
       }
 
       // Also overlay art from orphaned checkin branches. Each branch contributes

@@ -24,7 +24,6 @@ const SELECTED_GROUP_KEYS = [
   'welcome-room-crate-stack-var-3',
   'welcome-room-desk-var-0',
   'welcome-room-exit-sign-var-0',
-  'welcome-room-floor-plate-cable-run-var-4',
   'welcome-room-kitchenette-var-0',
   'welcome-room-lounge-stool-var-1',
   'welcome-room-show-poster-var-0',

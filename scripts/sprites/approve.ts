@@ -1564,18 +1564,23 @@ export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntr
       `Shard ${shardPath} is not parseable: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // Resolve and validate the PNG before removing the shard. A malformed
+  // assetPath must leave both files untouched.
+  const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
+  const assetAbsPath = path.join(options.publicAssetsDir, ...entry.assetPath.split('/'));
+  if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
+    throw new UnapproveError(
+      'manifest-invalid',
+      `Variant "${options.variantId}" has unsafe assetPath "${entry.assetPath}".`,
+    );
+  }
+
   fs.unlinkSync(shardPath);
 
-  // 3. Delete the on-disk PNG when requested.
+  // 3. Delete the on-disk PNG when requested. The manifest assetPath is the
+  // authority: approved equipment and future nested assets do not necessarily
+  // live at generated/<variantId>.png.
   if (deleteAsset) {
-    const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
-    const assetAbsPath = path.join(assetGeneratedDir, `${options.variantId}.png`);
-    // Safety guard: ensure the resolved path stays inside generated/ to prevent
-    // a variantId like `../../etc/passwd` from traversing outside the tree.
-    if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
-      // Skip deletion — the shard was already removed above.
-      return entry;
-    }
     if (fs.existsSync(assetAbsPath)) {
       fs.unlinkSync(assetAbsPath);
     }

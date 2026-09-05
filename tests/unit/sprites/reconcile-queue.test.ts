@@ -41,6 +41,7 @@ import {
   ReconcileError,
   runReconcile,
   scanOrphanedCheckinBranches,
+  selectAuthorizedLifecycleDeletions,
   tidyUpLandedPromotion,
   type ReconcileDeps,
 } from '../../../scripts/sprites/reconcile-queue.js';
@@ -107,6 +108,60 @@ describe('assertArtSurfaceOnly', () => {
       expect((err as ReconcileError).kind).toBe('untrusted-diff');
       expect((err as ReconcileError).message).toContain('src/core/combat/damage.ts');
     }
+  });
+});
+
+describe('selectAuthorizedLifecycleDeletions', () => {
+  const annotations = JSON.stringify({
+    version: 1,
+    sprites: {
+      'welcome-goon-var-3': {
+        disliked: true,
+        tombstone: {
+          manifestKey: 'welcome-goon-var-3',
+          conceptId: 'welcome-goon',
+          assetPath: 'generated/welcome-goon-var-3.png',
+          sourceRun: 'generated/runs/welcome-goon-v2/run-a',
+          variantIndex: 3,
+          annotationKeys: ['welcome-goon-v2-var-3'],
+        },
+      },
+    },
+  });
+
+  it('authorizes only a complete tombstoned shard and PNG pair', () => {
+    expect(
+      selectAuthorizedLifecycleDeletions(
+        [
+          'public/assets/generated/entries/welcome-goon-var-3.json',
+          'public/assets/generated/welcome-goon-var-3.png',
+          'public/assets/generated/unrelated.png',
+        ],
+        annotations,
+      ),
+    ).toEqual([
+      {
+        tombstone: {
+          manifestKey: 'welcome-goon-var-3',
+          assetPath: 'generated/welcome-goon-var-3.png',
+          sourceRun: 'generated/runs/welcome-goon-v2/run-a',
+          variantIndex: 3,
+        },
+        paths: [
+          'public/assets/generated/entries/welcome-goon-var-3.json',
+          'public/assets/generated/welcome-goon-var-3.png',
+        ],
+      },
+    ]);
+  });
+
+  it('rejects an incomplete tombstoned deletion', () => {
+    expect(() =>
+      selectAuthorizedLifecycleDeletions(
+        ['public/assets/generated/entries/welcome-goon-var-3.json'],
+        annotations,
+      ),
+    ).toThrow(/shard and PNG must be deleted together/);
   });
 });
 
@@ -857,6 +912,8 @@ function seedQueueWithArt(
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
+        sourceRun: `generated/runs/${key}/run-0`,
+        variantIndex: 0,
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -961,6 +1018,8 @@ function addArtDirectlyToMain(
         assetPath: `generated/${key}.png`,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
+        sourceRun: `generated/runs/${key}/run-0`,
+        variantIndex: 0,
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -1466,6 +1525,58 @@ describe('runReconcile (real git)', () => {
         ),
       ),
     ).toEqual({ version: 1, sprites: annotations });
+  });
+
+  it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'welcome-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-delete-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'welcome-goon',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue lifecycle deletion');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      'public/assets/generated/sprite-editor-annotations.json',
+      `public/assets/generated/${key}.png`,
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(() =>
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toThrow();
+    expect(() =>
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).toThrow();
   });
 
   it('(d) returns to a no-op after the promote PR squash-merges into main', async () => {

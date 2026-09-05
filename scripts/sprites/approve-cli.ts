@@ -25,6 +25,7 @@ import {
   ApproveError,
   loadApprovedEntry,
   loadApprovedFrameSequenceEntry,
+  resolveVariantIdentity,
   type IconBatchEntry,
   type ManifestEntry,
 } from './approve.js';
@@ -35,11 +36,14 @@ import {
   resolvePublicationDurableStore,
 } from './run-durability.js';
 import { createDefaultQueueCommitDeps } from './queue-commit-runtime.js';
+import { makeCheckinFileLock } from './checkin-runtime.js';
 import { createEnrichTagsProvider, type EnrichTagsRequest } from './enrich-tags.js';
 import { writeShard } from './generated-shards.js';
 import { formatJsonFilesSync } from './catalog-io.js';
 import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
 import { loadEnvLocal } from './sidecar/env-local.js';
+import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
+import { runAcceptedDislikedLifecycleTransaction } from './disliked-lifecycle.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -364,101 +368,197 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       return 0;
     }
 
-    let entry: ManifestEntry;
-    let alreadyApproved = false;
-    if (parsed.sequence) {
-      try {
-        entry = approveFrameSequence({
-          runDir,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-          repoRoot,
-        });
-        process.stdout.write(
-          `Approved ${entry.briefId} frame sequence\n` +
-            `  asset: ${entry.assetPath}\n` +
-            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-            `  source: ${entry.sourceRun}\n` +
-            `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
-        );
-      } catch (err) {
-        // Mirror the `--variant` retry dance below: an exact-duplicate
-        // re-approve is NOT a terminal failure for durability. The manifest
-        // entry already exists, but its earlier best-effort queue-commit may
-        // never have landed on assets/queue. Load the stored entry and fall
-        // through to the SAME queue-commit block below so re-running the
-        // approve genuinely RETRIES the durable push — which is exactly what
-        // the failure warning tells the operator to do. Before this fix the
-        // CLI exited here, never reaching queue-commit, so that advice was
-        // false for `--sequence` (round-1 code review finding).
-        if (err instanceof ApproveError && err.kind === 'already-approved') {
-          const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
-          if (!existing) {
-            process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
-            return exitCodeForError(err.kind);
-          }
-          entry = existing;
-          alreadyApproved = true;
-          process.stdout.write(
-            `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
-              `  asset: ${entry.assetPath}\n`,
-          );
-        } else if (err instanceof ApproveError) {
-          process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
-          return exitCodeForError(err.kind);
-        } else {
-          throw err;
-        }
-      }
-    } else {
+    if (!parsed.sequence) {
       const variantIndex = parsed.variantIndex!;
+      let identity;
       try {
-        entry = approveVariant({
-          runDir,
-          variantIndex,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-          repoRoot,
-          allowHardBlocked: parsed.allowHardBlocked,
-        });
-        process.stdout.write(
-          `Approved ${entry.briefId} variant ${entry.variantIndex}\n` +
-            `  asset: ${entry.assetPath}\n` +
-            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-            `  source: ${entry.sourceRun}\n` +
-            `  sensors: ${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''}\n`,
-        );
-      } catch (err) {
-        // An exact-duplicate re-approve is NOT a terminal failure for durability:
-        // the entry already exists in the manifest, but its earlier best-effort
-        // queue-commit may never have landed on assets/queue. Load the stored
-        // entry and fall through to the SAME queue-commit block below so re-running
-        // the approve genuinely RETRIES the durable push — which is exactly what the
-        // failure warning tells the operator to do. Before this the CLI exited here,
-        // never reaching queue-commit, so that advice was false (concern #6).
-        if (err instanceof ApproveError && err.kind === 'already-approved') {
-          const existing = loadApprovedEntry({
+        identity = resolveVariantIdentity(runDir, variantIndex);
+      } catch {
+        // Dependency-injected callers may replace approveVariant without
+        // materializing a run directory. The real implementation cannot
+        // approve when identity resolution fails, so this compatibility path
+        // never weakens production atomicity.
+        let fallbackEntry: ManifestEntry;
+        let fallbackAlreadyApproved = false;
+        try {
+          fallbackEntry = approveVariant({
             runDir,
             variantIndex,
             manifestPath,
+            catalogPath,
+            publicAssetsDir,
+            repoRoot,
+            allowHardBlocked: parsed.allowHardBlocked,
           });
-          if (!existing) {
-            // No stored entry to retry against — nothing to make durable; keep the
-            // original already-approved error + exit code.
-            process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
-            return exitCodeForError(err.kind);
-          }
-          entry = existing;
-          alreadyApproved = true;
-          process.stdout.write(
-            `Already approved ${entry.briefId} variant ${entry.variantIndex} \u2014 retrying durable queue-commit\n` +
-              `  asset: ${entry.assetPath}\n`,
-          );
-        } else {
-          throw err;
+        } catch (err) {
+          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+          const existing = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+          if (existing === null) throw err;
+          fallbackEntry = existing;
+          fallbackAlreadyApproved = true;
         }
+        if (!fallbackAlreadyApproved) {
+          await enrichEntryTags(fallbackEntry, path.join(publicAssetsDir, 'generated'), repoRoot);
+        }
+        if (process.env.CI === undefined) {
+          const result = await runQueueCommit(
+            repoRoot,
+            [
+              {
+                assetPath: fallbackEntry.assetPath,
+                manifestKey: fallbackEntry.spriteName,
+                briefId: fallbackEntry.briefId,
+                variantIndex: fallbackEntry.variantIndex,
+              },
+            ],
+            createDefaultQueueCommitDeps(repoRoot),
+            { message: `chore(assets): approve ${fallbackEntry.spriteName}` },
+          );
+          process.stdout.write(
+            result.status === 'committed'
+              ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
+              : `  queued: no-op (${result.branch} already up to date)\n`,
+          );
+        }
+        return 0;
+      }
+      let alreadyApproved = false;
+      const transaction = await makeCheckinFileLock(repoRoot)(async () => {
+        const queueDeps = createDefaultQueueCommitDeps(repoRoot);
+        return runAcceptedDislikedLifecycleTransaction({
+          repoRoot,
+          replacement: {
+            manifestKey: identity.variantId,
+            conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+            assetPath: identity.assetPath,
+          },
+          approve: () => {
+            try {
+              return approveVariant({
+                runDir,
+                variantIndex,
+                manifestPath,
+                catalogPath,
+                publicAssetsDir,
+                repoRoot,
+                allowHardBlocked: parsed.allowHardBlocked,
+              });
+            } catch (err) {
+              if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+              const existing = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+              if (existing === null) throw err;
+              alreadyApproved = true;
+              return existing;
+            }
+          },
+          publish: async (entry, plan) => {
+            if (!alreadyApproved) {
+              await enrichEntryTags(entry, path.join(publicAssetsDir, 'generated'), repoRoot);
+            }
+            if (process.env.CI === undefined) {
+              try {
+                const result = await runQueueCommit(
+                  repoRoot,
+                  [
+                    {
+                      assetPath: entry.assetPath,
+                      manifestKey: entry.spriteName,
+                      briefId: entry.briefId,
+                      variantIndex: entry.variantIndex,
+                    },
+                  ],
+                  { ...queueDeps, withCrossProcessLock: (run) => run() },
+                  {
+                    message: `chore(assets): approve ${entry.spriteName}`,
+                    removals: plan.removed.map((removal) => ({
+                      assetPath: removal.assetPath,
+                      manifestKey: removal.manifestKey,
+                    })),
+                    annotations: plan.annotationUpdates.map((update) =>
+                      update.delete === true
+                        ? update
+                        : {
+                            ...update,
+                            favorite: update.favorite ?? false,
+                            disliked: update.disliked ?? false,
+                            comment: update.comment ?? '',
+                            tombstone: update.tombstone ? { ...update.tombstone } : undefined,
+                          },
+                    ),
+                  },
+                );
+                process.stdout.write(
+                  result.status === 'committed'
+                    ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
+                    : `  queued: no-op (${result.branch} already up to date)\n`,
+                );
+              } catch (error) {
+                if (plan.removed.length > 0) throw error;
+                process.stderr.write(
+                  `⚠ queue-commit failed — this approval is LOCAL-ONLY. Re-run to retry: ${
+                    error instanceof Error ? error.message : String(error)
+                  }\n`,
+                );
+              }
+            }
+          },
+        });
+      });
+      const entry = transaction.approved;
+      process.stdout.write(
+        `${alreadyApproved ? 'Already approved' : 'Approved'} ${entry.briefId} variant ${entry.variantIndex}\n` +
+          `  asset: ${entry.assetPath}\n` +
+          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+          `  source: ${entry.sourceRun}\n` +
+          `  lifecycle: removed ${transaction.plan.removed.length}, retained ${transaction.plan.retainedGroups.length} all-disliked group(s)\n`,
+      );
+      return 0;
+    }
+
+    let entry: ManifestEntry;
+    let alreadyApproved = false;
+    try {
+      entry = approveFrameSequence({
+        runDir,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+      });
+      process.stdout.write(
+        `Approved ${entry.briefId} frame sequence\n` +
+          `  asset: ${entry.assetPath}\n` +
+          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+          `  source: ${entry.sourceRun}\n` +
+          `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
+      );
+    } catch (err) {
+      // Mirror the `--variant` retry dance below: an exact-duplicate
+      // re-approve is NOT a terminal failure for durability. The manifest
+      // entry already exists, but its earlier best-effort queue-commit may
+      // never have landed on assets/queue. Load the stored entry and fall
+      // through to the SAME queue-commit block below so re-running the
+      // approve genuinely RETRIES the durable push — which is exactly what
+      // the failure warning tells the operator to do. Before this fix the
+      // CLI exited here, never reaching queue-commit, so that advice was
+      // false for `--sequence` (round-1 code review finding).
+      if (err instanceof ApproveError && err.kind === 'already-approved') {
+        const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
+        if (!existing) {
+          process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+          return exitCodeForError(err.kind);
+        }
+        entry = existing;
+        alreadyApproved = true;
+        process.stdout.write(
+          `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
+            `  asset: ${entry.assetPath}\n`,
+        );
+      } else if (err instanceof ApproveError) {
+        process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
+        return exitCodeForError(err.kind);
+      } else {
+        throw err;
       }
     }
 

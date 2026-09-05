@@ -26,6 +26,7 @@ import path from 'node:path';
 import type { Exec } from './checkin.js';
 import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
 import type { QueueCommitDeps, SpriteAnnotationUpdate } from './queue-commit.js';
+import { shardPathForKey } from './generated-shards.js';
 
 /**
  * Hard deadline for any single git subprocess a queue-commit spawns. A
@@ -76,10 +77,18 @@ export async function mergeSpriteAnnotationUpdates(
     };
   }
   for (const update of updates) {
+    if (update.delete === true) {
+      delete document.sprites[update.key];
+      continue;
+    }
     document.sprites[update.key] = {
       favorite: update.favorite,
       disliked: update.disliked,
       comment: update.comment,
+      ...(update.sourceRun !== undefined ? { sourceRun: update.sourceRun } : {}),
+      ...(update.variantIndex !== undefined ? { variantIndex: update.variantIndex } : {}),
+      ...(update.tombstone !== undefined ? { tombstone: update.tombstone } : {}),
+      ...(update.reconciliation !== undefined ? { reconciliation: update.reconciliation } : {}),
     };
   }
   mkdirSync(path.dirname(target), { recursive: true });
@@ -134,6 +143,15 @@ export function createDefaultQueueCommitDeps(
   return {
     exec,
     copyArtSurface,
+    removeArtSurface: async (worktree, removals) => {
+      const generatedDir = path.join(worktree, 'public', 'assets', 'generated');
+      for (const removal of removals) {
+        rmSync(shardPathForKey(generatedDir, removal.manifestKey), { force: true });
+        rmSync(path.join(worktree, 'public', 'assets', ...removal.assetPath.split('/')), {
+          force: true,
+        });
+      }
+    },
     mergeSpriteAnnotations: mergeSpriteAnnotationUpdates,
     copyBriefFiles: async (sourceRoot, worktree, briefPaths) => {
       for (const briefPath of briefPaths) {

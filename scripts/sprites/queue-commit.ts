@@ -80,9 +80,19 @@ export interface QueueCommitResult {
 /** One normalized Sprite Editor curation update. */
 export interface SpriteAnnotationUpdate {
   readonly key: string;
-  readonly favorite: boolean;
-  readonly disliked: boolean;
-  readonly comment: string;
+  readonly delete?: boolean;
+  readonly favorite?: boolean;
+  readonly disliked?: boolean;
+  readonly comment?: string;
+  readonly sourceRun?: string;
+  readonly variantIndex?: number;
+  readonly tombstone?: Readonly<Record<string, unknown>>;
+  readonly reconciliation?: Readonly<Record<string, unknown>>;
+}
+
+export interface QueueCommitRemoval {
+  readonly assetPath: string;
+  readonly manifestKey: string;
 }
 
 export interface QueueCommitDeps {
@@ -98,6 +108,11 @@ export interface QueueCommitDeps {
     srcRepoRoot: string,
     destRepoRoot: string,
     assets: readonly CheckinAsset[],
+  ) => Promise<void>;
+  /** Remove explicitly authorized lifecycle assets from the fresh queue tip. */
+  readonly removeArtSurface?: (
+    worktree: string,
+    removals: readonly QueueCommitRemoval[],
   ) => Promise<void>;
   /**
    * Copy brief YAML files from `sourceRoot` into the worktree at the same
@@ -176,6 +191,8 @@ export interface QueueCommitOptions {
    * editor saves survive every CAS retry.
    */
   readonly annotations?: readonly SpriteAnnotationUpdate[];
+  /** Destructive lifecycle changes explicitly authorized by a dry-run plan. */
+  readonly removals?: readonly QueueCommitRemoval[];
   /**
    * Narrow CI capability for the trusted asset-request publisher, or the
    * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
@@ -319,6 +336,7 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
       );
     }
     seen.add(update.key);
+    if (update.delete === true) continue;
     if (
       typeof update.favorite !== 'boolean' ||
       typeof update.disliked !== 'boolean' ||
@@ -408,11 +426,15 @@ function generatedDeletionRepairCommand(): string {
  * is corruption until a deliberately invoked, source-bound maintenance recovery
  * proves otherwise; never auto-heal it by rewriting the branch mid-ingestion.
  */
-export function assertNoGeneratedQueueDeletions(paths: readonly string[]): void {
+export function assertNoGeneratedQueueDeletions(
+  paths: readonly string[],
+  allowedPaths: ReadonlySet<string> = new Set(),
+): void {
   const assetPaths = paths.filter(
     (path) =>
-      /^public\/assets\/generated\/.+\.png$/u.test(path) ||
-      /^public\/assets\/generated\/entries\/.+\.json$/u.test(path),
+      !allowedPaths.has(path) &&
+      (/^public\/assets\/generated\/.+\.png$/u.test(path) ||
+        /^public\/assets\/generated\/entries\/.+\.json$/u.test(path)),
   );
   if (assetPaths.length === 0) return;
   throw new QueueCommitError(
@@ -457,6 +479,21 @@ export async function runQueueCommit(
   assertSafeBriefPaths(briefs);
   const annotations = options.annotations ?? [];
   assertSafeAnnotationUpdates(annotations);
+  const removals = options.removals ?? [];
+  assertSafeAssetPaths(
+    removals.map((removal) => ({
+      assetPath: removal.assetPath,
+      manifestKey: removal.manifestKey,
+      briefId: null,
+      variantIndex: null,
+    })),
+  );
+  if (removals.length > 0 && deps.removeArtSurface === undefined) {
+    throw new QueueCommitError(
+      'invalid-asset-path',
+      'Lifecycle removals were provided but removeArtSurface is not wired.',
+    );
+  }
 
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';
@@ -466,7 +503,12 @@ export async function runQueueCommit(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  if (assets.length === 0 && briefs.length === 0 && annotations.length === 0) {
+  if (
+    assets.length === 0 &&
+    briefs.length === 0 &&
+    annotations.length === 0 &&
+    removals.length === 0
+  ) {
     return { status: 'noop', branch: queueBranch, attempts: 0 };
   }
 
@@ -538,8 +580,15 @@ export async function runQueueCommit(
               `Could not inspect ${queueBranch} for generated-path deletions: ${deleted.stderr || deleted.stdout}`,
             );
           }
+          const allowedDeletionPaths = new Set(
+            removals.flatMap((removal) => [
+              `public/assets/${removal.assetPath}`,
+              `public/assets/generated/entries/${removal.manifestKey}.json`,
+            ]),
+          );
           assertNoGeneratedQueueDeletions(
             deleted.stdout.split(/\r?\n/).filter((path) => path.trim() !== ''),
+            allowedDeletionPaths,
           );
         }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
@@ -629,6 +678,9 @@ export async function runQueueCommit(
         // Copy each asset's PNG + its manifest shard onto the tip. The
         // aggregate manifest and sprite-catalog rows are derived, never staged.
         await deps.copyArtSurface(sourceRoot, worktree, assets);
+        if (removals.length > 0) {
+          await deps.removeArtSurface!(worktree, removals);
+        }
         // Fixed allowlist: only the generated art surface (PNGs + shards) can
         // ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
