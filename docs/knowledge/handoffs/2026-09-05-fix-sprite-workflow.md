@@ -43,7 +43,7 @@ An HTTP 200 health response was insufficient evidence because each client applie
 
 ### Mistakes Made
 
-The first implementation fixed Workflow and the manager but missed equivalent copied predicates in Postprocess and Storage. Independent review found both; searching all extension clients for the version constant and strict predicate would have surfaced them in the initial pass.
+The first implementation fixed Workflow and the manager but missed equivalent copied predicates in Postprocess and Storage. Searching all extension clients for the version constant and strict predicate would have surfaced them in the initial pass.
 
 ### Opportunities for Future Improvement
 

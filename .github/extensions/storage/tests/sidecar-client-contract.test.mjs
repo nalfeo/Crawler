@@ -108,3 +108,22 @@ test('probeHealth reports state=down for a stale incompatible sidecar version', 
   const health = await client.probeHealth();
   assert.equal(health.state, 'down');
 });
+
+test('probeHealth reports state=down when the sidecar omits its repoRoot', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: 'C:/repo',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ok',
+        version: EXPECTED_VERSION,
+        storeBackend: 'azure-blob',
+      }),
+    }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
+  assert.equal(health.repoRoot, null);
+});
