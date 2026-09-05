@@ -1938,9 +1938,15 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(script).not.toContain('contains($marker)');
     }
     // Both jobs that read the lease must actually have the library on disk.
+    // The asymmetry is deliberate. `release-unstarted-reservation` only ever
+    // needs the lease script, so its cone is pinned exactly -- widening it
+    // should be a conscious edit here. `reserve` additionally invokes the
+    // intake selector, so its cone legitimately carries more entries and is
+    // only checked for the lease path; the sparse-checkout coverage test above
+    // is what proves the rest of that cone is complete.
     expect(
       readSparseCheckoutPaths(workflow.jobs['release-unstarted-reservation']?.steps?.[0]),
-    ).toEqual(['scripts/agent']);
+    ).toStrictEqual(['scripts/agent']);
     expect(readSparseCheckoutPaths(workflow.jobs.reserve?.steps?.[0])).toContain('scripts/agent');
   });
 
