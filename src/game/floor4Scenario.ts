@@ -5,20 +5,21 @@
  * Slice 3 makes the wave windows physical: each act arms immutable, seeded wave
  * manifests, `arenaDirectorSystem` releases them at the fixed feed gates on the
  * act clock, a live-enemy cap and bounded FIFO spawn debt bound the arena, and
- * the wave-window boundary *cuts* whatever survived. Headliners, the Green Room
- * transaction and shops remain later slices, so the rehearsal hand-off (headline
- * windows auto-clear, intermissions auto-advance) is retained underneath.
+ * the wave-window boundary *cuts* whatever survived. Headliners and Green Room
+ * visits are physical/public progression gates; sponsor purchases remain later
+ * slices.
  *
  * Key contracts:
  *
- * - **The stairs stay gated by `INTERMISSION(5)` (FR8.3).** Slice 2 exposes the
- *   same phase-gated `confirmFloor4StairDescend` contract used by later slices.
+ * - **The stairs stay gated by the terminal intermission (FR8.3).** Slice 2
+ *   exposes the same phase-gated `confirmFloor4GreenRoomInteraction` contract used by
+ *   later slices.
  * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
  *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
  *   generic floor HUD timer.
- * - **Rehearsal intermissions auto-advance.** Until Green Room/shop slices ship,
- *   intermissions hold briefly then advance automatically, with final act
- *   intermission auto-transitioning to VICTORY.
+ * - **Intermissions require public confirmation.** The director opens each
+ *   Green Room visit, then waits until the player reaches that SAFE room and
+ *   confirms either the next act or the terminal stairs.
  * - **Waves never touch `world.rng` (FR3.2/FR7.1/FR7.4).** Manifests come from
  *   per-wave derived streams in `src/shared/floor4-waves.ts`; releasing,
  *   debting and cutting consume no randomness at all, so cap pressure and
@@ -69,12 +70,12 @@ import {
   buildFloor4ActWaveManifests,
   type Floor4WaveScheduleConfig,
 } from '../shared/floor4-waves.js';
-import { BiomeType, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
+import { BiomeType, RoomRole, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { TeamId } from '../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, TeamId } from '../shared/constants.js';
 import {
   ABILITY_MILESTONE_LEVELS,
   formForLevel,
@@ -120,6 +121,14 @@ export const FLOOR4_STALL_BACKSTOP_GOAL_ID = 'floor4-stall-backstop';
 
 const FLOOR4_PLAYER_STAT_SOURCE_ID = 'floor4-manifest-player';
 const FLOOR4_ACTS: readonly Floor4ActIndex[] = [1, 2, 3, 4, 5];
+/** Semantic state of the one public Floor 4 Green Room exit affordance. */
+export interface Floor4GreenRoomExitMarker {
+  readonly positionFt: { readonly x: number; readonly y: number };
+  readonly radiusFt: number;
+  /** The act this continuation opens, or `null` on the terminal exit. */
+  readonly nextAct: Floor4ActIndex | null;
+}
+
 const FLOOR4_KEPT_COMPANION_LEVEL: number =
   ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
 
@@ -329,8 +338,11 @@ function floor4ArenaState(world: GameWorld): Floor4ArenaState | undefined {
 }
 
 function nextFloor4Act(act: Floor4ActIndex): Floor4ActIndex | null {
-  const next = FLOOR4_ACTS[FLOOR4_ACTS.indexOf(act) + 1];
-  return next ?? null;
+  const next = act + 1;
+  if (next > getFloor4Config().phase.actCount || !FLOOR4_ACTS.includes(next as Floor4ActIndex)) {
+    return null;
+  }
+  return next as Floor4ActIndex;
 }
 
 function floor4ActEndMs(act: Floor4ActIndex): number {
@@ -1287,19 +1299,6 @@ export function arenaDirectorSystem(world: GameWorld): void {
           phaseConfig.intermissionMs - state.phaseElapsedMs,
         );
       }
-      if (state.phaseElapsedMs < phaseConfig.intermissionMs) {
-        break;
-      }
-      if (nextAct) {
-        recordFloor4PhaseTransition(
-          world,
-          state,
-          { kind: 'WAVES', act: nextAct },
-          'slice2-auto-green-room-exit',
-        );
-      } else {
-        recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'slice2-auto-stairs');
-      }
       break;
     }
     case 'OVERTIME': {
@@ -1343,13 +1342,121 @@ export function arenaDirectorSystem(world: GameWorld): void {
 }
 
 /**
- * Floor 4's stairs are gated on `INTERMISSION(5)` (FR8.3). That phase arrives
- * with the final Green Room transaction. Slice 2 exposes the phase check even
- * though its rehearsal director auto-takes those stairs after a short hold.
+ * The single public Floor 4 exit affordance.
+ *
+ * During every intermission the authored Green Room carries exactly one marker,
+ * and confirming it either opens the next act (`nextAct`) or ends the broadcast
+ * (`nextAct === null`). Returns `null` outside an intermission.
+ *
+ * This one projection is what the scene renders and prompts from
+ * (`getStairMarkerState` / `getStairConfirmation` in `scenarioDefinitions.ts`)
+ * AND what the AI auto-driver confirms through, so the AI can never advance a
+ * phase from a position the human prompt would not offer.
  */
-export function confirmFloor4StairDescend(world?: GameWorld): boolean {
-  const phase = world ? floor4ArenaState(world)?.phase : undefined;
-  return phase?.kind === 'INTERMISSION' && phase.act === 5;
+export function getFloor4GreenRoomExitMarker(world: GameWorld): Floor4GreenRoomExitMarker | null {
+  const phase = floor4ArenaState(world)?.phase;
+  const floorMap = world.floorMap;
+  if (phase?.kind !== 'INTERMISSION' || !floorMap) {
+    return null;
+  }
+  const greenRoom = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+  if (!greenRoom) {
+    return null;
+  }
+  const tileSizeFt = floorMap.config.tileSizeFt;
+  return {
+    positionFt: {
+      x: (greenRoom.bounds.x + greenRoom.bounds.width / 2) * tileSizeFt,
+      y: (greenRoom.bounds.y + greenRoom.bounds.height / 2) * tileSizeFt,
+    },
+    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    nextAct: nextFloor4Act(phase.act),
+  };
+}
+
+/**
+ * True while the player stands inside the marker's interaction radius — the
+ * exact predicate `MainGameScene` uses before offering the "Descend" prompt, so
+ * the confirmation can never accept a position the prompt would have withheld.
+ */
+function isPlayerAtFloor4GreenRoomExit(
+  world: GameWorld,
+  marker: Floor4GreenRoomExitMarker,
+  playerEid?: number,
+): boolean {
+  const eid = playerEid ?? query(world.ecs, [Player, Position])[0];
+  if (eid === undefined) {
+    return false;
+  }
+  const x = world.stores.position.x[eid];
+  const y = world.stores.position.y[eid];
+  if (x === undefined || y === undefined) {
+    return false;
+  }
+  return Math.hypot(x - marker.positionFt.x, y - marker.positionFt.y) <= marker.radiusFt;
+}
+
+function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
+  const state = floor4ArenaState(world);
+  const marker = getFloor4GreenRoomExitMarker(world);
+  if (
+    !state ||
+    marker === null ||
+    marker.nextAct === null ||
+    !isPlayerAtFloor4GreenRoomExit(world, marker, playerEid)
+  ) {
+    return false;
+  }
+  recordFloor4PhaseTransition(
+    world,
+    state,
+    { kind: 'WAVES', act: marker.nextAct },
+    'green-room-exit',
+  );
+  return true;
+}
+
+function isFloor4StairDescendAvailable(world: GameWorld, playerEid?: number): boolean {
+  const marker = getFloor4GreenRoomExitMarker(world);
+  return (
+    marker !== null &&
+    marker.nextAct === null &&
+    isPlayerAtFloor4GreenRoomExit(world, marker, playerEid)
+  );
+}
+
+/**
+ * Floor 4's stairs are gated on the terminal intermission (FR8.3). That phase
+ * arrives with the final Green Room transaction; confirmation requires the
+ * same public Green Room marker gate as earlier intermission exits.
+ */
+function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boolean {
+  if (!world || !isFloor4StairDescendAvailable(world, playerEid)) {
+    return false;
+  }
+  const state = floor4ArenaState(world);
+  if (!state) {
+    return false;
+  }
+  recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'floor4-stairs-confirmed');
+  return true;
+}
+
+/**
+ * The scenario-level action behind the Green Room exit prompt: continue into the
+ * next act, or — on the terminal intermission — confirm the broadcast exit.
+ *
+ * `ScenarioDefinition.onStairDescend` (the real `MainGameScene` modal) and the
+ * AI auto-driver both call exactly this, so a human and the BT AI resolve every
+ * intermission through the same public interaction.
+ */
+export function confirmFloor4GreenRoomInteraction(world?: GameWorld, playerEid?: number): boolean {
+  if (!world) {
+    return false;
+  }
+  return (
+    confirmFloor4GreenRoomExit(world, playerEid) || confirmFloor4StairDescend(world, playerEid)
+  );
 }
 
 export function initializeFloor4Scenario(

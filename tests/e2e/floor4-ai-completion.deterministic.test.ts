@@ -40,16 +40,9 @@
  * (~300ms after load, well inside the crash window previously observed) to
  * prove the race is actually fixed, not merely avoided by waiting.
  *
- * ## What this test does NOT claim
- *
- * Same honest scope as `tests/headless/floor4-arena-completion.test.ts`:
- * Floor 4's intermission-to-next-act and final-stairs transitions are still
- * driven by `arenaDirectorSystem`'s own phase timer (shared by both runners,
- * not a runner-only shortcut), not a genuine per-decision AI interaction
- * with a physical Green Room exit or stairs prop. That gap is open per the
- * epic's later slices and is not closed by this test. This test only proves
- * the visual runner can observe and complete the SAME run headless
- * completes.
+ * Intermissions and the terminal exit are public interaction gates: the visual
+ * AI-runner must route to the authored Green Room and invoke the same shared
+ * scenario confirmations as the headless runner.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -57,8 +50,9 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
 import {
   FLOOR4_ACTS,
-  FLOOR4_AUTO_INTERMISSION_EXIT_REASONS,
+  FLOOR4_GREEN_ROOM_EXIT_REASON,
   FLOOR4_STALL_BACKSTOP_MS,
+  FLOOR4_TERMINAL_EXIT_REASON,
   FLOOR4_TOTAL_WAVES_RELEASED,
 } from '../helpers/floor4-completion-contract.js';
 
@@ -218,9 +212,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
-    // Shared across this describe's tests (the main completion test AND the
-    // isolated C5 characterization below) so the second test doesn't need to
-    // pay for another real browser run of the same canonical seed.
+    // Captured once in `beforeAll` so the single completion assertion below
+    // reads a finished run without paying for a second real browser run of the
+    // same canonical seed.
     firstRun = await runVisualFloor4Completion(browser);
   }, 300_000);
 
@@ -256,12 +250,20 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
     expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
-    // C5 — partially met (see the dedicated shortfall test below for the
-    // gap): every act's intermission was entered, banked income, and
-    // resolved (each has a recorded exit reason).
+    // C5 — every act's intermission was entered, banked income, and left
+    // through its public Green Room exit confirmation: the five recorded exit
+    // reasons must be exactly `green-room-exit` ×4 (acts 1-4) then
+    // `floor4-stairs-confirmed` (act 5), the only reasons that confirmation
+    // emits.
     expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
-    expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toHaveLength(5);
+    expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toEqual([
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_GREEN_ROOM_EXIT_REASON,
+      FLOOR4_TERMINAL_EXIT_REASON,
+    ]);
     // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
     // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
     // uses to produce headless `RunStats.outcome === 'victory'`; the visual
@@ -312,28 +314,4 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
       firstRun.finalSnapshot.timelineFingerprint,
     );
   }, 300_000);
-
-  // C5 (not yet met) — isolated as an expected-failure characterization
-  // rather than folded into the "completes" test above, so nothing here can
-  // be mistaken for evidence the criterion passes. `FLOOR4_AUTO_INTERMISSION_
-  // EXIT_REASONS` is the shared-timer allowlist; the criterion's actual bar
-  // is that at least one intermission resolves for a reason OUTSIDE that
-  // allowlist (a real Green Room/stairs interaction). Today every exit is in
-  // the allowlist, so the inner assertion fails — `it.fails` records that as
-  // the expected, documented result. Once a future slice adds the real
-  // interaction, the inner assertion starts passing, which flips `it.fails`
-  // into an *unexpected* pass and breaks this test — forcing whoever ships
-  // that slice to drop `.fails` here and flip the C5 row in the spec table
-  // to "met" in the same change. Reuses the same shared `firstRun` from
-  // `beforeAll` rather than driving a second real browser run.
-  it.fails(
-    'C5: intermissions resolve through a public scenario/UI interaction, not the shared arena-director timer',
-    () => {
-      expect(
-        firstRun.finalSnapshot.intermissionExitReasons.some(
-          (reason) => !FLOOR4_AUTO_INTERMISSION_EXIT_REASONS.includes(reason),
-        ),
-      ).toBe(true);
-    },
-  );
 });

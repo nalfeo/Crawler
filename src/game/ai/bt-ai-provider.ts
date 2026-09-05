@@ -123,6 +123,7 @@ import {
   denUnlockGoalId,
 } from '../floor2Scenario.js';
 import { floor3KeptCompanionDescendGateSatisfied } from '../floor3Scenario.js';
+import { getFloor4GreenRoomExitMarker } from '../floor4Scenario.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import {
   getActiveWeapon,
@@ -7931,6 +7932,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (world.floorExtendedState?.floor3Studios) {
       return this.findFloor3ProgressObjective(world, playerX, playerY);
     }
+    if (world.floorId === 'floor4') {
+      const floor4Target = this.findFloor4ProgressObjective(world, playerX, playerY);
+      if (floor4Target) {
+        return floor4Target;
+      }
+    }
     const objective = floorScenario?.objective;
     if (!floorScenario || !objective) {
       return null;
@@ -8301,6 +8308,52 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private findFloor4ProgressObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const phase = world.floorExtendedState?.floor4Arena?.phase;
+    const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner;
+    if (
+      (phase?.kind === 'HEADLINE' || phase?.kind === 'OVERTIME') &&
+      activeHeadliner?.bossEid !== null &&
+      activeHeadliner?.bossEid !== undefined &&
+      !activeHeadliner.defeated &&
+      entityExists(world.ecs, activeHeadliner.bossEid)
+    ) {
+      const x = world.stores.position.x[activeHeadliner.bossEid];
+      const y = world.stores.position.y[activeHeadliner.bossEid];
+      const hp = world.stores.health.current[activeHeadliner.bossEid] ?? 0;
+      if (x !== undefined && y !== undefined && hp > 0) {
+        return this.createProgressTarget(
+          x,
+          y,
+          playerX,
+          playerY,
+          `Engaging Floor 4 Headliner ${activeHeadliner.displayName}`,
+          activeHeadliner.bossEid,
+        );
+      }
+    }
+    // Route to the public Green Room exit marker itself — the same projection
+    // the scene renders and the confirmation gates on — so the AI only ever
+    // confirms from inside the marker's interaction radius.
+    const exitMarker = getFloor4GreenRoomExitMarker(world);
+    if (!exitMarker) {
+      return null;
+    }
+    return this.createProgressTarget(
+      exitMarker.positionFt.x,
+      exitMarker.positionFt.y,
+      playerX,
+      playerY,
+      exitMarker.nextAct === null
+        ? 'Heading to the Green Room exit to claim Floor 4 victory'
+        : `Heading to the Green Room exit for act ${exitMarker.nextAct}`,
+    );
   }
 
   private findMerchantGoldFarmTarget(

@@ -5,11 +5,14 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import {
   arenaDirectorSystem,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
+  getFloor4GreenRoomExitMarker,
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
+import { autoFloor4ProgressionSystem } from '../../src/game/ai/auto-progression.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { buildFloor4HudState } from '../../src/shared/floor4-hud.js';
+import { RoomRole } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function setupFloor4(seed = 42) {
@@ -22,6 +25,29 @@ function setupFloor4(seed = 42) {
 function advance(world: ReturnType<typeof setupFloor4>, ms: number): void {
   world.elapsedMs += ms;
   arenaDirectorSystem(world);
+}
+
+function movePlayerToGreenRoom(world: ReturnType<typeof setupFloor4>): number {
+  const player = query(world.ecs, [Player])[0];
+  if (player === undefined) {
+    throw new Error('expected a player');
+  }
+  const greenRoom = world.floorMap?.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+  if (!greenRoom || !world.floorMap) {
+    throw new Error('expected a Green Room');
+  }
+  const target = world.floorMap.tileToWorld(
+    Math.floor(greenRoom.bounds.x + greenRoom.bounds.width / 2),
+    Math.floor(greenRoom.bounds.y + greenRoom.bounds.height / 2),
+  );
+  world.stores.position.x[player] = target.x;
+  world.stores.position.y[player] = target.y;
+  world.playerInSafeRoom = true;
+  return player;
+}
+
+function exitGreenRoom(world: ReturnType<typeof setupFloor4>): void {
+  expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
 }
 
 function defeatActiveHeadliner(world: ReturnType<typeof setupFloor4>): void {
@@ -52,7 +78,7 @@ describe('arenaDirectorSystem', () => {
     ]);
   });
 
-  it('advances the empty-arena rehearsal through five deterministic acts to victory', () => {
+  it('advances through five deterministic acts to victory via Green Room confirmations', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;
 
@@ -62,6 +88,11 @@ describe('arenaDirectorSystem', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      if (act < phase.actCount) {
+        exitGreenRoom(world);
+      } else {
+        expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
+      }
     }
 
     const state = world.floorExtendedState!.floor4Arena!;
@@ -102,6 +133,10 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
 
     advance(world, 1);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
+
+    exitGreenRoom(world);
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
     expect(world.floorExtendedState!.floor4Arena!.arenaElapsedMs).toBe(atIntermission);
 
@@ -122,7 +157,7 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit?.visitIndex).toBe(0);
     const firstVisit = world.floorExtendedState!.floor4GreenRoom!.currentVisit;
 
-    advance(world, phase.intermissionMs);
+    exitGreenRoom(world);
 
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
     expect(world.floorExtendedState!.floor4GreenRoom?.currentVisit).toBeUndefined();
@@ -135,21 +170,54 @@ describe('arenaDirectorSystem', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;
 
-    expect(confirmFloor4StairDescend(world)).toBe(false);
+    expect(confirmFloor4GreenRoomInteraction(world)).toBe(false);
     advance(world, phase.countdownMs);
     for (let act = 1; act < phase.actCount; act += 1) {
       advance(world, phase.waveWindowMs);
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
-      expect(confirmFloor4StairDescend(world)).toBe(false);
+      // Non-terminal intermissions publish a continuation exit, never the stairs.
+      expect(getFloor4GreenRoomExitMarker(world)?.nextAct).toBe(act + 1);
+      exitGreenRoom(world);
+      expect(confirmFloor4GreenRoomInteraction(world)).toBe(false);
     }
     advance(world, phase.waveWindowMs);
     defeatActiveHeadliner(world);
     advance(world, phase.headlineWindowMs);
+    advance(world, phase.intermissionMs);
 
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 5 });
-    expect(confirmFloor4StairDescend(world)).toBe(true);
+    expect(getFloor4GreenRoomExitMarker(world)?.nextAct).toBeNull();
+    expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'VICTORY' });
+  });
+
+  it('withholds the Green Room exit until the player stands inside the public marker radius', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+
+    const marker = getFloor4GreenRoomExitMarker(world);
+    expect(marker?.nextAct).toBe(2);
+    const player = movePlayerToGreenRoom(world);
+    // Standing in the SAFE room but outside the marker's interaction radius —
+    // the position from which the human prompt is never offered.
+    world.stores.position.x[player] = marker!.positionFt.x + marker!.radiusFt + 1;
+    world.stores.position.y[player] = marker!.positionFt.y;
+
+    expect(confirmFloor4GreenRoomInteraction(world, player)).toBe(false);
+    autoFloor4ProgressionSystem(world, player);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+
+    // Inside the radius the AI driver resolves it through the same public action.
+    world.stores.position.x[player] = marker!.positionFt.x;
+    autoFloor4ProgressionSystem(world, player);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
   });
 
   it('replays the same phase timeline for the same seed and step sequence', () => {
@@ -405,10 +473,11 @@ describe('arenaDirectorSystem', () => {
     advance(world, phase.headlineWindowMs - 1);
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
 
-    // Advancing through act 2's waves cascades through the rest of act 1's
-    // intermission and re-snapshots actBaseline from act 1's real,
+    // Confirming the Green Room exit opens act 2's waves and re-snapshots
+    // actBaseline from act 1's real,
     // sim-produced cumulative totals (not a hand-authored fixture) the
     // instant act 2's WAVES phase opens.
+    exitGreenRoom(world);
     runActWaves();
     defeatActiveHeadliner(world);
     advance(world, phase.headlineWindowMs - 1);
