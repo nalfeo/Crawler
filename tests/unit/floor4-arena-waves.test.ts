@@ -10,7 +10,11 @@ import {
   Team,
 } from '../../src/core/index.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import {
+  arenaDirectorSystem,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from '../../src/game/floor4Scenario.js';
 import {
   capturePlayerCarryover,
   type PlayerCarryoverSnapshot,
@@ -352,6 +356,7 @@ describe('floor4 gate telegraphs', () => {
     const armedCount = arena(world).waveTelemetry.gateTelegraphsArmed;
 
     advance(world, 1);
+    expect(confirmFloor4StairDescend(world)).toBe(true);
     expect(arena(world).phase).toEqual({ kind: 'WAVES', act: 2 });
     expect(waveWindow(world).armedTelegraphs.some((armed) => armed.waveIndex === 0)).toBe(true);
     expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(armedCount);
@@ -444,6 +449,7 @@ describe('floor4 multi-act wave hand-off', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      expect(confirmFloor4StairDescend(world)).toBe(true);
     }
 
     expect(arena(world).phase).toEqual({ kind: 'VICTORY' });
@@ -464,6 +470,7 @@ describe('floor4 concurrency cap and spawn debt', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      expect(confirmFloor4StairDescend(world)).toBe(true);
     }
     expect(arena(world).phase).toEqual({ kind: 'WAVES', act: phase.actCount });
     advance(world, 1);

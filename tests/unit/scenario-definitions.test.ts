@@ -25,7 +25,11 @@ import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
 } from '../../src/game/floor3Scenario.js';
-import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import {
+  arenaDirectorSystem,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from '../../src/game/floor4Scenario.js';
 import { floor6DefenseDirectorSystem } from '../../src/game/floor6Scenario.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -349,6 +353,7 @@ describe('scenario definitions', () => {
         arenaDirectorSystem(world);
         world.elapsedMs += phase.intermissionMs;
         arenaDirectorSystem(world);
+        expect(confirmFloor4StairDescend(world)).toBe(true);
       }
 
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
@@ -479,19 +484,59 @@ describe('scenario definitions', () => {
       expect(visible!.locked).toBe(false);
       expect(scenario.onStairDescend!(world, player)).toBe(true);
     });
+
+    it('floor4 break marker appears only after the intermission hold and confirms through the scenario hook', () => {
+      const scenario = getScenarioDefinition('floor4');
+      const world = createTestWorld({ seed: 44, floor: 4 });
+      const player = spawnPlayer(world, 10, 20);
+      const phase = getFloorManifest('floor4')!.floor4!.phase;
+      initializeFloor4Scenario(world, player);
+
+      world.elapsedMs += phase.countdownMs;
+      arenaDirectorSystem(world);
+      world.elapsedMs += phase.waveWindowMs;
+      arenaDirectorSystem(world);
+      const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+      expect(activeHeadliner).not.toBeUndefined();
+      world.stores.health.current[activeHeadliner!] = 0;
+      arenaDirectorSystem(world);
+      world.elapsedMs += phase.headlineWindowMs;
+      arenaDirectorSystem(world);
+
+      const hidden = scenario.getStairMarkerState!(world);
+      expect(hidden).not.toBeNull();
+      expect(hidden!.visible).toBe(false);
+      expect(hidden!.locked).toBe(true);
+      expect(hidden!.radiusFt).toBe(FLOOR2_STAIR_MARKER_RADIUS_FT);
+      expect(hidden).not.toHaveProperty('depth');
+      expect(hidden).not.toHaveProperty('color');
+      expect(scenario.onStairDescend!(world, player)).toBe(false);
+
+      world.elapsedMs += phase.intermissionMs;
+      arenaDirectorSystem(world);
+      const visible = scenario.getStairMarkerState!(world);
+      expect(visible!.visible).toBe(true);
+      expect(visible!.locked).toBe(false);
+      expect(visible!.label).toContain('EXIT');
+      expect(scenario.onStairDescend!(world, player)).toBe(true);
+      expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
+    });
   });
 
   describe('semantic stair-descend confirmation presentation', () => {
-    it('floor1, floor2, and floor6 declare distinct, non-empty confirmation copy', () => {
+    it('floor1, floor2, floor4, and floor6 declare distinct, non-empty confirmation copy', () => {
       const floor1 = getScenarioDefinition('floor1').stairConfirmation;
       const floor2 = getScenarioDefinition('floor2').stairConfirmation;
+      const floor4 = getScenarioDefinition('floor4').stairConfirmation;
       const floor6 = getScenarioDefinition('floor6').stairConfirmation;
       expect(floor1).toBeDefined();
       expect(floor2).toBeDefined();
+      expect(floor4).toBeDefined();
       expect(floor6).toBeDefined();
       expect(floor1).not.toEqual(floor2);
+      expect(floor4).not.toEqual(floor2);
       expect(floor6).not.toEqual(floor1);
-      for (const copy of [floor1, floor2, floor6]) {
+      for (const copy of [floor1, floor2, floor4, floor6]) {
         expect(copy!.title.length).toBeGreaterThan(0);
         expect(copy!.subtitle.length).toBeGreaterThan(0);
         expect(copy!.body.length).toBeGreaterThan(0);
