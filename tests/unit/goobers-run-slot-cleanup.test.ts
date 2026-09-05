@@ -1899,16 +1899,24 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     expect(serialized).toBeDefined();
     const assignments = JSON.parse(serialized ?? '[]') as Array<{ lane: unknown; slot: unknown }>;
     expect(assignments).toHaveLength(1);
-    expect(typeof assignments[0]?.lane).toBe('number');
-    expect(typeof assignments[0]?.slot).toBe('number');
+    const lane = assignments[0]?.lane;
+    const slot = assignments[0]?.slot;
+    expect(typeof lane).toBe('number');
+    expect(typeof slot).toBe('number');
+    if (typeof lane !== 'number' || typeof slot !== 'number') {
+      throw new Error('Expected numeric Goobers assignment coordinates');
+    }
 
     const consumer = spawnSync(
       'bash',
       [
         '-c',
-        `jq -e --argjson lane 1 --argjson slot 1 'any(.[]; .lane == $lane and .slot == $slot)' <<<"$ASSIGNMENTS"`,
+        `jq -e --argjson lane "$LANE" --argjson slot "$SLOT" 'any(.[]; .lane == $lane and .slot == $slot)' <<<"$ASSIGNMENTS"`,
       ],
-      { encoding: 'utf8', env: bashEnv({ ASSIGNMENTS: serialized ?? '[]' }) },
+      {
+        encoding: 'utf8',
+        env: bashEnv({ ASSIGNMENTS: serialized ?? '[]', LANE: String(lane), SLOT: String(slot) }),
+      },
     );
     expect(consumer.status, `stderr:\n${consumer.stderr}`).toBe(0);
   });
