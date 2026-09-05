@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -263,4 +264,28 @@ test('an unparseable workflow is a finding, not a crash', () => {
   for (const candidate of result.entries) {
     assert.equal(typeof candidate.decommissioned, 'boolean');
   }
+});
+
+test('the CLI rejects flags passed without a usable value instead of coercing them', () => {
+  const cli = path.join(repoRoot, '.github/scripts/lifecycle-decommission.mjs');
+  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' });
+
+  for (const argv of [
+    ['--state'],
+    ['--soak-days', 'abc'],
+    ['--soak-days', '0'],
+    ['--now', 'nope'],
+  ]) {
+    const result = run(...argv);
+    assert.equal(result.status, 2, `${argv.join(' ')} must fail closed`);
+    assert.match(result.stderr, /requires a valid value/);
+  }
+
+  const missingState = run('--state', 'does/not/exist.json');
+  assert.equal(missingState.status, 2);
+  assert.match(missingState.stderr, /unreadable decommission evidence/);
+
+  const ok = run();
+  assert.equal(ok.status, 0);
+  assert.match(ok.stdout, /"ready": false/);
 });

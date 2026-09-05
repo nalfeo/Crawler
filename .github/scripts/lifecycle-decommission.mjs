@@ -289,6 +289,21 @@ function readWorkflows(directory) {
   return workflows;
 }
 
+/**
+ * Reject a flag that was passed without a usable value instead of coercing it.
+ * `parseArgs` yields boolean `true` for a bare flag, and silently coercing that
+ * produces confusing downstream errors (a file literally named `true`) or a
+ * silently ignored override.
+ */
+function requireCliValue(name, value, validate) {
+  if (value === undefined) return undefined;
+  if (validate(value)) return value;
+  process.stderr.write(
+    `::error::--${name} requires a valid value (got ${JSON.stringify(value)})\n`,
+  );
+  process.exit(2);
+}
+
 function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -302,7 +317,12 @@ function parseArgs(argv) {
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
-  const statePath = path.resolve(repoRoot, String(args.state || DEFAULT_STATE_PATH));
+  const stateArg = requireCliValue(
+    'state',
+    args.state,
+    (value) => typeof value === 'string' && value.trim() !== '',
+  );
+  const statePath = path.resolve(repoRoot, stateArg ?? DEFAULT_STATE_PATH);
   let state;
   try {
     state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
@@ -322,8 +342,20 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   });
   const decision = decideLegacyDecommission({
     state,
-    now: typeof args.now === 'string' ? args.now : new Date().toISOString(),
-    soakDays: typeof args['soak-days'] === 'string' ? Number(args['soak-days']) : undefined,
+    now:
+      requireCliValue(
+        'now',
+        args.now,
+        (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)),
+      ) ?? new Date().toISOString(),
+    soakDays:
+      requireCliValue(
+        'soak-days',
+        args['soak-days'],
+        (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value),
+      ) === undefined
+        ? undefined
+        : Number(args['soak-days']),
   });
   process.stdout.write(`${JSON.stringify({ decision, surface }, null, 2)}\n`);
 
