@@ -29,6 +29,12 @@
  * script, the CI guard, and the approve-time recurrence check all share one
  * implementation of the rule.
  */
+import {
+  hasResidualSpriteLineageTag,
+  hasSpriteLineageTag,
+  normalizeSpriteLineageId,
+  SPRITE_DESIGN_NAME_REMAP,
+} from '../../src/shared/sprite-concepts.js';
 
 /** Minimal manifest-entry shape this taxonomy needs. Extra fields pass through. */
 export interface TaxonomyEntry {
@@ -85,17 +91,7 @@ export interface TaxonomyPlan {
  * Remapping these to an unambiguous spelling keeps the canonical rule absolute:
  * after migration NO brief id may contain a lineage tag, with no allowlist.
  */
-export const DESIGN_NAME_REMAP: Readonly<Record<string, string>> = {
-  'angry-roomba-v2': 'angry-roomba-mk2',
-};
-
-/**
- * A single trailing lineage tag: `-v` followed by digits, at the very end.
- * Only ONE tag is stripped, so a genuinely odd name like `iron-ore-v1-v2`
- * collapses to `iron-ore-v1` rather than silently losing two segments — that
- * shows up as a conflict instead of a wrong guess.
- */
-const LINEAGE_TAG = /^(.+)-v\d+$/;
+export const DESIGN_NAME_REMAP = SPRITE_DESIGN_NAME_REMAP;
 
 /** A trailing variant suffix. */
 const VARIANT_SUFFIX = /^(.+)-var-(\d+)$/;
@@ -112,11 +108,7 @@ const VARIANT_SUFFIX = /^(.+)-var-(\d+)$/;
  * `angry-roomba-v2` -> `angry-roomba-mk2`; `angry-roomba-v2-v1` -> `angry-roomba-mk2`.
  */
 export function bareConcept(briefId: string): string {
-  const direct = DESIGN_NAME_REMAP[briefId];
-  if (direct !== undefined) return direct;
-  const match = LINEAGE_TAG.exec(briefId);
-  const stripped = match !== null ? match[1]! : briefId;
-  return DESIGN_NAME_REMAP[stripped] ?? stripped;
+  return normalizeSpriteLineageId(briefId);
 }
 
 /**
@@ -125,7 +117,7 @@ export function bareConcept(briefId: string): string {
  * instead of inventing a partial canonical name.
  */
 export function hasResidualLineageTag(briefId: string): boolean {
-  return LINEAGE_TAG.test(bareConcept(briefId));
+  return hasResidualSpriteLineageTag(briefId);
 }
 
 /**
@@ -134,7 +126,7 @@ export function hasResidualLineageTag(briefId: string): boolean {
  * canonical by construction and never report as tagged.
  */
 export function hasLineageTag(briefId: string): boolean {
-  return bareConcept(briefId) !== briefId;
+  return hasSpriteLineageTag(briefId);
 }
 
 /**

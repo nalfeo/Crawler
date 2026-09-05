@@ -28,6 +28,7 @@ import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import {
   generatedBriefIdForEnemy,
+  pickGeneratedVariantByRoll,
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
@@ -332,12 +333,7 @@ export function pickGeneratedEnemyTextureKey(
   if (briefId === undefined) {
     return null;
   }
-  const variants = registry.variants(briefId);
-  if (variants.length === 0) {
-    return null;
-  }
-  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
-  return variants[index]?.textureKey ?? null;
+  return pickGeneratedVariantByRoll(registry, briefId, variantRoll)?.textureKey ?? null;
 }
 
 /**

@@ -14,7 +14,10 @@
  */
 import { z } from 'zod';
 import { SeededRandom } from './random.js';
+import { normalizeGeneratedSpriteConceptId } from './sprite-concepts.js';
 import { SPRITE_TYPES } from './sprite-types.js';
+
+export { normalizeGeneratedSpriteConceptId } from './sprite-concepts.js';
 
 /**
  * Default anchor used when a manifest entry's `anchor` is `null` — i.e.
@@ -162,6 +165,12 @@ export const manifestEntrySchema = z
      */
     placeholder: z.boolean().optional(),
     /**
+     * Accepted art can be retired from runtime selection without deleting its
+     * provenance. Disliked entries stay parseable but are excluded from the
+     * runtime registry and preload list.
+     */
+    disliked: z.boolean().optional(),
+    /**
      * Optional per-asset catalog overrides. The sprite catalog's `generated:`
      * rows are DERIVED from this manifest (see `generated-catalog.ts`); this
      * field is the single home for the small set of hand-authored deviations
@@ -252,20 +261,20 @@ export interface GeneratedSpriteEntry {
 /**
  * Engine-portable lookup view over a parsed manifest.
  *
- * A brief may have MULTIPLE approved variants. The registry groups entries by
- * `briefId`:
- *   - `variants(briefId)` returns every approved variant (sorted by
+ * A concept may have MULTIPLE accepted variants. The registry groups entries by
+ * normalized concept ID:
+ *   - `variants(id)` returns every accepted, non-disliked variant (sorted by
  *     `variantIndex`), so callers can pick one (see `pickGeneratedVariant`).
- *   - `lookup(briefId)` returns the first variant — a deterministic, back-compat
+ *   - `lookup(id)` returns the first variant — a deterministic, back-compat
  *     convenience for callers that don't care which variant they get.
- *   - `entries()` is the flattened list of ALL variants across ALL briefs, so the
- *     preloader queues every variant's texture.
+ *   - `entries()` is the flattened list of eligible variants across all concepts,
+ *     so the preloader never queues disliked textures.
  */
 export interface GeneratedSpriteRegistry {
   readonly version: typeof GENERATED_MANIFEST_VERSION;
-  /** First approved variant for a brief (lowest `variantIndex`), or null. */
+  /** First eligible variant for a concept (lowest `variantIndex`), or null. */
   lookup(briefId: string): GeneratedSpriteEntry | null;
-  /** All approved variants for a brief, sorted by `variantIndex`. Empty if none. */
+  /** All eligible variants for a concept, sorted by `variantIndex`. Empty if none. */
   variants(briefId: string): readonly GeneratedSpriteEntry[];
   /** Every variant across every brief, flattened (manifest insertion order). */
   entries(): readonly GeneratedSpriteEntry[];
@@ -293,16 +302,20 @@ export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpr
   const byBrief = new Map<string, GeneratedSpriteEntry[]>();
   const flat: GeneratedSpriteEntry[] = [];
   for (const [manifestKey, entry] of Object.entries(manifest.entries)) {
+    if (entry.disliked === true) {
+      continue;
+    }
     // textureKey comes from the manifest MAP KEY (unique per variant) so
     // variants never collide, even on legacy data where `spriteName` was
-    // written brief-wide. `briefId` is the grouping key.
+    // written brief-wide. The normalized concept is the grouping key.
     const resolved = toRegistryEntry(entry, manifestKey);
     flat.push(resolved);
-    const group = byBrief.get(resolved.briefId);
+    const conceptId = normalizeGeneratedSpriteConceptId(resolved.briefId);
+    const group = byBrief.get(conceptId);
     if (group) {
       group.push(resolved);
     } else {
-      byBrief.set(resolved.briefId, [resolved]);
+      byBrief.set(conceptId, [resolved]);
     }
   }
   for (const group of byBrief.values()) {
@@ -311,9 +324,10 @@ export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpr
   return {
     version: GENERATED_MANIFEST_VERSION,
     size: flat.length,
-    has: (briefId) => byBrief.has(briefId),
-    lookup: (briefId) => byBrief.get(briefId)?.[0] ?? null,
-    variants: (briefId) => byBrief.get(briefId) ?? EMPTY_VARIANTS,
+    has: (briefId) => byBrief.has(normalizeGeneratedSpriteConceptId(briefId)),
+    lookup: (briefId) => byBrief.get(normalizeGeneratedSpriteConceptId(briefId))?.[0] ?? null,
+    variants: (briefId) =>
+      byBrief.get(normalizeGeneratedSpriteConceptId(briefId)) ?? EMPTY_VARIANTS,
     entries: () => flat,
     briefIds: () => Array.from(byBrief.keys()),
   };
@@ -387,14 +401,30 @@ export function pickGeneratedVariant(
   briefId: string,
   seed: number,
 ): GeneratedSpriteEntry | null {
-  const variants = registry.variants(briefId);
+  return pickGeneratedVariantByRoll(registry, briefId, new SeededRandom(seed).next());
+}
+
+/**
+ * Resolve an accepted, non-disliked variant from a spawn-time world RNG roll.
+ *
+ * Both visual and headless consumers call this function so alias
+ * normalization, roll clamping, and deterministic ordering cannot diverge.
+ */
+export function pickGeneratedVariantByRoll(
+  registry: GeneratedSpriteRegistry,
+  conceptId: string,
+  roll: number | undefined,
+): GeneratedSpriteEntry | null {
+  const variants = registry.variants(conceptId);
   if (variants.length === 0) {
     return null;
   }
   if (variants.length === 1) {
     return variants[0] ?? null;
   }
-  return new SeededRandom(seed).pick(variants);
+  const normalizedRoll =
+    roll === undefined || !Number.isFinite(roll) ? 0 : Math.min(0.999999, Math.max(0, roll));
+  return variants[Math.floor(normalizedRoll * variants.length)] ?? null;
 }
 
 /**
@@ -769,13 +799,39 @@ export function generatedBriefIdForEnemy(
  * Structural so core and shared helpers can stay free of the full `GameWorld`
  * import cycle.
  */
-export interface WeaponAnchorWorld {
+export interface GeneratedSpriteVariantWorld {
   readonly generatedSpriteRegistry: GeneratedSpriteRegistry | null;
   readonly enemyAppearanceKeys: ReadonlyMap<number, string>;
   readonly stores: {
     readonly sprite: { readonly variantRoll: ArrayLike<number> };
   };
+}
+
+export interface WeaponAnchorWorld extends GeneratedSpriteVariantWorld {
   readonly entityWeaponAnchors: Map<number, NormalizedWeaponAnchor>;
+}
+
+/**
+ * Resolve the concrete generated-sprite variant assigned to one entity.
+ *
+ * The entity's spawn-time roll is the only entropy. The registry owns concept
+ * normalization and dislike filtering, so headless consumers see the same
+ * entry the renderer resolves for the same world state.
+ */
+export function resolveGeneratedSpriteVariantForEntity(
+  world: GeneratedSpriteVariantWorld,
+  eid: number,
+  conceptId?: string,
+): GeneratedSpriteEntry | null {
+  const registry = world.generatedSpriteRegistry;
+  if (!registry) return null;
+
+  const resolvedConceptId =
+    conceptId ?? generatedBriefIdForEnemy(undefined, world.enemyAppearanceKeys.get(eid), registry);
+  if (!resolvedConceptId) return null;
+
+  const variantRoll = world.stores.sprite.variantRoll[eid];
+  return pickGeneratedVariantByRoll(registry, resolvedConceptId, variantRoll);
 }
 
 /**
@@ -801,18 +857,7 @@ export function getEntityNormalizedWeaponAnchor(
   const cached = world.entityWeaponAnchors.get(eid);
   if (cached !== undefined) return cached;
 
-  const registry = world.generatedSpriteRegistry;
-  if (!registry) return null;
-
-  const appearanceKey = world.enemyAppearanceKeys.get(eid);
-  // Resolve brief via appearance key only; GENERATED_BRIEF_BY_TYPE is not
-  // available here (entity kind string is outside the WeaponAnchorWorld
-  // contract) and all generated-sprite entities always carry an appearance key.
-  const briefId = generatedBriefIdForEnemy(undefined, appearanceKey, registry);
-  if (!briefId) return null;
-
-  const variantRoll = (world.stores.sprite.variantRoll as ArrayLike<number>)[eid] ?? eid;
-  const entry = pickGeneratedVariant(registry, briefId, variantRoll as number);
+  const entry = resolveGeneratedSpriteVariantForEntity(world, eid);
   const anchor = computeNormalizedWeaponAnchor(entry);
   if (!anchor) return null;
 

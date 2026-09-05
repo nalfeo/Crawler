@@ -20,6 +20,7 @@ import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { DEFAULT_BLOOD_COLOR, TeamId } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
+import { generatedBriefIdForEnemy } from '../../shared/generated-assets.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
 import {
@@ -53,7 +54,15 @@ export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string
     world.enemyAppearanceKeys.delete(eid);
     return;
   }
+  if (world.enemyAppearanceKeys.get(eid) === key) {
+    return;
+  }
   world.enemyAppearanceKeys.set(eid, key);
+  const registry = world.generatedSpriteRegistry;
+  const conceptId = generatedBriefIdForEnemy(undefined, key, registry);
+  if (registry !== null && conceptId !== undefined && registry.variants(conceptId).length > 1) {
+    world.stores.sprite.variantRoll[eid] = world.rng.next();
+  }
 }
 
 export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180): number {

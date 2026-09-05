@@ -1004,6 +1004,11 @@ export interface CreateWorldOptions {
   floor?: number;
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
+  /**
+   * Accepted generated-sprite variants available at spawn time. Both visual
+   * and headless runtimes inject the same shared registry contract.
+   */
+  generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Explicit immutable run identity required before generated equipment can be created. */
   generatedEquipmentRunKey?: string;
   /** Frozen-content generation policy; omitted to use the v1 contract policy. */
@@ -1174,7 +1179,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     enemyProjectileArchetypeKeys: new Map(),
-    generatedSpriteRegistry: null,
+    generatedSpriteRegistry: options.generatedSpriteRegistry ?? null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),
     questEvents: [],
