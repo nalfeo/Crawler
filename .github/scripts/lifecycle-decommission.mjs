@@ -87,9 +87,15 @@ function laneOwnersFrom(state) {
  * remaining distance in a single run instead of discovering it one soak window
  * at a time.
  */
-export function decideLegacyDecommission({ state, now, soakDays = DEFAULT_SOAK_DAYS } = {}) {
+export function decideLegacyDecommission({ state, now, soakDays } = {}) {
   const blockers = [];
-  const requiredDays = Number.isInteger(soakDays) && soakDays > 0 ? soakDays : DEFAULT_SOAK_DAYS;
+  // Precedence: explicit argument (CLI `--soak-days`) > the committed record's
+  // own `soak.requiredDays` > the default. Anything that is not a positive
+  // integer is ignored rather than trusted, so a malformed record cannot
+  // shorten the soak.
+  const requiredDays = [soakDays, state?.soak?.requiredDays, DEFAULT_SOAK_DAYS].find(
+    (value) => Number.isInteger(value) && value > 0,
+  );
   const nowMs = Date.parse(String(now ?? ''));
 
   if (!state || typeof state !== 'object' || Array.isArray(state) || !Number.isFinite(nowMs)) {
@@ -232,6 +238,9 @@ export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
           lane: surface.lane,
           detail: error instanceof Error ? error.message : String(error),
         });
+        // An unreadable workflow is never evidence that the path was removed,
+        // and every entry must keep the same shape for consumers.
+        entry.decommissioned = false;
         entries.push(entry);
         continue;
       }
@@ -294,7 +303,19 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
   const statePath = path.resolve(repoRoot, String(args.state || DEFAULT_STATE_PATH));
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch (error) {
+    // Fail closed with an actionable message: an unreadable record must never
+    // look like "nothing to gate".
+    process.stderr.write(
+      `::error::unreadable decommission evidence at ${statePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    process.exit(2);
+  }
   const surface = evaluateLegacyMutationSurface({
     workflows: readWorkflows(path.join(repoRoot, '.github/workflows')),
     state,

@@ -91,6 +91,25 @@ test('an incomplete soak window blocks, and elapsed days are reported', () => {
   assert.equal(decision.soak.elapsedDays, 6);
 
   assert.deepEqual(decideLegacyDecommission({ state, now: NOW, soakDays: 5 }).blockers, []);
+  // The record's own `requiredDays` is honored, and the argument overrides it.
+  const longSoak = { ...state, soak: { ...state.soak, requiredDays: 30 } };
+  assert.deepEqual(decideLegacyDecommission({ state: longSoak, now: NOW }).blockers, [
+    'soak-incomplete',
+  ]);
+  assert.equal(decideLegacyDecommission({ state: longSoak, now: NOW }).soak.requiredDays, 30);
+  assert.deepEqual(
+    decideLegacyDecommission({ state: longSoak, now: NOW, soakDays: 5 }).blockers,
+    [],
+  );
+  // A malformed `requiredDays` must not shorten the soak.
+  for (const requiredDays of [0, -1, 'forever', null, 1.5]) {
+    const decision = decideLegacyDecommission({
+      state: { ...state, soak: { ...state.soak, requiredDays } },
+      now: NOW,
+    });
+    assert.equal(decision.soak.requiredDays, DEFAULT_SOAK_DAYS);
+    assert.deepEqual(decision.blockers, ['soak-incomplete']);
+  }
   // An unstarted soak cannot also be "predated" by the drill.
   assert.deepEqual(
     decideLegacyDecommission({ state: readyState({ soak: {} }), now: NOW }).blockers,
@@ -238,4 +257,10 @@ test('an unparseable workflow is a finding, not a crash', () => {
   });
   assert.equal(result.ok, false);
   assert.ok(result.findings.some((finding) => finding.kind === 'unparseable-workflow'));
+  // Unreadable is never evidence of removal, and entry shape stays consistent.
+  const entry = result.entries.find((candidate) => candidate.workflow === 'merge-train.yml');
+  assert.equal(entry.decommissioned, false);
+  for (const candidate of result.entries) {
+    assert.equal(typeof candidate.decommissioned, 'boolean');
+  }
 });
