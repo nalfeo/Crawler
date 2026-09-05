@@ -93,6 +93,9 @@ sprite-pipeline, sprite-workflow
 - Publication durability now also requires `summary.json` brief/run identity
   to match its storage coordinates before any backfill or lifecycle mutation,
   and pending-overlay promotion preserves historical tombstones and provenance.
+- A matching legacy `asset-checkin` record no longer short-circuits explicit
+  re-acceptance: lifecycle cleanup still runs and publishes atomically through
+  `assets/queue`; only conflicting or unverifiable queued content refuses early.
 - Placeholder exclusion remains the explicit ADR 0105 `ELG-001` behavior:
   placeholder-only item concepts use the existing non-generated UI fallback,
   and non-melee carried weapons remain hidden until eligible real art exists.
@@ -112,7 +115,8 @@ sprite-pipeline, sprite-workflow
   environment-gated skip; and the exact replacement-retry/provenance follow-up
   passed 515 tests with 1 intentional environment skip across the 12 affected
   sprite suites, 278/278 Workflow extension tests, and a 437/437 `verify:fast`
-  changed-test selection.
+  changed-test selection. The final legacy-queue ordering follow-up passed
+  153/153 focused sidecar tests and its 172/172 `verify:fast` selection.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

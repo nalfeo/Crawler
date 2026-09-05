@@ -2425,13 +2425,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           return mapApproveError(reply, err);
         }
 
-        // Reconcile BEFORE mutating (concern #4): an already-queued assetPath
-        // short-circuits here — same content hash reports the existing queued
-        // state, a different hash (or an un-hashed legacy entry) refuses with
-        // 409 WITHOUT ever calling approveVariant/runAssetCheckin below. The
-        // queue-list read itself can fail (e.g. `gh issue list` erroring) —
-        // that must surface the SAME structured mapping as every other
-        // check-in failure, not an uncaught-rejection generic 500.
+        // Reconcile BEFORE mutating (concern #4): conflicting or unverifiable
+        // queued content refuses with 409. An exact queued match still enters
+        // the lifecycle transaction: the asset may have been disliked after
+        // its legacy issue was filed, and explicit re-acceptance must publish
+        // that cleanup atomically to assets/queue rather than short-circuiting
+        // on stale queue state.
         let queuedBefore: ReadonlyMap<string, QueuedAssetCheckin>;
         try {
           queuedBefore = await listQueuedAssets();
@@ -2439,7 +2438,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           return mapCheckinError(reply, err);
         }
         const reconciledBefore = reconcileQueuedAsset(reply, queuedBefore, identity, variantIndex);
-        if (reconciledBefore !== undefined) {
+        if (reconciledBefore !== undefined && 'error' in reconciledBefore) {
           return reconciledBefore;
         }
 

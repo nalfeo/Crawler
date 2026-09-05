@@ -1700,7 +1700,16 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       }),
     );
 
-    const queued = new Map<string, QueuedAssetCheckin>();
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+          branch: 'assets/checkin-legacy',
+          contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+        },
+      ],
+    ]);
     const publishedRemovals: string[] = [];
     let stagedChecks = 0;
     const checkinDeps = makeCheckinDeps(queued, () => {
