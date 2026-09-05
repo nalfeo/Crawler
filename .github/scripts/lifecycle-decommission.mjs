@@ -160,7 +160,15 @@ function validateEvidenceSchema(state, nowMs) {
       invalid('rollbackActivations', 'not-an-array');
     } else {
       state.rollbackActivations.forEach((activation, index) => {
-        if (!isPlainObject(activation)) invalid(`rollbackActivations[${index}]`, 'not-an-object');
+        if (!isPlainObject(activation)) {
+          invalid(`rollbackActivations[${index}]`, 'not-an-object');
+          return;
+        }
+        // An unparseable `at` stays a readiness blocker so the operator sees
+        // which activation is unusable; a *future* one is schema-invalid, like
+        // every other past-event timestamp.
+        if (isIsoInstant(activation.at) && Date.parse(activation.at) > nowMs)
+          invalid(`rollbackActivations[${index}].at`, 'in-the-future');
       });
     }
   }

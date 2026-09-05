@@ -76,6 +76,10 @@ test('the versioned evidence schema is validated before readiness is evaluated',
     [{ rollbackActivations: 'none' }, 'invalid-state:rollbackActivations:not-an-array'],
     [{ rollbackActivations: ['2026-09-10'] }, 'invalid-state:rollbackActivations[0]:not-an-object'],
     [
+      { rollbackActivations: [{ at: '2027-01-01T00:00:00.000Z' }] },
+      'invalid-state:rollbackActivations[0].at:in-the-future',
+    ],
+    [
       {
         rollbackDrill: { result: 'pass', completedAt: '2026-09-20T00:00:00.000Z', runIds: [null] },
       },
