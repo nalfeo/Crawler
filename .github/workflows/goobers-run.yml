@@ -424,8 +424,8 @@ jobs:
             esac
             ASSIGNMENTS="$(
               jq -c \
-                --arg lane "$lane" \
-                --arg slot "$slot" \
+                --argjson lane "$lane" \
+                --argjson slot "$slot" \
                 --arg issue "$issue" \
                 --arg cohort "$cohort" \
                 --arg resumePr "$resume_pr" \

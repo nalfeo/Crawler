@@ -1891,6 +1891,28 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     expect(result.log).not.toContain('gh issue edit');
   });
 
+  it('emits numeric slot coordinates that select the assigned consumer slot', () => {
+    const result = runReserveStep('Resolve Goobers recovery target', SELF_RUN_ONLY, {});
+    const serialized = result.output.match(/^slot_assignments=(.+)$/m)?.[1];
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(serialized).toBeDefined();
+    const assignments = JSON.parse(serialized ?? '[]') as Array<{ lane: unknown; slot: unknown }>;
+    expect(assignments).toHaveLength(1);
+    expect(typeof assignments[0]?.lane).toBe('number');
+    expect(typeof assignments[0]?.slot).toBe('number');
+
+    const consumer = spawnSync(
+      'bash',
+      [
+        '-c',
+        `jq -e --argjson lane 1 --argjson slot 1 'any(.[]; .lane == $lane and .slot == $slot)' <<<"$ASSIGNMENTS"`,
+      ],
+      { encoding: 'utf8', env: bashEnv({ ASSIGNMENTS: serialized ?? '[]' }) },
+    );
+    expect(consumer.status, `stderr:\n${consumer.stderr}`).toBe(0);
+  });
+
   it('fails an explicit resume request instead of silently downgrading it', () => {
     const result = runReserveStep('Resolve Goobers recovery target', SELF_RUN_ONLY, {
       ISSUE_NUMBER: '42',
