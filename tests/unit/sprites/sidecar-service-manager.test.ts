@@ -69,7 +69,7 @@ describe('sprite sidecar service manager', () => {
     expect(second.pid).toBe(4321);
   });
 
-  it('waits for existing service to be ready rather than spawning a duplicate when health present but controllers not ready', async () => {
+  it('reuses a healthy Azure sidecar while its opt-in controllers are idle', async () => {
     const repoRoot = makeRoot('crawler-sidecar-ready-');
     const registryRoot = makeRoot('crawler-sidecar-ready-registry-');
     const existingInstanceId = 'existing-managed-ready-instance';
@@ -90,9 +90,8 @@ describe('sprite sidecar service manager', () => {
         pid: 7654,
       }),
     );
-    let controllersRunning = false;
-    let sleepCount = 0;
     const spawnService = vi.fn(() => ({ pid: 99 }));
+    const sleep = vi.fn(async () => Promise.resolve());
 
     const result = await ensureSidecarService(repoRoot, {
       registryRoot,
@@ -102,23 +101,52 @@ describe('sprite sidecar service manager', () => {
         repoRoot,
         version: SPRITE_SIDECAR_SERVICE_VERSION,
         queueBackend: 'azure-queue',
-        worker: { running: controllersRunning },
-        issueIngester: { running: controllersRunning },
-        ...(controllersRunning
-          ? { service: { managed: true, instanceId: existingInstanceId, pid: 7654, startedAt: '' } }
-          : {}),
+        worker: { running: false },
+        issueIngester: { running: false },
+        service: { managed: true, instanceId: existingInstanceId, pid: 7654, startedAt: '' },
       }),
       spawnService,
       isProcessAlive: () => true,
-      sleep: async () => {
-        sleepCount++;
-        if (sleepCount >= 2) controllersRunning = true;
-      },
+      sleep,
     });
 
-    // No spawn: the existing service (same repo/version) must be awaited, not duplicated.
     expect(spawnService).not.toHaveBeenCalled();
+    expect(sleep).not.toHaveBeenCalled();
     expect(result.state).toBe('reused');
+  });
+
+  it('reports a newly spawned Azure sidecar ready without starting queue consumers', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-idle-start-');
+    const registryRoot = makeRoot('crawler-sidecar-idle-start-registry-');
+    let health: Record<string, unknown> | null = null;
+
+    const result = await ensureSidecarService(repoRoot, {
+      registryRoot,
+      bootstrap: vi.fn(),
+      probeHealth: async () => health,
+      spawnService: (_root, registry) => {
+        health = {
+          status: 'ok',
+          repoRoot,
+          version: SPRITE_SIDECAR_SERVICE_VERSION,
+          queueBackend: 'azure-queue',
+          worker: { running: false },
+          issueIngester: { running: false },
+          service: {
+            managed: true,
+            instanceId: registry.instanceId,
+            pid: 8765,
+            startedAt: registry.startedAt,
+          },
+        };
+        return { pid: 8765 };
+      },
+      isProcessAlive: () => true,
+      sleep: async () => Promise.resolve(),
+    });
+
+    expect(result.state).toBe('started');
+    expect(result.pid).toBe(8765);
   });
 
   it('refuses a healthy service owned by another checkout', async () => {

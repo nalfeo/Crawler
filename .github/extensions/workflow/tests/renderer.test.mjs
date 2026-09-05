@@ -109,6 +109,18 @@ test('the client script wires SSE + run selection', () => {
   assert.match(html, /\/api\/select\?briefId=/);
 });
 
+test('selected runs render as a static source sheet and processed-variant review grid', () => {
+  const html = renderHtml('x');
+  assert.match(html, /Static review sheet/);
+  assert.match(html, /img\.src = imgUrl\('sheet', sel\.briefId, sel\.runId, current\)/);
+  assert.match(html, /Static variant review grid/);
+  assert.match(
+    html,
+    /thumb\.src = imgUrl\('processed', sel\.briefId, sel\.runId, pad2\(candidate\.index\) \+ '\.png'\)/,
+  );
+  assert.doesNotMatch(html, /document\.createElement\('video'\)/);
+});
+
 test('successful embedded Postprocess applies patch and re-renders all candidate cards', () => {
   const html = renderHtml('x');
   assert.match(html, /msg\.type === 'postprocess:applied'/);
