@@ -739,9 +739,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     // envPassthrough entry the claim fence sees an empty cohort and refuses
     // every recovery claim.
     const runSteps = workflow.jobs.run?.steps ?? [];
-    const adoptStep = runSteps.find(
-      (step) => step.name === 'Adopt the reserved recovery target',
-    );
+    const adoptStep = runSteps.find((step) => step.name === 'Adopt the reserved recovery target');
     expect(adoptStep?.env?.RESERVED_INTAKE_COHORT).toBe(
       '${{ needs.reserve.outputs.intake_cohort }}',
     );
@@ -1247,9 +1245,7 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(script).toContain(
       "list_backlog_candidates 'the open goobers/status:in-review recovery backlog'",
     );
-    expect(script).toContain(
-      "list_backlog_candidates 'the maintainer-approved Goobers queue'",
-    );
+    expect(script).toContain("list_backlog_candidates 'the maintainer-approved Goobers queue'");
     expect(script).toContain("list_backlog_candidates 'the Goobers intake parity backlog'");
     expect(script).toContain('done <<<"$recovery_candidates"');
     // The fresh scan iterates the canonical selector's output file rather than
@@ -2150,12 +2146,16 @@ describe('Goobers automatic dispatch and recovery', () => {
       workflow.jobs.reserve?.steps?.find((step) => step.name === 'Resolve Goobers recovery target')
         ?.run ?? '';
 
-    const persistIndex = recovery.indexOf('echo "recovery_issue=${ISSUE_NUMBER}" >> "${GITHUB_OUTPUT}"');
+    const persistIndex = recovery.indexOf(
+      'echo "recovery_issue=${ISSUE_NUMBER}" >> "${GITHUB_OUTPUT}"',
+    );
     expect(persistIndex).toBeGreaterThan(0);
     // The fallible lookup that sits between resolution and reservation. Anchored
     // on the assignment, because the same helper is also called earlier in the
     // issues-event branch.
-    const postPublishLookup = recovery.indexOf('pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")"');
+    const postPublishLookup = recovery.indexOf(
+      'pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")"',
+    );
     expect(postPublishLookup).toBeGreaterThan(0);
     expect(persistIndex).toBeLessThan(postPublishLookup);
 
@@ -2209,7 +2209,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(noJournalIndex).toBeGreaterThan(0);
     expect(unrecoverableIndex).toBeGreaterThan(0);
     expect(noJournalIndex).toBeLessThan(unrecoverableIndex);
-    expect(disposition).toContain('produced no run journal and claimed no issue; nothing to release');
+    expect(disposition).toContain(
+      'produced no run journal and claimed no issue; nothing to release',
+    );
 
     // Releasing the claim is this step's whole purpose, so EVERY release site
     // must check the call and name the manual remediation rather than surfacing
