@@ -2256,6 +2256,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         };
       } catch (err) {
         if (err instanceof ApproveError) return mapApproveError(reply, err);
+        if (err instanceof RunDurabilityError) {
+          reply.code(500);
+          return { error: 'not-durable', message: err.message };
+        }
         return mapCheckinError(reply, err, 'approve-failed');
       } finally {
         hydrated?.cleanup();

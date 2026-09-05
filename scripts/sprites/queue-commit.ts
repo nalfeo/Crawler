@@ -123,12 +123,22 @@ export function applySpriteAnnotationUpdates(
       !Array.isArray(sprites[update.key])
         ? (sprites[update.key] as Record<string, unknown>)
         : {};
-    const next: Record<string, unknown> = {
-      ...existing,
-      favorite: update.favorite,
-      disliked: update.disliked,
-      comment: update.comment,
-    };
+    if (
+      Object.keys(existing).length === 0 &&
+      update.favorite === undefined &&
+      update.disliked === undefined &&
+      update.comment === undefined &&
+      update.sourceRun === undefined &&
+      update.variantIndex === undefined &&
+      update.tombstone === undefined &&
+      !Object.hasOwn(update, 'reconciliation')
+    ) {
+      continue;
+    }
+    const next: Record<string, unknown> = { ...existing };
+    if (update.favorite !== undefined) next.favorite = update.favorite;
+    if (update.disliked !== undefined) next.disliked = update.disliked;
+    if (update.comment !== undefined) next.comment = update.comment;
     if (update.sourceRun !== undefined) next.sourceRun = update.sourceRun;
     if (update.variantIndex !== undefined) next.variantIndex = update.variantIndex;
     for (const field of ['tombstone', 'reconciliation'] as const) {
@@ -389,19 +399,58 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
     }
     seen.add(update.key);
     if (update.delete === true) continue;
-    if (
-      typeof update.favorite !== 'boolean' ||
-      typeof update.disliked !== 'boolean' ||
-      typeof update.comment !== 'string' ||
-      update.comment.length > 1000 ||
-      (update.favorite && update.disliked)
-    ) {
+    const isCompleteCuration =
+      typeof update.favorite === 'boolean' &&
+      typeof update.disliked === 'boolean' &&
+      typeof update.comment === 'string' &&
+      update.comment.length <= 1000 &&
+      !(update.favorite && update.disliked);
+    const isTombstoneClearPatch =
+      Object.hasOwn(update, 'tombstone') &&
+      update.tombstone === undefined &&
+      update.favorite === undefined &&
+      update.disliked === undefined &&
+      update.comment === undefined &&
+      update.sourceRun === undefined &&
+      update.variantIndex === undefined &&
+      !Object.hasOwn(update, 'reconciliation');
+    if (!isCompleteCuration && !isTombstoneClearPatch) {
       throw new QueueCommitError(
         'invalid-annotation',
-        `Invalid annotation for ${update.key}. favorite/disliked must be booleans, cannot both be true, and comment must be at most 1000 characters.`,
+        `Invalid annotation for ${update.key}. Send a complete favorite/disliked/comment update or a tombstone-clear patch.`,
       );
     }
   }
+}
+
+/** Ensure republished accepted art cannot coexist with a queue-tip deletion tombstone. */
+export function withRepublishedAssetTombstoneClears(
+  assets: readonly CheckinAsset[],
+  updates: readonly SpriteAnnotationUpdate[],
+): readonly SpriteAnnotationUpdate[] {
+  const byKey = new Map(updates.map((update) => [update.key, update]));
+  const manifestedAssets = assets
+    .filter(
+      (asset): asset is CheckinAsset & { readonly manifestKey: string } =>
+        asset.manifestKey !== null,
+    )
+    .sort((a, b) => a.manifestKey.localeCompare(b.manifestKey));
+  for (const asset of manifestedAssets) {
+    const existing = byKey.get(asset.manifestKey);
+    if (existing?.delete === true) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Cannot republish ${asset.manifestKey} while deleting its annotation.`,
+      );
+    }
+    byKey.set(
+      asset.manifestKey,
+      existing === undefined
+        ? { key: asset.manifestKey, tombstone: undefined }
+        : { ...existing, tombstone: undefined },
+    );
+  }
+  return [...byKey.values()];
 }
 
 async function runGit(
@@ -527,7 +576,9 @@ export async function runQueueCommit(
 
   const briefs = options.briefs ?? [];
   assertSafeBriefPaths(briefs);
-  const annotations = options.annotations ?? [];
+  const requestedAnnotations = options.annotations ?? [];
+  assertSafeAnnotationUpdates(requestedAnnotations);
+  const annotations = withRepublishedAssetTombstoneClears(assets, requestedAnnotations);
   assertSafeAnnotationUpdates(annotations);
   const removals = options.removals ?? [];
   assertSafeAssetPaths(

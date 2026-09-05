@@ -19,6 +19,7 @@ import {
   buildDislikedLifecyclePlan,
   toQueueCommitAnnotationUpdates,
 } from '../../../scripts/sprites/disliked-lifecycle.js';
+import { withRepublishedAssetTombstoneClears } from '../../../scripts/sprites/queue-commit.js';
 import { mergeSpriteAnnotationUpdates } from '../../../scripts/sprites/queue-commit-runtime.js';
 
 const roots: string[] = [];
@@ -136,6 +137,46 @@ describe('lifecycle annotation → queue-commit publication mapping', () => {
 
     expect(Object.hasOwn(readTip(root)['rat-var-0']!, 'tombstone')).toBe(false);
     expect(readTip(root)['rat-var-0']?.disliked).toBe(false);
+  });
+
+  it('clears a queue-tip tombstone whenever accepted art republishes the same key', async () => {
+    const root = makeQueueTip();
+    const updates = withRepublishedAssetTombstoneClears(
+      [
+        {
+          assetPath: 'generated/rat-var-0.png',
+          manifestKey: 'rat-var-0',
+          briefId: 'rat',
+          variantIndex: 0,
+        },
+      ],
+      [],
+    );
+
+    await mergeSpriteAnnotationUpdates(root, updates);
+
+    expect(Object.hasOwn(readTip(root)['rat-var-0']!, 'tombstone')).toBe(false);
+    expect(readTip(root)['rat-var-0']?.disliked).toBe(true);
+    expect(readTip(root)['rat-var-0']?.comment).toBe('');
+  });
+
+  it('does not create an empty annotation when republished art has no tombstone', async () => {
+    const root = makeQueueTip();
+    const updates = withRepublishedAssetTombstoneClears(
+      [
+        {
+          assetPath: 'generated/bat-var-0.png',
+          manifestKey: 'bat-var-0',
+          briefId: 'bat',
+          variantIndex: 0,
+        },
+      ],
+      [],
+    );
+
+    await mergeSpriteAnnotationUpdates(root, updates);
+
+    expect(readTip(root)['bat-var-0']).toBeUndefined();
   });
 
   it('applies the same preserve-vs-clear rule to reconciliation markers', async () => {

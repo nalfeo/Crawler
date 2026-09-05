@@ -540,16 +540,30 @@ export function buildDislikedLifecyclePlan(
   const sprites: Record<string, SpriteAnnotation> = { ...promoted.document.sprites };
   for (const replacement of input.replacements ?? []) {
     if (!inScope(replacement.conceptId)) continue;
-    if (sprites[replacement.manifestKey]?.disliked !== true) continue;
+    const reconciledReplacement = reconciled.find(
+      (item) => item.manifestKey === replacement.manifestKey,
+    );
+    if (reconciledReplacement === undefined) continue;
+    const sourceAnnotations = reconciledReplacement.annotationKeys
+      .map((key) => sprites[key])
+      .filter((annotation): annotation is SpriteAnnotation => annotation !== undefined);
+    for (const key of reconciledReplacement.annotationKeys) {
+      if (key !== replacement.manifestKey) delete sprites[key];
+    }
     sprites[replacement.manifestKey] = {
-      ...sprites[replacement.manifestKey],
+      ...(sprites[replacement.manifestKey] ?? {}),
       favorite: false,
       disliked: false,
+      comment:
+        sprites[replacement.manifestKey]?.comment ??
+        sourceAnnotations.find((annotation) => (annotation.comment ?? '') !== '')?.comment ??
+        '',
       // Own property with an explicit `undefined`: downstream publication
       // mappers MUST forward this as an intentional CLEAR (the accepted
       // replacement is no longer a tombstoned deletion), while a key that
       // never owned `tombstone` must leave the queue tip's value untouched.
       tombstone: undefined,
+      reconciliation: undefined,
     };
   }
   const unresolvedKeys = new Set(unresolved);
@@ -1028,6 +1042,13 @@ export interface AcceptedDislikedLifecycleTransactionOptions<T> {
    */
   readonly replacements: readonly LifecycleReplacement[];
   readonly approve: () => T;
+  /**
+   * Resolve the exact declared replacements that `approve` materialized. Batch
+   * approval must supply this because a skipped cell can have stale accepted art
+   * on disk; file presence alone is not proof that this acceptance selected it.
+   * Single-replacement transactions default to their sole declared key.
+   */
+  readonly approvedReplacementKeys?: (approved: T) => readonly string[];
   readonly publish: (approved: T, plan: DislikedLifecyclePlan) => Promise<void>;
 }
 
@@ -1079,12 +1100,14 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
   }
   const generatedDir = path.join(options.repoRoot, 'public', 'assets', 'generated');
   const annotationsPath = path.join(options.repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
+  const annotationsExisted = existsSync(annotationsPath);
+  const annotationsBefore = readTrackedAnnotations(options.repoRoot);
+  const rollbackAnnotationKeys = new Set(initialPlan.annotationUpdates.map((update) => update.key));
   const touched = [
     ...options.replacements.flatMap((replacement) => [
       shardPathForKey(generatedDir, replacement.manifestKey),
       path.join(options.repoRoot, 'public', 'assets', ...replacement.assetPath.split('/')),
     ]),
-    ...(initialPlan.annotationUpdates.length > 0 ? [annotationsPath] : []),
     ...initialPlan.referenceUpdates.map((update) => update.path),
     ...initialPlan.removed.flatMap((removal) => [
       shardPathForKey(generatedDir, removal.manifestKey),
@@ -1094,6 +1117,28 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
   const snapshots = snapshot(touched);
   try {
     const approved = options.approve();
+    const approvedKeys =
+      options.approvedReplacementKeys?.(approved) ??
+      (options.replacements.length === 1 ? [options.replacements[0]!.manifestKey] : null);
+    if (approvedKeys === null) {
+      throw new Error(
+        'Batch acceptance must report the exact approved replacement keys; on-disk art cannot prove a skipped cell was accepted.',
+      );
+    }
+    const declaredKeys = new Set(
+      options.replacements.map((replacement) => replacement.manifestKey),
+    );
+    for (const key of approvedKeys) {
+      if (!declaredKeys.has(key)) {
+        throw new Error(`Approval reported undeclared replacement "${key}".`);
+      }
+    }
+    const approvedKeySet = new Set(approvedKeys);
+    if (approvedKeySet.size === 0) {
+      throw new Error(
+        'Acceptance produced no approved replacements; skipped candidates cannot authorize lifecycle changes.',
+      );
+    }
     // A declared replacement only earns the right to mutate its concept's
     // annotations once approval ACTUALLY produced runtime-eligible art for it.
     // Batch acceptances (icon batches) legitimately skip cells whose processed
@@ -1101,15 +1146,17 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
     // dislike — or worse, erase a historical tombstone and quietly retire the
     // closure check that guards that deletion forever.
     const entries = composeManifestFromShards(generatedDir).entries;
-    const materializedReplacements = options.replacements.filter(
-      (replacement) =>
+    const materializedReplacements = options.replacements.filter((replacement) => {
+      if (!approvedKeySet.has(replacement.manifestKey)) return false;
+      return (
         describeUnusableSurvivor(
           options.repoRoot,
           entries,
           replacement.manifestKey,
           replacement.assetPath,
-        ) === null,
-    );
+        ) === null
+      );
+    });
     const unmaterializedMutations = options.replacements
       .filter(
         (replacement) =>
@@ -1133,8 +1180,7 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
         )}. Re-run the approval for the missing candidate(s) before accepting.`,
       );
     }
-    const effectiveReplacements =
-      materializedReplacements.length > 0 ? materializedReplacements : options.replacements;
+    const effectiveReplacements = materializedReplacements;
     const effectiveScope = new Set(effectiveReplacements.map((item) => item.conceptId));
     const plan = loadDislikedLifecyclePlan(options.repoRoot, effectiveReplacements, effectiveScope);
     if (plan.referenceUpdates.length > 0) {
@@ -1146,11 +1192,38 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
           )}. Repoint and commit those pins before retrying approval; the art-only durable queue cannot publish source/data edits.`,
       );
     }
+    for (const update of plan.annotationUpdates) rollbackAnnotationKeys.add(update.key);
+    const snapshottedPaths = new Set(snapshots.map((item) => item.path));
+    const finalTouched = [
+      ...plan.referenceUpdates.map((update) => update.path),
+      ...plan.removed.flatMap((removal) => [
+        shardPathForKey(generatedDir, removal.manifestKey),
+        path.join(options.repoRoot, 'public', 'assets', ...removal.assetPath.split('/')),
+      ]),
+    ].filter((file) => !snapshottedPaths.has(file));
+    snapshots.push(...snapshot(finalTouched));
     applyDislikedLifecyclePlan(options.repoRoot, plan);
     await options.publish(approved, plan);
     return { approved, plan };
   } catch (error) {
     restoreSnapshots(snapshots);
+    if (rollbackAnnotationKeys.size > 0) {
+      const current = readTrackedAnnotations(options.repoRoot);
+      const restoredSprites: Record<string, SpriteAnnotation> = { ...current.sprites };
+      for (const key of rollbackAnnotationKeys) {
+        const original = annotationsBefore.sprites[key];
+        if (original === undefined) delete restoredSprites[key];
+        else restoredSprites[key] = original;
+      }
+      if (!annotationsExisted && Object.keys(restoredSprites).length === 0) {
+        rmSync(annotationsPath, { force: true });
+      } else {
+        atomicWrite(
+          annotationsPath,
+          `${JSON.stringify({ version: 1, sprites: restoredSprites }, null, 2)}\n`,
+        );
+      }
+    }
     throw error;
   }
 }

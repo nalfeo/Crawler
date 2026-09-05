@@ -11,6 +11,7 @@ import {
   resolveDislikedReferenceExclusions,
   runAcceptedDislikedLifecycleTransaction,
   validateDislikedLifecycleClosure,
+  type SpriteAnnotation,
   type SpriteAnnotationsDocument,
 } from '../../../scripts/sprites/disliked-lifecycle.js';
 import { writeShard } from '../../../scripts/sprites/generated-shards.js';
@@ -284,6 +285,41 @@ describe('disliked sprite lifecycle planning', () => {
     expect(plan.annotations.sprites['demo-goon-var-3']?.tombstone?.annotationKeys).toEqual([
       'demo-goon-v2-var-3',
     ]);
+  });
+
+  it('clears a provenance-resolved stale dislike when that exact asset is reaccepted', () => {
+    const root = makeRoot();
+    const accepted = entry('demo-goon', 3, {
+      sourceRun: 'generated/runs/demo-goon-v2/run-a',
+    });
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: { [accepted.spriteName]: accepted },
+      trackedAnnotations: annotations({
+        'demo-goon-v2-var-3': {
+          disliked: true,
+          comment: 'legacy key',
+          sourceRun: 'archived/runs/run-a',
+          variantIndex: 3,
+        },
+      }),
+      replacements: [
+        {
+          manifestKey: accepted.spriteName,
+          conceptId: 'demo-goon',
+          assetPath: accepted.assetPath,
+        },
+      ],
+      conceptScope: new Set(['demo-goon']),
+    });
+
+    expect(plan.removed).toEqual([]);
+    expect(plan.annotations.sprites['demo-goon-v2-var-3']).toBeUndefined();
+    expect(plan.annotations.sprites[accepted.spriteName]).toMatchObject({
+      favorite: false,
+      disliked: false,
+      comment: 'legacy key',
+    });
   });
 
   it('resolves stale reference exclusions by provenance and falls back to the named concept', () => {
@@ -924,8 +960,55 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(existsSync(path.join(generatedDir, 'rat-var-0.png'))).toBe(true);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-1.json'))).toBe(false);
     expect(existsSync(path.join(generatedDir, 'rat-var-1.png'))).toBe(false);
-    expect(readFileSync(annotationsPath, 'utf8')).toBe(originalAnnotations);
+    expect(JSON.parse(readFileSync(annotationsPath, 'utf8'))).toEqual(
+      JSON.parse(originalAnnotations),
+    );
     expect(readFileSync(pinPath, 'utf8')).toBe('{"pin":"rat-var-1"}\n');
+  });
+
+  it('preserves unrelated annotation edits made while a failed publish is in flight', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 0);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
+    const annotationsPath = path.join(generatedDir, 'sprite-editor-annotations.json');
+    writeFileSync(
+      annotationsPath,
+      JSON.stringify({ version: 1, sprites: { 'rat-var-0': { disliked: true } } }),
+    );
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+        ],
+        approve: () => {
+          const replacement = entry('rat', 1);
+          writeShard(generatedDir, replacement.spriteName, replacement);
+          writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'new');
+          return replacement;
+        },
+        publish: () => {
+          const current = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+            version: 1;
+            sprites: Record<string, SpriteAnnotation>;
+          };
+          current.sprites['bat-var-0'] = { favorite: true, disliked: false, comment: 'keep me' };
+          writeFileSync(annotationsPath, JSON.stringify(current));
+          return Promise.reject(new Error('queue unavailable'));
+        },
+      }),
+    ).rejects.toThrow('queue unavailable');
+
+    const after = JSON.parse(readFileSync(annotationsPath, 'utf8')) as SpriteAnnotationsDocument;
+    expect(after.sprites['rat-var-0']?.disliked).toBe(true);
+    expect(after.sprites['bat-var-0']).toEqual({
+      favorite: true,
+      disliked: false,
+      comment: 'keep me',
+    });
   });
 
   it('deletes a retained all-disliked group when a replacement is explicitly accepted', async () => {
@@ -1243,9 +1326,10 @@ describe('disliked sprite lifecycle transaction', () => {
         ],
         // The batch approved nothing for this cell (missing processed PNG).
         approve: () => [],
+        approvedReplacementKeys: (entries) => entries,
         publish: () => Promise.resolve(),
       }),
-    ).rejects.toThrow(/was not approved/);
+    ).rejects.toThrow(/produced no approved replacements/);
 
     // The historical tombstone — the record that authorizes and re-checks that
     // deletion forever — is intact.
@@ -1264,6 +1348,9 @@ describe('disliked sprite lifecycle transaction', () => {
       writeShard(generatedDir, disliked.spriteName, disliked);
       writeFileSync(path.join(generatedDir, `${concept}-var-0.png`), 'bad');
     }
+    const oldSkippedReplacement = entry('icon-skipped', 1);
+    writeShard(generatedDir, oldSkippedReplacement.spriteName, oldSkippedReplacement);
+    writeFileSync(path.join(generatedDir, 'icon-skipped-var-1.png'), 'old accepted art');
     writeFileSync(
       path.join(generatedDir, 'sprite-editor-annotations.json'),
       JSON.stringify({
@@ -1295,6 +1382,7 @@ describe('disliked sprite lifecycle transaction', () => {
         writeFileSync(path.join(generatedDir, 'icon-good-var-1.png'), 'new');
         return [goodReplacement];
       },
+      approvedReplacementKeys: (entries) => entries.map((item) => item.spriteName),
       publish: () => Promise.resolve(),
     });
 
@@ -1302,6 +1390,52 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(existsSync(path.join(generatedDir, 'icon-good-var-0.png'))).toBe(false);
     expect(existsSync(path.join(generatedDir, 'icon-skipped-var-0.png'))).toBe(true);
     expect(existsSync(path.join(generatedDir, 'entries', 'icon-skipped-var-0.json'))).toBe(true);
+  });
+
+  it('restores final-plan removals that were excluded by an unmaterialized batch replacement', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    for (const variantIndex of [0, 2]) {
+      const disliked = entry('rat', variantIndex);
+      writeShard(generatedDir, disliked.spriteName, disliked);
+      writeFileSync(path.join(generatedDir, `rat-var-${variantIndex}.png`), `bad-${variantIndex}`);
+    }
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'rat-var-0': { disliked: true },
+          'rat-var-2': { disliked: true },
+        },
+      }),
+    );
+    const replacement = entry('rat', 1);
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+          { manifestKey: 'rat-var-2', conceptId: 'rat', assetPath: 'generated/rat-var-2.png' },
+        ],
+        approve: () => {
+          writeShard(generatedDir, replacement.spriteName, replacement);
+          writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'new');
+          return [replacement];
+        },
+        approvedReplacementKeys: (entries) => entries.map((item) => item.spriteName),
+        publish: () => Promise.reject(new Error('queue unavailable')),
+      }),
+    ).rejects.toThrow('queue unavailable');
+
+    for (const variantIndex of [0, 2]) {
+      expect(existsSync(path.join(generatedDir, 'entries', `rat-var-${variantIndex}.json`))).toBe(
+        true,
+      );
+      expect(existsSync(path.join(generatedDir, `rat-var-${variantIndex}.png`))).toBe(true);
+    }
+    expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-1.json'))).toBe(false);
   });
 
   it('treats a missing annotations file as empty during closure validation', () => {

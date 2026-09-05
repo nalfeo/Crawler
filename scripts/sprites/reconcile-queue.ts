@@ -206,6 +206,15 @@ export interface LifecycleDeletionPartition {
   readonly rejected: readonly RejectedLifecycleDeletion[];
 }
 
+export function findLifecycleOrphanCollisions(
+  deletions: readonly AuthorizedLifecycleDeletion[],
+  orphanedPaths: ReadonlySet<string>,
+): readonly AuthorizedLifecycleDeletion[] {
+  return deletions.filter((deletion) =>
+    deletion.paths.some((deletionPath) => orphanedPaths.has(deletionPath)),
+  );
+}
+
 /** True for a `generated/`-relative asset path with no traversal segments. */
 function isSafeQueueAssetPath(value: unknown): value is string {
   return (
@@ -282,6 +291,7 @@ export function partitionLifecycleDeletions(
         shardPath,
         ...(isSafeQueueAssetPath(value.assetPath) ? [`public/assets/${value.assetPath}`] : []),
       ].filter((candidate) => deleted.has(candidate));
+      if (candidatePaths.length === 0) continue;
       rejected.push({
         annotationKey,
         reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
@@ -1923,6 +1933,29 @@ export async function runReconcile(
       // source permanently "dirty".
       const paths = await keepPromotable(ref, candidates);
       if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
+    }
+
+    const orphanedPaths = new Set(orphanedPathsByBranch.flatMap(({ paths }) => paths));
+    const lifecycleOrphanCollisions = findLifecycleOrphanCollisions(
+      queueLifecycleDeletions,
+      orphanedPaths,
+    );
+    if (lifecycleOrphanCollisions.length > 0) {
+      for (const deletion of queueLifecycleDeletions) {
+        for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+      }
+      for (const collision of lifecycleOrphanCollisions) {
+        rejectedLifecycleDeletions.push({
+          annotationKey: collision.tombstone.manifestKey,
+          reason: `Lifecycle deletion for "${collision.tombstone.manifestKey}" conflicts with art on an orphaned check-in branch.`,
+          paths: [...collision.paths].sort(),
+        });
+      }
+      queueLifecycleDeletions = [];
+      if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+        queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+        withheld.add(ANNOTATIONS_PATH);
+      }
     }
 
     if (

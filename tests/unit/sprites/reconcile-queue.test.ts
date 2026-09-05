@@ -35,6 +35,7 @@ import {
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
   computeClosingIssueNumbers,
+  findLifecycleOrphanCollisions,
   findLandedPromotion,
   formatSourceTrailers,
   isArtSurfacePath,
@@ -256,6 +257,38 @@ describe('partitionLifecycleDeletions (per-tombstone fail-closed)', () => {
     expect(rejected[0]?.annotationKey).toBe('broken-var-1');
     expect(rejected[0]?.reason).toMatch(/Invalid disliked-sprite tombstone/);
     expect(rejected[0]?.paths).toEqual(pathsFor('broken-var-1').sort());
+  });
+
+  it('ignores malformed historical tombstones unrelated to the current deletion set', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        historical: tombstone('historical', { variantIndex: 'not-a-number' }),
+        current: tombstone('current'),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(pathsFor('current'), document);
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['current']);
+    expect(rejected).toEqual([]);
+  });
+
+  it('detects orphan overlays that would resurrect an authorized deletion', () => {
+    const deletion = {
+      tombstone: {
+        manifestKey: 'rat-var-0',
+        assetPath: 'generated/rat-var-0.png',
+        sourceRun: 'generated/runs/rat/run-0',
+        variantIndex: 0,
+      },
+      paths: pathsFor('rat-var-0') as [string, string],
+    } as const;
+
+    expect(
+      findLifecycleOrphanCollisions([deletion], new Set(['public/assets/generated/rat-var-0.png'])),
+    ).toEqual([deletion]);
+    expect(findLifecycleOrphanCollisions([deletion], new Set(pathsFor('bat-var-0')))).toEqual([]);
   });
 
   it('never authorizes a traversal asset path', () => {

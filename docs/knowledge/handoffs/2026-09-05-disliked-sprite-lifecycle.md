@@ -171,6 +171,19 @@ sprite-pipeline, sprite-workflow
   closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
   0 pending / 0 reference updates; and `verify:fast` passed 721/721 changed
   tests.
+- Two exact-head reviews then found stale-state edge cases and all were closed:
+  icon batches report the exact keys actually approved instead of inferring
+  acceptance from old on-disk art; rollback snapshots expand to the final plan
+  and merge only transaction-owned annotation keys; provenance-resolved stale
+  dislikes migrate to the reaccepted key; and queue publication clears a
+  pre-existing tombstone whenever accepted art republishes that key.
+- Reconciliation now ignores malformed historical tombstones that name no path
+  in the current deletion set and atomically withholds lifecycle deletion plus
+  annotations when an orphan branch would overlay the same art. `/approve` and
+  `/accept` also share the `not-durable` error contract. The broader approval,
+  queue, repair, reconcile, and sidecar matrix passed 464/464; lifecycle closure
+  stayed 0 removable / 20 retained / 7 unresolved; and the resulting
+  `verify:fast` selection passed 678/678.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

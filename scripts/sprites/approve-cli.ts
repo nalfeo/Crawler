@@ -443,6 +443,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
               repoRoot,
               allowHardBlocked: parsed.allowHardBlocked,
             }),
+          approvedReplacementKeys: (entries) => entries.map((entry) => entry.spriteName),
           publish: async (entries, plan) => {
             // Best-effort LLM tag enrichment for each approved icon. Never blocks.
             await Promise.all(

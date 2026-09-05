@@ -2994,6 +2994,7 @@ describe('store-backed /approve hydration parity', () => {
     });
 
     expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('not-durable');
     expect(res.json().message).toContain('reserved');
     const after = new Set(
       readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
@@ -3039,7 +3040,7 @@ describe('store-backed /approve hydration parity', () => {
     });
 
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toMatchObject({ error: 'approve-failed' });
+    expect(res.json()).toMatchObject({ error: 'not-durable' });
     expect(res.json().message).toContain('summary provenance must match exactly');
     expect(existsSync(path.join(publicAssetsDir, 'generated', 'rat-var-1.png'))).toBe(false);
   });
