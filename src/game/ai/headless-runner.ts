@@ -1914,6 +1914,13 @@ export async function runHeadless(
         outcome = 'victory';
         break;
       }
+      if (world.floorId === 'floor4') {
+        // Floor 4 break exits and terminal stairs are gated by
+        // `confirmFloor4StairDescend`: this is a no-op until the authored
+        // intermission hold has elapsed, then advances through the same
+        // scenario authority the visual MainGameScene modal calls.
+        scenario.onStairDescend?.(world, playerEid);
+      }
       if (world.floorId === 'floor5') {
         // Floor 5's terminal outcome is the throne capture, which is a SEPARATE
         // interaction from defeating Regent Emeritus. The BT AI has no

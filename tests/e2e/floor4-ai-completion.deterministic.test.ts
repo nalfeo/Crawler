@@ -44,6 +44,8 @@
  * AI-runner must route to the authored Green Room and invoke the same shared
  * scenario confirmations as the headless runner.
  */
+import { mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
@@ -73,6 +75,7 @@ const POLL_INTERVAL_MS = 3_000;
 /** Generous ceiling: the headless baseline reaches VICTORY at ~608s game
  * time / ~36.5k frames; at 16x this needs well under 90s of wall time. */
 const MAX_POLLS = 40;
+const CHECKPOINT_DIR = resolve(process.cwd(), 'tmp', 'e2e-screenshots', 'floor4-ai-completion');
 
 async function loadAiRunner(page: Page): Promise<void> {
   await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
@@ -109,14 +112,18 @@ interface Floor4VisualRunResult {
     wavesReleased: number | undefined;
     headlinerSpawned: number | undefined;
     headlinerDefeated: number | undefined;
+    floor4LiveEnemyCount: number;
   } | null;
   finalSnapshot: Floor4RunSnapshot;
+  liveWaveCheckpointSaved: boolean;
+  victoryCheckpointSaved: boolean;
 }
 
 async function runVisualFloor4Completion(browser: Browser): Promise<Floor4VisualRunResult> {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
+  mkdirSync(CHECKPOINT_DIR, { recursive: true });
 
   try {
     await loadAiRunner(page);
@@ -132,6 +139,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
     await page.click('#ai-toggle-run');
 
     let reachedVictory = false;
+    let liveWaveCheckpointSaved = false;
     let lastSnapshot: Floor4VisualRunResult['lastSnapshot'] = null;
     for (let poll = 0; poll < MAX_POLLS; poll += 1) {
       await page.waitForTimeout(POLL_INTERVAL_MS);
@@ -145,9 +153,20 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
           wavesReleased: arena?.waveTelemetry?.wavesReleased,
           headlinerSpawned: arena?.headlinerTelemetry?.spawned,
           headlinerDefeated: arena?.headlinerTelemetry?.defeated,
+          floor4LiveEnemyCount: snap?.floor4LiveEnemyCount ?? 0,
         };
       });
       lastSnapshot = snapshot;
+      if (
+        !liveWaveCheckpointSaved &&
+        snapshot.phase !== null &&
+        typeof snapshot.phase === 'object' &&
+        (snapshot.phase as { kind?: string }).kind === 'WAVES' &&
+        snapshot.floor4LiveEnemyCount > 0
+      ) {
+        await page.screenshot({ path: join(CHECKPOINT_DIR, 'live-wave.png'), type: 'png' });
+        liveWaveCheckpointSaved = true;
+      }
       if (
         snapshot.phase !== null &&
         typeof snapshot.phase === 'object' &&
@@ -156,6 +175,21 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
         reachedVictory = true;
         break;
       }
+    }
+    let victoryCheckpointSaved = false;
+    if (reachedVictory) {
+      await page.waitForFunction(
+        () =>
+          (
+            window as unknown as {
+              __floor1Debug?: { getState?: () => { floorCompletionMessageShown?: boolean } };
+            }
+          ).__floor1Debug?.getState?.()?.floorCompletionMessageShown === true,
+        undefined,
+        { timeout: 30_000 },
+      );
+      await page.screenshot({ path: join(CHECKPOINT_DIR, 'victory.png'), type: 'png' });
+      victoryCheckpointSaved = true;
     }
 
     const finalSnapshot = await page.evaluate(() => {
@@ -200,7 +234,14 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
       };
     });
 
-    return { reachedVictory, pageErrors, lastSnapshot, finalSnapshot };
+    return {
+      reachedVictory,
+      pageErrors,
+      lastSnapshot,
+      finalSnapshot,
+      liveWaveCheckpointSaved,
+      victoryCheckpointSaved,
+    };
   } finally {
     await closeQuietly(page);
   }
@@ -231,6 +272,8 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     // freeze the render loop with a TypeError must not recur.
     expect(firstRun.pageErrors, firstContext).toEqual([]);
     expect(firstRun.reachedVictory, firstContext).toBe(true);
+    expect(firstRun.liveWaveCheckpointSaved, firstContext).toBe(true);
+    expect(firstRun.victoryCheckpointSaved, firstContext).toBe(true);
 
     // C1 — the standard Floor 4 scenario initialized inside the real scene.
     expect(firstRun.finalSnapshot.effectiveFloor, firstContext).toBe('floor4');

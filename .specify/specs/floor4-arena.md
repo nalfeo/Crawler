@@ -255,8 +255,11 @@ Two constraints shape everything:
   pool with grades and per-slot eligibility, overtime ramp and cap, per-visit shop tables,
   price bands, and the arena/Green Room geometry parameters.
 - **FR8.3** Floor 4 sets `objectives.*` to zero — it has no kill/gold/junk gate — and gates
-  the stairs through the scenario's `onStairDescend`, which returns false unless the phase
-  is `INTERMISSION(5)`.
+  all intermission exits through the scenario's `onStairDescend`, which returns `false` outside
+  an `INTERMISSION` phase or while the player is outside the fixed Green Room exit marker.
+  For acts 1–4 `confirmFloor4GreenRoomInteraction` records a `WAVES` transition; for act 5 it
+  records `VICTORY`. The marker is derived from the authored safe-room bounds, and production
+  AI routes to that fixed position before confirming the public interaction.
 - **FR8.4** `timer.durationMs` is a **hard stall backstop on `world.elapsedMs`**, not a
   broadcast countdown. Because `resolveFloorTimerRemainingMs`
   (`src/engine/floor-timer-state.ts`) derives from `world.elapsedMs`, which advances during
@@ -401,15 +404,20 @@ countdown (FR5.6), and `timer.durationMs` is only the FR8.4 stall backstop, so t
 generic floor-timer HUD is suppressed and the backstop raises its own
 `floor4-stall-backstop` flag rather than an ordinary floor timeout.
 
-### Slice-2 deviation: empty broadcast rehearsal
+### Slice-2 deviation: empty broadcast rehearsal (superseded by slice 4)
 
-Slice 2 proves the **single-authority phase machine** and arena clock before the
-systems that make those phases physical exist. It therefore runs as an empty
-broadcast rehearsal: headline windows are marked cleared immediately, and each
-intermission auto-advances after a short deterministic hold. This is deliberately
-non-conformant with the final FR2.2 triggers where the player takes the Green
-Room exit and final stairs; slice 5 replaces this rehearsal hand-off with the
-real Green Room transaction.
+Slice 2 proved the **single-authority phase machine** and arena clock before the
+systems that make those phases physical exist. It ran as an empty broadcast
+rehearsal: headline windows were marked cleared immediately, and each intermission
+auto-advanced after a short deterministic hold. This was deliberately non-conformant
+with the final FR2.2 triggers.
+
+**The playable-completion work replaces the slice-2 rehearsal hand-off for all five
+intermissions.** The visual AI-runner routes to the authored Green Room exit and
+confirms the real `ModalPickerUI` callback, which invokes
+`confirmFloor4GreenRoomInteraction` through
+`ScenarioDefinition.onStairDescend`. Acts 1–4 open the next act and act 5 takes
+the terminal stairs; the intermission timer no longer advances either path.
 
 The arena clock still obeys FR1.2/FR1.3 during the rehearsal: it advances only in
 `WAVES`/`HEADLINE`, holds during `COUNTDOWN` and `INTERMISSION`, and reaches

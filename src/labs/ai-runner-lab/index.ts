@@ -13,7 +13,7 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
-import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
 import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
@@ -672,6 +672,13 @@ export interface AiRunnerDebugSnapshot {
     gameMs: number | null;
     worldState: string | null;
   }>;
+  floor4SurfaceTrace: ReadonlyArray<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }>;
   runOutcome: string | null;
   /**
    * Distinguishes Floor 3's three `world.state === 'game_over'` causes so a
@@ -704,6 +711,13 @@ export interface AiRunnerDebugSnapshot {
    * before the world exists.
    */
   floor4Arena?: Floor4ArenaRunStats;
+  /**
+   * Count of Floor 4 wave enemies currently alive (backed by live ECS
+   * entities). `0` off Floor 4 or before the first wave. Used by the e2e
+   * live-wave checkpoint to prove a rendered hostile exists, not just that
+   * the cumulative spawn counter is positive.
+   */
+  floor4LiveEnemyCount: number;
   /**
    * Per-companion decision + path telemetry (#4205), mirroring the player's
    * own `state`/`reason`/`targetX`/`targetY`/`targetDist` fields above so a
@@ -963,10 +977,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
   let previousFloor3ModalKind: string | null = null;
+  let previousFloor4ModalKind: string | null = null;
   let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
   let floor3AliveOutsideSpawnStreakMs = 0;
   let floor3MaxAliveOutsideSpawnStreakMs = 0;
   const floor3SurfaceTrace: Array<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }> = [];
+  const floor4SurfaceTrace: Array<{
     kind: string;
     action: 'opened' | 'confirmed' | 'resumed';
     frame: number | null;
@@ -986,6 +1008,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     'floor3-keep-companion',
     'floor3-stair-descend',
   ]);
+  const FLOOR4_AUTO_MODAL_KINDS = new Set<string>(['floor4-stair-descend']);
+  const floor4PendingResumeKinds = new Set<string>();
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   /** Companion decision/path overlay graphics (#4205), parity with `pathGraphics`. */
@@ -1804,11 +1828,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
     previousFloor3ModalKind = null;
+    previousFloor4ModalKind = null;
     floor3AliveOutsideSpawnStreakStartMs = null;
     floor3AliveOutsideSpawnStreakMs = 0;
     floor3MaxAliveOutsideSpawnStreakMs = 0;
     floor3SurfaceTrace.length = 0;
     floor3PendingResumeKinds.clear();
+    floor4SurfaceTrace.length = 0;
+    floor4PendingResumeKinds.clear();
     pathGraphics?.destroy();
     pathGraphics = null;
     companionGraphics?.destroy();
@@ -1904,6 +1931,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
   };
 
+  const recordFloor4SurfaceEvent = (
+    world: GameWorld,
+    kind: string,
+    action: 'opened' | 'confirmed' | 'resumed',
+  ): void => {
+    floor4SurfaceTrace.push({
+      kind,
+      action,
+      frame: world.frameCount ?? null,
+      gameMs: world.elapsedMs ?? null,
+      worldState: world.state ?? null,
+    });
+    if (floor4SurfaceTrace.length > 128) {
+      floor4SurfaceTrace.splice(0, floor4SurfaceTrace.length - 128);
+    }
+  };
+
   const confirmModalSelection = (
     modalPicker: NonNullable<RunnerSceneInternals['modalPicker']>,
     world: GameWorld,
@@ -1932,8 +1976,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
         floor3PendingResumeKinds.add(modalKind);
       }
+      if (
+        modalKind &&
+        FLOOR4_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
+        recordFloor4SurfaceEvent(world, modalKind, 'confirmed');
+        floor4PendingResumeKinds.add(modalKind);
+      }
       if (world.floorId === 'floor3') {
         previousFloor3ModalKind = null;
+      }
+      if (world.floorId === 'floor4') {
+        previousFloor4ModalKind = null;
       }
     }
   };
@@ -1961,6 +2016,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }
       previousFloor3ModalKind = activeModalKind;
     }
+    if (world.floorId === 'floor4' && activeModalKind !== previousFloor4ModalKind) {
+      if (activeModalKind && FLOOR4_AUTO_MODAL_KINDS.has(activeModalKind)) {
+        recordFloor4SurfaceEvent(world, activeModalKind, 'opened');
+      }
+      previousFloor4ModalKind = activeModalKind;
+    }
 
     if (
       world.floorId === 'floor3' &&
@@ -1972,6 +2033,17 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         recordFloor3SurfaceEvent(world, kind, 'resumed');
       }
       floor3PendingResumeKinds.clear();
+    }
+    if (
+      world.floorId === 'floor4' &&
+      floor4PendingResumeKinds.size > 0 &&
+      activeModalKind === null &&
+      world.state === 'playing'
+    ) {
+      for (const kind of floor4PendingResumeKinds) {
+        recordFloor4SurfaceEvent(world, kind, 'resumed');
+      }
+      floor4PendingResumeKinds.clear();
     }
 
     if (world.state === 'loadout') {
@@ -2005,6 +2077,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (modalPicker?.isOpen()) {
       const modalKind = modalPicker.getKind();
       if (world.floorId === 'floor3' && modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+        confirmModalSelection(modalPicker, world, modalKind);
+        return;
+      }
+      if (world.floorId === 'floor4' && modalKind && FLOOR4_AUTO_MODAL_KINDS.has(modalKind)) {
         confirmModalSelection(modalPicker, world, modalKind);
         return;
       }
@@ -3331,6 +3407,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       floor3AliveOutsideSpawnStreakMs,
       floor3MaxAliveOutsideSpawnStreakMs,
       floor3SurfaceTrace,
+      floor4SurfaceTrace,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
@@ -3338,6 +3415,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       arenaEntryFrame,
       quests,
       floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
+      floor4LiveEnemyCount: world ? getFloor4LiveWaveEnemyCount(world) : 0,
       companions: world ? getCompanionTelemetry(world) : [],
       floor3LossReason: world ? getFloor3LossReason(world) : null,
     };
