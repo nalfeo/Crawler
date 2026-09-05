@@ -2977,6 +2977,30 @@ describe('store-backed /approve hydration parity', () => {
     expect(parseSourceRun(res.json().sourceRun)).toEqual({ briefId, runId });
   });
 
+  it('does not allocate a hydration temp directory for a reserved sourceRun brief id', async () => {
+    await backingStore.put(
+      `runs/${runId}/summary.json`,
+      Buffer.from(JSON.stringify({ brief: 'runs', runId })),
+    );
+    const before = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/runs/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('reserved');
+    const after = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+    expect(after).toEqual(before);
+  });
+
   it('refuses a remote run whose durable provenance is incomplete', async () => {
     await seedStoreRun();
     await backingStore.remove(`${briefId}/${runId}/provenance/prompt.json`);

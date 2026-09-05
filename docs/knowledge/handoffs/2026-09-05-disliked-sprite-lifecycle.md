@@ -157,6 +157,20 @@ sprite-pipeline, sprite-workflow
   179/179; lifecycle closure remained 0 removable / 20 retained / 7 unresolved /
   0 deferred / 0 pending / 0 reference updates; and `verify:fast` passed
   816/816.
+- The final review follow-up keeps queue identity byte-exact by reading Git PNG
+  blobs as raw buffers, validates the regression with a non-ASCII PNG signature,
+  and rejects reserved source-run identities before allocating a hydration
+  directory. Deletion-only reconciliations now carry the exact queue SHA in
+  their `Queue-Source` trailer.
+- Partial icon batches now derive lifecycle scope from replacements that were
+  actually materialized by approval. A skipped cell remains disliked and
+  retained instead of rolling back successful cells, while single-candidate
+  exact pins still fail before mutation and multi-cell transactions validate
+  pins before lifecycle cleanup/publication with full rollback protection.
+  The focused durability matrix passed 314/314; typecheck passed; lifecycle
+  closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
+  0 pending / 0 reference updates; and `verify:fast` passed 721/721 changed
+  tests.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

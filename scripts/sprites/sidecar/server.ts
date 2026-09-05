@@ -3727,6 +3727,7 @@ async function hydrateRunDirForApproveFromStore(
   runId: string,
   variantIndex: number,
 ): Promise<HydratedRunDir | null> {
+  const sourceRun = formatSourceRun(briefId, runId);
   const prefix = `${briefId}/${runId}/`;
   const summaryKey = `${prefix}summary.json`;
   const paddedIndex = String(variantIndex).padStart(2, '0');
@@ -3782,7 +3783,7 @@ async function hydrateRunDirForApproveFromStore(
   }
   return {
     runDir,
-    sourceRun: formatSourceRun(briefId, runId),
+    sourceRun,
     cleanup: () => {
       rmSync(tempRoot, { recursive: true, force: true });
     },

@@ -50,6 +50,7 @@ export const realExec: Exec = (command, args, options) =>
       {
         cwd: options?.cwd,
         maxBuffer: 16 * 1024 * 1024,
+        encoding: null,
         // Default to the parent env so existing callers are unchanged; a caller
         // may override to inject a non-interactive git env.
         env: options?.env,
@@ -58,7 +59,7 @@ export const realExec: Exec = (command, args, options) =>
         timeout: options?.timeoutMs,
       },
       (error, stdout, stderr) => {
-        const stdoutBytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(String(stdout));
+        const stdoutBytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
         // A killed-on-timeout child reports `error.killed === true` (often with a
         // null exit code); normalize that to a non-zero code with a clear stderr
         // so callers see a failure instead of a spurious success.

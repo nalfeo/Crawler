@@ -1063,10 +1063,14 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
     );
   }
   const conceptScope = new Set(options.replacements.map((item) => item.conceptId));
-  const plan = loadDislikedLifecyclePlan(options.repoRoot, options.replacements, conceptScope);
-  if (plan.referenceUpdates.length > 0) {
+  const initialPlan = loadDislikedLifecyclePlan(
+    options.repoRoot,
+    options.replacements,
+    conceptScope,
+  );
+  if (options.replacements.length === 1 && initialPlan.referenceUpdates.length > 0) {
     throw new Error(
-      `Acceptance would remove exact-pinned sprite(s) referenced by ${plan.referenceUpdates
+      `Acceptance would remove exact-pinned sprite(s) referenced by ${initialPlan.referenceUpdates
         .map((update) => path.relative(options.repoRoot, update.path))
         .join(
           ', ',
@@ -1080,9 +1084,9 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
       shardPathForKey(generatedDir, replacement.manifestKey),
       path.join(options.repoRoot, 'public', 'assets', ...replacement.assetPath.split('/')),
     ]),
-    ...(plan.annotationUpdates.length > 0 ? [annotationsPath] : []),
-    ...plan.referenceUpdates.map((update) => update.path),
-    ...plan.removed.flatMap((removal) => [
+    ...(initialPlan.annotationUpdates.length > 0 ? [annotationsPath] : []),
+    ...initialPlan.referenceUpdates.map((update) => update.path),
+    ...initialPlan.removed.flatMap((removal) => [
       shardPathForKey(generatedDir, removal.manifestKey),
       path.join(options.repoRoot, 'public', 'assets', ...removal.assetPath.split('/')),
     ]),
@@ -1096,31 +1100,50 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
     // PNG is missing; without this check a skipped cell would still clear its
     // dislike — or worse, erase a historical tombstone and quietly retire the
     // closure check that guards that deletion forever.
-    const mutatedReplacements = options.replacements.filter((replacement) =>
-      planMutatesReplacement(plan, replacement),
+    const entries = composeManifestFromShards(generatedDir).entries;
+    const materializedReplacements = options.replacements.filter(
+      (replacement) =>
+        describeUnusableSurvivor(
+          options.repoRoot,
+          entries,
+          replacement.manifestKey,
+          replacement.assetPath,
+        ) === null,
     );
-    const unmaterialized =
-      mutatedReplacements.length === 0
-        ? []
-        : (() => {
-            const entries = composeManifestFromShards(generatedDir).entries;
-            return mutatedReplacements
-              .map((replacement) =>
-                describeUnusableSurvivor(
-                  options.repoRoot,
-                  entries,
-                  replacement.manifestKey,
-                  replacement.assetPath,
-                ),
-              )
-              .filter((failure): failure is string => failure !== null)
-              .sort();
-          })();
-    if (unmaterialized.length > 0) {
+    const unmaterializedMutations = options.replacements
+      .filter(
+        (replacement) =>
+          planMutatesReplacement(initialPlan, replacement) &&
+          !materializedReplacements.includes(replacement),
+      )
+      .map(
+        (replacement) =>
+          describeUnusableSurvivor(
+            options.repoRoot,
+            entries,
+            replacement.manifestKey,
+            replacement.assetPath,
+          )!,
+      )
+      .sort();
+    if (materializedReplacements.length === 0 && unmaterializedMutations.length > 0) {
       throw new Error(
-        `Acceptance would rewrite dislike history for art that was not approved: ${unmaterialized.join(
+        `Acceptance would rewrite dislike history for art that was not approved: ${unmaterializedMutations.join(
           '; ',
         )}. Re-run the approval for the missing candidate(s) before accepting.`,
+      );
+    }
+    const effectiveReplacements =
+      materializedReplacements.length > 0 ? materializedReplacements : options.replacements;
+    const effectiveScope = new Set(effectiveReplacements.map((item) => item.conceptId));
+    const plan = loadDislikedLifecyclePlan(options.repoRoot, effectiveReplacements, effectiveScope);
+    if (plan.referenceUpdates.length > 0) {
+      throw new Error(
+        `Acceptance would remove exact-pinned sprite(s) referenced by ${plan.referenceUpdates
+          .map((update) => path.relative(options.repoRoot, update.path))
+          .join(
+            ', ',
+          )}. Repoint and commit those pins before retrying approval; the art-only durable queue cannot publish source/data edits.`,
       );
     }
     applyDislikedLifecyclePlan(options.repoRoot, plan);

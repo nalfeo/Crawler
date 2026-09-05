@@ -1256,6 +1256,54 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(after.sprites['icon-skipped']?.disliked).toBe(true);
   });
 
+  it('defers a skipped batch cell while accepting and cleaning materialized cells', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    for (const concept of ['icon-good', 'icon-skipped']) {
+      const disliked = entry(concept, 0);
+      writeShard(generatedDir, disliked.spriteName, disliked);
+      writeFileSync(path.join(generatedDir, `${concept}-var-0.png`), 'bad');
+    }
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'icon-good-var-0': { disliked: true },
+          'icon-skipped-var-0': { disliked: true },
+        },
+      }),
+    );
+    const goodReplacement = entry('icon-good', 1);
+
+    const result = await runAcceptedDislikedLifecycleTransaction({
+      repoRoot: root,
+      replacements: [
+        {
+          manifestKey: goodReplacement.spriteName,
+          conceptId: 'icon-good',
+          assetPath: goodReplacement.assetPath,
+        },
+        {
+          manifestKey: 'icon-skipped-var-1',
+          conceptId: 'icon-skipped',
+          assetPath: 'generated/icon-skipped-var-1.png',
+        },
+      ],
+      approve: () => {
+        writeShard(generatedDir, goodReplacement.spriteName, goodReplacement);
+        writeFileSync(path.join(generatedDir, 'icon-good-var-1.png'), 'new');
+        return [goodReplacement];
+      },
+      publish: () => Promise.resolve(),
+    });
+
+    expect(result.plan.removed.map((removal) => removal.manifestKey)).toEqual(['icon-good-var-0']);
+    expect(existsSync(path.join(generatedDir, 'icon-good-var-0.png'))).toBe(false);
+    expect(existsSync(path.join(generatedDir, 'icon-skipped-var-0.png'))).toBe(true);
+    expect(existsSync(path.join(generatedDir, 'entries', 'icon-skipped-var-0.json'))).toBe(true);
+  });
+
   it('treats a missing annotations file as empty during closure validation', () => {
     const root = makeRoot();
     rmSync(path.join(root, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'));

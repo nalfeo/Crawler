@@ -1781,6 +1781,9 @@ describe('runReconcile (real git)', () => {
       rmSync(wt, { recursive: true, force: true });
     }
 
+    const queueSha = gitSync(liveDir, 'ls-remote', '--heads', 'origin', 'assets/queue')
+      .trim()
+      .split(/\s+/)[0]!;
     const result = await runReconcile(liveDir, realDeps(new FakeGh()));
     expect(result.status).toBe('pr-open');
     expect(result.changedPaths).toEqual([
@@ -1795,6 +1798,11 @@ describe('runReconcile (real git)', () => {
     expect(() =>
       gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
     ).toThrow();
+    const body = execFileSync('git', ['log', '-1', '--format=%B', result.promoteCommit!], {
+      cwd: liveDir,
+      encoding: 'utf8',
+    });
+    expect(parseSourceTrailers(body).queueSha).toBe(queueSha);
   });
 
   /**

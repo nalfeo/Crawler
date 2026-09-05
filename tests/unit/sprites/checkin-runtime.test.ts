@@ -189,7 +189,7 @@ describe('assets/queue identity inspection', () => {
 
     const manifestKey = 'nested/demo-var-1';
     const assetPath = 'generated/nested/demo-var-1.png';
-    const pngBytes = Buffer.from('PNG');
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const contentHash = createHash('sha256').update(pngBytes).digest('hex');
     writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
       briefId: 'demo',

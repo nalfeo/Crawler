@@ -2032,7 +2032,7 @@ export async function runReconcile(
       // promotion merges (see the trailer documentation above).
       const harvestedSources: PromotionSources = {
         queueSha:
-          queueVsMainArt.length > 0 && queueRef !== null
+          (queueVsMainArt.length > 0 || queueLifecycleDeletions.length > 0) && queueRef !== null
             ? (await mustGit(deps.exec, repoRoot, ['rev-parse', queueRef])).trim()
             : null,
         orphans: await Promise.all(
