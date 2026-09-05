@@ -1399,7 +1399,12 @@ function isPlayerAtFloor4GreenRoomExit(
 export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
   const state = floor4ArenaState(world);
   const marker = getFloor4GreenRoomExitMarker(world);
-  if (!state || !marker?.nextAct || !isPlayerAtFloor4GreenRoomExit(world, marker, playerEid)) {
+  if (
+    !state ||
+    marker === null ||
+    marker.nextAct === null ||
+    !isPlayerAtFloor4GreenRoomExit(world, marker, playerEid)
+  ) {
     return false;
   }
   recordFloor4PhaseTransition(
