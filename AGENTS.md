@@ -153,6 +153,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Train protection enable     | `npm run train:protection:enable`                                                                                                           |
 | Train protection rollback   | `npm run train:protection:rollback`                                                                                                         |
 | Conflict overlap scan       | `npm run velocity:conflict-scan`                                                                                                            |
+| Legacy decommission gate    | `npm run check:legacy-decommission`                                                                                                         |
 
 `npm run velocity:conflict-scan` reports a **same-day file co-touch proxy** — how often
 two squash-merged commits touched the same file on the same day on mainline history.

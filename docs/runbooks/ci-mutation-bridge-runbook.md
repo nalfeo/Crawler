@@ -129,6 +129,93 @@ lane:
 gh variable set LIFECYCLE_OWNER_REVIEW_THREADS -R nalfeo/Crawler --body 'legacy'
 ```
 
+## Phase 4 — decommission the legacy mutation paths
+
+Phase 4 retires the legacy lifecycle mutation paths and leaves Goobers as the
+sole orchestration writer. Removal is **data-gated, not a judgement call**:
+
+```bash
+npm run check:legacy-decommission
+```
+
+That command reads the committed evidence record
+`.github/lifecycle/decommission-state.json` and reports two independent things:
+
+1. **Readiness** — every blocker still standing between today and removal.
+2. **Surface** — every live legacy mutation step, and whether it is gated.
+
+The surface scan exits non-zero (`2`) on either state that is never safe:
+
+- `ungated-legacy-mutation` — a legacy mutation step not gated on **its own**
+  lane selector plus `LEGACY_CI_MUTATION_BRIDGE_ENABLED`. That is a dual writer
+  the moment the lane migrates.
+- `decommissioned-without-migration` — a legacy mutation path deleted while the
+  record still shows the lane as legacy-owned. That leaves the lane with **zero**
+  writers and takes PR automation dark. This is the mistake Phase 4 must not
+  make, so it is enforced deterministically rather than reviewed by eye.
+
+The `review-threads` lane has no workflow-level surface entry because its gate
+lives inside `reconcile.mjs` (`legacyReviewThreadWritesEnabled`); it is covered
+by `.github/scripts/ci-recovery/reconcile.test.mjs`.
+
+### Decommission preconditions
+
+`npm run check:legacy-decommission` reports `ready` only when **all** hold:
+
+| Blocker                                       | Cleared by                                                                              |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `lane-not-migrated:<lane>`                    | Every PR-lifecycle lane selector observed as the literal `goobers`, recorded per lane.  |
+| `soak-not-started` / `soak-incomplete`        | `soak.startedAt` set at full migration, and `requiredDays` (default 14) elapsed.        |
+| `rollback-activation:<at>`                    | No rollback activation at or after `soak.startedAt` — a rollback restarts the soak.     |
+| `rollback-drill-*`                            | A `pass` drill completed **after** the soak start, with its workflow run IDs recorded.  |
+| `emergency-bridge-not-retained` / `-window-*` | `LEGACY_CI_MUTATION_BRIDGE_ENABLED` retained with a declared, unexpired `boundedUntil`. |
+| `branch-protection-not-updated`               | Branch-protection required checks updated to the final Goobers contexts and recorded.   |
+
+Update the record in a PR as each precondition is met. The live source of truth
+for a lane owner remains its repository variable; the record is the durable,
+reviewable attestation that the variable was observed in that state, which is
+what makes the gate auditable after the fact.
+
+### Phase 4 rollback drill
+
+Run this **inside** the soak window and after every lane is on Goobers. It
+proves the fallback still works before the fallback is deleted.
+
+1. Pick one live, non-urgent PR and record its number and head SHA.
+2. Roll one lane back: `gh variable set LIFECYCLE_OWNER_MERGE_TRAIN -R nalfeo/Crawler --body 'legacy'`.
+3. Confirm the legacy job for that lane resumes mutating (it must **not** log
+   `observe-only`) and the Goobers workflow for the lane no-ops.
+4. Restore the lane: `gh variable set LIFECYCLE_OWNER_MERGE_TRAIN -R nalfeo/Crawler --body 'goobers'`,
+   and confirm ownership flips back on the next event.
+5. Repeat 2–4 for each remaining lane selector.
+6. Exercise the global kill switch once: set
+   `LEGACY_CI_MUTATION_BRIDGE_ENABLED=false`, confirm **every** legacy lane
+   reports `observe-only` while Goobers keeps writing, then restore `true`.
+7. Record the drill in `.github/lifecycle/decommission-state.json` with
+   `result: "pass"`, `completedAt`, and every workflow `runIds` entry.
+
+A drill that required an unplanned rollback to recover is a **failed** drill:
+record `result: "fail"`, fix the root cause, restart the soak.
+
+### Steady-state operations (post-decommission)
+
+- Goobers is the only writer for every lifecycle lane. Lane selectors stay on
+  `goobers`; a selector reverting to `legacy` after decommission is a
+  misconfiguration, not a rollback, because the legacy path is gone.
+- `npm run check:legacy-decommission` keeps running as a regression gate: it
+  fails if any legacy mutation path returns ungated.
+- Branch-protection required checks name the final Goobers contexts recorded in
+  `branchProtection.requiredChecks`.
+
+### Emergency operations (post-decommission)
+
+The minimal emergency bridge is retained only for the bounded window recorded in
+`emergencyBridge.boundedUntil`. Within that window, restoring a lane is exactly
+the Phase 3 rollback: set the lane selector to `legacy` and confirm
+`LEGACY_CI_MUTATION_BRIDGE_ENABLED=true`. After the window closes and the
+fallback code is removed, the only recovery is a revert of the removal PR —
+which is why the drill must pass **before** removal, not after.
+
 ## Roll back claim ownership
 
 ```bash
@@ -216,7 +303,9 @@ reachable-commit-SHA set rather than reproducing reconcile.mjs's full
 stale-marker lineage/near-typo-promotion logic — a documented limitation, not
 a silent gap. Lanes B (CI Recovery reconciliation), C (merge-train admission),
 and D (merge-train promotion) remain legacy-owned; each moves independently in
-a later Phase 3 slice via its own lane selector.
+a later Phase 3 slice via its own lane selector. Phase 4 removal of any legacy
+lane is gated on `npm run check:legacy-decommission` reporting `ready`, which no
+lane can reach until it is migrated, soaked, and drilled.
 
 ## Post-incident review checklist
 
