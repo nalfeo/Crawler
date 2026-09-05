@@ -356,10 +356,14 @@ describe('resolveDialogueLines', () => {
     ]);
   });
 
-  it('suppresses the spell broker tail-reference until the merchant quest is active', () => {
+  it('omits only the spell broker tail-reference until the merchant quest is active', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
-    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([]);
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
+      getNpcDef('spell-quest-giver')!
+        .dialogue.slice(0, 2)
+        .map((line) => line.text),
+    );
 
     world.questLog.set(FLOOR1_SHOP_QUEST_ID, {
       questId: FLOOR1_SHOP_QUEST_ID,
@@ -399,11 +403,17 @@ describe('resolveDialogueLines', () => {
     ]);
   });
 
-  it('suppresses the authored spell broker intro until the merchant quest is active', () => {
+  it('keeps the authored spell broker intro available before the merchant quest', () => {
     const world = createTestWorld();
     world.goalFlags.set('floor1-boss-spellbook-claimed', true);
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
-    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([]);
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      ...selectSpellBrokerDialogue({
+        locked: false,
+        spellbookClaimed: false,
+        merchantQuestStarted: false,
+      })!,
+    ]);
   });
 
   it('prefers the locked line over the post-claim line for the spell broker', () => {

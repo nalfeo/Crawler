@@ -204,8 +204,8 @@ interface SpellBrokerDialogueState {
  *
  * Priority (highest first): locked > post-spellbook claim > merchant-quest gate.
  * Once the merchant errand is active, the Broker can safely use the default
- * authored line that references the tail. Before then, suppress that default line
- * so the Broker does not mention a quest the player has not been assigned.
+ * authored dialogue. Before then, omit only the tail-reference line so the
+ * Broker can still explain the spell quest.
  */
 export function selectSpellBrokerDialogue(
   state: SpellBrokerDialogueState,
@@ -219,7 +219,7 @@ export function selectSpellBrokerDialogue(
   if (state.merchantQuestStarted) {
     return null;
   }
-  return [];
+  return SPELL_QUEST_GIVER_DEF.dialogue.slice(0, -1).map((line) => line.text);
 }
 
 // ---- Tutorial Goon contextual dialogue ----

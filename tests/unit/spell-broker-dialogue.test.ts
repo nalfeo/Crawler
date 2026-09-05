@@ -9,8 +9,11 @@ const NONE = {
 } as const;
 
 describe('selectSpellBrokerDialogue', () => {
-  it('suppresses the default tail-reference line until the merchant quest is active', () => {
-    expect(selectSpellBrokerDialogue(NONE)).toEqual([]);
+  it('omits only the tail-reference line until the merchant quest is active', () => {
+    expect(selectSpellBrokerDialogue(NONE)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
   });
 
   it('allows the default authored dialogue once the merchant quest is active', () => {
