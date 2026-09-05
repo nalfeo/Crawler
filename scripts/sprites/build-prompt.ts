@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
-import { variantCount } from './brief-schema.js';
+import { sheetPixelDimensions, variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
 import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
@@ -187,9 +187,8 @@ function aspectRatioText(width: number, height: number): string {
 
 /** Pixel dimensions of one source cell on the generated sheet. */
 function cellDims(brief: Brief): { cellW: number; cellH: number } {
-  const native = brief.generation.sheet.nativeCanvas;
-  const { rows, cols } = brief.generation.sheet;
-  return { cellW: Math.round(native / cols), cellH: Math.round(native / rows) };
+  const { cellWidth, cellHeight } = sheetPixelDimensions(brief.generation.sheet);
+  return { cellW: cellWidth, cellH: cellHeight };
 }
 
 /**
@@ -465,6 +464,7 @@ function singleConstraintsBlock(brief: Brief): string {
 
 function sheetLayoutBlock(brief: Brief, count: number): string {
   const { rows, cols, emptyCells } = brief.generation.sheet;
+  const { width: sheetW, height: sheetH } = sheetPixelDimensions(brief.generation.sheet);
   const { cellW, cellH } = cellDims(brief);
   const cellShape =
     cellW === cellH
@@ -473,7 +473,7 @@ function sheetLayoutBlock(brief: Brief, count: number): string {
   const lines: string[] = [];
   lines.push('## Sheet layout');
   lines.push(
-    `Generate exactly ${count} variants on a single sheet, arranged in a regular ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
+    `Generate exactly ${count} variants on a single ${sheetW}×${sheetH} source sheet, arranged in a regular ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
   );
   lines.push(
     `Each grid cell must be the same size, ${cellShape}, and the variants must be laid out left-to-right, top-to-bottom in reading order.`,

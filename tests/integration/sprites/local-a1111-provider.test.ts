@@ -104,6 +104,44 @@ describe('LocalA1111ImageProvider', () => {
     }
   });
 
+  it('preserves rectangular sheet geometry for 4x3 grids', async () => {
+    provider = new LocalA1111ImageProvider({
+      endpoint: 'http://localhost:7860',
+      model: 'sd_xl_turbo',
+      fetch: mockFetch,
+    });
+
+    mockFetch.mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const png = new PNG({ width: body.width, height: body.height });
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i + 3] = 255;
+      }
+      return {
+        ok: true,
+        json: async () => ({ images: [PNG.sync.write(png).toString('base64')] }),
+      } as Response;
+    });
+
+    const request = makeRequest({
+      brief: {
+        type: 'item',
+        variations: [],
+        generation: {
+          sheet: { rows: 3, cols: 4, emptyCells: [], nativeWidth: 1024, nativeHeight: 768 },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      variants: 12,
+    });
+
+    const sheetBuffer = await provider.generateSheet(request);
+    const sheet = PNG.sync.read(sheetBuffer);
+    expect(sheet.width).toBe(1024);
+    expect(sheet.height).toBe(768);
+    expect(mockFetch).toHaveBeenCalledTimes(12);
+  });
+
   it('handles network errors gracefully', async () => {
     mockFetch.mockRejectedValue(new Error('Connection refused'));
 
