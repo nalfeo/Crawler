@@ -93,6 +93,29 @@ function spawnVariantSequence(seed: number, runtime: 'visual' | 'headless'): str
   return choices;
 }
 
+function appearanceStateAfterHeadlessSpawn(seed: number, injectRegistry: boolean) {
+  const world = injectRegistry
+    ? createTestWorld({ seed, generatedSpriteRegistry: registry })
+    : createTestWorld({ seed });
+  const playerEid = spawnPlayer(world, -100, -100);
+  initializeFloor1Scenario(world, playerEid);
+  const spawned: number[] = [];
+
+  for (let index = 0; index < 32; index++) {
+    const eid = spawnBehaviorEnemy(world, index, 0, 10, 0, 1, 10, 1);
+    const appearanceKey =
+      index % 3 === 0 ? 'npc-welcome-goon' : index % 3 === 1 ? 'welcome-goon' : 'welcome-goon-v2';
+    setEnemyAppearanceKey(world, eid, appearanceKey);
+    spawned.push(eid);
+  }
+
+  runHeadlessSimulationStep(world, createInputState(), GAME.DELTA_MS);
+  return {
+    variantRolls: spawned.map((eid) => world.stores.sprite.variantRoll[eid]),
+    gameplayRngTail: Array.from({ length: 8 }, () => world.rng.next()),
+  };
+}
+
 describe('seeded sprite variant runtime contract', () => {
   it('normalizes historical role and lineage IDs to one concept', () => {
     expect(
@@ -112,5 +135,13 @@ describe('seeded sprite variant runtime contract', () => {
     expect(replay).toEqual(first);
     expect(headless).toEqual(first);
     expect(new Set(first)).toEqual(new Set(['npc-welcome-goon-var-0', 'welcome-goon-var-1']));
+  });
+
+  it('leaves gameplay RNG state identical with and without a generated sprite registry', () => {
+    const defaultHeadless = appearanceStateAfterHeadlessSpawn(42, false);
+    const registryInjected = appearanceStateAfterHeadlessSpawn(42, true);
+
+    expect(registryInjected.gameplayRngTail).toEqual(defaultHeadless.gameplayRngTail);
+    expect(registryInjected.variantRolls).toEqual(defaultHeadless.variantRolls);
   });
 });
