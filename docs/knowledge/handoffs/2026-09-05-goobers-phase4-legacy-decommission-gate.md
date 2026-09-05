@@ -43,24 +43,26 @@ ci-policy
 - `docs/runbooks/ci-mutation-bridge-runbook.md`: new "Phase 4 — decommission"
   section (preconditions table, rollback-drill procedure, steady-state and
   emergency operations post-decommission), plus a Known-limitations pointer.
-- `.github/scripts/lifecycle-decommission.test.mjs` (new): 13 tests covering
+- `.github/scripts/lifecycle-decommission.test.mjs` (new): 15 tests covering
   fail-closed inputs, literal-`goobers`-only lane migration, soak arithmetic,
   rollback-activation windowing, drill evidence rules, bounded-bridge and
   branch-protection requirements, all three surface findings against the
-  **real** workflow files, and CLI argument validation.
+  **real** workflow files, equivalent-gate acceptance, and CLI argument
+  validation.
 
 ## Mutation-surface detection
 
 A step counts as a legacy lifecycle mutation when its `run` script or
-`actions/github-script` body contains a registered entrypoint, so renaming a
-step cannot hide it:
+`actions/github-script` body matches a registered entrypoint (string or regex),
+so renaming a step cannot hide it, and merely mentioning an endpoint in a
+comment or log line does not count as calling it:
 
 | Workflow                 | Lane            | Entrypoints                                          |
 | ------------------------ | --------------- | ---------------------------------------------------- |
 | `ci-recovery.yml`        | `ci-recovery`   | `ci-recovery/reconcile.mjs`                          |
 | `ci-recovery-router.yml` | `ci-recovery`   | `ci-recovery/router.mjs`                             |
 | `merge-train.yml`        | `merge-train`   | `merge-train/reconcile.mjs`, `quarantine-repair.mjs` |
-| `auto-rebase-prs.yml`    | `branch-update` | `/update-branch`                                     |
+| `auto-rebase-prs.yml`    | `branch-update` | `-X PUT "…/update-branch"` (regex)                   |
 
 The `review-threads` lane has no workflow-level entry because its gate lives
 inside `reconcile.mjs` (`legacyReviewThreadWritesEnabled`), already covered by
@@ -77,7 +79,7 @@ inside `reconcile.mjs` (`legacyReviewThreadWritesEnabled`), already covered by
 
 ## Verification
 
-- `node --test .github/scripts/lifecycle-decommission.test.mjs` — 13/13 pass
+- `node --test .github/scripts/lifecycle-decommission.test.mjs` — 15/15 pass
 - `node .github/scripts/lifecycle-decommission.mjs` — reports the real surface
   (4 workflows, 5 gated mutation steps, zero findings) and `ready: false` with
   the honest blocker list; exit 0

@@ -11,6 +11,7 @@ import {
   LEGACY_MUTATION_SURFACE,
   decideLegacyDecommission,
   evaluateLegacyMutationSurface,
+  laneGateSatisfied,
   legacyLaneGateExpression,
 } from './lifecycle-decommission.mjs';
 import { LIFECYCLE_PR_LANES } from './lifecycle-ownership.mjs';
@@ -90,6 +91,13 @@ test('an incomplete soak window blocks, and elapsed days are reported', () => {
   const decision = decideLegacyDecommission({ state, now: NOW });
   assert.deepEqual(decision.blockers, ['soak-incomplete']);
   assert.equal(decision.soak.elapsedDays, 6);
+  // Reported rounded, but compared unrounded: 13.9 days is still incomplete.
+  const almost = decideLegacyDecommission({
+    state: readyState({ soak: { startedAt: '2026-09-17T02:24:00.000Z' } }),
+    now: NOW,
+  });
+  assert.equal(almost.soak.elapsedDays, 13.9);
+  assert.deepEqual(almost.blockers, ['soak-incomplete']);
 
   assert.deepEqual(decideLegacyDecommission({ state, now: NOW, soakDays: 5 }).blockers, []);
   // The record's own `requiredDays` is honored, and the argument overrides it.
@@ -288,4 +296,50 @@ test('the CLI rejects flags passed without a usable value instead of coercing th
   const ok = run();
   assert.equal(ok.status, 0);
   assert.match(ok.stdout, /"ready": false/);
+});
+
+test('equivalent lane gates are accepted; a missing clause is not', () => {
+  const selector = 'LIFECYCLE_OWNER_MERGE_TRAIN';
+  const accepted = [
+    legacyLaneGateExpression(selector),
+    `vars.${selector} != "goobers" && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == "true"`,
+    `'goobers' != vars.${selector} && 'true' == vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED`,
+    `always() && vars.${selector}   !=   'goobers'\n && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`,
+  ];
+  for (const gate of accepted) {
+    assert.ok(laneGateSatisfied(gate, selector), `should accept: ${gate}`);
+  }
+
+  const rejected = [
+    '',
+    undefined,
+    `vars.${selector} != 'goobers'`,
+    "vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'",
+    `vars.${selector} == 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`,
+    // Another lane's selector must never satisfy this lane's gate.
+    "vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'",
+    // The claim-lane selector is not a PR-lifecycle lane gate.
+    "vars.LIFECYCLE_MUTATION_OWNER != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'",
+  ];
+  for (const gate of rejected) {
+    assert.equal(laneGateSatisfied(gate, selector), false, `should reject: ${gate}`);
+  }
+});
+
+test('the branch-update entrypoint matches a real PUT, not a mention of the endpoint', () => {
+  const workflows = readWorkflows();
+  workflows['auto-rebase-prs.yml'] = [
+    'jobs:',
+    '  rebase:',
+    '    steps:',
+    '      - name: Talk about update-branch without calling it',
+    '        run: echo "we used to call repos/o/r/pulls/1/update-branch here"',
+  ].join('\n');
+  const result = evaluateLegacyMutationSurface({
+    workflows,
+    state: { ...committedState, lanes: { ...committedState.lanes, 'branch-update': 'goobers' } },
+  });
+  const entry = result.entries.find((candidate) => candidate.lane === 'branch-update');
+  assert.equal(entry.mutationSteps, 0);
+  assert.deepEqual(result.findings, []);
 });

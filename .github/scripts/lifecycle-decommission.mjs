@@ -62,13 +62,43 @@ export const LEGACY_MUTATION_SURFACE = Object.freeze([
     workflow: 'auto-rebase-prs.yml',
     lane: 'branch-update',
     selector: 'LIFECYCLE_OWNER_BRANCH_UPDATE',
-    entrypoints: Object.freeze(['/update-branch']),
+    // Precise on purpose: a real `PUT .../update-branch` call, not a comment or
+    // log line that merely names the endpoint.
+    entrypoints: Object.freeze([/-X\s+PUT\s+"[^"]*\/update-branch"/]),
   }),
 ]);
 
-/** The gate every legacy mutation step must carry, for its own lane. */
+/** The canonical gate every legacy mutation step must carry, for its own lane. */
 export function legacyLaneGateExpression(selector) {
   return `vars.${selector} != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'`;
+}
+
+const QUOTED = (value) => `(?:'${value}'|"${value}")`;
+
+/**
+ * Is `gate` an acceptable legacy-lane gate for `selector`?
+ *
+ * Both required conditions are matched independently rather than as one exact
+ * literal, so an equivalent guard is not reported as ungated merely for writing
+ * the operands in the other order or with double quotes. Tolerated forms:
+ *
+ *   vars.X != 'goobers'        'goobers' != vars.X        vars.X != "goobers"
+ *   vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'   (either operand order)
+ *
+ * The check is intentionally conservative about nothing else: it does not try
+ * to evaluate boolean structure, so a disjunctive gate that merely mentions
+ * both clauses would pass here. The canonical literal is additionally pinned by
+ * `.github/scripts/merge-train/workflow-gating.test.mjs`.
+ */
+export function laneGateSatisfied(gate, selector) {
+  const text = normalizeGate(gate);
+  const selectorClause = new RegExp(
+    `(?:vars\\.${selector}\\s*!=\\s*${QUOTED('goobers')}|${QUOTED('goobers')}\\s*!=\\s*vars\\.${selector})`,
+  );
+  const bridgeClause = new RegExp(
+    `(?:vars\\.LEGACY_CI_MUTATION_BRIDGE_ENABLED\\s*==\\s*${QUOTED('true')}|${QUOTED('true')}\\s*==\\s*vars\\.LEGACY_CI_MUTATION_BRIDGE_ENABLED)`,
+  );
+  return selectorClause.test(text) && bridgeClause.test(text);
 }
 
 function isIsoInstant(value) {
@@ -179,7 +209,9 @@ export function decideLegacyDecommission({ state, now, soakDays } = {}) {
     soak: {
       startedAt: isIsoInstant(soakStartedAt) ? soakStartedAt : null,
       requiredDays,
-      elapsedDays,
+      // Reported rounded for legibility; the `< requiredDays` comparison above
+      // deliberately uses the unrounded value.
+      elapsedDays: elapsedDays === null ? null : Math.round(elapsedDays * 10) / 10,
     },
   };
 }
@@ -188,6 +220,10 @@ function stepMutationText(step) {
   if (!step || typeof step !== 'object') return '';
   const script = step.with && typeof step.with === 'object' ? step.with.script : undefined;
   return [step.run, script].filter((value) => typeof value === 'string').join('\n');
+}
+
+function matchesEntrypoint(body, entrypoint) {
+  return entrypoint instanceof RegExp ? entrypoint.test(body) : body.includes(entrypoint);
 }
 
 function effectiveGate(job, step) {
@@ -245,20 +281,20 @@ export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
         continue;
       }
       const jobs = document?.jobs && typeof document.jobs === 'object' ? document.jobs : {};
-      const gate = legacyLaneGateExpression(surface.selector);
       for (const [jobName, job] of Object.entries(jobs)) {
         for (const step of Array.isArray(job?.steps) ? job.steps : []) {
           const body = stepMutationText(step);
-          if (!surface.entrypoints.some((entrypoint) => body.includes(entrypoint))) continue;
+          if (!surface.entrypoints.some((entrypoint) => matchesEntrypoint(body, entrypoint)))
+            continue;
           entry.mutationSteps += 1;
-          if (!normalizeGate(effectiveGate(job, step)).includes(gate)) {
+          if (!laneGateSatisfied(effectiveGate(job, step), surface.selector)) {
             findings.push({
               kind: 'ungated-legacy-mutation',
               workflow: surface.workflow,
               lane: surface.lane,
               job: jobName,
               step: typeof step?.name === 'string' ? step.name : '(unnamed)',
-              detail: `must be gated on \`${gate}\``,
+              detail: `must be gated on \`${legacyLaneGateExpression(surface.selector)}\``,
             });
           }
         }
