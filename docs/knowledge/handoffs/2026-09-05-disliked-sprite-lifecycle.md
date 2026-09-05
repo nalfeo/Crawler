@@ -208,6 +208,23 @@ sprite-pipeline, sprite-workflow
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.
+- PR #4310 shepherding closed the three post-publication review gaps in one
+  batch. Sidecar publication failures now escape the lifecycle transaction so
+  approval and cleanup snapshots roll back; legacy check-in planning reconciles
+  every changed asset against both old issue records and canonical
+  `assets/queue` state with conflict/ambiguity precedence; and omitted headless
+  registries load the committed shard tree so projectile-anchor simulation
+  matches the shipped game. The renderer now consumes the canonical per-entity
+  variant resolver without per-frame allocation, while exact NPC/set-piece pins
+  remain unchanged. The unrelated Equipment UI CI regression was corrected by
+  snapping fallback text to whole-pixel bounds.
+- On the main-synchronized shepherd head, the combined focused matrix passed
+  274/274, the targeted Equipment UI E2E passed with zero fractional text
+  bounds, `check:test-only-exports` reported 0 blockers, `verify:fast` and
+  `verify:pr-prereqs` passed, and the prebundled real `ai:headless` pipeline
+  completed Floor 1 with a victory at seed 7. Lifecycle closure remained
+  0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates.
 
 ## PR #3234 generic extraction audit
 
