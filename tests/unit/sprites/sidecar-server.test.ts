@@ -30,7 +30,7 @@ import {
   safeJoin,
 } from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
-import { parseSourceRun } from '../../../scripts/sprites/run-durability.js';
+import { ensureRunDurable, parseSourceRun } from '../../../scripts/sprites/run-durability.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type {
@@ -1730,9 +1730,14 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(existsSync(path.join(generatedDir, `${briefId}-var-0.png`))).toBe(false);
     const annotations = JSON.parse(
       readFileSync(path.join(generatedDir, 'sprite-editor-annotations.json'), 'utf8'),
-    ) as { sprites: Record<string, { tombstone?: { manifestKey?: string } }> };
+    ) as {
+      sprites: Record<string, { tombstone?: { manifestKey?: string; replacementKey?: string } }>;
+    };
     expect(annotations.sprites[`${briefId}-var-0`]?.tombstone?.manifestKey).toBe(
       `${briefId}-var-0`,
+    );
+    expect(annotations.sprites[`${briefId}-var-0`]?.tombstone?.replacementKey).toBe(
+      `${briefId}-var-1`,
     );
     // …and left the unrelated concept alone (deferred to the repo-wide sweeper).
     expect(existsSync(path.join(generatedDir, 'entries', 'bat-var-0.json'))).toBe(true);
@@ -1751,6 +1756,70 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
     expect(retried.json().issueUrl).toBeUndefined();
     expect(checkinDeps.exec).not.toHaveBeenCalled();
+
+    // A later accepted variant in the same normalized concept is not a retry
+    // of the replacement recorded above. It must keep the ordinary check-in
+    // path instead of being rerouted by concept-wide tombstone history.
+    const runDir = path.join(runsDir, briefId, runId);
+    writeFileSync(path.join(runDir, 'processed', '02.png'), Buffer.from('PNG-02'));
+    const summaryPath = path.join(runDir, 'summary.json');
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as {
+      candidates: Array<Record<string, unknown>>;
+    };
+    summary.candidates.push({
+      index: 2,
+      score: 7,
+      outOf: 7,
+      passed: true,
+      combinedPassed: true,
+      derivedAnchor: null,
+      judgeScorecard: { passed: true, minScore: 4 },
+    });
+    writeFileSync(summaryPath, JSON.stringify(summary));
+
+    await app.close();
+    const laterCheckinDeps = makeCheckinDeps(new Map<string, QueuedAssetCheckin>());
+    let lifecycleQueueAttempts = 0;
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: laterCheckinDeps,
+      queueCommitDeps: {
+        exec: async () => {
+          lifecycleQueueAttempts += 1;
+          throw new Error('later variant must not use the lifecycle queue');
+        },
+        copyArtSurface: async () => undefined,
+        removeArtSurface: async () => undefined,
+        mergeSpriteAnnotations: async () => undefined,
+        makeTempDir: async () => mkdtempSync(path.join(tmpdir(), 'accept-queue-later-')),
+        removeDir: async () => undefined,
+        withCrossProcessLock: (run) => run(),
+        env: {},
+      },
+    });
+    const later = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 2 },
+    });
+    expect(later.statusCode).toBe(200);
+    expect(later.json()).toMatchObject({
+      state: 'queued',
+      existing: false,
+      variantIndex: 2,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+    });
+    expect(lifecycleQueueAttempts).toBe(0);
+    expect(
+      laterCheckinDeps.exec.mock.calls.some(
+        ([command, args]) => command === 'gh' && args[0] === 'issue' && args[1] === 'create',
+      ),
+    ).toBe(true);
   });
 
   it('reconciles a lost-response retry through the durable queued issue', async () => {
@@ -2594,6 +2663,8 @@ describe('store-backed /approve hydration parity', () => {
       ),
     );
     await backingStore.put(`${prefix}/processed/01.png`, Buffer.from('PNG-01'));
+    await backingStore.put(`${prefix}/sheet-00.png`, Buffer.from('SHEET'));
+    await backingStore.put(`${prefix}/provenance/prompt.json`, Buffer.from('{}'));
     await backingStore.put(
       `${prefix}/processed/01.anchor.json`,
       Buffer.from(JSON.stringify({ x: 8, y: 13, source: 'derived' })),
@@ -2618,6 +2689,7 @@ describe('store-backed /approve hydration parity', () => {
     publicAssetsDir = path.join(root, 'public', 'assets');
     manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
     backingStore = new LocalRunStore(storeRoot);
+    const store = remoteStore();
     app = buildServer({
       repoRoot: root,
       // Deliberately absent locally: the ONLY copy of the run is in the store.
@@ -2626,7 +2698,15 @@ describe('store-backed /approve hydration parity', () => {
       publicAssetsDir,
       manifestPath,
       env: {},
-      store: remoteStore(),
+      store,
+      ensureApprovalRunDurable: async (runDir, approvalBriefId, approvalRunId) => {
+        await ensureRunDurable({
+          durable: store,
+          briefId: approvalBriefId,
+          runId: approvalRunId,
+          localRunDir: runDir,
+        });
+      },
     });
   });
 
@@ -2672,6 +2752,23 @@ describe('store-backed /approve hydration parity', () => {
     // The round-trip that `ensureRunDurable` depends on: the published pointer
     // must resolve to the run that actually exists in the durable store.
     expect(parseSourceRun(res.json().sourceRun)).toEqual({ briefId, runId });
+  });
+
+  it('refuses a remote run whose durable provenance is incomplete', async () => {
+    await seedStoreRun();
+    await backingStore.remove(`${briefId}/${runId}/provenance/prompt.json`);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('required artifacts are missing');
+    expect(res.json().message).toContain('provenance/prompt.json');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
   });
 
   it('aborts approval when restoring a mirrored brief fails transiently', async () => {

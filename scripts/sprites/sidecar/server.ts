@@ -143,9 +143,7 @@ import {
 import {
   ensureRunDurable,
   formatSourceRun,
-  parseSourceRun,
   resolvePublicationDurableStore,
-  RunDurabilityError,
 } from '../run-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
@@ -356,7 +354,11 @@ export interface SidecarDeps {
    * Pre-mutation provenance durability gate for local runs. Production uses the
    * Azure publication store; tests may inject an isolated deterministic seam.
    */
-  readonly ensureApprovalRunDurable?: (runDir: string) => Promise<void>;
+  readonly ensureApprovalRunDurable?: (
+    runDir: string,
+    briefId: string,
+    runId: string,
+  ) => Promise<void>;
   /**
    * Exact browser origins allowed to invoke `/api/checkin`. Production passes
    * only this worktree's deterministic lab/devtools origins. Omit to reject
@@ -669,10 +671,10 @@ interface AcceptedResponse {
   readonly assetCount: number;
 }
 
-function requiresLifecycleQueue(plan: DislikedLifecyclePlan, conceptId: string): boolean {
+function requiresLifecycleQueue(plan: DislikedLifecyclePlan, replacementKey: string): boolean {
   if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) return true;
   return Object.values(plan.annotations.sprites).some(
-    (annotation) => annotation.tombstone?.conceptId === conceptId,
+    (annotation) => annotation.tombstone?.replacementKey === replacementKey,
   );
 }
 
@@ -743,20 +745,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
   const ensureApprovalRunDurable =
     deps.ensureApprovalRunDurable ??
-    (async (runDir: string): Promise<void> => {
-      if (store.backend !== 'local') return;
-      const coordinates = parseSourceRun(runDir);
-      if (coordinates === null) {
-        throw new RunDurabilityError(
-          `Cannot derive durable run coordinates from '${runDir}'. Expected a path ending in runs/<briefId>/<runId>.`,
-        );
-      }
-      const durable = resolvePublicationDurableStore({
-        repoRoot: deps.repoRoot,
-        env: deps.env ?? process.env,
-      });
+    (async (runDir: string, briefId: string, runId: string): Promise<void> => {
+      const durable =
+        store.backend === 'local'
+          ? resolvePublicationDurableStore({
+              repoRoot: deps.repoRoot,
+              env: deps.env ?? process.env,
+            })
+          : store;
       await ensureRunDurable({
-        ...coordinates,
+        briefId,
+        runId,
         durable,
         localRunDir: runDir,
       });
@@ -2154,7 +2153,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (hydrated !== null) {
           await restoreBriefContextForRunDir(runDir);
         }
-        await ensureApprovalRunDurable(runDir);
+        await ensureApprovalRunDurable(runDir, briefId, runId);
         const identity = resolveVariantIdentity(runDir, variantIndex);
         let alreadyApproved = false;
         let queueCommit: QueueCommitResult | { status: 'failed'; error: string } = {
@@ -2416,7 +2415,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (hydrated !== null) {
           await restoreBriefContextForRunDir(runDir);
         }
-        await ensureApprovalRunDurable(runDir);
+        await ensureApprovalRunDurable(runDir, briefId, runId);
 
         let identity: VariantIdentity;
         try {
@@ -2494,9 +2493,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                 // assets/queue is the single durable commit point: once this
                 // push succeeds there must be no later fallible remote action
                 // that could report failure and trigger only a local rollback.
-                if (
-                  requiresLifecycleQueue(plan, normalizeGeneratedSpriteConceptId(accepted.briefId))
-                ) {
+                if (requiresLifecycleQueue(plan, accepted.variantId)) {
                   const durableQueue = await runQueueCommit(
                     deps.repoRoot,
                     [

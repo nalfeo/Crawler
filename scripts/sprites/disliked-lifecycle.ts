@@ -55,6 +55,8 @@ export interface SpriteAnnotation {
 export interface DislikedSpriteTombstone {
   readonly manifestKey: string;
   readonly conceptId: string;
+  /** Exact accepted replacement that authorized this lifecycle deletion. */
+  readonly replacementKey?: string;
   readonly assetPath: string;
   readonly sourceRun: string;
   readonly variantIndex: number;
@@ -583,6 +585,7 @@ export function buildDislikedLifecyclePlan(
       tombstone: {
         manifestKey: removal.manifestKey,
         conceptId: removal.conceptId,
+        replacementKey: removal.replacementKey,
         assetPath: removal.assetPath,
         sourceRun: removal.sourceRun,
         variantIndex: removal.variantIndex,

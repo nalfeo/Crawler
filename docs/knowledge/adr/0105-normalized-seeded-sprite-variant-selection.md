@@ -93,9 +93,10 @@ without eventually disagreeing with approval and migration tooling.
   annotations publish exactly once to the canonical `assets/queue` branch.
   Legacy `asset-checkin` issue publication cannot represent those changes and
   must not run afterward: a second fallible remote write would make local
-  rollback unable to restore the already-published queue state. Persisted
-  concept tombstones keep retries on that queue path even after the local
-  cleanup has converged to a no-op.
+  rollback unable to restore the already-published queue state. Persisting the
+  exact accepted replacement key in each tombstone keeps retries for that
+  acceptance on the queue path even after local cleanup converges to a no-op,
+  without rerouting later unrelated accepts for the same concept.
 
 ## Consequences
 
