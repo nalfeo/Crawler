@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -211,9 +211,14 @@ function resolveRelativeImport(fromRepoFile: string, specifier: string): string 
     ]),
   ];
   return (
-    candidates.find(
-      (candidate) => !candidate.startsWith('..') && existsSync(path.join(REPO_ROOT, candidate)),
-    ) ?? null
+    candidates.find((candidate) => {
+      if (candidate.startsWith('..')) return false;
+      // Must be an existing *file*: a directory that shares a module's name
+      // (`./lib` next to `lib.mjs`) would otherwise satisfy the bare `base`
+      // candidate and silently truncate the import walk.
+      const absolute = path.join(REPO_ROOT, candidate);
+      return existsSync(absolute) && statSync(absolute).isFile();
+    }) ?? null
   );
 }
 
