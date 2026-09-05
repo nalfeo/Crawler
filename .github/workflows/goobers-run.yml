@@ -160,10 +160,23 @@ jobs:
       intake_cohort: ${{ steps.reserve.outputs.intake_cohort || steps.recovery.outputs.intake_cohort }}
     steps:
       - name: Fetch reservation tooling
-        # The lease reader below is checked-in code, not inline jq, so the trust
-        # rule and the marker grammar have exactly one implementation shared by
-        # every job that reads or writes a receipt. Sparse: this job needs the
-        # reservation scripts and canonical intake selector, never game source.
+        # The lease reader and the intake selector below are checked-in code,
+        # not inline jq, so the trust rule, the marker grammar and the
+        # eligibility cohort have exactly one implementation shared by every job
+        # that reads or writes a receipt or decides intake. Sparse: this job
+        # needs the scripts, never the game source.
+        #
+        # BOTH script roots are mandatory, and this job dies without either.
+        # `scripts/agent` holds the lease library; `.github/scripts` holds
+        # `goobers/intake-selection.mjs` AND the `ci-recovery/` eligibility
+        # library it imports. Omitting the latter is what took live intake down
+        # after intake parity landed: every issue-event dispatch failed the
+        # "Resolve Goobers recovery target" step with MODULE_NOT_FOUND on
+        # `.github/scripts/goobers/intake-selection.mjs`, so no issue could
+        # reach selection at all. A contract test in
+        # tests/unit/goobers-workflow-checkout-contract.test.ts now derives the
+        # required roots from the steps themselves and fails if a repo path is
+        # executed that this pattern list does not cover.
         uses: actions/checkout@v7
         with:
           # Same ref expression as the `run` job's checkout, so a manual
