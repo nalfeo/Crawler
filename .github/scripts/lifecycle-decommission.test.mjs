@@ -283,6 +283,9 @@ test('the CLI rejects flags passed without a usable value instead of coercing th
     ['--soak-days', 'abc'],
     ['--soak-days', '0'],
     ['--now', 'nope'],
+    // `--flag=value` must validate identically, not be silently ignored.
+    ['--soak-days=abc'],
+    ['--state='],
   ]) {
     const result = run(...argv);
     assert.equal(result.status, 2, `${argv.join(' ')} must fail closed`);
@@ -296,6 +299,11 @@ test('the CLI rejects flags passed without a usable value instead of coercing th
   const ok = run();
   assert.equal(ok.status, 0);
   assert.match(ok.stdout, /"ready": false/);
+
+  // A valid `--flag=value` override is honored, not ignored.
+  const override = run('--soak-days=30', '--now=2026-10-01T00:00:00.000Z');
+  assert.equal(override.status, 0);
+  assert.match(override.stdout, /"requiredDays": 30/);
 });
 
 test('equivalent lane gates are accepted; a missing clause is not', () => {

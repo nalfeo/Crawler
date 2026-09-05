@@ -344,8 +344,16 @@ function parseArgs(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
     if (!argv[index].startsWith('--')) continue;
-    const key = argv[index].slice(2);
-    options[key] = argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[++index] : true;
+    // Accept both `--flag value` and `--flag=value`; without the `=` split the
+    // latter would become a key nobody reads, silently ignoring the flag
+    // instead of failing closed like a bare flag does.
+    const token = argv[index].slice(2);
+    const separator = token.indexOf('=');
+    if (separator !== -1) {
+      options[token.slice(0, separator)] = token.slice(separator + 1);
+      continue;
+    }
+    options[token] = argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[++index] : true;
   }
   return options;
 }
@@ -376,22 +384,20 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     workflows: readWorkflows(path.join(repoRoot, '.github/workflows')),
     state,
   });
+  const nowArg = requireCliValue(
+    'now',
+    args.now,
+    (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)),
+  );
+  const soakDaysArg = requireCliValue(
+    'soak-days',
+    args['soak-days'],
+    (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value),
+  );
   const decision = decideLegacyDecommission({
     state,
-    now:
-      requireCliValue(
-        'now',
-        args.now,
-        (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)),
-      ) ?? new Date().toISOString(),
-    soakDays:
-      requireCliValue(
-        'soak-days',
-        args['soak-days'],
-        (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value),
-      ) === undefined
-        ? undefined
-        : Number(args['soak-days']),
+    now: nowArg ?? new Date().toISOString(),
+    soakDays: soakDaysArg === undefined ? undefined : Number(soakDaysArg),
   });
   process.stdout.write(`${JSON.stringify({ decision, surface }, null, 2)}\n`);
 
