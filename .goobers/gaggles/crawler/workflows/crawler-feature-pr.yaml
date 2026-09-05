@@ -74,6 +74,9 @@ spec:
               url,
               workspaceBranch: $workspaceBranch
             }' > claimed-item.json
+          elif [ "${GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED:-false}" = "true" ]; then
+            echo "Hosted Goobers slots require an explicit issue assignment; refusing the pinned runtime's nested backlog-query path." >&2
+            exit 1
           else
             goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"
           fi
@@ -82,13 +85,9 @@ spec:
         requireUnassigned: 'true'
         # Plural `excludeLabels` is the key `goobers backlog-query` actually
         # reads (cmd/goobers/backlogquery.go's providerInput("excludeLabels")).
-        # It is what keeps a fresh concurrent claim off an issue that another
-        # slot is already resuming: goobers-run.yml's `reserve` job -- which
-        # both matrix lanes declare in `needs:` -- labels its one recovery
-        # target goobers/status:in-review and confirms the label through this
-        # same read path before any lane exists, and the recovery branch above
-        # bypasses the provider claim protocol entirely, so this exclusion is
-        # the only thing standing between the two.
+        # It keeps a local/manual fallback claim off an issue already reserved
+        # by the hosted workflow. Hosted slots always receive explicit issues
+        # and cannot enter the fallback claim branch above.
         # completed-existing-work is excluded for the same reason the Actions
         # preflight excludes it: that issue is finished, not claimable.
         excludeLabels: 'goobers/status:in-review,goobers/status:completed-existing-work'

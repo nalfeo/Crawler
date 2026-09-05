@@ -218,6 +218,28 @@ interface Harness {
   log: string;
 }
 
+function slotAssignments(
+  entries: Array<{
+    lane?: number;
+    slot: number;
+    issue: string;
+    cohort?: string;
+    resumePr?: string;
+    resumeBranch?: string;
+  }>,
+): string {
+  return JSON.stringify(
+    entries.map((entry) => ({
+      lane: entry.lane ?? 1,
+      slot: entry.slot,
+      issue: entry.issue,
+      cohort: entry.cohort ?? 'approved',
+      resumePr: entry.resumePr ?? '',
+      resumeBranch: entry.resumeBranch ?? '',
+    })),
+  );
+}
+
 interface RunStepOptions {
   journals?: Journal[];
   stubs?: string;
@@ -258,8 +280,7 @@ function runStep(stepName: string, options: RunStepOptions = {}): Harness {
       GOOBERS_LANE: '1',
       GOOBERS_SLOTS: '1 2',
       GOOBERS_LANE_ROOT: toBashScriptPath(laneRoot),
-      GOOBERS_RECOVERY_LANE: '1',
-      GOOBERS_RECOVERY_SLOT: '1',
+      GOOBERS_SLOT_ASSIGNMENTS: '[]',
       GOOBERS_WORKFLOW: 'crawler-feature-pr',
       GOOBERS_CLAIM_TOKEN: 'stub-pat',
       GH_TOKEN: 'stub-token',
@@ -517,7 +538,9 @@ const SIBLING_ONLY_JOURNALS: Journal[] = [
 ];
 
 describe.skipIf(!hasJq)('goobers-run.yml journal-less recovery slot', () => {
-  const recoveryEnv = { GOOBERS_RECOVERY_ISSUE: '42', GOOBERS_RESUME_PR: '' };
+  const recoveryEnv = {
+    GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
+  };
 
   it('dispositions the reserved issue even when a sibling slot did produce a journal', () => {
     const harness = runStep('Handle no-work disposition', {
@@ -785,7 +808,7 @@ describe.skipIf(!hasJq)('goobers-run.yml expected empty slot', () => {
  */
 const RUN_STEP_STUB = `#!/usr/bin/env bash
 printf 'start instance=%s recovery=%s\\n' "\${GOOBERS_INSTANCE:-unset}" "\${GOOBERS_RECOVERY_ISSUE:-none}" >> "\${STUB_LOG}"
-sleep 1
+sleep 3
 printf 'end instance=%s recovery=%s\\n' "\${GOOBERS_INSTANCE:-unset}" "\${GOOBERS_RECOVERY_ISSUE:-none}" >> "\${STUB_LOG}"
 `;
 
@@ -801,12 +824,16 @@ function jobBudgetEnv(overrides: Record<string, string> = {}): Record<string, st
     GOOBERS_JOB_START_SLACK_SECONDS: '90',
     GOOBERS_SLOT_POLL_SECONDS: '10',
     GOOBERS_CLEANUP_RESERVE_SECONDS: '2100',
+    GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([
+      { slot: 1, issue: '42' },
+      { slot: 2, issue: '43' },
+    ]),
     ...overrides,
   };
 }
 
-describe.skipIf(!hasBash)('goobers-run.yml slot concurrency', () => {
-  it('runs both slots at the same time, each on its own instance root, with one recovery slot', () => {
+describe.skipIf(!hasJq)('goobers-run.yml slot concurrency', () => {
+  it('runs both explicitly assigned slots at the same time on isolated roots', () => {
     const workdir = mkdtempSync(path.join(tmpdir(), 'goobers-run-'));
     const binDir = path.join(workdir, 'bin');
     mkdirSync(binDir, { recursive: true });
@@ -834,18 +861,24 @@ describe.skipIf(!hasBash)('goobers-run.yml slot concurrency', () => {
         GOOBERS_LANE: '1',
         GOOBERS_SLOTS: '1 2',
         GOOBERS_LANE_ROOT: toBashScriptPath(path.join(workdir, 'lane-1')),
-        GOOBERS_RECOVERY_LANE: '1',
-        GOOBERS_RECOVERY_SLOT: '1',
-        GOOBERS_RECOVERY_ISSUE: '42',
-        GOOBERS_RESUME_PR: '7',
-        GOOBERS_RESUME_BRANCH: 'goobers/crawler/x',
         GOOBERS_SLOT_DEADLINE_SECONDS: '120',
         GOOBERS_WORKFLOW: 'crawler-feature-pr',
         GITHUB_RUN_ID: '999',
         GITHUB_RUN_ATTEMPT: '1',
         GITHUB_WORKSPACE: toBashScriptPath(REPO_ROOT),
         RUNNER_TEMP: toBashScriptPath(workdir),
-        ...jobBudgetEnv(),
+        ...jobBudgetEnv({
+          GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([
+            {
+              slot: 1,
+              issue: '42',
+              cohort: 'resume',
+              resumePr: '7',
+              resumeBranch: 'goobers/crawler/x',
+            },
+            { slot: 2, issue: '43' },
+          ]),
+        }),
       }),
     });
 
@@ -867,209 +900,57 @@ describe.skipIf(!hasBash)('goobers-run.yml slot concurrency', () => {
     expect(instances.some((value) => value.endsWith('/slot-1'))).toBe(true);
     expect(instances.some((value) => value.endsWith('/slot-2'))).toBe(true);
 
-    // Exactly one slot carries the recovery target; the other claims fresh.
+    // Every launched slot carries an explicit issue; no slot can enter the
+    // pinned runtime's nested backlog-query path.
     const recoveries = starts.map((line) => /recovery=(\S+)/.exec(line)?.[1] ?? '');
     expect(recoveries.filter((value) => value === '42')).toHaveLength(1);
-    expect(recoveries.filter((value) => value === 'none')).toHaveLength(1);
+    expect(recoveries.filter((value) => value === '43')).toHaveLength(1);
+    expect(recoveries).not.toContain('none');
     const recoveryStart = starts.find((line) => line.includes('recovery=42')) ?? '';
     expect(recoveryStart).toContain('/slot-1 ');
   }, 60_000);
-});
 
-/**
- * Executable interleaving regression for the reservation ordering.
- *
- * The hazard: the recovery branch of crawler-feature-pr.yaml's query-backlog
- * stage does NOT go through Goobers' provider claim protocol, so
- * `goobers/status:in-review` is the only barrier between the resuming slot and
- * the three fresh ones. When both matrix legs resolved the target themselves,
- * leg 2's fresh slots could run their claim scan before leg 1 had applied the
- * label — two agents on one issue.
- *
- * The fix is a dedicated `reserve` job both legs declare in `needs:`, so the
- * label is applied and confirmed before either lane exists. This test runs the
- * real reservation script and the real slot-launch script against one shared
- * fake provider, in the two possible interleavings:
- *
- *   ordered  (what `needs:` guarantees) -> both fresh slots SKIP the issue
- *   unordered (the pre-fix shape)       -> both fresh slots CLAIM the issue
- *
- * The negative control is what makes the positive case meaningful: it proves
- * the ordering is load-bearing rather than the stub being incapable of
- * claiming.
- */
-const RESERVATION_GH_STUB = `
-gh() {
-  printf 'gh %s\\n' "$*" >> "$STUB_LOG"
-  case "$*" in
-    *--add-label*)
-      printf 'goobers/status:in-review\\n' >> "$PROVIDER_STATE"
-      ;;
-    *state,labels,assignees*)
-      # The canonical selector reads number/author too; without them the
-      # run-start revalidation judges this issue ineligible.
-      printf '{"number":42,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"}}\\n'
-      ;;
-    *blocked_by*)
-      ;;
-    *labels=goobers:approved*)
-      cat "$PROVIDER_STATE"
-      ;;
-    *comments*)
-      printf '[[]]\\n'
-      ;;
-  esac
-  return 0
-}
-`;
-
-/**
- * A `goobers` stand-in that performs the one decision that matters here: a
- * fresh backlog claim scan honours excludeLabels, so it takes the issue only
- * while the reservation is absent.
- */
-const CLAIM_SCAN_STUB = `#!/usr/bin/env bash
-if [ "\${1:-}" = "run" ] && [ "\${2:-}" = "abort" ]; then
-  exit 0
-fi
-if grep -qxF 'goobers/status:in-review' "\${PROVIDER_STATE}" 2>/dev/null; then
-  printf 'SKIPPED 42 instance=%s\\n' "\${GOOBERS_INSTANCE:-unset}" >> "\${CLAIM_LOG}"
-else
-  printf 'CLAIMED 42 instance=%s\\n' "\${GOOBERS_INSTANCE:-unset}" >> "\${CLAIM_LOG}"
-fi
-exit 0
-`;
-
-interface InterleavingResult {
-  claimLog: string;
-  reserveStdout: string;
-  reserveStderr: string;
-  reserveStatus: number | null;
-  runStatus: number | null;
-  runStderr: string;
-}
-
-function runReservationInterleaving(reserveFirst: boolean): InterleavingResult {
-  const workdir = mkdtempSync(path.join(tmpdir(), 'goobers-reserve-'));
-  const binDir = path.join(workdir, 'bin');
-  mkdirSync(binDir, { recursive: true });
-
-  const providerState = path.join(workdir, 'issue-42-labels.txt');
-  // The reserved issue starts life as a plain approved backlog item.
-  writeFileSync(providerState, 'goobers:approved\n', 'utf8');
-  const claimLog = path.join(workdir, 'claims.log');
-  writeFileSync(claimLog, '', 'utf8');
-  const stubLog = path.join(workdir, 'gh.log');
-  writeFileSync(stubLog, '', 'utf8');
-
-  const claimStub = path.join(binDir, 'goobers');
-  writeFileSync(claimStub, CLAIM_SCAN_STUB, 'utf8');
-  chmodSync(claimStub, 0o755);
-
-  const sharedEnv = {
-    STUB_LOG: toBashScriptPath(stubLog),
-    PROVIDER_STATE: toBashScriptPath(providerState),
-    CLAIM_LOG: toBashScriptPath(claimLog),
-    GITHUB_REPOSITORY: 'nalfeo/Crawler',
-    GITHUB_RUN_ID: '999',
-    GITHUB_RUN_ATTEMPT: '1',
-    GITHUB_WORKSPACE: toBashScriptPath(REPO_ROOT),
-    GOOBERS_WORKFLOW: 'crawler-feature-pr',
-    GOOBERS_RECOVERY_LANE: '1',
-    GOOBERS_RECOVERY_SLOT: '1',
-    // The run-start race guard re-judges the issue with the canonical
-    // selector, which fails closed without these.
-    LIFECYCLE_MUTATION_OWNER: 'goobers',
-    ISSUE_OWNER: 'nalfeo',
-  };
-
-  let reserveStdout = '';
-  let reserveStderr = '';
-  let reserveStatus: number | null = 0;
-  if (reserveFirst) {
-    const reservePath = path.join(workdir, 'reserve.sh');
+  it('leaves an unassigned slot idle instead of entering nested backlog-query', () => {
+    const workdir = mkdtempSync(path.join(tmpdir(), 'goobers-idle-slot-'));
+    const binDir = path.join(workdir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const logPath = path.join(workdir, 'stub.log');
+    writeFileSync(logPath, '', 'utf8');
+    const stubPath = path.join(binDir, 'goobers');
+    writeFileSync(stubPath, RUN_STEP_STUB, 'utf8');
+    chmodSync(stubPath, 0o755);
+    const scriptPath = path.join(workdir, 'run-step.sh');
     writeFileSync(
-      reservePath,
-      `${RESERVATION_GH_STUB}\n${stepScript(
-        'Reserve the recovery target and comment on Goobers run start',
-        'reserve',
-      )}\n`,
+      scriptPath,
+      `export PATH="$(cd "${toBashScriptPath(binDir)}" && pwd):$PATH"\n${stepScript('Run the workflow')}\n`,
       'utf8',
     );
-    const reserve = spawnSync('bash', [toBashScriptPath(reservePath)], {
+
+    const result = spawnSync('bash', [toBashScriptPath(scriptPath)], {
       encoding: 'utf8',
       env: bashEnv({
-        ...sharedEnv,
-        RESERVED_ISSUE: '42',
-        RESOLVED_INTAKE_COHORT: 'approved',
-        // The run-start revalidation stages its selector payload as a file.
+        STUB_LOG: toBashScriptPath(logPath),
+        GOOBERS_LANE: '1',
+        GOOBERS_SLOTS: '1 2',
+        GOOBERS_LANE_ROOT: toBashScriptPath(path.join(workdir, 'lane-1')),
+        GOOBERS_SLOT_DEADLINE_SECONDS: '120',
+        GOOBERS_WORKFLOW: 'crawler-feature-pr',
+        GITHUB_RUN_ID: '999',
+        GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_WORKSPACE: toBashScriptPath(REPO_ROOT),
         RUNNER_TEMP: toBashScriptPath(workdir),
+        ...jobBudgetEnv({
+          GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
+        }),
       }),
     });
-    reserveStdout = reserve.stdout ?? '';
-    reserveStderr = reserve.stderr ?? '';
-    reserveStatus = reserve.status;
-  }
 
-  // Lane 2: no recovery metadata at all, so BOTH of its slots take the fresh
-  // `goobers backlog-query --claim` path — the exact leg that raced.
-  const runPath = path.join(workdir, 'run-step.sh');
-  writeFileSync(
-    runPath,
-    `export PATH="$(cd "${toBashScriptPath(binDir)}" && pwd):$PATH"\n${stepScript(
-      'Run the workflow',
-    )}\n`,
-    'utf8',
-  );
-  const run = spawnSync('bash', [toBashScriptPath(runPath)], {
-    encoding: 'utf8',
-    env: bashEnv({
-      ...sharedEnv,
-      GOOBERS_LANE: '2',
-      GOOBERS_SLOTS: '1 2',
-      GOOBERS_LANE_ROOT: toBashScriptPath(path.join(workdir, 'lane-2')),
-      GOOBERS_RECOVERY_ISSUE: '',
-      GOOBERS_RESUME_PR: '',
-      GOOBERS_RESUME_BRANCH: '',
-      GOOBERS_SLOT_DEADLINE_SECONDS: '120',
-      RUNNER_TEMP: toBashScriptPath(workdir),
-      ...jobBudgetEnv(),
-    }),
-  });
-
-  return {
-    claimLog: readFileSync(claimLog, 'utf8'),
-    reserveStdout,
-    reserveStderr,
-    reserveStatus,
-    runStatus: run.status,
-    runStderr: run.stderr ?? '',
-  };
-}
-
-describe.skipIf(!hasJq)('goobers-run.yml recovery reservation ordering', () => {
-  it('keeps every fresh slot off the reserved issue once the reservation has landed', () => {
-    const ordered = runReservationInterleaving(true);
-
-    expect(ordered.reserveStatus, `stderr:\n${ordered.reserveStderr}`).toBe(0);
-    expect(ordered.runStatus, `stderr:\n${ordered.runStderr}`).toBe(0);
-    // The reservation is not merely written — it is confirmed through the same
-    // REST read a fresh claim performs, so the job cannot finish while the
-    // label is still invisible.
-    expect(ordered.reserveStdout).toContain('confirmed it through the backlog read path');
-    // Both of lane 2's fresh slots looked at the reserved issue and declined.
-    expect(ordered.claimLog.match(/SKIPPED 42/g)).toHaveLength(2);
-    expect(ordered.claimLog).not.toContain('CLAIMED 42');
-  }, 60_000);
-
-  it('negative control: an unreserved target is claimed by the fresh slots', () => {
-    const unordered = runReservationInterleaving(false);
-
-    // Same scripts, same stub, only the ordering removed. Both fresh slots take
-    // the issue, which is exactly the duplicate work `needs: reserve` prevents.
-    expect(unordered.runStatus, `stderr:\n${unordered.runStderr}`).toBe(0);
-    expect(unordered.claimLog.match(/CLAIMED 42/g)).toHaveLength(2);
-    expect(unordered.claimLog).not.toContain('SKIPPED 42');
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    const log = readFileSync(logPath, 'utf8');
+    expect(log.match(/^start /gm)).toHaveLength(1);
+    expect(log).toContain('recovery=42');
+    expect(log).not.toContain('recovery=none');
+    expect(result.stdout).toContain('slot 2 has no reserved issue assignment; leaving it idle');
   }, 60_000);
 });
 
@@ -1398,11 +1279,7 @@ describe.skipIf(!hasProc)('goobers-run.yml slot deadline teardown', () => {
         GOOBERS_LANE: '1',
         GOOBERS_SLOTS: '1',
         GOOBERS_LANE_ROOT: toBashScriptPath(path.join(workdir, 'lane-1')),
-        GOOBERS_RECOVERY_LANE: '1',
-        GOOBERS_RECOVERY_SLOT: '1',
-        GOOBERS_RECOVERY_ISSUE: '',
-        GOOBERS_RESUME_PR: '',
-        GOOBERS_RESUME_BRANCH: '',
+        GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
         // Short enough to keep the test fast; the teardown logic is identical
         // at 4200s.
         GOOBERS_SLOT_DEADLINE_SECONDS: '3',
@@ -1537,7 +1414,7 @@ describe.skipIf(!hasProc)('goobers-run.yml slot deadline teardown', () => {
       expect(result.stderr).toContain(slotPid);
       // The healthy sibling is neither blamed nor stripped of its exit status.
       expect(result.stderr).not.toContain("could not prove slot 2's stage tree was terminated");
-      expect(result.stdout).toContain('slot 2 (recovery=0) exited 0');
+      expect(result.stdout).toContain('slot 2 (recovery=1) exited 0');
       // The surviving root is still running, which is the whole point: the step
       // returned WITHOUT it exiting. A blocking `wait` could only have returned
       // after the stub's 600s sleep.
@@ -1621,11 +1498,7 @@ function runDeadlineDerivation(
       GOOBERS_LANE: '1',
       GOOBERS_SLOTS: '1',
       GOOBERS_LANE_ROOT: toBashScriptPath(path.join(workdir, 'lane-1')),
-      GOOBERS_RECOVERY_LANE: '1',
-      GOOBERS_RECOVERY_SLOT: '1',
-      GOOBERS_RECOVERY_ISSUE: '',
-      GOOBERS_RESUME_PR: '',
-      GOOBERS_RESUME_BRANCH: '',
+      GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
       // Deliberately far larger than any derived budget below: if the step
       // still used this value directly, neither test could pass.
       GOOBERS_SLOT_DEADLINE_SECONDS: '3300',
@@ -1934,6 +1807,13 @@ const LIVE_SIBLING_RUN = {
     { id: 222, status: 'completed' },
   ],
 };
+const NEWER_SIBLING_RUN = {
+  workflow_runs: [
+    { id: 1001, status: 'queued' },
+    { id: 999, status: 'in_progress' },
+    { id: 222, status: 'completed' },
+  ],
+};
 
 describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight', () => {
   it('allows recovery when this dispatch is the only live one', () => {
@@ -1953,6 +1833,14 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     // The workflow's own jq filter did the selecting: the sibling is named and
     // this dispatch's own run id is excluded.
     expect(result.stdout).toContain('111');
+  });
+
+  it('allows the oldest live dispatch to reserve work when a newer run is queued', () => {
+    const result = runReserveStep('Detect a live sibling dispatch', NEWER_SIBLING_RUN, {});
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.output).toContain('recovery_allowed=true');
+    expect(result.stdout).not.toContain('1001');
   });
 
   it('fails closed on an unreadable run list', () => {
@@ -1976,7 +1864,7 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     // four slots claim atomically instead.
     expect(deferred.output).not.toContain('recovery_issue=');
     expect(deferred.log).not.toContain('gh issue edit');
-    expect(deferred.stdout).toContain('Not designating issue #42');
+    expect(deferred.stdout).toContain('launching no slots');
 
     // Negative control: the same script with the guard satisfied DOES
     // designate it, so the guard is load-bearing rather than the stub being
@@ -1986,7 +1874,7 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
       RECOVERY_ALLOWED: 'true',
     });
     expect(allowed.status, `stderr:\n${allowed.stderr}`).toBe(0);
-    expect(allowed.output).toContain('recovery_issue=42');
+    expect(allowed.output).toContain('"issue":"42"');
   });
 
   it('falls through safely when an issue event is outside the intake cohort', () => {
@@ -2001,6 +1889,36 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     expect(result.stderr).not.toContain('command not found');
     expect(result.output).not.toContain('recovery_issue=42');
     expect(result.log).not.toContain('gh issue edit');
+  });
+
+  it('emits numeric slot coordinates that select the assigned consumer slot', () => {
+    const result = runReserveStep('Resolve Goobers recovery target', SELF_RUN_ONLY, {});
+    const serialized = result.output.match(/^slot_assignments=(.+)$/m)?.[1];
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(serialized).toBeDefined();
+    const assignments = JSON.parse(serialized ?? '[]') as Array<{ lane: unknown; slot: unknown }>;
+    expect(assignments).toHaveLength(1);
+    const lane = assignments[0]?.lane;
+    const slot = assignments[0]?.slot;
+    expect(typeof lane).toBe('number');
+    expect(typeof slot).toBe('number');
+    if (typeof lane !== 'number' || typeof slot !== 'number') {
+      throw new Error('Expected numeric Goobers assignment coordinates');
+    }
+
+    const consumer = spawnSync(
+      'bash',
+      [
+        '-c',
+        `jq -e --argjson lane "$LANE" --argjson slot "$SLOT" 'any(.[]; .lane == $lane and .slot == $slot)' <<<"$ASSIGNMENTS"`,
+      ],
+      {
+        encoding: 'utf8',
+        env: bashEnv({ ASSIGNMENTS: serialized ?? '[]', LANE: String(lane), SLOT: String(slot) }),
+      },
+    );
+    expect(consumer.status, `stderr:\n${consumer.stderr}`).toBe(0);
   });
 
   it('fails an explicit resume request instead of silently downgrading it', () => {
@@ -2048,6 +1966,7 @@ gh() {
     previous="$argument"
   done
   case "$*" in
+    *'issue view'*'--json labels'*) printf 'goobers/status:in-review\\n' ;;
     *comments?per_page*|*comments*)
       if [ "\${COMMENTS_FIXTURE_FAILS:-}" = "1" ]; then
         printf 'HTTP 403: rate limit exceeded\\n' >&2
@@ -2055,10 +1974,23 @@ gh() {
       fi
       cat "$COMMENTS_FIXTURE"
       ;;
-    *timeline*) printf '[]\\n' ;;
+    *timeline*)
+      if [[ "$*" == *'issues/42/timeline'* ]] && [ "\${ISSUE_42_OPEN_PR:-}" = "1" ]; then
+        printf '%s\\n' '[{"event":"cross-referenced","source":{"issue":{"number":900,"repository_url":"https://api.github.com/repos/nalfeo/Crawler","pull_request":{}}}}]'
+      else
+        printf '[]\\n'
+      fi
+      ;;
+    *'pr view 900'*)
+      printf '%s\\n' '{"state":"OPEN","headRefName":"goobers/crawler/42","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}'
+      ;;
   esac
   if [[ "$*" == *" --input -"* ]]; then
     cat > /dev/null
+    if [ "\${PATCH_FAILS:-}" = "1" ]; then
+      printf 'HTTP 503: temporary GitHub failure\\n' >&2
+      return 1
+    fi
   fi
   return 0
 }
@@ -2124,11 +2056,9 @@ function runReceiptStep(
       GITHUB_RUN_ATTEMPT: '1',
       GH_TOKEN: 'stub-token',
       GOOBERS_LANE: '1',
-      GOOBERS_RECOVERY_LANE: '1',
-      GOOBERS_RECOVERY_SLOT: '1',
-      // Declared as a step env in the workflow, so it is always defined under
-      // `set -u` even when the reserve job resolved no cohort.
-      RESERVED_INTAKE_COHORT: '',
+      RUNNER_TEMP: toBashScriptPath(workdir),
+      GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
+      RESERVED_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
       ...env,
     }),
   });
@@ -2143,6 +2073,54 @@ function runReceiptStep(
 }
 
 describe.skipIf(!hasJq)('goobers-run.yml reservation ownership evidence', () => {
+  it('continues releasing later assignments after an earlier lease blocks release', () => {
+    const assignments = slotAssignments([
+      { slot: 1, issue: '42' },
+      { slot: 2, issue: '43' },
+    ]);
+    const result = runReceiptStep(
+      'Release the reservation when no lane ever owned it',
+      'release-unstarted-reservation',
+      [[comment(1, `${adoptedMarker()}\n\nadopted`)]],
+      {
+        RESERVED_ASSIGNMENTS: assignments,
+        RUN_RESULT: 'failure',
+      },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Reserved issue #42 WAS adopted');
+    expect(result.log).toContain(
+      'gh issue edit 43 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+  });
+
+  it('continues releasing later assignments after preserving an earlier open PR', () => {
+    const assignments = slotAssignments([
+      { slot: 1, issue: '42', resumePr: '900' },
+      { slot: 2, issue: '43' },
+    ]);
+    const result = runReceiptStep(
+      'Release the reservation when no lane ever owned it',
+      'release-unstarted-reservation',
+      [[]],
+      {
+        ISSUE_42_OPEN_PR: '1',
+        RESERVED_ASSIGNMENTS: assignments,
+        RUN_RESULT: 'failure',
+      },
+    );
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('open Goobers PR #900 still holds resumable work');
+    expect(result.log).not.toContain(
+      'gh issue edit 42 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+    expect(result.log).toContain(
+      'gh issue edit 43 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+  });
+
   it('releases only when no lane ever adopted the reservation', () => {
     const result = runReceiptStep(
       'Release the reservation when no lane ever owned it',
@@ -2359,6 +2337,44 @@ describe.skipIf(!hasJq)('goobers-run.yml reservation ownership evidence', () => 
     expect(clean.stdout).toContain('Recorded the disposal receipt');
   });
 
+  it('fails when the disposal receipt PATCH is not persisted', () => {
+    const result = runReceiptStep(
+      'Record reservation disposal',
+      'run',
+      [[comment(7, `${adoptedMarker()}\n\nadopted`)]],
+      {
+        PATCH_FAILS: '1',
+        REAP_OUTCOME: 'success',
+        DISPOSITION_OUTCOME: 'success',
+      },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Could not append the disposal marker');
+    expect(result.stdout).not.toContain('Recorded the disposal receipt');
+  });
+
+  it('checks every lane assignment even when an earlier disposal fails', () => {
+    const assignments = slotAssignments([
+      { slot: 1, issue: '42' },
+      { slot: 2, issue: '43' },
+    ]);
+    const result = runReceiptStep(
+      'Record reservation disposal',
+      'run',
+      [[comment(7, `${adoptedMarker('4242', '1')}\n\nadopted`)]],
+      {
+        GOOBERS_SLOT_ASSIGNMENTS: assignments,
+        REAP_OUTCOME: 'success',
+        DISPOSITION_OUTCOME: 'success',
+      },
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('reserved issue #42');
+    expect(result.stderr).toContain('reserved issue #43');
+  });
+
   it('will not PATCH a disposal onto an untrusted look-alike receipt', () => {
     const spoofed = runReceiptStep(
       'Record reservation disposal',
@@ -2495,7 +2511,7 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
     });
 
     expect(free.status, `stderr:\n${free.stderr}`).toBe(0);
-    expect(free.output).toContain('recovery_issue=42');
+    expect(free.output).toContain('"issue":"42"');
     expect(free.stdout).toContain('reservation lease: free');
   });
 
@@ -2507,7 +2523,7 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
     });
 
     expect(spoofed.status, `stderr:\n${spoofed.stderr}`).toBe(0);
-    expect(spoofed.output).toContain('recovery_issue=42');
+    expect(spoofed.output).toContain('"issue":"42"');
   });
 
   it('fails an explicitly requested issue that is still leased', () => {
@@ -2525,7 +2541,7 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
 
   it('refuses to adopt a reservation another dispatch still holds', () => {
     const result = runReceiptStep(
-      'Adopt the reserved recovery target',
+      'Adopt reserved slot assignments',
       'run',
       [[comment(1, adoptedMarker('4242', '1'))]],
       {
@@ -2544,7 +2560,7 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
 
   it('adopts normally when the previous lease was disposed', () => {
     const result = runReceiptStep(
-      'Adopt the reserved recovery target',
+      'Adopt reserved slot assignments',
       'run',
       [[comment(1, `${adoptedMarker('4242', '1')}\n${disposedMarker('4242', '1')}`)]],
       {
@@ -2557,6 +2573,19 @@ describe.skipIf(!hasJq)('goobers-run.yml durable recovery lease', () => {
     expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
     expect(result.log).toContain('gh issue comment 42');
     // The receipt it writes is scoped to THIS run and attempt.
+    expect(result.log).toContain(adoptedMarker('999', '1', '42'));
+  });
+
+  it('preserves empty resume and lease fields through JSONL adoption staging', () => {
+    const result = runReceiptStep('Adopt reserved slot assignments', 'run', [[]], {
+      RESERVED_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
+    });
+
+    expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain(
+      "Lane 1 slot 1 adopted reserved issue #42 (cohort 'approved', resume PR 'none').",
+    );
+    expect(result.stdout).not.toContain("resume PR 'free'");
     expect(result.log).toContain(adoptedMarker('999', '1', '42'));
   });
 });
@@ -2601,7 +2630,7 @@ describe.skipIf(!hasJq)('goobers-run.yml backlog read failures', () => {
     const result = runReserveStep('Resolve Goobers recovery target', SELF_RUN_ONLY, {});
 
     expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
-    expect(result.stdout).toContain('Eligible fresh backlog work exists');
+    expect(result.stdout).toContain('Planned 1 explicit Goobers slot assignment');
     expect(result.output).not.toContain('should_run=false');
   });
 
@@ -2615,7 +2644,7 @@ describe.skipIf(!hasJq)('goobers-run.yml backlog read failures', () => {
     });
 
     expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
-    expect(result.output).toContain('recovery_issue=42');
+    expect(result.output).toContain('"issue":"42"');
     // The notice was never treated as a candidate.
     expect(result.stderr).not.toContain('where the recovery scan expected an issue number');
     expect(result.log).not.toContain('a new release of gh is available');
@@ -2657,9 +2686,7 @@ describe.skipIf(!hasBash)('goobers-run.yml slot diagnostics sentinel', () => {
         GOOBERS_LANE: '1',
         GOOBERS_SLOTS: '1 2',
         GOOBERS_LANE_ROOT: toBashScriptPath(laneRoot),
-        GOOBERS_RECOVERY_LANE: '1',
-        GOOBERS_RECOVERY_SLOT: '1',
-        GOOBERS_RECOVERY_ISSUE: '42',
+        GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42' }]),
         GOOBERS_WORKFLOW: 'crawler-feature-pr',
         GITHUB_REPOSITORY: 'nalfeo/Crawler',
         GITHUB_RUN_ID: '999',
@@ -2683,7 +2710,7 @@ describe.skipIf(!hasBash)('goobers-run.yml slot diagnostics sentinel', () => {
       expect(body).toContain(`slot=${slot}`);
       expect(body).toContain('actions-run=999');
       expect(body).toContain('actions-run-attempt=1');
-      expect(body).toContain('recovery-issue=42');
+      expect(body).toContain(`assigned-issue=${slot === '1' ? '42' : 'none'}`);
       expect(body).toContain('stage-tree-reap=success');
       // The journal-less case says so explicitly rather than trailing off.
       expect(body).toContain('(none');
@@ -2705,9 +2732,7 @@ describe.skipIf(!hasBash)('goobers-run.yml slot diagnostics sentinel', () => {
         GOOBERS_LANE: '1',
         GOOBERS_SLOTS: '1 2',
         GOOBERS_LANE_ROOT: toBashScriptPath(laneRoot),
-        GOOBERS_RECOVERY_LANE: '1',
-        GOOBERS_RECOVERY_SLOT: '1',
-        GOOBERS_RECOVERY_ISSUE: '',
+        GOOBERS_SLOT_ASSIGNMENTS: '[]',
         GOOBERS_WORKFLOW: 'crawler-feature-pr',
         GITHUB_REPOSITORY: 'nalfeo/Crawler',
         GITHUB_RUN_ID: '999',

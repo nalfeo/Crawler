@@ -658,7 +658,7 @@ ${queryScript}
     expect(sourceIndex).toBeLessThan(launchIndex);
     // The slot table carries the start time alongside the pid, and every reader
     // of the table binds it.
-    expect(script).toContain('"$slot" "$slot_pid" "$slot_log" "$recovery_slot" "${slot_start:-0}"');
+    expect(script).toContain('"$slot" "$slot_pid" "$slot_log" "1" "${slot_start:-0}"');
     expect(
       script.match(/read -r slot pid log recovery start/g)?.length,
       'every slot-table reader must bind the start-time column',
@@ -929,7 +929,8 @@ ${queryScript}
       steps.find((step) => step.name === 'Resolve Goobers recovery target')?.run ?? '';
     const start =
       steps.find(
-        (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+        (step) =>
+          step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
       )?.run ?? '';
 
     // The selectors themselves must never be restated in YAML/jq — that
@@ -953,9 +954,9 @@ ${queryScript}
     expect(sharedQuery).not.toContain("--label 'goobers:approved'");
     expect(recovery).toContain("search_open_unassigned --label 'goobers:approved'");
     expect(recovery).toContain('jq -s \'add\' "${approved_file}" "${parity_file}"');
-    expect(recovery).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
-    expect(recovery).toContain('ISSUE_NUMBER="${candidate_issue}"');
-    expect(recovery).toContain('INTAKE_COHORT="${candidate_cohort}"');
+    expect(recovery).toContain(
+      'append_assignment "${candidate_issue}" "${candidate_cohort}" "" ""',
+    );
     expect(start).not.toContain('index("goobers:approved") != null');
     expect(workflow.jobs.reserve?.env?.LIFECYCLE_MUTATION_OWNER).toBe(
       '${{ vars.LIFECYCLE_MUTATION_OWNER }}',
@@ -1014,43 +1015,32 @@ ${queryScript}
       steps.find((step) => step.name === 'Resolve Goobers recovery target')?.run ?? '';
     const start =
       steps.find(
-        (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+        (step) =>
+          step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
       )?.run ?? '';
 
     expect(recovery).toContain('is not in the Goobers intake cohort');
     expect(recovery).toContain('should_run=false');
     expect(recovery).toContain('INTAKE_COHORT="resume"');
-    // The cohort crosses a JOB boundary to reach a lane, and GITHUB_ENV cannot
-    // do that, so it is published as an output rather than exported.
-    expect(recovery).toContain('echo "intake_cohort=${INTAKE_COHORT}" >> "${GITHUB_OUTPUT}"');
-    expect(recovery).not.toContain('GOOBERS_INTAKE_COHORT=${INTAKE_COHORT}');
-    expect(start).toContain('if [ "${RESOLVED_INTAKE_COHORT:-}" != "resume" ]');
-    expect(start).toContain('is no longer in the Goobers intake cohort');
-    // The revalidated cohort must overwrite the job's published cohort so the
-    // downstream claim fence trusts a fresh verdict, not a possibly-stale one
-    // from the earlier resolve step.
-    expect(start).toContain('revalidated_cohort="$(jq -r \'.cohort // ""\' <<<"$decision")"');
-    expect(start).toContain('echo "intake_cohort=${revalidated_cohort}" >> "${GITHUB_OUTPUT}"');
-    expect(workflow.jobs.reserve?.outputs?.intake_cohort).toBe(
-      '${{ steps.reserve.outputs.intake_cohort || steps.recovery.outputs.intake_cohort }}',
+    expect(recovery).toContain('slot_assignments=${ASSIGNMENTS}');
+    expect(start).toContain('if [ "$cohort" != "resume" ]');
+    expect(start).toContain('left the Goobers intake cohort');
+    expect(workflow.jobs.reserve?.outputs?.slot_assignments).toBe(
+      '${{ steps.recovery.outputs.slot_assignments }}',
     );
-    // ...and it must actually reach the slot that runs Goobers: adopted into
-    // the lane's environment, then passed through to every stage. Without the
-    // envPassthrough entry the claim fence sees an empty cohort and refuses
-    // every recovery claim.
     const runSteps = workflow.jobs.run?.steps ?? [];
-    const adoptStep = runSteps.find((step) => step.name === 'Adopt the reserved recovery target');
-    expect(adoptStep?.env?.RESERVED_INTAKE_COHORT).toBe(
-      '${{ needs.reserve.outputs.intake_cohort }}',
+    const adoptStep = runSteps.find((step) => step.name === 'Adopt reserved slot assignments');
+    expect(adoptStep?.env?.RESERVED_ASSIGNMENTS).toBe(
+      '${{ needs.reserve.outputs.slot_assignments }}',
     );
-    expect(adoptStep?.run).toContain('GOOBERS_INTAKE_COHORT=${RESERVED_INTAKE_COHORT}');
+    expect(adoptStep?.run).toContain("cohort=\"$(jq -r '.cohort'");
     const materializeStep = runSteps.find(
       (step) => step.name === 'Materialize checked-in source into each slot instance',
     );
     expect(materializeStep?.run).toContain('- GOOBERS_INTAKE_COHORT');
-    expect(
-      runSteps.find((step) => step.name === 'Run the workflow')?.env?.GOOBERS_INTAKE_COHORT,
-    ).toBe('${{ env.GOOBERS_INTAKE_COHORT }}');
+    expect(runSteps.find((step) => step.name === 'Run the workflow')?.run).toContain(
+      'export GOOBERS_INTAKE_COHORT="$cohort"',
+    );
     // The claim fence downstream must accept the cohort the workflow resolved.
     const definition = readFileSync(
       path.join(REPO_ROOT, '.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml'),
@@ -1179,23 +1169,12 @@ ${queryScript}
     // canonical selector, reserves legacy-parity issues that provider claims
     // cannot see, and records approved work only as `eligible_fresh_issue`.
     expect(recoveryStep?.run).toMatch(
-      /list_backlog_candidates 'the maintainer-approved Goobers queue'[\s\S]*search_open_unassigned --label 'goobers:approved' > "\$\{approved_file\}"[\s\S]*list_backlog_candidates 'the Goobers intake parity backlog'[\s\S]*intake-selection\.mjs[\s\S]*find_open_dependency_blockers "\$\{candidate_issue\}"[\s\S]*continue[\s\S]*eligible_fresh_issue="\$\{candidate_issue\}"[\s\S]*done < "\$\{selected_file\}"/,
+      /list_backlog_candidates 'the maintainer-approved Goobers queue'[\s\S]*search_open_unassigned --label 'goobers:approved' > "\$\{approved_file\}"[\s\S]*list_backlog_candidates 'the Goobers intake parity backlog'[\s\S]*intake-selection\.mjs[\s\S]*find_open_dependency_blockers "\$\{candidate_issue\}"[\s\S]*continue[\s\S]*append_assignment "\$\{candidate_issue\}" "\$\{candidate_cohort\}" "" ""[\s\S]*done < "\$\{selected_file\}"/,
     );
-    expect(recoveryStep?.run).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
-    expect(recoveryStep?.run).toContain('ISSUE_NUMBER="${candidate_issue}"');
-    expect(recoveryStep?.run).toContain('INTAKE_COHORT="${candidate_cohort}"');
-    expect(recoveryStep?.run).toContain('plain fresh claims require goobers:approved');
-    // ...and it must NOT designate an approved fresh issue as this dispatch's
-    // target. The recovery branch of query-backlog bypasses the provider claim
-    // protocol, so a preflight-picked approved issue would be invisible to it
-    // and the four slots would race onto the same issue. They claim atomically
-    // instead.
-    const freshScan = (recoveryStep?.run ?? '').slice(
-      (recoveryStep?.run ?? '').indexOf('eligible_fresh_issue="${candidate_issue}"'),
-      (recoveryStep?.run ?? '').indexOf('Eligible fresh backlog work exists'),
+    expect(recoveryStep?.run).toContain('[ "$(jq \'length\' <<<"$ASSIGNMENTS")" -lt 4 ]');
+    expect(recoveryStep?.run).toContain(
+      'append_assignment "${candidate_issue}" "${candidate_cohort}" "" ""',
     );
-    expect(freshScan).not.toBe('');
-    expect(freshScan).not.toContain('ISSUE_NUMBER="${candidate_issue}"');
     expect(recoveryStep?.run).toContain('find_open_dependency_blockers "${ISSUE_NUMBER}"');
     expect(recoveryStep?.run).toContain('Skipping before Goobers claim or repository mutation.');
     expect(recoveryStep?.run).toContain('should_run=false');
@@ -1212,14 +1191,7 @@ ${queryScript}
     expect(workflowShape.jobs.run?.if).toBe("needs.reserve.outputs.should_run != 'false'");
     expect(workflowShape.jobs.reserve?.outputs).toEqual({
       should_run: '${{ steps.recovery.outputs.should_run }}',
-      recovery_issue: '${{ steps.recovery.outputs.recovery_issue }}',
-      resume_pr: '${{ steps.recovery.outputs.resume_pr }}',
-      resume_branch: '${{ steps.recovery.outputs.resume_branch }}',
-      // The cohort crosses a JOB boundary, which GITHUB_ENV cannot do, so the
-      // reserve job publishes it. The reserve step's revalidated verdict wins
-      // over the resolve step's earlier one.
-      intake_cohort:
-        '${{ steps.reserve.outputs.intake_cohort || steps.recovery.outputs.intake_cohort }}',
+      slot_assignments: '${{ steps.recovery.outputs.slot_assignments }}',
     });
     // `Set up Node.js` is deliberately ungated and ahead of target resolution:
     // the eligibility selector itself runs on Node, so gating it on the
@@ -1487,7 +1459,7 @@ ${queryScript}
     );
   });
 
-  it('dispositions and reports the recovery slot on its OWN journal presence', () => {
+  it('synthesizes journal-less records only for assigned slots', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
     const disposition = steps.find((step) => step.name === 'Handle no-work disposition');
@@ -1495,30 +1467,22 @@ ${queryScript}
 
     for (const step of [disposition, comment]) {
       const script = step?.run ?? '';
-      // The synthesis is keyed on whether the RECOVERY SLOT produced a journal,
-      // never on whether the lane produced one: a healthy sibling slot's
-      // journal used to satisfy the check, leaving the reserved issue with no
-      // disposition and no terminal comment while the step still exited 0.
       expect(script, `"${step?.name}" still keys the synthesis off the whole lane`).not.toContain(
         'if [ ! -s "$run_records" ]',
       );
-      expect(script).toContain('-v slot="${GOOBERS_RECOVERY_SLOT}"');
+      expect(script).toContain('--argjson lane "${GOOBERS_LANE}"');
+      expect(script).toContain('while IFS= read -r assignment; do');
+      expect(script).toContain('assignment_slot="$(jq -r \'.slot\' <<<"$assignment")"');
       expect(script).toContain(
         '\'$1 == slot { found = 1 } END { exit(found ? 0 : 1) }\' "$run_records"',
       );
-      expect(script).toContain('"${GOOBERS_LANE_ROOT}/slot-${GOOBERS_RECOVERY_SLOT}"');
-      // ...and only for the lane that actually holds the reservation.
-      expect(script).toContain(
-        '[ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] && [ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]',
-      );
+      expect(script).toContain('"${GOOBERS_LANE_ROOT}/slot-${slot}"');
+      expect(script).not.toContain('issue=#unknown');
     }
 
-    // And the disposition step ASSERTS it happened, because the disposal
-    // receipt is written on this step's exit status alone.
     const dispositionScript = disposition?.run ?? '';
-    expect(dispositionScript).toContain('recovery_processed=1');
-    expect(dispositionScript).toContain('[ "$recovery_processed" != "1" ]');
-    expect(dispositionScript).toContain('was never dispositioned');
+    expect(dispositionScript).toContain("'.[] | select(.lane == $lane and .slot == $slot)'");
+    expect(dispositionScript).toContain('expected_assigned');
     const disposal = steps.find((step) => step.name === 'Record reservation disposal');
     expect(disposal?.env?.DISPOSITION_OUTCOME).toBe('${{ steps.handle-disposition.outcome }}');
   });
@@ -1543,17 +1507,15 @@ ${queryScript}
     // blocker lookups as an issue number.
     expect(script).not.toContain('captured="$("$@" 2>&1)"');
     expect(script).toContain('require_candidate_number()');
-    expect(script).toContain('require_candidate_number "$candidate_issue" \'the recovery scan\'');
     expect(script).toContain(
       'require_candidate_number "$candidate_issue" \'the fresh eligibility scan\'',
     );
     // Both scans go through it, and both iterate CAPTURED output.
-    expect(script).toContain(
-      "list_backlog_candidates 'the open goobers/status:in-review recovery backlog'",
-    );
     expect(script).toContain("list_backlog_candidates 'the maintainer-approved Goobers queue'");
     expect(script).toContain("list_backlog_candidates 'the Goobers intake parity backlog'");
-    expect(script).toContain('done <<<"$recovery_candidates"');
+    expect(script).toContain("if ! jq -s 'add'");
+    expect(script).toContain('if ! node .github/scripts/goobers/intake-selection.mjs');
+    expect(script).toContain('The canonical Goobers intake selector failed');
     // The fresh scan iterates the canonical selector's output file rather than
     // a raw captured list, but both queries feeding it are still hardened.
     expect(script).toContain('done < "${selected_file}"');
@@ -1582,7 +1544,9 @@ ${queryScript}
     expect(script).toContain('undisposed Goobers reservation lease');
     // The gate runs BEFORE the issue is published as this dispatch's target.
     const gateIndex = script.indexOf('undisposed Goobers reservation lease');
-    const outputIndex = script.indexOf('recovery_issue=${ISSUE_NUMBER}');
+    const outputIndex = script.indexOf(
+      'append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"',
+    );
     expect(gateIndex).toBeGreaterThanOrEqual(0);
     expect(outputIndex).toBeGreaterThan(gateIndex);
     // The scheduled scan defers with a warning; a directly requested issue is
@@ -1684,6 +1648,7 @@ ${queryScript}
     expect(materialize?.run).toContain('envPassthrough:');
     expect(readGeneratedEnvPassthrough(materialize?.run)).toEqual([
       'GOOBERS_INSTANCE',
+      'GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED',
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',
@@ -1755,7 +1720,12 @@ ${queryScript}
     expect(recovery?.run).not.toContain('gh pr checkout "${pr_number}"');
     expect(recovery?.run).toContain('gh pr close "${pr_number}"');
     expect(recovery?.run).toContain('starting over');
-    expect(recovery?.run).toContain('recovery_issue=${ISSUE_NUMBER}');
+    expect(recovery?.run).toContain('publish_assignments()');
+    expect(recovery?.run).toMatch(/publish_assignments\s+gh pr close "\$\{pr_number\}"/);
+    expect(recovery?.run).toContain('.resumePr = "" | .resumeBranch = ""');
+    expect(recovery?.run).toContain(
+      'append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"',
+    );
     expect(recovery?.run).toContain('headRepository');
     expect(recovery?.run).toContain('abandon_existing=true requires an explicit issue_number');
     expect(
@@ -1780,25 +1750,18 @@ ${queryScript}
     // The reservation resolved once, in the reserve job, reaches exactly one
     // lane through job outputs -- never by re-resolving it per lane.
     const adopt = workflow.jobs.run?.steps?.find(
-      (step) => step.name === 'Adopt the reserved recovery target',
+      (step) => step.name === 'Adopt reserved slot assignments',
     );
     expect(adopt?.env).toEqual({
-      // The receipt write needs an issues-write token; the reservation values
-      // still arrive only as `reserve` job outputs, never re-resolved per lane.
       GH_TOKEN: '${{ github.token }}',
-      RESERVED_ISSUE: '${{ needs.reserve.outputs.recovery_issue }}',
-      RESERVED_RESUME_PR: '${{ needs.reserve.outputs.resume_pr }}',
-      RESERVED_RESUME_BRANCH: '${{ needs.reserve.outputs.resume_branch }}',
-      RESERVED_INTAKE_COHORT: '${{ needs.reserve.outputs.intake_cohort }}',
+      RESERVED_ASSIGNMENTS: '${{ needs.reserve.outputs.slot_assignments }}',
     });
-    expect(adopt?.run).toContain('if [ "${GOOBERS_LANE}" != "${GOOBERS_RECOVERY_LANE}" ]');
-    expect(adopt?.run).toContain('GOOBERS_RECOVERY_ISSUE=${RESERVED_ISSUE}');
+    expect(adopt?.run).toContain('lane="$(jq -r \'.lane\' <<<"$assignment")"');
+    expect(adopt?.run).toContain('goobers_lease_marker adopted');
     const run = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
-    expect(run?.env).toMatchObject({
-      GOOBERS_RESUME_PR: '${{ env.GOOBERS_RESUME_PR }}',
-      GOOBERS_RESUME_BRANCH: '${{ env.GOOBERS_RESUME_BRANCH }}',
-      GOOBERS_RECOVERY_ISSUE: '${{ env.GOOBERS_RECOVERY_ISSUE }}',
-    });
+    expect(run?.run).toContain('export GOOBERS_RESUME_PR="$resume_pr"');
+    expect(run?.run).toContain('export GOOBERS_RESUME_BRANCH="$resume_branch"');
+    expect(run?.run).toContain('export GOOBERS_RECOVERY_ISSUE="$issue_number"');
     const materialize = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Materialize checked-in source into each slot instance',
     );
@@ -1812,7 +1775,7 @@ ${queryScript}
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const reserve = workflow.jobs.reserve;
     const reserveStep = reserve?.steps?.find(
-      (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+      (step) => step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
     );
     const runSteps = workflow.jobs.run?.steps ?? [];
 
@@ -1827,7 +1790,7 @@ ${queryScript}
       // selector runs on it.
       'Set up Node.js',
       'Resolve Goobers recovery target',
-      'Reserve the recovery target and comment on Goobers run start',
+      'Reserve explicit slot assignments and comment on Goobers run start',
     ]);
 
     // Exactly one writer of the reservation label in the entire workflow, and
@@ -1844,25 +1807,15 @@ ${queryScript}
     // replaying the exact provider query a fresh claim performs (REST issues
     // list filtered by the trust label, exclusions applied to the returned
     // label array) rather than the eventually consistent search index.
-    expect(reserveStep?.run).toContain('reservation_visible()');
-    expect(reserveStep?.run).toContain("-f state=open -f labels='goobers:approved'");
+    expect(reserveStep?.run).toContain('gh issue view "$issue_number"');
     expect(reserveStep?.run).toContain("grep -qxF 'goobers/status:in-review'");
-    expect(reserveStep?.run).toContain('confirmed it through the backlog read path');
+    expect(reserveStep?.run).toContain('confirmed goobers/status:in-review');
     // Fails closed: an unconfirmed reservation must stop the dispatch, not
     // start four slots and hope.
     expect(reserveStep?.run).toMatch(/::error::Reserved issue #\$\{issue_number\}/);
     expect(reserveStep?.run).toContain('Refusing to start any slot');
 
-    // Both declarations of the owning lane/slot must agree, or the reserve
-    // job's messages would name a slot that never adopts the reservation.
-    expect(reserve?.env?.GOOBERS_RECOVERY_LANE).toBe(workflow.jobs.run?.env?.GOOBERS_RECOVERY_LANE);
-    expect(reserve?.env?.GOOBERS_RECOVERY_SLOT).toBe(workflow.jobs.run?.env?.GOOBERS_RECOVERY_SLOT);
-    expect(workflow.jobs['release-unstarted-reservation']?.env?.GOOBERS_RECOVERY_LANE).toBe(
-      workflow.jobs.run?.env?.GOOBERS_RECOVERY_LANE,
-    );
-    expect(workflow.jobs['release-unstarted-reservation']?.env?.GOOBERS_RECOVERY_SLOT).toBe(
-      workflow.jobs.run?.env?.GOOBERS_RECOVERY_SLOT,
-    );
+    expect(reserveStep?.run).toContain('jq -c \'.[]\' <<<"$RESERVED_ASSIGNMENTS"');
   });
 
   it('lets only one live dispatch at a time own a recovery reservation', () => {
@@ -1917,7 +1870,7 @@ ${queryScript}
   it('binds the reservation to an owner and holds that evidence through cleanup', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
-    const adopt = steps.find((step) => step.name === 'Adopt the reserved recovery target');
+    const adopt = steps.find((step) => step.name === 'Adopt reserved slot assignments');
     const dispose = steps.find((step) => step.name === 'Record reservation disposal');
     const guard = workflow.jobs['release-unstarted-reservation']?.steps?.find(
       (step) => step.name === 'Release the reservation when no lane ever owned it',
@@ -1926,31 +1879,34 @@ ${queryScript}
     const disposeScript = dispose?.run ?? '';
     const guardScript = guard?.run ?? '';
 
-    // The receipt is written BEFORE the lane exports any recovery metadata, so
-    // a lane that could not write it never starts a recovery slot — which is
-    // what makes "no receipt" deterministic proof of "never adopted".
-    const receiptIndex = adoptScript.indexOf('gh issue comment "$RESERVED_ISSUE"');
-    const exportIndex = adoptScript.indexOf('GOOBERS_RECOVERY_ISSUE=${RESERVED_ISSUE}');
+    // Validate all assignments before writing the first receipt, so one blocked
+    // later slot cannot leave an earlier slot adopted but unstarted.
+    const receiptIndex = adoptScript.indexOf('gh issue comment "$issue_number"');
+    const validationIndex = adoptScript.indexOf('jq -cn');
     expect(receiptIndex).toBeGreaterThanOrEqual(0);
-    expect(exportIndex).toBeGreaterThan(receiptIndex);
+    expect(validationIndex).toBeGreaterThanOrEqual(0);
+    expect(receiptIndex).toBeGreaterThan(validationIndex);
+    expect(adoptScript.match(/goobers_lease_fetch/g) ?? []).toHaveLength(1);
     // The marker grammar lives in one checked-in library, never inline, so a
     // writer and a reader cannot drift apart. It is scoped to run id AND
     // attempt: a re-run keeps the same run id, and its adoption must be a NEW
     // lease rather than something the previous attempt's disposal closed.
     expect(adoptScript).toContain(
-      'adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${RESERVED_ISSUE}")"',
+      'adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"',
     );
     expect(adoptScript).toContain('scripts/agent/goobers-reservation-lease.sh');
     // Cross-dispatch re-adoption guard: an undisposed lease from ANY other
-    // run/attempt stops this lane before it exports recovery metadata.
+    // run/attempt stops this lane before it writes any receipt.
     expect(adoptScript).toContain('if [ "$lease_state" = "adopted" ] &&');
     expect(adoptScript).toContain('Refusing to adopt reserved issue');
     const guardIndex = adoptScript.indexOf('Refusing to adopt reserved issue');
-    expect(guardIndex).toBeLessThan(exportIndex);
+    expect(guardIndex).toBeLessThan(receiptIndex);
 
     // Disposal is recorded only on proof of BOTH a clean reap and a clean
     // disposition; anything else leaves the receipt adopted-but-undisposed.
-    expect(dispose?.if).toBe("always() && env.GOOBERS_RECOVERY_ISSUE != ''");
+    expect(dispose?.if).toBe(
+      "always() && env.GOOBERS_SLOT_ASSIGNMENTS != '' && env.GOOBERS_SLOT_ASSIGNMENTS != '[]'",
+    );
     expect(dispose?.env?.REAP_OUTCOME).toBe('${{ steps.reap-stage-processes.outcome }}');
     expect(dispose?.env?.DISPOSITION_OUTCOME).toBe('${{ steps.handle-disposition.outcome }}');
     expect(steps.find((step) => step.name === 'Handle no-work disposition')?.id).toBe(
@@ -2084,7 +2040,7 @@ ${queryScript}
   it('resolves the receipt comment through the reader both guards use', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
-    const adopt = steps.find((step) => step.name === 'Adopt the reserved recovery target');
+    const adopt = steps.find((step) => step.name === 'Adopt reserved slot assignments');
     const dispose = steps.find((step) => step.name === 'Record reservation disposal');
     const lease = readFileSync(
       path.join(REPO_ROOT, 'scripts', 'agent', 'goobers-reservation-lease.sh'),
@@ -2112,7 +2068,7 @@ ${queryScript}
     expect(dispose?.run).toContain('[ "$lease_attempt" != "${GITHUB_RUN_ATTEMPT}" ]');
   });
 
-  it('releases a reservation no lane ever started', () => {
+  it('releases every assignment no lane ever started', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const guard = workflow.jobs['release-unstarted-reservation'];
     const script =
@@ -2128,7 +2084,7 @@ ${queryScript}
     // guard; only a successful lane owns its own disposition.
     expect(guard?.needs).toEqual(['reserve', 'run']);
     expect(guard?.if).toContain('always()');
-    expect(guard?.if).toContain("needs.reserve.outputs.recovery_issue != ''");
+    expect(guard?.if).toContain("needs.reserve.outputs.slot_assignments != '[]'");
     expect(guard?.if).toContain("needs.run.result == 'skipped'");
     expect(guard?.if).toContain("needs.run.result == 'cancelled'");
     expect(guard?.if).toContain("needs.run.result == 'failure'");
@@ -2145,74 +2101,47 @@ ${queryScript}
     expect(script).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
   });
 
-  it('gives exactly one slot the recovery target and never lets preflight claim fresh work', () => {
+  it('assigns up to four distinct issues and never launches nested backlog claims', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const job = workflow.jobs.run;
     const recovery = workflow.jobs.reserve?.steps?.find(
       (step) => step.name === 'Resolve Goobers recovery target',
     );
     const start = workflow.jobs.reserve?.steps?.find(
-      (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+      (step) => step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
     );
-    const adopt = job?.steps?.find((step) => step.name === 'Adopt the reserved recovery target');
+    const adopt = job?.steps?.find((step) => step.name === 'Adopt reserved slot assignments');
     const runStep = job?.steps?.find((step) => step.name === 'Run the workflow');
     const script = recovery?.run ?? '';
 
-    // A single, named recovery slot for the whole dispatch.
-    expect(job?.env?.GOOBERS_RECOVERY_LANE).toBe('1');
-    expect(job?.env?.GOOBERS_RECOVERY_SLOT).toBe('1');
-
-    // Resolution happens once, in a job with no matrix at all, so there is no
-    // "other leg" that could resolve the same issue and race. The lane gate
-    // that used to live in the resolution script is gone with it.
     expect(script).not.toContain('GOOBERS_LANE');
-    expect(script).toContain('recovery_issue=${ISSUE_NUMBER}');
-    const exportIndex = script.indexOf('recovery_issue=${ISSUE_NUMBER}');
-    const abandonIndex = script.indexOf('gh pr close "${pr_number}"');
-    expect(exportIndex).toBeGreaterThanOrEqual(0);
-    expect(abandonIndex).toBeGreaterThan(exportIndex);
-
-    // Adoption is where a lane takes ownership, and only the recovery lane may.
+    expect(script).toContain('0) lane=1; slot=1');
+    expect(script).toContain('1) lane=1; slot=2');
+    expect(script).toContain('2) lane=2; slot=1');
+    expect(script).toContain('3) lane=2; slot=2');
+    expect(script).toContain('any(.[]; .issue == $issue)');
+    expect(script).toContain('[ "$(jq \'length\' <<<"$ASSIGNMENTS")" -lt 4 ]');
     const adoptScript = adopt?.run ?? '';
-    expect(adoptScript).toContain('if [ "${GOOBERS_LANE}" != "${GOOBERS_RECOVERY_LANE}" ]');
-    const adoptGateIndex = adoptScript.indexOf(
-      'if [ "${GOOBERS_LANE}" != "${GOOBERS_RECOVERY_LANE}" ]',
+    expect(adoptScript).toContain('leaseComment: $leaseComment');
+    expect(adoptScript).toContain('while IFS= read -r staged_assignment; do');
+    expect(adoptScript).toContain(
+      'lease_comment="$(jq -r \'.leaseComment\' <<<"$staged_assignment")"',
     );
-    const adoptExportIndex = adoptScript.indexOf('GOOBERS_RECOVERY_ISSUE=${RESERVED_ISSUE}');
-    expect(adoptGateIndex).toBeGreaterThanOrEqual(0);
-    expect(adoptExportIndex).toBeGreaterThan(adoptGateIndex);
-
-    // The scheduled fresh-backlog scan may only answer "is there approved
-    // work?" for provider-claimable issues; legacy-parity issues must be
-    // promoted into the single reserved target because plain fresh claims can
-    // only see goobers:approved.
-    expect(script).toContain('eligible_fresh_issue=""');
-    expect(script).toContain('if [ "${candidate_cohort}" = "legacy-parity" ]; then');
-    expect(script).toContain('ISSUE_NUMBER="${candidate_issue}"');
-    expect(script).toContain('INTAKE_COHORT="${candidate_cohort}"');
-    expect(script).toContain('eligible_fresh_issue="${candidate_issue}"');
-    expect(script).not.toContain(
-      'ISSUE_NUMBER="${candidate_issue}"\n              echo "Selected fresh approved issue',
-    );
-    expect(script).toContain('no recovery target, so all four slots claim atomically.');
-    // The cheap no-work exit is preserved. Its wording now names the intake
-    // cohort rather than `goobers:approved`, because eligibility is decided by
-    // the canonical selector across the approved + legacy-parity cohorts.
+    expect(adoptScript).not.toContain('IFS="$(printf \'\\t\')" read -r lane slot');
+    expect(adoptScript).toContain('done < "$assignment_file"');
+    expect(adoptScript).toContain('goobers_lease_marker adopted');
     expect(script).toContain('No unblocked issue in the Goobers intake cohort; skipping this run.');
     expect(script).toContain('should_run=false');
 
-    // Whatever recovery target does exist is reserved with
-    // goobers/status:in-review by a job BOTH lanes wait on, and the fresh
-    // claim scan excludes that label, so the recovery slot and the fresh slots
-    // can never select the same issue.
     const startScript = start?.run ?? '';
     expect(startScript).toMatch(
       /gh issue edit "\$issue_number" --repo "\$GITHUB_REPOSITORY" \\\n\s*--add-label 'goobers\/status:in-review'/,
     );
-    expect(startScript).toContain('[ "${RESOLVED_INTAKE_COHORT:-}" = "legacy-parity" ]');
-    expect(startScript).toContain('gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}"');
-    expect(startScript).toContain('--json state,labels,assignees');
-    expect(startScript).toContain('[ "$state" != "OPEN" ] || [ "$unassigned" != "true" ]');
+    expect(startScript).toContain('while IFS= read -r assignment; do');
+    expect(startScript).toContain('gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY"');
+    expect(startScript).toContain('--json number,state,labels,assignees,author');
+    expect(startScript).toContain('$(jq -r \'.state\' <<<"$issue_json")');
+    expect(startScript).toContain('$(jq -r \'[.assignees[]] | length == 0\' <<<"$issue_json")');
     expect(job?.needs).toBe('reserve');
     const definition = loadYaml<GoobersDefinition>(
       '.goobers',
@@ -2229,18 +2158,13 @@ ${queryScript}
     );
     expect(queryBacklog?.inputs?.excludeLabel).toBeUndefined();
 
-    // Only the recovery slot keeps recovery/resume metadata; the other three
-    // unset it so their query-backlog stage takes the atomic claim path.
     const runScript = runStep?.run ?? '';
-    expect(runScript).toContain('[ "${GOOBERS_LANE}" = "${GOOBERS_RECOVERY_LANE}" ] &&');
-    expect(runScript).toContain('[ "${slot}" = "${GOOBERS_RECOVERY_SLOT}" ] &&');
     expect(runScript).toContain(
-      'unset GOOBERS_RECOVERY_ISSUE GOOBERS_RESUME_PR GOOBERS_RESUME_BRANCH',
+      'Lane ${GOOBERS_LANE} slot ${slot} has no reserved issue assignment; leaving it idle.',
     );
-
-    // A dispatch with no recovery target must reserve nothing at all rather
-    // than posting a start comment about an issue no slot owns.
-    expect(start?.if).toContain("steps.recovery.outputs.recovery_issue != ''");
+    expect(runScript).toContain('export GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED=true');
+    expect(runScript).toContain('export GOOBERS_RECOVERY_ISSUE="$issue_number"');
+    expect(start?.if).toContain("steps.recovery.outputs.slot_assignments != '[]'");
   });
 
   it('filters external PR cross-references and fails closed when every candidate is unreadable', () => {
@@ -2289,7 +2213,7 @@ ${queryScript}
     // durable start comment before any lane exists.
     const recovery = reserveSteps.find((step) => step.name === 'Resolve Goobers recovery target');
     const start = reserveSteps.find(
-      (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+      (step) => step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
     );
     const run = steps.find((step) => step.name === 'Run the workflow');
     const result = steps.find((step) => step.name === 'Comment on Goobers run result');
@@ -2310,7 +2234,7 @@ ${queryScript}
     );
     expect(start?.run).toContain('[.assignees[]] | length == 0');
     expect(start?.run).toContain('issues/${issue_number}/dependencies/blocked_by');
-    expect(start?.run).toContain('No start comment or Goobers claim was created');
+    expect(start?.run).toContain('Retry the dispatch so no stale assignment starts');
     expect(start?.run).toContain(
       'https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}',
     );
@@ -2352,7 +2276,7 @@ ${queryScript}
     expect(result?.run).toContain('no PR number could be recovered');
   });
 
-  it('posts a terminal result for a numeric recovery issue even when no journal exists', () => {
+  it('posts a terminal result for an assigned issue even when no journal exists', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const result = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Comment on Goobers run result',
@@ -2362,7 +2286,9 @@ ${queryScript}
     // The recovery issue is adopted before any journal is read, and a
     // journal-less recovery slot still gets a synthetic record so its issue
     // receives a terminal comment instead of silence.
-    const issueResolutionIndex = script.indexOf('issue_number="${GOOBERS_RECOVERY_ISSUE}"');
+    const issueResolutionIndex = script.indexOf(
+      'issue_number="$(jq -r \'.issue\' <<<"$assignment")"',
+    );
     const journalLookupIndex = script.indexOf('if [ -n "$events_file" ]; then');
     expect(issueResolutionIndex).toBeGreaterThanOrEqual(0);
     expect(journalLookupIndex).toBeGreaterThanOrEqual(0);
@@ -2371,8 +2297,8 @@ ${queryScript}
     // Keyed on the RECOVERY SLOT's own journal, not the lane's: a sibling
     // slot's journal must not stand in for it (see "dispositions and reports
     // the recovery slot on its OWN journal presence").
-    expect(script).toContain('-v slot="${GOOBERS_RECOVERY_SLOT}"');
-    expect(script).toContain('[ -n "${GOOBERS_RECOVERY_ISSUE:-}" ]');
+    expect(script).toContain('--argjson lane "${GOOBERS_LANE}"');
+    expect(script).toContain('-v slot="${assignment_slot}"');
     expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');
     expect(script).toContain('if ! [[ "$issue_number" =~ ^[0-9]+$ ]]');
     expect(script).toContain('Goobers run id(s): \\`${run_ids:-unknown}\\`');
@@ -2440,7 +2366,7 @@ ${queryScript}
     expect(script).toContain('issues/${issue_number}/timeline');
     expect(script).toContain('[[ "$branch" == goobers/crawler/* ]]');
     expect(script).toContain('open Goobers PR #${open_pr} preserves resumable work');
-    expect(script).toContain('resume_pr="${GOOBERS_RESUME_PR:-}"');
+    expect(script).toContain('resume_pr="$(jq -r \'.resumePr\' <<<"$assignment")"');
     expect(script).toContain('if [ -n "$resume_pr" ]');
     expect(script).toContain('open_pr="$(find_open_goobers_pr "$issue_number")"');
     expect(script).toContain('resume PR #${resume_pr} is no longer open');
@@ -2466,24 +2392,16 @@ ${queryScript}
   // what this test pins: the recovery issue is published as a job OUTPUT before
   // any fallible lookup, and `release-unstarted-reservation` reads that output
   // on `always()`, so a mid-flight death anywhere after it stays attributable.
-  it('records the recovery issue before any fallible lookup can fail', () => {
+  it('publishes the complete assignment map for downstream cleanup', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const recovery =
       workflow.jobs.reserve?.steps?.find((step) => step.name === 'Resolve Goobers recovery target')
         ?.run ?? '';
 
     const persistIndex = recovery.indexOf(
-      'echo "recovery_issue=${ISSUE_NUMBER}" >> "${GITHUB_OUTPUT}"',
+      'echo "slot_assignments=${ASSIGNMENTS}" >> "${GITHUB_OUTPUT}"',
     );
     expect(persistIndex).toBeGreaterThan(0);
-    // The fallible lookup that sits between resolution and reservation. Anchored
-    // on the assignment, because the same helper is also called earlier in the
-    // issues-event branch.
-    const postPublishLookup = recovery.indexOf(
-      'pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")"',
-    );
-    expect(postPublishLookup).toBeGreaterThan(0);
-    expect(persistIndex).toBeLessThan(postPublishLookup);
 
     // A GITHUB_ENV write would be silently inert here (it cannot reach a
     // lane), so it must not come back as cargo-culted dead code. Matched on
@@ -2504,16 +2422,19 @@ ${queryScript}
     const reserveSteps = workflow.jobs.reserve?.steps ?? [];
     const reserveStepNames = reserveSteps.map((step) => step.name);
     expect(reserveStepNames.indexOf('Resolve Goobers recovery target')).toBeLessThan(
-      reserveStepNames.indexOf('Reserve the recovery target and comment on Goobers run start'),
+      reserveStepNames.indexOf(
+        'Reserve explicit slot assignments and comment on Goobers run start',
+      ),
     );
     expect(
       reserveSteps.find(
-        (step) => step.name === 'Reserve the recovery target and comment on Goobers run start',
+        (step) =>
+          step.name === 'Reserve explicit slot assignments and comment on Goobers run start',
       )?.if,
-    ).toContain("steps.recovery.outputs.recovery_issue != ''");
+    ).toContain("steps.recovery.outputs.slot_assignments != '[]'");
     const release = workflow.jobs['release-unstarted-reservation'];
     expect(release?.needs).toEqual(['reserve', 'run']);
-    expect(release?.if).toContain('needs.reserve.outputs.recovery_issue');
+    expect(release?.if).toContain('needs.reserve.outputs.slot_assignments');
     expect(release?.if).toContain('always()');
   });
 
@@ -2643,7 +2564,7 @@ ${queryScript}
     expect(producerInstructions).toContain('require a maintainer decision');
     expect(retry?.if).toBe("always() && steps.reap-stage-processes.outcome == 'success'");
     expect(retry?.env?.GOOBERS_RESUME_PR).toBe('${{ env.GOOBERS_RESUME_PR }}');
-    expect(retry?.run).toContain('resume_pr="${GOOBERS_RESUME_PR:-}"');
+    expect(retry?.run).toContain('resume_pr="$(jq -r \'.resumePr\' <<<"$assignment")"');
     expect(retry?.run).toContain('preserving in-review ownership');
     expect(retry?.run).toContain('.status == "no-work"');
     expect(retry?.run).toContain('outputs.disposition // empty');
@@ -2655,7 +2576,7 @@ ${queryScript}
     expect(retry?.run).toContain("--remove-label 'goobers/status:in-review'");
     expect(retry?.run).toContain('returned invalid no-work');
     expect(retry?.run).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
-    expect(diagnostics?.run).toContain('GOOBERS_RECOVERY_ISSUE');
+    expect(diagnostics?.run).toContain('GOOBERS_SLOT_ASSIGNMENTS');
     expect(diagnostics?.run).toContain('.stage == "query-backlog"');
   });
 
