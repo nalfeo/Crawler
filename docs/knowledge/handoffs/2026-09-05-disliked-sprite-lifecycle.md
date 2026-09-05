@@ -184,6 +184,27 @@ sprite-pipeline, sprite-workflow
   queue, repair, reconcile, and sidecar matrix passed 464/464; lifecycle closure
   stayed 0 removable / 20 retained / 7 unresolved; and the resulting
   `verify:fast` selection passed 678/678.
+- The final concurrency review closed six more destructive-boundary gaps. Queue
+  removals now carry expected `sourceRun` and `variantIndex` provenance and
+  validate the destination shard on every compare-and-swap retry; annotation
+  rollback ownership comes only from the final applied lifecycle plan; pending
+  overlay parsing fails safe on malformed or `null` JSON; complete promoted
+  annotation documents validate tombstone structure; scoped acceptance defers
+  unrelated ambiguous provenance while repository-wide cleanup still aborts;
+  and removal diagnostics no longer stringify a nullable path. The focused
+  lifecycle, queue, reconciler, and sidecar matrix passed 377/377 after adding
+  the nested-path regression; typecheck passed; repository closure remained
+  0 removable / 20 retained / 7 unresolved / 0 pending / 0 reference updates;
+  and the preceding exact-change `verify:fast` run passed 683/683.
+- Child reconciliation was explicit and produced no duplicate PRs.
+  `41729126e` is fully superseded by aggregate commit `267f11770` plus later
+  hardening: its fail-closed provenance authority, cumulative queue deletions,
+  no-resurrection repair, and expanded closure coverage are all present.
+  `ebca070af`'s production fixes are also present: manifest-level disliked
+  reference exclusion, slash-containing PNG/shard pairing, and fail-closed
+  variant-identity resolution before publication. Its previously missing
+  dedicated real-Git nested `equipment/weapons/...` A-to-B-to-A pairing
+  regression was ported directly rather than cherry-picking older APIs.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

@@ -310,6 +310,8 @@ async function publishApprovedAssets(
         removals: plan.removed.map((removal) => ({
           assetPath: removal.assetPath,
           manifestKey: removal.manifestKey,
+          sourceRun: removal.sourceRun,
+          variantIndex: removal.variantIndex,
         })),
         annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
       },

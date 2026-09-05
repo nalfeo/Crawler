@@ -75,13 +75,32 @@ export class ReconcileError extends Error {
 function isValidSpriteAnnotationsDocument(raw: string): boolean {
   try {
     const parsed: unknown = JSON.parse(raw);
-    return (
+    if (
       typeof parsed === 'object' &&
       parsed !== null &&
       typeof (parsed as { sprites?: unknown }).sprites === 'object' &&
       (parsed as { sprites?: unknown }).sprites !== null &&
       !Array.isArray((parsed as { sprites?: unknown }).sprites)
-    );
+    ) {
+      const sprites = (parsed as { sprites: Record<string, unknown> }).sprites;
+      return Object.entries(sprites).every(([annotationKey, rawAnnotation]) => {
+        if (typeof rawAnnotation !== 'object' || rawAnnotation === null) return true;
+        const tombstone = (rawAnnotation as { tombstone?: unknown }).tombstone;
+        if (tombstone === undefined) return true;
+        if (typeof tombstone !== 'object' || tombstone === null) return false;
+        const value = tombstone as Partial<LifecycleDeletionTombstone>;
+        return (
+          value.manifestKey === annotationKey &&
+          isSafeQueueAssetPath(value.assetPath) &&
+          typeof value.sourceRun === 'string' &&
+          value.sourceRun.trim() !== '' &&
+          typeof value.variantIndex === 'number' &&
+          Number.isInteger(value.variantIndex) &&
+          value.variantIndex >= 0
+        );
+      });
+    }
+    return false;
   } catch {
     return false;
   }
@@ -724,13 +743,29 @@ export async function filterPromotablePaths(
   // carried) would be withheld while a freshly-stamped shard (a new blob, never
   // seen by main) passes — landing a shard whose `contentHash` describes the
   // withheld PNG while main still holds the superseding bytes.
+  const safeRelativeKey = (value: string): string | undefined => {
+    if (
+      value === '' ||
+      value.includes('\\') ||
+      value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+    ) {
+      return undefined;
+    }
+    return value;
+  };
   const pngFromShard = (p: string): string | undefined => {
-    const m = /^public\/assets\/generated\/entries\/(.+)\.json$/.exec(p);
-    return m ? `public/assets/generated/${m[1]}.png` : undefined;
+    const prefix = 'public/assets/generated/entries/';
+    const suffix = '.json';
+    if (!p.startsWith(prefix) || !p.endsWith(suffix)) return undefined;
+    const key = safeRelativeKey(p.slice(prefix.length, -suffix.length));
+    return key === undefined ? undefined : `public/assets/generated/${key}.png`;
   };
   const shardFromPng = (p: string): string | undefined => {
-    const m = /^public\/assets\/generated\/(.+)\.png$/.exec(p);
-    return m ? `public/assets/generated/entries/${m[1]}.json` : undefined;
+    const prefix = 'public/assets/generated/';
+    const suffix = '.png';
+    if (!p.startsWith(prefix) || !p.endsWith(suffix)) return undefined;
+    const key = safeRelativeKey(p.slice(prefix.length, -suffix.length));
+    return key === undefined ? undefined : `public/assets/generated/entries/${key}.json`;
   };
 
   // Build a set of individually-passing paths, then suppress any whose paired

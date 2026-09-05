@@ -2228,6 +2228,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                     removals: plan.removed.map((removal) => ({
                       assetPath: removal.assetPath,
                       manifestKey: removal.manifestKey,
+                      sourceRun: removal.sourceRun,
+                      variantIndex: removal.variantIndex,
                     })),
                     annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
                   },
@@ -2582,6 +2584,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       removals: plan.removed.map((removal) => ({
                         assetPath: removal.assetPath,
                         manifestKey: removal.manifestKey,
+                        sourceRun: removal.sourceRun,
+                        variantIndex: removal.variantIndex,
                       })),
                       annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
                     },

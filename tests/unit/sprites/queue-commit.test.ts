@@ -234,6 +234,8 @@ describe('runQueueCommit (control flow)', () => {
           {
             assetPath: 'generated/old-blade.png',
             manifestKey: 'old-blade',
+            sourceRun: 'generated/runs/old-blade/run-0',
+            variantIndex: 0,
           },
         ],
       },
@@ -1394,6 +1396,8 @@ describe('runQueueCommit (real git)', () => {
             {
               assetPath: `generated/${removedKey}.png`,
               manifestKey: removedKey,
+              sourceRun: 'generated/runs/old-alpha/run-0',
+              variantIndex: 0,
             },
           ],
           annotations: [
@@ -1433,6 +1437,75 @@ describe('runQueueCommit (real git)', () => {
       expect(() =>
         gitSync(liveDir, 'show', `FETCH_HEAD:public/assets/generated/${removedKey}.png`),
       ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses a stale lifecycle removal when the queue already contains newer art for that key',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      const key = 'rat-var-0';
+      stageAssetOnDisk(liveDir, key, PNG_BYTES);
+      writeJson(shardFilePath(liveDir, key), {
+        assetPath: `generated/${key}.png`,
+        spriteName: key,
+        sourceRun: 'generated/runs/rat/run-a',
+        variantIndex: 0,
+      });
+      gitSync(liveDir, 'add', '-A');
+      gitSync(liveDir, 'commit', '-m', 'seed old rat');
+      gitSync(liveDir, 'push', 'origin', 'main');
+
+      stageAssetOnDisk(liveDir, key, PNG_BYTES_B);
+      writeJson(shardFilePath(liveDir, key), {
+        assetPath: `generated/${key}.png`,
+        spriteName: key,
+        sourceRun: 'generated/runs/rat/run-b',
+        variantIndex: 0,
+      });
+      await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: `generated/${key}.png`,
+            manifestKey: key,
+            briefId: 'rat',
+            variantIndex: 0,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'approve newer rat' },
+      );
+
+      await expect(
+        runQueueCommit(liveDir, [], realGitDeps(liveDir), {
+          message: 'stale removal',
+          removals: [
+            {
+              assetPath: `generated/${key}.png`,
+              manifestKey: key,
+              sourceRun: 'generated/runs/rat/run-a',
+              variantIndex: 0,
+            },
+          ],
+          annotations: [
+            {
+              key,
+              favorite: false,
+              disliked: true,
+              comment: '',
+              tombstone: {
+                manifestKey: key,
+                assetPath: `generated/${key}.png`,
+                sourceRun: 'generated/runs/rat/run-a',
+                variantIndex: 0,
+              },
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
     },
     GIT_TIMEOUT_MS,
   );

@@ -8,6 +8,7 @@ import {
   applyDislikedLifecyclePlan,
   buildDislikedLifecyclePlan,
   loadDislikedLifecyclePlan,
+  readPendingDocument,
   resolveDislikedReferenceExclusions,
   runAcceptedDislikedLifecycleTransaction,
   validateDislikedLifecycleClosure,
@@ -285,6 +286,49 @@ describe('disliked sprite lifecycle planning', () => {
     expect(plan.annotations.sprites['demo-goon-var-3']?.tombstone?.annotationKeys).toEqual([
       'demo-goon-v2-var-3',
     ]);
+  });
+
+  it('does not let an unrelated ambiguous stale dislike block scoped acceptance', () => {
+    const root = makeRoot();
+    const manifestEntries = {
+      'bat-var-0': entry('bat', 0, { sourceRun: 'generated/runs/bat/run-a' }),
+      'bat-alt-var-0': entry('bat-alt', 0, { sourceRun: 'archive/run-a' }),
+      'rat-var-0': entry('rat', 0),
+    };
+    const trackedAnnotations = annotations({
+      'bat-v2-var-0': {
+        disliked: true,
+        sourceRun: 'stale/run-a',
+        variantIndex: 0,
+      },
+    });
+
+    expect(() =>
+      buildDislikedLifecyclePlan({
+        repoRoot: root,
+        manifestEntries,
+        trackedAnnotations,
+      }),
+    ).toThrow(/ambiguous/);
+
+    const scoped = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries,
+      trackedAnnotations,
+      replacements: [
+        { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+      ],
+      conceptScope: new Set(['rat']),
+    });
+    expect(scoped.unresolvedAnnotationKeys).toContain('bat-v2-var-0');
+  });
+
+  it.each(['null', '{'])('fails safe when the pending overlay contains %s', (raw) => {
+    const root = makeRoot();
+    const pendingPath = path.join(root, 'pending-annotations.json');
+    writeFileSync(pendingPath, raw);
+
+    expect(readPendingDocument(pendingPath)).toEqual({});
   });
 
   it('clears a provenance-resolved stale dislike when that exact asset is reaccepted', () => {
@@ -1436,6 +1480,73 @@ describe('disliked sprite lifecycle transaction', () => {
       expect(existsSync(path.join(generatedDir, `rat-var-${variantIndex}.png`))).toBe(true);
     }
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-1.json'))).toBe(false);
+  });
+
+  it('does not roll back a concurrent edit to a skipped batch cell', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    for (const concept of ['icon-good', 'icon-skipped']) {
+      const disliked = entry(concept, 0);
+      writeShard(generatedDir, disliked.spriteName, disliked);
+      writeFileSync(path.join(generatedDir, `${concept}-var-0.png`), 'bad');
+    }
+    const annotationsPath = path.join(generatedDir, 'sprite-editor-annotations.json');
+    writeFileSync(
+      annotationsPath,
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'icon-good-var-0': { disliked: true },
+          'icon-skipped-var-0': { disliked: true },
+        },
+      }),
+    );
+    const replacement = entry('icon-good', 1);
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          {
+            manifestKey: replacement.spriteName,
+            conceptId: 'icon-good',
+            assetPath: replacement.assetPath,
+          },
+          {
+            manifestKey: 'icon-skipped-var-1',
+            conceptId: 'icon-skipped',
+            assetPath: 'generated/icon-skipped-var-1.png',
+          },
+        ],
+        approve: () => {
+          writeShard(generatedDir, replacement.spriteName, replacement);
+          writeFileSync(path.join(generatedDir, 'icon-good-var-1.png'), 'new');
+          return [replacement];
+        },
+        approvedReplacementKeys: (entries) => entries.map((item) => item.spriteName),
+        publish: () => {
+          const current = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+            version: 1;
+            sprites: Record<string, SpriteAnnotation>;
+          };
+          current.sprites['icon-skipped-var-0'] = {
+            favorite: true,
+            disliked: false,
+            comment: 'keep skipped edit',
+          };
+          writeFileSync(annotationsPath, JSON.stringify(current));
+          return Promise.reject(new Error('queue unavailable'));
+        },
+      }),
+    ).rejects.toThrow('queue unavailable');
+
+    const after = JSON.parse(readFileSync(annotationsPath, 'utf8')) as SpriteAnnotationsDocument;
+    expect(after.sprites['icon-good-var-0']?.disliked).toBe(true);
+    expect(after.sprites['icon-skipped-var-0']).toEqual({
+      favorite: true,
+      disliked: false,
+      comment: 'keep skipped edit',
+    });
   });
 
   it('treats a missing annotations file as empty during closure validation', () => {

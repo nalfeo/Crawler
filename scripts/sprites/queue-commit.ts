@@ -155,6 +155,8 @@ export function applySpriteAnnotationUpdates(
 export interface QueueCommitRemoval {
   readonly assetPath: string;
   readonly manifestKey: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
 }
 
 export interface QueueCommitDeps {
@@ -712,6 +714,8 @@ export async function runQueueCommit(
               persistedLifecycleRemovals = persisted.map(({ tombstone }) => ({
                 assetPath: tombstone.assetPath,
                 manifestKey: tombstone.manifestKey,
+                sourceRun: tombstone.sourceRun,
+                variantIndex: tombstone.variantIndex,
               }));
               for (const deletion of persisted) {
                 const shard = await runGit(deps.exec, repoRoot, [
@@ -827,6 +831,34 @@ export async function runQueueCommit(
             throw new QueueCommitError(
               'destination-conflict',
               error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
+        for (const removal of removals) {
+          const shardPath = `public/assets/generated/entries/${removal.manifestKey}.json`;
+          const destinationShard = await runGit(deps.exec, repoRoot, [
+            'show',
+            `${baseRef}:${shardPath}`,
+          ]);
+          if (destinationShard.code !== 0 || destinationShard.stdout.trim() === '') continue;
+          try {
+            assertLifecycleDeletionMatchesShard(
+              {
+                tombstone: {
+                  manifestKey: removal.manifestKey,
+                  assetPath: removal.assetPath,
+                  sourceRun: removal.sourceRun,
+                  variantIndex: removal.variantIndex,
+                },
+                paths: [shardPath, `public/assets/${removal.assetPath}`],
+              },
+              destinationShard.stdout,
+            );
+          } catch (error) {
+            throw new QueueCommitError(
+              'generated-deletion-refused',
+              error instanceof Error ? error.message : String(error),
+              { cause: error },
             );
           }
         }

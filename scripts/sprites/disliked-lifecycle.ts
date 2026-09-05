@@ -174,6 +174,8 @@ interface ReconciledDislike {
   readonly annotation: SpriteAnnotation;
 }
 
+class AmbiguousDislikeError extends Error {}
+
 interface FileSnapshot {
   readonly path: string;
   readonly bytes: Buffer | null;
@@ -218,7 +220,7 @@ function reconcileDislikeKey(
 
   const candidates = provenanceCandidateKeys(annotation, entries);
   if (candidates.length > 1) {
-    throw new Error(
+    throw new AmbiguousDislikeError(
       `Disliked annotation "${key}" is ambiguous: provenance matched ${candidates.join(
         ', ',
       )}. Add sourceRun provenance before retrying.`,
@@ -261,6 +263,7 @@ function mergePendingAnnotations(
 function reconcileDislikes(
   annotations: SpriteAnnotationsDocument,
   entries: Readonly<Record<string, ManifestEntry>>,
+  isKeyInScope: (key: string) => boolean = () => true,
 ): { reconciled: readonly ReconciledDislike[]; unresolved: readonly string[] } {
   const grouped = new Map<string, { keys: string[]; annotation: SpriteAnnotation }>();
   const unresolved: string[] = [];
@@ -268,7 +271,16 @@ function reconcileDislikes(
     a.localeCompare(b),
   )) {
     if (annotation.disliked !== true) continue;
-    const manifestKey = reconcileDislikeKey(key, annotation, entries);
+    let manifestKey: string | null;
+    try {
+      manifestKey = reconcileDislikeKey(key, annotation, entries);
+    } catch (error) {
+      if (error instanceof AmbiguousDislikeError && !isKeyInScope(key)) {
+        unresolved.push(key);
+        continue;
+      }
+      throw error;
+    }
     if (manifestKey === null) {
       if (annotation.tombstone === undefined) unresolved.push(key);
       continue;
@@ -459,7 +471,11 @@ export function buildDislikedLifecyclePlan(
     pendingKeys,
     isKeyInScope,
   );
-  const { reconciled, unresolved } = reconcileDislikes(promoted.document, input.manifestEntries);
+  const { reconciled, unresolved } = reconcileDislikes(
+    promoted.document,
+    input.manifestEntries,
+    isKeyInScope,
+  );
   const dislikedKeys = new Set(reconciled.map((item) => item.manifestKey));
   const groups = new Map<string, Array<[string, ManifestEntry]>>();
   for (const pair of Object.entries(input.manifestEntries)) {
@@ -665,14 +681,20 @@ function parseAnnotations(raw: string, source: string): SpriteAnnotationsDocumen
   };
 }
 
-function readPendingDocument(pendingPath: string): Record<string, PendingAnnotationRecord> {
+export function readPendingDocument(pendingPath: string): Record<string, PendingAnnotationRecord> {
   if (!existsSync(pendingPath)) return {};
-  const parsed = JSON.parse(readFileSync(pendingPath, 'utf8')) as {
-    readonly sprites?: unknown;
-  };
-  return parsed.sprites && typeof parsed.sprites === 'object' && !Array.isArray(parsed.sprites)
-    ? (parsed.sprites as Record<string, PendingAnnotationRecord>)
-    : {};
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(pendingPath, 'utf8'));
+    const sprites =
+      typeof parsed === 'object' && parsed !== null
+        ? (parsed as { readonly sprites?: unknown }).sprites
+        : undefined;
+    return sprites && typeof sprites === 'object' && !Array.isArray(sprites)
+      ? (sprites as Record<string, PendingAnnotationRecord>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -1102,7 +1124,7 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
   const annotationsPath = path.join(options.repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
   const annotationsExisted = existsSync(annotationsPath);
   const annotationsBefore = readTrackedAnnotations(options.repoRoot);
-  const rollbackAnnotationKeys = new Set(initialPlan.annotationUpdates.map((update) => update.key));
+  const rollbackAnnotationKeys = new Set<string>();
   const touched = [
     ...options.replacements.flatMap((replacement) => [
       shardPathForKey(generatedDir, replacement.manifestKey),
@@ -1163,15 +1185,15 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
           planMutatesReplacement(initialPlan, replacement) &&
           !materializedReplacements.includes(replacement),
       )
-      .map(
-        (replacement) =>
-          describeUnusableSurvivor(
-            options.repoRoot,
-            entries,
-            replacement.manifestKey,
-            replacement.assetPath,
-          )!,
-      )
+      .map((replacement) => {
+        const failure = describeUnusableSurvivor(
+          options.repoRoot,
+          entries,
+          replacement.manifestKey,
+          replacement.assetPath,
+        );
+        return failure ?? `replacement ${replacement.manifestKey} was not among the approved keys`;
+      })
       .sort();
     if (materializedReplacements.length === 0 && unmaterializedMutations.length > 0) {
       throw new Error(

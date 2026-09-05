@@ -1218,7 +1218,9 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-edit-'));
   try {
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
-    writeFileSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`), bytes);
+    const pngPath = path.join(wt, 'public', 'assets', 'generated', `${key}.png`);
+    mkdirSync(path.dirname(pngPath), { recursive: true });
+    writeFileSync(pngPath, bytes);
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue edit: ${key}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -1738,7 +1740,20 @@ describe('runReconcile (real git)', () => {
       rmSync(path.join(generatedDir, 'entries', `${key}.json`));
       writeFileSync(
         path.join(generatedDir, 'sprite-editor-annotations.json'),
-        JSON.stringify({ version: 1, sprites: [] }),
+        JSON.stringify({
+          version: 1,
+          sprites: {
+            historical: {
+              disliked: true,
+              tombstone: {
+                manifestKey: 'historical',
+                assetPath: 'generated/historical.png',
+                sourceRun: 'generated/runs/historical/run-0',
+                variantIndex: 'invalid',
+              },
+            },
+          },
+        }),
       );
       writeFileSync(path.join(generatedDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(generatedDir, 'entries', 'unrelated-var-0.json'), {
@@ -1776,6 +1791,26 @@ describe('runReconcile (real git)', () => {
     expect(
       gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
     ).not.toBe('');
+  });
+
+  it('(d6) atomically withholds nested PNG and shard together on A-to-B-to-A reapproval', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'equipment/weapons/skull-mace-var-2';
+    seedQueueWithArt(liveDir, [key]);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES);
+    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain(`public/assets/generated/${key}.png`);
+    expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
   });
 
   it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {
