@@ -208,6 +208,10 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
       // `showFloorCompletionScreenIfNeeded()` path actually ran and the
       // completion UI is now on screen. A regression in that path would
       // otherwise pass this gate while saving ordinary gameplay footage.
+      //
+      // `__floor1Debug` is MainGameScene's universal debug seam — the name is
+      // historical; it is set unconditionally in MainGameScene.create() for
+      // every floor, not just Floor 1.
       await page.waitForFunction(
         () =>
           (
