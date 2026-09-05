@@ -72,11 +72,24 @@ const mocks = vi.hoisted(() => {
   const approveFrameSequence = vi.fn(() => {
     throw new ApproveError('already-approved', 'player-walk-cycle already approved');
   });
+  const approveIconBatch = vi.fn(() => [
+    {
+      briefId: 'achv-icons',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      variantIndex: 0,
+    },
+  ]);
   const resolveVariantIdentity = vi.fn(() => ({
     briefId: FAKE_ENTRY.briefId,
     variantId: FAKE_ENTRY.spriteName,
     assetPath: FAKE_ENTRY.assetPath,
     contentHash: 'a'.repeat(64),
+  }));
+  const resolveFrameSequenceIdentity = vi.fn(() => ({
+    briefId: FAKE_SEQUENCE_ENTRY.briefId,
+    variantId: FAKE_SEQUENCE_ENTRY.spriteName,
+    assetPath: FAKE_SEQUENCE_ENTRY.assetPath,
   }));
 
   return {
@@ -85,7 +98,9 @@ const mocks = vi.hoisted(() => {
     loadApprovedFrameSequenceEntry,
     approveVariant,
     approveFrameSequence,
+    approveIconBatch,
     resolveVariantIdentity,
+    resolveFrameSequenceIdentity,
     ApproveError,
     FAKE_ENTRY,
     FAKE_SEQUENCE_ENTRY,
@@ -126,31 +141,45 @@ vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
     approveVariant: mocks.approveVariant,
     loadApprovedEntry: mocks.loadApprovedEntry,
     approveFrameSequence: mocks.approveFrameSequence,
+    approveIconBatch: mocks.approveIconBatch,
     loadApprovedFrameSequenceEntry: mocks.loadApprovedFrameSequenceEntry,
     resolveVariantIdentity: mocks.resolveVariantIdentity,
+    resolveFrameSequenceIdentity: mocks.resolveFrameSequenceIdentity,
     ApproveError: mocks.ApproveError,
   };
 });
 
-const lifecycle = vi.hoisted(() => ({
-  runAcceptedDislikedLifecycleTransaction: vi.fn(
-    async (options: {
-      approve: () => unknown;
-      publish: (
-        approved: unknown,
-        plan: { removed: never[]; retainedGroups: never[]; annotationUpdates: never[] },
-      ) => Promise<void>;
-    }) => {
-      const approved = options.approve();
-      const plan = { removed: [], retainedGroups: [], annotationUpdates: [] };
-      await options.publish(approved, plan);
-      return { approved, plan };
-    },
-  ),
-}));
+const lifecycle = vi.hoisted(() => {
+  interface FakePlan {
+    removed: Array<{ manifestKey: string; assetPath: string }>;
+    retainedGroups: Array<{ conceptId: string; manifestKeys: string[] }>;
+    deferredGroups: Array<{ conceptId: string; manifestKeys: string[] }>;
+    annotationUpdates: Array<Record<string, unknown> & { key: string }>;
+  }
+  return {
+    runAcceptedDislikedLifecycleTransaction: vi.fn(
+      async (options: {
+        replacements: readonly { manifestKey: string; conceptId: string; assetPath: string }[];
+        approve: () => unknown;
+        publish: (approved: unknown, plan: FakePlan) => Promise<void>;
+      }) => {
+        const approved = options.approve();
+        const plan: FakePlan = {
+          removed: [],
+          retainedGroups: [],
+          deferredGroups: [],
+          annotationUpdates: [],
+        };
+        await options.publish(approved, plan);
+        return { approved, plan };
+      },
+    ),
+  };
+});
 
 vi.mock('../../../scripts/sprites/disliked-lifecycle.js', () => ({
   runAcceptedDislikedLifecycleTransaction: lifecycle.runAcceptedDislikedLifecycleTransaction,
+  toQueueCommitAnnotationUpdates: vi.fn((updates: readonly unknown[]) => updates),
 }));
 
 vi.mock('../../../scripts/sprites/checkin-runtime.js', () => ({
@@ -260,6 +289,37 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(exitCode).toBe(5);
     expect(mocks.approveVariant).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a queue-commit failure that would strand an annotation-only lifecycle change', async () => {
+    // A tombstone clear (or any annotation write) is applied LOCALLY before
+    // publication. Swallowing the push failure would make the advertised
+    // "re-run to retry" a lie: the second run computes an empty delta and never
+    // republishes it. So the publish must throw and let the transaction roll back.
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockImplementationOnce(async (options) => {
+      const approved = options.approve();
+      const plan = {
+        removed: [],
+        retainedGroups: [],
+        deferredGroups: [],
+        annotationUpdates: [{ key: 'iron-sword-var-1', tombstone: undefined }],
+      };
+      await options.publish(approved, plan as never);
+      return { approved, plan };
+    });
+    mocks.runQueueCommit.mockRejectedValueOnce(new Error('push rejected'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).not.toBe(0);
+  });
+
+  it('still keeps a plain approval local-only (exit 0) when queue-commit fails with no lifecycle change', async () => {
+    mocks.runQueueCommit.mockRejectedValueOnce(new Error('push rejected'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(0);
   });
 
   it('skips the gate on CI, where the CLI approves locally and never pushes', async () => {
@@ -387,12 +447,39 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
     mocks.runQueueCommit.mockClear();
     mocks.loadApprovedFrameSequenceEntry.mockClear();
     mocks.approveFrameSequence.mockClear();
+    mocks.resolveFrameSequenceIdentity.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
   });
 
   afterEach(() => {
     if (savedCI !== undefined) {
       process.env.CI = savedCI;
     }
+  });
+
+  it('routes the frame-sequence acceptance through the disliked-asset lifecycle transaction', async () => {
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    // Accepting a walk cycle replaces the art for a whole concept, so it must
+    // not approve outside the transaction that retires what it replaces.
+    expect(exitCode).toBe(0);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
+    const options = lifecycle.runAcceptedDislikedLifecycleTransaction.mock.calls[0]?.[0];
+    expect(options?.replacements).toEqual([
+      {
+        manifestKey: 'player-walk-cycle',
+        conceptId: 'player-walk-cycle',
+        assetPath: 'generated/player-walk-cycle.png',
+      },
+    ]);
+    // Identity is resolved WITHOUT mutating, before approval runs.
+    expect(mocks.resolveFrameSequenceIdentity).toHaveBeenCalledOnce();
+    const identityOrder = mocks.resolveFrameSequenceIdentity.mock.invocationCallOrder[0] ?? 0;
+    const approveOrder = mocks.approveFrameSequence.mock.invocationCallOrder[0] ?? 0;
+    expect(identityOrder).toBeLessThan(approveOrder);
   });
 
   it('re-enters runQueueCommit for an already-approved frame sequence and returns exit code 0', async () => {
@@ -434,5 +521,68 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
 
     expect(exitCode).not.toBe(0);
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe('approve-cli --icon-batch lifecycle routing', () => {
+  const roots: string[] = [];
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.approveIconBatch.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
+  });
+
+  afterEach(async () => {
+    if (savedCI !== undefined) process.env.CI = savedCI;
+    else delete process.env.CI;
+    const { rm } = await import('node:fs/promises');
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it('routes an icon batch through the transaction with one replacement per declared icon', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n  - id: achv-deep-delve\n',
+    );
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    // Every declared icon id is its own concept, so each is an explicit
+    // replacement acceptance that scopes cleanup to that icon.
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
+    const options = lifecycle.runAcceptedDislikedLifecycleTransaction.mock.calls[0]?.[0];
+    expect(options?.replacements).toEqual([
+      {
+        manifestKey: 'achv-first-bonk',
+        conceptId: 'achv-first-bonk',
+        assetPath: 'generated/achv-first-bonk.png',
+      },
+      {
+        manifestKey: 'achv-deep-delve',
+        conceptId: 'achv-deep-delve',
+        assetPath: 'generated/achv-deep-delve.png',
+      },
+    ]);
+    // Approval and publication still happen, inside the transaction.
+    expect(mocks.approveIconBatch).toHaveBeenCalledOnce();
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
   });
 });

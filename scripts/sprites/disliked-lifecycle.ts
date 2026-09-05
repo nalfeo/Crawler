@@ -11,6 +11,7 @@ import {
 import path from 'node:path';
 
 import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import { isRuntimeEligibleManifestEntry } from '../../src/shared/generated-assets.js';
 import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import {
   readPendingDislikedSpriteNames,
@@ -18,7 +19,7 @@ import {
 } from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 import { unapproveVariant } from './approve.js';
 import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
-import { isPlaceholderManifestEntry } from './placeholder-audit.js';
+import type { SpriteAnnotationUpdate } from './queue-commit.js';
 
 const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotations.json';
 const REFERENCE_EXTENSIONS = new Set(['.json', '.js', '.mjs', '.ts', '.tsx', '.yaml', '.yml']);
@@ -55,6 +56,18 @@ export interface DislikedSpriteTombstone {
   readonly sourceRun: string;
   readonly variantIndex: number;
   readonly annotationKeys: readonly string[];
+  /**
+   * AUDIT-ONLY provenance marker. NOTHING in this pipeline reads it to decide
+   * anything: it is never produced by {@link buildDislikedLifecyclePlan}, never
+   * consulted by {@link validateDislikedLifecycleClosure}, and never grants
+   * deletion authority. It exists solely to record that a closed set of
+   * historical tombstones was written by the one-time pre-hardening migration,
+   * BEFORE stale annotation keys required exact-key or source-run provenance
+   * corroboration. Deleting these markers would erase audit history; adding new
+   * ones would falsely imply a migration that did not happen — so the marker
+   * vocabulary is a closed literal union and the guard tests derive their
+   * invariants from the data rather than pinning a magic count.
+   */
   readonly authority?: 'pre-hardening-corroborated-provenance';
 }
 
@@ -97,6 +110,18 @@ export interface DislikedLifecyclePlan {
     readonly conceptId: string;
     readonly manifestKeys: readonly string[];
   }[];
+  /**
+   * Groups that ARE immediately removable but fall outside this plan's
+   * {@link BuildDislikedLifecyclePlanInput.conceptScope}. Reported, never
+   * silently dropped: an explicit acceptance only cleans the concept it
+   * replaced, and `npm run sprites:disliked-lifecycle -- --apply` (unscoped)
+   * remains the sweeper that finishes the rest. Nothing here is mutated, so a
+   * deferred group cannot dangle — its art and annotations stay intact.
+   */
+  readonly deferredGroups: readonly {
+    readonly conceptId: string;
+    readonly manifestKeys: readonly string[];
+  }[];
   readonly unresolvedAnnotationKeys: readonly string[];
   readonly annotations: SpriteAnnotationsDocument;
   readonly annotationUpdates: readonly (
@@ -113,13 +138,28 @@ export interface BuildDislikedLifecyclePlanInput {
   readonly trackedAnnotations: SpriteAnnotationsDocument;
   readonly pendingAnnotations?: Readonly<Record<string, PendingAnnotationRecord>>;
   readonly pendingDislikedKeys?: ReadonlySet<string>;
-  readonly replacement?: LifecycleReplacement;
+  /**
+   * Art whose acceptance is being explicitly authorized right now. Each entry
+   * counts as a runtime-eligible survivor for its concept and has its own
+   * dislike cleared, so accepting a replacement retires the variants it
+   * replaces.
+   */
+  readonly replacements?: readonly LifecycleReplacement[];
+  /**
+   * Restrict every MUTATION this plan proposes to these normalized concepts.
+   * Absent means repo-wide (the standalone lifecycle CLI). Acceptance passes
+   * the accepted concepts so an unrelated concept's exact pin can never block
+   * an approval, and so one acceptance never silently deletes art for a
+   * concept the human did not touch.
+   */
+  readonly conceptScope?: ReadonlySet<string>;
   readonly readReferenceFiles?: boolean;
 }
 
 export interface ApplyDislikedLifecycleResult {
   readonly removedCount: number;
   readonly retainedGroupCount: number;
+  readonly deferredGroupCount: number;
   readonly promotedPendingCount: number;
 }
 
@@ -134,6 +174,35 @@ interface FileSnapshot {
   readonly bytes: Buffer | null;
 }
 
+/**
+ * Manifest keys whose provenance matches `annotation`, sorted. Read-only and
+ * total: it never throws, so both the fail-closed mutation resolver and the
+ * read-only reference resolver can share one matching rule.
+ */
+function provenanceCandidateKeys(
+  annotation: SpriteAnnotation,
+  entries: Readonly<Record<string, ManifestEntry>>,
+): readonly string[] {
+  if (
+    typeof annotation.sourceRun !== 'string' ||
+    annotation.sourceRun.trim() === '' ||
+    typeof annotation.variantIndex !== 'number' ||
+    !Number.isInteger(annotation.variantIndex) ||
+    annotation.variantIndex < 0
+  ) {
+    return [];
+  }
+  const sourceRunBasename = path.posix.basename(annotation.sourceRun.replace(/\\/g, '/'));
+  return Object.entries(entries)
+    .filter(
+      ([, entry]) =>
+        entry.variantIndex === annotation.variantIndex &&
+        path.posix.basename(entry.sourceRun.replace(/\\/g, '/')) === sourceRunBasename,
+    )
+    .map(([manifestKey]) => manifestKey)
+    .sort();
+}
+
 function reconcileDislikeKey(
   key: string,
   annotation: SpriteAnnotation,
@@ -142,32 +211,15 @@ function reconcileDislikeKey(
   if (entries[key] !== undefined) return key;
   if (annotation.tombstone !== undefined) return null;
 
-  if (
-    typeof annotation.sourceRun !== 'string' ||
-    annotation.sourceRun.trim() === '' ||
-    typeof annotation.variantIndex !== 'number' ||
-    !Number.isInteger(annotation.variantIndex) ||
-    annotation.variantIndex < 0
-  ) {
-    return null;
-  }
-  const sourceRunBasename = path.posix.basename(annotation.sourceRun.replace(/\\/g, '/'));
-
-  const candidates = Object.entries(entries).filter(([, entry]) => {
-    return (
-      entry.variantIndex === annotation.variantIndex &&
-      path.posix.basename(entry.sourceRun.replace(/\\/g, '/')) === sourceRunBasename
-    );
-  });
+  const candidates = provenanceCandidateKeys(annotation, entries);
   if (candidates.length > 1) {
     throw new Error(
-      `Disliked annotation "${key}" is ambiguous: provenance matched ${candidates
-        .map(([manifestKey]) => manifestKey)
-        .sort()
-        .join(', ')}. Add sourceRun provenance before retrying.`,
+      `Disliked annotation "${key}" is ambiguous: provenance matched ${candidates.join(
+        ', ',
+      )}. Add sourceRun provenance before retrying.`,
     );
   }
-  return candidates[0]?.[0] ?? null;
+  return candidates[0] ?? null;
 }
 
 function mergePendingAnnotations(
@@ -228,17 +280,68 @@ function reconcileDislikes(
   };
 }
 
-/** Resolve annotation keys to concrete accepted manifest keys without guessing. */
-export function resolveDislikedManifestKeys(
+/** Read-only exclusion sets for generation reference selection. */
+export interface DislikedReferenceExclusions {
+  /** Exact manifest keys that must never be sent as a generation reference. */
+  readonly manifestKeys: ReadonlySet<string>;
+  /**
+   * Normalized concepts whose art must be excluded wholesale because a dislike
+   * naming them could not be pinned to one exact accepted key.
+   */
+  readonly conceptIds: ReadonlySet<string>;
+}
+
+/**
+ * Resolve disliked annotation keys to reference-selection exclusions.
+ *
+ * READ-ONLY. This grants ZERO deletion authority — it never feeds
+ * {@link buildDislikedLifecyclePlan}. That asymmetry is deliberate: deleting
+ * the wrong asset is unrecoverable, so mutation stays fail-closed (an
+ * unresolvable or ambiguous key is preserved, never deleted), while merely
+ * declining to send a sprite back to the image model as a style reference is
+ * free. So this resolver fails SAFE in the other direction:
+ *
+ *   - exact manifest key → exclude that key;
+ *   - unique source-run + variant-index provenance match → exclude that key;
+ *   - ambiguous provenance → exclude every implicated key AND their concepts;
+ *   - already tombstoned → nothing to exclude (the art is gone and its
+ *     surviving replacement is legitimately referenceable);
+ *   - otherwise (a stale key naming art that may still exist under a renamed
+ *     key) → exclude the normalized concept the key names.
+ *
+ * `annotations` is optional so callers that only have a name set still get the
+ * exact + conservative-concept behavior; supplying the full annotations lets
+ * provenance rescue a stale key to its exact accepted entry.
+ */
+export function resolveDislikedReferenceExclusions(
   entries: Readonly<Record<string, ManifestEntry>>,
   dislikedKeys: ReadonlySet<string>,
-): ReadonlySet<string> {
-  const resolved = new Set<string>();
+  annotations: Readonly<Record<string, SpriteAnnotation>> = {},
+): DislikedReferenceExclusions {
+  const manifestKeys = new Set<string>();
+  const conceptIds = new Set<string>();
   for (const key of [...dislikedKeys].sort()) {
-    const manifestKey = reconcileDislikeKey(key, { disliked: true }, entries);
-    if (manifestKey !== null) resolved.add(manifestKey);
+    if (entries[key] !== undefined) {
+      manifestKeys.add(key);
+      continue;
+    }
+    const annotation = annotations[key] ?? {};
+    if (annotation.tombstone !== undefined) continue;
+    const candidates = provenanceCandidateKeys(annotation, entries);
+    if (candidates.length === 1) {
+      manifestKeys.add(candidates[0]!);
+      continue;
+    }
+    if (candidates.length > 1) {
+      for (const candidate of candidates) {
+        manifestKeys.add(candidate);
+        conceptIds.add(normalizeGeneratedSpriteConceptId(entries[candidate]!.briefId || candidate));
+      }
+      continue;
+    }
+    conceptIds.add(normalizeGeneratedSpriteConceptId(key));
   }
-  return resolved;
+  return { manifestKeys, conceptIds };
 }
 
 function walkReferenceFiles(repoRoot: string): string[] {
@@ -276,10 +379,6 @@ function replaceExactReference(text: string, before: string, after: string): str
     exactReferencePattern(before),
     (_match, prefix: string) => `${prefix}${after}`,
   );
-}
-
-function containsExactReference(text: string, value: string): boolean {
-  return exactReferencePattern(value).test(text);
 }
 
 function replaceExactReferences(
@@ -325,18 +424,35 @@ export function buildDislikedLifecyclePlan(
 
   const removals: LifecycleRemoval[] = [];
   const retainedGroups: Array<{ conceptId: string; manifestKeys: string[] }> = [];
+  const deferredGroups: Array<{ conceptId: string; manifestKeys: string[] }> = [];
+  const replacementsByConcept = new Map<string, LifecycleReplacement[]>();
+  for (const replacement of input.replacements ?? []) {
+    const bucket = replacementsByConcept.get(replacement.conceptId) ?? [];
+    bucket.push(replacement);
+    replacementsByConcept.set(replacement.conceptId, bucket);
+  }
+  const inScope = (conceptId: string): boolean =>
+    input.conceptScope === undefined || input.conceptScope.has(conceptId);
+
   for (const [conceptId, group] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
     const disliked = group.filter(([key]) => dislikedKeys.has(key));
     if (disliked.length === 0) continue;
-    const replacement = input.replacement?.conceptId === conceptId ? input.replacement : undefined;
+    const conceptReplacements = [...(replacementsByConcept.get(conceptId) ?? [])].sort((a, b) =>
+      a.manifestKey.localeCompare(b.manifestKey),
+    );
+    const replacementKeys = new Set(conceptReplacements.map((item) => item.manifestKey));
+    // Runtime eligibility is the ONE survivor test (see
+    // `isRuntimeEligibleManifestEntry`): a placeholder stand-in or an entry the
+    // manifest itself marks `disliked` is invisible to the engine registry, so
+    // treating it as a survivor would delete real art the game can never pick.
     const survivors = group
-      .filter(([key, entry]) => !dislikedKeys.has(key) && !isPlaceholderManifestEntry(entry))
+      .filter(([key, entry]) => !dislikedKeys.has(key) && isRuntimeEligibleManifestEntry(entry))
       .map(([key, entry]) => ({
         manifestKey: key,
         assetPath: entry.assetPath,
       }))
       .sort((a, b) => a.manifestKey.localeCompare(b.manifestKey));
-    if (replacement !== undefined) {
+    for (const replacement of [...conceptReplacements].reverse()) {
       survivors.unshift({
         manifestKey: replacement.manifestKey,
         assetPath: replacement.assetPath,
@@ -349,10 +465,19 @@ export function buildDislikedLifecyclePlan(
       });
       continue;
     }
+    const removable = disliked
+      .filter(([key]) => !replacementKeys.has(key))
+      .sort(([a], [b]) => a.localeCompare(b));
+    if (removable.length === 0) continue;
+    if (!inScope(conceptId)) {
+      deferredGroups.push({
+        conceptId,
+        manifestKeys: removable.map(([key]) => key),
+      });
+      continue;
+    }
     const survivor = survivors[0]!;
-    for (const [manifestKey, entry] of disliked
-      .filter(([key]) => key !== replacement?.manifestKey)
-      .sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [manifestKey, entry] of removable) {
       const reconciliation = reconciled.find((item) => item.manifestKey === manifestKey)!;
       removals.push({
         manifestKey,
@@ -368,18 +493,22 @@ export function buildDislikedLifecyclePlan(
   }
 
   const sprites: Record<string, SpriteAnnotation> = { ...promoted.document.sprites };
-  if (
-    input.replacement !== undefined &&
-    sprites[input.replacement.manifestKey]?.disliked === true
-  ) {
-    sprites[input.replacement.manifestKey] = {
-      ...sprites[input.replacement.manifestKey],
+  for (const replacement of input.replacements ?? []) {
+    if (!inScope(replacement.conceptId)) continue;
+    if (sprites[replacement.manifestKey]?.disliked !== true) continue;
+    sprites[replacement.manifestKey] = {
+      ...sprites[replacement.manifestKey],
       favorite: false,
       disliked: false,
+      // Own property with an explicit `undefined`: downstream publication
+      // mappers MUST forward this as an intentional CLEAR (the accepted
+      // replacement is no longer a tombstoned deletion), while a key that
+      // never owned `tombstone` must leave the queue tip's value untouched.
       tombstone: undefined,
     };
   }
   for (const key of unresolved) {
+    if (!inScope(normalizeGeneratedSpriteConceptId(key))) continue;
     const annotation = sprites[key] ?? {};
     sprites[key] = {
       ...annotation,
@@ -421,6 +550,7 @@ export function buildDislikedLifecyclePlan(
   const planWithoutReferences: DislikedLifecyclePlan = {
     removed: removals.sort((a, b) => a.manifestKey.localeCompare(b.manifestKey)),
     retainedGroups,
+    deferredGroups,
     unresolvedAnnotationKeys: unresolved,
     annotations: { version: 1, sprites: sortedSprites },
     annotationUpdates,
@@ -469,15 +599,26 @@ function readPendingDocument(pendingPath: string): Record<string, PendingAnnotat
     : {};
 }
 
+/**
+ * Read the tracked annotations document, treating an ABSENT file as an empty
+ * document. Planning, closure validation, and the queue-tip merge in
+ * `queue-commit-runtime.ts` all use this same "missing means empty" rule, so a
+ * fresh checkout without an annotations file cannot make one of them throw a
+ * raw ENOENT while the others succeed.
+ */
+function readTrackedAnnotations(repoRoot: string): SpriteAnnotationsDocument {
+  const annotationsPath = path.join(repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
+  if (!existsSync(annotationsPath)) return { version: 1, sprites: {} };
+  return parseAnnotations(readFileSync(annotationsPath, 'utf8'), ANNOTATIONS_RELATIVE_PATH);
+}
+
 export function loadDislikedLifecyclePlan(
   repoRoot: string,
-  replacement?: LifecycleReplacement,
+  replacements: readonly LifecycleReplacement[] = [],
+  conceptScope?: ReadonlySet<string>,
 ): DislikedLifecyclePlan {
   const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
-  const annotationsPath = path.join(repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
-  const tracked = existsSync(annotationsPath)
-    ? parseAnnotations(readFileSync(annotationsPath, 'utf8'), ANNOTATIONS_RELATIVE_PATH)
-    : { version: 1 as const, sprites: {} };
+  const tracked = readTrackedAnnotations(repoRoot);
   const pendingPath = resolvePendingAnnotationsPath(repoRoot);
   const pending = readPendingDocument(pendingPath);
   const pendingDislikedKeys = readPendingDislikedSpriteNames(pendingPath, {
@@ -490,7 +631,8 @@ export function loadDislikedLifecyclePlan(
     trackedAnnotations: tracked,
     pendingAnnotations: pending,
     pendingDislikedKeys,
-    replacement,
+    replacements,
+    ...(conceptScope !== undefined ? { conceptScope } : {}),
   });
 }
 
@@ -523,17 +665,53 @@ function atomicWrite(file: string, content: string): void {
   }
 }
 
+/**
+ * Find every removed manifest key / asset path still referenced exactly, in ONE
+ * pass per file instead of one pass per file PER removal.
+ *
+ * Semantics are identical to {@link containsExactReference} applied to each
+ * token — same escaping, same non-`[A-Za-z0-9_-]` boundaries, so a longer key
+ * (`rat-var-10`) never matches a shorter one (`rat-var-1`). Longest-first
+ * alternation ordering keeps the reported token deterministic when two tokens
+ * start at the same offset. This matters because the tombstone ledger only ever
+ * grows: the previous key-by-key scan was O(files x tombstones) and measured
+ * 979ms for 28 tombstones over 2532 files (~10.5s projected at 300), while this
+ * one measures 93ms today and 528ms at 336 synthetic tombstones. Coverage is NOT
+ * reduced — every historical tombstone is still checked on every run.
+ */
+function findRemainingExactReferences(
+  repoRoot: string,
+  tokens: ReadonlyMap<string, string>,
+): Array<{ readonly token: string; readonly file: string }> {
+  if (tokens.size === 0) return [];
+  const ordered = [...tokens.keys()].sort((a, b) => b.length - a.length || a.localeCompare(b));
+  const combined = new RegExp(
+    `(?:^|[^A-Za-z0-9_-])(${ordered
+      .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|')})(?=$|[^A-Za-z0-9_-])`,
+    'gu',
+  );
+  const hits: Array<{ token: string; file: string }> = [];
+  for (const file of walkReferenceFiles(repoRoot)) {
+    const text = readFileSync(file, 'utf8');
+    const seen = new Set<string>();
+    for (const match of text.matchAll(combined)) {
+      const token = match[1]!;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      hits.push({ token, file });
+    }
+  }
+  return hits;
+}
+
 export function validateDislikedLifecycleClosure(
   repoRoot: string,
   plan: DislikedLifecyclePlan,
 ): void {
   const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
   const manifest = composeManifestFromShards(generatedDir);
-  const annotationsPath = path.join(repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
-  const annotations = parseAnnotations(
-    readFileSync(annotationsPath, 'utf8'),
-    ANNOTATIONS_RELATIVE_PATH,
-  );
+  const annotations = readTrackedAnnotations(repoRoot);
   const failures: string[] = [];
   const removals = new Map<
     string,
@@ -563,10 +741,9 @@ export function validateDislikedLifecycleClosure(
     });
   }
 
-  const referenceContents = walkReferenceFiles(repoRoot).map((file) => ({
-    file,
-    text: readFileSync(file, 'utf8'),
-  }));
+  // Every removed key AND its asset path maps back to the removal that owns it,
+  // so one combined scan can still name the offending manifest key per hit.
+  const tokens = new Map<string, string>();
   for (const removal of removals.values()) {
     if (manifest.entries[removal.manifestKey] !== undefined) {
       failures.push(`manifest shard still exists for ${removal.manifestKey}`);
@@ -581,24 +758,20 @@ export function validateDislikedLifecycleClosure(
     ) {
       failures.push(`annotation tombstone is missing or stale for ${removal.manifestKey}`);
     }
-    for (const reference of referenceContents) {
-      const text = reference.text;
-      if (
-        containsExactReference(text, removal.manifestKey) ||
-        containsExactReference(text, removal.assetPath)
-      ) {
-        failures.push(
-          `exact reference to ${removal.manifestKey} remains in ${path.relative(
-            repoRoot,
-            reference.file,
-          )}`,
-        );
-      }
-    }
+    tokens.set(removal.manifestKey, removal.manifestKey);
+    tokens.set(removal.assetPath, removal.manifestKey);
+  }
+  for (const hit of findRemainingExactReferences(repoRoot, tokens)) {
+    failures.push(
+      `exact reference to ${tokens.get(hit.token)!} remains in ${path.relative(
+        repoRoot,
+        hit.file,
+      )}`,
+    );
   }
   if (failures.length > 0) {
     throw new Error(
-      `Disliked sprite lifecycle closure failed:\n${failures
+      `Disliked sprite lifecycle closure failed:\n${[...new Set(failures)]
         .sort()
         .map((failure) => `- ${failure}`)
         .join(
@@ -606,6 +779,32 @@ export function validateDislikedLifecycleClosure(
         )}\nRun \`npm run sprites:disliked-lifecycle -- --dry-run\` and repair the listed paths.`,
     );
   }
+}
+
+/**
+ * Why `manifestKey` cannot serve as surviving art right now, or null when it
+ * can. `entries` must be the CURRENT on-disk manifest, so it reflects an
+ * approval that just ran. Runtime eligibility — not mere file presence — is the
+ * bar: a survivor the engine registry filters out is no survivor at all.
+ */
+function describeUnusableSurvivor(
+  repoRoot: string,
+  entries: Readonly<Record<string, ManifestEntry>>,
+  manifestKey: string,
+  expectedAssetPath: string,
+): string | null {
+  const entry = entries[manifestKey];
+  if (entry === undefined) return `replacement ${manifestKey} has no manifest shard`;
+  if (entry.assetPath !== expectedAssetPath) {
+    return `replacement ${manifestKey} points at ${entry.assetPath}, not the planned ${expectedAssetPath}`;
+  }
+  if (!isRuntimeEligibleManifestEntry(entry)) {
+    return `replacement ${manifestKey} is not runtime-eligible (placeholder or disliked)`;
+  }
+  if (!existsSync(path.join(repoRoot, 'public', 'assets', ...entry.assetPath.split('/')))) {
+    return `replacement ${manifestKey} has no PNG at ${entry.assetPath}`;
+  }
+  return null;
 }
 
 export function applyDislikedLifecyclePlan(
@@ -625,6 +824,42 @@ export function applyDislikedLifecyclePlan(
   ];
   const snapshots = snapshot(touched);
   try {
+    // FAIL CLOSED before deleting anything: every removal promises a concrete
+    // surviving replacement, and repointed references now name it. The survivor
+    // has to be art the ENGINE will actually select — a shard that is merely
+    // present but placeholder-flagged, manifest-disliked, or pointing at a
+    // different/absent PNG would leave the concept with zero usable art and
+    // every repointed pin dangling. Checked here, after approval has written
+    // its shard, so a claimed acceptance that never materialized (e.g. an
+    // icon-batch cell whose processed PNG was missing) aborts the whole
+    // transaction instead of deleting against a ghost.
+    const survivorFailures =
+      plan.removed.length === 0
+        ? []
+        : (() => {
+            const entries = composeManifestFromShards(generatedDir).entries;
+            return [
+              ...new Set(
+                plan.removed.map((removal) =>
+                  describeUnusableSurvivor(
+                    repoRoot,
+                    entries,
+                    removal.replacementKey,
+                    removal.replacementAssetPath,
+                  ),
+                ),
+              ),
+            ]
+              .filter((failure): failure is string => failure !== null)
+              .sort();
+          })();
+    if (survivorFailures.length > 0) {
+      throw new Error(
+        `Disliked sprite lifecycle refused to delete: ${survivorFailures.join(
+          '; ',
+        )}. Approve a runtime-eligible replacement first (its manifest shard AND its PNG must exist, and it must not be a placeholder or itself disliked), then re-run.`,
+      );
+    }
     for (const update of plan.referenceUpdates) atomicWrite(update.path, update.after);
     atomicWrite(annotationsPath, `${JSON.stringify(plan.annotations, null, 2)}\n`);
     for (const removal of plan.removed) {
@@ -642,14 +877,56 @@ export function applyDislikedLifecyclePlan(
   return {
     removedCount: plan.removed.length,
     retainedGroupCount: plan.retainedGroups.length,
+    deferredGroupCount: plan.deferredGroups.length,
     promotedPendingCount: plan.promotedPendingCount,
   };
+}
+
+/**
+ * Project a plan's annotation updates onto the durable queue-commit wire shape.
+ *
+ * ONE shared mapper because `mergeSpriteAnnotationUpdates` distinguishes an
+ * ABSENT field from an explicit `undefined`: absent preserves whatever the
+ * queue tip holds, explicit `undefined` DELETES it. A mapper that unconditionally
+ * wrote `tombstone: undefined` would therefore erase a tombstone another
+ * worktree had already published for a key this update never owned — silently
+ * un-recording a deletion and breaking closure on the tip. Own-property-ness is
+ * preserved exactly; the accepted replacement's intentional clear still clears.
+ */
+export function toQueueCommitAnnotationUpdates(
+  updates: DislikedLifecyclePlan['annotationUpdates'],
+): readonly SpriteAnnotationUpdate[] {
+  return updates.map((update): SpriteAnnotationUpdate => {
+    if (update.delete === true) return { key: update.key, delete: true };
+    const base = {
+      key: update.key,
+      favorite: update.favorite ?? false,
+      disliked: update.disliked ?? false,
+      comment: update.comment ?? '',
+      ...(update.sourceRun !== undefined ? { sourceRun: update.sourceRun } : {}),
+      ...(update.variantIndex !== undefined ? { variantIndex: update.variantIndex } : {}),
+      ...(Object.hasOwn(update, 'reconciliation')
+        ? {
+            reconciliation:
+              update.reconciliation === undefined ? undefined : { ...update.reconciliation },
+          }
+        : {}),
+    };
+    // `tombstone` is set ONLY when this update owns it, so an update that never
+    // touched the field leaves the queue tip's tombstone alone.
+    if (!Object.hasOwn(update, 'tombstone')) return base;
+    return {
+      ...base,
+      tombstone: update.tombstone === undefined ? undefined : { ...update.tombstone },
+    };
+  });
 }
 
 export function summarizeDislikedLifecycle(plan: DislikedLifecyclePlan): object {
   return {
     removedCount: plan.removed.length,
     retainedGroupCount: plan.retainedGroups.length,
+    deferredGroupCount: plan.deferredGroups.length,
     promotedPendingCount: plan.promotedPendingCount,
     removed: plan.removed.map((removal) => ({
       manifestKey: removal.manifestKey,
@@ -659,6 +936,7 @@ export function summarizeDislikedLifecycle(plan: DislikedLifecyclePlan): object 
       annotationKeys: removal.annotationKeys,
     })),
     retainedGroups: plan.retainedGroups,
+    deferredGroups: plan.deferredGroups,
     unresolvedAnnotationKeys: plan.unresolvedAnnotationKeys,
     referenceUpdates: plan.referenceUpdates.map((update) =>
       path.relative(process.cwd(), update.path),
@@ -668,20 +946,48 @@ export function summarizeDislikedLifecycle(plan: DislikedLifecyclePlan): object 
 
 export interface AcceptedDislikedLifecycleTransactionOptions<T> {
   readonly repoRoot: string;
-  readonly replacement: LifecycleReplacement;
+  /**
+   * Every asset this acceptance is authorizing. Their normalized concepts —
+   * and ONLY their concepts — are in scope for cleanup.
+   */
+  readonly replacements: readonly LifecycleReplacement[];
   readonly approve: () => T;
   readonly publish: (approved: T, plan: DislikedLifecyclePlan) => Promise<void>;
+}
+
+/** True when `plan` proposes any mutation that this replacement authorizes. */
+function planMutatesReplacement(
+  plan: DislikedLifecyclePlan,
+  replacement: LifecycleReplacement,
+): boolean {
+  return (
+    plan.annotationUpdates.some((update) => update.key === replacement.manifestKey) ||
+    plan.removed.some((removal) => removal.conceptId === replacement.conceptId)
+  );
 }
 
 /**
  * Couple explicit human approval, retained-dislike cleanup, closure validation,
  * and durable publication. Publication is last; any pre-publication or publish
  * failure restores every local path, including the newly approved replacement.
+ *
+ * Cleanup is SCOPED to the accepted concepts. Repo-wide cleanup belongs to
+ * `npm run sprites:disliked-lifecycle -- --apply`: an unrelated concept's exact
+ * source pin must not block an unrelated approval, and one acceptance must not
+ * quietly delete art for a concept the human never looked at. Anything skipped
+ * for that reason is reported on `plan.deferredGroups`, never dropped silently.
  */
 export async function runAcceptedDislikedLifecycleTransaction<T>(
   options: AcceptedDislikedLifecycleTransactionOptions<T>,
 ): Promise<{ approved: T; plan: DislikedLifecyclePlan }> {
-  const plan = loadDislikedLifecyclePlan(options.repoRoot, options.replacement);
+  if (options.replacements.length === 0) {
+    throw new Error(
+      'runAcceptedDislikedLifecycleTransaction requires at least one accepted replacement; ' +
+        'an empty acceptance has no concept scope and must not run cleanup.',
+    );
+  }
+  const conceptScope = new Set(options.replacements.map((item) => item.conceptId));
+  const plan = loadDislikedLifecyclePlan(options.repoRoot, options.replacements, conceptScope);
   if (plan.referenceUpdates.length > 0) {
     throw new Error(
       `Acceptance would remove exact-pinned sprite(s) referenced by ${plan.referenceUpdates
@@ -692,17 +998,12 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
     );
   }
   const generatedDir = path.join(options.repoRoot, 'public', 'assets', 'generated');
-  const replacementShard = shardPathForKey(generatedDir, options.replacement.manifestKey);
-  const replacementPng = path.join(
-    options.repoRoot,
-    'public',
-    'assets',
-    ...options.replacement.assetPath.split('/'),
-  );
   const annotationsPath = path.join(options.repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
   const touched = [
-    replacementShard,
-    replacementPng,
+    ...options.replacements.flatMap((replacement) => [
+      shardPathForKey(generatedDir, replacement.manifestKey),
+      path.join(options.repoRoot, 'public', 'assets', ...replacement.assetPath.split('/')),
+    ]),
     annotationsPath,
     ...plan.referenceUpdates.map((update) => update.path),
     ...plan.removed.flatMap((removal) => [
@@ -713,6 +1014,39 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
   const snapshots = snapshot(touched);
   try {
     const approved = options.approve();
+    // A declared replacement only earns the right to mutate its concept's
+    // annotations once approval ACTUALLY produced runtime-eligible art for it.
+    // Batch acceptances (icon batches) legitimately skip cells whose processed
+    // PNG is missing; without this check a skipped cell would still clear its
+    // dislike — or worse, erase a historical tombstone and quietly retire the
+    // closure check that guards that deletion forever.
+    const mutatedReplacements = options.replacements.filter((replacement) =>
+      planMutatesReplacement(plan, replacement),
+    );
+    const unmaterialized =
+      mutatedReplacements.length === 0
+        ? []
+        : (() => {
+            const entries = composeManifestFromShards(generatedDir).entries;
+            return mutatedReplacements
+              .map((replacement) =>
+                describeUnusableSurvivor(
+                  options.repoRoot,
+                  entries,
+                  replacement.manifestKey,
+                  replacement.assetPath,
+                ),
+              )
+              .filter((failure): failure is string => failure !== null)
+              .sort();
+          })();
+    if (unmaterialized.length > 0) {
+      throw new Error(
+        `Acceptance would rewrite dislike history for art that was not approved: ${unmaterialized.join(
+          '; ',
+        )}. Re-run the approval for the missing candidate(s) before accepting.`,
+      );
+    }
     applyDislikedLifecyclePlan(options.repoRoot, plan);
     await options.publish(approved, plan);
     return { approved, plan };

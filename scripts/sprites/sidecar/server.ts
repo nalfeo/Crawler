@@ -72,7 +72,12 @@ import {
   type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
-import { runQueueCommit, QueueCommitError, type QueueCommitResult } from '../queue-commit.js';
+import {
+  runQueueCommit,
+  QueueCommitError,
+  type QueueCommitDeps,
+  type QueueCommitResult,
+} from '../queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
@@ -139,7 +144,10 @@ import {
 } from '../../../src/shared/generated-catalog.js';
 import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
 import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
-import { runAcceptedDislikedLifecycleTransaction } from '../disliked-lifecycle.js';
+import {
+  runAcceptedDislikedLifecycleTransaction,
+  toQueueCommitAnnotationUpdates,
+} from '../disliked-lifecycle.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from '../store/types.js';
@@ -324,6 +332,13 @@ export interface SidecarDeps {
    * assert the exact git/gh sequence without a real repo or network.
    */
   readonly checkinDeps?: CheckinRunnerDeps;
+  /**
+   * Durable `assets/queue` wiring for the approve/accept routes. Defaults to
+   * `createDefaultQueueCommitDeps(repoRoot, env)`. Inject a fake in tests to
+   * exercise a lifecycle publication (removals + annotation updates) without a
+   * real git remote — the same seam `checkinDeps` provides for the issue flow.
+   */
+  readonly queueCommitDeps?: QueueCommitDeps;
   /**
    * Exact browser origins allowed to invoke `/api/checkin`. Production passes
    * only this worktree's deterministic lab/devtools origins. Omit to reject
@@ -1998,15 +2013,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           branch: 'assets/queue',
           attempts: 0,
         };
-        const queueDeps = createDefaultQueueCommitDeps(deps.repoRoot, env);
+        const queueDeps = deps.queueCommitDeps ?? createDefaultQueueCommitDeps(deps.repoRoot, env);
         const transaction = await makeCheckinFileLock(deps.repoRoot)(() =>
           runAcceptedDislikedLifecycleTransaction({
             repoRoot: deps.repoRoot,
-            replacement: {
-              manifestKey: identity.variantId,
-              conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
-              assetPath: identity.assetPath,
-            },
+            replacements: [
+              {
+                manifestKey: identity.variantId,
+                conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+                assetPath: identity.assetPath,
+              },
+            ],
             approve: () => {
               try {
                 return approveVariant({
@@ -2044,21 +2061,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       assetPath: removal.assetPath,
                       manifestKey: removal.manifestKey,
                     })),
-                    annotations: plan.annotationUpdates.map((update) =>
-                      update.delete === true
-                        ? update
-                        : {
-                            ...update,
-                            favorite: update.favorite ?? false,
-                            disliked: update.disliked ?? false,
-                            comment: update.comment ?? '',
-                            tombstone: update.tombstone ? { ...update.tombstone } : undefined,
-                          },
-                    ),
+                    annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
                   },
                 );
               } catch (error) {
-                if (plan.removed.length > 0) throw error;
+                // Fatal whenever this approval changed durable lifecycle state
+                // (a deletion, or an annotation/tombstone write): that change is
+                // already applied locally, and a retry would compute an empty
+                // delta and never republish it. Roll back so the retry is real.
+                if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) throw error;
                 const message = error instanceof Error ? error.message : String(error);
                 req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
                 queueCommit = { status: 'failed', error: message };
@@ -2271,66 +2282,144 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           return reconciledBefore;
         }
 
+        // Explicit human acceptance (the Workflow canvas's "Accept & queue")
+        // is a REPLACEMENT acceptance, so it runs inside the same disliked-asset
+        // lifecycle transaction `/approve` uses instead of approving in the
+        // open. Cleanup is scoped to this variant's concept, closure is
+        // validated before publication, and a failed publish rolls the whole
+        // thing back — approval included. Serialized on the cross-process
+        // check-in file lock; the inner check-in/queue-commit runs are handed a
+        // pass-through lock so this cannot deadlock on itself.
+        let response: unknown;
         try {
-          approveVariant({
-            runDir,
-            variantIndex,
-            manifestPath,
-            catalogPath,
-            publicAssetsDir,
-            repoRoot: deps.repoRoot,
-          });
+          await makeCheckinFileLock(deps.repoRoot)(() =>
+            runAcceptedDislikedLifecycleTransaction({
+              repoRoot: deps.repoRoot,
+              replacements: [
+                {
+                  manifestKey: identity.variantId,
+                  conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+                  assetPath: identity.assetPath,
+                },
+              ],
+              approve: () => {
+                try {
+                  approveVariant({
+                    runDir,
+                    variantIndex,
+                    manifestPath,
+                    catalogPath,
+                    publicAssetsDir,
+                    repoRoot: deps.repoRoot,
+                  });
+                } catch (err) {
+                  // `already-approved` (exact requested slot already has this
+                  // exact content) is a safe no-op: approveVariant throws
+                  // BEFORE writing anything, so the identity resolved above IS
+                  // what is already approved. `duplicate-content` (cross-variant
+                  // collision) is NOT safe to treat the same way — the requested
+                  // variantId was refused and never created, so continuing would
+                  // check in an asset that does not exist. Rethrow it (and every
+                  // other kind) to roll back and report a genuine failure.
+                  if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+                }
+                return identity;
+              },
+              publish: async (accepted, plan) => {
+                // The legacy `asset-checkin` issue flow cannot express a
+                // DELETION, so any lifecycle removal (and the tombstones that
+                // record it) is published to the durable `assets/queue` branch
+                // first. With nothing removed this is skipped entirely and the
+                // route behaves exactly as it always has.
+                if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) {
+                  await runQueueCommit(
+                    deps.repoRoot,
+                    [
+                      {
+                        assetPath: accepted.assetPath,
+                        manifestKey: accepted.variantId,
+                        briefId: accepted.briefId,
+                        variantIndex,
+                      },
+                    ],
+                    {
+                      ...(deps.queueCommitDeps ?? createDefaultQueueCommitDeps(deps.repoRoot, env)),
+                      withCrossProcessLock: (run) => run(),
+                    },
+                    {
+                      message: `chore(assets): accept ${accepted.variantId}`,
+                      removals: plan.removed.map((removal) => ({
+                        assetPath: removal.assetPath,
+                        manifestKey: removal.manifestKey,
+                      })),
+                      annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
+                    },
+                  );
+                }
+                try {
+                  const result = await runAssetCheckin(
+                    deps.repoRoot,
+                    { ...checkinDeps, withCrossProcessLock: (run) => run() },
+                    {},
+                  );
+                  response = {
+                    state: 'queued' as const,
+                    existing: false,
+                    briefId: accepted.briefId,
+                    variantIndex,
+                    assetPath: accepted.assetPath,
+                    issueUrl: result.issueUrl,
+                    assetCount: result.plan.assets.length,
+                  } satisfies AcceptedResponse;
+                  return;
+                } catch (err) {
+                  if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
+                    // Race: another request/process queued this exact asset
+                    // between our pre-mutation check and now. Reconcile once
+                    // more before reporting failure — and, same as the
+                    // pre-mutation read above, a queue-list failure here must
+                    // map to the SAME structured body instead of an
+                    // uncaught-rejection generic 500.
+                    const queuedAfter = await listQueuedAssets();
+                    const reconciledAfter = reconcileQueuedAsset(
+                      reply,
+                      queuedAfter,
+                      identity,
+                      variantIndex,
+                    );
+                    if (reconciledAfter !== undefined) {
+                      response = reconciledAfter;
+                      return;
+                    }
+                  }
+                  // A destructive or annotation-changing plan MUST roll back
+                  // rather than strand a local lifecycle change no one else can
+                  // see — a retry would compute an empty delta and never
+                  // republish it. With no lifecycle change the local approval
+                  // survives and the operator retries, exactly as this route
+                  // behaved before it joined the transaction.
+                  if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) throw err;
+                  response = mapCheckinError(reply, err);
+                }
+              },
+            }),
+          );
         } catch (err) {
-          // `already-approved` (exact requested slot already has this exact
-          // content) is a safe no-op here: approveVariant throws BEFORE
-          // writing anything, so it's fine to fall through to check-in using
-          // the identity resolved above — that identity/assetPath IS what's
-          // already approved. `duplicate-content` (cross-variant collision)
-          // is NOT safe to treat the same way: the requested variantId was
-          // refused and never created, so falling through would check in an
-          // asset that doesn't exist. Let it (and any other kind) fall to
-          // mapApproveError below, which reports it as a genuine 409 failure.
-          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') {
-            return mapApproveError(reply, err);
-          }
-        }
-
-        try {
-          const result = await runAssetCheckin(deps.repoRoot, checkinDeps, {});
-          return {
-            state: 'queued' as const,
-            existing: false,
-            briefId: identity.briefId,
-            variantIndex,
-            assetPath: identity.assetPath,
-            issueUrl: result.issueUrl,
-            assetCount: result.plan.assets.length,
-          } satisfies AcceptedResponse;
-        } catch (err) {
-          if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
-            // Race: another request/process queued this exact asset between
-            // our pre-mutation check and now. Reconcile once more before
-            // reporting failure — and, same as the pre-mutation read above, a
-            // queue-list failure here must map to the SAME structured body
-            // instead of an uncaught-rejection generic 500.
-            let queuedAfter: ReadonlyMap<string, QueuedAssetCheckin>;
-            try {
-              queuedAfter = await listQueuedAssets();
-            } catch (listErr) {
-              return mapCheckinError(reply, listErr);
-            }
-            const reconciledAfter = reconcileQueuedAsset(
-              reply,
-              queuedAfter,
-              identity,
-              variantIndex,
-            );
-            if (reconciledAfter !== undefined) {
-              return reconciledAfter;
-            }
-          }
+          if (err instanceof ApproveError) return mapApproveError(reply, err);
           return mapCheckinError(reply, err);
         }
+        if (response === undefined) {
+          // Unreachable by construction (publish either sets a response or
+          // throws), but never answer a mutating route with an empty body.
+          reply.code(500);
+          return {
+            error: 'accept-failed',
+            message:
+              'The acceptance transaction completed without producing a queue result. ' +
+              'Re-run the accept; if it repeats, run `npm run sprites:disliked-lifecycle -- --dry-run`.',
+          };
+        }
+        return response;
       } finally {
         hydrated?.cleanup();
       }

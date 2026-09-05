@@ -73,7 +73,7 @@ import {
   selectReferences,
   SELECTOR_VERSION,
 } from './reference-selector.js';
-import { resolveDislikedManifestKeys } from './disliked-lifecycle.js';
+import { resolveDislikedReferenceExclusions, type SpriteAnnotation } from './disliked-lifecycle.js';
 import { SpritePipelineTimingCollector, type MonotonicNow } from './pipeline-timing.js';
 import { type ManifestEntry } from '../../src/shared/generated-assets.js';
 import { isSpriteType } from '../../src/shared/sprite-types.js';
@@ -144,6 +144,14 @@ export interface GenerateOneOptions {
    * after queueing -- it only reads the overlay the editor already wrote.
    */
   readonly loadPendingDislikedReferenceNames?: () => ReadonlySet<string>;
+  /**
+   * Tracked annotation provenance loader injection (tests). Defaults to the
+   * same `sprite-editor-annotations.json` sprites map the name loader reads.
+   * Supplying the FULL annotations (not just names) lets reference exclusion
+   * resolve a stale key by `sourceRun`/`variantIndex` provenance instead of
+   * dropping it — READ-ONLY, and it never grants deletion authority.
+   */
+  readonly loadDislikedReferenceAnnotations?: () => Readonly<Record<string, SpriteAnnotation>>;
   /**
    * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
    * to pre-filter manifest entries to those whose PNG is actually on disk
@@ -400,6 +408,19 @@ export async function generateSheetCore(
           Object.hasOwn(currentSprites, key) ? currentSprites[key] : null,
       });
     });
+  const loadDislikedReferenceAnnotations =
+    options.loadDislikedReferenceAnnotations ??
+    (() => {
+      const annotationsPath = path.join(
+        publicAssetsRoot,
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      if (!existsSync(annotationsPath)) return {};
+      return loadAnnotationSpritesMap(annotationsPath) as Readonly<
+        Record<string, SpriteAnnotation>
+      >;
+    });
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
@@ -414,9 +435,15 @@ export async function generateSheetCore(
       ...loadDislikedReferenceNames(),
       ...loadPendingDislikedReferenceNames(),
     ]);
-    const dislikedSpriteNames = resolveDislikedManifestKeys(
+    // Full tracked provenance is supplied so a STALE annotation key whose
+    // sourceRun + variantIndex uniquely identify one accepted entry is excluded
+    // exactly, and anything still unresolvable escalates to a conservative
+    // concept-wide exclusion instead of silently staying reference-eligible.
+    // This is read-only: it never authorizes a deletion.
+    const dislikedExclusions = resolveDislikedReferenceExclusions(
       Object.fromEntries(presentCandidates.map((entry) => [entry.spriteName, entry])),
       dislikedAnnotationKeys,
+      loadDislikedReferenceAnnotations(),
     );
     const selection = selectReferences({
       candidates: presentCandidates,
@@ -427,7 +454,8 @@ export async function generateSheetCore(
       // Union the durably-tracked dislikes with anything queued-but-not-yet
       // -promoted, so a sprite disliked moments ago cannot slip back in as a
       // reference before the reconciler catches up.
-      dislikedSpriteNames,
+      dislikedSpriteNames: dislikedExclusions.manifestKeys,
+      dislikedConceptIds: dislikedExclusions.conceptIds,
     });
     if (selection.selected.length === 0) {
       if (presentCandidates.length === 0 && brief.type === 'icon') {

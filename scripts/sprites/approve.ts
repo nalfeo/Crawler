@@ -954,6 +954,31 @@ export function loadApprovedFrameSequenceEntry(options: {
   return readManifestEntry(fs, options.manifestPath, briefId);
 }
 
+/**
+ * Frame-sequence counterpart to {@link resolveVariantIdentity}: the manifest
+ * key + asset path an `approveFrameSequence` run WOULD claim, resolved without
+ * mutating anything and without duplicating any of the approval gates.
+ *
+ * `approveFrameSequence` keys a walk cycle by the bare canonical brief id and
+ * packs its strip to `generated/<briefId>.png`; this reads the SAME
+ * `summary.json` through the SAME `canonicalBriefId`, so the two cannot drift.
+ * Deliberately does NOT run the frame/coherence gates — those stay inside
+ * `approveFrameSequence`, which still refuses (and, inside the disliked-asset
+ * lifecycle transaction, rolls back) when the sequence is unapprovable.
+ */
+export function resolveFrameSequenceIdentity(
+  runDir: string,
+  fs: ApproveFs = DEFAULT_FS,
+): Pick<VariantIdentity, 'briefId' | 'variantId' | 'assetPath'> {
+  const summaryPath = path.join(runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
+  return { briefId, variantId: briefId, assetPath: `generated/${briefId}.png` };
+}
+
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
   const facing = summary.postprocessOverrides?.facing;
   if (

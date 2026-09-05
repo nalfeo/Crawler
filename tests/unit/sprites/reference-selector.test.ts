@@ -204,6 +204,32 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual([good.spriteName]);
   });
 
+  it('excludes every variant of a concept implicated by an unresolvable dislike', () => {
+    // A stale annotation key names `bad-reference` but pins to no exact entry.
+    // It grants NO deletion authority, but reference selection fails safe and
+    // drops the whole concept — including a differently-keyed alias variant.
+    const stale = entry({
+      briefId: 'bad-reference',
+      type: 'item',
+      spriteName: 'bad-reference-var-2',
+    });
+    const alias = entry({
+      briefId: 'bad-reference-v2',
+      type: 'item',
+      spriteName: 'bad-reference-v2-var-9',
+    });
+    const good = entry({ briefId: 'good-reference', type: 'item' });
+    const result = selectReferences({
+      candidates: [stale, alias, good],
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+      dislikedConceptIds: new Set(['bad-reference']),
+    });
+    expect(names(result.selected)).toEqual([good.spriteName]);
+  });
+
   it('excludes placeholders (all three placeholder signals)', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),

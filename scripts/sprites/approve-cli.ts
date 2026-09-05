@@ -25,6 +25,7 @@ import {
   ApproveError,
   loadApprovedEntry,
   loadApprovedFrameSequenceEntry,
+  resolveFrameSequenceIdentity,
   resolveVariantIdentity,
   type IconBatchEntry,
   type ManifestEntry,
@@ -43,7 +44,12 @@ import { formatJsonFilesSync } from './catalog-io.js';
 import type { ManifestEntry as SharedManifestEntry } from '../../src/shared/generated-assets.js';
 import { loadEnvLocal } from './sidecar/env-local.js';
 import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
-import { runAcceptedDislikedLifecycleTransaction } from './disliked-lifecycle.js';
+import {
+  runAcceptedDislikedLifecycleTransaction,
+  toQueueCommitAnnotationUpdates,
+  type DislikedLifecyclePlan,
+  type LifecycleReplacement,
+} from './disliked-lifecycle.js';
 
 interface ParsedArgs {
   readonly runDir: string;
@@ -243,6 +249,63 @@ async function enrichEntryTags(
   }
 }
 
+/**
+ * Publish an approval (plus any lifecycle deletions it authorized) to the
+ * durable `assets/queue` branch.
+ *
+ * Shared by `--variant`, `--sequence`, and `--icon-batch` so all three carry
+ * the SAME removal + annotation payload. A publish failure is fatal whenever
+ * the plan changed durable lifecycle state — a deletion or an annotation write
+ * (tombstone, dislike clear) is already applied locally, and re-running would
+ * compute an EMPTY delta, so the advertised "re-run to retry" would silently
+ * never republish it. Failing makes the transaction roll back so the retry is
+ * real. With no lifecycle change, the local approval survives and the operator
+ * is told to re-run (the hourly reconciler cannot recover an unpushed commit).
+ */
+async function publishApprovedAssets(
+  repoRoot: string,
+  entries: readonly ManifestEntry[],
+  plan: DislikedLifecyclePlan,
+  message: string,
+  queueDeps: ReturnType<typeof createDefaultQueueCommitDeps>,
+): Promise<void> {
+  if (process.env.CI !== undefined || entries.length === 0) return;
+  try {
+    const result = await runQueueCommit(
+      repoRoot,
+      entries.map((entry) => ({
+        assetPath: entry.assetPath,
+        manifestKey: entry.spriteName,
+        briefId: entry.briefId,
+        variantIndex: entry.variantIndex,
+      })),
+      { ...queueDeps, withCrossProcessLock: (run) => run() },
+      {
+        message,
+        removals: plan.removed.map((removal) => ({
+          assetPath: removal.assetPath,
+          manifestKey: removal.manifestKey,
+        })),
+        annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
+      },
+    );
+    process.stdout.write(
+      result.status === 'committed'
+        ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
+        : `  queued: no-op (${result.branch} already up to date)\n`,
+    );
+  } catch (error) {
+    if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) throw error;
+    process.stderr.write(
+      `⚠ queue-commit failed — this approval is LOCAL-ONLY and is NOT yet safe across ` +
+        `worktrees/sessions. The hourly reconciler only sees commits already on ` +
+        `assets/queue, so it CANNOT recover a push that never reached the branch. Re-run ` +
+        `the approve (which retries queue-commit) before discarding this worktree: ` +
+        `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
 export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<number> {
   let parsed: ParsedArgs;
   try {
@@ -317,13 +380,47 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         return 3;
       }
 
-      const entries = approveIconBatch({
-        runDir,
-        iconBatch: iconBatchEntries,
-        manifestPath,
-        publicAssetsDir,
-        repoRoot,
+      // Explicit human acceptance: route through the disliked-asset lifecycle
+      // transaction so approving replacement icon art also retires the disliked
+      // art it replaces (scoped to these icon concepts), validates closure, and
+      // rolls back atomically when durable publication fails.
+      const transaction = await makeCheckinFileLock(repoRoot)(async () => {
+        const queueDeps = createDefaultQueueCommitDeps(repoRoot);
+        return runAcceptedDislikedLifecycleTransaction({
+          repoRoot,
+          replacements: iconBatchEntries.map(
+            (icon): LifecycleReplacement => ({
+              manifestKey: icon.id,
+              conceptId: normalizeGeneratedSpriteConceptId(icon.id),
+              assetPath: `generated/${icon.id}.png`,
+            }),
+          ),
+          approve: () =>
+            approveIconBatch({
+              runDir,
+              iconBatch: iconBatchEntries,
+              manifestPath,
+              publicAssetsDir,
+              repoRoot,
+            }),
+          publish: async (entries, plan) => {
+            // Best-effort LLM tag enrichment for each approved icon. Never blocks.
+            await Promise.all(
+              entries.map((e) =>
+                enrichEntryTags(e, path.join(publicAssetsDir, 'generated'), repoRoot),
+              ),
+            );
+            await publishApprovedAssets(
+              repoRoot,
+              entries,
+              plan,
+              `chore(assets): approve icon batch (${entries.length} icons)`,
+              queueDeps,
+            );
+          },
+        });
       });
+      const entries = transaction.approved;
 
       if (entries.length === 0) {
         process.stdout.write(`No icons approved (all cells missing or already up-to-date).\n`);
@@ -334,37 +431,11 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       for (const e of entries) {
         process.stdout.write(`  ${e.spriteName} → ${e.assetPath}\n`);
       }
-
-      // Best-effort LLM tag enrichment for each freshly approved icon. Never blocks.
-      await Promise.all(
-        entries.map((e) => enrichEntryTags(e, path.join(publicAssetsDir, 'generated'), repoRoot)),
+      process.stdout.write(
+        `  lifecycle: removed ${transaction.plan.removed.length}, retained ` +
+          `${transaction.plan.retainedGroups.length} all-disliked group(s), deferred ` +
+          `${transaction.plan.deferredGroups.length} out-of-scope group(s)\n`,
       );
-
-      // Queue-commit all approved icons as a batch.
-      if (process.env.CI === undefined) {
-        try {
-          const result = await runQueueCommit(
-            repoRoot,
-            entries.map((e) => ({
-              assetPath: e.assetPath,
-              manifestKey: e.spriteName,
-              briefId: e.briefId,
-              variantIndex: e.variantIndex,
-            })),
-            createDefaultQueueCommitDeps(repoRoot),
-            { message: `chore(assets): approve icon batch (${entries.length} icons)` },
-          );
-          process.stdout.write(
-            result.status === 'committed'
-              ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
-              : `  queued: no-op (${result.branch} already up to date)\n`,
-          );
-        } catch (err) {
-          process.stderr.write(
-            `⚠ queue-commit failed — approvals are LOCAL-ONLY. Re-run to retry: ${err instanceof Error ? err.message : String(err)}\n`,
-          );
-        }
-      }
       return 0;
     }
 
@@ -376,11 +447,13 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
         const queueDeps = createDefaultQueueCommitDeps(repoRoot);
         return runAcceptedDislikedLifecycleTransaction({
           repoRoot,
-          replacement: {
-            manifestKey: identity.variantId,
-            conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
-            assetPath: identity.assetPath,
-          },
+          replacements: [
+            {
+              manifestKey: identity.variantId,
+              conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+              assetPath: identity.assetPath,
+            },
+          ],
           approve: () => {
             try {
               return approveVariant({
@@ -404,52 +477,13 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
             if (!alreadyApproved) {
               await enrichEntryTags(entry, path.join(publicAssetsDir, 'generated'), repoRoot);
             }
-            if (process.env.CI === undefined) {
-              try {
-                const result = await runQueueCommit(
-                  repoRoot,
-                  [
-                    {
-                      assetPath: entry.assetPath,
-                      manifestKey: entry.spriteName,
-                      briefId: entry.briefId,
-                      variantIndex: entry.variantIndex,
-                    },
-                  ],
-                  { ...queueDeps, withCrossProcessLock: (run) => run() },
-                  {
-                    message: `chore(assets): approve ${entry.spriteName}`,
-                    removals: plan.removed.map((removal) => ({
-                      assetPath: removal.assetPath,
-                      manifestKey: removal.manifestKey,
-                    })),
-                    annotations: plan.annotationUpdates.map((update) =>
-                      update.delete === true
-                        ? update
-                        : {
-                            ...update,
-                            favorite: update.favorite ?? false,
-                            disliked: update.disliked ?? false,
-                            comment: update.comment ?? '',
-                            tombstone: update.tombstone ? { ...update.tombstone } : undefined,
-                          },
-                    ),
-                  },
-                );
-                process.stdout.write(
-                  result.status === 'committed'
-                    ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
-                    : `  queued: no-op (${result.branch} already up to date)\n`,
-                );
-              } catch (error) {
-                if (plan.removed.length > 0) throw error;
-                process.stderr.write(
-                  `⚠ queue-commit failed — this approval is LOCAL-ONLY. Re-run to retry: ${
-                    error instanceof Error ? error.message : String(error)
-                  }\n`,
-                );
-              }
-            }
+            await publishApprovedAssets(
+              repoRoot,
+              [entry],
+              plan,
+              `chore(assets): approve ${entry.spriteName}`,
+              queueDeps,
+            );
           },
         });
       });
@@ -459,103 +493,88 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
           `  asset: ${entry.assetPath}\n` +
           `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
           `  source: ${entry.sourceRun}\n` +
-          `  lifecycle: removed ${transaction.plan.removed.length}, retained ${transaction.plan.retainedGroups.length} all-disliked group(s)\n`,
+          `  lifecycle: removed ${transaction.plan.removed.length}, retained ` +
+          `${transaction.plan.retainedGroups.length} all-disliked group(s), deferred ` +
+          `${transaction.plan.deferredGroups.length} out-of-scope group(s)\n`,
       );
       return 0;
     }
 
-    let entry: ManifestEntry;
+    // Explicit human acceptance of a walk-cycle sheet replaces the art for a
+    // whole concept, so it routes through the SAME lifecycle transaction as
+    // `--variant`: scoped cleanup, closure validation, and rollback when the
+    // durable publish fails. The identity is resolved BEFORE any mutation so an
+    // exact-pin conflict aborts without having approved anything.
+    const identity = resolveFrameSequenceIdentity(runDir);
     let alreadyApproved = false;
-    try {
-      entry = approveFrameSequence({
-        runDir,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
+    const transaction = await makeCheckinFileLock(repoRoot)(async () => {
+      const queueDeps = createDefaultQueueCommitDeps(repoRoot);
+      return runAcceptedDislikedLifecycleTransaction({
         repoRoot,
+        replacements: [
+          {
+            manifestKey: identity.variantId,
+            conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+            assetPath: identity.assetPath,
+          },
+        ],
+        approve: () => {
+          try {
+            return approveFrameSequence({
+              runDir,
+              manifestPath,
+              catalogPath,
+              publicAssetsDir,
+              repoRoot,
+            });
+          } catch (err) {
+            // An exact-duplicate re-approve is NOT terminal for durability: the
+            // manifest entry already exists, but its earlier best-effort
+            // queue-commit may never have landed on assets/queue. Load the
+            // stored entry so publication genuinely RETRIES the durable push —
+            // exactly what the failure warning tells the operator to do.
+            if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+            const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
+            if (existing === null) throw err;
+            alreadyApproved = true;
+            return existing;
+          }
+        },
+        publish: async (approvedEntry, plan) => {
+          // Best-effort LLM tag enrichment for fresh approvals. Never blocks.
+          if (!alreadyApproved) {
+            await enrichEntryTags(approvedEntry, path.join(publicAssetsDir, 'generated'), repoRoot);
+          }
+          await publishApprovedAssets(
+            repoRoot,
+            [approvedEntry],
+            plan,
+            `chore(assets): approve ${approvedEntry.spriteName}`,
+            queueDeps,
+          );
+        },
       });
-      process.stdout.write(
-        `Approved ${entry.briefId} frame sequence\n` +
-          `  asset: ${entry.assetPath}\n` +
-          `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
-          `  source: ${entry.sourceRun}\n` +
-          `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
-      );
-    } catch (err) {
-      // Mirror the `--variant` retry dance below: an exact-duplicate
-      // re-approve is NOT a terminal failure for durability. The manifest
-      // entry already exists, but its earlier best-effort queue-commit may
-      // never have landed on assets/queue. Load the stored entry and fall
-      // through to the SAME queue-commit block below so re-running the
-      // approve genuinely RETRIES the durable push — which is exactly what
-      // the failure warning tells the operator to do. Before this fix the
-      // CLI exited here, never reaching queue-commit, so that advice was
-      // false for `--sequence` (round-1 code review finding).
-      if (err instanceof ApproveError && err.kind === 'already-approved') {
-        const existing = loadApprovedFrameSequenceEntry({ runDir, manifestPath, repoRoot });
-        if (!existing) {
-          process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
-          return exitCodeForError(err.kind);
-        }
-        entry = existing;
-        alreadyApproved = true;
-        process.stdout.write(
-          `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
-            `  asset: ${entry.assetPath}\n`,
-        );
-      } else if (err instanceof ApproveError) {
-        process.stderr.write(`approve failed (${err.kind}): ${err.message}\n`);
-        return exitCodeForError(err.kind);
-      } else {
-        throw err;
-      }
-    }
-
-    // Best-effort LLM tag enrichment for fresh approvals. Never blocks.
-    if (!alreadyApproved) {
-      await enrichEntryTags(entry, path.join(publicAssetsDir, 'generated'), repoRoot);
-    }
-
-    // Durably persist the approved asset onto the remote assets/queue branch so
-    // the approval survives across sessions/worktrees/processes. Skipped on CI:
-    // this CLI is operator-driven and (unlike the sidecar) intentionally still
-    // approves locally under CI, so we only skip the remote push there. A
-    // queue-commit failure is a loud warning, not a hard failure — the local
-    // approve already succeeded and the hourly reconciler is the backstop. Runs
-    // for both a fresh approve and an already-approved retry so the warning's
-    // "re-run the approve (which retries queue-commit)" advice is truthful (#6).
-    if (process.env.CI === undefined) {
-      try {
-        const result = await runQueueCommit(
-          repoRoot,
-          [
-            {
-              assetPath: entry.assetPath,
-              manifestKey: entry.spriteName,
-              briefId: entry.briefId,
-              variantIndex: entry.variantIndex,
-            },
-          ],
-          createDefaultQueueCommitDeps(repoRoot),
-          { message: `chore(assets): approve ${entry.spriteName}` },
-        );
-        process.stdout.write(
-          result.status === 'committed'
-            ? `  queued: ${result.branch} @ ${result.commit?.slice(0, 12)}\n`
-            : `  queued: no-op (${result.branch} already up to date)\n`,
-        );
-      } catch (err) {
-        process.stderr.write(
-          `⚠ queue-commit failed — this approval is LOCAL-ONLY and is NOT yet safe across ` +
-            `worktrees/sessions. The hourly reconciler only sees commits already on ` +
-            `assets/queue, so it CANNOT recover a push that never reached the branch. Re-run ` +
-            `the approve (which retries queue-commit) before discarding this worktree: ` +
-            `${err instanceof Error ? err.message : String(err)}\n`,
-        );
-      }
-    } else if (alreadyApproved) {
-      // On CI we skip the remote push (see above); make the no-op explicit so an
-      // already-approved retry does not look like it silently did nothing.
+    });
+    const entry = transaction.approved;
+    process.stdout.write(
+      alreadyApproved
+        ? `Already approved ${entry.briefId} frame sequence \u2014 retrying durable queue-commit\n` +
+            `  asset: ${entry.assetPath}\n`
+        : `Approved ${entry.briefId} frame sequence\n` +
+            `  asset: ${entry.assetPath}\n` +
+            `  manifest: ${path.relative(repoRoot, manifestPath)}\n` +
+            `  source: ${entry.sourceRun}\n` +
+            `  animation: ${entry.animation ? JSON.stringify(entry.animation) : '(none)'}\n`,
+    );
+    process.stdout.write(
+      `  lifecycle: removed ${transaction.plan.removed.length}, retained ` +
+        `${transaction.plan.retainedGroups.length} all-disliked group(s), deferred ` +
+        `${transaction.plan.deferredGroups.length} out-of-scope group(s)\n`,
+    );
+    if (process.env.CI !== undefined && alreadyApproved) {
+      // On CI the remote push is skipped (see `publishApprovedAssets`); make the
+      // no-op explicit so an already-approved retry does not look like it
+      // silently did nothing.
       process.stdout.write(`  queued: skipped on CI (already approved)\n`);
     }
     return 0;

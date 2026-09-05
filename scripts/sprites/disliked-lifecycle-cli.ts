@@ -34,6 +34,11 @@ export async function main(argv: readonly string[], repoRoot: string): Promise<n
       if (apply) {
         applyDislikedLifecyclePlan(repoRoot, plan);
       } else if (plan.removed.length === 0) {
+        // Nothing new to delete: this is the deterministic gate that every
+        // HISTORICAL tombstone is still closed (shard gone, PNG gone, tombstone
+        // intact, zero exact references left). Acceptance-time deletions never
+        // silently retire this check — they add to the same tombstone ledger it
+        // walks, so `--dry-run` in CI keeps validating them forever.
         validateDislikedLifecycleClosure(repoRoot, plan);
       }
     };

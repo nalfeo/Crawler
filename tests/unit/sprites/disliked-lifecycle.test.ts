@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,7 +7,7 @@ import type { ManifestEntry } from '../../../src/shared/generated-assets.js';
 import {
   applyDislikedLifecyclePlan,
   buildDislikedLifecyclePlan,
-  resolveDislikedManifestKeys,
+  resolveDislikedReferenceExclusions,
   runAcceptedDislikedLifecycleTransaction,
   validateDislikedLifecycleClosure,
   type SpriteAnnotationsDocument,
@@ -122,6 +122,41 @@ describe('disliked sprite lifecycle planning', () => {
     ]);
   });
 
+  it('does not treat a placeholder-flagged entry the runtime hides as a survivor', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        // Only the explicit `placeholder` flag marks this — the asset path and
+        // sourceRun look like ordinary art. The engine registry hides it, so
+        // lifecycle planning must too or the concept would end up with no art.
+        'rat-var-1': entry('rat', 1, { placeholder: true }),
+      },
+      trackedAnnotations: annotations({ 'rat-var-0': { disliked: true } }),
+    });
+
+    expect(plan.removed).toEqual([]);
+    expect(plan.retainedGroups).toEqual([{ conceptId: 'rat', manifestKeys: ['rat-var-0'] }]);
+  });
+
+  it('does not treat a manifest-disliked entry the runtime hides as a survivor', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        // Retired via manifest metadata rather than an annotation: still real
+        // art on disk, still invisible to `loadGeneratedManifest`.
+        'rat-var-1': entry('rat', 1, { disliked: true }),
+      },
+      trackedAnnotations: annotations({ 'rat-var-0': { disliked: true } }),
+    });
+
+    expect(plan.removed).toEqual([]);
+    expect(plan.retainedGroups).toEqual([{ conceptId: 'rat', manifestKeys: ['rat-var-0'] }]);
+  });
+
   it('promotes the tracked and pending dislike union before authorizing deletion', () => {
     const root = makeRoot();
     const plan = buildDislikedLifecyclePlan({
@@ -138,11 +173,13 @@ describe('disliked sprite lifecycle planning', () => {
         },
       },
       pendingDislikedKeys: new Set(['rat-var-1']),
-      replacement: {
-        manifestKey: 'rat-var-2',
-        conceptId: 'rat',
-        assetPath: 'generated/rat-var-2.png',
-      },
+      replacements: [
+        {
+          manifestKey: 'rat-var-2',
+          conceptId: 'rat',
+          assetPath: 'generated/rat-var-2.png',
+        },
+      ],
     });
 
     expect(plan.promotedPendingCount).toBe(1);
@@ -178,16 +215,92 @@ describe('disliked sprite lifecycle planning', () => {
     ]);
   });
 
-  it('resolves only exact accepted keys when provenance is unavailable to reference exclusion', () => {
+  it('resolves stale reference exclusions by provenance and falls back to the named concept', () => {
     const entries = {
       'demo-goon-var-3': entry('demo-goon', 3, {
         sourceRun: 'generated/runs/demo-goon-v2/run-a',
       }),
       'demo-goon-var-4': entry('demo-goon', 4),
+      'faerie-boss-var-0': entry('faerie-boss', 0),
     };
-    expect([
-      ...resolveDislikedManifestKeys(entries, new Set(['demo-goon-v2-var-3', 'demo-goon-var-4'])),
-    ]).toEqual(['demo-goon-var-4']);
+
+    // Exact key wins; a stale key with no provenance escalates to its concept.
+    const withoutProvenance = resolveDislikedReferenceExclusions(
+      entries,
+      new Set(['demo-goon-v2-var-3', 'demo-goon-var-4', 'faerie-boss-var-9']),
+    );
+    expect([...withoutProvenance.manifestKeys]).toEqual(['demo-goon-var-4']);
+    expect([...withoutProvenance.conceptIds].sort()).toEqual(['demo-goon', 'faerie-boss']);
+
+    // The SAME stale key resolves exactly once its provenance is supplied, so
+    // no unrelated variant of that concept is excluded.
+    const withProvenance = resolveDislikedReferenceExclusions(
+      entries,
+      new Set(['demo-goon-v2-var-3']),
+      {
+        'demo-goon-v2-var-3': {
+          disliked: true,
+          sourceRun: 'archived/runs/run-a',
+          variantIndex: 3,
+        },
+      },
+    );
+    expect([...withProvenance.manifestKeys]).toEqual(['demo-goon-var-3']);
+    expect([...withProvenance.conceptIds]).toEqual([]);
+  });
+
+  it('excludes references conservatively on ambiguity without granting deletion authority', () => {
+    const entries = {
+      a: entry('demo-goon', 3, { sourceRun: 'generated/runs/demo-goon-v2/run-a' }),
+      b: entry('demo-goon', 3, { sourceRun: 'generated/runs/legacy-demo-goon/run-a' }),
+    };
+    const staleAnnotations = {
+      'demo-goon-v2-var-3': {
+        disliked: true,
+        sourceRun: 'archived/run-a',
+        variantIndex: 3,
+      },
+    };
+
+    // Read-only reference hygiene never throws: it excludes every implicated key.
+    const exclusions = resolveDislikedReferenceExclusions(
+      entries,
+      new Set(['demo-goon-v2-var-3']),
+      staleAnnotations,
+    );
+    expect([...exclusions.manifestKeys].sort()).toEqual(['a', 'b']);
+    expect([...exclusions.conceptIds]).toEqual(['demo-goon']);
+
+    // Mutation authority still fails CLOSED on the same input.
+    expect(() =>
+      buildDislikedLifecyclePlan({
+        repoRoot: makeRoot(),
+        manifestEntries: entries,
+        trackedAnnotations: annotations(staleAnnotations),
+      }),
+    ).toThrow(/ambiguous/i);
+  });
+
+  it('leaves a tombstoned dislike out of reference exclusions entirely', () => {
+    const exclusions = resolveDislikedReferenceExclusions(
+      { 'rat-var-1': entry('rat', 1) },
+      new Set(['rat-var-0']),
+      {
+        'rat-var-0': {
+          disliked: true,
+          tombstone: {
+            manifestKey: 'rat-var-0',
+            conceptId: 'rat',
+            assetPath: 'generated/rat-var-0.png',
+            sourceRun: 'generated/runs/rat/run-0',
+            variantIndex: 0,
+            annotationKeys: ['rat-var-0'],
+          },
+        },
+      },
+    );
+    expect([...exclusions.manifestKeys]).toEqual([]);
+    expect([...exclusions.conceptIds]).toEqual([]);
   });
 
   it('does not infer deletion authority from a stale key name or parsed variant index', () => {
@@ -251,22 +364,77 @@ describe('disliked sprite lifecycle planning', () => {
 });
 
 describe('disliked sprite lifecycle transaction', () => {
-  it('marks every stale-key legacy tombstone as pre-hardening corroborated provenance', () => {
+  it('keeps tombstone.authority an audit-only marker on the closed pre-hardening set', () => {
     const document = JSON.parse(
       readFileSync(
         path.resolve('public', 'assets', 'generated', 'sprite-editor-annotations.json'),
         'utf8',
       ),
     ) as SpriteAnnotationsDocument;
-    const staleKeyTombstones = Object.entries(document.sprites)
-      .filter(([, annotation]) => annotation.tombstone !== undefined)
-      .filter(([key, annotation]) => !annotation.tombstone!.annotationKeys.includes(key));
+    const tombstones = Object.entries(document.sprites).filter(
+      ([, annotation]) => annotation.tombstone !== undefined,
+    );
+    expect(tombstones.length).toBeGreaterThan(0);
 
-    expect(staleKeyTombstones).toHaveLength(15);
+    // Derived invariant 1: every tombstone is structurally self-describing, so
+    // closure validation can re-check it forever without the marker's help.
+    for (const [key, annotation] of tombstones) {
+      const tombstone = annotation.tombstone!;
+      expect(tombstone.manifestKey).toBe(key);
+      expect(tombstone.conceptId.length).toBeGreaterThan(0);
+      expect(tombstone.assetPath.length).toBeGreaterThan(0);
+      expect(tombstone.annotationKeys.length).toBeGreaterThan(0);
+    }
+
+    // Derived invariant 2: the marker vocabulary is closed. A new spelling would
+    // be a silent, unaudited authority claim.
+    const markers = new Set(
+      tombstones
+        .map(([, annotation]) => annotation.tombstone!.authority)
+        .filter((value): value is NonNullable<typeof value> => value !== undefined),
+    );
+    expect([...markers]).toEqual(['pre-hardening-corroborated-provenance']);
+
+    // Derived invariant 3: the marker only ever appears on a STALE-key
+    // tombstone (its own key is not among the annotation keys it absorbed) —
+    // never on an exact-key one. That is precisely the migration it records.
+    const markedExactKeyTombstones = tombstones.filter(
+      ([key, annotation]) =>
+        annotation.tombstone!.authority !== undefined &&
+        annotation.tombstone!.annotationKeys.includes(key),
+    );
+    expect(markedExactKeyTombstones).toEqual([]);
+  });
+
+  it('never mints a new tombstone.authority marker from a live lifecycle plan', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'demo-goon-var-3': entry('demo-goon', 3, {
+          sourceRun: 'generated/runs/demo-goon-v2/run-a',
+        }),
+        'demo-goon-var-4': entry('demo-goon', 4),
+      },
+      // A stale key resolved by provenance — the same shape the pre-hardening
+      // migration once marked. Today's planner corroborates it properly, so the
+      // audit marker must NOT be minted.
+      trackedAnnotations: annotations({
+        'demo-goon-v2-var-3': {
+          disliked: true,
+          sourceRun: 'archived/runs/run-a',
+          variantIndex: 3,
+        },
+      }),
+    });
+
+    expect(plan.removed.map((removal) => removal.manifestKey)).toEqual(['demo-goon-var-3']);
+    const tombstone = plan.annotations.sprites['demo-goon-var-3']?.tombstone;
+    expect(tombstone?.annotationKeys).toEqual(['demo-goon-v2-var-3']);
+    expect(tombstone?.authority).toBeUndefined();
     expect(
-      staleKeyTombstones.every(
-        ([, annotation]) =>
-          annotation.tombstone?.authority === 'pre-hardening-corroborated-provenance',
+      Object.values(plan.annotations.sprites).every(
+        (annotation) => annotation.tombstone?.authority === undefined,
       ),
     ).toBe(true);
   });
@@ -399,11 +567,13 @@ describe('disliked sprite lifecycle transaction', () => {
     await expect(
       runAcceptedDislikedLifecycleTransaction({
         repoRoot: root,
-        replacement: {
-          manifestKey: 'rat-var-1',
-          conceptId: 'rat',
-          assetPath: 'generated/rat-var-1.png',
-        },
+        replacements: [
+          {
+            manifestKey: 'rat-var-1',
+            conceptId: 'rat',
+            assetPath: 'generated/rat-var-1.png',
+          },
+        ],
         approve: () => {
           const replacement = entry('rat', 1);
           writeShard(generatedDir, replacement.spriteName, replacement);
@@ -445,11 +615,13 @@ describe('disliked sprite lifecycle transaction', () => {
 
     const result = await runAcceptedDislikedLifecycleTransaction({
       repoRoot: root,
-      replacement: {
-        manifestKey: replacement.spriteName,
-        conceptId: 'rat',
-        assetPath: replacement.assetPath,
-      },
+      replacements: [
+        {
+          manifestKey: replacement.spriteName,
+          conceptId: 'rat',
+          assetPath: replacement.assetPath,
+        },
+      ],
       approve: () => {
         writeShard(generatedDir, replacement.spriteName, replacement);
         writeFileSync(path.join(generatedDir, 'rat-var-2.png'), 'new');
@@ -541,11 +713,13 @@ describe('disliked sprite lifecycle transaction', () => {
     await expect(
       runAcceptedDislikedLifecycleTransaction({
         repoRoot: root,
-        replacement: {
-          manifestKey: 'rat-var-1',
-          conceptId: 'rat',
-          assetPath: 'generated/rat-var-1.png',
-        },
+        replacements: [
+          {
+            manifestKey: 'rat-var-1',
+            conceptId: 'rat',
+            assetPath: 'generated/rat-var-1.png',
+          },
+        ],
         approve: () => {
           approved = true;
           return entry('rat', 1);
@@ -556,5 +730,227 @@ describe('disliked sprite lifecycle transaction', () => {
 
     expect(approved).toBe(false);
     expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-0.json'))).toBe(true);
+  });
+
+  it('is not blocked by an exact pin on an UNRELATED concept, and defers that concept', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    // Accepted concept: one disliked variant, cleanly removable.
+    for (const [briefId, variantIndex] of [
+      ['rat', 0],
+      // Unrelated concept: disliked + a live survivor, so repo-wide planning
+      // WOULD remove it — but it is exact-pinned in source, which used to abort
+      // every acceptance anywhere in the repo.
+      ['bat', 0],
+      ['bat', 1],
+    ] as const) {
+      const item = entry(briefId, variantIndex);
+      writeShard(generatedDir, item.spriteName, item);
+      writeFileSync(path.join(generatedDir, `${item.spriteName}.png`), 'art');
+    }
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: { 'rat-var-0': { disliked: true }, 'bat-var-0': { disliked: true } },
+      }),
+    );
+    const pinPath = path.join(root, 'src', 'pins.json');
+    writeFileSync(pinPath, '{"pin":"bat-var-0"}\n');
+
+    const result = await runAcceptedDislikedLifecycleTransaction({
+      repoRoot: root,
+      replacements: [
+        { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+      ],
+      approve: () => {
+        const replacement = entry('rat', 1);
+        writeShard(generatedDir, replacement.spriteName, replacement);
+        writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'new');
+        return replacement;
+      },
+      publish: () => Promise.resolve(),
+    });
+
+    // The accepted concept was cleaned…
+    expect(result.plan.removed.map((removal) => removal.manifestKey)).toEqual(['rat-var-0']);
+    expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-0.json'))).toBe(false);
+    // …the pinned, unrelated concept was REPORTED as deferred, not deleted and
+    // not silently skipped, and its pin is untouched.
+    expect(result.plan.deferredGroups).toEqual([{ conceptId: 'bat', manifestKeys: ['bat-var-0'] }]);
+    expect(existsSync(path.join(generatedDir, 'entries', 'bat-var-0.json'))).toBe(true);
+    expect(readFileSync(pinPath, 'utf8')).toBe('{"pin":"bat-var-0"}\n');
+    expect(result.plan.annotationUpdates.map((update) => update.key)).not.toContain('bat-var-0');
+
+    // The repo-wide sweeper still sees the deferred concept as removable.
+    const repoWide = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'bat-var-0': entry('bat', 0),
+        'bat-var-1': entry('bat', 1),
+      },
+      trackedAnnotations: annotations({ 'bat-var-0': { disliked: true } }),
+    });
+    expect(repoWide.removed.map((removal) => removal.manifestKey)).toEqual(['bat-var-0']);
+    expect(repoWide.deferredGroups).toEqual([]);
+  });
+
+  it('refuses to delete when the accepted replacement art never materialized', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 0);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({ version: 1, sprites: { 'rat-var-0': { disliked: true } } }),
+    );
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+        ],
+        // Claims an acceptance but writes nothing — e.g. an icon-batch cell
+        // whose processed PNG was missing and got skipped.
+        approve: () => entry('rat', 1),
+        publish: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/rat-var-1 has no manifest shard/);
+
+    expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-0.json'))).toBe(true);
+    expect(existsSync(path.join(generatedDir, 'rat-var-0.png'))).toBe(true);
+  });
+
+  it('refuses to delete against a replacement the runtime would never select', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 0);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({ version: 1, sprites: { 'rat-var-0': { disliked: true } } }),
+    );
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          { manifestKey: 'rat-var-1', conceptId: 'rat', assetPath: 'generated/rat-var-1.png' },
+        ],
+        approve: () => {
+          // Present on disk, but the engine registry filters it out — so it is
+          // not a survivor and must not authorize deleting the last variant.
+          const replacement = entry('rat', 1, { disliked: true });
+          writeShard(generatedDir, replacement.spriteName, replacement);
+          writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'new');
+          return replacement;
+        },
+        publish: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/rat-var-1 is not runtime-eligible/);
+
+    expect(existsSync(path.join(generatedDir, 'entries', 'rat-var-0.json'))).toBe(true);
+    expect(existsSync(path.join(generatedDir, 'rat-var-0.png'))).toBe(true);
+  });
+
+  it('refuses to rewrite dislike history for a batch cell that was never approved', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const tombstone = {
+      manifestKey: 'icon-skipped',
+      conceptId: 'icon-skipped',
+      assetPath: 'generated/icon-skipped.png',
+      sourceRun: 'generated/runs/icon-skipped/run-0',
+      variantIndex: 0,
+      annotationKeys: ['icon-skipped'],
+    };
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({ version: 1, sprites: { 'icon-skipped': { disliked: true, tombstone } } }),
+    );
+
+    await expect(
+      runAcceptedDislikedLifecycleTransaction({
+        repoRoot: root,
+        replacements: [
+          {
+            manifestKey: 'icon-skipped',
+            conceptId: 'icon-skipped',
+            assetPath: 'generated/icon-skipped.png',
+          },
+        ],
+        // The batch approved nothing for this cell (missing processed PNG).
+        approve: () => [],
+        publish: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/was not approved/);
+
+    // The historical tombstone — the record that authorizes and re-checks that
+    // deletion forever — is intact.
+    const after = JSON.parse(
+      readFileSync(path.join(generatedDir, 'sprite-editor-annotations.json'), 'utf8'),
+    ) as SpriteAnnotationsDocument;
+    expect(after.sprites['icon-skipped']?.tombstone).toEqual(tombstone);
+    expect(after.sprites['icon-skipped']?.disliked).toBe(true);
+  });
+
+  it('treats a missing annotations file as empty during closure validation', () => {
+    const root = makeRoot();
+    rmSync(path.join(root, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'));
+    const emptyPlan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {},
+      trackedAnnotations: annotations({}),
+    });
+
+    // Planning already treated the absent file as empty; closure must agree
+    // instead of throwing a raw ENOENT.
+    expect(() => validateDislikedLifecycleClosure(root, emptyPlan)).not.toThrow();
+  });
+
+  it('keeps exact-boundary closure semantics for keys that share a prefix', () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const tombstoneFor = (variantIndex: number) => ({
+      manifestKey: `rat-var-${variantIndex}`,
+      conceptId: 'rat',
+      assetPath: `generated/rat-var-${variantIndex}.png`,
+      sourceRun: `generated/runs/rat/run-${variantIndex}`,
+      variantIndex,
+      annotationKeys: [`rat-var-${variantIndex}`],
+    });
+    const sprites = {
+      'rat-var-1': { disliked: true, tombstone: tombstoneFor(1) },
+      'rat-var-10': { disliked: true, tombstone: tombstoneFor(10) },
+    };
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({ version: 1, sprites }),
+    );
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {},
+      trackedAnnotations: annotations(sprites),
+    });
+
+    // `rat-var-100` contains BOTH removed keys as substrings; neither is an
+    // exact reference, so the single combined scan must not flag it.
+    writeFileSync(path.join(root, 'src', 'pins.json'), '{"pin":"rat-var-100"}\n');
+    expect(() => validateDislikedLifecycleClosure(root, plan)).not.toThrow();
+
+    // The longer key is still detected on its own, and named correctly.
+    writeFileSync(path.join(root, 'src', 'pins.json'), '{"pin":"rat-var-10"}\n');
+    expect(() => validateDislikedLifecycleClosure(root, plan)).toThrow(
+      /exact reference to rat-var-10 remains/,
+    );
+
+    // So is an asset path, reported against the manifest key that owns it.
+    writeFileSync(path.join(root, 'src', 'pins.json'), '{"pin":"generated/rat-var-1.png"}\n');
+    expect(() => validateDislikedLifecycleClosure(root, plan)).toThrow(
+      /exact reference to rat-var-1 remains/,
+    );
   });
 });

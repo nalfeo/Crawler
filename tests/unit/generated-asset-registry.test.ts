@@ -169,6 +169,58 @@ describe('loadGeneratedManifest', () => {
     expect(registry.entries().map((entry) => entry.textureKey)).toEqual(['welcome-goon-v2-var-1']);
     expect(registry.size).toBe(1);
   });
+
+  it('excludes a manifest-disliked variant while keeping the concept usable', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'welcome-goon-var-0': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-0',
+          assetPath: 'generated/welcome-goon-var-0.png',
+          variantIndex: 0,
+          // Retired via manifest metadata: real art still on disk, but the
+          // runtime must never pick it. The lifecycle's survivor test reads the
+          // SAME predicate, so it cannot delete art believing this is a survivor.
+          disliked: true,
+        },
+        'welcome-goon-var-1': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-1',
+          assetPath: 'generated/welcome-goon-var-1.png',
+          variantIndex: 1,
+        },
+      },
+    });
+
+    expect(registry.variants('welcome-goon').map((entry) => entry.textureKey)).toEqual([
+      'welcome-goon-var-1',
+    ]);
+    expect(registry.entries().map((entry) => entry.textureKey)).toEqual(['welcome-goon-var-1']);
+    expect(registry.has('welcome-goon')).toBe(true);
+  });
+
+  it('reports a concept with only disliked art as absent rather than falling back to it', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'welcome-goon-var-0': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-0',
+          assetPath: 'generated/welcome-goon-var-0.png',
+          variantIndex: 0,
+          disliked: true,
+        },
+      },
+    });
+
+    expect(registry.has('welcome-goon')).toBe(false);
+    expect(registry.lookup('welcome-goon')).toBeNull();
+    expect(registry.size).toBe(0);
+  });
 });
 
 describe('loadGeneratedManifest — multiple variants per brief', () => {

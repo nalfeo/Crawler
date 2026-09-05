@@ -1615,6 +1615,95 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
   });
 
+  it('runs the accept route through the disliked-asset lifecycle transaction', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    // A previously accepted, now-disliked variant of the SAME concept, plus an
+    // untouched disliked variant of an unrelated concept.
+    const shard = (key: string, variantIndex: number, brief: string) => ({
+      briefId: brief,
+      spriteName: key,
+      assetPath: `generated/${key}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: `generated/runs/${brief}/run-${variantIndex}`,
+      variantIndex,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    mkdirSync(path.join(generatedDir, 'entries'), { recursive: true });
+    for (const [key, variantIndex, brief] of [
+      [`${briefId}-var-0`, 0, briefId],
+      ['bat-var-0', 0, 'bat'],
+      ['bat-var-1', 1, 'bat'],
+    ] as const) {
+      writeFileSync(
+        path.join(generatedDir, 'entries', `${key}.json`),
+        JSON.stringify(shard(key, variantIndex, brief)),
+      );
+      writeFileSync(path.join(generatedDir, `${key}.png`), Buffer.from('OLD'));
+    }
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          [`${briefId}-var-0`]: { disliked: true },
+          'bat-var-0': { disliked: true },
+        },
+      }),
+    );
+
+    const queued = new Map<string, QueuedAssetCheckin>();
+    const publishedRemovals: string[] = [];
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+      // The destructive half of an acceptance publishes to `assets/queue`;
+      // capture it here instead of reaching a real git remote.
+      queueCommitDeps: {
+        exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+        copyArtSurface: async () => undefined,
+        removeArtSurface: async (_worktree, removals) => {
+          for (const removal of removals) publishedRemovals.push(removal.manifestKey);
+        },
+        mergeSpriteAnnotations: async () => undefined,
+        makeTempDir: async () => mkdtempSync(path.join(tmpdir(), 'accept-queue-')),
+        removeDir: async () => undefined,
+        withCrossProcessLock: (run) => run(),
+        env: {},
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.json()).toMatchObject({ state: 'queued', existing: false });
+    expect(res.statusCode).toBe(200);
+    // The deletion was carried to the durable queue, not left local-only.
+    expect(publishedRemovals).toEqual([`${briefId}-var-0`]);
+    // Accepting the replacement retired the disliked variant of ITS concept…
+    expect(existsSync(path.join(generatedDir, 'entries', `${briefId}-var-0.json`))).toBe(false);
+    expect(existsSync(path.join(generatedDir, `${briefId}-var-0.png`))).toBe(false);
+    const annotations = JSON.parse(
+      readFileSync(path.join(generatedDir, 'sprite-editor-annotations.json'), 'utf8'),
+    ) as { sprites: Record<string, { tombstone?: { manifestKey?: string } }> };
+    expect(annotations.sprites[`${briefId}-var-0`]?.tombstone?.manifestKey).toBe(
+      `${briefId}-var-0`,
+    );
+    // …and left the unrelated concept alone (deferred to the repo-wide sweeper).
+    expect(existsSync(path.join(generatedDir, 'entries', 'bat-var-0.json'))).toBe(true);
+    expect(annotations.sprites['bat-var-0']?.tombstone).toBeUndefined();
+  });
+
   it('reconciles a lost-response retry through the durable queued issue', async () => {
     await app.close();
     const queued = new Map<string, QueuedAssetCheckin>();

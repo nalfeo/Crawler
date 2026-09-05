@@ -56,6 +56,14 @@ export interface SelectReferencesInput {
   readonly seed: number;
   /** Asset-level negative annotations that make a sprite ineligible as a reference. */
   readonly dislikedSpriteNames?: ReadonlySet<string>;
+  /**
+   * Normalized concepts excluded wholesale because a dislike naming them could
+   * not be pinned to one exact accepted key (a stale or ambiguous annotation
+   * key). Read-only hygiene: excluding a concept from the reference pool is
+   * free, so this fails SAFE where deletion authority deliberately fails
+   * CLOSED — see `resolveDislikedReferenceExclusions` in `disliked-lifecycle.ts`.
+   */
+  readonly dislikedConceptIds?: ReadonlySet<string>;
 }
 
 export interface ReferenceSelection {
@@ -113,14 +121,14 @@ function toEligible(
   entry: ManifestEntry,
   briefName: string,
   dislikedSpriteNames: ReadonlySet<string>,
+  dislikedConceptIds: ReadonlySet<string>,
 ): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
   if (entry.disliked === true) return null;
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
-  if (
-    normalizeGeneratedSpriteConceptId(entry.briefId) ===
-    normalizeGeneratedSpriteConceptId(briefName)
-  ) {
+  const conceptId = normalizeGeneratedSpriteConceptId(entry.briefId);
+  if (dislikedConceptIds.has(conceptId)) return null;
+  if (conceptId === normalizeGeneratedSpriteConceptId(briefName)) {
     return null;
   }
   // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`
@@ -226,10 +234,11 @@ function weightedSampleWithoutReplacement(
 export function selectReferences(input: SelectReferencesInput): ReferenceSelection {
   const { candidates, briefName, briefType, count, seed } = input;
   const dislikedSpriteNames = input.dislikedSpriteNames ?? new Set<string>();
+  const dislikedConceptIds = input.dislikedConceptIds ?? new Set<string>();
 
   const eligible: EligibleEntry[] = [];
   for (const candidate of candidates) {
-    const result = toEligible(candidate, briefName, dislikedSpriteNames);
+    const result = toEligible(candidate, briefName, dislikedSpriteNames, dislikedConceptIds);
     if (result !== null) eligible.push(result);
   }
   const collapsed = collapseByConcept(eligible);

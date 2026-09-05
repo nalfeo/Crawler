@@ -672,17 +672,31 @@ describe('detectApprovedAssets', () => {
     expect(assets.map((a) => a.assetPath)).toEqual(['generated/new-mace-var-1.png']);
   });
 
-  it('de-duplicates a PNG that appears in both diff and ls-files', async () => {
-    const { exec } = makeFakeExec((command, args) => {
+  it('excludes deleted PNGs so a lifecycle removal is never checked in as an approval', async () => {
+    // The disliked-asset lifecycle deletes retired PNGs from the working tree.
+    // `git diff --name-only` would otherwise report them as "changed", and the
+    // check-in issue would claim an asset that no longer exists — which
+    // `asset-pr` consolidation later checks back out of the source branch,
+    // resurrecting deleted art without its manifest shard.
+    const { exec, calls } = makeFakeExec((command, args) => {
       if (command === 'git' && args[0] === 'diff') {
-        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
-      }
-      if (command === 'git' && args[0] === 'ls-files') {
-        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
+        // The fake honours the filter the way git does: nothing deleted is
+        // reported once `--diff-filter=d` is present.
+        return args.includes('--diff-filter=d')
+          ? { stdout: 'public/assets/generated/kept-var-1.png\n' }
+          : {
+              stdout:
+                'public/assets/generated/kept-var-1.png\n' +
+                'public/assets/generated/retired-var-0.png\n',
+            };
       }
       return {};
     });
+
     const assets = await detectApprovedAssets(exec, '/repo', 'origin', 'main', {});
-    expect(assets.map((a) => a.assetPath)).toEqual(['generated/dup-var-1.png']);
+
+    expect(assets.map((a) => a.assetPath)).toEqual(['generated/kept-var-1.png']);
+    const diffCall = calls.find((call) => call.command === 'git' && call.args[0] === 'diff');
+    expect(diffCall?.args).toContain('--diff-filter=d');
   });
 });

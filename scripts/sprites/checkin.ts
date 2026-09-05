@@ -661,6 +661,13 @@ async function discoverLinkedAssetRequestIssueNumbers(
  * `public/assets/generated/**` is un-ignored, those brand-new PNGs must be
  * collected separately via `git ls-files --others`; otherwise the primary
  * approve→check-in flow sees no assets and throws `nothing-to-checkin`.
+ *
+ * DELETED paths are excluded (`--diff-filter=d` — a lowercase letter EXCLUDES
+ * that change kind). A PNG the disliked-asset lifecycle just retired is a
+ * deletion, not an approval: including it would file a check-in issue claiming
+ * a nonexistent asset with null manifest metadata, and `asset-pr` consolidation
+ * would then check that path back out of the source branch and resurrect the
+ * art without its manifest shard.
  */
 export async function detectApprovedAssets(
   exec: Exec,
@@ -672,6 +679,7 @@ export async function detectApprovedAssets(
   const diff = await git(exec, repoRoot, [
     'diff',
     '--name-only',
+    '--diff-filter=d',
     `${remote}/${baseBranch}`,
     '--',
     ...ASSET_SURFACE_PATHS,

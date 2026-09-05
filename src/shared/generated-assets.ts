@@ -213,6 +213,22 @@ export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
 }
 
 /**
+ * THE canonical "can this accepted entry be picked at runtime?" predicate.
+ *
+ * An entry is runtime-eligible when it is real generated art (not a
+ * placeholder stand-in) that has not been retired via manifest `disliked`.
+ * Both the engine registry ({@link loadGeneratedManifest}) and the sprite
+ * tooling that decides whether a concept still has usable art MUST call this
+ * one function: a tooling-local copy that disagrees with the registry would
+ * let the disliked-asset lifecycle delete art while believing a survivor
+ * exists that the runtime will never actually select — the exact
+ * zero-dangling violation the lifecycle contract forbids.
+ */
+export function isRuntimeEligibleManifestEntry(entry: ManifestEntry): boolean {
+  return entry.disliked !== true && !isPlaceholderManifestEntry(entry);
+}
+
+/**
  * Multi-frame animation descriptor for a generated spritesheet entry. The
  * shared contract between the sprite-generation pipeline (which produces
  * multi-frame sheets) and the engine (which plays them) — see
@@ -314,7 +330,7 @@ export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpr
   const byBrief = new Map<string, GeneratedSpriteEntry[]>();
   const flat: GeneratedSpriteEntry[] = [];
   for (const [manifestKey, entry] of Object.entries(manifest.entries)) {
-    if (entry.disliked === true || isPlaceholderManifestEntry(entry)) {
+    if (!isRuntimeEligibleManifestEntry(entry)) {
       continue;
     }
     // textureKey comes from the manifest MAP KEY (unique per variant) so
