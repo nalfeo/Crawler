@@ -93,6 +93,9 @@ sprite-pipeline, sprite-workflow
 - Publication durability now also requires `summary.json` brief/run identity
   to match its storage coordinates before any backfill or lifecycle mutation,
   and pending-overlay promotion preserves historical tombstones and provenance.
+- Placeholder exclusion remains the explicit ADR 0105 `ELG-001` behavior:
+  placeholder-only item concepts use the existing non-generated UI fallback,
+  and non-melee carried weapons remain hidden until eligible real art exists.
 - The final review round also unified tooling concept keys with the runtime
   normalizer, made conscious icon-batch hard-block overrides durable, added an
   always-on repository tombstone closure test, let the hourly reconciler
