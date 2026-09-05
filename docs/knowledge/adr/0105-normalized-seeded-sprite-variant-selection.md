@@ -93,7 +93,9 @@ without eventually disagreeing with approval and migration tooling.
   annotations publish exactly once to the canonical `assets/queue` branch.
   Legacy `asset-checkin` issue publication cannot represent those changes and
   must not run afterward: a second fallible remote write would make local
-  rollback unable to restore the already-published queue state.
+  rollback unable to restore the already-published queue state. Persisted
+  concept tombstones keep retries on that queue path even after the local
+  cleanup has converged to a no-op.
 
 ## Consequences
 

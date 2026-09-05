@@ -86,6 +86,9 @@ sprite-pipeline, sprite-workflow
   durable commit point and skips the superseded issue publisher. The response
   identifies the queue branch, so no later remote failure can trigger a
   local-only rollback after the complete transaction is already durable.
+  Persisted concept tombstones make re-accept idempotent on the same queue path,
+  and local-run approvals now fail before mutation unless their provenance is
+  durably backfilled.
 - The final review round also unified tooling concept keys with the runtime
   normalizer, made conscious icon-batch hard-block overrides durable, added an
   always-on repository tombstone closure test, let the hourly reconciler
@@ -98,7 +101,7 @@ sprite-pipeline, sprite-workflow
   remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
   0 reference updates; `npm run verify:fast` passed 4,223 tests with 1
   environment-gated skip; and the final queue commit-point follow-up passed
-  149/149 sidecar tests, 278/278 Workflow extension tests, and a 168/168
+  150/150 sidecar tests, 278/278 Workflow extension tests, and a 169/169
   `verify:fast` changed-test selection.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated

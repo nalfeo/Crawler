@@ -24,7 +24,7 @@ import path from 'node:path';
 import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
 import {
-  buildServer,
+  buildServer as buildProductionServer,
   isRestorableBriefPath,
   listRuns,
   safeJoin,
@@ -51,6 +51,15 @@ import {
   shardPathForKey,
 } from '../../../scripts/sprites/generated-shards.js';
 import type { FastifyInstance } from 'fastify';
+
+type SidecarTestDeps = Parameters<typeof buildProductionServer>[0];
+
+function buildServer(deps: SidecarTestDeps): FastifyInstance {
+  return buildProductionServer({
+    ...deps,
+    ensureApprovalRunDurable: deps.ensureApprovalRunDurable ?? (() => Promise.resolve()),
+  });
+}
 
 function writeMinimalRun(
   runsDir: string,
@@ -1662,6 +1671,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
 
     const queued = new Map<string, QueuedAssetCheckin>();
     const publishedRemovals: string[] = [];
+    let stagedChecks = 0;
     const checkinDeps = makeCheckinDeps(queued, () => {
       throw new Error('legacy check-in must not run after lifecycle queue publication');
     });
@@ -1678,7 +1688,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       queueCommitDeps: {
         exec: async (_command, args) => {
           if (args[0] === 'diff' && args.includes('--cached')) {
-            return { code: 1, stdout: '', stderr: '' };
+            const code = stagedChecks === 0 ? 1 : 0;
+            stagedChecks += 1;
+            return { code, stdout: '', stderr: '' };
           }
           if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
             return { code: 0, stdout: 'queue-commit-sha\n', stderr: '' };
@@ -1725,6 +1737,20 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // …and left the unrelated concept alone (deferred to the repo-wide sweeper).
     expect(existsSync(path.join(generatedDir, 'entries', 'bat-var-0.json'))).toBe(true);
     expect(annotations.sprites['bat-var-0']?.tombstone).toBeUndefined();
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      queueBranch: 'assets/queue',
+    });
+    expect(retried.json().issueUrl).toBeUndefined();
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
   });
 
   it('reconciles a lost-response retry through the durable queued issue', async () => {
@@ -2161,6 +2187,29 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(res.json().error).toBe('ci-refused');
     // No asset should have been written.
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}.png`))).toBe(false);
+  });
+
+  it('refuses a local-only run when durable provenance cannot be established', async () => {
+    await app.close();
+    app = buildProductionServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { SPRITES_RUN_STORE: 'local' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('no durable run store is configured');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
   });
 
   it('rejects a hostile browser Origin on /approve (CSRF guard) but allows the trusted gallery origin', async () => {
