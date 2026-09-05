@@ -424,8 +424,8 @@ jobs:
             esac
             ASSIGNMENTS="$(
               jq -c \
-                --argjson lane "$lane" \
-                --argjson slot "$slot" \
+                --arg lane "$lane" \
+                --arg slot "$slot" \
                 --arg issue "$issue" \
                 --arg cohort "$cohort" \
                 --arg resumePr "$resume_pr" \
@@ -917,7 +917,7 @@ jobs:
               --arg leaseRun "$lease_run" \
               --arg leaseAttempt "$lease_attempt" \
               --arg leaseComment "$lease_comment" \
-              '{lane: $lane, slot: $slot, issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, leaseState: $leaseState, leaseRun: $leaseRun, leaseAttempt: $leaseAttempt, leaseComment: $leaseComment}' \
+              '{lane: ($lane | tonumber), slot: ($slot | tonumber), issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, leaseState: $leaseState, leaseRun: $leaseRun, leaseAttempt: $leaseAttempt, leaseComment: $leaseComment}' \
               >> "$assignment_file"
           done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
