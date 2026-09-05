@@ -7,6 +7,11 @@ on:
       - '.github/workflows/ci-recovery*.yml'
       - '.github/workflows/merge-train*.yml'
       - '.github/workflows/goobers-*.yml'
+      # Covered by the workflow checkout contract: intake parity wired the
+      # shared eligibility library into both legacy intake workflows too.
+      - '.github/workflows/issue-copilot-intake.yml'
+      - '.github/workflows/epic-reprocess.yml'
+      - '.github/scripts/goobers/**'
       - '.github/scripts/ci-recovery/**'
       - '.github/scripts/merge-train/**'
       - '.github/scripts/validate-goobers-contracts*'
@@ -14,6 +19,7 @@ on:
       - 'tests/unit/goobers-contracts.test.ts'
       - 'tests/unit/goobers-run-workflow.test.ts'
       - 'tests/unit/goobers-run-slot-cleanup.test.ts'
+      - 'tests/unit/goobers-workflow-checkout-contract.test.ts'
       - 'scripts/agent/goobers-stage-teardown.sh'
       - 'scripts/agent/goobers-reservation-lease.sh'
   pull_request:
@@ -21,6 +27,11 @@ on:
       - '.github/workflows/ci-recovery*.yml'
       - '.github/workflows/merge-train*.yml'
       - '.github/workflows/goobers-*.yml'
+      # Covered by the workflow checkout contract: intake parity wired the
+      # shared eligibility library into both legacy intake workflows too.
+      - '.github/workflows/issue-copilot-intake.yml'
+      - '.github/workflows/epic-reprocess.yml'
+      - '.github/scripts/goobers/**'
       - '.github/scripts/ci-recovery/**'
       - '.github/scripts/merge-train/**'
       - '.github/scripts/validate-goobers-contracts*'
@@ -28,6 +39,7 @@ on:
       - 'tests/unit/goobers-contracts.test.ts'
       - 'tests/unit/goobers-run-workflow.test.ts'
       - 'tests/unit/goobers-run-slot-cleanup.test.ts'
+      - 'tests/unit/goobers-workflow-checkout-contract.test.ts'
       - 'scripts/agent/goobers-stage-teardown.sh'
       - 'scripts/agent/goobers-reservation-lease.sh'
   workflow_dispatch:
@@ -80,7 +92,7 @@ jobs:
           # Turns every Linux-only skip in the Goobers suites into a failure on
           # this runner, so "the suite passed" cannot mean "the suite skipped".
           GOOBERS_REQUIRE_LINUX_SUITES: '1'
-        run: npx vitest run tests/unit/goobers-contracts.test.ts tests/unit/goobers-run-workflow.test.ts tests/unit/goobers-run-slot-cleanup.test.ts --reporter=verbose
+        run: npx vitest run tests/unit/goobers-contracts.test.ts tests/unit/goobers-run-workflow.test.ts tests/unit/goobers-run-slot-cleanup.test.ts tests/unit/goobers-workflow-checkout-contract.test.ts --reporter=verbose
 
       - name: Summary
         if: success()

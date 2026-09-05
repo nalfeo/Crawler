@@ -1740,10 +1740,26 @@ describe('Goobers automatic dispatch and recovery', () => {
       expect(script).not.toContain('contains($marker)');
     }
     // Both jobs that read the lease must actually have the library on disk.
+    // Asserted by CONTAINMENT, not equality: the reserve job also needs
+    // `.github/scripts` for the intake selector, and pinning the pattern list
+    // literally here is what let the missing selector root ship green.
+    // tests/unit/goobers-workflow-checkout-contract.test.ts derives the full
+    // required set from the steps themselves.
+    const sparseList = (value: string | boolean | undefined): string[] =>
+      typeof value === 'string'
+        ? value
+            .split('\n')
+            .map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
+            .filter((entry) => entry.length > 0)
+        : [];
     expect(
-      workflow.jobs['release-unstarted-reservation']?.steps?.[0]?.with?.['sparse-checkout'],
-    ).toBe('scripts/agent');
-    expect(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout']).toBe('scripts/agent');
+      sparseList(
+        workflow.jobs['release-unstarted-reservation']?.steps?.[0]?.with?.['sparse-checkout'],
+      ),
+    ).toContain('scripts/agent');
+    expect(sparseList(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout'])).toContain(
+      'scripts/agent',
+    );
   });
 
   it('trusts only the GitHub Actions identity and only whole-line receipts', () => {
