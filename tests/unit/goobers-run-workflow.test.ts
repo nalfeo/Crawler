@@ -554,6 +554,32 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(script).toContain('goobers-run-repaired-');
   });
 
+  it('probes label existence with a `gh label` subcommand that actually exists', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const script = steps.find((step) => step.name === 'Handle no-work disposition')?.run ?? '';
+    // Comments legitimately name the broken command they replaced, so the
+    // assertions below run against the executable lines only.
+    const commands = script
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n');
+
+    // `gh label` exposes clone/create/delete/edit/list and nothing else. `gh
+    // label view` therefore always exited non-zero, so the create it guarded
+    // always ran and always failed with "already exists; use `--force`" --
+    // killing this step under `set -e` before the terminal label landed
+    // (issues #3541, #4140).
+    expect(commands).not.toContain('gh label view');
+    expect(commands).toContain('gh label list --repo "$GITHUB_REPOSITORY" \\');
+    expect(commands).toContain('--search "$label" --limit 100 --json name --jq');
+
+    // `--force` would overwrite a repo-managed label's colour and description
+    // on every disposition, so idempotency is achieved by not creating an
+    // existing label rather than by overwriting it.
+    expect(commands).not.toContain('--force');
+  });
+
   it('treats an expected empty slot as a successful no-claim outcome', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
@@ -2339,7 +2365,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(retry?.run).toContain('.status == "no-work"');
     expect(retry?.run).toContain('outputs.disposition // empty');
     expect(retry?.run).toContain('no_work_disposition" = "completed-existing-work"');
-    expect(retry?.run).toContain("gh label view 'goobers/status:completed-existing-work'");
+    expect(retry?.run).toContain(
+      "ensure_repository_label 'goobers/status:completed-existing-work' '0e8a16'",
+    );
     expect(retry?.run).toContain("--add-label 'goobers/status:completed-existing-work'");
     expect(retry?.run).toContain("--remove-label 'goobers/status:in-review'");
     expect(retry?.run).toContain('returned invalid no-work');

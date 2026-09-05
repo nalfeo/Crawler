@@ -1706,6 +1706,51 @@ jobs:
             return 0
           }
 
+          # Ensures a repository label exists before an issue is edited to carry
+          # it, and is idempotent whether the label is already there or not.
+          #
+          # The previous form was `gh label view <name> || gh label create
+          # <name>`, which was broken twice over: `gh label` has NO `view`
+          # subcommand, so the existence probe ALWAYS failed and `gh label
+          # create` always ran; and on the ordinary already-exists path `gh label
+          # create` exits 1 with "already exists; use `--force`". Under this
+          # step's `set -euo pipefail` that killed the whole step BEFORE the
+          # terminal label was applied and goobers/status:in-review removed, so
+          # the issue stayed in-review forever and poisoned scheduled recovery at
+          # the head of the queue (issues #3541 and #4140).
+          #
+          # Existence is probed with `gh label list --search`, matching the
+          # repo's established create-if-missing pattern
+          # (scripts/sprites/asset-request-publisher.ts). `--force` is
+          # deliberately NOT used: it would overwrite a repo-managed label's
+          # colour and description on every no-work disposition.
+          ensure_repository_label() {
+            local label="$1" color="$2" description="$3"
+            local existing="" found="" output=""
+
+            if existing="$(gh label list --repo "$GITHUB_REPOSITORY" \
+              --search "$label" --limit 100 --json name --jq '.[].name' 2>/dev/null)"; then
+              while IFS= read -r found; do
+                if [ "$found" = "$label" ]; then
+                  return 0
+                fi
+              done <<<"$existing"
+            fi
+
+            if output="$(gh label create "$label" --repo "$GITHUB_REPOSITORY" \
+              --color "$color" --description "$description" 2>&1)"; then
+              return 0
+            fi
+            # A concurrent slot -- or a search index that has not caught up --
+            # can create the label between the probe and the create. Losing that
+            # race is the desired end state, not a failure.
+            case "$output" in
+              *'already exists'*) return 0 ;;
+            esac
+            echo "::warning::Could not ensure label '${label}' exists in ${GITHUB_REPOSITORY}: ${output}. Create it with: gh label create '${label}' --repo ${GITHUB_REPOSITORY} --color ${color} --description '${description}'" >&2
+            return 1
+          }
+
           # A run whose process was killed at the slot deadline (or died with the
           # job) never appended run.finished, so its journal still claims the run
           # is live and its worktree is still checked out. `goobers run abort` is
@@ -1968,10 +2013,12 @@ jobs:
             fi
 
             if [ "$no_work_disposition" = "completed-existing-work" ]; then
-              gh label view 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
-                gh label create 'goobers/status:completed-existing-work' --repo "$GITHUB_REPOSITORY" \
-                  --color '0e8a16' \
-                  --description 'Goobers determined the approved issue was already completed by existing work' ||
+              # Best-effort: a failed ensure must never abort the disposition,
+              # because the label may already exist and only the probe failed.
+              # The `gh issue edit` below stays the authoritative gate and
+              # carries the actionable remediation.
+              ensure_repository_label 'goobers/status:completed-existing-work' '0e8a16' \
+                'Goobers determined the approved issue was already completed by existing work' ||
                 true
               if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
                 --add-label 'goobers/status:completed-existing-work' \

@@ -363,6 +363,134 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
 });
 
 /**
+ * Executable regression for terminal-label idempotency (issues #3541, #4140).
+ *
+ * The disposition step used to probe for the terminal label with `gh label view
+ * <name> || gh label create <name>`. `gh label` has NO `view` subcommand, so the
+ * probe could never succeed and `gh label create` ran on every single
+ * completed-existing-work disposition. On the ordinary already-exists path `gh
+ * label create` exits 1 with "already exists; use `--force`", which under the
+ * step's `set -euo pipefail` killed the step BEFORE
+ * `goobers/status:completed-existing-work` was applied and
+ * `goobers/status:in-review` removed. Production run 33938863082 left issue
+ * #4140 exactly there: approved, in-review, no terminal label, no PR — poisoning
+ * scheduled recovery at the head of the queue.
+ *
+ * These run the real step body against `gh` stubs that model the three states
+ * the ensure has to survive: the label already exists, a concurrent slot wins
+ * the create race, and the create genuinely fails.
+ */
+const LABEL_STUB_PREFIX = `${STUBS}
+gh() {
+  printf 'gh %s\\n' "$*" >> "$STUB_LOG"
+  local status=0
+  case "$*" in
+    # \`gh label\` has no \`view\` subcommand. Modelling that faithfully is what
+    # makes these fixtures a real regression rather than a hypothetical one.
+    'label view'*) printf 'unknown command "view" for "gh label"\\n' >&2; status=1 ;;
+    'label list'*) gh_stub_label_list; status=$? ;;
+    'label create'*) gh_stub_label_create; status=$? ;;
+    *comments*) printf '[[]]\\n' ;;
+    *timeline*) printf '[]\\n' ;;
+    *blocked_by*) printf '[]\\n' ;;
+  esac
+  return $status
+}
+`;
+
+/** The label is already in the repository and the search index knows it. */
+const LABEL_EXISTS_STUBS = `${LABEL_STUB_PREFIX}
+gh_stub_label_list() {
+  printf 'goobers:approved\\ngoobers/status:completed-existing-work\\n'
+  return 0
+}
+gh_stub_label_create() {
+  printf 'label with name "goobers/status:completed-existing-work" already exists; use \\\`--force\\\` to update its color and description\\n' >&2
+  return 1
+}
+`;
+
+/**
+ * The search index has not caught up (or a sibling slot created the label
+ * between the probe and the create), so the create loses the race.
+ */
+const LABEL_CREATE_RACE_STUBS = `${LABEL_STUB_PREFIX}
+gh_stub_label_list() {
+  return 0
+}
+gh_stub_label_create() {
+  printf 'label with name "goobers/status:completed-existing-work" already exists; use \\\`--force\\\` to update its color and description\\n' >&2
+  return 1
+}
+`;
+
+/** The token genuinely cannot write labels. */
+const LABEL_DENIED_STUBS = `${LABEL_STUB_PREFIX}
+gh_stub_label_list() {
+  return 1
+}
+gh_stub_label_create() {
+  printf 'HTTP 403: Resource not accessible by integration\\n' >&2
+  return 1
+}
+`;
+
+describe.skipIf(!hasJq)('goobers-run.yml terminal label idempotency', () => {
+  it('applies the terminal labels when the status label already exists', () => {
+    const harness = runStep('Handle no-work disposition', { stubs: LABEL_EXISTS_STUBS });
+
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.log).toContain(
+      'gh issue edit 303 --repo nalfeo/Crawler --add-label goobers/status:completed-existing-work --remove-label goobers/status:in-review',
+    );
+  });
+
+  it('never calls `gh label create` for a label the repository already has', () => {
+    const harness = runStep('Handle no-work disposition', { stubs: LABEL_EXISTS_STUBS });
+
+    // The existence probe has to be a subcommand that actually exists. `gh
+    // label view` does not, so the old probe always fell through to a create
+    // that always failed.
+    expect(harness.log).toContain(
+      'gh label list --repo nalfeo/Crawler --search goobers/status:completed-existing-work',
+    );
+    expect(harness.log).not.toContain('gh label view');
+    expect(harness.log).not.toContain('gh label create');
+  });
+
+  it('treats losing the label-create race as success, not as a failed disposition', () => {
+    const harness = runStep('Handle no-work disposition', { stubs: LABEL_CREATE_RACE_STUBS });
+
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.log).toContain('gh label create goobers/status:completed-existing-work');
+    expect(harness.log).toContain(
+      'gh issue edit 303 --repo nalfeo/Crawler --add-label goobers/status:completed-existing-work --remove-label goobers/status:in-review',
+    );
+    // An already-exists create is the desired end state, so it must not be
+    // reported as a problem.
+    expect(harness.stderr).not.toContain('Could not ensure label');
+  });
+
+  it('reports a genuine label-create failure while still releasing the issue', () => {
+    const harness = runStep('Handle no-work disposition', { stubs: LABEL_DENIED_STUBS });
+
+    // Best-effort, not fail-closed: the probe may be what failed, so the issue
+    // edit stays the authority and the disposition still lands.
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.stderr).toContain(
+      "Could not ensure label 'goobers/status:completed-existing-work' exists in nalfeo/Crawler",
+    );
+    // The failure names the remediation rather than surfacing a bare gh error.
+    expect(harness.stderr).toContain(
+      "gh label create 'goobers/status:completed-existing-work' --repo nalfeo/Crawler --color 0e8a16",
+    );
+    expect(harness.log).toContain(
+      'gh issue edit 303 --repo nalfeo/Crawler --add-label goobers/status:completed-existing-work --remove-label goobers/status:in-review',
+    );
+  });
+});
+
+/**
  * Executable regression for PER-SLOT recovery-journal synthesis.
  *
  * The reserved issue already carries `goobers/status:in-review` and belongs to
