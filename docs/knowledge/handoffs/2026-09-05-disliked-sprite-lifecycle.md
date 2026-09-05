@@ -73,13 +73,27 @@ sprite-pipeline, sprite-workflow
   stale unresolved dislikes are conservatively excluded from generation
   references without gaining deletion authority, and closure still checks every
   historical tombstone in a single bounded scan per live reference file.
+- Final certification made the human approval CLI refuse before mutation under
+  CI; restored manual anchors and safe `briefs/**/*.yaml|yml` type context for
+  store-backed sidecar approvals; persisted canonical durable `sourceRun`
+  pointers; added strict sidecar hard-block overrides; and made brief-store
+  failures abort rather than publish incomplete metadata.
+- Icon-batch acceptance now scopes lifecycle cleanup and reference
+  self-exclusion per cell concept. Annotation/removal-only transactions publish
+  to `assets/queue`, and AST-backed source guards classify every approval caller
+  and manifest-concept derivation.
 - The final review round also unified tooling concept keys with the runtime
   normalizer, made conscious icon-batch hard-block overrides durable, added an
   always-on repository tombstone closure test, let the hourly reconciler
   quarantine invalid lifecycle deletions without blocking unrelated art, and
   scoped pending-overlay promotion to the explicitly accepted concepts.
-- `npm run typecheck` and `npm run verify:fast` passed after the final
-  pre-publication rebase.
+- Final local evidence: `npm run test:sprites` passed 2,575 tests with 2
+  intentional environment-gated skips; the runtime integration matrix passed
+  165/165; Sprite Editor tests passed 57/57; the certification-focused matrix
+  passed 250 tests with 1 Windows symlink-permission skip; lifecycle closure
+  remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates; and `npm run verify:fast` passed 4,223 tests with 1
+  environment-gated skip.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.
@@ -95,6 +109,30 @@ sprite-pipeline, sprite-workflow
   request context.
 - Left Workflow preview extraction to its dedicated owner and did not modify
   `.github/extensions/workflow/**`.
+
+## Cleanup inventory
+
+- Removed 28 exact variants: `baseball-bat-var-6`,
+  `beetlefolk-boss-var-0`, `cactusfolk-boss-var-0/1`,
+  `crabfolk-boss-var-10`, `gnome-boss-var-7`, `imps-boss-var-5`,
+  `kobold-boss-var-0`, `myconid-boss-var-0`,
+  `npc-spell-broker-var-1`, `npc-sweaty-merchant-var-0`,
+  `npc-welcome-goon-var-0`, `rat-king-var-7`, `rat-queen-var-7`,
+  `ratfolk-elite-underboss-var-6`, `sweaty-merchant-var-5/7/9/10`,
+  `toadkin-boss-var-0`, `welcome-goon-var-3/4/5/6/7/9/10`, and
+  `welcome-room-floor-plate-cable-run-var-4`.
+- Retained 20 provenance-backed all-disliked groups:
+  `batfolk-boss`, `cave-floor`, `cave-wall`, `classified-dossier`,
+  `crabfolk-armored`, `directors-cue-card`, `faerie-boss`, `geese-boss`,
+  `goblin-boss`, `imp-flinger`, `llama-boss`, `molefolk-boss`,
+  `panda-boss`, `panda-bruiser`, `player-walk-cycle`, `raccoons-boss`,
+  `ratfolk-boss`, `slime-rat-boss`, `snailfolk-boss`, and
+  `welcome-room-cable-coil`.
+- Preserved 7 unresolved stale keys without deletion authority:
+  `ability-icon-fireball-v1-var-11`, `bent-pipe-v1-var-1`,
+  `bent-pipe-v1-var-5`, `faerie-boss-var-1`,
+  `frost-lichen-v1-var-12`, `green-slime-baby-v1-var-2`, and
+  `tile-boss-staircase-floor-v2-var-10`.
 
 ## Unresolved issues
 

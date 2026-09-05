@@ -545,7 +545,12 @@ export interface ItemIconRenderInfo {
   readonly briefId: string | null;
   /** Resolved Phaser texture key, or null when nothing resolved. */
   readonly textureKey: string | null;
-  /** True when the resolved entry is placeholder art rather than approved art. */
+  /**
+   * True when the resolved entry is placeholder art rather than approved art.
+   * Structurally always false under the current registry contract (placeholders
+   * are excluded from `registry.entries()`); it is reported so an e2e probe can
+   * FAIL if that eligibility filter ever regresses.
+   */
   readonly isPlaceholder: boolean;
   /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
   readonly textureLoaded: boolean;
@@ -3431,6 +3436,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         itemId,
         briefId: entry?.briefId ?? null,
         textureKey: entry?.textureKey ?? null,
+        // Real-artifact assertion of the registry contract, not a ranking
+        // input: `resolveItemSprite` reads only runtime-eligible entries, so a
+        // `true` here means the manifest/registry eligibility filter regressed.
+        // `tests/e2e/equipment-art-wiring.test.ts` asserts it stays false.
         isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
         textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
       };

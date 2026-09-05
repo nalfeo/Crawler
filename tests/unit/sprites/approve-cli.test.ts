@@ -322,13 +322,119 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(exitCode).toBe(0);
   });
 
-  it('skips the gate on CI, where the CLI approves locally and never pushes', async () => {
+  it('refuses BEFORE the durability gate when CI is set (Constitutional §3)', async () => {
     process.env.CI = 'true';
 
-    await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
+    expect(exitCode).toBe(6);
     expect(durability.ensureRunDurable).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * FAIL-CLOSED CI refusal (certification finding #1).
+ *
+ * `sprites:approve` is the HUMAN acceptance surface. The old behaviour under CI
+ * was the worst of both worlds: it skipped the durability gate AND skipped the
+ * durable queue-commit, yet still ran the approval and the disliked-asset
+ * lifecycle transaction — mutating manifest shards, checked-in PNGs, and
+ * annotations that no other worktree would ever see, pointing at a `sourceRun`
+ * nobody had verified. Refusing outright is the only coherent position, and it
+ * strands nothing: unattended CI producers have their own classified
+ * entrypoints (see `acceptance-lifecycle-routing.test.ts`).
+ */
+describe('approve-cli CI refusal (fail closed before ANY mutation)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    process.env.CI = 'true';
+    mocks.runQueueCommit.mockClear();
+    mocks.approveVariant.mockClear();
+    mocks.approveFrameSequence.mockClear();
+    mocks.approveIconBatch.mockClear();
+    mocks.resolveVariantIdentity.mockClear();
+    mocks.resolveFrameSequenceIdentity.mockClear();
+    mocks.loadApprovedEntry.mockClear();
+    mocks.loadApprovedFrameSequenceEntry.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
+    durability.ensureRunDurable.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) process.env.CI = savedCI;
+    else delete process.env.CI;
+  });
+
+  /** Nothing the CLI can mutate may have been touched. */
+  function expectNoMutation(): void {
+    expect(durability.ensureRunDurable).not.toHaveBeenCalled();
+    expect(mocks.resolveVariantIdentity).not.toHaveBeenCalled();
+    expect(mocks.resolveFrameSequenceIdentity).not.toHaveBeenCalled();
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).not.toHaveBeenCalled();
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.approveFrameSequence).not.toHaveBeenCalled();
+    expect(mocks.approveIconBatch).not.toHaveBeenCalled();
+    expect(mocks.loadApprovedEntry).not.toHaveBeenCalled();
+    expect(mocks.loadApprovedFrameSequenceEntry).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  }
+
+  it('refuses --variant with a dedicated exit code and mutates nothing', async () => {
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses --sequence and mutates nothing', async () => {
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses --icon-batch and mutates nothing', async () => {
+    const exitCode = await main(['/fake/runs/achv-icons/run-01', '--icon-batch'], '/fake/repo');
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses even with --allow-hard-blocked: the override does not unlock CI', async () => {
+    const exitCode = await main(
+      ['/fake/runs/iron-sword/run-01', '--variant', '1', '--allow-hard-blocked'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses before argument parsing, so a bad invocation cannot probe past the gate', async () => {
+    const exitCode = await main([], '/fake/repo');
+
+    // Exit 6 (ci-refused), NOT 1 (usage) — the refusal is the first thing that
+    // happens, so there is no ordering in which a mutation could sneak through.
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('names the refusal and points at the unattended producers', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+      const written = stderr.mock.calls.map((call) => String(call[0])).join('');
+      expect(written).toContain('ci-refused');
+      expect(written).toContain('sprites:icon-batch');
+    } finally {
+      stderr.mockRestore();
+    }
   });
 });
 
@@ -369,14 +475,15 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
     expect(assets[0]?.manifestKey).toBe('iron-sword-var-1');
   });
 
-  it('returns exit code 0 on CI without calling runQueueCommit (already-approved CI path)', async () => {
+  it('refuses under CI instead of retrying an already-approved entry locally', async () => {
     process.env.CI = 'true';
 
     const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
-    // On CI the remote push is skipped, but the exit code must still be 0 —
-    // the already-approved retry is a success, not an error.
-    expect(exitCode).toBe(0);
+    // Under CI the human acceptance surface refuses outright — it must not
+    // "succeed" by silently doing nothing durable.
+    expect(exitCode).toBe(6);
+    expect(mocks.loadApprovedEntry).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
@@ -499,7 +606,7 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
     expect(assets[0]?.manifestKey).toBe('player-walk-cycle');
   });
 
-  it('returns exit code 0 on CI without calling runQueueCommit (already-approved sequence CI path)', async () => {
+  it('refuses under CI instead of retrying an already-approved sequence locally', async () => {
     process.env.CI = 'true';
 
     const exitCode = await main(
@@ -507,7 +614,8 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
       '/fake/repo',
     );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(6);
+    expect(mocks.loadApprovedFrameSequenceEntry).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
@@ -620,5 +728,92 @@ describe('approve-cli --icon-batch lifecycle routing', () => {
     expect(mocks.approveIconBatch.mock.calls[0]?.[0]).toMatchObject({
       allowHardBlocked: true,
     });
+  });
+
+  /**
+   * Regression (certification finding #5): `publishApprovedAssets` used to
+   * early-return on `entries.length === 0`, which silently DROPPED the durable
+   * publication of an approval whose only outcome was lifecycle state. An icon
+   * batch whose cells were all already up-to-date still retires the disliked art
+   * it replaced and writes the tombstones that record it; those were applied
+   * locally and never pushed, and the advertised "re-run to retry" then computed
+   * an empty delta — permanently stranding a destructive local change.
+   */
+  it('publishes a removal/annotation-only plan even when NOTHING was approved', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-empty-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+
+    // Every cell was already up to date → zero approved entries, but the
+    // lifecycle still retired the art they replace.
+    mocks.approveIconBatch.mockReturnValueOnce([] as never);
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockImplementationOnce(async (options) => {
+      const approved = options.approve();
+      const plan = {
+        removed: [{ manifestKey: 'achv-first-bonk-old', assetPath: 'generated/old.png' }],
+        retainedGroups: [],
+        deferredGroups: [],
+        annotationUpdates: [{ key: 'achv-first-bonk-old', tombstone: {} }],
+      };
+      await options.publish(approved, plan as never);
+      return { approved, plan };
+    });
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    // The critical invariant: the durable push HAPPENED despite zero approvals.
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+    const callArgs = (mocks.runQueueCommit.mock.calls[0] as unknown[]) ?? [];
+    expect(callArgs[1]).toEqual([]);
+    const options = callArgs[3] as {
+      removals: readonly unknown[];
+      annotations: readonly unknown[];
+    };
+    expect(options.removals).toEqual([
+      { assetPath: 'generated/old.png', manifestKey: 'achv-first-bonk-old' },
+    ]);
+    expect(options.annotations).toHaveLength(1);
+  });
+
+  it('stays a no-op when there is nothing approved AND no lifecycle change', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-noop-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+    mocks.approveIconBatch.mockReturnValueOnce([] as never);
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    // Genuinely nothing to publish — no empty commit is attempted.
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 });

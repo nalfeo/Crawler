@@ -207,7 +207,9 @@ export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
  * Explicit metadata is authoritative. The asset-path fallback covers legacy
  * entries whose normal key and spriteName do not reveal their placeholder status.
  */
-export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
+export function isPlaceholderManifestEntry(
+  entry: Pick<ManifestEntry, 'assetPath' | 'placeholder' | 'sensorScore' | 'sourceRun'>,
+): boolean {
   if (typeof entry.placeholder === 'boolean') return entry.placeholder;
   return (
     entry.sourceRun === 'placeholder' ||

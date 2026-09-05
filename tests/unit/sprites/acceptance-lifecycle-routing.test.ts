@@ -23,6 +23,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripSourceComments } from '../../helpers/source-comments.js';
 
 const SPRITES_DIR = path.resolve('scripts', 'sprites');
 
@@ -49,13 +50,17 @@ const APPROVAL_CALL = /\b(approveVariant|approveFrameSequence|approveIconBatch)\
 /**
  * Drop block comments and whole-line `//` comments so a JSDoc sentence like
  * "a thin shell over `approveVariant()`" is not mistaken for a call site.
+ *
+ * Uses the LINE-ANCHORED shared stripper. The obvious
+ * `replace(/\/\*[\s\S]*?\*\//g, '')` is actively dangerous for this gate:
+ * `server.ts` contains string literals such as `'public/assets/generated/**'`,
+ * whose `/*` opened a phantom block comment that swallowed ~19KB of real code —
+ * including the whole `/accept` route, one of the three bypasses this gate was
+ * written to catch. It still reported green, because the approval AND the
+ * transaction disappeared together.
  */
 function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
-    .join('\n');
+  return stripSourceComments(source);
 }
 
 function listSourceFiles(dir: string): string[] {

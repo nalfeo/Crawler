@@ -238,6 +238,52 @@ describe('buildPlaceholderAudit — bucketing', () => {
       { kind: 'enemy-pack', id: 'goblin-elite-joyrider', detail: 'missing-generated-art' },
     ]);
   });
+
+  /**
+   * Regression (certification finding #4): grouping by `entry.briefId` put every
+   * cell of an icon batch under the BATCH concept, so a per-icon placeholder
+   * never met the real icon art that replaces it — the audit reported it as
+   * still-needed forever, and reported the batch as one giant "replaceable"
+   * concept. Grouping must use the shared manifest concept helper, which
+   * resolves an icon row to its own cell concept.
+   */
+  it('groups icon-batch cells by their own concept, not by the shared batch briefId', () => {
+    const iconEntry = (spriteName: string, over: Partial<ManifestEntry> = {}): ManifestEntry => ({
+      ...manifestEntry({ briefId: 'ability-icons' }),
+      spriteName,
+      assetPath: `generated/${spriteName}.png`,
+      type: 'icon',
+      ...over,
+    });
+    const report = audit({
+      manifestEntries: {
+        'icon-fireball-placeholder': iconEntry('icon-fireball-placeholder', {
+          sourceRun: 'placeholder',
+        }),
+        'icon-fireball': iconEntry('icon-fireball'),
+        'icon-frostbite': iconEntry('icon-frostbite'),
+      },
+    });
+
+    // Two distinct cell concepts — never one `ability-icons` bucket.
+    expect(report.concepts.map((c) => c.concept)).toEqual(['icon-fireball', 'icon-frostbite']);
+    // The fireball placeholder is matched with the fireball art that replaces it.
+    expect(report.replaceable.map((c) => c.concept)).toEqual(['icon-fireball']);
+    expect(report.newContent.map((c) => c.concept)).toEqual(['icon-frostbite']);
+    expect(report.placeholderOnly).toEqual([]);
+  });
+
+  it('still groups non-icon entries by brief lineage', () => {
+    const report = audit({
+      manifestEntries: {
+        'slime-king-v1-var-0': manifestEntry({ briefId: 'slime-king-v1' }),
+        'slime-king-v2-var-0': manifestEntry({ briefId: 'slime-king-v2' }),
+      },
+    });
+
+    expect(report.concepts.map((c) => c.concept)).toEqual(['slime-king']);
+    expect(report.concepts[0]?.realAssets).toHaveLength(2);
+  });
 });
 
 describe('buildPlaceholderAudit — --since scoping', () => {

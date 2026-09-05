@@ -345,7 +345,13 @@ export function resolveDislikedReferenceExclusions(
     if (candidates.length > 1) {
       for (const candidate of candidates) {
         manifestKeys.add(candidate);
-        conceptIds.add(normalizeGeneratedSpriteConceptId(entries[candidate]!.briefId || candidate));
+        // MUST be the same derivation the reference selector groups by
+        // (`generatedManifestConceptId`), not a hand-rolled `briefId` strip: an
+        // icon-batch row's `briefId` is the BATCH id, so a hand-derived key
+        // would exclude the batch concept while the selector keyed the row
+        // under the cell's own concept — and the ambiguous dislike would
+        // silently fail to exclude anything at all.
+        conceptIds.add(generatedManifestConceptId(entries[candidate]!, candidate));
       }
       continue;
     }

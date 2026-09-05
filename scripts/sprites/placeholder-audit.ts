@@ -27,6 +27,7 @@
  */
 
 import {
+  generatedManifestConceptId,
   isPlaceholderManifestEntry as isSharedPlaceholderManifestEntry,
   type ManifestEntry,
 } from '../../src/shared/generated-assets.js';
@@ -187,8 +188,13 @@ export function buildPlaceholderAudit(input: PlaceholderAuditInput): Placeholder
   const byConcept = new Map<string, MutableConcept>();
 
   // 1. Manifest entries: split into placeholders vs real generated assets.
+  //    Group by the SHARED manifest concept helper, then apply the tooling
+  //    tolerances (`-placeholder` suffix, namespacing, case). Deriving the key
+  //    from `entry.briefId` by hand put every cell of an icon batch under the
+  //    BATCH concept, so an icon placeholder never met the real icon art that
+  //    replaces it and the audit reported it as still-needed forever.
   for (const [mapKey, entry] of Object.entries(input.manifestEntries)) {
-    const concept = normalizeConcept(entry.briefId || mapKey);
+    const concept = normalizeConcept(generatedManifestConceptId(entry, mapKey));
     const bucket = conceptFor(byConcept, concept);
     if (isPlaceholderManifestEntry(entry)) {
       bucket.placeholders.push({

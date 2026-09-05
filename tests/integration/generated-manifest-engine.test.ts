@@ -252,6 +252,29 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
+  /**
+   * The root contract behind the removal of the placeholder ranking in
+   * `resolveItemSprite` and of the `!_isPlaceholderEntry(...)` arm in
+   * `PhaserBridge`'s carried-weapon path (ADR 0051 amendment, 2026-09-05):
+   * `loadGeneratedManifest` filters through `isRuntimeEligibleManifestEntry`, so
+   * the SHIPPED registry contains no placeholder and no manifest-`disliked` row
+   * at all. Asserting it on real data — not a fixture — is what makes both
+   * removals provably behaviour-preserving for EVERY consumer, rather than only
+   * for the item ids enumerated below.
+   */
+  it('exposes zero placeholder entries in the shipped registry (runtime-eligibility contract)', () => {
+    if (!sharedRealRegistry) return;
+
+    const entries = sharedRealRegistry.entries();
+    expect(entries.length).toBeGreaterThan(0);
+    const leaked = entries.filter(_isPlaceholderEntry).map((entry) => entry.textureKey);
+    expect(
+      leaked,
+      'placeholder art reached registry.entries(); the resolver and PhaserBridge no longer ' +
+        'rank placeholders, so a leak here would render a stand-in as if it were approved art',
+    ).toEqual([]);
+  });
+
   it('resolves real approved Basic Leather art for generated-equipment runtime keys without preload aliases', () => {
     if (!sharedRealRegistry) return;
 

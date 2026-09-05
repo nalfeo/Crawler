@@ -293,6 +293,76 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual(['angry-roomba-v2-var-0']);
   });
 
+  /**
+   * Regression (certification finding #4): adopting the shared manifest concept
+   * helper resolved an icon-batch row to the CELL's concept (`fireball`), which
+   * is correct for runtime selection but silently DROPPED the brief-lineage
+   * self-exclusion. Regenerating the batch would then be handed its own previous
+   * cells as style references — the model copying last week's output.
+   */
+  it('excludes an icon batch\u2019s own previous cells when that batch is regenerated', () => {
+    const candidates: ManifestEntry[] = [
+      // Cells of the batch being regenerated: distinct cell concepts, one brief.
+      entry({
+        briefId: 'ability-icons',
+        type: 'icon',
+        spriteName: 'icon-fireball',
+      }),
+      entry({
+        briefId: 'ability-icons',
+        type: 'icon',
+        spriteName: 'icon-frostbite',
+      }),
+      // An unrelated icon batch stays eligible.
+      entry({ briefId: 'achv-icons', type: 'icon', spriteName: 'icon-first-bonk' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      briefName: 'ability-icons',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['icon-first-bonk']);
+  });
+
+  it('applies the same lineage self-exclusion across a batch version bump', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'ability-icons-v1', type: 'icon', spriteName: 'icon-fireball' }),
+      entry({ briefId: 'achv-icons', type: 'icon', spriteName: 'icon-first-bonk' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      // v2 of the same batch: `-vN` lineage normalizes to the same concept.
+      briefName: 'ability-icons-v2',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['icon-first-bonk']);
+  });
+
+  it('still excludes a NON-icon entry by its own concept (lineage check is a no-op there)', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'lamp-v1', type: 'item', spriteName: 'lamp-v1-var-0' }),
+      entry({ briefId: 'chair-v1', type: 'item', spriteName: 'chair-v1-var-0' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      briefName: 'lamp-v3',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['chair-v1-var-0']);
+  });
+
   it('excludes entries whose assetPath is not under generated/', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),

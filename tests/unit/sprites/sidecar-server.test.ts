@@ -23,8 +23,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
-import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
+import {
+  buildServer,
+  isRestorableBriefPath,
+  listRuns,
+  safeJoin,
+} from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
+import { parseSourceRun } from '../../../scripts/sprites/run-durability.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type {
@@ -2440,6 +2446,539 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // The retry actually re-attempted the durable push (a queueCommit field is
     // always present regardless of its committed/failed outcome).
     expect(body.queueCommit).toBeDefined();
+  });
+});
+
+/**
+ * Store-backed approval parity (certification finding #2).
+ *
+ * When the run store is remote, `/approve` and `/accept` rematerialize the run
+ * into an OS temp directory. Three things about that temp directory used to
+ * silently degrade the resulting manifest entry compared to the identical
+ * approval from a local run dir:
+ *
+ *   1. the manual (operator-authored) anchor sidecar was never downloaded, so a
+ *      hand-placed anchor silently fell back to the derived one;
+ *   2. the brief was not on disk, so `type` was written as `null` and the row
+ *      dropped out of every type-aware surface;
+ *   3. `sourceRun` was derived from the temp path, which cannot be made
+ *      repo-relative, so it degraded to a synthetic
+ *      `generated/runs/<brief>/external-<tmp>` pointer that no durability check
+ *      can ever resolve back to the run in the store.
+ *
+ * None of the three failed loudly, which is why they need pinned tests.
+ */
+describe('store-backed /approve hydration parity', () => {
+  let root: string;
+  let storeRoot: string;
+  let publicAssetsDir: string;
+  let manifestPath: string;
+  let app: FastifyInstance;
+  let backingStore: LocalRunStore;
+  const briefId = 'iron-sword';
+  const runId = '2026-06-08T12-00-00-deadbeef';
+  const briefRelPath = 'briefs/draft/iron-sword.yaml';
+
+  /** A remote-flavoured store double over a local directory. */
+  function remoteStore(): NonNullable<Parameters<typeof buildServer>[0]['store']> {
+    return {
+      backend: 'azure-blob',
+      put: async (key, data) => backingStore.put(key, data),
+      get: async (key) => backingStore.get(key),
+      has: async (key) => backingStore.has(key),
+      list: async (prefix) => backingStore.list(prefix),
+      remove: async (key) => backingStore.remove(key),
+      resolve: (key) => backingStore.resolve(key),
+    };
+  }
+
+  async function seedStoreRun(
+    options: { readonly hardBlocked?: boolean; readonly withManualAnchor?: boolean } = {},
+  ): Promise<void> {
+    const prefix = `${briefId}/${runId}`;
+    await backingStore.put(
+      `${prefix}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: briefId,
+          runId,
+          promptHash: 'deadbeef',
+          briefPath: briefRelPath,
+          candidates: [
+            {
+              index: 1,
+              score: 7,
+              outOf: 7,
+              passed: true,
+              combinedPassed: true,
+              derivedAnchor: { x: 8, y: 13 },
+              judgeScorecard:
+                options.hardBlocked === true
+                  ? {
+                      passed: false,
+                      minScore: 2,
+                      hardBlocked: true,
+                      hardBlockInstruction: 'regenerate with a clearer silhouette',
+                    }
+                  : { passed: true, minScore: 4 },
+            },
+          ],
+          chosen: { index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true },
+        }),
+      ),
+    );
+    await backingStore.put(`${prefix}/processed/01.png`, Buffer.from('PNG-01'));
+    await backingStore.put(
+      `${prefix}/processed/01.anchor.json`,
+      Buffer.from(JSON.stringify({ x: 8, y: 13, source: 'derived' })),
+    );
+    if (options.withManualAnchor !== false) {
+      await backingStore.put(
+        `${prefix}/processed/01.manual-anchor.json`,
+        Buffer.from(JSON.stringify({ x: 3, y: 4, variantIndex: 1, source: 'manual' })),
+      );
+    }
+    // The brief itself lives ONLY in the store's brief mirror — exactly the
+    // state of any worktree that did not generate this run.
+    await backingStore.put(
+      workflowBriefKey(briefRelPath),
+      Buffer.from(`name: ${briefId}\ntype: weapon\nprompt: a sword\n`),
+    );
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-approve-hydrate-'));
+    storeRoot = path.join(root, 'store');
+    publicAssetsDir = path.join(root, 'public', 'assets');
+    manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    backingStore = new LocalRunStore(storeRoot);
+    app = buildServer({
+      repoRoot: root,
+      // Deliberately absent locally: the ONLY copy of the run is in the store.
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('preserves the manual anchor sidecar, the brief type, and the durable sourceRun', async () => {
+    await seedStoreRun();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // 1. Manual anchor outranks the derived sidecar, same as a local approval.
+    expect(body.anchor).toEqual({ x: 3, y: 4, source: 'manual' });
+    expect(body.effectiveAnchorSource).toBe('manual');
+    // 2. The brief was restored from the store mirror, so `type` is real.
+    expect(body.type).toBe('weapon');
+    // 3. sourceRun is the durable store identity, NOT a temp-dir derivation.
+    expect(body.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
+    expect(body.sourceRun).not.toContain('external-');
+    expect(body.sourceRun).not.toContain(tmpdir().replace(/\\/g, '/'));
+  });
+
+  it('writes a sourceRun that parses back to the exact store coordinates', async () => {
+    await seedStoreRun();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The round-trip that `ensureRunDurable` depends on: the published pointer
+    // must resolve to the run that actually exists in the durable store.
+    expect(parseSourceRun(res.json().sourceRun)).toEqual({ briefId, runId });
+  });
+
+  it('aborts approval when restoring a mirrored brief fails transiently', async () => {
+    await seedStoreRun();
+    await app.close();
+    const store = remoteStore();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        ...store,
+        get: async (key) => {
+          if (key === workflowBriefKey(briefRelPath)) {
+            throw new Error('transient brief-store failure');
+          }
+          return store.get(key);
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('transient brief-store failure');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('still approves (with the derived anchor) when no manual anchor was authored', async () => {
+    await seedStoreRun({ withManualAnchor: false });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().anchor).toEqual({ x: 8, y: 13, source: 'derived' });
+  });
+
+  /**
+   * Explicit hard-block override (certification finding #3). The route now
+   * plumbs a STRICT boolean through to `approveVariant`, so the sidecar can do
+   * what the CLI's `--allow-hard-blocked` already could — without weakening the
+   * default, and without coercing a stray string into an override.
+   */
+  it('refuses a hard-blocked variant by default with 422', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('hard-blocked');
+  });
+
+  it('approves a hard-blocked variant with an explicit allowHardBlocked: true', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The override is RECORDED, not silently laundered: `check:manifest-hard-blocked`
+    // needs `hardBlocked:false` + the explicit human-override marker.
+    expect(res.json().judgeScorecard).toMatchObject({
+      hardBlocked: false,
+      humanHardBlockOverride: true,
+    });
+  });
+
+  it('honours an explicit allowHardBlocked: false exactly like the default', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: false },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('hard-blocked');
+  });
+
+  it.each([['true'], [1], [null], [{}]])(
+    'rejects a non-boolean allowHardBlocked (%p) with 400 instead of coercing it',
+    async (value) => {
+      await seedStoreRun({ hardBlocked: true });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/approve`,
+        headers: { 'content-type': 'application/json' },
+        payload: { variantIndex: 1, allowHardBlocked: value },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('bad-request');
+      expect(res.json().message).toContain('allowHardBlocked');
+    },
+  );
+
+  it('keeps the CI refusal ahead of the override — allowHardBlocked cannot unlock CI', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+      store: remoteStore(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('ci-refused');
+  });
+
+  it('keeps the CSRF origin guard ahead of the override', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('forbidden-origin');
+  });
+
+  /**
+   * The brief restore materializes bytes from the run store onto DISK, and a
+   * store-resident `summary.json` is only semi-trusted. Repo confinement alone
+   * is not enough — a crafted `briefPath` plus a matching mirror blob would be
+   * an arbitrary-file-create primitive. It must apply the same "YAML under
+   * briefs/" restriction the brief-edit route already applies.
+   */
+  it('refuses to materialize a non-brief path from a hostile store summary', async () => {
+    await seedStoreRun();
+    const hostileRel = '.github/workflows/pwned.yml';
+    // Repo-confined and relative — it passes `resolveRepoPath` — but it is not a brief.
+    await backingStore.put(
+      `${briefId}/${runId}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: briefId,
+          runId,
+          promptHash: 'deadbeef',
+          briefPath: hostileRel,
+          candidates: [{ index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true }],
+          chosen: { index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true },
+        }),
+      ),
+    );
+    await backingStore.put(workflowBriefKey(hostileRel), Buffer.from('name: pwned\n'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The approval proceeds (type simply stays unresolved) but NOTHING was written.
+    expect(existsSync(path.join(root, '.github', 'workflows', 'pwned.yml'))).toBe(false);
+    expect(existsSync(path.join(root, '.github', 'workflows'))).toBe(false);
+  });
+
+  it('accepts only briefs/**.yaml|.yml as a restorable brief path', () => {
+    expect(isRestorableBriefPath('briefs/draft/iron-sword.yaml')).toBe(true);
+    expect(isRestorableBriefPath('briefs/iron-sword.yml')).toBe(true);
+    expect(isRestorableBriefPath('.github/workflows/pwned.yml')).toBe(false);
+    expect(isRestorableBriefPath('src/main.ts')).toBe(false);
+    expect(isRestorableBriefPath('briefs/notes.md')).toBe(false);
+    expect(isRestorableBriefPath('not-briefs/x.yaml')).toBe(false);
+  });
+
+  // ── /accept: the SAME contract, since it is the other human acceptance route ──
+
+  /** Minimal check-in deps: enough for `runAssetCheckin` to file one issue. */
+  function acceptCheckinDeps(): CheckinRunnerDeps {
+    let tempIndex = 0;
+    return {
+      exec: async (command: string, args: readonly string[]) => {
+        if (command === 'git' && args[0] === 'diff') {
+          return {
+            code: 0,
+            stdout: `public/assets/generated/${briefId}-var-1.png\n`,
+            stderr: '',
+          };
+        }
+        if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { code: 0, stdout: 'https://github.com/nalfeo/Crawler/issues/99\n', stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      },
+      makeTempDir: async () => {
+        const worktree = path.join(root, `accept-worktree-${tempIndex++}`);
+        mkdirSync(worktree, { recursive: true });
+        return worktree;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+  }
+
+  function rebuildWithCheckinDeps(): void {
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: acceptCheckinDeps(),
+    });
+  }
+
+  it('/accept preserves the manual anchor, brief type, and durable sourceRun too', async () => {
+    await app.close();
+    await seedStoreRun();
+    rebuildWithCheckinDeps();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // /accept returns the check-in envelope, so assert on what it actually wrote.
+    const entry = composeManifestFromShards(path.dirname(manifestPath)).entries[
+      `${briefId}-var-1`
+    ] as unknown as {
+      anchor: unknown;
+      type: unknown;
+      sourceRun: string;
+    };
+    expect(entry.anchor).toEqual({ x: 3, y: 4, source: 'manual' });
+    expect(entry.type).toBe('weapon');
+    expect(entry.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
+  });
+
+  it('/accept refuses a hard-blocked variant by default and honours an explicit override', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    rebuildWithCheckinDeps();
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().error).toBe('hard-blocked');
+
+    const overridden = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(overridden.statusCode).toBe(200);
+    const entry = composeManifestFromShards(path.dirname(manifestPath)).entries[
+      `${briefId}-var-1`
+    ] as unknown as { judgeScorecard: { hardBlocked: boolean; humanHardBlockOverride: boolean } };
+    expect(entry.judgeScorecard).toMatchObject({
+      hardBlocked: false,
+      humanHardBlockOverride: true,
+    });
+  });
+
+  it('/accept rejects a non-boolean allowHardBlocked before touching the queue', async () => {
+    await app.close();
+    await seedStoreRun();
+    let listed = false;
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: {
+        ...acceptCheckinDeps(),
+        listQueuedAssets: async () => {
+          listed = true;
+          return new Map<string, QueuedAssetCheckin>();
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: 'yes' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('allowHardBlocked');
+    expect(listed).toBe(false);
+  });
+
+  it('/accept keeps its CI refusal and browser-origin refusal ahead of the override', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+      store: remoteStore(),
+      checkinDeps: acceptCheckinDeps(),
+    });
+
+    const fromBrowser = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      headers: { origin: 'http://127.0.0.1:5173' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(fromBrowser.statusCode).toBe(403);
+    expect(fromBrowser.json().error).toBe('forbidden-origin');
+
+    const fromCi = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(fromCi.statusCode).toBe(403);
+    expect(fromCi.json().error).toBe('ci-refused');
   });
 });
 

@@ -298,6 +298,38 @@ export function parseSourceRun(sourceRun: string): { briefId: string; runId: str
   return { briefId, runId };
 }
 
+/**
+ * The exact inverse of {@link parseSourceRun}: render durable store coordinates
+ * as the canonical repo-relative `sourceRun` pointer.
+ *
+ * Callers that approve from a run REMATERIALIZED outside the repo (the sidecar
+ * hydrates a remote run into an OS temp dir) must use this rather than letting
+ * `approveVariant` derive the pointer from the temp path — that derivation
+ * cannot produce a repo-relative path, so it degrades to a synthetic
+ * `generated/runs/<briefId>/external-<tmpname>` identity that
+ * {@link ensureRunDurable} can never resolve back to the run that actually
+ * exists in the store. One helper on both sides keeps the round-trip exact.
+ *
+ * FAILS CLOSED on the one pathological input where the round-trip does not
+ * hold: `parseSourceRun` locates the run by the LAST `runs` segment, so a brief
+ * literally named `runs` renders as `generated/runs/runs/<runId>` and parses
+ * back to `null`. Publishing an unresolvable pointer is precisely the failure
+ * this module exists to prevent, so it throws instead of emitting one.
+ */
+export function formatSourceRun(briefId: string, runId: string): string {
+  const pointer = `generated/runs/${briefId}/${runId}`;
+  const roundTripped = parseSourceRun(pointer);
+  if (roundTripped === null || roundTripped.briefId !== briefId || roundTripped.runId !== runId) {
+    throw new RunDurabilityError(
+      `Refusing to publish a sourceRun pointer that does not resolve back to its own run ` +
+        `coordinates: briefId='${briefId}', runId='${runId}' renders as '${pointer}', which ` +
+        `parseSourceRun reads as ${roundTripped === null ? 'unparseable' : JSON.stringify(roundTripped)}.\n` +
+        `Rename the brief so it is not a reserved path segment (e.g. 'runs'), then re-approve.`,
+    );
+  }
+  return pointer;
+}
+
 export interface EnsureRunDurableOptions {
   /** The durable store. `null` short-circuits to a typed failure. */
   readonly durable: RunStore | null;

@@ -307,6 +307,43 @@ describe('disliked sprite lifecycle planning', () => {
     ).toThrow(/ambiguous/i);
   });
 
+  /**
+   * Regression (certification finding #4): the ambiguous branch derived its
+   * concept key from `entry.briefId` by hand. Icon-batch rows carry the BATCH
+   * brief id, but the reference selector groups them by
+   * `generatedManifestConceptId` (the CELL concept), so the excluded key and
+   * the grouping key disagreed and the exclusion silently matched nothing.
+   */
+  it('excludes ambiguous icon-batch dislikes under the SAME concept key the selector groups by', () => {
+    const iconEntry = (spriteName: string, sourceRun: string): ManifestEntry => ({
+      ...entry('ability-icons', 0),
+      spriteName,
+      assetPath: `generated/${spriteName}.png`,
+      type: 'icon',
+      sourceRun,
+    });
+    const entries = {
+      'icon-fireball': iconEntry('icon-fireball', 'generated/runs/ability-icons-v2/run-a'),
+      'icon-frostbite': iconEntry('icon-frostbite', 'generated/runs/legacy-ability-icons/run-a'),
+    };
+
+    const exclusions = resolveDislikedReferenceExclusions(
+      entries,
+      new Set(['ability-icons-v2-var-0']),
+      {
+        'ability-icons-v2-var-0': {
+          disliked: true,
+          sourceRun: 'archived/run-a',
+          variantIndex: 0,
+        },
+      },
+    );
+
+    expect([...exclusions.manifestKeys].sort()).toEqual(['icon-fireball', 'icon-frostbite']);
+    // Cell concepts — NOT the batch brief id `ability-icons`.
+    expect([...exclusions.conceptIds].sort()).toEqual(['icon-fireball', 'icon-frostbite']);
+  });
+
   it('leaves a tombstoned dislike out of reference exclusions entirely', () => {
     const exclusions = resolveDislikedReferenceExclusions(
       { 'rat-var-1': entry('rat', 1) },

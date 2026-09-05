@@ -40,6 +40,11 @@
  *   - /approve, /checkin, and /accept all run their mutating work through the
  *     same process-wide `withCheckinMutationLock` so concurrent requests
  *     never race the shared art surface or the durable check-in queue.
+ *   - /approve and /accept accept an OPTIONAL strict-boolean `allowHardBlocked`
+ *     body field: the same conscious human override the CLI spells
+ *     `--allow-hard-blocked`. It is validated (never coerced) and is only
+ *     reachable AFTER the CI refusal and the origin guard, so it grants no
+ *     authority a caller did not already have.
  *
  * No business logic lives here. The sidecar is a thin HTTP shell over file
  * IO — every meaningful piece is implemented (and unit-tested) in the
@@ -135,6 +140,7 @@ import {
   mirrorBriefToStore,
   toRepoRelativePath,
 } from '../brief-durability.js';
+import { formatSourceRun } from '../run-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
 import {
@@ -581,6 +587,50 @@ function mapCheckinError(
   return { error: fallbackError, message: err instanceof Error ? err.message : String(err) };
 }
 
+/**
+ * Actionable message for a malformed `allowHardBlocked` body field. Shared by
+ * `/approve` and `/accept` so both surfaces say the same thing.
+ */
+const ALLOW_HARD_BLOCKED_MESSAGE =
+  'body.allowHardBlocked must be a boolean when present. It is a CONSCIOUS human ' +
+  'override of the judge hard-block veto, so it is never coerced from a string or ' +
+  'a number — send true or false.';
+
+/**
+ * Validate the explicit hard-block override.
+ *
+ * Returns the boolean, or `null` when the field is present but not a boolean
+ * (which the caller turns into a 400). Absent means `false`: the veto stands
+ * unless a caller consciously overrules it, exactly like the CLI's
+ * `--allow-hard-blocked` flag.
+ *
+ * Deliberately does NOT coerce: `"false"`, `0`, and `"no"` are all truthy or
+ * falsy in ways that would make an override happen (or fail to happen) by
+ * accident. This mirrors the CLI, where the override only exists as an explicit
+ * flag. It grants no new authority — the route's CI refusal and CSRF/origin
+ * guards run BEFORE this value is read, so it is only reachable from the same
+ * trusted local caller that could already approve.
+ */
+function parseAllowHardBlocked(value: unknown): boolean | null {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') return null;
+  return value;
+}
+
+/**
+ * Whether a repo-relative path may be RESTORED from the store's brief mirror.
+ *
+ * Mirrors the `PUT /api/workflow/brief` restriction: a brief is always a YAML
+ * under `briefs/`, so anything else is either a corrupt summary or an attempt
+ * to use the mirror as an arbitrary-file-write primitive. Exported for tests.
+ */
+export function isRestorableBriefPath(repoRelativePosixPath: string): boolean {
+  return (
+    repoRelativePosixPath.startsWith('briefs/') &&
+    (repoRelativePosixPath.endsWith('.yaml') || repoRelativePosixPath.endsWith('.yml'))
+  );
+}
+
 /** Number of durably-queued assets that share `issueUrl` — the batch size of that check-in. */
 function countQueuedForIssue(
   queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
@@ -681,6 +731,51 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     } catch {
       return false;
     }
+  };
+  /**
+   * Best-effort restore of the brief a hydrated run was generated from, so
+   * `approveVariant`'s `resolveBriefType` can read its declared `type:`.
+   *
+   * A store-hydrated run dir carries only the run artifacts. Its
+   * `summary.json.briefPath` still points at the repo-relative brief — but a
+   * draft brief lives under the gitignored `briefs/draft/**`, so on any worktree
+   * that did not itself generate the run the YAML is simply absent and the
+   * approval silently writes `type: null`. An untyped manifest row then drops
+   * out of every type-aware surface (reference selection favours same-`type`
+   * art; the catalog and asset search index by type), and nothing reports it.
+   *
+   * Reuses the EXISTING brief-durability mirror contract rather than inventing a
+   * per-run brief snapshot, so the sidecar's approve path resolves briefs
+   * exactly the way its read paths already do. A run that predates brief
+   * mirroring may still have no stored brief, in which case approval preserves
+   * the legacy `type: null` behavior. A transient store or filesystem failure
+   * must abort approval rather than silently publishing incomplete metadata.
+   *
+   * SECURITY: this materializes bytes from the run store onto DISK, and a
+   * store-resident `summary.json` is only semi-trusted input. Repo confinement
+   * alone is not enough — a crafted `briefPath` of `.github/workflows/x.yml`
+   * plus a matching mirror blob would create a workflow file. So it applies the
+   * SAME "must be a YAML under `briefs/`" restriction as the
+   * `PUT /api/workflow/brief` route, which is the only shape a real
+   * `summary.json.briefPath` ever has.
+   */
+  const restoreBriefContextForRunDir = async (runDir: string): Promise<void> => {
+    let briefPath: string;
+    try {
+      const summary = JSON.parse(readFileSync(path.join(runDir, 'summary.json'), 'utf8')) as {
+        briefPath?: unknown;
+      };
+      if (typeof summary.briefPath !== 'string' || summary.briefPath.trim() === '') return;
+      briefPath = summary.briefPath;
+    } catch {
+      return; // approveVariant reports an unreadable/invalid summary itself.
+    }
+    // Only repo-confined RELATIVE paths may be written. `resolveRepoPath`
+    // rejects absolute paths and `..` escapes.
+    const absPath = resolveRepoPath(deps.repoRoot, briefPath);
+    if (absPath === null) return;
+    if (!isRestorableBriefPath(toRepoRelativePath(deps.repoRoot, absPath))) return;
+    await materializeBriefFromStore(store, deps.repoRoot, absPath);
   };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
   // The sidecar owns an in-process worker so a queue consumer always exists
@@ -1928,7 +2023,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.post<{
     Params: { briefId: string; runId: string };
-    Body: { variantIndex?: unknown };
+    Body: { variantIndex?: unknown; allowHardBlocked?: unknown };
   }>('/api/runs/:briefId/:runId/approve', async (req, reply) => {
     // Constitutional §3 (Deterministic CI Only): the approve route mutates
     // checked-in repo state. We refuse from CI for the same reason
@@ -1973,7 +2068,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return { error: 'run-not-found', briefId, runId };
     }
 
-    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const body = (req.body ?? {}) as { variantIndex?: unknown; allowHardBlocked?: unknown };
     const variantIndex = body.variantIndex;
     if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
       reply.code(400);
@@ -1981,6 +2076,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         error: 'bad-request',
         message: 'body.variantIndex must be a non-negative integer',
       };
+    }
+    const allowHardBlocked = parseAllowHardBlocked(body.allowHardBlocked);
+    if (allowHardBlocked === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: ALLOW_HARD_BLOCKED_MESSAGE };
     }
 
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
@@ -2005,6 +2105,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (runDir === null) {
           reply.code(403);
           return { error: 'forbidden-path' };
+        }
+        // Parity with a local approval: restore the run's brief so the manifest
+        // entry gets its declared `type`, and point `sourceRun` at the durable
+        // store identity instead of the throwaway temp path.
+        if (hydrated !== null) {
+          await restoreBriefContextForRunDir(runDir);
         }
         const identity = resolveVariantIdentity(runDir, variantIndex);
         let alreadyApproved = false;
@@ -2033,6 +2139,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                   catalogPath,
                   publicAssetsDir,
                   repoRoot: deps.repoRoot,
+                  allowHardBlocked,
+                  ...(hydrated !== null ? { sourceRunOverride: hydrated.sourceRun } : {}),
                 });
               } catch (err) {
                 if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
@@ -2183,7 +2291,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.post<{
     Params: { briefId: string; runId: string };
-    Body: { variantIndex?: unknown };
+    Body: { variantIndex?: unknown; allowHardBlocked?: unknown };
   }>('/api/runs/:briefId/:runId/accept', async (req, reply) => {
     // CSRF guard (concern #1, ADR 0066 CTX-005): this atomic operation
     // approves AND files a GitHub issue in one shot, so binding to 127.0.0.1
@@ -2222,7 +2330,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return { error: 'forbidden-path' };
     }
 
-    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const body = (req.body ?? {}) as { variantIndex?: unknown; allowHardBlocked?: unknown };
     const variantIndex = body.variantIndex;
     if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
       reply.code(400);
@@ -2230,6 +2338,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         error: 'bad-request',
         message: 'briefId, runId, and a non-negative integer variantIndex are required.',
       };
+    }
+    const allowHardBlocked = parseAllowHardBlocked(body.allowHardBlocked);
+    if (allowHardBlocked === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: ALLOW_HARD_BLOCKED_MESSAGE };
     }
 
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
@@ -2255,6 +2368,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (runDir === null) {
           reply.code(403);
           return { error: 'forbidden-path' };
+        }
+        // Same hydration parity as /approve — see that route.
+        if (hydrated !== null) {
+          await restoreBriefContextForRunDir(runDir);
         }
 
         let identity: VariantIdentity;
@@ -2311,6 +2428,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                     catalogPath,
                     publicAssetsDir,
                     repoRoot: deps.repoRoot,
+                    allowHardBlocked,
+                    ...(hydrated !== null ? { sourceRunOverride: hydrated.sourceRun } : {}),
                   });
                 } catch (err) {
                   // `already-approved` (exact requested slot already has this
@@ -3462,9 +3581,28 @@ function resolveQueuedBriefId(briefPath: string): string {
 
 interface HydratedRunDir {
   readonly runDir: string;
+  /**
+   * The canonical repo-relative `sourceRun` pointer for this run, built from
+   * the DURABLE STORE identity (`<briefId>/<runId>`) rather than the temp
+   * directory the bytes were materialized into. Pass it to `approveVariant` as
+   * `sourceRunOverride`.
+   */
+  readonly sourceRun: string;
   cleanup(): void;
 }
 
+/**
+ * Materialize the subset of a store-resident run that `approveVariant` reads,
+ * into a private temp directory.
+ *
+ * The key set below is a CONTRACT with `approve.ts::resolveAnchors`, not a
+ * convenience list — anything omitted here is silently absent at approval time
+ * and degrades the manifest entry. `NN.manual-anchor.json` in particular is the
+ * HIGHEST-precedence hold anchor (an operator dragging the anchor in the
+ * gallery), is persisted to the store by `run-pipeline.ts`, and was previously
+ * dropped: a remote-store approval silently downgraded a hand-placed anchor to
+ * the derived one, with no error anywhere.
+ */
 async function hydrateRunDirForApproveFromStore(
   store: RunStore,
   briefId: string,
@@ -3478,6 +3616,8 @@ async function hydrateRunDirForApproveFromStore(
     summaryKey,
     `${prefix}processed/${paddedIndex}.png`,
     `${prefix}processed/${paddedIndex}.anchor.json`,
+    // Manual (operator-authored) hold anchor — outranks the derived sidecar.
+    `${prefix}processed/${paddedIndex}.manual-anchor.json`,
     `${prefix}processed/${paddedIndex}.anchor.cog.json`,
     `${prefix}processed/${paddedIndex}.anchor.weapon.json`,
   ];
@@ -3524,6 +3664,7 @@ async function hydrateRunDirForApproveFromStore(
   }
   return {
     runDir,
+    sourceRun: formatSourceRun(briefId, runId),
     cleanup: () => {
       rmSync(tempRoot, { recursive: true, force: true });
     },

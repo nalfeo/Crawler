@@ -121,3 +121,29 @@ for a cosmetic. This ADR is scoped to the **item-icon class**.
   inconsistent names and rely on the safety-net forever.
 - **Keep `ItemDef.icon` and just fix the two overrides.** Rejected: it preserves the indirection the
   maintainer asked to remove and does nothing for the other ~14 stuck items.
+
+## Amendment (2026-09-05): the placeholder tier is retired — placeholders never reach the resolver
+
+The ranking in Decision #1 had three tiers: bare-real > versioned-real > **placeholder (last)**. That
+third tier is now **unreachable and has been removed** from `resolveItemSprite`.
+
+The disliked-asset lifecycle work made `isRuntimeEligibleManifestEntry` the single "can the runtime
+pick this?" predicate, and `loadGeneratedManifest` applies it when building the registry — so
+`registry.entries()`, the only source `resolveItemSprite` reads, never yields a placeholder or a
+manifest-`disliked` row. Keeping `TIER_PLACEHOLDER`/`RANK_PLACEHOLDER` in the comparator was dead
+code that _described_ a precedence the code could no longer exercise, and the matching
+`!_isPlaceholderEntry(...)` arm in `PhaserBridge`'s carried-weapon path was likewise unreachable.
+
+What this changes in observable behavior: **nothing that Decision #1 promised.** A real weapon-id
+match still beats an item-concept placeholder — now because the placeholder is not a candidate at
+all, rather than because it sorts last.
+
+What it makes explicit: **placeholder-only item resolution fails closed.** When a concept's only
+manifest art is a placeholder, `resolveItemSprite` returns `null` and the caller renders its own
+non-generated fallback (the 2-character text placeholder, or the hand-picked Kenney stand-in for a
+carried weapon). This is the maintainer-confirmed contract; it is pinned by
+`tests/unit/item-sprites.test.ts` ("returns null when a concept has only placeholder manifest art").
+
+`_isPlaceholderEntry` is retained and still exported, now purely as the shared **assertion** helper
+that `PhaserBridge`, the main-scene probe lab, and the manifest regression tests use to prove the
+registry's eligibility filter has not regressed (see `tests/e2e/equipment-art-wiring.test.ts`).

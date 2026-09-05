@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildRunProvenance,
   ensureRunDurable,
+  formatSourceRun,
   hasAzureStorageCredentials,
   parseSourceRun,
   PROVENANCE_BRIEF_KEY,
@@ -33,6 +34,7 @@ import {
   RUN_PROVENANCE_VERSION,
   RunDurabilityError,
 } from '../../../scripts/sprites/run-durability.js';
+import { isSafeSourceRun } from '../../../scripts/sprites/approve.js';
 import { MirroredRunStore } from '../../../scripts/sprites/store/mirrored-store.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
@@ -44,6 +46,20 @@ const AZURE_ENV = {
 } as const;
 
 const tempDirs: string[] = [];
+
+const canCreateSymlinks = (() => {
+  const probeDir = mkdtempSync(path.join(tmpdir(), 'run-durability-symlink-'));
+  try {
+    const target = path.join(probeDir, 'target');
+    writeFileSync(target, 'probe');
+    symlinkSync(target, path.join(probeDir, 'link'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true });
+  }
+})();
 
 function makeTempDir(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'run-durability-'));
@@ -313,6 +329,52 @@ describe('parseSourceRun', () => {
   });
 });
 
+/**
+ * `formatSourceRun` is the inverse the sidecar uses when it approves from a run
+ * it rematerialized OUTSIDE the repo (a temp dir), where `approveVariant` can
+ * no longer derive a repo-relative pointer and would fall back to a synthetic
+ * `external-…` identity. The two functions must round-trip exactly, or a
+ * published `sourceRun` stops resolving to the run that exists in the store.
+ */
+describe('formatSourceRun', () => {
+  it('round-trips through parseSourceRun', () => {
+    for (const coords of [
+      { briefId: 'iron-sword', runId: '2026-01-01T00-00-00Z-abc' },
+      { briefId: 'angry-roomba-v2', runId: 'r1' },
+    ]) {
+      expect(parseSourceRun(formatSourceRun(coords.briefId, coords.runId))).toEqual(coords);
+    }
+  });
+
+  it('produces the canonical repo-relative form the manifest stores', () => {
+    expect(formatSourceRun('iron-sword', 'r1')).toBe('generated/runs/iron-sword/r1');
+  });
+
+  it('produces a pointer approveVariant accepts as a safe sourceRun override', () => {
+    expect(isSafeSourceRun(formatSourceRun('iron-sword', 'r1'))).toBe(true);
+  });
+
+  /**
+   * `parseSourceRun` locates the run by the LAST `runs` segment, so a brief
+   * literally named `runs` renders a pointer that parses back to `null`.
+   * Publishing an unresolvable `sourceRun` is exactly what this module exists to
+   * prevent, so the helper must refuse rather than emit one.
+   */
+  it('fails closed when the pointer would not parse back to its own coordinates', () => {
+    expect(() => formatSourceRun('runs', 'r1')).toThrow(RunDurabilityError);
+    expect(() => formatSourceRun('runs', 'r1')).toThrow(/does not resolve back/i);
+    // The bad pointer is never returned to a caller.
+    expect(parseSourceRun('generated/runs/runs/r1')).toBeNull();
+  });
+
+  it('fails closed on empty or separator-bearing coordinates', () => {
+    expect(() => formatSourceRun('', 'r1')).toThrow(RunDurabilityError);
+    expect(() => formatSourceRun('iron-sword', '')).toThrow(RunDurabilityError);
+    expect(() => formatSourceRun('iron/sword', 'r1')).toThrow(RunDurabilityError);
+    expect(() => formatSourceRun('iron\\sword', 'r1')).toThrow(RunDurabilityError);
+  });
+});
+
 describe('ensureRunDurable', () => {
   it('rejects publication outright when there is no durable store', async () => {
     await expect(
@@ -381,22 +443,25 @@ describe('ensureRunDurable', () => {
     expect(new Set(durable.puts).size).toBe(durable.puts.length);
   });
 
-  it('rejects symbolic links instead of uploading content outside the run directory', async () => {
-    const runDir = path.join(makeTempDir(), 'iron-sword', 'r1');
-    seedLocalRun(runDir);
-    const outside = path.join(makeTempDir(), 'outside.png');
-    writeFileSync(outside, 'outside');
-    symlinkSync(outside, path.join(runDir, 'linked.png'));
+  it.skipIf(!canCreateSymlinks)(
+    'rejects symbolic links instead of uploading content outside the run directory',
+    async () => {
+      const runDir = path.join(makeTempDir(), 'iron-sword', 'r1');
+      seedLocalRun(runDir);
+      const outside = path.join(makeTempDir(), 'outside.png');
+      writeFileSync(outside, 'outside');
+      symlinkSync(outside, path.join(runDir, 'linked.png'));
 
-    await expect(
-      ensureRunDurable({
-        durable: new FakeStore(),
-        briefId: 'iron-sword',
-        runId: 'r1',
-        localRunDir: runDir,
-      }),
-    ).rejects.toThrow(/symbolic link/);
-  });
+      await expect(
+        ensureRunDurable({
+          durable: new FakeStore(),
+          briefId: 'iron-sword',
+          runId: 'r1',
+          localRunDir: runDir,
+        }),
+      ).rejects.toThrow(/symbolic link/);
+    },
+  );
 
   it('fails closed, naming the missing keys, when content is unrecoverable', async () => {
     const durable = new FakeStore();

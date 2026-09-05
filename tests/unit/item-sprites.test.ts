@@ -116,6 +116,12 @@ describe('itemSpriteConcepts', () => {
   });
 });
 
+/**
+ * `_isPlaceholderEntry` is no longer a ranking input for `resolveItemSprite` —
+ * placeholders are excluded from the registry itself, so the resolver never
+ * sees one. It survives as the shared ASSERTION helper other layers use to
+ * prove that eligibility filter still holds, so its own semantics stay pinned.
+ */
 describe('_isPlaceholderEntry', () => {
   it('flags entries whose sourceRun is placeholder', () => {
     expect(_isPlaceholderEntry(generatedEntry({ sourceRun: 'placeholder' }))).toBe(true);
@@ -133,6 +139,19 @@ describe('_isPlaceholderEntry', () => {
     const registry = makeRegistry([['iron-ore-var-0', 'iron-ore']]);
     expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(false);
   });
+
+  /**
+   * The contract the resolver now relies on instead of ranking placeholders:
+   * a placeholder row never reaches `registry.entries()` at all.
+   */
+  it('never appears in registry.entries(), so the resolver cannot rank one', () => {
+    const registry = makeRegistry([
+      ['iron-ore-var-0', 'iron-ore'],
+      placeholder('iron-ore-placeholder', 'iron-ore'),
+    ]);
+    expect(registry.entries().map((e) => e.textureKey)).toEqual(['iron-ore-var-0']);
+    expect(registry.entries().some(_isPlaceholderEntry)).toBe(false);
+  });
 });
 
 describe('resolveItemSprite', () => {
@@ -141,10 +160,11 @@ describe('resolveItemSprite', () => {
     expect(resolveItemSprite(registry, 'nonexistent-thing', SEED)).toBeNull();
   });
 
-  it('prefers real versioned art over the placeholder (pre-migration state)', () => {
+  it('resolves versioned real art while a bare-id placeholder exists (pre-migration state)', () => {
     // Real art carries the version in its briefId (`iron-ore-v1`); the
     // placeholder keeps the bare briefId. A bare-id lookup would wrongly match
-    // the placeholder — the resolver must still pick the real art.
+    // the placeholder — but the placeholder is not in the registry at all, so
+    // the versioned real art is the only candidate.
     const registry = makeRegistry([
       ['iron-ore-v1-var-0', 'iron-ore-v1'],
       placeholder('iron-ore-placeholder', 'iron-ore'),
@@ -154,7 +174,7 @@ describe('resolveItemSprite', () => {
     expect(_isPlaceholderEntry(result!)).toBe(false);
   });
 
-  it('prefers bare real art over the placeholder (post-migration state)', () => {
+  it('resolves bare real art while a bare-id placeholder exists (post-migration state)', () => {
     const registry = makeRegistry([
       ['iron-ore-var-0', 'iron-ore'],
       placeholder('iron-ore-placeholder', 'iron-ore'),
@@ -170,13 +190,18 @@ describe('resolveItemSprite', () => {
     expect(resolveItemSprite(registry, 'iron-ore', SEED)?.textureKey).toBe('iron-ore-var-0');
   });
 
+  /**
+   * The maintainer-confirmed fail-closed contract: placeholder-only art does
+   * NOT resolve. Callers fall back to their own non-generated art rather than
+   * rendering a stand-in as if it were approved.
+   */
   it('returns null when a concept has only placeholder manifest art', () => {
     const registry = makeRegistry([placeholder('pebble-placeholder', 'pebble')]);
     expect(resolveItemSprite(registry, 'pebble', SEED)).toBeNull();
   });
 
   describe('cross-concept (weaponId) resolution — bone-club → baseball-bat', () => {
-    it('crosses to the weaponId real art instead of the item-concept placeholder', () => {
+    it('crosses to the weaponId real art when the item concept has only a placeholder', () => {
       const registry = makeRegistry([
         placeholder('bone-club-placeholder', 'bone-club'),
         ['baseball-bat-v1-var-0', 'baseball-bat-v1'],
@@ -186,7 +211,7 @@ describe('resolveItemSprite', () => {
       expect(_isPlaceholderEntry(result!)).toBe(false);
     });
 
-    it('a real weaponId match beats an item-concept placeholder GLOBALLY (not per-concept)', () => {
+    it('ranks real weaponId matches GLOBALLY (not per-concept)', () => {
       // Order the placeholder first so a naive per-concept scan would return it.
       const registry = makeRegistry([
         placeholder('bone-club-placeholder', 'bone-club'),

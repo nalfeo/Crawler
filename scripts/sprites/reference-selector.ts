@@ -49,7 +49,7 @@ const WEIGHT_FLOOR = 0.05 as const;
 export interface SelectReferencesInput {
   /** Manifest entries to choose from (typically every manifest entry). */
   readonly candidates: readonly ManifestEntry[];
-  /** The brief being generated — used for exact-briefId self-exclusion. */
+  /** The brief being generated — used for exact brief-lineage self-exclusion. */
   readonly briefName: string;
   /** The brief's declared type — same-type candidates are favoured. */
   readonly briefType: SpriteType;
@@ -117,8 +117,9 @@ interface EligibleEntry {
 
 /**
  * Apply the hard eligibility floor + compute a sampling weight. Returns `null`
- * for entries that must never be sent (placeholders, self, off-`generated/`,
- * untyped, or below the quality floor).
+ * for entries that must never be sent (placeholders, self — by selectable
+ * concept AND by brief lineage — off-`generated/`, untyped, or below the
+ * quality floor).
  */
 function toEligible(
   entry: ManifestEntry,
@@ -131,7 +132,26 @@ function toEligible(
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
   const conceptId = generatedManifestConceptId(entry);
   if (dislikedConceptIds.has(conceptId)) return null;
-  if (conceptId === normalizeGeneratedSpriteConceptId(briefName)) {
+  const briefConcept = normalizeGeneratedSpriteConceptId(briefName);
+  if (conceptId === briefConcept) {
+    return null;
+  }
+  // Self-exclusion needs BOTH keys, not just the selectable concept.
+  //
+  // `generatedManifestConceptId` resolves an icon-batch row to the CELL's own
+  // concept (`fireball`), because that is what the runtime selects. But an icon
+  // batch is generated as ONE run from ONE brief, so a regeneration of that
+  // batch would otherwise be handed its OWN previous cells as style references
+  // — the model copying last week's output, which is exactly the inbreeding the
+  // self-exclusion exists to stop. The brief-lineage key catches that; it is a
+  // strict no-op for every non-icon row, whose `briefId` already normalizes to
+  // the same value as its concept.
+  //
+  // This is deliberately NOT `generatedManifestConceptId` (see the classified
+  // exception in `tests/unit/sprites/manifest-concept-grouping.test.ts`): it is
+  // an exclusion PREDICATE about generation lineage, not a grouping key. The
+  // grouping key one line above is, and must stay, the shared helper.
+  if (normalizeGeneratedSpriteConceptId(entry.briefId || entry.spriteName) === briefConcept) {
     return null;
   }
   // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`

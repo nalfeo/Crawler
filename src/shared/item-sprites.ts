@@ -15,11 +15,22 @@
  *
  * So this resolver gathers candidates across BOTH the item id and its
  * `weaponId`, then ranks the whole pool GLOBALLY by quality tier
- * (bare-real > versioned-real > placeholder) so a real weapon-id match always
- * beats an item-concept placeholder. Ties break deterministically
+ * (bare-real > versioned-real) so a real weapon-id match always beats a
+ * weaker item-concept match. Ties break deterministically
  * (real-anchor → lower version → item-id over weapon-id → seeded pick), so the
  * same item shows the same variant for a whole run while still varying across
  * items/runs.
+ *
+ * Placeholders are NOT part of that ranking, because they are not part of the
+ * pool: `loadGeneratedManifest` filters every entry through
+ * `isRuntimeEligibleManifestEntry`, so `registry.entries()` — the only source
+ * this resolver reads — never yields a placeholder or a disliked entry. An item
+ * whose ONLY manifest art is a placeholder therefore resolves to `null` and the
+ * caller falls back to its non-generated art. That fail-closed outcome is the
+ * confirmed contract; do not reintroduce placeholder ranking to "rescue" it.
+ * {@link _isPlaceholderEntry} is kept as the shared assertion helper that other
+ * layers (PhaserBridge, the probe lab, the manifest regression tests) use to
+ * PROVE that contract still holds.
  *
  * The generic registry (`lookup`/`variants`/`pickGeneratedVariant`) is left
  * untouched — enemy/tile/set-piece resolution is unaffected. See
@@ -29,7 +40,11 @@
  * `SeededRandom`.
  */
 import { getEquipmentDefForItem } from './equipmentDefs.js';
-import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-assets.js';
+import {
+  isPlaceholderManifestEntry,
+  type GeneratedSpriteEntry,
+  type GeneratedSpriteRegistry,
+} from './generated-assets.js';
 import { SeededRandom } from './random.js';
 import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
 import { themedArtConceptsFor } from './data/equipment-theme-sets.js';
@@ -37,7 +52,6 @@ import { themedArtConceptsFor } from './data/equipment-theme-sets.js';
 /** Quality tiers for a candidate entry; lower is preferred. */
 const TIER_BARE_REAL = 0;
 const TIER_VERSIONED_REAL = 1;
-const TIER_PLACEHOLDER = 2;
 
 /**
  * Provenance ranks, applied BEFORE quality tier; lower is preferred.
@@ -45,12 +59,13 @@ const TIER_PLACEHOLDER = 2;
  * Tier alone is not enough once themed art exists: a themed BARE entry would
  * outrank the item's OWN versioned art, silently replacing item-specific art
  * with a theme's generic piece. Ranking provenance first encodes the intended
- * precedence exactly — own real art, then themed real art, then any
- * placeholder — and keeps tier as the tie-break inside a rank.
+ * precedence exactly — own real art, then themed real art — and keeps tier as
+ * the tie-break inside a rank.
  */
 const RANK_OWN_REAL = 0;
 const RANK_THEMED_REAL = 1;
-const RANK_PLACEHOLDER = 2;
+/** Sentinel above every real rank; seeds the "best rank so far" reduction. */
+const RANK_WORST = RANK_THEMED_REAL + 1;
 
 /** A manifest entry paired with the deterministic keys used to rank item art. */
 interface ScoredCandidate {
@@ -68,9 +83,16 @@ interface ScoredCandidate {
  * True when an entry is a placeholder (not real approved art). Keyed on the
  * pipeline's own signals, never on sprite `type` (real `classified-dossier`
  * art is typed `character`, so `type` is not a reliable discriminator).
+ *
+ * NOT used by {@link resolveItemSprite}: the registry it reads has already
+ * excluded placeholders (see this module's docstring). This stays exported as
+ * the shared ASSERTION helper for the layers that still see raw entries —
+ * `PhaserBridge`, the probe lab, and the manifest regression tests — so a
+ * regression in the registry's eligibility filter is caught rather than
+ * silently re-ranked.
  */
 export function _isPlaceholderEntry(entry: GeneratedSpriteEntry): boolean {
-  return entry.sourceRun === 'placeholder' || entry.assetPath.endsWith('-placeholder.png');
+  return isPlaceholderManifestEntry(entry);
 }
 
 /**
@@ -273,14 +295,16 @@ const resolvedItemSpriteCache = new WeakMap<
 >();
 
 /**
- * Resolve the generated sprite for an inventory item, preferring its REAL
- * approved art over any placeholder, deterministically for a given `seed`.
+ * Resolve the generated sprite for an inventory item, deterministically for a
+ * given `seed`.
  *
- * Returns null only when neither the item id nor its weaponId matches any
- * generated entry at all; when the sole match is a placeholder, that placeholder
- * is returned (real art is merely preferred). Pass a stable per-(item, run) seed
- * — e.g. `hashStringToSeed(itemId) ^ worldSeed` — so the item keeps one variant
- * for a whole run.
+ * Returns null when no eligible generated entry matches the item id, its
+ * weaponId, or its themed concepts. That INCLUDES the case where the only
+ * manifest art for the concept is a placeholder: the registry excludes
+ * placeholders, so placeholder-only resolution fails closed and the caller uses
+ * its own non-generated fallback. Pass a stable per-(item, run) seed — e.g.
+ * `hashStringToSeed(itemId) ^ worldSeed` — so the item keeps one variant for a
+ * whole run.
  */
 export function resolveItemSprite(
   registry: GeneratedSpriteRegistry,
@@ -315,17 +339,10 @@ function computeItemSprite(
       if (match === null) {
         continue;
       }
-      const placeholder = _isPlaceholderEntry(entry);
-      const tier = placeholder
-        ? TIER_PLACEHOLDER
-        : match.bare
-          ? TIER_BARE_REAL
-          : TIER_VERSIONED_REAL;
-      const rank = placeholder
-        ? RANK_PLACEHOLDER
-        : conceptOrder >= themedFromIndex
-          ? RANK_THEMED_REAL
-          : RANK_OWN_REAL;
+      // No placeholder tier/rank: `registry.entries()` is already filtered to
+      // runtime-eligible art, so every candidate here is real approved art.
+      const tier = match.bare ? TIER_BARE_REAL : TIER_VERSIONED_REAL;
+      const rank = conceptOrder >= themedFromIndex ? RANK_THEMED_REAL : RANK_OWN_REAL;
       scored.push({ entry, rank, tier, version: match.version, conceptOrder });
       break; // an entry counts once, against its best (earliest) concept
     }
@@ -334,7 +351,7 @@ function computeItemSprite(
     return null;
   }
 
-  const bestRank = scored.reduce((min, s) => (s.rank < min ? s.rank : min), RANK_PLACEHOLDER);
+  const bestRank = scored.reduce((min, s) => (s.rank < min ? s.rank : min), RANK_WORST);
   const tierCandidates = scored.filter((s) => s.rank === bestRank).sort(compareCandidates);
 
   // The leading group that is equally good on every deterministic key holds
