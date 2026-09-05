@@ -50,9 +50,18 @@ sprite-pipeline, sprite-workflow
   and 0 pending promotions.
 - Post-apply dry-run reported 0 removable, 25 retained groups, 0 pending
   promotions, and 0 reference updates; persisted tombstone closure passed.
+- After review hardening removed name-similarity deletion authority, the final
+  dry-run reported 0 removable, 20 provenance-backed retained groups, and 7
+  unresolved stale annotation keys. Those unresolved assets remain preserved;
+  only exact keys, valid tombstones, or explicit source-run provenance can
+  authorize future deletion.
 - Combined targeted lifecycle/runtime suite: 227/227 passed.
 - Independent QA hard-gate matrix: 494 passed, 1 intentional environment-gated
   skip; all nine lifecycle requirements passed.
+- Final post-review lifecycle/runtime matrix: 336/336 passed. Review fixes also
+  isolated cosmetic variant rolls from gameplay RNG, preserved cumulative
+  tombstone-authorized queue deletions across later approvals and queue repair,
+  and extended closure to live test/data/tool references.
 - `npm run verify:fast` passed after integration.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
