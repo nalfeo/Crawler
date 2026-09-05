@@ -158,10 +158,10 @@ export const manifestEntrySchema = z
       .optional(),
     /**
      * True when this entry is a placeholder stand-in (not real generated art).
-     * Placeholder entries are excluded from the derived sprite-catalog rows.
-     * Optional so pre-flag manifests still parse; the catalog composer falls
-     * back to an `-placeholder` asset-path check when this is absent. See
-     * `generated-catalog.ts#isPlaceholderManifestEntry`.
+     * Placeholder entries are excluded from runtime selection and derived
+     * sprite-catalog rows. Optional so pre-flag manifests still parse; the
+     * canonical predicate falls back to an `-placeholder` asset-path check when
+     * this is absent.
      */
     placeholder: z.boolean().optional(),
     /**
@@ -200,6 +200,17 @@ const generatedManifestSchema = z
 
 export type ManifestEntry = z.infer<typeof manifestEntrySchema>;
 export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
+
+/**
+ * True when `entry` is a placeholder stand-in rather than real generated art.
+ *
+ * Explicit metadata is authoritative. The asset-path fallback covers legacy
+ * entries whose normal key and spriteName do not reveal their placeholder status.
+ */
+export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
+  if (typeof entry.placeholder === 'boolean') return entry.placeholder;
+  return entry.assetPath.includes('-placeholder');
+}
 
 /**
  * Multi-frame animation descriptor for a generated spritesheet entry. The
@@ -263,12 +274,13 @@ export interface GeneratedSpriteEntry {
  *
  * A concept may have MULTIPLE accepted variants. The registry groups entries by
  * normalized concept ID:
- *   - `variants(id)` returns every accepted, non-disliked variant (sorted by
- *     `variantIndex`), so callers can pick one (see `pickGeneratedVariant`).
+ *   - `variants(id)` returns every accepted, non-disliked, non-placeholder
+ *     variant (sorted by `variantIndex`), so callers can pick one (see
+ *     `pickGeneratedVariant`).
  *   - `lookup(id)` returns the first variant — a deterministic, back-compat
  *     convenience for callers that don't care which variant they get.
  *   - `entries()` is the flattened list of eligible variants across all concepts,
- *     so the preloader never queues disliked textures.
+ *     so the preloader never queues disliked or placeholder textures.
  */
 export interface GeneratedSpriteRegistry {
   readonly version: typeof GENERATED_MANIFEST_VERSION;
@@ -302,7 +314,7 @@ export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpr
   const byBrief = new Map<string, GeneratedSpriteEntry[]>();
   const flat: GeneratedSpriteEntry[] = [];
   for (const [manifestKey, entry] of Object.entries(manifest.entries)) {
-    if (entry.disliked === true) {
+    if (entry.disliked === true || isPlaceholderManifestEntry(entry)) {
       continue;
     }
     // textureKey comes from the manifest MAP KEY (unique per variant) so

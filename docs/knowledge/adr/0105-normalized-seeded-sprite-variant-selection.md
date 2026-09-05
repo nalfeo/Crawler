@@ -46,17 +46,19 @@ without eventually disagreeing with approval and migration tooling.
   the shared helper. The existing sprite taxonomy imports that primitive and
   retains its public `bareConcept` API, establishing one canonical rule without
   reversing the dependency graph.
-- **ELG-001**: Treat presence in the generated manifest as acceptance. A
-  manifest entry explicitly marked `disliked: true` is excluded while building
-  the runtime registry, including its flattened preload list. The lifecycle
-  tooling may consume the same normalization and eligibility helpers when it
-  persists state.
-- **RNG-001**: When an entity is assigned an appearance key whose normalized
-  concept has multiple eligible variants, assign its roll from `world.rng`, the
-  world's `SeededRandom`, exactly once. Non-selectable concepts retain their
-  existing cosmetic fallback roll and do not perturb the gameplay RNG stream. A
-  fixed seed and fixed spawn sequence therefore produce the same selection
-  sequence.
+- **ELG-001**: Treat presence in the generated manifest as acceptance. Manifest
+  entries marked `disliked: true` or identified by the canonical placeholder
+  predicate are excluded while building the runtime registry, including its
+  flattened preload list. The lifecycle tooling may consume the same
+  normalization and eligibility helpers when it persists state.
+- **RNG-001**: When an entity is assigned a new non-empty appearance key, derive
+  a private `SeededRandom` from `hashStringToSeed` over the world seed, the
+  entity's monotonic render generation (its spawn-sequence identity), and the
+  appearance key, then assign one roll from that private stream. Registry
+  presence and eligible-variant count never affect this step, and cosmetic
+  selection consumes zero values from shared `world.rng`. A fixed seed and
+  fixed spawn sequence therefore produce the same selection sequence in visual
+  and default headless runs.
 - **SEL-001**: Put roll-to-variant selection in one shared helper. It normalizes
   the requested concept, clamps the roll into `[0, 1)`, and indexes the
   deterministically sorted eligible pool. The visual texture resolver and the
@@ -68,9 +70,10 @@ without eventually disagreeing with approval and migration tooling.
 - **APR-001**: Runtime eligibility is read-only. This contract never
   auto-approves art and does not infer acceptance from generation output.
 - **LFC-001**: A stale dislike key may reconcile to an accepted manifest entry
-  only by the tuple `(sourceRun basename, variantIndex)`. Zero matches and
-  multiple matches are both hard ambiguity failures; concept-name similarity
-  must never authorize a mutation.
+  only by the tuple `(sourceRun basename, variantIndex)`. Zero matches remain
+  fail-closed and unresolved without mutating or throwing; multiple matches are
+  a hard ambiguity failure. Concept-name similarity must never authorize a
+  mutation.
 - **LFC-002**: Pending annotation overlays are not deletion authority. The
   existing queue flow must first promote them into tracked annotations before a
   lifecycle transaction may act on them.
@@ -100,10 +103,10 @@ without eventually disagreeing with approval and migration tooling.
 
 ### Negative
 
-- **NEG-001**: Selecting among multiple eligible variants advances `world.rng`
-  once when the appearance key is assigned. Replay stability is preserved, but
-  old builds and new builds may produce different later random outcomes for
-  seeds that spawn a variant-selectable concept.
+- **NEG-001**: Cosmetic assignment now owns a separate hash-input contract.
+  Changing the hash fields, render-generation sequence, or appearance key
+  changes which eligible variant an entity receives, even though gameplay RNG
+  state and outcomes remain untouched.
 - **NEG-002**: Adding another historical role prefix requires an explicit
   normalizer update rather than an implicit fuzzy-name heuristic.
 - **NEG-003**: Exact-pinned surfaces do not automatically gain per-entity
@@ -132,13 +135,13 @@ without eventually disagreeing with approval and migration tooling.
   until every producer and artifact is migrated, and future stale aliases can
   silently recreate the bug.
 
-### Select with a hash-derived private RNG
+### Select with the shared gameplay RNG
 
-- **ALT-003**: **Description**: Derive a new `SeededRandom` from world and entity
-  fields, preserving the gameplay RNG stream as the prior mob-appearance ADR
-  specified.
-- **ALT-004**: **Rejection Reason**: The feature explicitly requires selection
-  through the world's `SeededRandom` and reproducibility by spawn sequence.
+- **ALT-003**: **Description**: Draw the appearance roll from `world.rng` when a
+  normalized concept has multiple eligible variants.
+- **ALT-004**: **Rejection Reason**: Registry injection differs between the real
+  game and default headless runs, so conditional shared-stream draws break
+  real/headless seed parity and can alter later gameplay outcomes.
 
 ### Filter dislikes only in the renderer
 

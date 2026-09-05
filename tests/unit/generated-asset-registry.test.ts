@@ -140,6 +140,35 @@ describe('loadGeneratedManifest', () => {
     expect(registry.lookup('iron-sword')).not.toBeNull();
     expect(registry.lookup('throwing-star')).not.toBeNull();
   });
+
+  it('excludes placeholders from a normalized concept that also has real art', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'npc-welcome-goon-var-0': {
+          ...baseEntry,
+          briefId: 'npc-welcome-goon',
+          spriteName: 'npc-welcome-goon-var-0',
+          assetPath: 'generated/npc-welcome-goon-placeholder.png',
+          variantIndex: 0,
+          placeholder: true,
+        },
+        'welcome-goon-v2-var-1': {
+          ...baseEntry,
+          briefId: 'welcome-goon-v2',
+          spriteName: 'welcome-goon-v2-var-1',
+          assetPath: 'generated/welcome-goon-v2-var-1.png',
+          variantIndex: 1,
+        },
+      },
+    });
+
+    expect(registry.variants('welcome-goon').map((entry) => entry.textureKey)).toEqual([
+      'welcome-goon-v2-var-1',
+    ]);
+    expect(registry.entries().map((entry) => entry.textureKey)).toEqual(['welcome-goon-v2-var-1']);
+    expect(registry.size).toBe(1);
+  });
 });
 
 describe('loadGeneratedManifest — multiple variants per brief', () => {

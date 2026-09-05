@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
+import {
+  buildGeneratedSpriteRegistry,
+  type GeneratedSpriteEntry,
+} from '../../src/shared/generated-assets.js';
 import {
   _isPlaceholderEntry,
   itemSpriteConcepts,
@@ -48,6 +51,24 @@ function placeholder(
 }
 
 const SEED = 42;
+
+function generatedEntry(overrides: Partial<GeneratedSpriteEntry> = {}): GeneratedSpriteEntry {
+  return {
+    briefId: 'iron-ore',
+    textureKey: 'iron-ore-var-0',
+    assetPath: 'assets/generated/iron-ore-var-0.png',
+    anchor: { x: 8, y: 8 },
+    centerOfGravity: { x: 8, y: 8 },
+    anchorIsDefault: false,
+    approvedAt: '2026-07-08T00:00:00.000Z',
+    sourceRun: 'run-real',
+    variantIndex: 0,
+    sensorScore: '8/8',
+    judgeScore: '2',
+    facingDirection: 'right',
+    ...overrides,
+  };
+}
 
 describe('itemSpriteConcepts', () => {
   it('resolves a plain item to just its id', () => {
@@ -97,19 +118,15 @@ describe('itemSpriteConcepts', () => {
 
 describe('_isPlaceholderEntry', () => {
   it('flags entries whose sourceRun is placeholder', () => {
-    const registry = makeRegistry([placeholder('iron-ore-placeholder', 'iron-ore')]);
-    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(_isPlaceholderEntry(generatedEntry({ sourceRun: 'placeholder' }))).toBe(true);
   });
 
   it('flags entries whose assetPath ends with -placeholder.png even if sourceRun differs', () => {
-    const registry = makeRegistry([
-      [
-        'iron-ore-placeholder',
-        'iron-ore',
-        { assetPath: 'assets/generated/iron-ore-placeholder.png' },
-      ],
-    ]);
-    expect(_isPlaceholderEntry(registry.entries()[0]!)).toBe(true);
+    expect(
+      _isPlaceholderEntry(
+        generatedEntry({ assetPath: 'assets/generated/iron-ore-placeholder.png' }),
+      ),
+    ).toBe(true);
   });
 
   it('does not flag real approved art', () => {
@@ -153,11 +170,9 @@ describe('resolveItemSprite', () => {
     expect(resolveItemSprite(registry, 'iron-ore', SEED)?.textureKey).toBe('iron-ore-var-0');
   });
 
-  it('falls back to the placeholder only when a concept has no real art', () => {
+  it('returns null when a concept has only placeholder manifest art', () => {
     const registry = makeRegistry([placeholder('pebble-placeholder', 'pebble')]);
-    const result = resolveItemSprite(registry, 'pebble', SEED);
-    expect(result?.textureKey).toBe('pebble-placeholder');
-    expect(_isPlaceholderEntry(result!)).toBe(true);
+    expect(resolveItemSprite(registry, 'pebble', SEED)).toBeNull();
   });
 
   describe('cross-concept (weaponId) resolution — bone-club → baseball-bat', () => {
