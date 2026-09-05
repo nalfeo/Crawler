@@ -159,6 +159,8 @@ export const mainSceneProbe = {
       ({ value, learn }) => window.__mainSceneProbe!.primeSpellBrokerStock(value, learn),
       { value: gold, learn: learnFirstOffer },
     ),
+  primeSpellBrokerQuestIntro: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeSpellBrokerQuestIntro()),
   getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
     page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
