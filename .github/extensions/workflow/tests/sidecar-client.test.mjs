@@ -346,7 +346,12 @@ test('probeHealth reports up for the current managed sidecar version', async () 
   assert.equal(health.version, EXPECTED_VERSION);
 });
 
-test('probeHealth: down when azure queue controllers are not ready', async () => {
+test('REGRESSION: healthy sidecar with idle opt-in controllers still exposes mirrored runs', async () => {
+  const mirroredRuns = Array.from({ length: 5 }, (_, index) => ({
+    briefId: `mirrored-${index}`,
+    runId: `run-${index}`,
+    candidateCount: 12,
+  }));
   const client = createSidecarClient({
     baseUrl: BASE,
     workspaceRoot: '/repo/a',
@@ -361,10 +366,14 @@ test('probeHealth: down when azure queue controllers are not ready', async () =>
           issueIngester: { running: false },
         },
       },
+      '/api/runs': { json: { runs: mirroredRuns } },
     }),
   });
   const health = await client.probeHealth();
-  assert.equal(health.state, 'down');
+  const runs = health.state === 'up' ? await client.listRuns() : [];
+  assert.equal(health.state, 'up');
+  assert.equal(runs.length, 5);
+  assert.deepEqual(runs, mirroredRuns);
 });
 
 test('probeHealth: wrong-repo when the sidecar serves a different checkout', async () => {

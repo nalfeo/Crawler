@@ -19,8 +19,7 @@ import {
   getSessionServerPorts,
   normalizeWorkspaceKey,
 } from '../../../../scripts/shared/session-server-ports.js';
-
-const EXPECTED_SIDECAR_VERSION = '0.3.0-managed';
+import { isSidecarReady } from '../../shared/sidecar-readiness.mjs';
 
 /**
  * Legacy fixed port the monolith falls back to when no per-worktree port can be
@@ -468,16 +467,6 @@ async function readResponse(response, fallback) {
   throw error;
 }
 
-function isSidecarStrictReady(payload) {
-  if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
-    return false;
-  }
-  if (payload.queueBackend === 'azure-queue') {
-    return payload.worker?.running === true && payload.issueIngester?.running === true;
-  }
-  return true;
-}
-
 /**
  * Build a read-only sidecar client bound to `baseUrl`. Every method throws on a
  * non-2xx response (callers in the harness proxy translate that into a controlled
@@ -757,7 +746,7 @@ export function createSidecarClient(options) {
         return { ...health, state: 'wrong-repo' };
       }
     }
-    if (!isSidecarStrictReady(payload)) {
+    if (!isSidecarReady(payload)) {
       return { ...health, state: 'down' };
     }
     return health;
