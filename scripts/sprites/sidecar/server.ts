@@ -650,7 +650,10 @@ interface AcceptedResponse {
   readonly briefId: string;
   readonly variantIndex: number;
   readonly assetPath: string;
-  readonly issueUrl: string;
+  /** Legacy asset-checkin issue, absent when assets/queue is the durable authority. */
+  readonly issueUrl?: string;
+  /** Canonical durable queue branch, present for lifecycle-aware acceptance. */
+  readonly queueBranch?: string;
   readonly assetCount: number;
 }
 
@@ -2446,12 +2449,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
               },
               publish: async (accepted, plan) => {
                 // The legacy `asset-checkin` issue flow cannot express a
-                // DELETION, so any lifecycle removal (and the tombstones that
-                // record it) is published to the durable `assets/queue` branch
-                // first. With nothing removed this is skipped entirely and the
-                // route behaves exactly as it always has.
+                // deletion or annotation-only change. For such a transaction,
+                // assets/queue is the single durable commit point: once this
+                // push succeeds there must be no later fallible remote action
+                // that could report failure and trigger only a local rollback.
                 if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) {
-                  await runQueueCommit(
+                  const durableQueue = await runQueueCommit(
                     deps.repoRoot,
                     [
                       {
@@ -2474,6 +2477,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
                     },
                   );
+                  response = {
+                    state: 'queued',
+                    existing: durableQueue.status === 'noop',
+                    briefId: accepted.briefId,
+                    variantIndex,
+                    assetPath: accepted.assetPath,
+                    queueBranch: durableQueue.branch,
+                    assetCount: 1,
+                  } satisfies AcceptedResponse;
+                  return;
                 }
                 try {
                   const result = await runAssetCheckin(
@@ -2511,13 +2524,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       return;
                     }
                   }
-                  // A destructive or annotation-changing plan MUST roll back
-                  // rather than strand a local lifecycle change no one else can
-                  // see — a retry would compute an empty delta and never
-                  // republish it. With no lifecycle change the local approval
-                  // survives and the operator retries, exactly as this route
-                  // behaved before it joined the transaction.
-                  if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) throw err;
                   response = mapCheckinError(reply, err);
                 }
               },

@@ -1662,6 +1662,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
 
     const queued = new Map<string, QueuedAssetCheckin>();
     const publishedRemovals: string[] = [];
+    const checkinDeps = makeCheckinDeps(queued, () => {
+      throw new Error('legacy check-in must not run after lifecycle queue publication');
+    });
     app = buildServer({
       repoRoot: root,
       runsDir,
@@ -1669,11 +1672,19 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       publicAssetsDir,
       manifestPath,
       env: {},
-      checkinDeps: makeCheckinDeps(queued),
+      checkinDeps,
       // The destructive half of an acceptance publishes to `assets/queue`;
       // capture it here instead of reaching a real git remote.
       queueCommitDeps: {
-        exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+        exec: async (_command, args) => {
+          if (args[0] === 'diff' && args.includes('--cached')) {
+            return { code: 1, stdout: '', stderr: '' };
+          }
+          if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+            return { code: 0, stdout: 'queue-commit-sha\n', stderr: '' };
+          }
+          return { code: 0, stdout: '', stderr: '' };
+        },
         copyArtSurface: async () => undefined,
         removeArtSurface: async (_worktree, removals) => {
           for (const removal of removals) publishedRemovals.push(removal.manifestKey);
@@ -1692,8 +1703,14 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       payload: { variantIndex: 1 },
     });
 
-    expect(res.json()).toMatchObject({ state: 'queued', existing: false });
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: false,
+      queueBranch: 'assets/queue',
+    });
+    expect(res.json().issueUrl).toBeUndefined();
     expect(res.statusCode).toBe(200);
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
     // The deletion was carried to the durable queue, not left local-only.
     expect(publishedRemovals).toEqual([`${briefId}-var-0`]);
     // Accepting the replacement retired the disliked variant of ITS concept…

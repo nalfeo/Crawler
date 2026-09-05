@@ -89,6 +89,11 @@ without eventually disagreeing with approval and migration tooling.
   mutation lock. Validate the complete staged result, including zero dangling
   references, before atomically applying it; any validation failure leaves the
   repository unchanged.
+- **LFC-005**: Acceptance transactions that remove assets or change lifecycle
+  annotations publish exactly once to the canonical `assets/queue` branch.
+  Legacy `asset-checkin` issue publication cannot represent those changes and
+  must not run afterward: a second fallible remote write would make local
+  rollback unable to restore the already-published queue state.
 
 ## Consequences
 

@@ -966,7 +966,11 @@ async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
   await entry.pushState?.(await buildState(instanceId));
   try {
     const result = await entry.client.acceptVariant(briefId, runId, variantIndex);
-    if (!result || result.state !== 'queued' || typeof result.issueUrl !== 'string') {
+    if (
+      !result ||
+      result.state !== 'queued' ||
+      (typeof result.issueUrl !== 'string' && typeof result.queueBranch !== 'string')
+    ) {
       throw new Error('Sidecar returned an invalid acceptance result.');
     }
     entry.acceptance.set(key, result);

@@ -82,6 +82,10 @@ sprite-pipeline, sprite-workflow
   self-exclusion per cell concept. Annotation/removal-only transactions publish
   to `assets/queue`, and AST-backed source guards classify every approval caller
   and manifest-concept derivation.
+- A lifecycle-changing sidecar `/accept` uses `assets/queue` as its single
+  durable commit point and skips the superseded issue publisher. The response
+  identifies the queue branch, so no later remote failure can trigger a
+  local-only rollback after the complete transaction is already durable.
 - The final review round also unified tooling concept keys with the runtime
   normalizer, made conscious icon-batch hard-block overrides durable, added an
   always-on repository tombstone closure test, let the hourly reconciler
@@ -92,8 +96,10 @@ sprite-pipeline, sprite-workflow
   165/165; Sprite Editor tests passed 57/57; the certification-focused matrix
   passed 250 tests with 1 Windows symlink-permission skip; lifecycle closure
   remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
-  0 reference updates; and `npm run verify:fast` passed 4,223 tests with 1
-  environment-gated skip.
+  0 reference updates; `npm run verify:fast` passed 4,223 tests with 1
+  environment-gated skip; and the final queue commit-point follow-up passed
+  149/149 sidecar tests, 278/278 Workflow extension tests, and a 168/168
+  `verify:fast` changed-test selection.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.
@@ -107,8 +113,10 @@ sprite-pipeline, sprite-workflow
   `load-reference-pngs` behavior; did not port in-memory-only provenance,
   palette-membership stubs, incomplete pixel-art dependencies, or divergent
   request context.
-- Left Workflow preview extraction to its dedicated owner and did not modify
-  `.github/extensions/workflow/**`.
+- Left Workflow preview/reference extraction to its dedicated owner. The only
+  `.github/extensions/workflow/**` integration is the minimal acceptance-result
+  handling needed to represent canonical `assets/queue` success when no legacy
+  asset-checkin issue is created.
 
 ## Cleanup inventory
 
