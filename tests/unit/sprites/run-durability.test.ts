@@ -120,7 +120,7 @@ function seedLocalRun(runDir: string): void {
   mkdirSync(path.join(runDir, 'processed'), { recursive: true });
   writeFileSync(path.join(runDir, PROVENANCE_PROMPT_KEY), '{"provenanceVersion":1}');
   writeFileSync(path.join(runDir, PROVENANCE_BRIEF_KEY), 'name: iron-sword\n');
-  writeFileSync(path.join(runDir, 'summary.json'), '{"runId":"r1"}');
+  writeFileSync(path.join(runDir, 'summary.json'), '{"brief":"iron-sword","runId":"r1"}');
   writeFileSync(path.join(runDir, 'sheet-01.png'), Buffer.from([0x89, 0x50]));
   writeFileSync(path.join(runDir, 'processed', '01.png'), Buffer.from([0x89, 0x50]));
 }
@@ -399,6 +399,26 @@ describe('ensureRunDurable', () => {
     expect(result.backfilled).toContain('iron-sword/r1/summary.json');
     // Nested review artifacts travel too, not just the top-level required set.
     expect(result.backfilled).toContain('iron-sword/r1/processed/01.png');
+  });
+
+  it('refuses a local summary whose identity disagrees with its durable coordinates', async () => {
+    const runDir = path.join(makeTempDir(), 'iron-sword', 'r1');
+    seedLocalRun(runDir);
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({ brief: 'rat', runId: 'other-run' }),
+    );
+    const durable = new FakeStore();
+
+    await expect(
+      ensureRunDurable({
+        durable,
+        briefId: 'iron-sword',
+        runId: 'r1',
+        localRunDir: runDir,
+      }),
+    ).rejects.toThrow(/summary provenance must match exactly/);
+    expect(durable.puts).toEqual([]);
   });
 
   it('is idempotent — a second call uploads nothing and still verifies', async () => {

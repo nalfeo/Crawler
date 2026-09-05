@@ -30,7 +30,11 @@ import {
   safeJoin,
 } from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
-import { ensureRunDurable, parseSourceRun } from '../../../scripts/sprites/run-durability.js';
+import {
+  ensureRunDurable,
+  parseSourceRun,
+  RunDurabilityError,
+} from '../../../scripts/sprites/run-durability.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type {
@@ -1630,6 +1634,33 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
   });
 
+  it('returns a structured refusal when accept cannot prove run durability', async () => {
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      ensureApprovalRunDurable: () =>
+        Promise.reject(new RunDurabilityError('required durable provenance is missing')),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'not-durable',
+      message: 'required durable provenance is missing',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
   it('runs the accept route through the disliked-asset lifecycle transaction', async () => {
     await app.close();
     const generatedDir = path.join(publicAssetsDir, 'generated');
@@ -2769,6 +2800,32 @@ describe('store-backed /approve hydration parity', () => {
     expect(res.json().message).toContain('required artifacts are missing');
     expect(res.json().message).toContain('provenance/prompt.json');
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('refuses a remote run whose summary identity disagrees with its store coordinates', async () => {
+    await seedStoreRun();
+    await backingStore.put(
+      `${briefId}/${runId}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: 'rat',
+          runId: 'other-run',
+          candidates: [{ index: 1, passed: true, combinedPassed: true }],
+        }),
+      ),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: 'approve-failed' });
+    expect(res.json().message).toContain('summary provenance must match exactly');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', 'rat-var-1.png'))).toBe(false);
   });
 
   it('aborts approval when restoring a mirrored brief fails transiently', async () => {

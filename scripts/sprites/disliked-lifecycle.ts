@@ -246,6 +246,7 @@ function mergePendingAnnotations(
     const annotation = record?.annotation;
     if (annotation?.disliked !== true) continue;
     sprites[key] = {
+      ...(tracked.sprites[key] ?? {}),
       favorite: false,
       disliked: true,
       comment: annotation.comment ?? '',
@@ -793,6 +794,8 @@ export function validateDislikedLifecycleClosure(
       typeof tombstone.assetPath !== 'string' ||
       typeof tombstone.sourceRun !== 'string' ||
       tombstone.sourceRun.length === 0 ||
+      (tombstone.replacementKey !== undefined &&
+        (typeof tombstone.replacementKey !== 'string' || tombstone.replacementKey.length === 0)) ||
       typeof tombstone.variantIndex !== 'number' ||
       !Number.isInteger(tombstone.variantIndex) ||
       tombstone.variantIndex < 0 ||

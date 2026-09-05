@@ -213,6 +213,51 @@ describe('disliked sprite lifecycle planning', () => {
     expect(plan.annotations.sprites['rat-var-1']?.tombstone?.annotationKeys).toEqual(['rat-var-1']);
   });
 
+  it('preserves historical tombstone metadata while promoting a pending dislike', () => {
+    const root = makeRoot();
+    const historicalTombstone = {
+      manifestKey: 'rat-var-0',
+      conceptId: 'rat',
+      replacementKey: 'rat-var-1',
+      assetPath: 'generated/rat-var-0.png',
+      sourceRun: 'generated/runs/rat/run-0',
+      variantIndex: 0,
+      annotationKeys: ['rat-var-0'],
+      removedAt: '2026-01-02T00:00:00.000Z',
+    };
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {},
+      trackedAnnotations: annotations({
+        'rat-var-0': {
+          disliked: true,
+          comment: 'tracked',
+          sourceRun: 'generated/runs/rat/run-0',
+          variantIndex: 0,
+          tombstone: historicalTombstone,
+          reconciliation: { outcome: 'unmatched', annotationKey: 'rat-var-0' },
+        },
+      }),
+      pendingAnnotations: {
+        'rat-var-0': {
+          base: { disliked: true, comment: 'tracked', tombstone: historicalTombstone },
+          annotation: { disliked: true, comment: 'pending edit' },
+        },
+      },
+      pendingDislikedKeys: new Set(['rat-var-0']),
+    });
+
+    expect(plan.promotedPendingCount).toBe(1);
+    expect(plan.annotations.sprites['rat-var-0']).toMatchObject({
+      disliked: true,
+      comment: 'pending edit',
+      sourceRun: 'generated/runs/rat/run-0',
+      variantIndex: 0,
+      tombstone: historicalTombstone,
+    });
+    expect(plan.annotations.sprites['rat-var-0']?.reconciliation).toBeUndefined();
+  });
+
   it('reconciles a stale lineage annotation only by source lineage and variant index', () => {
     const root = makeRoot();
     const plan = buildDislikedLifecyclePlan({

@@ -27,8 +27,8 @@ sprite-pipeline, sprite-workflow
 - Excluded exact disliked references and every same-normalized-concept alias from
   generation references without generating or auto-approving replacement art.
 - Removed 28 disliked variants from mixed groups (28 manifest shards and their
-  manifest-directed PNGs), retained 25 all-disliked groups, promoted 0 pending
-  dislikes, and preserved unmatched stale annotation `faerie-boss-var-1`.
+  manifest-directed PNGs), retained 20 provenance-backed all-disliked groups,
+  promoted 0 pending dislikes, and preserved 7 unresolved stale annotation keys.
 
 ## Files touched
 
@@ -90,6 +90,9 @@ sprite-pipeline, sprite-workflow
   path without rerouting later accepts for the same concept. Local and remote
   approvals now fail before mutation unless complete run provenance is durably
   present or backfilled.
+- Publication durability now also requires `summary.json` brief/run identity
+  to match its storage coordinates before any backfill or lifecycle mutation,
+  and pending-overlay promotion preserves historical tombstones and provenance.
 - The final review round also unified tooling concept keys with the runtime
   normalizer, made conscious icon-batch hard-block overrides durable, added an
   always-on repository tombstone closure test, let the hourly reconciler
@@ -97,13 +100,15 @@ sprite-pipeline, sprite-workflow
   scoped pending-overlay promotion to the explicitly accepted concepts.
 - Final local evidence: `npm run test:sprites` passed 2,575 tests with 2
   intentional environment-gated skips; the runtime integration matrix passed
-  165/165; Sprite Editor tests passed 57/57; the certification-focused matrix
+  165/165 while driving the real `src/engine/sim/simulation-step.ts` and
+  `src/game/ai/simulation-step.ts` pipelines with fixed seeds; Sprite Editor
+  tests passed 57/57; the certification-focused matrix
   passed 250 tests with 1 Windows symlink-permission skip; lifecycle closure
   remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
   0 reference updates; `npm run verify:fast` passed 4,223 tests with 1
   environment-gated skip; and the exact replacement-retry/provenance follow-up
-  passed 511 tests with 1 intentional environment skip across the 12 affected
-  sprite suites, 278/278 Workflow extension tests, and a 404/404 `verify:fast`
+  passed 515 tests with 1 intentional environment skip across the 12 affected
+  sprite suites, 278/278 Workflow extension tests, and a 437/437 `verify:fast`
   changed-test selection.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated

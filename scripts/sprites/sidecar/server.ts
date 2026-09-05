@@ -144,6 +144,7 @@ import {
   ensureRunDurable,
   formatSourceRun,
   resolvePublicationDurableStore,
+  RunDurabilityError,
 } from '../run-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
@@ -2585,6 +2586,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           };
         }
         return response;
+      } catch (err) {
+        if (err instanceof ApproveError) return mapApproveError(reply, err);
+        reply.code(500);
+        return {
+          error: err instanceof RunDurabilityError ? 'not-durable' : 'accept-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
       } finally {
         hydrated?.cleanup();
       }

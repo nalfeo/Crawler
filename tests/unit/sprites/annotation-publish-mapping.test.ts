@@ -33,6 +33,7 @@ const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotat
 const QUEUE_TIP_TOMBSTONE = {
   manifestKey: 'rat-var-0',
   conceptId: 'rat',
+  replacementKey: 'rat-var-1',
   assetPath: 'generated/rat-var-0.png',
   sourceRun: 'generated/runs/rat/run-0',
   variantIndex: 0,

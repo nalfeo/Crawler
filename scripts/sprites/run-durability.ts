@@ -350,6 +350,34 @@ export interface EnsureRunDurableResult {
   readonly verified: readonly string[];
 }
 
+function validateLocalRunCoordinates(localRunDir: string, briefId: string, runId: string): void {
+  const summaryPath = path.join(localRunDir, 'summary.json');
+  if (!existsSync(summaryPath)) return;
+
+  let summary: unknown;
+  try {
+    summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as unknown;
+  } catch {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json is not valid JSON.`,
+    );
+  }
+  if (typeof summary !== 'object' || summary === null) {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json is not an object.`,
+    );
+  }
+
+  const record = summary as { readonly brief?: unknown; readonly runId?: unknown };
+  if (record.brief !== briefId || record.runId !== runId) {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json identifies ` +
+        `${String(record.brief)}/${String(record.runId)} instead. Run storage coordinates and ` +
+        `summary provenance must match exactly.`,
+    );
+  }
+}
+
 /**
  * Backfill-then-verify that a run is durably persisted. MUST be awaited
  * successfully before any git-backed publication of that run's output.
@@ -373,6 +401,7 @@ export async function ensureRunDurable(
   const backfilled: string[] = [];
   const localRunDir = options.localRunDir ?? null;
   if (localRunDir !== null && existsSync(localRunDir)) {
+    validateLocalRunCoordinates(localRunDir, briefId, runId);
     for (const rel of walkFiles(localRunDir)) {
       const key = `${prefix}/${rel}`;
       if (await durable.has(key)) continue;
