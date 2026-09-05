@@ -25,9 +25,15 @@ import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
 } from '../../src/game/floor3Scenario.js';
-import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import {
+  arenaDirectorSystem,
+  confirmFloor4GreenRoomExit,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from '../../src/game/floor4Scenario.js';
 import { floor6DefenseDirectorSystem } from '../../src/game/floor6Scenario.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import { RoomRole } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('scenario definitions', () => {
@@ -328,12 +334,25 @@ describe('scenario definitions', () => {
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');
     });
 
-    it('floor4 returns cleared_floor on rehearsal victory with matching presentation copy', () => {
+    it('floor4 returns cleared_floor after confirmed Green Room victory with matching presentation copy', () => {
       const scenario = getScenarioDefinition('floor4');
       const world = createTestWorld({ seed: 44, floor: 4 });
       const player = spawnPlayer(world, 0, 0);
       const phase = getFloorManifest('floor4')!.floor4!.phase;
       initializeFloor4Scenario(world, player);
+      const movePlayerToGreenRoom = (): void => {
+        const greenRoom = world.floorMap?.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+        if (!greenRoom || !world.floorMap) {
+          throw new Error('expected a Green Room');
+        }
+        const target = world.floorMap.tileToWorld(
+          Math.floor(greenRoom.bounds.x + greenRoom.bounds.width / 2),
+          Math.floor(greenRoom.bounds.y + greenRoom.bounds.height / 2),
+        );
+        world.stores.position.x[player] = target.x;
+        world.stores.position.y[player] = target.y;
+        world.playerInSafeRoom = true;
+      };
 
       expect(scenario.getRunOutcome(world)).toBeNull();
       world.elapsedMs += phase.countdownMs;
@@ -349,6 +368,12 @@ describe('scenario definitions', () => {
         arenaDirectorSystem(world);
         world.elapsedMs += phase.intermissionMs;
         arenaDirectorSystem(world);
+        movePlayerToGreenRoom();
+        if (act < phase.actCount) {
+          expect(confirmFloor4GreenRoomExit(world, player)).toBe(true);
+        } else {
+          expect(confirmFloor4StairDescend(world, player)).toBe(true);
+        }
       }
 
       expect(scenario.getRunOutcome(world)).toBe('cleared_floor');

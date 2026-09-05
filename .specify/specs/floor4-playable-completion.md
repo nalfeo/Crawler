@@ -100,19 +100,17 @@ Command: `BehaviorTreeAI` + `runHeadless({ seed: 404, floorId: 'floor4', ... })`
 | `waveTelemetry`                         | `wavesReleased 40`, `enemiesSpawned 249`, `enemiesCut 101`, `debtDiscarded 23`, `gateTelegraphsArmed 133` |
 | `headlinerTelemetry`                    | `spawned 5`, `defeated 5`, `chestsSpawned 5`, `chestsForceResolved 0`, `overtimeStarted 0`                |
 | `actIncome`                             | 5 entries, acts 1–5                                                                                       |
-| terminal timeline entry                 | `VICTORY` @ frame `36487`, reason `slice2-auto-stairs`                                                    |
+| terminal timeline entry                 | `VICTORY`, reason `floor4-stairs-confirmed`                                                               |
 | phase-timeline fingerprint (17 entries) | `COUNTDOWN` → (`WAVES:n` → `HEADLINE:n` → `INTERMISSION:n`) × 5 → `VICTORY`                               |
 
-Every `INTERMISSION → next phase` transition is logged with reason
-`slice2-auto-green-room-exit` (acts 1–4) or `slice2-auto-stairs` (act 5 →
-`VICTORY`) — the pre-existing, **already-documented** "empty broadcast
-rehearsal" placeholder from `floor4-arena.md`'s "Slice-2 deviation" note, not a
-new defect.
+Every `INTERMISSION → next phase` transition must be logged with a public
+interaction reason: `green-room-exit` (acts 1–4) or `floor4-stairs-confirmed`
+(act 5 → `VICTORY`). The prior `slice2-auto-*` rehearsal placeholders are not
+valid completion evidence for this slice.
 
-**First failed criterion (headless):** C1–C4 and C6–C8 pass. **C5 passes only in
-its weaker "resolved" form** (every intermission is entered, banks act income,
-and is left) — not in its strict "resolves through its public scenario/UI
-interaction" form. See §First failed criterion.
+**Required criterion (headless):** C1–C8 pass only when every intermission is
+entered, banks act income, and leaves through its public Green Room / terminal
+exit interaction.
 
 **Conclusion:** headless already satisfies the "beatable" contract. No headless
 runtime fix was required.
@@ -265,47 +263,15 @@ victory. This field is a minimal, additive telemetry exposure (no gameplay
 change) needed to make the e2e test — and any human watching the lab — able to
 observe Floor 4 completion at all.
 
-## First failed criterion — C5 (open, both runners)
+## Public interaction criterion — C5 (required, both runners)
 
 The epic's slice 1 defines completion as including "each intermission resolves
 through its public scenario/UI interaction," and the epic review gate forbids
-"phase skipping." Floor 4's intermission-to-next-act and final-stairs
-transitions are still driven purely by `arenaDirectorSystem`'s own phase timer
-(`'slice2-auto-green-room-exit'` / `'slice2-auto-stairs'`) — this is the
-pre-existing, already-documented "empty broadcast rehearsal" from
-`floor4-arena.md`'s "Slice-2 deviation" note, not something this session
-introduced or silently accepted without flagging.
-
-Additionally confirmed this session: `confirmFloor4StairDescend`/
-`onStairDescend` are **currently dead code** for Floor 4 in both runners —
-headless only calls `onStairDescend` when `scenario.autoSelectKeptCompanion` is
-set (Floor 4 has none), and the visual stairs-confirmation modal only triggers
-when the scenario defines `stairConfirmation` (Floor 4 has none, unlike Floor
-3's `FLOOR_3_STAIR_CONFIRMATION`). There is no physical Green Room exit or
-stairs prop wired for Floor 4 at all yet.
-
-**This is not a runner-only shortcut** — the timer-driven advance lives in
-shared `src/game/floor4Scenario.ts`, executed identically by both runners, so it
-does not break headless/visual parity. It does not yet satisfy the stricter
-"public interaction" criterion. Closing it is `floor4-arena.md` slice 5 (the real
-Green Room transaction) plus new `BehaviorTreeAI` navigate-and-interact logic —
-a materially larger feature than "fix the smallest verified defect that blocks
-beatability," and out of proportion to the user's literal ask for this session
-("must be beatable... balance/win rate out of scope"). Flagged here, in the ADR,
-and in the handoff for explicit follow-up planning rather than silently
-implied complete.
-
-**How C5's shortfall is kept visible rather than prose-only.** Both gates run a
-separate, isolated `it.fails` test asserting the criterion's actual bar — that
-at least one `INTERMISSION` exit carries a reason OUTSIDE the shared-timer
-allowlist (`slice2-auto-green-room-exit`, `slice2-auto-stairs`). Today every
-exit is inside that allowlist, so the inner assertion fails and `it.fails`
-records that as the expected, documented result — never as C5 evidence. When
-`floor4-arena.md` slice 5 replaces the timer with a real Green Room/stairs
-interaction, the inner assertion starts passing, which flips `it.fails` into an
-_unexpected_ pass and breaks the test, forcing the implementing session to drop
-`.fails` in both gates and flip this table's C5 row to "met" together, instead
-of letting C5 quietly change meaning.
+"phase skipping." The headless and visual gates therefore assert the exact
+transition reasons emitted by the shared public confirmations:
+`green-room-exit` for acts 1–4 and `floor4-stairs-confirmed` for act 5. A return
+of the old `slice2-auto-green-room-exit` / `slice2-auto-stairs` rehearsal
+reasons is a regression.
 
 ## Baseline commands (reproducible)
 

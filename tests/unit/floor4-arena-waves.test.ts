@@ -10,7 +10,12 @@ import {
   Team,
 } from '../../src/core/index.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { arenaDirectorSystem, initializeFloor4Scenario } from '../../src/game/floor4Scenario.js';
+import {
+  arenaDirectorSystem,
+  confirmFloor4GreenRoomExit,
+  confirmFloor4StairDescend,
+  initializeFloor4Scenario,
+} from '../../src/game/floor4Scenario.js';
 import {
   capturePlayerCarryover,
   type PlayerCarryoverSnapshot,
@@ -28,6 +33,7 @@ import {
 } from '../../src/shared/data/floor3/species.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
+import { RoomRole } from '../../src/shared/map-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import type { Floor4WaveWindowState } from '../../src/shared/floor-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -74,6 +80,29 @@ function setupFloor4WithCarryover(playerCarryover: PlayerCarryoverSnapshot, seed
 function advance(world: GameWorld, ms: number): void {
   world.elapsedMs += ms;
   arenaDirectorSystem(world);
+}
+
+function movePlayerToGreenRoom(world: GameWorld): number {
+  const player = query(world.ecs, [Player, Position])[0];
+  if (player === undefined) {
+    throw new Error('expected a player');
+  }
+  const greenRoom = world.floorMap?.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+  if (!greenRoom || !world.floorMap) {
+    throw new Error('expected a Green Room');
+  }
+  const target = world.floorMap.tileToWorld(
+    Math.floor(greenRoom.bounds.x + greenRoom.bounds.width / 2),
+    Math.floor(greenRoom.bounds.y + greenRoom.bounds.height / 2),
+  );
+  world.stores.position.x[player] = target.x;
+  world.stores.position.y[player] = target.y;
+  world.playerInSafeRoom = true;
+  return player;
+}
+
+function exitGreenRoom(world: GameWorld): void {
+  expect(confirmFloor4GreenRoomExit(world, movePlayerToGreenRoom(world))).toBe(true);
 }
 
 function arena(world: GameWorld) {
@@ -352,6 +381,8 @@ describe('floor4 gate telegraphs', () => {
     const armedCount = arena(world).waveTelemetry.gateTelegraphsArmed;
 
     advance(world, 1);
+    expect(arena(world).phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+    exitGreenRoom(world);
     expect(arena(world).phase).toEqual({ kind: 'WAVES', act: 2 });
     expect(waveWindow(world).armedTelegraphs.some((armed) => armed.waveIndex === 0)).toBe(true);
     expect(arena(world).waveTelemetry.gateTelegraphsArmed).toBe(armedCount);
@@ -444,6 +475,11 @@ describe('floor4 multi-act wave hand-off', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      if (act < phase.actCount) {
+        exitGreenRoom(world);
+      } else {
+        expect(confirmFloor4StairDescend(world, movePlayerToGreenRoom(world))).toBe(true);
+      }
     }
 
     expect(arena(world).phase).toEqual({ kind: 'VICTORY' });
@@ -464,6 +500,7 @@ describe('floor4 concurrency cap and spawn debt', () => {
       defeatActiveHeadliner(world);
       advance(world, phase.headlineWindowMs);
       advance(world, phase.intermissionMs);
+      exitGreenRoom(world);
     }
     expect(arena(world).phase).toEqual({ kind: 'WAVES', act: phase.actCount });
     advance(world, 1);
