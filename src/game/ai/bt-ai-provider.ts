@@ -123,6 +123,7 @@ import {
   denUnlockGoalId,
 } from '../floor2Scenario.js';
 import { floor3KeptCompanionDescendGateSatisfied } from '../floor3Scenario.js';
+import { isFloor4TerminalIntermission } from '../floor4Scenario.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import {
   getActiveWeapon,
@@ -7932,7 +7933,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       return this.findFloor3ProgressObjective(world, playerX, playerY);
     }
     if (world.floorId === 'floor4') {
-      return this.findFloor4ProgressObjective(world, playerX, playerY);
+      const floor4Target = this.findFloor4ProgressObjective(world, playerX, playerY);
+      if (floor4Target) {
+        return floor4Target;
+      }
     }
     const objective = floorScenario?.objective;
     if (!floorScenario || !objective) {
@@ -8346,9 +8350,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       greenRoom.y,
       playerX,
       playerY,
-      phase.act < 5
-        ? `Heading to the Green Room exit for act ${phase.act + 1}`
-        : 'Heading to the Green Room exit to claim Floor 4 victory',
+      isFloor4TerminalIntermission(world)
+        ? 'Heading to the Green Room exit to claim Floor 4 victory'
+        : `Heading to the Green Room exit for act ${phase.act + 1}`,
     );
   }
 

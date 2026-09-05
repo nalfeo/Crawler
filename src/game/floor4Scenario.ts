@@ -11,8 +11,9 @@
  *
  * Key contracts:
  *
- * - **The stairs stay gated by `INTERMISSION(5)` (FR8.3).** Slice 2 exposes the
- *   same phase-gated `confirmFloor4StairDescend` contract used by later slices.
+ * - **The stairs stay gated by the terminal intermission (FR8.3).** Slice 2
+ *   exposes the same phase-gated `confirmFloor4StairDescend` contract used by
+ *   later slices.
  * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
  *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
  *   generic floor HUD timer.
@@ -120,7 +121,6 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 export const FLOOR4_STALL_BACKSTOP_GOAL_ID = 'floor4-stall-backstop';
 
 const FLOOR4_PLAYER_STAT_SOURCE_ID = 'floor4-manifest-player';
-const FLOOR4_ACTS: readonly Floor4ActIndex[] = [1, 2, 3, 4, 5];
 const FLOOR4_KEPT_COMPANION_LEVEL: number =
   ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
 
@@ -330,8 +330,8 @@ function floor4ArenaState(world: GameWorld): Floor4ArenaState | undefined {
 }
 
 function nextFloor4Act(act: Floor4ActIndex): Floor4ActIndex | null {
-  const next = FLOOR4_ACTS[FLOOR4_ACTS.indexOf(act) + 1];
-  return next ?? null;
+  const next = act + 1;
+  return next <= getFloor4Config().phase.actCount ? (next as Floor4ActIndex) : null;
 }
 
 function floor4ActEndMs(act: Floor4ActIndex): number {
@@ -1343,7 +1343,7 @@ function isPlayerInFloor4GreenRoom(world: GameWorld, playerEid?: number): boolea
 export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
   const state = floor4ArenaState(world);
   const phase = state?.phase;
-  if (!state || phase?.kind !== 'INTERMISSION' || phase.act >= 5) {
+  if (!state || phase?.kind !== 'INTERMISSION') {
     return false;
   }
   const nextAct = nextFloor4Act(phase.act);
@@ -1354,17 +1354,19 @@ export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number)
   return true;
 }
 
-export function isFloor4StairDescendAvailable(world: GameWorld, playerEid?: number): boolean {
+export function isFloor4TerminalIntermission(world: GameWorld): boolean {
   const phase = floor4ArenaState(world)?.phase;
-  return (
-    phase?.kind === 'INTERMISSION' && phase.act === 5 && isPlayerInFloor4GreenRoom(world, playerEid)
-  );
+  return phase?.kind === 'INTERMISSION' && nextFloor4Act(phase.act) === null;
+}
+
+export function isFloor4StairDescendAvailable(world: GameWorld, playerEid?: number): boolean {
+  return isFloor4TerminalIntermission(world) && isPlayerInFloor4GreenRoom(world, playerEid);
 }
 
 /**
- * Floor 4's stairs are gated on `INTERMISSION(5)` (FR8.3). That phase arrives
- * with the final Green Room transaction; confirmation requires the same public
- * Green Room position gate as earlier intermission exits.
+ * Floor 4's stairs are gated on the terminal intermission (FR8.3). That phase
+ * arrives with the final Green Room transaction; confirmation requires the
+ * same public Green Room position gate as earlier intermission exits.
  */
 export function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boolean {
   if (!world || !isFloor4StairDescendAvailable(world, playerEid)) {

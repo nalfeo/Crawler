@@ -63,6 +63,7 @@ import {
   confirmFloor4StairDescend,
   initializeFloor4Scenario,
   isFloor4StairDescendAvailable,
+  isFloor4TerminalIntermission,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
@@ -419,10 +420,10 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
   };
 }
 
-/** Floor 4's terminal marker is the public Green Room exit during act-5 intermission. */
+/** Floor 4's terminal marker is the public Green Room exit during the final intermission. */
 function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
   const arena = world.floorExtendedState?.floor4Arena;
-  if (!arena || arena.phase.kind !== 'INTERMISSION' || arena.phase.act !== 5 || !world.floorMap) {
+  if (!arena || !isFloor4TerminalIntermission(world) || !world.floorMap) {
     return null;
   }
   const greenRoom = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
@@ -438,7 +439,7 @@ function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
     visible: true,
     locked: !isFloor4StairDescendAvailable(world),
-    label: '▼ GREEN ROOM EXIT',
+    label: '▼ FLOOR EXIT',
   };
 }
 

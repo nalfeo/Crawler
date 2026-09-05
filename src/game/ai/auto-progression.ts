@@ -478,11 +478,10 @@ export function autoFloor4ProgressionSystem(world: GameWorld, playerEid: number)
   if (world.floorId !== 'floor4' || phase?.kind !== 'INTERMISSION' || !isInSafeContext(world)) {
     return;
   }
-  if (phase.act < 5) {
-    confirmFloor4GreenRoomExit(world, playerEid);
-  } else {
-    confirmFloor4StairDescend(world, playerEid);
+  if (confirmFloor4GreenRoomExit(world, playerEid)) {
+    return;
   }
+  confirmFloor4StairDescend(world, playerEid);
 }
 
 /**
