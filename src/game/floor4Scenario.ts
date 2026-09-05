@@ -50,7 +50,6 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { applyDamage, clearEntityStores } from '../core/helpers.js';
-import { isPointInSafeSpace } from '../core/safe-space.js';
 import { spawnRosterCompanion } from '../core/spawners/companions.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
@@ -71,7 +70,13 @@ import {
   buildFloor4ActWaveManifests,
   type Floor4WaveScheduleConfig,
 } from '../shared/floor4-waves.js';
-import { BiomeType, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  type ArenaFeedGate,
+  type MapConfig,
+  type RoomData,
+} from '../shared/map-types.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { pushAnnouncement } from '../shared/announcement-events.js';
 import { pushVfxEvent } from '../shared/vfx-events.js';
@@ -121,6 +126,7 @@ import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 export const FLOOR4_STALL_BACKSTOP_GOAL_ID = 'floor4-stall-backstop';
 
 const FLOOR4_PLAYER_STAT_SOURCE_ID = 'floor4-manifest-player';
+const FLOOR4_ACTS: readonly Floor4ActIndex[] = [1, 2, 3, 4, 5];
 const FLOOR4_KEPT_COMPANION_LEVEL: number =
   ABILITY_MILESTONE_LEVELS[ABILITY_MILESTONE_LEVELS.length - 1] ?? 0;
 
@@ -331,7 +337,10 @@ function floor4ArenaState(world: GameWorld): Floor4ArenaState | undefined {
 
 function nextFloor4Act(act: Floor4ActIndex): Floor4ActIndex | null {
   const next = act + 1;
-  return next <= getFloor4Config().phase.actCount ? (next as Floor4ActIndex) : null;
+  if (next > getFloor4Config().phase.actCount || !FLOOR4_ACTS.includes(next as Floor4ActIndex)) {
+    return null;
+  }
+  return next as Floor4ActIndex;
 }
 
 function floor4ActEndMs(act: Floor4ActIndex): number {
@@ -1330,14 +1339,36 @@ export function arenaDirectorSystem(world: GameWorld): void {
   }
 }
 
+function floor4RoomContainsTile(room: RoomData, tx: number, ty: number): boolean {
+  if (room.interiorCells && room.interiorCells.length > 0) {
+    return room.interiorCells.some((cell) => cell.x === tx && cell.y === ty);
+  }
+  const {
+    bounds: { x, y, width, height },
+  } = room;
+  return tx >= x && tx < x + width && ty >= y && ty < y + height;
+}
+
 function isPlayerInFloor4GreenRoom(world: GameWorld, playerEid?: number): boolean {
   const eid = playerEid ?? query(world.ecs, [Player, Position])[0];
   if (eid === undefined) {
     return false;
   }
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
   const x = world.stores.position.x[eid];
   const y = world.stores.position.y[eid];
-  return x !== undefined && y !== undefined && isPointInSafeSpace(world, x, y);
+  if (x === undefined || y === undefined) {
+    return false;
+  }
+  const greenRoom = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+  if (!greenRoom) {
+    return false;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  return floor4RoomContainsTile(greenRoom, tile.x, tile.y);
 }
 
 export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
