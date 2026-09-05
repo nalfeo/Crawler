@@ -12,7 +12,7 @@
  * Key contracts:
  *
  * - **The stairs stay gated by the terminal intermission (FR8.3).** Slice 2
- *   exposes the same phase-gated `confirmFloor4StairDescend` contract used by
+ *   exposes the same phase-gated `confirmFloor4GreenRoomInteraction` contract used by
  *   later slices.
  * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
  *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
@@ -1396,7 +1396,7 @@ function isPlayerAtFloor4GreenRoomExit(
   return Math.hypot(x - marker.positionFt.x, y - marker.positionFt.y) <= marker.radiusFt;
 }
 
-export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
+function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
   const state = floor4ArenaState(world);
   const marker = getFloor4GreenRoomExitMarker(world);
   if (
@@ -1430,7 +1430,7 @@ function isFloor4StairDescendAvailable(world: GameWorld, playerEid?: number): bo
  * arrives with the final Green Room transaction; confirmation requires the
  * same public Green Room marker gate as earlier intermission exits.
  */
-export function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boolean {
+function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boolean {
   if (!world || !isFloor4StairDescendAvailable(world, playerEid)) {
     return false;
   }

@@ -12,8 +12,7 @@ import {
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   arenaDirectorSystem,
-  confirmFloor4GreenRoomExit,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
 import {
@@ -102,7 +101,7 @@ function movePlayerToGreenRoom(world: GameWorld): number {
 }
 
 function exitGreenRoom(world: GameWorld): void {
-  expect(confirmFloor4GreenRoomExit(world, movePlayerToGreenRoom(world))).toBe(true);
+  expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
 }
 
 function arena(world: GameWorld) {
@@ -478,7 +477,7 @@ describe('floor4 multi-act wave hand-off', () => {
       if (act < phase.actCount) {
         exitGreenRoom(world);
       } else {
-        expect(confirmFloor4StairDescend(world, movePlayerToGreenRoom(world))).toBe(true);
+        expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
       }
     }
 

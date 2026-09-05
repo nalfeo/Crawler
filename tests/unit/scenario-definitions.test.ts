@@ -27,8 +27,7 @@ import {
 } from '../../src/game/floor3Scenario.js';
 import {
   arenaDirectorSystem,
-  confirmFloor4GreenRoomExit,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
 import { floor6DefenseDirectorSystem } from '../../src/game/floor6Scenario.js';
@@ -385,9 +384,9 @@ describe('scenario definitions', () => {
           act < phase.actCount ? { kind: 'WAVES', act: act + 1 } : { kind: 'VICTORY' },
         );
         if (act < phase.actCount) {
-          // The direct confirmations remain the same gated contract underneath.
-          expect(confirmFloor4GreenRoomExit(world, player)).toBe(false);
-          expect(confirmFloor4StairDescend(world, player)).toBe(false);
+          // The shared confirmation stays gated: it only resolves during an
+          // intermission, so a second press mid-act does nothing.
+          expect(confirmFloor4GreenRoomInteraction(world, player)).toBe(false);
         }
       }
 
