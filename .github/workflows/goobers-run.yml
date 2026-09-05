@@ -769,8 +769,10 @@ jobs:
               if [ "$state" != "OPEN" ] || [ "$unassigned" != "true" ]; then
                 return 1
               fi
-              grep -qxF 'goobers/status:in-review' <<<"$labels"
-              return
+              if grep -qxF 'goobers/status:in-review' <<<"$labels"; then
+                return 0
+              fi
+              return 1
             fi
             if ! labels="$(
               gh api --paginate -X GET \
