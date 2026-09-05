@@ -243,6 +243,45 @@ describe('briefSchema', () => {
     expect(tooLoose.success).toBe(false);
   });
 
+  it('rejects a brief that declares only one rectangular axis', () => {
+    const widthOnly = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 3, cols: 4, emptyCells: [], nativeWidth: 1024 },
+      },
+    });
+    expect(widthOnly.success).toBe(false);
+
+    const heightOnly = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 3, cols: 4, emptyCells: [], nativeHeight: 768 },
+      },
+    });
+    expect(heightOnly.success).toBe(false);
+  });
+
+  it('defaults nativeCanvas to 1024 when no size fields are declared', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 4, cols: 4, emptyCells: [] },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.generation.sheet.nativeCanvas).toBe(1024);
+      expect(result.data.generation.sheet.nativeWidth).toBeUndefined();
+      expect(result.data.generation.sheet.nativeHeight).toBeUndefined();
+      expect(sheetPixelDimensions(result.data.generation.sheet)).toEqual({
+        width: 1024,
+        height: 1024,
+        cellWidth: 256,
+        cellHeight: 256,
+      });
+    }
+  });
+
   it('defaults generation.sheet to a 4x4 grid with 16 variants and no empty cells', () => {
     const minimal = {
       type: 'weapon',
@@ -284,6 +323,21 @@ describe('briefSchema', () => {
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message);
       expect(messages.some((m) => m.includes('more than one pixel'))).toBe(true);
+    }
+  });
+
+  it('rounds cell bounds to whole pixels when the allowed one-pixel remainder is used', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const dims = sheetPixelDimensions(result.data.generation.sheet);
+      expect(Number.isInteger(dims.cellWidth)).toBe(true);
+      expect(Number.isInteger(dims.cellHeight)).toBe(true);
+      expect(dims.cellWidth).toBe(341);
+      expect(dims.cellHeight).toBe(341);
     }
   });
 

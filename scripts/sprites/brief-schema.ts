@@ -110,15 +110,17 @@ const sheetSchema = z
     emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
     nativeWidth: z.number().int().min(256).max(2048).optional(),
     nativeHeight: z.number().int().min(256).max(2048).optional(),
-    nativeCanvas: z.number().int().min(256).max(2048).optional(),
+    nativeCanvas: z.number().int().min(256).max(2048).default(1024),
   })
   .strict()
+  .refine((sheet) => (sheet.nativeWidth === undefined) === (sheet.nativeHeight === undefined), {
+    message: 'nativeWidth and nativeHeight must either both be set or both omitted',
+    path: ['nativeWidth'],
+  })
   .default({
     rows: 4,
     cols: 4,
     emptyCells: [],
-    nativeWidth: 1024,
-    nativeHeight: 1024,
     nativeCanvas: 1024,
   });
 
@@ -132,8 +134,6 @@ const generationSchema = z
       rows: 4,
       cols: 4,
       emptyCells: [],
-      nativeWidth: 1024,
-      nativeHeight: 1024,
       nativeCanvas: 1024,
     },
   });
@@ -166,8 +166,8 @@ export function sheetPixelDimensions(sheet: SheetGeometry): {
   return {
     width,
     height,
-    cellWidth: width / sheet.cols,
-    cellHeight: height / sheet.rows,
+    cellWidth: Math.round(width / sheet.cols),
+    cellHeight: Math.round(height / sheet.rows),
   };
 }
 

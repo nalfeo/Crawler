@@ -87,6 +87,7 @@ describe('buildPrompt (single)', () => {
           emptyCells: [],
           nativeWidth: 1024,
           nativeHeight: 768,
+          nativeCanvas: 1024,
         },
       } as Brief['generation'],
     });
