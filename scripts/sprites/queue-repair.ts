@@ -222,9 +222,10 @@ async function remoteSha(
 ): Promise<string> {
   const qualifiedBranch = /^refs\/heads\//.test(branch) ? branch : `refs/heads/${branch}`;
   const stdout = await mustGit(exec, repoRoot, ['ls-remote', '--heads', remote, qualifiedBranch]);
-  const match = new RegExp(`^([0-9a-f]{40,64})\\s+${qualifiedBranch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').exec(
-    stdout,
-  );
+  const match = new RegExp(
+    `^([0-9a-f]{40,64})\\s+${qualifiedBranch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`,
+    'm',
+  ).exec(stdout);
   if (!match) throw new QueueRepairError('git-failed', `Remote branch ${branch} does not exist.`);
   return match[1]!;
 }
