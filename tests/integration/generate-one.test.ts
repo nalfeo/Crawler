@@ -471,6 +471,54 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     expect(selectedNames).not.toContain(disliked.spriteName);
   });
 
+  it('uses manifest keys for stale dislike provenance when legacy sprite names collide', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const first = {
+      ...refEntry({ briefId: 'legacy-alpha', type: 'weapon' }),
+      spriteName: 'legacy-collision',
+      sourceRun: 'generated/runs/legacy-alpha/run-1',
+      variantIndex: 1,
+    };
+    const second = {
+      ...refEntry({ briefId: 'legacy-beta', type: 'weapon' }),
+      spriteName: 'legacy-collision',
+      sourceRun: 'generated/runs/legacy-beta/run-2',
+      variantIndex: 2,
+    };
+    const liked = refEntry({ briefId: 'gamma-liked', type: 'weapon' });
+
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      loadReferenceCandidates: () => ({
+        'legacy-alpha-var-1': first,
+        'legacy-beta-var-2': second,
+        [liked.spriteName]: liked,
+      }),
+      loadDislikedReferenceNames: () => new Set(['stale-legacy-key']),
+      loadPendingDislikedReferenceNames: () => new Set(),
+      loadDislikedReferenceAnnotations: () => ({
+        'stale-legacy-key': {
+          disliked: true,
+          sourceRun: first.sourceRun,
+          variantIndex: first.variantIndex,
+        },
+      }),
+      referenceAssetExists: () => true,
+      readReference: (absolutePath: string) => Buffer.from(absolutePath),
+    });
+
+    const selectedNames =
+      result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+    expect(selectedNames).toContain(liked.spriteName);
+    expect(selectedNames).not.toContain('legacy-collision');
+  });
+
   it('excludes a queued-but-unpromoted disliked sprite via the pending annotation overlay', async () => {
     // Regression for a real gap: `markDurable` cleanup already resets the
     // TRACKED annotations file back to HEAD as soon as a queue-commit

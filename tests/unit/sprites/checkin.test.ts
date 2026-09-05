@@ -237,6 +237,10 @@ describe('runAssetCheckin', () => {
         manifestKey: 'skull-mace-var-2',
         assetPath: 'generated/skull-mace-var-2.png',
         contentHash: 'hash-a',
+        manifestEntry: {
+          assetPath: 'generated/skull-mace-var-2.png',
+          contentHash: 'hash-a',
+        },
       },
     ]);
   });

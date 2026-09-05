@@ -286,6 +286,7 @@ export interface CheckinManifest {
       readonly briefId?: string;
       readonly variantIndex?: number;
       readonly contentHash?: string;
+      readonly [key: string]: unknown;
     }
   >;
 }
@@ -321,6 +322,7 @@ export interface CheckinRunnerDeps {
     readonly manifestKey: string;
     readonly assetPath: string;
     readonly contentHash?: string;
+    readonly manifestEntry?: Readonly<Record<string, unknown>>;
   }) => Promise<DurableQueueAssetInspection>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
@@ -450,7 +452,9 @@ export async function prepareAssetCheckin(
 
   await git(deps.exec, repoRoot, ['fetch', remote, baseBranch]);
 
-  const manifest = deps.readManifest ? await deps.readManifest().catch(() => ({})) : {};
+  const manifest: CheckinManifest = deps.readManifest
+    ? await deps.readManifest().catch(() => ({}))
+    : {};
   const changedAssets = await detectApprovedAssets(
     deps.exec,
     repoRoot,
@@ -466,11 +470,14 @@ export async function prepareAssetCheckin(
   for (const asset of changedAssets) {
     const queued = queuedAssets.get(asset.assetPath);
     const legacyReconciliation = reconcileQueuedContent(queued, asset.contentHash);
+    const manifestKey = asset.manifestKey ?? manifestKeyFromAssetPath(asset.assetPath);
+    const manifestEntry = manifest.entries?.[manifestKey];
     const durableInspection = deps.inspectDurableQueueAsset
       ? await deps.inspectDurableQueueAsset({
-          manifestKey: asset.manifestKey ?? manifestKeyFromAssetPath(asset.assetPath),
+          manifestKey,
           assetPath: asset.assetPath,
           ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
+          ...(manifestEntry !== undefined ? { manifestEntry } : {}),
         })
       : { reconciliation: 'new' as const, branch: 'assets/queue' };
     const states = [

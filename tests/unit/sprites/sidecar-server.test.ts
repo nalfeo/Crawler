@@ -2314,7 +2314,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
 
     expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({ error: 'gh-failed' });
+    expect(res.json()).toMatchObject({
+      error: 'gh-failed',
+      message: expect.stringContaining('local acceptance and lifecycle changes were rolled back'),
+    });
     expect(listCalls).toBe(3);
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
     expect(
@@ -2959,6 +2962,7 @@ describe('store-backed /approve hydration parity', () => {
     expect(body.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
     expect(body.sourceRun).not.toContain('external-');
     expect(body.sourceRun).not.toContain(tmpdir().replace(/\\/g, '/'));
+    expect(existsSync(path.join(root, ...briefRelPath.split('/')))).toBe(true);
     expect(listCalls[0]).toEqual({
       prefix: `${briefId}/${runId}/`,
       authoritative: true,
@@ -3021,6 +3025,7 @@ describe('store-backed /approve hydration parity', () => {
     expect(res.json().message).toContain('required artifacts are missing');
     expect(res.json().message).toContain('provenance/prompt.json');
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(existsSync(path.join(root, ...briefRelPath.split('/')))).toBe(false);
   });
 
   it('refuses a remote run whose summary identity disagrees with its store coordinates', async () => {

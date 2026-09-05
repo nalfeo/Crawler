@@ -126,11 +126,13 @@ export interface GenerateOneOptions {
    */
   readonly manifestPath?: string;
   /**
-   * Candidate loader injection for the reference selector (tests). Defaults to
-   * reading + parsing {@link manifestPath} and returning its entries. Kenney is
-   * NOT a candidate source — references are our own approved generated sprites.
+   * Candidate loader injection for the reference selector (tests). A keyed
+   * record preserves authoritative manifest keys; arrays remain supported for
+   * simple fixtures and use `spriteName` as their fallback key.
    */
-  readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
+  readonly loadReferenceCandidates?: () =>
+    | readonly ManifestEntry[]
+    | Readonly<Record<string, ManifestEntry>>;
   /** Asset-level disliked annotation loader injection for reference hygiene. */
   readonly loadDislikedReferenceNames?: () => ReadonlySet<string>;
   /**
@@ -375,7 +377,7 @@ export async function generateSheetCore(
       // A cold start with neither yields an empty pool so the zero-eligible
       // guard below raises its actionable error instead of an opaque ENOENT.
       const manifest = loadGeneratedManifest(path.dirname(manifestPath));
-      return Object.values(manifest.entries);
+      return manifest.entries;
     });
   const loadDislikedReferenceNames =
     options.loadDislikedReferenceNames ??
@@ -426,11 +428,27 @@ export async function generateSheetCore(
   let referenceSprites: ReferenceSpriteSelection | undefined;
   const referencesStartedAt = timing.start();
   if (supportsReferenceImages) {
-    const presentCandidates = loadReferenceCandidates().filter(
-      (entry) =>
+    const loadedCandidates = loadReferenceCandidates();
+    const fallbackKeyCounts = new Map<string, number>();
+    const keyedCandidates: Array<readonly [string, ManifestEntry]> = Array.isArray(loadedCandidates)
+      ? loadedCandidates.map((entry) => {
+          const duplicateIndex = fallbackKeyCounts.get(entry.spriteName) ?? 0;
+          fallbackKeyCounts.set(entry.spriteName, duplicateIndex + 1);
+          return [
+            duplicateIndex === 0
+              ? entry.spriteName
+              : `${entry.spriteName}#fixture-${duplicateIndex}`,
+            entry,
+          ];
+        })
+      : Object.entries(loadedCandidates as Readonly<Record<string, ManifestEntry>>);
+    const presentKeyedCandidates = keyedCandidates.filter(
+      ([, entry]) =>
         isSafeGeneratedAssetPath(entry.assetPath) &&
         referenceAssetExists(resolveAssetPath(entry.assetPath)),
     );
+    const presentCandidates = presentKeyedCandidates.map(([, entry]) => entry);
+    const candidatesByManifestKey = Object.fromEntries(presentKeyedCandidates);
     const dislikedAnnotationKeys = new Set([
       ...loadDislikedReferenceNames(),
       ...loadPendingDislikedReferenceNames(),
@@ -441,9 +459,14 @@ export async function generateSheetCore(
     // concept-wide exclusion instead of silently staying reference-eligible.
     // This is read-only: it never authorizes a deletion.
     const dislikedExclusions = resolveDislikedReferenceExclusions(
-      Object.fromEntries(presentCandidates.map((entry) => [entry.spriteName, entry])),
+      candidatesByManifestKey,
       dislikedAnnotationKeys,
       loadDislikedReferenceAnnotations(),
+    );
+    const dislikedSpriteNames = new Set(
+      [...dislikedExclusions.manifestKeys].map(
+        (key) => candidatesByManifestKey[key]?.spriteName ?? key,
+      ),
     );
     const selection = selectReferences({
       candidates: presentCandidates,
@@ -454,7 +477,7 @@ export async function generateSheetCore(
       // Union the durably-tracked dislikes with anything queued-but-not-yet
       // -promoted, so a sprite disliked moments ago cannot slip back in as a
       // reference before the reconciler catches up.
-      dislikedSpriteNames: dislikedExclusions.manifestKeys,
+      dislikedSpriteNames,
       dislikedConceptIds: dislikedExclusions.conceptIds,
     });
     if (selection.selected.length === 0) {

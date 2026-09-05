@@ -320,6 +320,18 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:manifest-hard-blocked
 
+      # Disliked-sprite lifecycle closure guard (hard zero-dangling gate): every
+      # HISTORICAL disliked-sprite tombstone must still be closed — shard gone,
+      # PNG gone, tombstone intact, and zero exact manifest-key/asset-path
+      # references left anywhere in the tree. This wraps the existing read-only
+      # `disliked-lifecycle-cli.ts --dry-run` closure check, which previously
+      # ran only when a maintainer invoked it by hand; it was not a CI/verify
+      # gate, so a dangling tombstone or a resurrected exact reference could
+      # land and stay undetected indefinitely.
+      - name: Disliked-sprite lifecycle closure guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:disliked-lifecycle-closure
+
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'
         run: bash scripts/agent/lab-gate-check.sh

@@ -120,6 +120,7 @@
     "check:weight-coverage": "tsx scripts/agent/health/check-weight-coverage.ts",
     "check:sort-assets": "tsx scripts/sprites/check-sort-assets.ts",
     "check:manifest-hard-blocked": "tsx scripts/sprites/check-manifest-hard-blocked.ts",
+    "check:disliked-lifecycle-closure": "tsx scripts/sprites/disliked-lifecycle-cli.ts --dry-run",
     "check:aggregate-row-ownership": "tsx scripts/agent/health/check-aggregate-row-ownership.ts",
     "check:registry-integrity": "tsx scripts/agent/health/check-registry-integrity.ts",
     "check:asset-integrity": "tsx scripts/agent/health/check-asset-integrity.ts",

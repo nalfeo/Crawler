@@ -191,13 +191,17 @@ describe('assets/queue identity inspection', () => {
     const assetPath = 'generated/nested/demo-var-1.png';
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const contentHash = createHash('sha256').update(pngBytes).digest('hex');
-    writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
+    const queuedEntry = {
       briefId: 'demo',
       spriteName: manifestKey,
       assetPath,
       variantIndex: 1,
       contentHash,
-    });
+    };
+    writeJson(
+      path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`),
+      queuedEntry,
+    );
     const pngPath = path.join(live, 'public', 'assets', ...assetPath.split('/'));
     mkdirSync(path.dirname(pngPath), { recursive: true });
     writeFileSync(pngPath, pngBytes);
@@ -208,6 +212,23 @@ describe('assets/queue identity inspection', () => {
     const inspect = createDefaultCheckinDeps(live).inspectDurableQueueAsset!;
     await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
       reconciliation: 'duplicate',
+      branch: 'assets/queue',
+    });
+    await expect(
+      inspect({ manifestKey, assetPath, contentHash, manifestEntry: queuedEntry }),
+    ).resolves.toEqual({
+      reconciliation: 'duplicate',
+      branch: 'assets/queue',
+    });
+    await expect(
+      inspect({
+        manifestKey,
+        assetPath,
+        contentHash,
+        manifestEntry: { ...queuedEntry, sourceRun: 'generated/runs/demo/new-run' },
+      }),
+    ).resolves.toEqual({
+      reconciliation: 'content-conflict',
       branch: 'assets/queue',
     });
     await expect(inspect({ manifestKey, assetPath, contentHash: 'other-hash' })).resolves.toEqual({

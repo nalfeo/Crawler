@@ -23,6 +23,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   ASSET_CHECKIN_LABEL,
   CheckinError,
@@ -351,6 +352,9 @@ function makeInspectDurableQueueAsset(
       const queuedAssetPath = (parsed as { assetPath?: unknown }).assetPath;
       const queuedHash = (parsed as { contentHash?: unknown }).contentHash;
       if (queuedSpriteName !== asset.manifestKey || queuedAssetPath !== asset.assetPath) {
+        return { reconciliation: 'content-conflict', branch };
+      }
+      if (asset.manifestEntry !== undefined && !isDeepStrictEqual(parsed, asset.manifestEntry)) {
         return { reconciliation: 'content-conflict', branch };
       }
       if (typeof queuedHash !== 'string' || png.stdoutBytes === undefined) {

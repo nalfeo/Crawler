@@ -730,16 +730,7 @@ describe('approve-cli --icon-batch lifecycle routing', () => {
     });
   });
 
-  /**
-   * Regression (certification finding #5): `publishApprovedAssets` used to
-   * early-return on `entries.length === 0`, which silently DROPPED the durable
-   * publication of an approval whose only outcome was lifecycle state. An icon
-   * batch whose cells were all already up-to-date still retires the disliked art
-   * it replaced and writes the tombstones that record it; those were applied
-   * locally and never pushed, and the advertised "re-run to retry" then computed
-   * an empty delta — permanently stranding a destructive local change.
-   */
-  it('publishes a removal/annotation-only plan even when NOTHING was approved', async () => {
+  it('publishes lifecycle changes when an icon batch reuses an existing approved entry', async () => {
     const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const nodePath = (await import('node:path')).default;
@@ -758,9 +749,13 @@ describe('approve-cli --icon-batch lifecycle routing', () => {
       'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
     );
 
-    // Every cell was already up to date → zero approved entries, but the
-    // lifecycle still retired the art they replace.
-    mocks.approveIconBatch.mockReturnValueOnce([] as never);
+    const existingEntry = {
+      briefId: 'achv-icons',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      variantIndex: 0,
+    };
+    mocks.approveIconBatch.mockReturnValueOnce([existingEntry] as never);
     lifecycle.runAcceptedDislikedLifecycleTransaction.mockImplementationOnce(async (options) => {
       const approved = options.approve();
       const plan = {
@@ -776,10 +771,16 @@ describe('approve-cli --icon-batch lifecycle routing', () => {
     const exitCode = await main([runDir, '--icon-batch'], repoRoot);
 
     expect(exitCode).toBe(0);
-    // The critical invariant: the durable push HAPPENED despite zero approvals.
     expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
     const callArgs = (mocks.runQueueCommit.mock.calls[0] as unknown[]) ?? [];
-    expect(callArgs[1]).toEqual([]);
+    expect(callArgs[1]).toEqual([
+      {
+        assetPath: existingEntry.assetPath,
+        manifestKey: existingEntry.spriteName,
+        briefId: existingEntry.briefId,
+        variantIndex: existingEntry.variantIndex,
+      },
+    ]);
     const options = callArgs[3] as {
       removals: readonly unknown[];
       annotations: readonly unknown[];

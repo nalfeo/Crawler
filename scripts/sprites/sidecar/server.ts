@@ -818,23 +818,25 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
    * `PUT /api/workflow/brief` route, which is the only shape a real
    * `summary.json.briefPath` ever has.
    */
-  const restoreBriefContextForRunDir = async (runDir: string): Promise<void> => {
+  const restoreBriefContextForRunDir = async (runDir: string): Promise<string | null> => {
     let briefPath: string;
     try {
       const summary = JSON.parse(readFileSync(path.join(runDir, 'summary.json'), 'utf8')) as {
         briefPath?: unknown;
       };
-      if (typeof summary.briefPath !== 'string' || summary.briefPath.trim() === '') return;
+      if (typeof summary.briefPath !== 'string' || summary.briefPath.trim() === '') return null;
       briefPath = summary.briefPath;
     } catch {
-      return; // approveVariant reports an unreadable/invalid summary itself.
+      return null; // approveVariant reports an unreadable/invalid summary itself.
     }
     // Only repo-confined RELATIVE paths may be written. `resolveRepoPath`
     // rejects absolute paths and `..` escapes.
     const absPath = resolveRepoPath(deps.repoRoot, briefPath);
-    if (absPath === null) return;
-    if (!isRestorableBriefPath(toRepoRelativePath(deps.repoRoot, absPath))) return;
-    await materializeBriefFromStore(store, deps.repoRoot, absPath);
+    if (absPath === null) return null;
+    if (!isRestorableBriefPath(toRepoRelativePath(deps.repoRoot, absPath))) return null;
+    const existed = existsSync(absPath);
+    const available = await materializeBriefFromStore(store, deps.repoRoot, absPath);
+    return !existed && available ? absPath : null;
   };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
   // The sidecar owns an in-process worker so a queue consumer always exists
@@ -2155,6 +2157,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // locked call — avoids deadlock.
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
+      let restoredBriefPath: string | null = null;
+      let approvalCompleted = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -2169,7 +2173,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         // entry gets its declared `type`, and point `sourceRun` at the durable
         // store identity instead of the throwaway temp path.
         if (hydrated !== null) {
-          await restoreBriefContextForRunDir(runDir);
+          restoredBriefPath = await restoreBriefContextForRunDir(runDir);
         }
         await ensureApprovalRunDurable(runDir, briefId, runId);
         const identity = resolveVariantIdentity(runDir, variantIndex);
@@ -2247,6 +2251,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             },
           }),
         );
+        approvalCompleted = true;
         return {
           ...transaction.approved,
           ...(alreadyApproved ? { alreadyApproved: true } : {}),
@@ -2264,6 +2269,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         }
         return mapCheckinError(reply, err, 'approve-failed');
       } finally {
+        if (!approvalCompleted && restoredBriefPath !== null) {
+          rmSync(restoredBriefPath, { force: true });
+        }
         hydrated?.cleanup();
       }
     });
@@ -2424,6 +2432,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // withCheckinMutationLock's docstring for why this can't deadlock.
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
+      let restoredBriefPath: string | null = null;
+      let acceptanceCompleted = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -2436,7 +2446,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         }
         // Same hydration parity as /approve — see that route.
         if (hydrated !== null) {
-          await restoreBriefContextForRunDir(runDir);
+          restoredBriefPath = await restoreBriefContextForRunDir(runDir);
         }
         await ensureApprovalRunDurable(runDir, briefId, runId);
 
@@ -2644,7 +2654,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           });
         } catch (err) {
           if (err instanceof ApproveError) return mapApproveError(reply, err);
-          return mapCheckinError(reply, err);
+          const mapped = mapCheckinError(reply, err);
+          return {
+            ...mapped,
+            message: `${mapped.message} The local acceptance and lifecycle changes were rolled back.`,
+          };
         }
         if (response === undefined) {
           // Unreachable by construction (publish either sets a response or
@@ -2657,6 +2671,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
               'Re-run the accept; if it repeats, run `npm run sprites:disliked-lifecycle -- --dry-run`.',
           };
         }
+        acceptanceCompleted = true;
         return response;
       } catch (err) {
         if (err instanceof ApproveError) return mapApproveError(reply, err);
@@ -2664,8 +2679,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(500);
           return { error: 'not-durable', message: err.message };
         }
-        return mapCheckinError(reply, err, 'accept-failed');
+        const mapped = mapCheckinError(reply, err, 'accept-failed');
+        return {
+          ...mapped,
+          message: `${mapped.message} The local acceptance and lifecycle changes were rolled back.`,
+        };
       } finally {
+        if (!acceptanceCompleted && restoredBriefPath !== null) {
+          rmSync(restoredBriefPath, { force: true });
+        }
         hydrated?.cleanup();
       }
     });

@@ -610,6 +610,48 @@ describe('.github/scripts lint wiring', () => {
   });
 });
 
+describe('disliked-lifecycle closure gate wiring', () => {
+  // Regression coverage for the exact-head review finding that the
+  // zero-dangling disliked-sprite closure check was only manually invokable
+  // (`npm run sprites:disliked-lifecycle -- --dry-run`) and had no
+  // deterministic CI/verify gate. These three wiring points are what turn it
+  // into an actual gate; losing any one of them silently re-opens the gap.
+  const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+  };
+
+  it('package.json exposes a dedicated, dry-run-only check script', () => {
+    const script = packageJson.scripts['check:disliked-lifecycle-closure'];
+    expect(script).toBeDefined();
+    expect(script).toContain('scripts/sprites/disliked-lifecycle-cli.ts');
+    expect(script).toContain('--dry-run');
+    // Must never be able to mutate the manifest/queue: --apply is a distinct,
+    // manually-invoked path (`npm run sprites:disliked-lifecycle -- --apply`).
+    expect(script).not.toContain('--apply');
+  });
+
+  it('ci.yml runs the check script in the lightweight-checks job', () => {
+    const ciYml = readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const lightweightJob = ciYml.slice(
+      ciYml.indexOf('\n  check-lightweight:'),
+      ciYml.indexOf('\n  check-silent-reverts:'),
+    );
+    expect(lightweightJob).toContain('npm run check:disliked-lifecycle-closure');
+    // Must share the job's docs-only skip convention so it does not force
+    // Node/Playwright setup on a pure documentation PR.
+    const stepStart = lightweightJob.indexOf('npm run check:disliked-lifecycle-closure');
+    const stepBlock = lightweightJob.slice(Math.max(0, stepStart - 200), stepStart);
+    expect(stepBlock).toContain("if: env.DOCS_ONLY != 'true'");
+  });
+
+  it('verify:fast Step 3 runs the same read-only dry-run check locally', () => {
+    const verifyFastSh = readFileSync(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'), 'utf8');
+    expect(verifyFastSh).toContain(
+      'run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --dry-run',
+    );
+  });
+});
+
 /** Intentionally long: must outlast the SIGTERM that interrupts the verifier. */
 const STUB_DURATION_SECONDS = 300;
 /** Brief wait after seeing "Step 1/3" to let background sleep stubs reach their wait state. */
@@ -624,6 +666,7 @@ const STEP3_HEALTH_CHECKS = [
   'registry-integrity',
   'asset-integrity',
   'allowlist-expiry',
+  'disliked-lifecycle-closure',
   'size-coverage',
   'weight-coverage',
 ] as const;

@@ -225,6 +225,19 @@ sprite-pipeline, sprite-workflow
   completed Floor 1 with a victory at seed 7. Lifecycle closure remained
   0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
   0 reference updates.
+- Two exact-head reviews then closed the remaining durability gaps before
+  publication. Canonical `assets/queue` deduplication now requires full shard
+  metadata equality in addition to PNG bytes; store-restored briefs are removed
+  if approval/acceptance rolls back; acceptance errors explicitly disclose the
+  rollback; and generation reference loading preserves authoritative manifest
+  keys so colliding legacy `spriteName` values cannot hide a disliked
+  provenance match. The icon-batch retry regression now models a real
+  pre-existing approval rather than an impossible empty result.
+- The zero-dangling lifecycle closure is now a named read-only package check,
+  part of `verify:fast`, and a lightweight CI step. Its wiring regressions plus
+  the final durability matrix passed 271/271; typecheck passed; and the gate
+  reported 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates.
 
 ## PR #3234 generic extraction audit
 
