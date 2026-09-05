@@ -253,6 +253,7 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
       continue;
     }
 
+    let result: BatchBriefResult;
     try {
       const generateOptions: RunFullOptions = {
         briefPath,
@@ -267,7 +268,7 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
         ...(options.now ? { now: options.now } : {}),
       };
       const run = await generate(generateOptions);
-      const result: BatchBriefResult = {
+      result = {
         briefPath,
         briefId: run.summary.brief || briefIdFromPath(briefPath),
         status: 'succeeded',
@@ -275,15 +276,12 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
         summary: run.summary,
         elapsedMs: Date.now() - start,
       };
-      briefs.push(result);
-      writeSnapshot(null);
-      options.onBriefComplete?.(result, i, options.briefPaths.length);
     } catch (err) {
       const errorPayload: BatchBriefError =
         err instanceof Error
           ? { message: err.message, ...(err.stack ? { stack: err.stack } : {}) }
           : { message: String(err) };
-      const result: BatchBriefResult = {
+      result = {
         briefPath,
         briefId: briefIdFromPath(briefPath),
         status: 'failed',
@@ -291,10 +289,12 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
         error: errorPayload,
         elapsedMs: Date.now() - start,
       };
-      briefs.push(result);
-      writeSnapshot(null);
-      options.onBriefComplete?.(result, i, options.briefPaths.length);
     }
+    briefs.push(result);
+    writeSnapshot(null);
+    // Keep observer failures outside the generation try/catch. A persistence or
+    // reporting failure must not duplicate and reclassify a successful brief.
+    options.onBriefComplete?.(result, i, options.briefPaths.length);
   }
 
   return writeSnapshot(now().toISOString());

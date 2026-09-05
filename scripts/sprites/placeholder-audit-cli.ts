@@ -14,7 +14,12 @@ import process from 'node:process';
 import { parseGeneratedManifest } from '../../src/shared/generated-assets.js';
 import { SPRITES } from '../../src/engine/sprites/index.js';
 import { MOB_DEFS } from '../../src/shared/mobDefs.js';
-import { floor1EnemyPack, floor2EnemyPack } from '../../src/shared/enemy-packs.js';
+import {
+  floor1EnemyPack,
+  floor2EnemyPack,
+  getFloorEnemyPack,
+} from '../../src/shared/enemy-packs.js';
+import { loadGeneratedManifest } from './generated-shards.js';
 import {
   buildPlaceholderAudit,
   type PlaceholderAuditReport,
@@ -229,9 +234,13 @@ export function runPlaceholderAudit(
   options: PlaceholderAuditOptions = {},
 ): PlaceholderAuditReport {
   const absoluteManifestPath = path.resolve(repoRoot, args.manifestPath);
-  const manifestEntries = existsSync(absoluteManifestPath)
-    ? parseGeneratedManifest(JSON.parse(readFileSync(absoluteManifestPath, 'utf8'))).entries
-    : {};
+  const defaultManifestPath = path.resolve(repoRoot, DEFAULT_MANIFEST_PATH);
+  const manifestEntries =
+    absoluteManifestPath === defaultManifestPath
+      ? loadGeneratedManifest(path.dirname(absoluteManifestPath)).entries
+      : existsSync(absoluteManifestPath)
+        ? parseGeneratedManifest(JSON.parse(readFileSync(absoluteManifestPath, 'utf8'))).entries
+        : {};
   const newAssetPaths =
     args.since === undefined ? undefined : collectNewAssetPaths(repoRoot, args.since);
   const spriteRegistry =
@@ -241,7 +250,11 @@ export function runPlaceholderAudit(
     Array.from(MOB_DEFS.values(), (mob) => ({ id: mob.id, spriteId: mob.spriteId }));
   const enemyArchetypeIds =
     options.enemyArchetypeIds ??
-    [...floor1EnemyPack.archetypes, ...floor2EnemyPack.archetypes].map((archetype) => archetype.id);
+    [
+      ...floor1EnemyPack.archetypes,
+      ...floor2EnemyPack.archetypes,
+      ...(getFloorEnemyPack('floor3-wild')?.archetypes ?? []),
+    ].map((archetype) => archetype.id);
   return buildPlaceholderAudit({
     manifestEntries,
     spriteRegistry,

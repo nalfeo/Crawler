@@ -131,11 +131,29 @@ jobs:
           # Single source of truth for "may Goobers claim this issue": the
           # canonical library shared with legacy intake. Never re-implement
           # these selectors in YAML or jq.
+          #
+          # The payload is handed over as a FILE, never piped on stdin: GitHub
+          # Actions' bash can hand the selector a non-blocking pipe, and a
+          # synchronous stdin read of a non-blocking pipe fails with EAGAIN,
+          # which burned live intake runs before any issue could be claimed.
           decide_issue() {
+            local issue_file="${RUNNER_TEMP}/goobers-intake-issue-$1.json"
             gh issue view "$1" --repo "${GITHUB_REPOSITORY}" \
-              --json number,state,labels,assignees,author |
-              node .github/scripts/goobers/intake-selection.mjs --issue -
+              --json number,state,labels,assignees,author > "${issue_file}"
+            node .github/scripts/goobers/intake-selection.mjs --issue "${issue_file}"
           }
+          # Records the issue this run is accountable for. GITHUB_ENV is
+          # last-write-wins, so this can be re-stated (or cleared) as
+          # resolution narrows. It runs BEFORE any fallible lookup so that a
+          # pre-run failure is still attributable: without it, the failure
+          # handler cannot tell which issue to restore retry eligibility for
+          # and reports an unrecoverable claim instead.
+          persist_recovery_issue() {
+            echo "GOOBERS_RECOVERY_ISSUE=$1" >> "${GITHUB_ENV}"
+          }
+          if [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+            persist_recovery_issue "${ISSUE_NUMBER}"
+          fi
           find_open_dependency_blockers() {
             gh api --paginate \
               "repos/${GITHUB_REPOSITORY}/issues/$1/dependencies/blocked_by" \
@@ -205,6 +223,9 @@ jobs:
               else
                 echo "::notice::Issue #${ISSUE_NUMBER} is not in the Goobers intake cohort ($(jq -r '.reason' <<<"${decision}")); falling through to the recovery sweep without claiming it."
                 ISSUE_NUMBER=""
+                # Nothing was claimed for the event's issue, so this run must
+                # not be attributed to it any more.
+                persist_recovery_issue ""
               fi
             fi
           fi
@@ -224,6 +245,7 @@ jobs:
                 fi
                 ISSUE_NUMBER="${candidate_issue}"
                 INTAKE_COHORT="resume"
+                persist_recovery_issue "${ISSUE_NUMBER}"
                 echo "Scheduled recovery selected issue #${ISSUE_NUMBER} from open Goobers PR #${candidate_pr}."
                 break
               fi
@@ -274,6 +296,7 @@ jobs:
               fi
               ISSUE_NUMBER="${candidate_issue}"
               INTAKE_COHORT="${candidate_cohort}"
+              persist_recovery_issue "${ISSUE_NUMBER}"
               echo "Selected eligible issue #${ISSUE_NUMBER} (cohort: ${INTAKE_COHORT})."
               break
             done < "${selected_file}"
@@ -560,7 +583,9 @@ jobs:
           # crawler-feature-pr.yaml) sees this run-start verdict rather than a
           # value that may be stale from the earlier resolve step.
           if [ "${GOOBERS_INTAKE_COHORT:-}" != "resume" ]; then
-            decision="$(printf '%s' "$issue_json" | node .github/scripts/goobers/intake-selection.mjs --issue -)"
+            issue_file="${RUNNER_TEMP}/goobers-run-start-issue.json"
+            printf '%s' "$issue_json" > "$issue_file"
+            decision="$(node .github/scripts/goobers/intake-selection.mjs --issue "$issue_file")"
             if [ "$(jq -r '.eligible' <<<"$decision")" != "true" ]; then
               echo "::error::Issue #${issue_number} is no longer in the Goobers intake cohort ($(jq -r '.reason' <<<"$decision")). Fix its state, labels, or assignees before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
               exit 1
@@ -694,6 +719,17 @@ jobs:
             return 0
           }
 
+          # Releasing the claim is the whole point of this step, so a failed
+          # release must name the manual remediation rather than surfacing a
+          # bare `gh` error.
+          release_claim() {
+            if ! gh issue edit "$1" --repo "$GITHUB_REPOSITORY" \
+              --remove-label 'goobers/status:in-review'; then
+              echo "::error::Could not remove goobers/status:in-review from issue #$1. Remove it manually, then retry with: gh workflow run goobers-run.yml -f issue_number=$1" >&2
+              return 1
+            fi
+          }
+
           events_file=""
           if [ -d "$GOOBERS_INSTANCE/gaggles" ]; then
             events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
@@ -754,6 +790,14 @@ jobs:
 
           if [ -z "$no_work_stage" ] && { [ "$JOB_STATUS" = "failure" ] || [ "$JOB_STATUS" = "cancelled" ]; }; then
             if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
+              if [ -z "$events_file" ]; then
+                # No journal means Goobers never started, so the gaggle's
+                # query-backlog claim never ran and no goobers/status:in-review
+                # label can exist for this run. Failing here would only bury
+                # the real failure under a second, false "stale claim" error.
+                echo "::notice::Goobers ended with ${JOB_STATUS} before any issue was claimed; no goobers/status:in-review label was created by this run, so retry eligibility is already intact."
+                exit 0
+              fi
               echo "::error::Goobers ended with ${JOB_STATUS}, but the claimed issue number could not be recovered. Inspect artifact '${{ steps.upload-run-journal.outputs.artifact-id }}' and remove the stale goobers/status:in-review label manually." >&2
               exit 1
             fi
@@ -770,16 +814,14 @@ jobs:
               exit 0
             fi
 
-            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
-              --remove-label 'goobers/status:in-review'
+            release_claim "$issue_number"
             echo "::warning::Goobers run ended with ${JOB_STATUS} for issue #${issue_number} without an open Goobers PR. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
             exit 0
           fi
 
           if [ -z "$no_work_stage" ]; then
             if [ "$stale_resume" = "true" ]; then
-              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
-                --remove-label 'goobers/status:in-review'
+              release_claim "$issue_number"
               echo "::warning::Goobers resume PR #${GOOBERS_RESUME_PR} closed during this run and no replacement PR or no-work disposition was recorded. Restored retry eligibility; inspect this run and retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
             fi
             exit 0
@@ -801,12 +843,13 @@ jobs:
             exit 0
           fi
 
-          gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
-            --remove-label 'goobers/status:in-review'
+          release_claim "$issue_number"
           echo "::warning::Goobers stage '${no_work_stage}' returned invalid no-work for issue #${issue_number} without opening a PR. Restored retry eligibility; inspect this run's journal before retrying with: gh workflow run goobers-run.yml -f issue_number=${issue_number}"
 
       - name: Comment on Goobers run result
-        if: always()
+        if: >-
+          always() &&
+          steps.recovery.outputs.should_run != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           JOB_STATUS: ${{ job.status }}

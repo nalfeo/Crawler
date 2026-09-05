@@ -16,6 +16,6 @@ description: |
 # Vertical orientation, 4x4 sheet, kenney-roguelike palette,
 # anchor at grip center inherited from data/sprite-types/weapon.json.
 variations:
-  - two-toned head: bright gold face with darker hammered reverse
+  - 'two-toned head: bright gold face with darker hammered reverse'
   - sun relief detail on the head more abstract / stylised
 minVariations: 6
