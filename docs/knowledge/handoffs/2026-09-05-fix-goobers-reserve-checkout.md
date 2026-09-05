@@ -15,8 +15,11 @@ ci-policy
 Fixed the live `Reserve Goobers recovery target` failure seen in Actions runs
 `33946058885` and `33946003724`. The reserve job's sparse checkout contained
 only `scripts/agent`, but `Resolve Goobers recovery target` invokes
-`.github/scripts/goobers/intake-selection.mjs`. The checkout now includes the
-smallest safe cone containing that selector: `.github/scripts/goobers`.
+`.github/scripts/goobers/intake-selection.mjs`. That selector in turn imports
+`../ci-recovery/issue-intake-lib.mjs` (which imports `state.mjs` and
+`markers.mjs`), and a cone-mode checkout of `goobers` does not populate the
+sibling `ci-recovery` directory. The checkout therefore includes both cones:
+`.github/scripts/goobers` and `.github/scripts/ci-recovery`.
 
 Audited every sparse checkout in `goobers-run.yml`. The only other sparse job,
 `release-unstarted-reservation`, directly references only
@@ -25,10 +28,13 @@ Audited every sparse checkout in `goobers-run.yml`. The only other sparse job,
 
 Added a structural workflow regression that enumerates every sparse job,
 extracts checked-in `.github/**` and `scripts/**` file references from all
-following shell steps, verifies those files exist, and verifies each is covered
-by the declared sparse checkout. Its failure message names the job, missing
-path, current checkout paths, and remediation. The test also explicitly pins
-the reserve job's `intake-selection.mjs` dependency.
+following shell steps, verifies those files exist, walks the **transitive**
+relative-import graph of every referenced module (static, dynamic and
+`require`), and verifies each resulting file is covered by the declared sparse
+checkout. Its failure message names the job, missing path, current checkout
+paths, and remediation. Verified negatively: removing the `ci-recovery` cone
+fails with `"reserve" needs ".github/scripts/ci-recovery/issue-intake-lib.mjs"
+at run time (directly or via an import chain)`.
 
 ## Validation
 
