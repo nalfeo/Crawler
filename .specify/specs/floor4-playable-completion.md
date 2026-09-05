@@ -280,11 +280,18 @@ Green Room exit marker (`getFloor4GreenRoomExitMarker`), which is what the real
 `MainGameScene` renders and prompts from (`getStairMarkerState` /
 `getStairConfirmation`) and what `ScenarioDefinition.onStairDescend`
 (`confirmFloor4GreenRoomInteraction`) resolves — opening the next act during
-acts 1–4 and confirming the terminal exit on act 5. The AI auto-driver
+acts 1–4 and confirming the terminal exit on act 5. The headless AI driver
 (`autoFloor4ProgressionSystem`) calls that same action and nothing else, and the
 action is a no-op until the player stands inside the published marker radius, so
 the AI can neither confirm from a position the human prompt withholds nor reach
 a phase a human cannot reach.
+
+The **visual** gate is stronger still: the AI-runner lab does not call the
+auto-driver at all on Floor 4. It reuses its existing floor-agnostic stair
+handling — walk to the published marker, queue a real `queuedInteraction`, and
+confirm the real `ModalPickerUI` prompt — so the passing visual run is direct
+evidence that all five intermissions resolve through the scene's own interaction
+path, exactly as a human resolves them.
 
 ## Baseline commands (reproducible)
 

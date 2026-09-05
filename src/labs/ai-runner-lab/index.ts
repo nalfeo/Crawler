@@ -38,7 +38,6 @@ import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
   autoFloor3ProgressionSystem,
-  autoFloor4ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import { applyStartPlayerLevel } from '../../game/scenarios/playerLevelProgression.js';
@@ -1193,7 +1192,6 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       allowDirectKeptCompanionSelection: false,
       allowDirectStairDescend: false,
     });
-    autoFloor4ProgressionSystem(world, playerEid);
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
     });

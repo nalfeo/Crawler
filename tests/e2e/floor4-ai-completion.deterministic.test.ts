@@ -212,9 +212,9 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
-    // Shared across this describe's tests (the main completion test AND the
-    // isolated C5 characterization below) so the second test doesn't need to
-    // pay for another real browser run of the same canonical seed.
+    // Captured once in `beforeAll` so the single completion assertion below
+    // reads a finished run without paying for a second real browser run of the
+    // same canonical seed.
     firstRun = await runVisualFloor4Completion(browser);
   }, 300_000);
 
