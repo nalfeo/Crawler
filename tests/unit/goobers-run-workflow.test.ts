@@ -1882,10 +1882,13 @@ ${queryScript}
     // Validate all assignments before writing the first receipt, so one blocked
     // later slot cannot leave an earlier slot adopted but unstarted.
     const receiptIndex = adoptScript.indexOf('gh issue comment "$issue_number"');
-    const validationIndex = adoptScript.indexOf("printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n'");
+    const validationIndex = adoptScript.indexOf(
+      "printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n'",
+    );
     expect(receiptIndex).toBeGreaterThanOrEqual(0);
     expect(validationIndex).toBeGreaterThanOrEqual(0);
     expect(receiptIndex).toBeGreaterThan(validationIndex);
+    expect(adoptScript.match(/goobers_lease_fetch/g) ?? []).toHaveLength(1);
     // The marker grammar lives in one checked-in library, never inline, so a
     // writer and a reader cannot drift apart. It is scoped to run id AND
     // attempt: a re-run keeps the same run id, and its adoption must be a NEW

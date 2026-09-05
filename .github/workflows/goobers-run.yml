@@ -906,23 +906,13 @@ jobs:
               echo "::error::Refusing to adopt reserved issue #${issue_number} for lane ${lane} slot ${slot}: it is still leased by $(goobers_lease_describe "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment"). Confirm the earlier runner is clear before reconciling its labels." >&2
               exit 1
             fi
-            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-              "$lane" "$slot" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" >> "$assignment_file"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$lane" "$slot" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" \
+              "$lease_state" "$lease_run" "$lease_attempt" "$lease_comment" >> "$assignment_file"
           done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
-          while IFS="$(printf '\t')" read -r lane slot issue_number cohort resume_pr resume_branch; do
+          while IFS="$(printf '\t')" read -r lane slot issue_number cohort resume_pr resume_branch lease_state lease_run lease_attempt lease_comment; do
             adopted_marker="$(goobers_lease_marker adopted "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${issue_number}")"
-            comments="$(mktemp)"
-            if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
-              rm -f "$comments"
-              exit 1
-            fi
-            if ! lease_record="$(goobers_lease_state "$comments" "${issue_number}")"; then
-              rm -f "$comments"
-              exit 1
-            fi
-            rm -f "$comments"
-            IFS="$(printf '\t')" read -r lease_state lease_run lease_attempt lease_comment <<<"$lease_record"
             receipt_id=""
             if [ "$lease_state" = "adopted" ] &&
                [ "$lease_run" = "${GITHUB_RUN_ID}" ] && [ "$lease_attempt" = "${GITHUB_RUN_ATTEMPT}" ]; then
