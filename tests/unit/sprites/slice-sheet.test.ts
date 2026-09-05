@@ -506,9 +506,26 @@ describe('sliceSheetFromBrief', () => {
     expect(result.grid).toEqual({ rows: 3, cols: 4, emptyCells: [] });
     expect(result.cells).toHaveLength(12);
     const firstCell = PNG.sync.read(result.cells[0]!);
-    expect(firstCell.width).toBe(firstCell.height);
     expect(firstCell.width).toBeLessThanOrEqual(cellWidth);
     expect(firstCell.height).toBeLessThanOrEqual(cellHeight);
+    expect(cellWidth).toBe(256);
+    expect(cellHeight).toBe(256);
+  });
+
+  it('rejects a provider sheet whose dimensions disagree with the declared geometry', () => {
+    const sheetGeometry = {
+      rows: 3,
+      cols: 4,
+      emptyCells: [],
+      nativeWidth: 1024,
+      nativeHeight: 768,
+    };
+    const brief = { generation: { sheet: sheetGeometry } } as unknown as Brief;
+    const mismatchedSheet = encodeRectangularContentGrid(3, 4, 240, 240, 8, 4);
+
+    expect(() => sliceSheetFromBrief(mismatchedSheet, brief)).toThrow(
+      'generated sheet dimensions 992x744 do not match the declared 1024x768 canvas or an integer scale of it',
+    );
   });
 
   it('returns the actual data-driven grid and count (a BriefSliceResult)', () => {
@@ -603,7 +620,6 @@ describe('sliceSheetFromBrief: frameSequence uses content-aware slicing', () => 
           rows,
           cols,
           emptyCells: [] as ReadonlyArray<readonly [number, number]>,
-          nativeCanvas: 1024,
         },
       },
       frameSequence: { enabled: true, frameCount, frameRate: 8, loop: true },
@@ -697,7 +713,6 @@ describe('sliceSheetFromBrief: frameSequence uses content-aware slicing', () => 
           rows: 2,
           cols: 2,
           emptyCells: [] as ReadonlyArray<readonly [number, number]>,
-          nativeCanvas: 1024,
         },
       },
       frameSequence: { enabled: false, frameCount: 4, frameRate: 8, loop: true },
