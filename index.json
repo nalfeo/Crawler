@@ -1,5 +1,44 @@
 [
   {
+    "commit": "08cf9d4adbefdb8733d226d6484ec7a1e471ab1c",
+    "commitDate": "2026-09-05T19:53:07Z",
+    "commitSubject": "fix(goobers): preserve isolated instance path through materialization (#4307)",
+    "capturedAt": "2026-09-05T21:18:44.633Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/33989762771",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/08cf9d4adbefdb8733d226d6484ec7a1e471ab1c.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9466666666666667,
+        "totalWins": 142,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.43,
+      "gatePass": false,
+      "path": "by-sha/08cf9d4adbefdb8733d226d6484ec7a1e471ab1c.fun-report.json"
+    }
+  },
+  {
     "commit": "8bb1361b3dcf78aceeaca7515c70edcdcf059863",
     "commitDate": "2026-09-04T16:14:40Z",
     "commitSubject": "feat: route Floor 3 Studios through canonical quest HUD (#4231)",
