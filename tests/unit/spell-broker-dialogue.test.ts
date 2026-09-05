@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getNpcDef, selectSpellBrokerDialogue } from '../../src/shared/npc-types.js';
+import { selectSpellBrokerDialogue } from '../../src/shared/npc-types.js';
 
 /** A "nothing started" baseline; spread + override per case. */
 const NONE = {
@@ -10,11 +10,10 @@ const NONE = {
 
 describe('selectSpellBrokerDialogue', () => {
   it('omits only the tail-reference line until the merchant quest is active', () => {
-    expect(selectSpellBrokerDialogue(NONE)).toEqual(
-      getNpcDef('spell-quest-giver')!
-        .dialogue.filter((line) => !line.requiresMerchantQuest)
-        .map((line) => line.text),
-    );
+    expect(selectSpellBrokerDialogue(NONE)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
   });
 
   it('allows the default authored dialogue once the merchant quest is active', () => {

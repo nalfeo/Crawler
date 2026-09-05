@@ -359,11 +359,10 @@ describe('resolveDialogueLines', () => {
   it('omits only the spell broker tail-reference until the merchant quest is active', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
-    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
-      getNpcDef('spell-quest-giver')!
-        .dialogue.filter((line) => !line.requiresMerchantQuest)
-        .map((line) => line.text),
-    );
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
 
     world.questLog.set(FLOOR1_SHOP_QUEST_ID, {
       questId: FLOOR1_SHOP_QUEST_ID,
@@ -408,11 +407,8 @@ describe('resolveDialogueLines', () => {
     world.goalFlags.set('floor1-boss-spellbook-claimed', true);
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
-      ...selectSpellBrokerDialogue({
-        locked: false,
-        spellbookClaimed: false,
-        merchantQuestStarted: false,
-      })!,
+      "I handle the part the other two can't teach you: the moment where hitting harder stops being enough. Kill the Slime Rat, come back, I'll unseal a spellbook.",
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
     ]);
   });
 
