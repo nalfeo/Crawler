@@ -129,14 +129,39 @@ const ACCESS_PATTERNS: RegExp[] = [
   new RegExp(String.raw`(?:^|[\s;&|(])cp\s+(?:-\S+\s+)*((?:${REPO_ROOTS})[A-Za-z0-9._/-]*)`, 'g'),
 ];
 
-function repoPathsIn(script: string): string[] {
-  const body = stripComments(script);
+/**
+ * `actions/github-script` bodies are JavaScript, not shell, and they reach the
+ * checked-out tree through workspace-joined dynamic imports rather than through
+ * an executable invocation. They are just as checkout-dependent as a `run:`
+ * step, so they get their own detector.
+ */
+const SCRIPT_ACCESS_PATTERNS: RegExp[] = [
+  // path.join(process.env.GITHUB_WORKSPACE, '<repo path>')
+  new RegExp(
+    String.raw`process\.env\.GITHUB_WORKSPACE\s*,\s*['"\`]((?:${REPO_ROOTS})/${PATH_TAIL})`,
+    'g',
+  ),
+  // `${process.env.GITHUB_WORKSPACE}/<repo path>`
+  new RegExp(
+    String.raw`\$\{\s*process\.env\.GITHUB_WORKSPACE\s*\}/((?:${REPO_ROOTS})/${PATH_TAIL})`,
+    'g',
+  ),
+  // require('<repo path>') / import('<repo path>')
+  new RegExp(String.raw`(?:require|import)\(\s*['"\`]\.?/?((?:${REPO_ROOTS})/${PATH_TAIL})`, 'g'),
+];
+
+/** Line and block comments are stripped so a commented path is not an access. */
+function stripJsComments(script: string): string {
+  return script.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+function matchPaths(body: string, patterns: RegExp[]): string[] {
   const found = new Set<string>();
-  for (const pattern of ACCESS_PATTERNS) {
+  for (const pattern of patterns) {
     pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(body)) !== null) {
-      const captured = match[1]?.replace(/["';|&)]+$/, '').replace(/\/+$/, '');
+      const captured = match[1]?.replace(/["'`;|&)]+$/, '').replace(/\/+$/, '');
       if (captured) {
         found.add(captured);
       }
@@ -145,14 +170,44 @@ function repoPathsIn(script: string): string[] {
   return [...found].sort();
 }
 
+function repoPathsIn(script: string): string[] {
+  return matchPaths(stripComments(script), ACCESS_PATTERNS);
+}
+
+function repoPathsInScript(script: string): string[] {
+  return matchPaths(stripJsComments(script), SCRIPT_ACCESS_PATTERNS);
+}
+
+/**
+ * A `uses: ./path` step runs a checked-in composite/JS action: the action
+ * directory itself must be in the (possibly sparse) tree, or the run dies with
+ * "Can't find 'action.yml'".
+ */
+function localActionPath(step: WorkflowStep): string | null {
+  if (typeof step.uses !== 'string' || !step.uses.startsWith('./')) {
+    return null;
+  }
+  return step.uses.slice(2).replace(/\/+$/, '');
+}
+
 function repoAccesses(steps: WorkflowStep[]): RepoAccess[] {
   const accesses: RepoAccess[] = [];
   steps.forEach((step, stepIndex) => {
-    if (typeof step.run !== 'string') {
-      return;
+    const stepName = step.name ?? `step #${stepIndex + 1}`;
+    const push = (repoPath: string) => accesses.push({ stepIndex, stepName, repoPath });
+
+    if (typeof step.run === 'string') {
+      repoPathsIn(step.run).forEach(push);
     }
-    for (const repoPath of repoPathsIn(step.run)) {
-      accesses.push({ stepIndex, stepName: step.name ?? `step #${stepIndex + 1}`, repoPath });
+
+    const localAction = localActionPath(step);
+    if (localAction) {
+      push(localAction);
+    }
+
+    const script = step.with?.script;
+    if (typeof script === 'string') {
+      repoPathsInScript(script).forEach(push);
     }
   });
   return accesses;
@@ -317,6 +372,25 @@ describe('Goobers workflow checkout contract', () => {
     }
   });
 
+  it('detects the non-`run` repository accesses that exist today', () => {
+    // Anti-vacuity: the local-action and github-script detectors must actually
+    // fire on the workflows under test, or the two clauses added for them are
+    // dead code that would keep a broken checkout green.
+    const accessesFor = (file: string, jobId: string) =>
+      repoAccesses(loadWorkflow(file).jobs?.[jobId]?.steps ?? []).map((access) => access.repoPath);
+
+    expect(accessesFor('goobers-run.yml', 'run')).toContain('.github/actions/host-profile');
+    expect(accessesFor('goobers-contract-validation.yml', 'validate-contracts')).toContain(
+      '.github/actions/setup-node',
+    );
+    expect(accessesFor('goobers-lifecycle-owner.yml', 'ownership')).toContain(
+      '.github/scripts/lifecycle-ownership.mjs',
+    );
+    expect(accessesFor('goobers-review-threads.yml', 'review-threads')).toContain(
+      '.github/scripts/ci-recovery/github.mjs',
+    );
+  });
+
   it('detects the exact regression it exists to prevent', () => {
     // A self-test on the detector: with the pre-fix pattern list, the live
     // selector invocation must be reported as uncovered. Without this, a
@@ -334,5 +408,50 @@ describe('Goobers workflow checkout contract', () => {
     ).toEqual(['scripts/agent/goobers-reservation-lease.sh']);
     // Comments and error messages name paths constantly; they are not accesses.
     expect(repoPathsIn('# see .github/workflows/goobers-run.yml for the shared list')).toEqual([]);
+
+    // Local composite actions are repository code too: the action directory
+    // must be in the tree before `uses: ./…` can resolve action.yml.
+    expect(localActionPath({ uses: './.github/actions/host-profile' })).toBe(
+      '.github/actions/host-profile',
+    );
+    expect(localActionPath({ uses: 'actions/checkout@v4' })).toBeNull();
+    expect(sparseCovers(brokenPatterns, '.github/actions/host-profile')).toBe(false);
+
+    // actions/github-script bodies import from the workspace; those imports are
+    // checkout-dependent in exactly the same way as a `node …` invocation.
+    expect(
+      repoPathsInScript(
+        [
+          "const { pathToFileURL } = require('node:url');",
+          'const ownership = await import(pathToFileURL(path.join(',
+          '  process.env.GITHUB_WORKSPACE,',
+          "  '.github/scripts/lifecycle-ownership.mjs',",
+          ')));',
+        ].join('\n'),
+      ),
+    ).toEqual(['.github/scripts/lifecycle-ownership.mjs']);
+    expect(
+      repoPathsInScript('const p = `${process.env.GITHUB_WORKSPACE}/.github/scripts/x.mjs`;'),
+    ).toEqual(['.github/scripts/x.mjs']);
+    expect(
+      repoPathsInScript("// disabled: process.env.GITHUB_WORKSPACE, '.github/scripts/x.mjs'"),
+    ).toEqual([]);
+
+    // And the whole-step collector must surface both non-`run` forms.
+    const collected = repoAccesses([
+      { name: 'local action', uses: './.github/actions/setup-node' },
+      {
+        name: 'script import',
+        uses: 'actions/github-script@v7',
+        with: {
+          script:
+            "await import(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/ci-recovery/github.mjs'));",
+        },
+      },
+    ]).map((access) => access.repoPath);
+    expect(collected).toEqual([
+      '.github/actions/setup-node',
+      '.github/scripts/ci-recovery/github.mjs',
+    ]);
   });
 });
