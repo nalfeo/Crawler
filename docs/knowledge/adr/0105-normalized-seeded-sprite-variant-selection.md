@@ -46,11 +46,15 @@ without eventually disagreeing with approval and migration tooling.
   the shared helper. The existing sprite taxonomy imports that primitive and
   retains its public `bareConcept` API, establishing one canonical rule without
   reversing the dependency graph.
-- **ELG-001**: Treat presence in the generated manifest as acceptance. Manifest
-  entries marked `disliked: true` or identified by the canonical placeholder
-  predicate are excluded while building the runtime registry, including its
-  flattened preload list. The lifecycle tooling may consume the same
-  normalization and eligibility helpers when it persists state.
+- **ELG-001**: Treat presence in the generated manifest as acceptance.
+  Placeholder entries are always excluded from the runtime registry. In a
+  normalized concept group with at least one non-disliked accepted survivor,
+  lifecycle reconciliation removes disliked variants from the manifest, making
+  them ineligible for runtime selection and preload. If every accepted variant
+  in the group is disliked, the lifecycle deliberately retains the group
+  unchanged and runtime-usable until a replacement is explicitly accepted; this
+  prevents a concept outage. A manifest entry explicitly persisted with
+  `disliked: true` remains directly ineligible.
 - **RNG-001**: When an entity is assigned a new non-empty appearance key, derive
   a private `SeededRandom` from `hashStringToSeed` over the world seed, the
   entity's monotonic render generation (its spawn-sequence identity), and the
@@ -92,8 +96,9 @@ without eventually disagreeing with approval and migration tooling.
 
 - **POS-001**: Legacy aliases resolve to one accepted variant pool instead of
   creating unreachable art islands.
-- **POS-002**: Disliked entries cannot be preloaded or selected once their
-  lifecycle state is persisted on the accepted manifest entry.
+- **POS-002**: Disliked variants are removed from runtime selection once their
+  normalized group has a non-disliked accepted survivor, while an all-disliked
+  group remains usable until replacement acceptance prevents a concept outage.
 - **POS-003**: Visual and headless paths share the same deterministic
   roll-to-entry implementation.
 - **POS-004**: Selection is reproducible from the run seed and spawn order while

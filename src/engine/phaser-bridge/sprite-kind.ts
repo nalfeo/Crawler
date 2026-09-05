@@ -275,13 +275,6 @@ export function computeEnemyScale(
   return { scaleX, scaleY };
 }
 
-function normalizeVariantRoll(variantRoll: number | undefined): number {
-  if (variantRoll === undefined || !Number.isFinite(variantRoll)) {
-    return 0;
-  }
-  return Math.min(0.999999, Math.max(0, variantRoll));
-}
-
 // generatedBriefIdForEnemy is re-exported from src/shared/generated-assets.ts.
 export { generatedBriefIdForEnemy };
 
@@ -392,10 +385,5 @@ export function pickGeneratedHarvestableTextureKey(
   if (briefId === undefined) {
     return null;
   }
-  const variants = registry.variants(briefId);
-  if (variants.length === 0) {
-    return null;
-  }
-  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
-  return variants[index]?.textureKey ?? null;
+  return pickGeneratedVariantByRoll(registry, briefId, variantRoll)?.textureKey ?? null;
 }

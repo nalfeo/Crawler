@@ -647,6 +647,18 @@ describe('pickGeneratedHarvestableTextureKey', () => {
     );
   });
 
+  it('shares the canonical roll fallback and clamping semantics', () => {
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', Number.NaN)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', -1)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 1)).toBe(
+      'crimson-mushroom-var-3',
+    );
+  });
+
   it('returns null when the registry, def id, or approved art is missing', () => {
     expect(pickGeneratedHarvestableTextureKey(null, 'frost-lichen', 0)).toBeNull();
     expect(pickGeneratedHarvestableTextureKey(undefined, 'frost-lichen', 0)).toBeNull();
