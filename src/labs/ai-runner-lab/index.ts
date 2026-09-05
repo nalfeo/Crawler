@@ -14,6 +14,7 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
+import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
 import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
@@ -680,6 +681,19 @@ export interface AiRunnerDebugSnapshot {
     worldState: string | null;
   }>;
   runOutcome: string | null;
+  /**
+   * The SAME shared-authority run-outcome decision headless `RunStats.outcome`
+   * derives from — `getScenarioDefinition(floorId).getRunOutcome(world)` — not
+   * a re-derivation from a lower-level field like `floor4Arena.phase.kind`.
+   * `'victory'` mirrors headless's `outcome === 'victory'` mapping (both are
+   * `true` exactly when the scenario's own `getRunOutcome` reports
+   * `'cleared_floor'`); `null` off Floor 4, before the world exists, or while
+   * the run has not (yet) reached a scenario-decided outcome. Exists so an
+   * e2e observer can assert the actual outcome authority instead of inferring
+   * it from `floor4Arena.phase.kind`, which happens to track it today but
+   * isn't the decision itself.
+   */
+  floor4RunOutcome: 'victory' | null;
   /**
    * Distinguishes Floor 3's three `world.state === 'game_over'` causes so a
    * headless/e2e observer can tell a companion-party wipe apart from a floor
@@ -3409,6 +3423,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       floor3SurfaceTrace,
       floor4SurfaceTrace,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      floor4RunOutcome:
+        world?.floorId === 'floor4' &&
+        getScenarioDefinition('floor4').getRunOutcome(world) === 'cleared_floor'
+          ? 'victory'
+          : null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
       playerPersona: aiConfig.playerPersona,

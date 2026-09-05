@@ -132,8 +132,11 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
     // ordinary combat (not force-resolved — `resolveFloor4HeadlinerDefeat`
     // only marks `defeated` on a genuine health-zero kill, and
     // `overtimeStarted` staying zero shows no out-of-band finisher ran).
-    expect(arena!.headlinerTelemetry.spawned, telemetryFailure).toBe(5);
-    expect(arena!.headlinerTelemetry.defeated, telemetryFailure).toBe(5);
+    // Compared against `FLOOR4_ACTS.length` (one Headliner drawn per act)
+    // rather than a second independent `5` literal, so this can't silently
+    // diverge from the visual gate's identical check.
+    expect(arena!.headlinerTelemetry.spawned, telemetryFailure).toBe(FLOOR4_ACTS.length);
+    expect(arena!.headlinerTelemetry.defeated, telemetryFailure).toBe(FLOOR4_ACTS.length);
     expect(arena!.headlinerTelemetry.chestsForceResolved, telemetryFailure).toBe(0);
     expect(arena!.headlinerTelemetry.overtimeStarted, telemetryFailure).toBe(0);
     expect(phaseActs(timeline, 'HEADLINE'), telemetryFailure).toEqual([...FLOOR4_ACTS]);

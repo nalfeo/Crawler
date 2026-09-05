@@ -87,6 +87,7 @@ interface Floor4RunSnapshot {
   openingPhaseKind: string | null;
   openingReason: string | null;
   phaseKind: string | null;
+  floor4RunOutcome: string | null;
   wavesReleased: number | undefined;
   enemiesSpawned: number | undefined;
   gateTelegraphsArmed: number | undefined;
@@ -211,6 +212,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
           typeof timeline[0]?.phase?.kind === 'string' ? timeline[0].phase.kind : null,
         openingReason: typeof timeline[0]?.reason === 'string' ? timeline[0].reason : null,
         phaseKind: typeof arena?.phase?.kind === 'string' ? arena.phase.kind : null,
+        floor4RunOutcome: typeof snap?.floor4RunOutcome === 'string' ? snap.floor4RunOutcome : null,
         wavesReleased: arena?.waveTelemetry?.wavesReleased,
         enemiesSpawned: arena?.waveTelemetry?.enemiesSpawned,
         gateTelegraphsArmed: arena?.waveTelemetry?.gateTelegraphsArmed,
@@ -289,8 +291,11 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.finalSnapshot.wavesReleased, firstContext).toBe(FLOOR4_TOTAL_WAVES_RELEASED);
     expect(firstRun.finalSnapshot.waveActs, firstContext).toEqual([...FLOOR4_ACTS]);
     // C4 — all five Headliners physically spawned and fell to ordinary combat.
-    expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(5);
-    expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
+    // Compared against `FLOOR4_ACTS.length` (one Headliner drawn per act)
+    // rather than a second independent `5` literal, so this can't silently
+    // diverge from the headless gate's identical check.
+    expect(firstRun.finalSnapshot.headlinerSpawned, firstContext).toBe(FLOOR4_ACTS.length);
+    expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(FLOOR4_ACTS.length);
     expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
     expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
     // C5 — every act's intermission was entered, banked income, and left
@@ -307,11 +312,14 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
       FLOOR4_GREEN_ROOM_EXIT_REASON,
       FLOOR4_TERMINAL_EXIT_REASON,
     ]);
-    // C6/C7 — the terminal phase is VICTORY, which is exactly the predicate
-    // (`isFloor4ArenaVictory`) the shared `ScenarioDefinition.isVictoryReached`
-    // uses to produce headless `RunStats.outcome === 'victory'`; the visual
-    // runner produces no `RunStats` of its own.
+    // C6/C7 — the terminal phase is VICTORY, and `floor4RunOutcome` is the
+    // actual shared-authority decision (`getScenarioDefinition('floor4')
+    // .getRunOutcome(world)`) that headless `RunStats.outcome === 'victory'`
+    // is derived from — not merely `phaseKind` inferred as an equivalent
+    // proxy. This is the visual run's own recorded outcome evidence, per the
+    // epic's acceptance contract (#4121).
     expect(firstRun.finalSnapshot.phaseKind, firstContext).toBe('VICTORY');
+    expect(firstRun.finalSnapshot.floor4RunOutcome, firstContext).toBe('victory');
     expect(firstRun.finalSnapshot.timelineFingerprint, firstContext).not.toBe('');
     // C8 — terminated under the real Floor 4 stall backstop. `arenaElapsedMs`
     // only advances during WAVES/HEADLINE and is capped well below the
@@ -334,6 +342,7 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(secondRun.pageErrors, secondContext).toEqual([]);
     expect(secondRun.reachedVictory, secondContext).toBe(true);
     expect(secondRun.finalSnapshot.phaseKind, secondContext).toBe('VICTORY');
+    expect(secondRun.finalSnapshot.floor4RunOutcome, secondContext).toBe('victory');
     expect(secondRun.finalSnapshot.wavesReleased, secondContext).toBe(
       firstRun.finalSnapshot.wavesReleased,
     );
