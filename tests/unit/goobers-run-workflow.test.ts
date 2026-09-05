@@ -758,6 +758,39 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(steps.filter((step) => step.name === 'Set up Node.js')).toHaveLength(1);
   });
 
+  it('checks out the canonical selector before every job that invokes it', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const selectorPath = '.github/scripts/goobers/intake-selection.mjs';
+    const selectorJobs = Object.entries(workflow.jobs).filter(([, job]) =>
+      job?.steps?.some((step) => step.run?.includes(selectorPath)),
+    );
+
+    expect(selectorJobs.length).toBeGreaterThan(0);
+    for (const [jobName, job] of selectorJobs) {
+      const steps = job?.steps ?? [];
+      const firstInvocation = steps.findIndex((step) => step.run?.includes(selectorPath));
+      const checkout = steps
+        .slice(0, firstInvocation)
+        .find((step) => step.uses?.startsWith('actions/checkout@'));
+
+      expect(
+        checkout,
+        `${jobName} must check out ${selectorPath} before invoking it`,
+      ).toBeDefined();
+      const sparseCheckout = checkout?.with?.['sparse-checkout'];
+      if (typeof sparseCheckout === 'string') {
+        const sparsePaths = sparseCheckout.split(/\s+/).map((entry) => entry.replace(/\/+$/, ''));
+        expect(
+          sparsePaths.some(
+            (sparsePath) =>
+              sparsePath === selectorPath || selectorPath.startsWith(`${sparsePath}/`),
+          ),
+          `${jobName}'s sparse checkout must include ${selectorPath}`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it('skips ineligible issues without claiming, and exempts resumes from fresh-intake gates', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.reserve?.steps ?? [];
@@ -1743,7 +1776,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(
       workflow.jobs['release-unstarted-reservation']?.steps?.[0]?.with?.['sparse-checkout'],
     ).toBe('scripts/agent');
-    expect(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout']).toBe('scripts/agent');
+    expect(
+      String(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout']).split(/\s+/),
+    ).toContain('scripts/agent');
   });
 
   it('trusts only the GitHub Actions identity and only whole-line receipts', () => {
