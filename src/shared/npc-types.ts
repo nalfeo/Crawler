@@ -10,6 +10,8 @@ export interface NpcQuestDef {
 
 export interface NpcDialogueLine {
   text: string;
+  /** Whether this line may only be shown after the merchant errand begins. */
+  requiresMerchantQuest?: boolean;
 }
 
 export interface NpcDef {
@@ -123,6 +125,7 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
     },
     {
       text: '...Did he send you for a tail? He did. Of course he did. Take the long way back, contestant. Knock first.',
+      requiresMerchantQuest: true,
     },
   ],
   quests: [
@@ -195,14 +198,17 @@ interface SpellBrokerDialogueState {
   readonly locked: boolean;
   /** The player has claimed their spellbook reward. */
   readonly spellbookClaimed: boolean;
+  /** The merchant errand has been accepted and the tail-reference beat is now valid. */
+  readonly merchantQuestStarted: boolean;
 }
 
 /**
  * Pick the Spell Broker's contextual dialogue for the current quest progress.
  *
- * Priority (highest first): locked (gated behind the Goon) > post-spellbook
- * claim. Returns `null` when neither applies, signalling the caller to fall back
- * to the Broker's default authored dialogue.
+ * Priority (highest first): locked > post-spellbook claim > merchant-quest gate.
+ * Once the merchant errand is active, the Broker can safely use the default
+ * authored dialogue. Before then, omit only the tail-reference line so the
+ * Broker can still explain the spell quest.
  */
 export function selectSpellBrokerDialogue(
   state: SpellBrokerDialogueState,
@@ -213,7 +219,12 @@ export function selectSpellBrokerDialogue(
   if (state.spellbookClaimed) {
     return SPELL_BROKER_POST_CLAIM_DIALOGUE;
   }
-  return null;
+  if (state.merchantQuestStarted) {
+    return null;
+  }
+  return SPELL_QUEST_GIVER_DEF.dialogue
+    .filter((line) => !line.requiresMerchantQuest)
+    .map((line) => line.text);
 }
 
 // ---- Tutorial Goon contextual dialogue ----
