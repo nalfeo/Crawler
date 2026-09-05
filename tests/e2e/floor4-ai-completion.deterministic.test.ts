@@ -250,9 +250,11 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
     expect(firstRun.finalSnapshot.headlinerDefeated, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.headlinerOvertimeStarted, firstContext).toBe(0);
     expect(firstRun.finalSnapshot.headlineActs, firstContext).toEqual([...FLOOR4_ACTS]);
-    // C5 — partially met (see the dedicated shortfall test below for the
-    // gap): every act's intermission was entered, banked income, and
-    // resolved (each has a recorded exit reason).
+    // C5 — every act's intermission was entered, banked income, and left
+    // through its public Green Room exit confirmation: the five recorded exit
+    // reasons must be exactly `green-room-exit` ×4 (acts 1-4) then
+    // `floor4-stairs-confirmed` (act 5), the only reasons that confirmation
+    // emits.
     expect(firstRun.finalSnapshot.intermissionActs, firstContext).toEqual([...FLOOR4_ACTS]);
     expect(firstRun.finalSnapshot.actIncomeCount, firstContext).toBe(5);
     expect(firstRun.finalSnapshot.intermissionExitReasons, firstContext).toEqual([

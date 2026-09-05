@@ -369,10 +369,25 @@ describe('scenario definitions', () => {
         world.elapsedMs += phase.intermissionMs;
         arenaDirectorSystem(world);
         movePlayerToGreenRoom();
+        // The public scene path: a marker is published for EVERY intermission,
+        // its prompt narrates the continuation it performs, and confirming it
+        // (`onStairDescend`, what the real MainGameScene modal invokes) is what
+        // advances the act — acts 1-4 included, so a human never stalls.
+        const marker = scenario.getStairMarkerState?.(world);
+        expect(marker?.visible).toBe(true);
+        expect(marker?.locked).toBe(false);
+        const confirmation = scenario.getStairConfirmation?.(world);
+        expect(confirmation?.kind).toBe(
+          act < phase.actCount ? 'floor4-green-room-exit' : 'floor4-stair-descend',
+        );
+        expect(scenario.onStairDescend?.(world, player)).toBe(true);
+        expect(world.floorExtendedState?.floor4Arena?.phase).toEqual(
+          act < phase.actCount ? { kind: 'WAVES', act: act + 1 } : { kind: 'VICTORY' },
+        );
         if (act < phase.actCount) {
-          expect(confirmFloor4GreenRoomExit(world, player)).toBe(true);
-        } else {
-          expect(confirmFloor4StairDescend(world, player)).toBe(true);
+          // The direct confirmations remain the same gated contract underneath.
+          expect(confirmFloor4GreenRoomExit(world, player)).toBe(false);
+          expect(confirmFloor4StairDescend(world, player)).toBe(false);
         }
       }
 

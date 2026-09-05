@@ -3,7 +3,6 @@ import type { CoreSimulationSystem } from '../core/simulation-core-step.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../shared/constants.js';
-import { RoomRole } from '../shared/map-types.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
 import type {
   ScenarioCompletionCopy,
@@ -60,10 +59,9 @@ import {
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
   arenaDirectorSystem,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
+  getFloor4GreenRoomExitMarker,
   initializeFloor4Scenario,
-  isFloor4StairDescendAvailable,
-  isFloor4TerminalIntermission,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
@@ -301,6 +299,8 @@ export interface ScenarioDefinition {
   readonly getStairMarkerState?: (world: GameWorld) => ScenarioStairMarkerState | null;
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /** Local alias of `ScenarioPresentationContract.getStairConfirmation` — per-world prompt copy for multi-continuation exits. */
+  readonly getStairConfirmation?: ScenarioPresentationContract<GameWorld>['getStairConfirmation'];
   /**
    * Presentation copy for the generic starter-loadout picker. Omitted by
    * scenarios that present their own loadout surface (Floor 3) or offer no
@@ -330,6 +330,7 @@ export function getScenarioPresentationContract(
     getCompletionCopy: scenario.getCompletionCopy,
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
+    getStairConfirmation: scenario.getStairConfirmation,
     starterLoadout: scenario.starterLoadout,
     getHudSnapshot: scenario.getHudSnapshot,
     nextFloorId: scenario.nextFloorId,
@@ -420,26 +421,46 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
   };
 }
 
-/** Floor 4's terminal marker is the public Green Room exit during the final intermission. */
+/**
+ * Floor 4's exit marker is the public Green Room affordance, shown during EVERY
+ * intermission: acts 1-4 confirm the next act, the terminal intermission
+ * confirms the broadcast exit. Projected straight off
+ * `getFloor4GreenRoomExitMarker`, the same source the confirmation and the AI
+ * auto-driver use, so prompt and action can never disagree.
+ */
 function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
-  const arena = world.floorExtendedState?.floor4Arena;
-  if (!arena || !isFloor4TerminalIntermission(world) || !world.floorMap) {
+  const marker = getFloor4GreenRoomExitMarker(world);
+  if (!marker) {
     return null;
   }
-  const greenRoom = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
-  if (!greenRoom) {
-    return null;
-  }
-  const tileSizeFt = world.floorMap.config.tileSizeFt;
   return {
-    positionFt: {
-      x: (greenRoom.bounds.x + greenRoom.bounds.width / 2) * tileSizeFt,
-      y: (greenRoom.bounds.y + greenRoom.bounds.height / 2) * tileSizeFt,
-    },
-    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    positionFt: marker.positionFt,
+    radiusFt: marker.radiusFt,
     visible: true,
-    locked: !isFloor4StairDescendAvailable(world),
-    label: '▼ FLOOR EXIT',
+    // Never locked while the marker exists: the confirmation accepts anywhere
+    // inside `radiusFt`, which is exactly the proximity test the scene applies
+    // before offering the prompt.
+    locked: false,
+    label: marker.nextAct === null ? '▼ FLOOR EXIT' : '▶ NEXT ACT',
+  };
+}
+
+/** Floor 4's prompt narrates the continuation the Green Room exit actually performs. */
+function getFloor4StairConfirmation(world: GameWorld): ScenarioStairConfirmationCopy | null {
+  const marker = getFloor4GreenRoomExitMarker(world);
+  if (!marker) {
+    return null;
+  }
+  if (marker.nextAct === null) {
+    return FLOOR_4_STAIR_CONFIRMATION;
+  }
+  return {
+    kind: 'floor4-green-room-exit',
+    title: `Start act ${marker.nextAct}?`,
+    subtitle: 'You are at the Green Room exit.',
+    body: 'The Green Room is settled. Step back out to open the next act of the broadcast.',
+    confirmLabel: 'Yes, start the next act',
+    confirmDescription: `Begin act ${marker.nextAct}.`,
   };
 }
 
@@ -987,7 +1008,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       configureWorld: initializeFloor4Scenario,
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
-      onStairDescend: confirmFloor4StairDescend,
+      onStairDescend: confirmFloor4GreenRoomInteraction,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
@@ -996,6 +1017,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getCompletionCopy: getFloor4CompletionCopy,
       getStairMarkerState: getFloor4StairMarkerState,
       stairConfirmation: FLOOR_4_STAIR_CONFIRMATION,
+      getStairConfirmation: getFloor4StairConfirmation,
     },
   ],
   [

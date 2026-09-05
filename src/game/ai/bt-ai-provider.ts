@@ -123,7 +123,7 @@ import {
   denUnlockGoalId,
 } from '../floor2Scenario.js';
 import { floor3KeptCompanionDescendGateSatisfied } from '../floor3Scenario.js';
-import { isFloor4TerminalIntermission } from '../floor4Scenario.js';
+import { getFloor4GreenRoomExitMarker } from '../floor4Scenario.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import {
   getActiveWeapon,
@@ -8338,21 +8338,21 @@ export class BehaviorTreeAI implements AIInputProvider {
         );
       }
     }
-    if (phase?.kind !== 'INTERMISSION') {
-      return null;
-    }
-    const greenRoom = resolveNearestSafeAnchor(world, playerX, playerY);
-    if (!greenRoom) {
+    // Route to the public Green Room exit marker itself — the same projection
+    // the scene renders and the confirmation gates on — so the AI only ever
+    // confirms from inside the marker's interaction radius.
+    const exitMarker = getFloor4GreenRoomExitMarker(world);
+    if (!exitMarker) {
       return null;
     }
     return this.createProgressTarget(
-      greenRoom.x,
-      greenRoom.y,
+      exitMarker.positionFt.x,
+      exitMarker.positionFt.y,
       playerX,
       playerY,
-      isFloor4TerminalIntermission(world)
+      exitMarker.nextAct === null
         ? 'Heading to the Green Room exit to claim Floor 4 victory'
-        : `Heading to the Green Room exit for act ${phase.act + 1}`,
+        : `Heading to the Green Room exit for act ${exitMarker.nextAct}`,
     );
   }
 

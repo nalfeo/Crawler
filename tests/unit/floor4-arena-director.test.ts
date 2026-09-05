@@ -7,8 +7,10 @@ import {
   arenaDirectorSystem,
   confirmFloor4GreenRoomExit,
   confirmFloor4StairDescend,
+  getFloor4GreenRoomExitMarker,
   initializeFloor4Scenario,
 } from '../../src/game/floor4Scenario.js';
+import { autoFloor4ProgressionSystem } from '../../src/game/ai/auto-progression.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { buildFloor4HudState } from '../../src/shared/floor4-hud.js';
 import { RoomRole } from '../../src/shared/map-types.js';
@@ -186,6 +188,33 @@ describe('arenaDirectorSystem', () => {
 
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 5 });
     expect(confirmFloor4StairDescend(world, movePlayerToGreenRoom(world))).toBe(true);
+  });
+
+  it('withholds the Green Room exit until the player stands inside the public marker radius', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+
+    const marker = getFloor4GreenRoomExitMarker(world);
+    expect(marker?.nextAct).toBe(2);
+    const player = movePlayerToGreenRoom(world);
+    // Standing in the SAFE room but outside the marker's interaction radius —
+    // the position from which the human prompt is never offered.
+    world.stores.position.x[player] = marker!.positionFt.x + marker!.radiusFt + 1;
+    world.stores.position.y[player] = marker!.positionFt.y;
+
+    expect(confirmFloor4GreenRoomExit(world, player)).toBe(false);
+    autoFloor4ProgressionSystem(world, player);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'INTERMISSION', act: 1 });
+
+    // Inside the radius the AI driver resolves it through the same public action.
+    world.stores.position.x[player] = marker!.positionFt.x;
+    autoFloor4ProgressionSystem(world, player);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
   });
 
   it('replays the same phase timeline for the same seed and step sequence', () => {

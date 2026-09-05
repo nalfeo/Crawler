@@ -1,11 +1,12 @@
 # Spec: Floor 4 Playable Completion (seed 404, dual-runner)
 
 > **Status:** this document is the **slice-1 acceptance contract** for the
-> `floor-4-playable-completion` epic. Criteria **C1–C4 and C6–C8 are met in both
-> runners**; **C5 ("each intermission resolves through its public scenario/UI
-> interaction") is only partially met** and is the recorded first failed
-> criterion — see §First failed criterion. Slices 3 and 4 are complete; **slice 2
-> needed no separate fix** (see §Verdict on the reported spawn discrepancy).
+> `floor-4-playable-completion` epic. Criteria **C1–C8 are met in both runners**,
+> including **C5 ("each intermission resolves through its public scenario/UI
+> interaction")**, which is now a required, asserted result rather than a
+> recorded shortfall — see §Public interaction criterion. Slices 3 and 4 are
+> complete; **slice 2 needed no separate fix** (see §Verdict on the reported
+> spawn discrepancy).
 > **Authored:** 2026-09-02. **Contract table added:** 2026-09-03.
 > **Estimated complexity:** 🍎🍎 (one confirmed, floor-agnostic engine defect + two
 > regression tests + one additive debug-telemetry field; no gameplay/balance change).
@@ -39,16 +40,16 @@ criterion the epic names has an id, and every id has a concrete assertion in
 each runner. The two test files tag their assertions with these ids in
 comments; keep the tags and this table in sync.
 
-| Id     | Criterion (epic wording)                                                       | Headless assertion — `tests/headless/floor4-arena-completion.test.ts`                                                                                                                                                                                                                                                 | Visual assertion — `tests/e2e/floor4-ai-completion.deterministic.test.ts`                                                                                                                                                                                                                       | Status                  |
-| ------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| **C1** | the standard Floor 4 scenario initializes                                      | `timeline[0]` is `COUNTDOWN` with reason `floor4-initialized`; `headlinerCard` acts are `[1..5]`                                                                                                                                                                                                                      | `effectiveFloor === 'floor4'`; `timeline[0]` is `COUNTDOWN` / `floor4-initialized`                                                                                                                                                                                                              | ✅ met                  |
-| **C2** | at least one physical hostile wave enemy spawns through the authored feed-gate | `waveTelemetry.enemiesSpawned > 0` and `gateTelegraphsArmed > 0`                                                                                                                                                                                                                                                      | `enemiesSpawned >= 200` and `gateTelegraphsArmed > 0`                                                                                                                                                                                                                                           | ✅ met                  |
-| **C3** | all five wave windows release enemies                                          | `waveTelemetry.wavesReleased === 40` (manifest-derived full-release ceiling: `wavesPerAct(8) × acts(5)`, so no single act can satisfy it alone); timeline `WAVES` acts are exactly `[1,2,3,4,5]`                                                                                                                      | same two assertions off the lab's `floor4Arena` snapshot                                                                                                                                                                                                                                        | ✅ met                  |
-| **C4** | all five Headliners physically spawn and are defeated through ordinary combat  | `headlinerTelemetry.spawned === 5`, `defeated === 5`, `overtimeStarted === 0`; timeline `HEADLINE` acts are `[1..5]`                                                                                                                                                                                                  | same four assertions                                                                                                                                                                                                                                                                            | ✅ met (see note)       |
-| **C5** | each intermission resolves through its **public scenario/UI interaction**      | timeline `INTERMISSION` acts are `[1..5]`, `actIncome` acts are `[1..5]`, all 5 exit reasons are recorded (partial evidence); a separate `it.fails` test isolates the negative claim (no exit reason is outside the shared-timer allowlist) as an explicit, documented expected failure — never counted as C5 passing | same partial evidence, plus an identical isolated `it.fails` test                                                                                                                                                                                                                               | ⚠️ **partially met**    |
-| **C6** | the phase trace reaches `VICTORY`                                              | `floor4Arena.phase.kind === 'VICTORY'` and the last timeline entry is `VICTORY`                                                                                                                                                                                                                                       | polled `phase.kind === 'VICTORY'` from `window.__aiRunnerDebug()`                                                                                                                                                                                                                               | ✅ met                  |
-| **C7** | `RunStats.outcome` is `victory`                                                | `stats.outcome === 'victory'`                                                                                                                                                                                                                                                                                         | no `RunStats` exists in the visual runner; the equivalent is C6 — `isFloor4ArenaVictory` **is** `isVictoryReached`                                                                                                                                                                              | ✅ met (by equivalence) |
-| **C8** | execution terminates under the existing Floor 4 stall backstop                 | `gameTimeMs < floor4.manifest.timer.durationMs` (3 600 000 ms) and `totalFrames < MAX_FRAMES`                                                                                                                                                                                                                         | `gameMs < durationMs` — the raw `world.elapsedMs` clock (`window.__aiRunnerDebug().gameMs`), the same field `floor4ObjectiveTick` compares against the manifest deadline; NOT `floor4Arena.arenaElapsedMs`, which only advances during `WAVES`/`HEADLINE` and is capped well below the backstop | ✅ met                  |
+| Id     | Criterion (epic wording)                                                       | Headless assertion — `tests/headless/floor4-arena-completion.test.ts`                                                                                                                                                                            | Visual assertion — `tests/e2e/floor4-ai-completion.deterministic.test.ts`                                                                                                                                                                                                                       | Status                  |
+| ------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **C1** | the standard Floor 4 scenario initializes                                      | `timeline[0]` is `COUNTDOWN` with reason `floor4-initialized`; `headlinerCard` acts are `[1..5]`                                                                                                                                                 | `effectiveFloor === 'floor4'`; `timeline[0]` is `COUNTDOWN` / `floor4-initialized`                                                                                                                                                                                                              | ✅ met                  |
+| **C2** | at least one physical hostile wave enemy spawns through the authored feed-gate | `waveTelemetry.enemiesSpawned > 0` and `gateTelegraphsArmed > 0`                                                                                                                                                                                 | `enemiesSpawned >= 200` and `gateTelegraphsArmed > 0`                                                                                                                                                                                                                                           | ✅ met                  |
+| **C3** | all five wave windows release enemies                                          | `waveTelemetry.wavesReleased === 40` (manifest-derived full-release ceiling: `wavesPerAct(8) × acts(5)`, so no single act can satisfy it alone); timeline `WAVES` acts are exactly `[1,2,3,4,5]`                                                 | same two assertions off the lab's `floor4Arena` snapshot                                                                                                                                                                                                                                        | ✅ met                  |
+| **C4** | all five Headliners physically spawn and are defeated through ordinary combat  | `headlinerTelemetry.spawned === 5`, `defeated === 5`, `overtimeStarted === 0`; timeline `HEADLINE` acts are `[1..5]`                                                                                                                             | same four assertions                                                                                                                                                                                                                                                                            | ✅ met (see note)       |
+| **C5** | each intermission resolves through its **public scenario/UI interaction**      | timeline `INTERMISSION` acts are `[1..5]`, `actIncome` acts are `[1..5]`, and the five recorded exit reasons are exactly `green-room-exit` ×4 then `floor4-stairs-confirmed` — the reasons only the public Green Room exit confirmation can emit | same three assertions off the lab's `floor4Arena` snapshot                                                                                                                                                                                                                                      | ✅ met                  |
+| **C6** | the phase trace reaches `VICTORY`                                              | `floor4Arena.phase.kind === 'VICTORY'` and the last timeline entry is `VICTORY`                                                                                                                                                                  | polled `phase.kind === 'VICTORY'` from `window.__aiRunnerDebug()`                                                                                                                                                                                                                               | ✅ met                  |
+| **C7** | `RunStats.outcome` is `victory`                                                | `stats.outcome === 'victory'`                                                                                                                                                                                                                    | no `RunStats` exists in the visual runner; the equivalent is C6 — `isFloor4ArenaVictory` **is** `isVictoryReached`                                                                                                                                                                              | ✅ met (by equivalence) |
+| **C8** | execution terminates under the existing Floor 4 stall backstop                 | `gameTimeMs < floor4.manifest.timer.durationMs` (3 600 000 ms) and `totalFrames < MAX_FRAMES`                                                                                                                                                    | `gameMs < durationMs` — the raw `world.elapsedMs` clock (`window.__aiRunnerDebug().gameMs`), the same field `floor4ObjectiveTick` compares against the manifest deadline; NOT `floor4Arena.arenaElapsedMs`, which only advances during `WAVES`/`HEADLINE` and is capped well below the backstop | ✅ met                  |
 
 Cross-cutting, asserted in both runners: **determinism** (a repeated seed-404 run
 reproduces identical completion telemetry / an identical phase-timeline
@@ -65,7 +66,7 @@ overtime finisher ran.
 the same predicate that produces headless `RunStats.outcome === 'victory'` —
 without adding a lab-only outcome field, which slice 1 must not do.
 
-**C5 is the one criterion not fully met**; see §First failed criterion.
+**C5 is asserted, not assumed**; see §Public interaction criterion — C5.
 
 ### Constraints on the two gates
 
@@ -78,8 +79,8 @@ invulnerability, force kills, inject enemies, skip interactions, or add
 test-only gameplay hooks. Neither test touches `src/**`.
 
 The contract's shared literals — the five acts, the manifest-derived
-wave-release ceiling, the manifest-derived stall backstop, and C5's recorded
-auto-advance exit reasons — live in `tests/helpers/floor4-completion-contract.ts`
+wave-release ceiling, the manifest-derived stall backstop, and C5's two public
+exit reasons — live in `tests/helpers/floor4-completion-contract.ts`
 and are imported by both gates, so a change to one criterion cannot silently
 loosen only one runner.
 
@@ -160,8 +161,8 @@ Telemetry at failure: frame stuck at 1–16, `window.__aiRunnerDebug().floor4Are
 absent, one uncaught `TypeError: Cannot read properties of undefined (reading
 'duration')` on the page.
 
-**First failed criterion (visual, post-fix):** same as headless — C1–C4 and C6–C8
-pass; **C5 passes only in its weaker "resolved" form.**
+**First failed criterion (visual, post-fix):** none — same as headless, C1–C8 all
+pass, C5 included in its full public-interaction form.
 
 ### Verdict on the reported spawn discrepancy
 
@@ -226,16 +227,16 @@ wave windows released, all 5 Headliners spawned and defeated. Both runs did.
 
 ## Evidence (after fix)
 
-- **Headless** (`tests/headless/floor4-arena-completion.test.ts`, 3 tests — 2
-  passing plus 1 expected `it.fails` characterizing the C5 shortfall): seed 404
+- **Headless** (`tests/headless/floor4-arena-completion.test.ts`, 2 tests, both
+  required to pass): seed 404
   reaches `outcome: 'victory'`, `waveTelemetry.wavesReleased === 40` (the
   manifest-derived full-release ceiling), `headlinerTelemetry.spawned === 5 &&
 defeated === 5`, `phase.kind === 'VICTORY'`, terminates at ~36.5k frames
   (well under the 60k cap); a repeated seed-404 run produces byte-identical
   completion telemetry.
-- **Visual** (`tests/e2e/floor4-ai-completion.deterministic.test.ts`, 2 tests —
-  1 passing plus 1 expected `it.fails` characterizing the C5 shortfall, ~160s
-  wall time): drives the real `ai-runner-lab` / `MainGameScene`, restarts
+- **Visual** (`tests/e2e/floor4-ai-completion.deterministic.test.ts`, 1 test,
+  required to pass, ~160s wall time): drives the real `ai-runner-lab` /
+  `MainGameScene`, restarts
   **300ms after page load** (deliberately inside the previously-observed 1–16
   frame crash window), runs production `BehaviorTreeAI` at 16x, and polls the
   lab's own `window.__aiRunnerDebug()` telemetry (now carrying an additive
@@ -272,6 +273,18 @@ transition reasons emitted by the shared public confirmations:
 `green-room-exit` for acts 1–4 and `floor4-stairs-confirmed` for act 5. A return
 of the old `slice2-auto-green-room-exit` / `slice2-auto-stairs` rehearsal
 reasons is a regression.
+
+**One affordance, one action, both drivers.** `arenaDirectorSystem` no longer
+advances an intermission on its own. Every intermission publishes exactly one
+Green Room exit marker (`getFloor4GreenRoomExitMarker`), which is what the real
+`MainGameScene` renders and prompts from (`getStairMarkerState` /
+`getStairConfirmation`) and what `ScenarioDefinition.onStairDescend`
+(`confirmFloor4GreenRoomInteraction`) resolves — opening the next act during
+acts 1–4 and confirming the terminal exit on act 5. The AI auto-driver
+(`autoFloor4ProgressionSystem`) calls that same action and nothing else, and the
+action is a no-op until the player stands inside the published marker radius, so
+the AI can neither confirm from a position the human prompt withholds nor reach
+a phase a human cannot reach.
 
 ## Baseline commands (reproducible)
 
