@@ -145,10 +145,10 @@ describe('loadGeneratedManifest', () => {
     const registry = loadGeneratedManifest({
       version: GENERATED_MANIFEST_VERSION,
       entries: {
-        'npc-welcome-goon-var-0': {
+        'npc-welcome-goon-placeholder': {
           ...baseEntry,
           briefId: 'npc-welcome-goon',
-          spriteName: 'npc-welcome-goon-var-0',
+          spriteName: 'npc-welcome-goon-placeholder',
           assetPath: 'generated/npc-welcome-goon-placeholder.png',
           variantIndex: 0,
           placeholder: true,

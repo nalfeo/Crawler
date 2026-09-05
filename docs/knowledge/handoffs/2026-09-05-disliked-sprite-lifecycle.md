@@ -55,6 +55,10 @@ sprite-pipeline, sprite-workflow
   unresolved stale annotation keys. Those unresolved assets remain preserved;
   only exact keys, valid tombstones, or explicit source-run provenance can
   authorize future deletion.
+- Fifteen initial cleanup tombstones are explicitly marked as a one-time
+  pre-hardening migration. Each records the deleted shard's `sourceRun` and
+  `variantIndex` corroboration; future lifecycle runs cannot reuse name
+  similarity as deletion authority.
 - Combined targeted lifecycle/runtime suite: 227/227 passed.
 - Independent QA hard-gate matrix: 494 passed, 1 intentional environment-gated
   skip; all nine lifecycle requirements passed.
