@@ -13,7 +13,7 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
-import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
 import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
@@ -711,6 +711,13 @@ export interface AiRunnerDebugSnapshot {
    * before the world exists.
    */
   floor4Arena?: Floor4ArenaRunStats;
+  /**
+   * Count of Floor 4 wave enemies currently alive (backed by live ECS
+   * entities). `0` off Floor 4 or before the first wave. Used by the e2e
+   * live-wave checkpoint to prove a rendered hostile exists, not just that
+   * the cumulative spawn counter is positive.
+   */
+  floor4LiveEnemyCount: number;
   /**
    * Per-companion decision + path telemetry (#4205), mirroring the player's
    * own `state`/`reason`/`targetX`/`targetY`/`targetDist` fields above so a
@@ -3408,6 +3415,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       arenaEntryFrame,
       quests,
       floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
+      floor4LiveEnemyCount: world ? getFloor4LiveWaveEnemyCount(world) : 0,
       companions: world ? getCompanionTelemetry(world) : [],
       floor3LossReason: world ? getFloor3LossReason(world) : null,
     };

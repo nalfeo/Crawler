@@ -135,6 +135,7 @@ interface Floor4VisualRunResult {
     enemiesSpawned: number | undefined;
     headlinerSpawned: number | undefined;
     headlinerDefeated: number | undefined;
+    floor4LiveEnemyCount: number;
   } | null;
   finalSnapshot: Floor4RunSnapshot;
   liveWaveCheckpointSaved: boolean;
@@ -176,6 +177,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
           enemiesSpawned: arena?.waveTelemetry?.enemiesSpawned,
           headlinerSpawned: arena?.headlinerTelemetry?.spawned,
           headlinerDefeated: arena?.headlinerTelemetry?.defeated,
+          floor4LiveEnemyCount: snap?.floor4LiveEnemyCount ?? 0,
         };
       });
       lastSnapshot = snapshot;
@@ -184,7 +186,7 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
         snapshot.phase !== null &&
         typeof snapshot.phase === 'object' &&
         (snapshot.phase as { kind?: string }).kind === 'WAVES' &&
-        (snapshot.enemiesSpawned ?? 0) > 0
+        snapshot.floor4LiveEnemyCount > 0
       ) {
         await page.screenshot({ path: join(CHECKPOINT_DIR, 'live-wave.png'), type: 'png' });
         liveWaveCheckpointSaved = true;
@@ -200,6 +202,22 @@ async function runVisualFloor4Completion(browser: Browser): Promise<Floor4Visual
     }
     let victoryCheckpointSaved = false;
     if (reachedVictory) {
+      // Wait for MainGameScene to render its terminal victory surface before
+      // capturing the checkpoint. `phase.kind === 'VICTORY'` only confirms the
+      // simulation state; `floorCompletionMessageShown` proves the scene's
+      // `showFloorCompletionScreenIfNeeded()` path actually ran and the
+      // completion UI is now on screen. A regression in that path would
+      // otherwise pass this gate while saving ordinary gameplay footage.
+      await page.waitForFunction(
+        () =>
+          (
+            window as unknown as {
+              __floor1Debug?: { getState?: () => { floorCompletionMessageShown?: boolean } };
+            }
+          ).__floor1Debug?.getState?.()?.floorCompletionMessageShown === true,
+        undefined,
+        { timeout: 30_000 },
+      );
       await page.screenshot({ path: join(CHECKPOINT_DIR, 'victory.png'), type: 'png' });
       victoryCheckpointSaved = true;
     }
@@ -402,6 +420,8 @@ describe('Floor 4 visual AI-runner completion gate (seed 404)', () => {
       surfaceActionSequence(secondRun.finalSnapshot.floor4SurfaceTrace),
       secondContext,
     ).toEqual(surfaceActionSequence(firstRun.finalSnapshot.floor4SurfaceTrace));
-    expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).not.toBe('');
+    expect(secondRun.finalSnapshot.timelineFingerprint, secondContext).toBe(
+      firstRun.finalSnapshot.timelineFingerprint,
+    );
   }, 300_000);
 });

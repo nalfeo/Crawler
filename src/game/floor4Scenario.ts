@@ -1368,17 +1368,10 @@ export function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarker
   }
   const layout = computeShowcaseArenaLayout(showcaseArenaOptionsFromConfig(world.floorMap.config));
   const tileSizeFt = world.floorMap.config.tileSizeFt;
-  const playerEid = query(world.ecs, [Player])[0];
-  const positionFt =
-    playerEid !== undefined && hasComponent(world.ecs, playerEid, Position)
-      ? {
-          x: world.stores.position.x[playerEid] ?? 0,
-          y: world.stores.position.y[playerEid] ?? 0,
-        }
-      : {
-          x: (layout.greenRoom.x + layout.greenRoom.width / 2) * tileSizeFt,
-          y: (layout.greenRoom.y + layout.greenRoom.height / 2) * tileSizeFt,
-        };
+  const positionFt = {
+    x: (layout.greenRoom.x + layout.greenRoom.width / 2) * tileSizeFt,
+    y: (layout.greenRoom.y + layout.greenRoom.height / 2) * tileSizeFt,
+  };
   const ready = state.phaseElapsedMs >= getFloor4Config().phase.intermissionMs;
   return {
     positionFt,
