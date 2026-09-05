@@ -129,6 +129,9 @@ let cached: Promise<GeneratedSpriteRegistry | null> | undefined;
  * or throws.
  */
 export function loadShippedGeneratedSpriteRegistry(): Promise<GeneratedSpriteRegistry | null> {
-  cached ??= loadUncached();
+  cached ??= loadUncached().catch((error: unknown) => {
+    cached = undefined;
+    throw error;
+  });
   return cached;
 }

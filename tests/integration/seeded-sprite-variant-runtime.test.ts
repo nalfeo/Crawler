@@ -1,3 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   setEnemyAppearanceKey,
@@ -23,6 +28,9 @@ import {
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const TSX_CLI = path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 const baseEntry = {
   spriteName: 'welcome-goon-var-0',
@@ -342,6 +350,46 @@ describe('seeded sprite variant runtime contract', () => {
     // A concept the committed shard tree is known to ship — proves we loaded
     // real art rather than silently falling back to an empty registry.
     expect(first!.variants('rat').length).toBeGreaterThan(0);
+  });
+
+  it('retries a shipped registry load after a transient filesystem failure', () => {
+    const missingRoot = mkdtempSync(path.join(tmpdir(), 'missing-shipped-registry-'));
+    const moduleUrl = pathToFileURL(
+      path.join(REPO_ROOT, 'src', 'game', 'ai', 'shipped-sprite-registry.ts'),
+    ).href;
+    const probe = `
+      import { loadShippedGeneratedSpriteRegistry } from ${JSON.stringify(moduleUrl)};
+      (async () => {
+        process.chdir(${JSON.stringify(missingRoot)});
+        let failed = false;
+        try {
+          await loadShippedGeneratedSpriteRegistry();
+        } catch {
+          failed = true;
+        }
+        if (!failed) throw new Error('expected the missing shard tree to fail');
+        process.chdir(${JSON.stringify(REPO_ROOT)});
+        const registry = await loadShippedGeneratedSpriteRegistry();
+        if (registry === null || registry.size === 0) {
+          throw new Error('retry did not load the shipped registry');
+        }
+      })().catch((error) => {
+        console.error(error);
+        process.exitCode = 1;
+      });
+    `;
+    try {
+      expect(() =>
+        execFileSync(process.execPath, [TSX_CLI, '--eval', probe], {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 30_000,
+        }),
+      ).not.toThrow();
+    } finally {
+      rmSync(missingRoot, { recursive: true, force: true });
+    }
   });
 
   it('defaults an omitted runHeadless registry to the shipped art the real game installs', async () => {

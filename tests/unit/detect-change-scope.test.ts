@@ -146,21 +146,22 @@ const F = (
 
 const cases: Case[] = [
   // Approved-art surface: visual but only asset-visual (no game/devtool).
+  // Manifest data is also simulation-visible because headless loads authored
+  // weapon anchors from the committed shards.
   {
     name: 'generated sprites + manifest',
     files: ['public/assets/generated/manifest.json'],
     //                          art   docs  gsafe sponly sptch  vis   game  asset devt
-    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+    expected: F(true, false, false, false, false, true, false, true, false, true, false),
   },
   {
     // The manifest source of truth is now per-asset shards under entries/. A
-    // pure art check-in touches its PNG + its own shard — both must classify as
-    // art-only / asset-visual so parallel art PRs stay conflict-free and skip
-    // heavy gameplay gates.
+    // pure art check-in touches its PNG + its own shard. It remains art-only /
+    // asset-visual, but the shard is simulation-visible through weapon anchors.
     name: 'generated manifest shard (per-asset)',
     files: ['public/assets/generated/entries/equipment/weapon/bone-saw.json'],
     //                          art   docs  gsafe sponly sptch  vis   game  asset devt
-    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+    expected: F(true, false, false, false, false, true, false, true, false, true, false),
   },
   {
     name: 'sprite catalog data',
@@ -638,7 +639,7 @@ const cases: Case[] = [
   {
     name: 'art + devtools (mixed) → asset and devtool visual both touched',
     files: ['public/assets/generated/manifest.json', 'src/devtools/sprite-workflow-queue.ts'],
-    expected: F(false, false, true, false, false, true, true, true, false, true, true),
+    expected: F(false, false, false, false, false, true, true, true, false, true, true),
   },
   // DevTools entrypoints: devtools.html and src/devtools-main.ts must route
   // to devtool_visual only, NOT game_visual.
@@ -760,11 +761,11 @@ const cases: Case[] = [
     // package.json (unsafe) falls to catch-all → all visual surfaces touched
     expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
   },
-  // Asset change: sim and coverage untouched.
+  // A generated manifest is simulation-visible; the PNG alone is not.
   {
     name: 'asset-only: generated sprite sheet',
     files: ['public/assets/generated/sprites.png', 'public/assets/generated/manifest.json'],
-    expected: F(true, false, true, false, false, false, false, true, false, true, false),
+    expected: F(true, false, false, false, false, true, false, true, false, true, false),
   },
   // Unknown/unclassified path → fail-closed: sim_touched=true, coverage_touched=true.
   {

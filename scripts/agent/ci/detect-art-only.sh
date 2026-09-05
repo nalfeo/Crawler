@@ -9,8 +9,9 @@
 #                                        under entries/; the aggregate manifest.json
 #                                        is a gitignored build artifact, never in a diff)
 #   - src/shared/data/sprite-catalog.json
-# When art-only, CI skips heavy gameplay gates (integration, headless, e2e, build)
-# but still runs typecheck/lint/format/unit.
+# When art-only, CI skips most heavy gameplay gates but still runs
+# typecheck/lint/format/unit. The headless gate also runs when a generated
+# manifest shard makes sim_touched=true.
 #
 # docs_only=true — every changed file is under the documentation/governance
 # surface (`docs/**`, `.specify/specs/**`, `AGENTS.md`) or is a markdown/plain-
@@ -20,11 +21,10 @@
 #
 # gameplay_safe=true — every changed file provably cannot change the deterministic
 # Floor-1 simulation the headless gate runs (src/engine rendering, src/labs,
-# tests/e2e, docs, *.md/*.txt, public/**). The headless runner imports only
-# src/core, src/shared and src/game/ai — never src/engine (ESLint layer rule) —
-# so these surfaces cannot alter the sim outcome. ci.yml uses this to skip the
-# 306s headless job on PULL_REQUESTS ONLY; main-push always runs it, preserving
-# an observe-after-merge backstop in case the allowlist is ever wrong.
+# tests/e2e, docs, *.md/*.txt, and non-registry public assets). The headless
+# runner loads public/assets/generated manifest shards because authored weapon
+# anchors affect projectile origins, so generated entries are simulation-visible.
+# ci.yml uses this to skip the headless job on pull requests only.
 #
 # sim_touched=true — at least one changed file is in the simulation-critical surface.
 # Fail-closed: unknown/unclassified paths set sim_touched=true (run the gate).
@@ -260,11 +260,12 @@ done <<<"$changed"
 
 # gameplay_safe: every changed file is provably unable to change the deterministic
 # Floor-1 simulation. Allowlist = surfaces the headless runner never imports
-# (src/engine, src/labs, src/devtools), plus e2e tests, docs, static assets,
-# CI/workflow config, sprite-pipeline scripts/tests, and sprite catalog plumbing.
+# (src/engine, src/labs, src/devtools), plus e2e tests, docs, non-registry static
+# assets, CI/workflow config, sprite-pipeline scripts/tests, and sprite catalog
+# plumbing. Generated manifest shards are excluded because headless loads them.
 # Anything else — src/core, src/game, most src/shared, tests/headless — forces
 # the gate to run.
-# Consumed by ci.yml to skip the headless job on pull_requests only.
+# Consumed by local scope decisions; CI gates headless directly on sim_touched.
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
@@ -283,6 +284,8 @@ while IFS= read -r file; do
     devtools.html) ;;
     tests/e2e/*) ;;
     docs/*) ;;
+    public/assets/generated/manifest.json) gameplay_safe=false; break ;;
+    public/assets/generated/entries/*) gameplay_safe=false; break ;;
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
@@ -368,7 +371,7 @@ done <<<"$changed"
 # sim_touched: at least one changed file is in the simulation-critical surface.
 # Fail-closed: unknown/unclassified paths set sim_touched=true (run the gate).
 # ci.yml uses this to gate the headless Floor-1 job on PRs: headless runs only
-# when sim_touched=true; main-push and schedule always run it as a backstop.
+# when sim_touched=true; non-docs main-push and schedule runs are the backstop.
 sim_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -382,6 +385,8 @@ while IFS= read -r file; do
     tests/unit/*) ;;
     tests/integration/*) ;;
     docs/*) ;;
+    public/assets/generated/manifest.json) sim_touched=true; break ;;
+    public/assets/generated/entries/*) sim_touched=true; break ;;
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;

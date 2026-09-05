@@ -805,7 +805,7 @@ function findRemainingExactReferences(
 
 export function validateDislikedLifecycleClosure(
   repoRoot: string,
-  plan: DislikedLifecyclePlan,
+  plan: Pick<DislikedLifecyclePlan, 'removed'>,
 ): void {
   const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
   const manifest = composeManifestFromShards(generatedDir);

@@ -238,6 +238,19 @@ sprite-pipeline, sprite-workflow
   the final durability matrix passed 271/271; typecheck passed; and the gate
   reported 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
   0 reference updates.
+- The required final review then found and closed four adjacent fail-closed
+  gaps. Manual unapproval now checks both legacy issues and canonical
+  `assets/queue` using the manifest-directed path before deleting; rejected
+  shipped-registry loads clear their cache so a transient read failure cannot
+  poison a full sweep; generated manifest shards are classified as
+  simulation-visible so art-only PRs run the headless gate; and the CI closure
+  command validates persisted tombstones independently of mutation-plan
+  ambiguity. The audited one-time queue-repair policy was versioned for its
+  changed key set, and the unused lifecycle `--json` option was removed.
+- The resulting focused sidecar, lifecycle, runtime, scope, CI-policy, and
+  queue-repair matrix passed 357/357; typecheck passed; persisted closure passed;
+  and the full dry-run inventory remained 0 removable / 20 retained /
+  7 unresolved / 0 deferred / 0 pending / 0 reference updates.
 
 ## PR #3234 generic extraction audit
 

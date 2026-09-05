@@ -3479,6 +3479,10 @@ describe('DELETE /api/manifest/:variantId', () => {
       // Stub out the durable queue check so tests don't exec `gh issue list`.
       checkinDeps: {
         listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
       } as unknown as CheckinRunnerDeps,
     });
   });
@@ -3590,6 +3594,10 @@ describe('DELETE /api/manifest/:variantId', () => {
               ],
             ]),
           ),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
       } as unknown as CheckinRunnerDeps,
     });
 
@@ -3606,6 +3614,46 @@ describe('DELETE /api/manifest/:variantId', () => {
     // Manifest entry must NOT have been removed.
     const manifest = composeManifestFromShards(path.dirname(manifestPath));
     expect(manifest.entries[variantId]).toBeDefined();
+  });
+
+  it('returns 409 when the variant exists only on canonical assets/queue', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'duplicate' as const,
+      branch: 'assets/queue',
+    }));
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset,
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'queued-conflict' });
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith({
+      manifestKey: variantId,
+      assetPath,
+      manifestEntry: expect.objectContaining({ spriteName: variantId, assetPath }),
+    });
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
   });
 });
 

@@ -624,7 +624,7 @@ describe('disliked-lifecycle closure gate wiring', () => {
     const script = packageJson.scripts['check:disliked-lifecycle-closure'];
     expect(script).toBeDefined();
     expect(script).toContain('scripts/sprites/disliked-lifecycle-cli.ts');
-    expect(script).toContain('--dry-run');
+    expect(script).toContain('--closure-only');
     // Must never be able to mutate the manifest/queue: --apply is a distinct,
     // manually-invoked path (`npm run sprites:disliked-lifecycle -- --apply`).
     expect(script).not.toContain('--apply');
@@ -647,7 +647,7 @@ describe('disliked-lifecycle closure gate wiring', () => {
   it('verify:fast Step 3 runs the same read-only dry-run check locally', () => {
     const verifyFastSh = readFileSync(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'), 'utf8');
     expect(verifyFastSh).toContain(
-      'run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --dry-run',
+      'run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --closure-only',
     );
   });
 });

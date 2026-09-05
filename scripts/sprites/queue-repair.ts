@@ -14,7 +14,7 @@ import {
   selectAuthorizedLifecycleDeletions,
 } from './reconcile-queue.js';
 
-export const SELECTIVE_RECOVERY_POLICY = 'acc25eda-selective-v1';
+export const SELECTIVE_RECOVERY_POLICY = 'acc25eda-selective-v2';
 export const SELECTIVE_RECOVERY_SOURCE_SHA = 'acc25eda2680af595f65d5248ed53049d1fe9ab3';
 export const SELECTIVE_RECOVERY_ANNOTATION_DELTA_COUNT = 52;
 

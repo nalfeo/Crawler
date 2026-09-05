@@ -1713,6 +1713,41 @@ describe('disliked sprite lifecycle dry-run closure gate', () => {
     }
   });
 
+  it('checks persisted closure without requiring a mutation plan to be unambiguous', async () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const first = entry('rat', 0, { sourceRun: 'generated/runs/rat/shared-run' });
+    const second = entry('bat', 0, { sourceRun: 'archive/runs/bat/shared-run' });
+    writeShard(generatedDir, first.spriteName, first);
+    writeShard(generatedDir, second.spriteName, second);
+    writeFileSync(path.join(root, 'public', 'assets', first.assetPath), 'rat');
+    writeFileSync(path.join(root, 'public', 'assets', second.assetPath), 'bat');
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'legacy-var-0': {
+            disliked: true,
+            sourceRun: 'old/location/shared-run',
+            variantIndex: 0,
+          },
+        },
+      }),
+    );
+
+    const { main } = await import('../../../scripts/sprites/disliked-lifecycle-cli.js');
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      expect(await main(['--closure-only'], root)).toBe(0);
+      expect(await main(['--dry-run'], root)).toBe(2);
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   /**
    * REPO GATE. Runs the real closure validation against this repository's own
    * annotation ledger on every `npm run test:sprites`, so a dangling tombstone

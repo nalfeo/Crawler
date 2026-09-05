@@ -74,7 +74,6 @@ import {
   resolveVariantIdentity,
   unapproveVariant,
   UnapproveError,
-  type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
 import {
@@ -2309,15 +2308,32 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     return withCheckinMutationLock(async () => {
-      // Pre-mutation queue check: if this variant's asset is already in the
-      // durable asset-checkin queue (an `assets/*` branch + open issue filed
-      // by /accept), evicting the local copy won't remove it from that
-      // pipeline. Reject with 409 so the caller can close the issue first.
-      const assetPath = `generated/${variantId}.png`;
-      const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+      let entry: ReturnType<typeof composeManifestFromShards>['entries'][string] | undefined;
+      try {
+        entry = composeManifestFromShards(path.dirname(manifestPath)).entries[variantId];
+      } catch (err) {
+        reply.code(500);
+        return {
+          error: 'unapprove-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+      if (entry === undefined) {
+        reply.code(404);
+        return { error: 'not-found', message: `Manifest entry not found: ${variantId}` };
+      }
+
+      // Pre-mutation queue check: if this variant's manifest-directed asset is
+      // already in either the legacy issue queue or canonical assets/queue,
+      // evicting the local copy would not remove the durable queued copy.
+      const assetPath = entry.assetPath;
+      const defaultCheckinDeps = createDefaultCheckinDeps(deps.repoRoot, env);
+      const checkinDeps = deps.checkinDeps ?? defaultCheckinDeps;
       const listQueuedAssets =
         checkinDeps.listQueuedAssets ??
         (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+      const inspectDurableQueueAsset =
+        checkinDeps.inspectDurableQueueAsset ?? defaultCheckinDeps.inspectDurableQueueAsset;
       let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
       try {
         queuedAssets = await listQueuedAssets();
@@ -2336,9 +2352,36 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         };
       }
 
-      let entry: ManifestEntry;
+      if (inspectDurableQueueAsset === undefined) {
+        reply.code(500);
+        return {
+          error: 'unapprove-queue-check-failed',
+          message: 'Canonical assets/queue inspection is unavailable.',
+        };
+      }
       try {
-        entry = unapproveVariant({
+        const durableQueue = await inspectDurableQueueAsset({
+          manifestKey: variantId,
+          assetPath,
+          ...(entry.contentHash !== undefined ? { contentHash: entry.contentHash } : {}),
+          manifestEntry: entry,
+        });
+        if (durableQueue.reconciliation !== 'new') {
+          reply.code(409);
+          return {
+            error: 'queued-conflict',
+            message:
+              `${assetPath} cannot be evicted while canonical ${durableQueue.branch} ` +
+              `reports ${durableQueue.reconciliation}. Reconcile or remove the queued ` +
+              'asset first to prevent it from reappearing.',
+          };
+        }
+      } catch (err) {
+        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+      }
+
+      try {
+        return unapproveVariant({
           variantId,
           manifestPath,
           catalogPath,
@@ -2355,7 +2398,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           message: err instanceof Error ? err.message : String(err),
         };
       }
-      return entry;
     });
   });
 

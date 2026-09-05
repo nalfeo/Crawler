@@ -12,20 +12,28 @@ import {
 
 export async function main(argv: readonly string[], repoRoot: string): Promise<number> {
   const apply = argv.includes('--apply');
-  const dryRun = argv.includes('--dry-run') || !apply;
-  if (argv.some((arg) => arg !== '--apply' && arg !== '--dry-run' && arg !== '--json')) {
+  const closureOnly = argv.includes('--closure-only');
+  const dryRun = argv.includes('--dry-run') || (!apply && !closureOnly);
+  if (argv.some((arg) => arg !== '--apply' && arg !== '--dry-run' && arg !== '--closure-only')) {
     process.stderr.write(
-      'Usage: npm run sprites:disliked-lifecycle -- [--dry-run|--apply] [--json]\n',
+      'Usage: npm run sprites:disliked-lifecycle -- [--dry-run|--apply|--closure-only]\n',
     );
     return 1;
   }
-  if (apply && argv.includes('--dry-run')) {
-    process.stderr.write('Choose exactly one of --dry-run or --apply.\n');
+  if ([apply, argv.includes('--dry-run'), closureOnly].filter(Boolean).length > 1) {
+    process.stderr.write('Choose exactly one of --dry-run, --apply, or --closure-only.\n');
     return 1;
   }
 
   try {
     const run = async (): Promise<void> => {
+      if (closureOnly) {
+        validateDislikedLifecycleClosure(repoRoot, { removed: [] });
+        process.stdout.write(
+          `${JSON.stringify({ mode: 'closure-only', status: 'ok' }, null, 2)}\n`,
+        );
+        return;
+      }
       const plan = loadDislikedLifecyclePlan(repoRoot);
       const summary = summarizeDislikedLifecycle(plan);
       process.stdout.write(
