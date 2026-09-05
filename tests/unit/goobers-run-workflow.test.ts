@@ -1902,6 +1902,8 @@ describe('Goobers automatic dispatch and recovery', () => {
     );
     expect(startScript).toContain('[ "${RESOLVED_INTAKE_COHORT:-}" = "legacy-parity" ]');
     expect(startScript).toContain('gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}"');
+    expect(startScript).toContain('--json state,labels,assignees');
+    expect(startScript).toContain('[ "$state" != "OPEN" ] || [ "$unassigned" != "true" ]');
     expect(job?.needs).toBe('reserve');
     const definition = loadYaml<GoobersDefinition>(
       '.goobers',

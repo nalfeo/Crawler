@@ -565,13 +565,12 @@ jobs:
               eligible_fresh_cohort="${candidate_cohort}"
               break
             done < "${selected_file}"
-            if [ -n "${ISSUE_NUMBER}" ]; then
-              :
-            elif [ -z "${eligible_fresh_issue}" ]; then
-              echo "No unblocked issue in the Goobers intake cohort; skipping this run."
-              echo "should_run=false" >> "${GITHUB_OUTPUT}"
-              exit 0
-            else
+            if [ -z "${ISSUE_NUMBER}" ]; then
+              if [ -z "${eligible_fresh_issue}" ]; then
+                echo "No unblocked issue in the Goobers intake cohort; skipping this run."
+                echo "should_run=false" >> "${GITHUB_OUTPUT}"
+                exit 0
+              fi
               echo "Eligible fresh backlog work exists (oldest unblocked: #${eligible_fresh_issue}, cohort: ${eligible_fresh_cohort}); no recovery target, so all four slots claim atomically."
               exit 0
             fi
@@ -756,12 +755,18 @@ jobs:
           # only eventually consistent. Failing closed here costs one dispatch;
           # succeeding optimistically costs duplicated agent work on one issue.
           reservation_visible() {
-            local labels=""
+            local labels="" snapshot="" state="" unassigned=""
             if [ "${RESOLVED_INTAKE_COHORT:-}" = "legacy-parity" ]; then
-              if ! labels="$(
+              if ! snapshot="$(
                 gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}" \
-                  --json labels --jq '.labels[].name'
+                  --json state,labels,assignees
               )"; then
+                return 1
+              fi
+              state="$(jq -r '.state' <<<"$snapshot")"
+              unassigned="$(jq -r '[.assignees[]] | length == 0' <<<"$snapshot")"
+              labels="$(jq -r '.labels[].name' <<<"$snapshot")"
+              if [ "$state" != "OPEN" ] || [ "$unassigned" != "true" ]; then
                 return 1
               fi
               grep -qxF 'goobers/status:in-review' <<<"$labels"
