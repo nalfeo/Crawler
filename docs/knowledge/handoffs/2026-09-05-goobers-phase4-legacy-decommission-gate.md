@@ -43,7 +43,7 @@ ci-policy
 - `docs/runbooks/ci-mutation-bridge-runbook.md`: new "Phase 4 — decommission"
   section (preconditions table, rollback-drill procedure, steady-state and
   emergency operations post-decommission), plus a Known-limitations pointer.
-- `.github/scripts/lifecycle-decommission.test.mjs` (new): 15 tests covering
+- `.github/scripts/lifecycle-decommission.test.mjs` (new): 17 tests covering
   fail-closed inputs, literal-`goobers`-only lane migration, soak arithmetic,
   rollback-activation windowing, drill evidence rules, bounded-bridge and
   branch-protection requirements, all three surface findings against the

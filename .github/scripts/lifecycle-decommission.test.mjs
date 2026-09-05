@@ -351,3 +351,43 @@ test('the branch-update entrypoint matches a real PUT, not a mention of the endp
   assert.equal(entry.mutationSteps, 0);
   assert.deepEqual(result.findings, []);
 });
+
+test('the CLI validates flags before doing work, and treats --require-ready as a boolean', () => {
+  const cli = path.join(repoRoot, '.github/scripts/lifecycle-decommission.mjs');
+  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' });
+
+  // An empty explicit value is invalid, not a bare flag.
+  const emptyNow = run('--now', '');
+  assert.equal(emptyNow.status, 2);
+  assert.match(emptyNow.stderr, /--now requires a valid value \(got ""\)/);
+
+  // Argument errors win over a missing state file: validation happens first.
+  const precedence = run('--now', 'nope', '--state', 'does/not/exist.json');
+  assert.equal(precedence.status, 2);
+  assert.match(precedence.stderr, /--now requires a valid value/);
+  assert.doesNotMatch(precedence.stderr, /unreadable decommission evidence/);
+
+  // `--require-ready=false` must not enforce readiness just by being a string.
+  assert.equal(run('--require-ready=false').status, 0);
+  assert.equal(run('--require-ready=maybe').status, 2);
+  const enforced = run('--require-ready');
+  assert.equal(enforced.status, 1);
+  assert.match(enforced.stderr, /legacy decommission is not ready/);
+});
+
+test('a renamed entrypoint is diagnosed as such, not as a deleted workflow', () => {
+  const workflows = readWorkflows();
+  workflows['merge-train.yml'] = workflows['merge-train.yml'].replaceAll(
+    '.github/scripts/merge-train/',
+    '.github/scripts/train/',
+  );
+  const present = evaluateLegacyMutationSurface({ workflows, state: committedState });
+  const [finding] = present.findings;
+  assert.equal(finding.kind, 'decommissioned-without-migration');
+  assert.match(finding.detail, /workflow still exists but no registered entrypoint/);
+  assert.match(finding.detail, /update LEGACY_MUTATION_SURFACE/);
+
+  delete workflows['merge-train.yml'];
+  const removed = evaluateLegacyMutationSurface({ workflows, state: committedState });
+  assert.match(removed.findings[0].detail, /workflow file is gone/);
+});

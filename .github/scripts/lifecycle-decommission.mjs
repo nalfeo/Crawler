@@ -223,7 +223,10 @@ function stepMutationText(step) {
 }
 
 function matchesEntrypoint(body, entrypoint) {
-  return entrypoint instanceof RegExp ? entrypoint.test(body) : body.includes(entrypoint);
+  if (!(entrypoint instanceof RegExp)) return body.includes(entrypoint);
+  // Strip `g`/`y` so a shared registry regex can never carry `lastIndex` state
+  // between steps and make the scan order-dependent.
+  return new RegExp(entrypoint.source, entrypoint.flags.replace(/[gy]/g, '')).test(body);
 }
 
 function effectiveGate(job, step) {
@@ -303,11 +306,19 @@ export function evaluateLegacyMutationSurface({ workflows, state } = {}) {
 
     entry.decommissioned = entry.mutationSteps === 0;
     if (entry.decommissioned && laneOwners[surface.lane] !== 'goobers') {
+      // A present workflow with no matching step is far more often a renamed
+      // entrypoint than a real removal, so say which one the operator is
+      // looking at instead of asserting the path is gone.
+      const cause = entry.present
+        ? `workflow still exists but no registered entrypoint (${surface.entrypoints
+            .map(String)
+            .join(', ')}) matched — if the entrypoint moved, update LEGACY_MUTATION_SURFACE`
+        : 'workflow file is gone';
       findings.push({
         kind: 'decommissioned-without-migration',
         workflow: surface.workflow,
         lane: surface.lane,
-        detail: `lane is still legacy-owned in ${DEFAULT_STATE_PATH}; removing this path leaves it with no writer`,
+        detail: `${cause}; the lane is still legacy-owned in ${DEFAULT_STATE_PATH}, so removing this path leaves it with no writer`,
       });
     }
     entries.push(entry);
@@ -353,7 +364,10 @@ function parseArgs(argv) {
       options[token.slice(0, separator)] = token.slice(separator + 1);
       continue;
     }
-    options[token] = argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[++index] : true;
+    const next = argv[index + 1];
+    // `!== undefined` (not truthiness): `--now ''` must reach validation as an
+    // explicit empty value rather than being mistaken for a bare flag.
+    options[token] = next !== undefined && !next.startsWith('--') ? argv[++index] : true;
   }
   return options;
 }
@@ -361,11 +375,32 @@ function parseArgs(argv) {
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
+  // Validate every flag before doing any work, so an argument error is never
+  // masked by a missing-state exit and the error precedence is predictable.
   const stateArg = requireCliValue(
     'state',
     args.state,
     (value) => typeof value === 'string' && value.trim() !== '',
   );
+  const nowArg = requireCliValue(
+    'now',
+    args.now,
+    (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)),
+  );
+  const soakDaysArg = requireCliValue(
+    'soak-days',
+    args['soak-days'],
+    (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value),
+  );
+  // A boolean flag: bare `--require-ready`, or an explicit `true`/`false`.
+  // `--require-ready=false` must not enforce readiness just by being a
+  // non-empty string.
+  const requireReadyArg = requireCliValue(
+    'require-ready',
+    args['require-ready'],
+    (value) => value === true || value === 'true' || value === 'false',
+  );
+  const requireReady = requireReadyArg !== undefined && requireReadyArg !== 'false';
   const statePath = path.resolve(repoRoot, stateArg ?? DEFAULT_STATE_PATH);
   let state;
   try {
@@ -384,16 +419,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     workflows: readWorkflows(path.join(repoRoot, '.github/workflows')),
     state,
   });
-  const nowArg = requireCliValue(
-    'now',
-    args.now,
-    (value) => typeof value === 'string' && Number.isFinite(Date.parse(value)),
-  );
-  const soakDaysArg = requireCliValue(
-    'soak-days',
-    args['soak-days'],
-    (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value),
-  );
   const decision = decideLegacyDecommission({
     state,
     now: nowArg ?? new Date().toISOString(),
@@ -407,7 +432,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     }
     process.exit(2);
   }
-  if (args['require-ready'] && !decision.ready) {
+  if (requireReady && !decision.ready) {
     process.stderr.write(
       `::error::legacy decommission is not ready: ${decision.blockers.join(', ')}\n`,
     );
