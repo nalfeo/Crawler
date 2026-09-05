@@ -10,6 +10,8 @@ export interface NpcQuestDef {
 
 export interface NpcDialogueLine {
   text: string;
+  /** Whether this line may only be shown after the merchant errand begins. */
+  requiresMerchantQuest?: boolean;
 }
 
 export interface NpcDef {
@@ -123,6 +125,7 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
     },
     {
       text: '...Did he send you for a tail? He did. Of course he did. Take the long way back, contestant. Knock first.',
+      requiresMerchantQuest: true,
     },
   ],
   quests: [
@@ -219,7 +222,9 @@ export function selectSpellBrokerDialogue(
   if (state.merchantQuestStarted) {
     return null;
   }
-  return SPELL_QUEST_GIVER_DEF.dialogue.slice(0, -1).map((line) => line.text);
+  return SPELL_QUEST_GIVER_DEF.dialogue
+    .filter((line) => !line.requiresMerchantQuest)
+    .map((line) => line.text);
 }
 
 // ---- Tutorial Goon contextual dialogue ----
