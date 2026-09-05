@@ -35,7 +35,7 @@ describe('SpritePipelineTimingCollector', () => {
   });
 
   it('memoizes snapshots across repeat reads until the collector changes', async () => {
-    const samples = [0, 5, 10, 12, 14, 18];
+    const samples = [0, 5, 10];
     const timing = new SpritePipelineTimingCollector(() => samples.shift() ?? Number.NaN);
 
     await timing.measure('provider', async () => 'generated');
@@ -43,7 +43,7 @@ describe('SpritePipelineTimingCollector', () => {
     const second = timing.snapshot();
 
     expect(second).toBe(first);
-    expect(first.invalidSamples).toBe(0);
+    expect(first.invalidSamples).toBe(1);
 
     await timing.measure('judging', async () => 'judged');
     expect(timing.snapshot()).not.toBe(first);

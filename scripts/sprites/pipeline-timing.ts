@@ -118,7 +118,7 @@ export class SpritePipelineTimingCollector {
     }
 
     const stages = { ...this.durations };
-    const completedAt = this.readNow();
+    const completedAt = this.start();
     const measuredStagesMs = SPRITE_PIPELINE_TIMING_STAGES.filter(
       (stage) => stage !== 'runOrchestration',
     ).reduce((total, stage) => total + stages[stage], 0);

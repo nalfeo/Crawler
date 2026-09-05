@@ -370,6 +370,7 @@ describe('runQueueRepair (real git)', () => {
       expect(
         audit.discardedChanges.some((change) => change.path.endsWith('batfolk-boss-var-0.png')),
       ).toBe(true);
+      git(live, 'push', 'origin', `${audit.queueSha}:refs/heads/copilot/main`);
 
       const result = await runQueueRepair(live, freshDeps(live, sourceSha), {
         mode: 'apply',
