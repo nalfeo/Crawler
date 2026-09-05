@@ -30,12 +30,12 @@ const baseEntry = {
 const registry = buildGeneratedSpriteRegistry({
   version: 1,
   entries: {
-    'npc-welcome-goon-var-0': {
+    'npc-welcome-goon-var-8': {
       ...baseEntry,
       briefId: 'npc-welcome-goon',
-      spriteName: 'npc-welcome-goon-var-0',
-      assetPath: 'generated/npc-welcome-goon-var-0.png',
-      variantIndex: 0,
+      spriteName: 'npc-welcome-goon-var-8',
+      assetPath: 'generated/npc-welcome-goon-var-8.png',
+      variantIndex: 8,
     },
     'welcome-goon-var-1': {
       ...baseEntry,
@@ -134,7 +134,7 @@ describe('seeded sprite variant runtime contract', () => {
 
     expect(replay).toEqual(first);
     expect(headless).toEqual(first);
-    expect(new Set(first)).toEqual(new Set(['npc-welcome-goon-var-0', 'welcome-goon-var-1']));
+    expect(new Set(first)).toEqual(new Set(['npc-welcome-goon-var-8', 'welcome-goon-var-1']));
   });
 
   it('leaves gameplay RNG state identical with and without a generated sprite registry', () => {

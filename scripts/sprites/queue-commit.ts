@@ -43,6 +43,10 @@
  */
 
 import { ASSET_SURFACE_PATHS, type CheckinAsset, type Exec } from './checkin.js';
+import {
+  assertLifecycleDeletionMatchesShard,
+  selectAuthorizedLifecycleDeletions,
+} from './reconcile-queue.js';
 
 /** How the queue-commit resolved. */
 export type QueueCommitStatus = 'committed' | 'noop';
@@ -414,33 +418,31 @@ export function isNonFastForwardRejection(stderr: string): boolean {
   );
 }
 
-function generatedDeletionRepairCommand(): string {
-  return (
-    'npm run sprites:repair-queue -- --audit --policy acc25eda-selective-v1 ' +
-    '(then re-run with --apply --expect-main <sha> --expect-queue <sha>)'
-  );
-}
-
 /**
  * Normal queue ingestion is additive.  A generated deletion in the remote queue
- * is corruption until a deliberately invoked, source-bound maintenance recovery
- * proves otherwise; never auto-heal it by rewriting the branch mid-ingestion.
+ * is corruption unless a persisted lifecycle tombstone proves otherwise; never
+ * auto-heal it by rewriting the branch mid-ingestion.
  */
 export function assertNoGeneratedQueueDeletions(
   paths: readonly string[],
   allowedPaths: ReadonlySet<string> = new Set(),
 ): void {
   const assetPaths = paths.filter(
-    (path) =>
-      !allowedPaths.has(path) &&
-      (/^public\/assets\/generated\/.+\.png$/u.test(path) ||
-        /^public\/assets\/generated\/entries\/.+\.json$/u.test(path)),
+    (path) => !allowedPaths.has(path) && isGeneratedAssetDeletionPath(path),
   );
   if (assetPaths.length === 0) return;
   throw new QueueCommitError(
     'generated-deletion-refused',
     `assets/queue deletes generated asset path(s): ${assetPaths.join(', ')}. ` +
-      `Normal ingestion refuses to publish over a destructive queue. Run ${generatedDeletionRepairCommand()}.`,
+      'Normal ingestion refuses to publish over an unauthorized destructive queue. ' +
+      'Restore those exact paths, or commit a complete lifecycle tombstone that exactly matches the current main shard, then retry.',
+  );
+}
+
+function isGeneratedAssetDeletionPath(deletedPath: string): boolean {
+  return (
+    /^public\/assets\/generated\/.+\.png$/u.test(deletedPath) ||
+    /^public\/assets\/generated\/entries\/.+\.json$/u.test(deletedPath)
   );
 }
 
@@ -580,16 +582,57 @@ export async function runQueueCommit(
               `Could not inspect ${queueBranch} for generated-path deletions: ${deleted.stderr || deleted.stdout}`,
             );
           }
+          const deletedPaths = deleted.stdout
+            .split(/\r?\n/)
+            .filter((deletedPath) => deletedPath.trim() !== '');
+          const generatedAssetDeletionPaths = deletedPaths.filter(isGeneratedAssetDeletionPath);
           const allowedDeletionPaths = new Set(
             removals.flatMap((removal) => [
               `public/assets/${removal.assetPath}`,
               `public/assets/generated/entries/${removal.manifestKey}.json`,
             ]),
           );
-          assertNoGeneratedQueueDeletions(
-            deleted.stdout.split(/\r?\n/).filter((path) => path.trim() !== ''),
-            allowedDeletionPaths,
-          );
+          if (generatedAssetDeletionPaths.length > 0) {
+            const persistedAnnotations = await runGit(deps.exec, repoRoot, [
+              'show',
+              `${baseRef}:public/assets/generated/sprite-editor-annotations.json`,
+            ]);
+            if (persistedAnnotations.code !== 0 || persistedAnnotations.stdout.trim() === '') {
+              throw new QueueCommitError(
+                'generated-deletion-refused',
+                `${queueBranch} contains generated deletions but its persisted lifecycle annotations are unavailable. ` +
+                  'Restore the deleted paths or repair the annotations with exact main-shard provenance, then retry.',
+              );
+            }
+            try {
+              const persisted = selectAuthorizedLifecycleDeletions(
+                generatedAssetDeletionPaths,
+                persistedAnnotations.stdout,
+              );
+              for (const deletion of persisted) {
+                const shard = await runGit(deps.exec, repoRoot, [
+                  'show',
+                  `${mainRef}:${deletion.paths[0]}`,
+                ]);
+                assertLifecycleDeletionMatchesShard(
+                  deletion,
+                  shard.code === 0 ? shard.stdout : null,
+                );
+                for (const deletionPath of deletion.paths) {
+                  allowedDeletionPaths.add(deletionPath);
+                }
+              }
+            } catch (error) {
+              throw new QueueCommitError(
+                'generated-deletion-refused',
+                `Invalid persisted lifecycle deletion on ${queueBranch}: ${
+                  error instanceof Error ? error.message : String(error)
+                } Restore the deleted paths or repair the tombstone to exactly match the current main shard, then retry.`,
+                { cause: error },
+              );
+            }
+          }
+          assertNoGeneratedQueueDeletions(deletedPaths, allowedDeletionPaths);
         }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
         // never check the queue branch out by name, so there is no

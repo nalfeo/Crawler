@@ -31,6 +31,7 @@ import { planAssetCheckin } from '../../../scripts/sprites/checkin.js';
 import type { Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
 import {
+  assertLifecycleDeletionMatchesShard,
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
   computeClosingIssueNumbers,
@@ -115,15 +116,15 @@ describe('selectAuthorizedLifecycleDeletions', () => {
   const annotations = JSON.stringify({
     version: 1,
     sprites: {
-      'welcome-goon-var-3': {
+      'queue-goon-var-3': {
         disliked: true,
         tombstone: {
-          manifestKey: 'welcome-goon-var-3',
-          conceptId: 'welcome-goon',
-          assetPath: 'generated/welcome-goon-var-3.png',
-          sourceRun: 'generated/runs/welcome-goon-v2/run-a',
+          manifestKey: 'queue-goon-var-3',
+          conceptId: 'queue-goon',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
           variantIndex: 3,
-          annotationKeys: ['welcome-goon-v2-var-3'],
+          annotationKeys: ['queue-goon-v2-var-3'],
         },
       },
     },
@@ -133,8 +134,8 @@ describe('selectAuthorizedLifecycleDeletions', () => {
     expect(
       selectAuthorizedLifecycleDeletions(
         [
-          'public/assets/generated/entries/welcome-goon-var-3.json',
-          'public/assets/generated/welcome-goon-var-3.png',
+          'public/assets/generated/entries/queue-goon-var-3.json',
+          'public/assets/generated/queue-goon-var-3.png',
           'public/assets/generated/unrelated.png',
         ],
         annotations,
@@ -142,14 +143,14 @@ describe('selectAuthorizedLifecycleDeletions', () => {
     ).toEqual([
       {
         tombstone: {
-          manifestKey: 'welcome-goon-var-3',
-          assetPath: 'generated/welcome-goon-var-3.png',
-          sourceRun: 'generated/runs/welcome-goon-v2/run-a',
+          manifestKey: 'queue-goon-var-3',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
           variantIndex: 3,
         },
         paths: [
-          'public/assets/generated/entries/welcome-goon-var-3.json',
-          'public/assets/generated/welcome-goon-var-3.png',
+          'public/assets/generated/entries/queue-goon-var-3.json',
+          'public/assets/generated/queue-goon-var-3.png',
         ],
       },
     ]);
@@ -158,10 +159,32 @@ describe('selectAuthorizedLifecycleDeletions', () => {
   it('rejects an incomplete tombstoned deletion', () => {
     expect(() =>
       selectAuthorizedLifecycleDeletions(
-        ['public/assets/generated/entries/welcome-goon-var-3.json'],
+        ['public/assets/generated/entries/queue-goon-var-3.json'],
         annotations,
       ),
     ).toThrow(/shard and PNG must be deleted together/);
+  });
+
+  it('rejects a well-formed tombstone whose provenance differs from the main shard', () => {
+    const deletion = selectAuthorizedLifecycleDeletions(
+      [
+        'public/assets/generated/entries/queue-goon-var-3.json',
+        'public/assets/generated/queue-goon-var-3.png',
+      ],
+      annotations,
+    )[0]!;
+
+    expect(() =>
+      assertLifecycleDeletionMatchesShard(
+        deletion,
+        JSON.stringify({
+          spriteName: 'queue-goon-var-3',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/a-different-run',
+          variantIndex: 3,
+        }),
+      ),
+    ).toThrow(/does not match the current main shard/);
   });
 });
 
@@ -1530,7 +1553,7 @@ describe('runReconcile (real git)', () => {
   it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
-    const key = 'welcome-goon-var-3';
+    const key = 'queue-goon-var-3';
     addArtDirectlyToMain(liveDir, [key]);
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
     const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-delete-'));
@@ -1545,7 +1568,7 @@ describe('runReconcile (real git)', () => {
             disliked: true,
             tombstone: {
               manifestKey: key,
-              conceptId: 'welcome-goon',
+              conceptId: 'queue-goon',
               assetPath: `generated/${key}.png`,
               sourceRun: `generated/runs/${key}/run-0`,
               variantIndex: 0,
@@ -1567,8 +1590,8 @@ describe('runReconcile (real git)', () => {
     expect(result.status).toBe('pr-open');
     expect(result.changedPaths).toEqual([
       `public/assets/generated/entries/${key}.json`,
-      'public/assets/generated/sprite-editor-annotations.json',
       `public/assets/generated/${key}.png`,
+      'public/assets/generated/sprite-editor-annotations.json',
     ]);
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
     expect(() =>

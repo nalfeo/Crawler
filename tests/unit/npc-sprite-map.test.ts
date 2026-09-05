@@ -4,7 +4,7 @@
  * WHY THIS EXISTS. The map was duplicated: `sprite-kind.ts` held one copy and the
  * Set Piece Editor extension held another. The Goon and Merchant were regenerated
  * to `-v3-` variants and the game copy was repointed; the editor copy was not. So
- * the editor kept drawing `npc-welcome-goon-var-0` / `npc-sweaty-merchant-var-0`
+ * the editor kept drawing the retired npc-prefixed Goon and Merchant variants
  * — art that had already been replaced — and every screenshot taken from the
  * editor showed the wrong characters while looking entirely plausible.
  *

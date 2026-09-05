@@ -334,24 +334,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-king-var-7': {
+      'rat-king-var-8': {
         briefId: 'rat-king',
-        spriteName: 'rat-king-var-7',
-        assetPath: 'generated/rat-king-var-7.png',
+        spriteName: 'rat-king-var-8',
+        assetPath: 'generated/rat-king-var-8.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 8,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-queen-var-7': {
+      'rat-queen-var-2': {
         briefId: 'rat-queen',
-        spriteName: 'rat-queen-var-7',
-        assetPath: 'generated/rat-queen-var-7.png',
+        spriteName: 'rat-queen-var-2',
+        assetPath: 'generated/rat-queen-var-2.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 2,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
@@ -413,10 +413,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
 
   it('resolves rat monarch and slime-pool appearance keys to their generated briefs', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-king')).toBe(
-      'rat-king-var-7',
+      'rat-king-var-8',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-queen')).toBe(
-      'rat-queen-var-7',
+      'rat-queen-var-2',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.5, 'slime-pool')).toBe(
       'slime-pool-var-3',

@@ -243,6 +243,36 @@ export function selectAuthorizedLifecycleDeletions(
   }
   return authorized;
 }
+
+/** Require a persisted tombstone to describe the exact asset currently on main. */
+export function assertLifecycleDeletionMatchesShard(
+  deletion: AuthorizedLifecycleDeletion,
+  shardJson: string | null,
+): void {
+  let entry: {
+    readonly spriteName?: unknown;
+    readonly assetPath?: unknown;
+    readonly sourceRun?: unknown;
+    readonly variantIndex?: unknown;
+  };
+  try {
+    entry = shardJson === null ? {} : (JSON.parse(shardJson) as typeof entry);
+  } catch {
+    entry = {};
+  }
+  const tombstone = deletion.tombstone;
+  if (
+    entry.spriteName !== tombstone.manifestKey ||
+    entry.assetPath !== tombstone.assetPath ||
+    entry.sourceRun !== tombstone.sourceRun ||
+    entry.variantIndex !== tombstone.variantIndex
+  ) {
+    throw new ReconcileError(
+      'invalid-state',
+      `Lifecycle tombstone for "${tombstone.manifestKey}" does not match the current main shard; refusing stale deletion.`,
+    );
+  }
+}
 const DEFAULT_PROMOTE_BRANCH = 'assets/promote';
 const DEFAULT_BASE_BRANCH = 'main';
 
@@ -1699,30 +1729,7 @@ export async function runReconcile(
             'show',
             `${baseRef}:${candidate.paths[0]}`,
           ]);
-          let entry: {
-            readonly spriteName?: unknown;
-            readonly assetPath?: unknown;
-            readonly sourceRun?: unknown;
-            readonly variantIndex?: unknown;
-          };
-          try {
-            entry = JSON.parse(shard.stdout) as typeof entry;
-          } catch {
-            entry = {};
-          }
-          const tombstone = candidate.tombstone;
-          if (
-            shard.code !== 0 ||
-            entry.spriteName !== tombstone.manifestKey ||
-            entry.assetPath !== tombstone.assetPath ||
-            entry.sourceRun !== tombstone.sourceRun ||
-            entry.variantIndex !== tombstone.variantIndex
-          ) {
-            throw new ReconcileError(
-              'invalid-state',
-              `Lifecycle tombstone for "${tombstone.manifestKey}" does not match the current main shard; refusing stale deletion.`,
-            );
-          }
+          assertLifecycleDeletionMatchesShard(candidate, shard.code === 0 ? shard.stdout : null);
           accepted.push(candidate);
         }
         queueLifecycleDeletions = accepted;

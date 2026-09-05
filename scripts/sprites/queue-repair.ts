@@ -9,6 +9,10 @@
 
 import type { SpriteAnnotationUpdate } from './queue-commit.js';
 import type { Exec } from './checkin.js';
+import {
+  assertLifecycleDeletionMatchesShard,
+  selectAuthorizedLifecycleDeletions,
+} from './reconcile-queue.js';
 
 export const SELECTIVE_RECOVERY_POLICY = 'acc25eda-selective-v1';
 export const SELECTIVE_RECOVERY_SOURCE_SHA = 'acc25eda2680af595f65d5248ed53049d1fe9ab3';
@@ -305,6 +309,63 @@ export async function runQueueRepair(
           'source-drift',
           `Fetched main=${mainSha} queue=${queueSha}; re-run the audit before applying this recovery.`,
         );
+      }
+
+      const queueDeletions = (
+        await mustGit(deps.exec, repoRoot, [
+          'diff',
+          '--no-renames',
+          '--name-only',
+          '--diff-filter=D',
+          mainRef,
+          queueRef,
+          '--',
+          GENERATED_ROOT,
+        ])
+      )
+        .split(/\r?\n/)
+        .filter(Boolean);
+      if (queueDeletions.length > 0) {
+        const queueAnnotations = await git(deps.exec, repoRoot, [
+          'show',
+          `${queueRef}:${ANNOTATIONS_PATH}`,
+        ]);
+        if (queueAnnotations.code === 0 && queueAnnotations.stdout.trim() !== '') {
+          try {
+            const pendingLifecycleDeletions = selectAuthorizedLifecycleDeletions(
+              queueDeletions,
+              queueAnnotations.stdout,
+            );
+            for (const deletion of pendingLifecycleDeletions) {
+              const mainShard = await git(deps.exec, repoRoot, [
+                'show',
+                `${mainRef}:${deletion.paths[0]}`,
+              ]);
+              assertLifecycleDeletionMatchesShard(
+                deletion,
+                mainShard.code === 0 ? mainShard.stdout : null,
+              );
+            }
+            if (pendingLifecycleDeletions.length > 0) {
+              throw new QueueRepairError(
+                'source-invalid',
+                `Selective recovery would resurrect pending lifecycle deletion(s): ${pendingLifecycleDeletions
+                  .map((deletion) => deletion.tombstone.manifestKey)
+                  .join(
+                    ', ',
+                  )}. Promote those tombstones to main before retrying this one-time repair.`,
+              );
+            }
+          } catch (error) {
+            if (error instanceof QueueRepairError) throw error;
+            throw new QueueRepairError(
+              'source-invalid',
+              `Cannot validate pending lifecycle deletions on ${queueBranch}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
       }
 
       const groups = selectedGroups();

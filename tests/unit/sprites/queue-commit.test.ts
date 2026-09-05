@@ -813,13 +813,69 @@ describe('runQueueCommit (control flow)', () => {
     ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
     await expect(
       runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
-    ).rejects.toThrow('sprites:repair-queue -- --audit --policy acc25eda-selective-v1');
+    ).rejects.toThrow('Restore the deleted paths');
     expect(validations).toBe(0);
     const deletionDiff = calls.find(
       (call) =>
         call.command === 'git' && call.args[0] === 'diff' && call.args.includes('--diff-filter=D'),
     );
     expect(deletionDiff?.args).toContain('--no-renames');
+  });
+
+  it('fails closed when a persisted deletion tombstone disagrees with the main shard', async () => {
+    const { exec, calls } = makeFakeExec((_command, args) => {
+      if (args[0] === 'ls-remote') return { stdout: 'queue-sha\trefs/heads/assets/queue\n' };
+      if (args[0] === 'diff' && args.includes('--diff-filter=D')) {
+        return {
+          stdout:
+            'public/assets/generated/stale.png\n' + 'public/assets/generated/entries/stale.json\n',
+        };
+      }
+      if (
+        args[0] === 'show' &&
+        args[1] ===
+          'refs/queue-commit/base-qc-xyz:public/assets/generated/sprite-editor-annotations.json'
+      ) {
+        return {
+          stdout: JSON.stringify({
+            version: 1,
+            sprites: {
+              stale: {
+                disliked: true,
+                tombstone: {
+                  manifestKey: 'stale',
+                  assetPath: 'generated/stale.png',
+                  sourceRun: 'generated/runs/stale/old-run',
+                  variantIndex: 0,
+                },
+              },
+            },
+          }),
+        };
+      }
+      if (
+        args[0] === 'show' &&
+        args[1] === 'refs/queue-commit/main-qc-xyz:public/assets/generated/entries/stale.json'
+      ) {
+        return {
+          stdout: JSON.stringify({
+            spriteName: 'stale',
+            assetPath: 'generated/stale.png',
+            sourceRun: 'generated/runs/stale/current-run',
+            variantIndex: 0,
+          }),
+        };
+      }
+      return {};
+    });
+
+    await expect(
+      runQueueCommit('/repo', [asset()], controlDeps(exec), { message: 'm' }),
+    ).rejects.toMatchObject({
+      kind: 'generated-deletion-refused',
+      message: expect.stringContaining('does not match the current main shard'),
+    });
+    expect(calls.some((call) => call.args[0] === 'worktree' && call.args[1] === 'add')).toBe(false);
   });
 });
 
@@ -941,7 +997,15 @@ function queueManifest(liveDir: string): { entries: Record<string, unknown> } {
 
 function queueAnnotations(liveDir: string): {
   version: number;
-  sprites: Record<string, { favorite: boolean; disliked: boolean; comment: string }>;
+  sprites: Record<
+    string,
+    {
+      favorite: boolean;
+      disliked: boolean;
+      comment: string;
+      tombstone?: Record<string, unknown>;
+    }
+  >;
 } {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
   return JSON.parse(
@@ -1250,6 +1314,107 @@ describe('runQueueCommit (real git)', () => {
         opts,
       );
       expect(second.status).toBe('noop');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'keeps a prior tombstone-authorized deletion durable across a later ordinary approval',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      const removedKey = 'old-alpha';
+      stageAssetOnDisk(liveDir, removedKey, PNG_BYTES);
+      writeJson(shardFilePath(liveDir, removedKey), {
+        assetPath: `generated/${removedKey}.png`,
+        spriteName: removedKey,
+        sourceRun: 'generated/runs/old-alpha/run-0',
+        variantIndex: 0,
+      });
+      const annotationsPath = path.join(
+        liveDir,
+        'public',
+        'assets',
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      writeJson(annotationsPath, {
+        version: 1,
+        sprites: {
+          [removedKey]: { favorite: false, disliked: true, comment: 'replace' },
+        },
+      });
+      gitSync(liveDir, 'add', '-A');
+      gitSync(liveDir, 'commit', '-m', 'seed lifecycle asset');
+      gitSync(liveDir, 'push', 'origin', 'main');
+
+      rmSync(path.join(liveDir, 'public', 'assets', 'generated', `${removedKey}.png`));
+      rmSync(shardFilePath(liveDir, removedKey));
+      stageAssetOnDisk(liveDir, 'alpha', PNG_BYTES_B);
+      const tombstone = {
+        manifestKey: removedKey,
+        conceptId: 'old-alpha',
+        assetPath: `generated/${removedKey}.png`,
+        sourceRun: 'generated/runs/old-alpha/run-0',
+        variantIndex: 0,
+        annotationKeys: [removedKey],
+      };
+      const first = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/alpha.png',
+            manifestKey: 'alpha',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        {
+          message: 'approve alpha and remove old alpha',
+          removals: [
+            {
+              assetPath: `generated/${removedKey}.png`,
+              manifestKey: removedKey,
+            },
+          ],
+          annotations: [
+            {
+              key: removedKey,
+              favorite: false,
+              disliked: true,
+              comment: 'replace',
+              tombstone,
+            },
+          ],
+        },
+      );
+      expect(first.status).toBe('committed');
+
+      stageAssetOnDisk(liveDir, 'beta', PNG_BYTES);
+      const second = await runQueueCommit(
+        liveDir,
+        [
+          {
+            assetPath: 'generated/beta.png',
+            manifestKey: 'beta',
+            briefId: null,
+            variantIndex: null,
+          },
+        ],
+        realGitDeps(liveDir),
+        { message: 'approve beta' },
+      );
+
+      expect(second.status).toBe('committed');
+      expect(Object.keys(queueManifest(liveDir).entries).sort()).toEqual(['alpha', 'beta']);
+      expect(queueAnnotations(liveDir).sprites[removedKey]?.tombstone).toEqual(tombstone);
+      expect(() =>
+        gitSync(liveDir, 'show', `FETCH_HEAD:public/assets/generated/entries/${removedKey}.json`),
+      ).toThrow();
+      expect(() =>
+        gitSync(liveDir, 'show', `FETCH_HEAD:public/assets/generated/${removedKey}.png`),
+      ).toThrow();
     },
     GIT_TIMEOUT_MS,
   );

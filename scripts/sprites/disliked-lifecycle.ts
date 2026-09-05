@@ -21,7 +21,18 @@ import { composeManifestFromShards, shardPathForKey } from './generated-shards.j
 
 const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotations.json';
 const REFERENCE_EXTENSIONS = new Set(['.json', '.js', '.mjs', '.ts', '.tsx', '.yaml', '.yml']);
-const REFERENCE_ROOTS = ['src', 'scripts', '.github'] as const;
+// Checked-in executable/configuration roots participate in deletion closure.
+// docs/ is intentionally excluded: ADRs, handoffs, and metrics are immutable
+// audit history, not live references, and must not be rewritten by lifecycle work.
+const REFERENCE_ROOTS = [
+  'src',
+  'scripts',
+  '.github',
+  'tests',
+  'data',
+  'tools',
+  'functions',
+] as const;
 
 export interface SpriteAnnotation {
   readonly favorite?: boolean;
@@ -121,17 +132,6 @@ interface FileSnapshot {
   readonly bytes: Buffer | null;
 }
 
-function parseVariantKey(key: string): { sourceConcept: string; variantIndex: number } | null {
-  const match = /^(.+)-var-(\d+)$/.exec(key);
-  if (match === null) return null;
-  return { sourceConcept: match[1]!, variantIndex: Number(match[2]) };
-}
-
-function sourceConcept(entry: ManifestEntry): string {
-  const normalized = entry.sourceRun.replace(/\\/g, '/');
-  return path.posix.basename(path.posix.dirname(normalized));
-}
-
 function reconcileDislikeKey(
   key: string,
   annotation: SpriteAnnotation,
@@ -140,20 +140,22 @@ function reconcileDislikeKey(
   if (entries[key] !== undefined) return key;
   if (annotation.tombstone !== undefined) return null;
 
-  const parsed = parseVariantKey(key);
-  const variantIndex =
-    typeof annotation.variantIndex === 'number' ? annotation.variantIndex : parsed?.variantIndex;
-  if (variantIndex === undefined) return null;
+  if (
+    typeof annotation.sourceRun !== 'string' ||
+    annotation.sourceRun.trim() === '' ||
+    typeof annotation.variantIndex !== 'number' ||
+    !Number.isInteger(annotation.variantIndex) ||
+    annotation.variantIndex < 0
+  ) {
+    return null;
+  }
+  const sourceRunBasename = path.posix.basename(annotation.sourceRun.replace(/\\/g, '/'));
 
   const candidates = Object.entries(entries).filter(([, entry]) => {
-    if (entry.variantIndex !== variantIndex) return false;
-    if (typeof annotation.sourceRun === 'string') {
-      return (
-        path.posix.basename(entry.sourceRun.replace(/\\/g, '/')) ===
-        path.posix.basename(annotation.sourceRun.replace(/\\/g, '/'))
-      );
-    }
-    return parsed !== null && sourceConcept(entry) === parsed.sourceConcept;
+    return (
+      entry.variantIndex === annotation.variantIndex &&
+      path.posix.basename(entry.sourceRun.replace(/\\/g, '/')) === sourceRunBasename
+    );
   });
   if (candidates.length > 1) {
     throw new Error(
