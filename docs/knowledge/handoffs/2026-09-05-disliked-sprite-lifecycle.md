@@ -59,14 +59,16 @@ sprite-pipeline, sprite-workflow
   pre-hardening migration. Each records the deleted shard's `sourceRun` and
   `variantIndex` corroboration; future lifecycle runs cannot reuse name
   similarity as deletion authority.
-- Combined targeted lifecycle/runtime suite: 227/227 passed.
-- Independent QA hard-gate matrix: 494 passed, 1 intentional environment-gated
-  skip; all nine lifecycle requirements passed.
-- Final post-review lifecycle/runtime matrix: 336/336 passed. Review fixes also
-  isolated cosmetic variant rolls from gameplay RNG, preserved cumulative
-  tombstone-authorized queue deletions across later approvals and queue repair,
-  and extended closure to live test/data/tool references.
-- `npm run verify:fast` passed after integration.
+- Final post-sync lifecycle/runtime matrix: 586 passed, 1 intentional
+  environment-gated skip; Sprite Editor persistence tests passed 9/9 and all
+  nine lifecycle requirements passed.
+- Review fixes isolated cosmetic variant rolls from gameplay RNG, shared the
+  harvestable roll selector, rejected manifest-level disliked references,
+  preserved cumulative tombstone-authorized queue deletions across later
+  approvals and queue repair, paired nested shard/PNG promotion paths
+  atomically, and made variant identity resolution fail closed before approval.
+- `npm run typecheck` and `npm run verify:fast` passed after the final
+  pre-publication rebase.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.
@@ -86,8 +88,9 @@ sprite-pipeline, sprite-workflow
 ## Unresolved issues
 
 None for the confirmed lifecycle contract. Replacement generation remains
-human-reviewed by design; the 25 retained all-disliked groups stay available
-until explicit replacement acceptance.
+human-reviewed by design; 20 provenance-backed all-disliked groups stay
+available until explicit replacement acceptance, while 7 unresolved stale
+annotation keys remain preserved without deletion authority.
 
 ## Recommended next steps
 
