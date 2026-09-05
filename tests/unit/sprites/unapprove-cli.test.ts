@@ -41,6 +41,26 @@ function setupVariant() {
 }
 
 describe('sprites:unapprove durable queue guard', () => {
+  it('fails closed when legacy queue inspection is unavailable', async () => {
+    const { root, generatedDir, variantId, assetPath } = setupVariant();
+    const deps = {
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new' as const,
+        branch: 'assets/queue',
+      }),
+      withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
+    };
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(await main([variantId], root, deps)).toBe(1);
+    expect(stderr).toHaveBeenCalledWith(
+      expect.stringContaining('Legacy asset-checkin inspection is unavailable'),
+    );
+    expect(existsSync(path.join(generatedDir, 'entries', `${variantId}.json`))).toBe(true);
+    expect(existsSync(path.join(root, 'public', 'assets', assetPath))).toBe(true);
+  });
+
   it('refuses an asset already present on canonical assets/queue', async () => {
     const { root, generatedDir, variantId, assetPath } = setupVariant();
     const inspectDurableQueueAsset = vi.fn(async () => ({

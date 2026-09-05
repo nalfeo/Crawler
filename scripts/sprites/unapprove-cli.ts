@@ -97,7 +97,10 @@ export async function main(
         throw new UnapproveError('not-found', `Manifest entry not found: ${parsed.variantId}`);
       }
 
-      const queued = deps.listQueuedAssets ? await deps.listQueuedAssets() : new Map();
+      if (deps.listQueuedAssets === undefined) {
+        throw new Error('Legacy asset-checkin inspection is unavailable.');
+      }
+      const queued = await deps.listQueuedAssets();
       const legacy = queued.get(manifestEntry.assetPath);
       if (legacy !== undefined) {
         throw new Error(

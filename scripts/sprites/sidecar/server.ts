@@ -2328,9 +2328,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // evicting the local copy would not remove the durable queued copy.
       const assetPath = entry.assetPath;
       const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
-      const listQueuedAssets =
-        checkinDeps.listQueuedAssets ??
-        (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+      const listQueuedAssets = checkinDeps.listQueuedAssets;
+      if (listQueuedAssets === undefined) {
+        reply.code(500);
+        return {
+          error: 'unapprove-queue-check-failed',
+          message: 'Legacy asset-checkin inspection is unavailable.',
+        };
+      }
       const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
       let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
       try {
@@ -2461,9 +2466,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const catalogPath =
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
     const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
-    const listQueuedAssets =
-      checkinDeps.listQueuedAssets ??
-      (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+    const listQueuedAssets = checkinDeps.listQueuedAssets;
+    if (listQueuedAssets === undefined) {
+      reply.code(500);
+      return {
+        error: 'accept-failed',
+        message: 'Legacy asset-checkin inspection is unavailable.',
+      };
+    }
     const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
     if (inspectDurableQueueAsset === undefined) {
       reply.code(500);

@@ -344,7 +344,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     // later rejudge can replay the same references (see load-reference-pngs.ts).
     const selection = result.summary.referenceSprites;
     expect(selection).toBeTruthy();
-    expect(selection!.selectorVersion).toBe('v1');
+    expect(selection!.selectorVersion).toBe('v2');
     expect(selection!.requestedCount).toBe(3);
     expect(selection!.selected.length).toBe(3);
     // All eligible candidates were same-type (weapon), so the whole set is same-type.

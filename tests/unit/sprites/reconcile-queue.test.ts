@@ -1726,6 +1726,46 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs).toHaveLength(0);
   });
 
+  it('(c2) reports the exact malformed tombstone that withholds annotation promotion', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithRawAnnotations(
+      liveDir,
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'broken-var-0': {
+            favorite: false,
+            disliked: true,
+            comment: '',
+            tombstone: {
+              manifestKey: 'different-key',
+              assetPath: 'generated/broken-var-0.png',
+              sourceRun: 'generated/runs/broken/run-0',
+              variantIndex: 0,
+            },
+          },
+        },
+      }),
+    );
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual([
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      {
+        annotationKey: 'broken-var-0',
+        reason: 'Invalid disliked-sprite tombstone "broken-var-0" on assets/queue.',
+        paths: [],
+      },
+    ]);
+    expect(gh.prs).toHaveLength(0);
+  });
+
   it('(c2) atomically withholds malformed annotations and their deletion set', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);

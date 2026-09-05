@@ -72,7 +72,12 @@ export class ReconcileError extends Error {
   }
 }
 
-function isValidSpriteAnnotationsDocument(raw: string): boolean {
+interface SpriteAnnotationsValidation {
+  readonly valid: boolean;
+  readonly rejections: readonly RejectedLifecycleDeletion[];
+}
+
+function validateSpriteAnnotationsDocument(raw: string): SpriteAnnotationsValidation {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (
@@ -83,26 +88,58 @@ function isValidSpriteAnnotationsDocument(raw: string): boolean {
       !Array.isArray((parsed as { sprites?: unknown }).sprites)
     ) {
       const sprites = (parsed as { sprites: Record<string, unknown> }).sprites;
-      return Object.entries(sprites).every(([annotationKey, rawAnnotation]) => {
-        if (typeof rawAnnotation !== 'object' || rawAnnotation === null) return true;
+      const rejections: RejectedLifecycleDeletion[] = [];
+      for (const [annotationKey, rawAnnotation] of Object.entries(sprites).sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        if (typeof rawAnnotation !== 'object' || rawAnnotation === null) continue;
         const tombstone = (rawAnnotation as { tombstone?: unknown }).tombstone;
-        if (tombstone === undefined) return true;
-        if (typeof tombstone !== 'object' || tombstone === null) return false;
-        const value = tombstone as Partial<LifecycleDeletionTombstone>;
-        return (
-          value.manifestKey === annotationKey &&
-          isSafeQueueAssetPath(value.assetPath) &&
-          typeof value.sourceRun === 'string' &&
-          value.sourceRun.trim() !== '' &&
-          typeof value.variantIndex === 'number' &&
-          Number.isInteger(value.variantIndex) &&
-          value.variantIndex >= 0
-        );
-      });
+        if (tombstone === undefined) continue;
+        const value =
+          typeof tombstone === 'object' && tombstone !== null
+            ? (tombstone as Partial<LifecycleDeletionTombstone>)
+            : {};
+        if (
+          value.manifestKey !== annotationKey ||
+          !isSafeQueueAssetPath(value.assetPath) ||
+          typeof value.sourceRun !== 'string' ||
+          value.sourceRun.trim() === '' ||
+          typeof value.variantIndex !== 'number' ||
+          !Number.isInteger(value.variantIndex) ||
+          value.variantIndex < 0
+        ) {
+          rejections.push({
+            annotationKey,
+            reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
+            paths: [],
+          });
+        }
+      }
+      return { valid: rejections.length === 0, rejections };
     }
-    return false;
-  } catch {
-    return false;
+    return {
+      valid: false,
+      rejections: [
+        {
+          annotationKey: '<annotations-document>',
+          reason: `${ANNOTATIONS_PATH} must contain an object-valued "sprites" map on assets/queue.`,
+          paths: [],
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      rejections: [
+        {
+          annotationKey: '<annotations-document>',
+          reason: `${ANNOTATIONS_PATH} is invalid JSON on assets/queue: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          paths: [],
+        },
+      ],
+    };
   }
 }
 
@@ -1824,15 +1861,27 @@ export async function runReconcile(
             readonly stdout: string;
           }
         | undefined;
+      let queueAnnotationValidation: SpriteAnnotationsValidation | undefined;
       if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
         queueAnnotations = await runGit(deps.exec, repoRoot, [
           'show',
           `${queueRef}:${ANNOTATIONS_PATH}`,
         ]);
-        if (
-          queueAnnotations.code !== 0 ||
-          !isValidSpriteAnnotationsDocument(queueAnnotations.stdout)
-        ) {
+        queueAnnotationValidation =
+          queueAnnotations.code === 0
+            ? validateSpriteAnnotationsDocument(queueAnnotations.stdout)
+            : {
+                valid: false,
+                rejections: [
+                  {
+                    annotationKey: '<annotations-document>',
+                    reason: `Unable to read ${ANNOTATIONS_PATH} from assets/queue.`,
+                    paths: [],
+                  },
+                ],
+              };
+        if (!queueAnnotationValidation.valid) {
+          rejectedLifecycleDeletions.push(...queueAnnotationValidation.rejections);
           queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
           withheld.add(ANNOTATIONS_PATH);
         }
@@ -1853,8 +1902,26 @@ export async function runReconcile(
         const annotations =
           queueAnnotations ??
           (await runGit(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]));
+        if (queueAnnotationValidation === undefined) {
+          queueAnnotationValidation =
+            annotations.code === 0
+              ? validateSpriteAnnotationsDocument(annotations.stdout)
+              : {
+                  valid: false,
+                  rejections: [
+                    {
+                      annotationKey: '<annotations-document>',
+                      reason: `Unable to read ${ANNOTATIONS_PATH} from assets/queue.`,
+                      paths: [],
+                    },
+                  ],
+                };
+          if (!queueAnnotationValidation.valid) {
+            rejectedLifecycleDeletions.push(...queueAnnotationValidation.rejections);
+          }
+        }
         let candidates: readonly AuthorizedLifecycleDeletion[] = [];
-        if (annotations.code === 0 && isValidSpriteAnnotationsDocument(annotations.stdout)) {
+        if (annotations.code === 0 && queueAnnotationValidation.valid) {
           // Per-tombstone partition: a single broken tombstone is refused on
           // its own instead of throwing the whole hourly cycle away.
           const partition = partitionLifecycleDeletions(deletedPaths, annotations.stdout);

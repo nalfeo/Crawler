@@ -43,7 +43,7 @@ function names(selected: readonly ManifestEntry[]): string[] {
 describe('referenceSelectorSeed', () => {
   it('is stable for a brief name and namespaced by version', () => {
     expect(referenceSelectorSeed('lamp-v1')).toBe(referenceSelectorSeed('lamp-v1'));
-    expect(SELECTOR_VERSION).toBe('v1');
+    expect(SELECTOR_VERSION).toBe('v2');
   });
 
   it('differs across brief names', () => {

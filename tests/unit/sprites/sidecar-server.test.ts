@@ -3354,6 +3354,34 @@ describe('store-backed /approve hydration parity', () => {
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
   });
 
+  it('/accept fails closed before mutation when legacy queue inspection is unavailable', async () => {
+    await app.close();
+    const { listQueuedAssets: _omitted, ...incompleteDeps } = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: incompleteDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'accept-failed',
+      message: 'Legacy asset-checkin inspection is unavailable.',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
   it('/accept preserves the manual anchor, brief type, and durable sourceRun too', async () => {
     await app.close();
     await seedStoreRun();
@@ -3695,6 +3723,41 @@ describe('DELETE /api/manifest/:variantId', () => {
       manifestKey: variantId,
       assetPath,
       manifestEntry: expect.objectContaining({ spriteName: variantId, assetPath }),
+    });
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
+  });
+
+  it('fails closed before unapproval when legacy queue inspection is unavailable', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'unapprove-queue-check-failed',
+      message: 'Legacy asset-checkin inspection is unavailable.',
     });
     expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
     expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);

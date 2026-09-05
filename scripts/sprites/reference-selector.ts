@@ -32,7 +32,7 @@ import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js'
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
 
 /** Bump when the selection algorithm changes in a way that alters output. */
-export const SELECTOR_VERSION = 'v1' as const;
+export const SELECTOR_VERSION = 'v2' as const;
 
 /** Default number of reference sprites to send (matches the judge's cap). */
 export const REFERENCE_COUNT = 3 as const;

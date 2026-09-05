@@ -266,6 +266,14 @@ sprite-pipeline, sprite-workflow
   annotation keys, 0 deferred groups, 0 pending promotions, and 0 reference
   updates. No generated run artifact is tracked by the aggregate branch, and
   the five unapproved review candidates remain outside this publication unit.
+- The first exact-head certification review found three final issues, all fixed:
+  the output-changing reference selector is now provenance-versioned as `v2`;
+  malformed annotation tombstones are named in reconciler rejection diagnostics
+  instead of silently withholding the whole document; and every standalone or
+  sidecar unapproval/acceptance seam fails closed when either legacy-issue or
+  canonical-queue inspection is unavailable. The focused regression matrix
+  passed 326/326 after these fixes, followed by 726/726 changed tests in
+  `verify:fast`; PR prerequisites passed.
 
 ## PR #3234 generic extraction audit
 
