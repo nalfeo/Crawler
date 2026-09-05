@@ -18,6 +18,7 @@ import {
 } from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 import { unapproveVariant } from './approve.js';
 import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
+import { isPlaceholderManifestEntry } from './placeholder-audit.js';
 
 const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotations.json';
 const REFERENCE_EXTENSIONS = new Set(['.json', '.js', '.mjs', '.ts', '.tsx', '.yaml', '.yml']);
@@ -54,6 +55,7 @@ export interface DislikedSpriteTombstone {
   readonly sourceRun: string;
   readonly variantIndex: number;
   readonly annotationKeys: readonly string[];
+  readonly authority?: 'pre-hardening-corroborated-provenance';
 }
 
 export interface SpriteAnnotationsDocument {
@@ -328,7 +330,7 @@ export function buildDislikedLifecyclePlan(
     if (disliked.length === 0) continue;
     const replacement = input.replacement?.conceptId === conceptId ? input.replacement : undefined;
     const survivors = group
-      .filter(([key]) => !dislikedKeys.has(key))
+      .filter(([key, entry]) => !dislikedKeys.has(key) && !isPlaceholderManifestEntry(entry))
       .map(([key, entry]) => ({
         manifestKey: key,
         assetPath: entry.assetPath,

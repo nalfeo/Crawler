@@ -127,6 +127,53 @@ test('failed queueing leaves disliked/comment annotation data intact locally', (
   assert.deepEqual(state.pending().sprites, {});
 });
 
+test('save writes manifest provenance and preserves lifecycle metadata across curation edits', async () => {
+  const tombstone = {
+    manifestKey: 'alpha',
+    assetPath: 'generated/alpha.png',
+    sourceRun: 'generated/runs/alpha/original',
+    variantIndex: 2,
+  };
+  const reconciliation = { outcome: 'unmatched', annotationKey: 'legacy-alpha' };
+  const state = harness({
+    alpha: {
+      favorite: false,
+      disliked: true,
+      comment: 'old',
+      sourceRun: 'generated/runs/alpha/original',
+      variantIndex: 2,
+      tombstone,
+      reconciliation,
+    },
+  });
+
+  const token = state.persistence.saveLocal(
+    'alpha',
+    {
+      favorite: true,
+      disliked: false,
+      comment: 'curated',
+    },
+    {
+      sourceRun: 'generated/runs/alpha/current',
+      variantIndex: 4,
+    },
+  );
+
+  assert.deepEqual(token.annotation, {
+    favorite: true,
+    disliked: false,
+    comment: 'curated',
+    sourceRun: 'generated/runs/alpha/current',
+    variantIndex: 4,
+    tombstone,
+    reconciliation,
+  });
+  assert.deepEqual(state.current().sprites.alpha, token.annotation);
+  assert.equal(await state.persistence.markDurable(token), true);
+  assert.deepEqual(state.persistence.overlay(state.current()).sprites.alpha, token.annotation);
+});
+
 test('an earlier successful request cannot clean a rapid newer local save', async () => {
   let releaseHead;
   const headRead = new Promise((resolve) => {

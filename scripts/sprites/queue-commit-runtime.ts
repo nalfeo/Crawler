@@ -81,15 +81,27 @@ export async function mergeSpriteAnnotationUpdates(
       delete document.sprites[update.key];
       continue;
     }
-    document.sprites[update.key] = {
+    const existing =
+      document.sprites[update.key] &&
+      typeof document.sprites[update.key] === 'object' &&
+      !Array.isArray(document.sprites[update.key])
+        ? (document.sprites[update.key] as Record<string, unknown>)
+        : {};
+    const next: Record<string, unknown> = {
+      ...existing,
       favorite: update.favorite,
       disliked: update.disliked,
       comment: update.comment,
-      ...(update.sourceRun !== undefined ? { sourceRun: update.sourceRun } : {}),
-      ...(update.variantIndex !== undefined ? { variantIndex: update.variantIndex } : {}),
-      ...(update.tombstone !== undefined ? { tombstone: update.tombstone } : {}),
-      ...(update.reconciliation !== undefined ? { reconciliation: update.reconciliation } : {}),
     };
+    if (update.sourceRun !== undefined) next.sourceRun = update.sourceRun;
+    if (update.variantIndex !== undefined) next.variantIndex = update.variantIndex;
+    for (const field of ['tombstone', 'reconciliation'] as const) {
+      if (!Object.hasOwn(update, field)) continue;
+      const value = update[field];
+      if (value === undefined) delete next[field];
+      else next[field] = value;
+    }
+    document.sprites[update.key] = next;
   }
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;

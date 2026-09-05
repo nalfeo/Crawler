@@ -97,6 +97,31 @@ describe('disliked sprite lifecycle planning', () => {
     ]);
   });
 
+  it('does not treat a placeholder as a survivor for an all-disliked real-art group', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        'rat-var-1': entry('rat', 1, {
+          sourceRun: 'placeholder',
+          sensorScore: 'placeholder',
+          assetPath: 'generated/rat-placeholder.png',
+        }),
+      },
+      trackedAnnotations: annotations({ 'rat-var-0': { disliked: true } }),
+    });
+
+    expect(plan.removed).toEqual([]);
+    expect(plan.referenceUpdates).toEqual([]);
+    expect(plan.retainedGroups).toEqual([
+      {
+        conceptId: 'rat',
+        manifestKeys: ['rat-var-0'],
+      },
+    ]);
+  });
+
   it('promotes the tracked and pending dislike union before authorizing deletion', () => {
     const root = makeRoot();
     const plan = buildDislikedLifecyclePlan({
@@ -226,6 +251,26 @@ describe('disliked sprite lifecycle planning', () => {
 });
 
 describe('disliked sprite lifecycle transaction', () => {
+  it('marks every stale-key legacy tombstone as pre-hardening corroborated provenance', () => {
+    const document = JSON.parse(
+      readFileSync(
+        path.resolve('public', 'assets', 'generated', 'sprite-editor-annotations.json'),
+        'utf8',
+      ),
+    ) as SpriteAnnotationsDocument;
+    const staleKeyTombstones = Object.entries(document.sprites)
+      .filter(([, annotation]) => annotation.tombstone !== undefined)
+      .filter(([key, annotation]) => !annotation.tombstone!.annotationKeys.includes(key));
+
+    expect(staleKeyTombstones).toHaveLength(15);
+    expect(
+      staleKeyTombstones.every(
+        ([, annotation]) =>
+          annotation.tombstone?.authority === 'pre-hardening-corroborated-provenance',
+      ),
+    ).toBe(true);
+  });
+
   it('deletes nested manifest assets, writes tombstones, repoints exact references, and validates closure', () => {
     const root = makeRoot();
     const generatedDir = path.join(root, 'public', 'assets', 'generated');

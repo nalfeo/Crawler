@@ -552,6 +552,7 @@ export async function runQueueCommit(
       const scratchId = (worktree.split(/[\\/]/).pop() || 'base').replace(/[^A-Za-z0-9._-]/g, '-');
       const baseRef = `refs/queue-commit/base-${scratchId}`;
       const mainRef = `refs/queue-commit/main-${scratchId}`;
+      let persistedLifecycleRemovals: QueueCommitRemoval[] = [];
       try {
         await mustGit(deps.exec, repoRoot, [
           'fetch',
@@ -609,6 +610,10 @@ export async function runQueueCommit(
                 generatedAssetDeletionPaths,
                 persistedAnnotations.stdout,
               );
+              persistedLifecycleRemovals = persisted.map(({ tombstone }) => ({
+                assetPath: tombstone.assetPath,
+                manifestKey: tombstone.manifestKey,
+              }));
               for (const deletion of persisted) {
                 const shard = await runGit(deps.exec, repoRoot, [
                   'show',
@@ -621,6 +626,11 @@ export async function runQueueCommit(
                 for (const deletionPath of deletion.paths) {
                   allowedDeletionPaths.add(deletionPath);
                 }
+              }
+              if (persistedLifecycleRemovals.length > 0 && deps.removeArtSurface === undefined) {
+                throw new Error(
+                  'removeArtSurface is not wired for tombstone-authorized queue-tip deletions.',
+                );
               }
             } catch (error) {
               throw new QueueCommitError(
@@ -695,6 +705,9 @@ export async function runQueueCommit(
                 'destination-conflict',
                 `assets/queue orphan brief checkout failed: ${briefCheckout.stderr}`,
               );
+            }
+            if (persistedLifecycleRemovals.length > 0) {
+              await deps.removeArtSurface!(worktree, persistedLifecycleRemovals);
             }
             await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
             await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);

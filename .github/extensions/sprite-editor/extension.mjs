@@ -753,9 +753,12 @@ function applyAnnotationUpdate(payload, data, key) {
   if (!data.annotations?.sprites || typeof data.annotations.sprites !== 'object') {
     data.annotations = { version: 1, sprites: {} };
   }
-  const annotation = normalizeSpriteAnnotation(payload?.annotation);
-  const token = annotationPersistence.saveLocal(key, annotation);
-  data.annotations.sprites[key] = annotation;
+  const entry = data.manifest.entries?.[key];
+  const token = annotationPersistence.saveLocal(key, payload?.annotation, {
+    sourceRun: entry?.sourceRun,
+    variantIndex: entry?.variantIndex,
+  });
+  data.annotations.sprites[key] = token.annotation;
   return token;
 }
 

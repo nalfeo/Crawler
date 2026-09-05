@@ -41,7 +41,8 @@
         "assetPath": "generated/baseball-bat-var-6.png",
         "sourceRun": "generated/runs/baseball-bat-v3/imported-58ccda72dccc",
         "variantIndex": 6,
-        "annotationKeys": ["baseball-bat-v3-var-6"]
+        "annotationKeys": ["baseball-bat-v3-var-6"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "batfolk-boss-var-0": {
@@ -456,7 +457,8 @@
         "assetPath": "generated/rat-king-var-7.png",
         "sourceRun": "generated/runs/rat-king-v1/imported-be4108057f1c",
         "variantIndex": 7,
-        "annotationKeys": ["rat-king-v1-var-7"]
+        "annotationKeys": ["rat-king-v1-var-7"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "rat-queen-var-7": {
@@ -469,7 +471,8 @@
         "assetPath": "generated/rat-queen-var-7.png",
         "sourceRun": "generated/runs/rat-queen-v1/imported-3d447f401509",
         "variantIndex": 7,
-        "annotationKeys": ["rat-queen-v1-var-7"]
+        "annotationKeys": ["rat-queen-v1-var-7"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "ratfolk-boss-var-0": {
@@ -497,7 +500,8 @@
         "assetPath": "generated/ratfolk-elite-underboss-var-6.png",
         "sourceRun": "generated/runs/ratfolk-elite-underboss-v1/2026-08-01T04-50-51-ee442a1f",
         "variantIndex": 6,
-        "annotationKeys": ["ratfolk-elite-underboss-v1-var-6"]
+        "annotationKeys": ["ratfolk-elite-underboss-v1-var-6"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "slime-rat-boss-var-1": {
@@ -525,7 +529,8 @@
         "assetPath": "generated/sweaty-merchant-var-10.png",
         "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
         "variantIndex": 10,
-        "annotationKeys": ["sweaty-merchant-v2-var-10"]
+        "annotationKeys": ["sweaty-merchant-v2-var-10"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "sweaty-merchant-var-5": {
@@ -538,7 +543,8 @@
         "assetPath": "generated/sweaty-merchant-var-5.png",
         "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
         "variantIndex": 5,
-        "annotationKeys": ["sweaty-merchant-v2-var-5"]
+        "annotationKeys": ["sweaty-merchant-v2-var-5"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "sweaty-merchant-var-7": {
@@ -551,7 +557,8 @@
         "assetPath": "generated/sweaty-merchant-var-7.png",
         "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
         "variantIndex": 7,
-        "annotationKeys": ["sweaty-merchant-v2-var-7"]
+        "annotationKeys": ["sweaty-merchant-v2-var-7"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "sweaty-merchant-var-9": {
@@ -564,7 +571,8 @@
         "assetPath": "generated/sweaty-merchant-var-9.png",
         "sourceRun": "generated/runs/sweaty-merchant-v2/2026-07-27T16-17-03-50ce3d77",
         "variantIndex": 9,
-        "annotationKeys": ["sweaty-merchant-v2-var-9"]
+        "annotationKeys": ["sweaty-merchant-v2-var-9"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "tile-boss-staircase-floor-v2-var-10": {
@@ -615,7 +623,8 @@
         "assetPath": "generated/welcome-goon-var-10.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 10,
-        "annotationKeys": ["welcome-goon-v2-var-10"]
+        "annotationKeys": ["welcome-goon-v2-var-10"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-3": {
@@ -628,7 +637,8 @@
         "assetPath": "generated/welcome-goon-var-3.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 3,
-        "annotationKeys": ["welcome-goon-v2-var-3"]
+        "annotationKeys": ["welcome-goon-v2-var-3"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-4": {
@@ -641,7 +651,8 @@
         "assetPath": "generated/welcome-goon-var-4.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 4,
-        "annotationKeys": ["welcome-goon-v2-var-4"]
+        "annotationKeys": ["welcome-goon-v2-var-4"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-5": {
@@ -654,7 +665,8 @@
         "assetPath": "generated/welcome-goon-var-5.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 5,
-        "annotationKeys": ["welcome-goon-v2-var-5"]
+        "annotationKeys": ["welcome-goon-v2-var-5"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-6": {
@@ -667,7 +679,8 @@
         "assetPath": "generated/welcome-goon-var-6.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 6,
-        "annotationKeys": ["welcome-goon-v2-var-6"]
+        "annotationKeys": ["welcome-goon-v2-var-6"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-7": {
@@ -680,7 +693,8 @@
         "assetPath": "generated/welcome-goon-var-7.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 7,
-        "annotationKeys": ["welcome-goon-v2-var-7"]
+        "annotationKeys": ["welcome-goon-v2-var-7"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-goon-var-9": {
@@ -693,7 +707,8 @@
         "assetPath": "generated/welcome-goon-var-9.png",
         "sourceRun": "generated/runs/welcome-goon-v2/2026-07-27T16-27-00-90c3c66e",
         "variantIndex": 9,
-        "annotationKeys": ["welcome-goon-v2-var-9"]
+        "annotationKeys": ["welcome-goon-v2-var-9"],
+        "authority": "pre-hardening-corroborated-provenance"
       }
     },
     "welcome-room-bookcase-var-0": {
