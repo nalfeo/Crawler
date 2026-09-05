@@ -678,9 +678,21 @@ describe('Goobers lifecycle ownership', () => {
     const claim = tasks['query-backlog'];
     expect(claim.inputs.trustLabel).toBe('goobers:approved');
     expect(claim.inputs.requireUnassigned).toBe('true');
-    expect(claim.inputs.excludeLabel).toBe('goobers/status:in-review');
+    // The exclusion must be spelled with the key `goobers backlog-query`
+    // actually reads: `cmd/goobers/backlogquery.go` does
+    // `splitLabelList(providerInput("excludeLabels", ""))`, and
+    // `api/validate/validate.go` validates `task.Inputs["excludeLabels"]`.
+    // A singular `excludeLabel` is read by nothing, so it silently defaults to
+    // "" and excludes NOTHING -- asserting it would prove exclusivity that
+    // does not hold. Assert membership rather than the whole string so extra
+    // exclusions (e.g. completed-existing-work) stay allowed.
+    const excluded = String(claim.inputs.excludeLabels)
+      .split(',')
+      .map((label: string) => label.trim());
+    expect(excluded).toContain('goobers/status:in-review');
+    expect(claim.inputs.excludeLabel).toBeUndefined();
     expect(claim.inputs.maxItems).toBe('1');
-    // ...and claiming SETS the very label named in excludeLabel, so the claim
+    // ...and claiming SETS the very label named in excludeLabels, so the claim
     // is self-excluding against any later run.
     expect(claim.run.script).toContain("--add-label 'goobers/status:in-review'");
     expect(gaggle.spec.readiness.maxConcurrentRuns).toBe(1);

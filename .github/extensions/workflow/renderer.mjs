@@ -741,6 +741,7 @@ const CLIENT_SCRIPT = String.raw`
     var sheets = state.sheets || [];
     var wrap = h('div', null, []);
     if (!sel) return wrap;
+    wrap.appendChild(h('div', { class: 'section-title', text: 'Static review sheet' }));
 
     if (state.autoSelectedLatest) {
       wrap.appendChild(h('div', { class: 'muted', style: { color: '#fde68a', marginBottom: '6px' },
@@ -1465,7 +1466,7 @@ const CLIENT_SCRIPT = String.raw`
       style: { marginTop: '16px' },
       'data-workflow-candidates': 'true'
     }, [
-      h('div', { class: 'section-title', text: 'Variants & pipeline traces (' + cands.length + ')' })
+      h('div', { class: 'section-title', text: 'Static variant review grid (' + cands.length + ')' })
     ]);
     if (!sel || cands.length === 0) {
       wrap.appendChild(h('div', { class: 'muted', text: 'No variant traces recorded for this run.' }));

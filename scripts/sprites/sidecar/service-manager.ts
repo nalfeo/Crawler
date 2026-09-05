@@ -243,18 +243,12 @@ async function defaultProbeHealth(baseUrl: string): Promise<SidecarHealth | null
 }
 
 function isReady(health: SidecarHealth, repoRoot: string): boolean {
-  if (
-    health.status !== 'ok' ||
-    typeof health.repoRoot !== 'string' ||
-    !repoRootsMatch(health.repoRoot, repoRoot) ||
-    health.version !== SPRITE_SIDECAR_SERVICE_VERSION
-  ) {
-    return false;
-  }
-  if (health.queueBackend === 'azure-queue') {
-    return health.worker?.running === true && health.issueIngester?.running === true;
-  }
-  return true;
+  return (
+    health.status === 'ok' &&
+    typeof health.repoRoot === 'string' &&
+    repoRootsMatch(health.repoRoot, repoRoot) &&
+    health.version === SPRITE_SIDECAR_SERVICE_VERSION
+  );
 }
 
 /**

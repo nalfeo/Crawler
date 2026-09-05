@@ -1,0 +1,41 @@
+{
+  "$comment": [
+    "Phase 4 decommission evidence for the Goobers migration (epic #3838, issue #3839).",
+    "This file is the operator-attested snapshot that gates removal of the legacy",
+    "ci-recovery/merge-train lifecycle mutation paths. The live source of truth for a lane",
+    "owner is its repository variable; this record is the durable, reviewable attestation",
+    "that the variable was observed in that state. Update it in a PR as each lane migrates,",
+    "as the soak runs, and when the rollback drill completes.",
+    "Validate with `npm run check:legacy-decommission`."
+  ],
+  "version": 1,
+  "observedAt": "2026-09-05T00:00:00.000Z",
+  "lanes": {
+    "ci-recovery": "legacy",
+    "review-threads": "legacy",
+    "branch-update": "legacy",
+    "merge-train": "legacy"
+  },
+  "soak": {
+    "startedAt": null,
+    "requiredDays": 14,
+    "note": "Starts only once every PR-lifecycle lane reads `goobers`."
+  },
+  "rollbackActivations": [],
+  "rollbackDrill": {
+    "result": "not-run",
+    "completedAt": null,
+    "runIds": [],
+    "note": "Procedure: docs/runbooks/ci-mutation-bridge-runbook.md#phase-4-rollback-drill."
+  },
+  "emergencyBridge": {
+    "retained": true,
+    "boundedUntil": null,
+    "variable": "LEGACY_CI_MUTATION_BRIDGE_ENABLED",
+    "note": "Set `boundedUntil` when the soak starts; the bridge is removed only after the drill passes."
+  },
+  "branchProtection": {
+    "updatedToGoobersContexts": false,
+    "requiredChecks": []
+  }
+}
