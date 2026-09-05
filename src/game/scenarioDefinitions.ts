@@ -3,6 +3,7 @@ import type { CoreSimulationSystem } from '../core/simulation-core-step.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../shared/constants.js';
+import { RoomRole } from '../shared/map-types.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
 import type {
   ScenarioCompletionCopy,
@@ -61,6 +62,7 @@ import {
   arenaDirectorSystem,
   confirmFloor4StairDescend,
   initializeFloor4Scenario,
+  isFloor4StairDescendAvailable,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
@@ -417,6 +419,29 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
   };
 }
 
+/** Floor 4's terminal marker is the public Green Room exit during act-5 intermission. */
+function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
+  const arena = world.floorExtendedState?.floor4Arena;
+  if (!arena || arena.phase.kind !== 'INTERMISSION' || arena.phase.act !== 5 || !world.floorMap) {
+    return null;
+  }
+  const greenRoom = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+  if (!greenRoom) {
+    return null;
+  }
+  const tileSizeFt = world.floorMap.config.tileSizeFt;
+  return {
+    positionFt: {
+      x: (greenRoom.bounds.x + greenRoom.bounds.width / 2) * tileSizeFt,
+      y: (greenRoom.bounds.y + greenRoom.bounds.height / 2) * tileSizeFt,
+    },
+    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    visible: true,
+    locked: !isFloor4StairDescendAvailable(world),
+    label: '▼ GREEN ROOM EXIT',
+  };
+}
+
 /** Floor 6's exit marker, projected from the authoritative defense exit state. */
 function getFloor6StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
   const defense = world.floorExtendedState?.floor6Defense;
@@ -534,6 +559,15 @@ const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
   body: 'The Final Four are defeated. Are you ready to exit the Companion League?',
   confirmLabel: 'Yes, exit now',
   confirmDescription: 'You win!',
+};
+
+const FLOOR_4_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  kind: 'floor4-stair-descend',
+  title: 'Claim the Main Event victory?',
+  subtitle: 'You are at the Green Room exit.',
+  body: 'The fifth Headliner is defeated. Confirm the terminal broadcast exit to end Floor 4.',
+  confirmLabel: 'Yes, end the broadcast',
+  confirmDescription: 'Complete Floor 4.',
 };
 
 /**
@@ -959,6 +993,8 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+      getStairMarkerState: getFloor4StairMarkerState,
+      stairConfirmation: FLOOR_4_STAIR_CONFIRMATION,
     },
   ],
   [

@@ -65,6 +65,7 @@ import {
 } from './spell-broker-intent.js';
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
+import { confirmFloor4GreenRoomExit, confirmFloor4StairDescend } from '../floor4Scenario.js';
 import { confirmFloor6StairDescend, isFloor6ExitDescendable } from '../floor6Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -469,6 +470,18 @@ export function autoFloor3ProgressionSystem(
   }
   if (allowDirectStairDescend) {
     confirmFloor3StairDescend(world, playerEid);
+  }
+}
+
+export function autoFloor4ProgressionSystem(world: GameWorld, playerEid: number): void {
+  const phase = world.floorExtendedState?.floor4Arena?.phase;
+  if (world.floorId !== 'floor4' || phase?.kind !== 'INTERMISSION' || !isInSafeContext(world)) {
+    return;
+  }
+  if (phase.act < 5) {
+    confirmFloor4GreenRoomExit(world, playerEid);
+  } else {
+    confirmFloor4StairDescend(world, playerEid);
   }
 }
 

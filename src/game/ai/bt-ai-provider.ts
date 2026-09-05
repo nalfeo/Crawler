@@ -7931,6 +7931,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (world.floorExtendedState?.floor3Studios) {
       return this.findFloor3ProgressObjective(world, playerX, playerY);
     }
+    if (world.floorId === 'floor4') {
+      return this.findFloor4ProgressObjective(world, playerX, playerY);
+    }
     const objective = floorScenario?.objective;
     if (!floorScenario || !objective) {
       return null;
@@ -8301,6 +8304,52 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private findFloor4ProgressObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const phase = world.floorExtendedState?.floor4Arena?.phase;
+    const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner;
+    if (
+      (phase?.kind === 'HEADLINE' || phase?.kind === 'OVERTIME') &&
+      activeHeadliner?.bossEid !== null &&
+      activeHeadliner?.bossEid !== undefined &&
+      !activeHeadliner.defeated &&
+      entityExists(world.ecs, activeHeadliner.bossEid)
+    ) {
+      const x = world.stores.position.x[activeHeadliner.bossEid];
+      const y = world.stores.position.y[activeHeadliner.bossEid];
+      const hp = world.stores.health.current[activeHeadliner.bossEid] ?? 0;
+      if (x !== undefined && y !== undefined && hp > 0) {
+        return this.createProgressTarget(
+          x,
+          y,
+          playerX,
+          playerY,
+          `Engaging Floor 4 Headliner ${activeHeadliner.displayName}`,
+          activeHeadliner.bossEid,
+        );
+      }
+    }
+    if (phase?.kind !== 'INTERMISSION') {
+      return null;
+    }
+    const greenRoom = resolveNearestSafeAnchor(world, playerX, playerY);
+    if (!greenRoom) {
+      return null;
+    }
+    return this.createProgressTarget(
+      greenRoom.x,
+      greenRoom.y,
+      playerX,
+      playerY,
+      phase.act < 5
+        ? `Heading to the Green Room exit for act ${phase.act + 1}`
+        : 'Heading to the Green Room exit to claim Floor 4 victory',
+    );
   }
 
   private findMerchantGoldFarmTarget(

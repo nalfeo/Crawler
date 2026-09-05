@@ -5,9 +5,9 @@
  * Slice 3 makes the wave windows physical: each act arms immutable, seeded wave
  * manifests, `arenaDirectorSystem` releases them at the fixed feed gates on the
  * act clock, a live-enemy cap and bounded FIFO spawn debt bound the arena, and
- * the wave-window boundary *cuts* whatever survived. Headliners, the Green Room
- * transaction and shops remain later slices, so the rehearsal hand-off (headline
- * windows auto-clear, intermissions auto-advance) is retained underneath.
+ * the wave-window boundary *cuts* whatever survived. Headliners and Green Room
+ * visits are physical/public progression gates; sponsor purchases remain later
+ * slices.
  *
  * Key contracts:
  *
@@ -16,9 +16,9 @@
  * - **No generic countdown timer is shown (FR5.6/FR8.4).** `timer.durationMs`
  *   remains a raw stall backstop, so `world.hideFloorTimer` suppresses the
  *   generic floor HUD timer.
- * - **Rehearsal intermissions auto-advance.** Until Green Room/shop slices ship,
- *   intermissions hold briefly then advance automatically, with final act
- *   intermission auto-transitioning to VICTORY.
+ * - **Intermissions require public confirmation.** The director opens each
+ *   Green Room visit, then waits until the player reaches that SAFE room and
+ *   confirms either the next act or the terminal stairs.
  * - **Waves never touch `world.rng` (FR3.2/FR7.1/FR7.4).** Manifests come from
  *   per-wave derived streams in `src/shared/floor4-waves.ts`; releasing,
  *   debting and cutting consume no randomness at all, so cap pressure and
@@ -49,6 +49,7 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { applyDamage, clearEntityStores } from '../core/helpers.js';
+import { isPointInSafeSpace } from '../core/safe-space.js';
 import { spawnRosterCompanion } from '../core/spawners/companions.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
@@ -1287,19 +1288,6 @@ export function arenaDirectorSystem(world: GameWorld): void {
           phaseConfig.intermissionMs - state.phaseElapsedMs,
         );
       }
-      if (state.phaseElapsedMs < phaseConfig.intermissionMs) {
-        break;
-      }
-      if (nextAct) {
-        recordFloor4PhaseTransition(
-          world,
-          state,
-          { kind: 'WAVES', act: nextAct },
-          'slice2-auto-green-room-exit',
-        );
-      } else {
-        recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'slice2-auto-stairs');
-      }
       break;
     }
     case 'OVERTIME': {
@@ -1342,14 +1330,52 @@ export function arenaDirectorSystem(world: GameWorld): void {
   }
 }
 
+function isPlayerInFloor4GreenRoom(world: GameWorld, playerEid?: number): boolean {
+  const eid = playerEid ?? query(world.ecs, [Player, Position])[0];
+  if (eid === undefined) {
+    return false;
+  }
+  const x = world.stores.position.x[eid];
+  const y = world.stores.position.y[eid];
+  return x !== undefined && y !== undefined && isPointInSafeSpace(world, x, y);
+}
+
+export function confirmFloor4GreenRoomExit(world: GameWorld, playerEid?: number): boolean {
+  const state = floor4ArenaState(world);
+  const phase = state?.phase;
+  if (!state || phase?.kind !== 'INTERMISSION' || phase.act >= 5) {
+    return false;
+  }
+  const nextAct = nextFloor4Act(phase.act);
+  if (!nextAct || !isPlayerInFloor4GreenRoom(world, playerEid)) {
+    return false;
+  }
+  recordFloor4PhaseTransition(world, state, { kind: 'WAVES', act: nextAct }, 'green-room-exit');
+  return true;
+}
+
+export function isFloor4StairDescendAvailable(world: GameWorld, playerEid?: number): boolean {
+  const phase = floor4ArenaState(world)?.phase;
+  return (
+    phase?.kind === 'INTERMISSION' && phase.act === 5 && isPlayerInFloor4GreenRoom(world, playerEid)
+  );
+}
+
 /**
  * Floor 4's stairs are gated on `INTERMISSION(5)` (FR8.3). That phase arrives
- * with the final Green Room transaction. Slice 2 exposes the phase check even
- * though its rehearsal director auto-takes those stairs after a short hold.
+ * with the final Green Room transaction; confirmation requires the same public
+ * Green Room position gate as earlier intermission exits.
  */
-export function confirmFloor4StairDescend(world?: GameWorld): boolean {
-  const phase = world ? floor4ArenaState(world)?.phase : undefined;
-  return phase?.kind === 'INTERMISSION' && phase.act === 5;
+export function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boolean {
+  if (!world || !isFloor4StairDescendAvailable(world, playerEid)) {
+    return false;
+  }
+  const state = floor4ArenaState(world);
+  if (!state) {
+    return false;
+  }
+  recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'floor4-stairs-confirmed');
+  return true;
 }
 
 export function initializeFloor4Scenario(
