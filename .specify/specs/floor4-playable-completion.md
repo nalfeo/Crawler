@@ -6,8 +6,10 @@
 > interaction")**, which is now a required, asserted result rather than a
 > recorded shortfall — see §Public interaction criterion. Slices 3 and 4 are
 > complete; **slice 2 needed no separate fix** (see §Verdict on the reported
-> spawn discrepancy).
+> spawn discrepancy). **Slice 5 (dual-runner convergence) is complete** — see
+> §Slice 5 — dual-runner convergence (final).
 > **Authored:** 2026-09-02. **Contract table added:** 2026-09-03.
+> **Slice 5 convergence recorded:** 2026-09-05.
 > **Estimated complexity:** 🍎🍎 (one confirmed, floor-agnostic engine defect + two
 > regression tests + one additive debug-telemetry field; no gameplay/balance change).
 > **Epic:** [`floor-4-playable-completion`](../../docs/knowledge/epics/floor-4-playable-completion/floor-4-playable-completion.epic.json),
@@ -292,6 +294,48 @@ handling — walk to the published marker, queue a real `queuedInteraction`, and
 confirm the real `ModalPickerUI` prompt — so the passing visual run is direct
 evidence that all five intermissions resolve through the scene's own interaction
 path, exactly as a human resolves them.
+
+## Slice 5 — dual-runner convergence (final)
+
+Slice 5's job is integration, not new gameplay: reconcile only genuine
+shared-policy or public-interaction differences between the independently
+completed slice-3 (headless) and slice-4 (visual) work, keep
+`ScenarioDefinition` and the real simulation pipeline authoritative, and record
+final commands/evidence. Auditing both slices together found **no outstanding
+divergence to reconcile**:
+
+- **Shared fingerprint fields already unified.** Both gates already import the
+  same literals — `FLOOR4_ACTS`, the manifest-derived `FLOOR4_TOTAL_WAVES_RELEASED`
+  and `FLOOR4_STALL_BACKSTOP_MS`, and the public exit reasons
+  `FLOOR4_GREEN_ROOM_EXIT_REASON` / `FLOOR4_TERMINAL_EXIT_REASON` — from
+  `tests/helpers/floor4-completion-contract.ts`, so a change to one criterion
+  cannot silently loosen only one runner (see §Constraints on the two gates).
+  No test-local duplicate literal was found to reconcile.
+- **No gameplay-authority drift.** Both runners resolve every intermission
+  through the single public `confirmFloor4GreenRoomInteraction` /
+  `getFloor4GreenRoomExitMarker` path (§Public interaction criterion); neither
+  runner has its own phase-advance, spawn, or Headliner-defeat logic that the
+  other lacks.
+- **Prior merge-conflict resolution already performed this reconciliation.**
+  When slice-4's PR (#4263) synced with slice-3's landed PR (#4264), the
+  resulting merge kept slice-3's public-interaction implementation as the
+  single shared authority and slice-4's stricter visual assertions (see
+  `docs/knowledge/handoffs/2026-09-05-floor4-visual-gate-conflict-recovery.md`).
+  This slice's own audit re-verified that resolution is still correct on the
+  current `main` and did not need to change it further.
+
+### Final evidence (re-verified 2026-09-05, clean checkout)
+
+| Command                                                                                                                                                                                                                                                                    | Result                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts`                                                                                                                                                                                         | 2/2 passed (~48s) — `outcome: victory`, `wavesReleased: 40`, `spawned/defeated: 5/5`, terminal `VICTORY`, repeated-seed determinism asserted                        |
+| `npx vitest run --project e2e tests/e2e/floor4-ai-completion.deterministic.test.ts`                                                                                                                                                                                        | 1/1 passed (~166s) — real `MainGameScene`/AI-runner lab reaches `phase.kind === 'VICTORY'`, zero page errors, `wavesReleased: 40`, `headlinerSpawned/Defeated: 5/5` |
+| `npm run ai:headless -- --seed 404 --floor floor4` (ad hoc)                                                                                                                                                                                                                | `VICTORY`, 37505 frames, 625.1s game time, 11.4s wall time — well under the 3,600,000 ms manifest stall backstop and the 60,000-frame test cap                      |
+| Pre-existing Floor 4 regressions (`tests/unit/floor4-*.test.ts`, `tests/unit/scenario-definitions.test.ts`, `tests/headless/floor4-arena-waves.test.ts`, `tests/e2e/floor4-main-scene-spawning.deterministic.test.ts`, `tests/e2e/floor4-arena-hud.deterministic.test.ts`) | all green (149 + 5 + 4 tests)                                                                                                                                       |
+
+No balance, economy, achievement, content, or polish change was made; no seed
+sweep was added. This closes the `floor-4-playable-completion` epic's
+slice-5 node.
 
 ## Baseline commands (reproducible)
 
