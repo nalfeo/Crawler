@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -188,28 +189,53 @@ describe('assets/queue identity inspection', () => {
 
     const manifestKey = 'nested/demo-var-1';
     const assetPath = 'generated/nested/demo-var-1.png';
+    const pngBytes = Buffer.from('PNG');
+    const contentHash = createHash('sha256').update(pngBytes).digest('hex');
     writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
       briefId: 'demo',
       spriteName: manifestKey,
       assetPath,
       variantIndex: 1,
-      contentHash: 'expected-hash',
+      contentHash,
     });
     const pngPath = path.join(live, 'public', 'assets', ...assetPath.split('/'));
     mkdirSync(path.dirname(pngPath), { recursive: true });
-    writeFileSync(pngPath, 'PNG');
+    writeFileSync(pngPath, pngBytes);
     git(live, 'add', '-A');
     git(live, 'commit', '-m', 'queue asset');
     git(live, 'push', 'origin', 'HEAD:assets/queue');
 
     const inspect = createDefaultCheckinDeps(live).inspectDurableQueueAsset!;
-    await expect(
-      inspect({ manifestKey, assetPath, contentHash: 'expected-hash' }),
-    ).resolves.toEqual({
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
       reconciliation: 'duplicate',
       branch: 'assets/queue',
     });
     await expect(inspect({ manifestKey, assetPath, contentHash: 'other-hash' })).resolves.toEqual({
+      reconciliation: 'content-conflict',
+      branch: 'assets/queue',
+    });
+
+    writeFileSync(pngPath, 'CORRUPTED');
+    git(live, 'add', pngPath);
+    git(live, 'commit', '-m', 'corrupt queue png');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
+      reconciliation: 'ambiguous',
+      branch: 'assets/queue',
+    });
+
+    writeFileSync(pngPath, pngBytes);
+    writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
+      briefId: 'demo',
+      spriteName: 'different-var-1',
+      assetPath,
+      variantIndex: 1,
+      contentHash,
+    });
+    git(live, 'add', '-A');
+    git(live, 'commit', '-m', 'miskey queue shard');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
       reconciliation: 'content-conflict',
       branch: 'assets/queue',
     });

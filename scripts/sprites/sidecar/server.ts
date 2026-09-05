@@ -571,7 +571,7 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
 }
 
 /**
- * Map a `CheckinError` (or unknown thrown value) from ANY check-in-shaped
+ * Map a `CheckinError`, `QueueCommitError`, or unknown thrown value from ANY check-in-shaped
  * caller — `/api/checkin`, `/api/checkin/prepare`, the atomic `/accept`
  * route's own check-in step, and its pre-/post-mutation queue-list
  * reconciliation reads — to the SAME structured `{error, message}` body,
@@ -596,6 +596,22 @@ function mapCheckinError(
             err.kind === 'checkin-locked'
           ? 409
           : 502; // git-failed / gh-failed
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
+  if (err instanceof QueueCommitError) {
+    const status =
+      err.kind === 'ci-refused'
+        ? 403
+        : err.kind === 'queue-frozen' ||
+            err.kind === 'destination-conflict' ||
+            err.kind === 'generated-deletion-refused'
+          ? 409
+          : err.kind === 'invalid-asset-path' ||
+              err.kind === 'invalid-annotation' ||
+              err.kind === 'invalid-brief-path'
+            ? 400
+            : 502;
     reply.code(status);
     return { error: err.kind, message: err.message };
   }
@@ -2240,11 +2256,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         };
       } catch (err) {
         if (err instanceof ApproveError) return mapApproveError(reply, err);
-        reply.code(500);
-        return {
-          error: err instanceof QueueCommitError ? err.kind : 'approve-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        return mapCheckinError(reply, err, 'approve-failed');
       } finally {
         hydrated?.cleanup();
       }
@@ -2640,11 +2652,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return response;
       } catch (err) {
         if (err instanceof ApproveError) return mapApproveError(reply, err);
-        reply.code(500);
-        return {
-          error: err instanceof RunDurabilityError ? 'not-durable' : 'accept-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        if (err instanceof RunDurabilityError) {
+          reply.code(500);
+          return { error: 'not-durable', message: err.message };
+        }
+        return mapCheckinError(reply, err, 'accept-failed');
       } finally {
         hydrated?.cleanup();
       }
@@ -3727,7 +3739,7 @@ async function hydrateRunDirForApproveFromStore(
     `${prefix}processed/${paddedIndex}.anchor.cog.json`,
     `${prefix}processed/${paddedIndex}.anchor.weapon.json`,
   ];
-  const runKeys = await store.list(prefix);
+  const runKeys = await store.list(prefix, { authoritative: true });
   if (runKeys.length === 0) {
     return null;
   }

@@ -58,6 +58,7 @@ export const realExec: Exec = (command, args, options) =>
         timeout: options?.timeoutMs,
       },
       (error, stdout, stderr) => {
+        const stdoutBytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(String(stdout));
         // A killed-on-timeout child reports `error.killed === true` (often with a
         // null exit code); normalize that to a non-zero code with a clear stderr
         // so callers see a failure instead of a spurious success.
@@ -73,7 +74,8 @@ export const realExec: Exec = (command, args, options) =>
             ? `command timed out after ${options.timeoutMs}ms: ${command} ${args.join(' ')}`
             : '';
         resolve({
-          stdout: String(stdout),
+          stdout: stdoutBytes.toString(),
+          stdoutBytes,
           stderr: timeoutNote ? `${timeoutNote}\n${String(stderr)}` : String(stderr),
           code,
         });
@@ -270,8 +272,23 @@ function makeListQueuedAssets(
   };
 }
 
+const CHECKIN_SUBPROCESS_TIMEOUT_MS = 120_000;
+
+function nonInteractiveCheckinEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '',
+    GCM_INTERACTIVE: 'never',
+    GIT_OPTIONAL_LOCKS: '0',
+    LC_ALL: 'C',
+    LANG: 'C',
+  };
+}
+
 function makeInspectDurableQueueAsset(
   repoRoot: string,
+  exec: Exec,
 ): NonNullable<CheckinRunnerDeps['inspectDurableQueueAsset']> {
   return async (asset): Promise<DurableQueueAssetInspection> => {
     assertSafeManifestKey(asset.manifestKey);
@@ -287,11 +304,9 @@ function makeInspectDurableQueueAsset(
 
     const branch = 'assets/queue';
     const inspectionRef = `refs/queue-inspect/${randomUUID()}`;
-    const listed = await realExec(
-      'git',
-      ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`],
-      { cwd: repoRoot },
-    );
+    const listed = await exec('git', ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`], {
+      cwd: repoRoot,
+    });
     if (listed.code !== 0) {
       throw new CheckinError(
         'git-failed',
@@ -300,7 +315,7 @@ function makeInspectDurableQueueAsset(
     }
     if (listed.stdout.trim() === '') return { reconciliation: 'new', branch };
 
-    const fetched = await realExec(
+    const fetched = await exec(
       'git',
       ['fetch', '--no-tags', 'origin', `+refs/heads/${branch}:${inspectionRef}`],
       { cwd: repoRoot },
@@ -316,8 +331,8 @@ function makeInspectDurableQueueAsset(
       const shardPath = `public/assets/generated/entries/${asset.manifestKey}.json`;
       const pngPath = `public/assets/${asset.assetPath}`;
       const [shard, png] = await Promise.all([
-        realExec('git', ['show', `${inspectionRef}:${shardPath}`], { cwd: repoRoot }),
-        realExec('git', ['cat-file', '-e', `${inspectionRef}:${pngPath}`], { cwd: repoRoot }),
+        exec('git', ['show', `${inspectionRef}:${shardPath}`], { cwd: repoRoot }),
+        exec('git', ['show', `${inspectionRef}:${pngPath}`], { cwd: repoRoot }),
       ]);
       if (shard.code !== 0 && png.code !== 0) return { reconciliation: 'new', branch };
       if (shard.code !== 0 || png.code !== 0) return { reconciliation: 'ambiguous', branch };
@@ -331,20 +346,25 @@ function makeInspectDurableQueueAsset(
       if (typeof parsed !== 'object' || parsed === null) {
         return { reconciliation: 'ambiguous', branch };
       }
+      const queuedSpriteName = (parsed as { spriteName?: unknown }).spriteName;
       const queuedAssetPath = (parsed as { assetPath?: unknown }).assetPath;
       const queuedHash = (parsed as { contentHash?: unknown }).contentHash;
-      if (queuedAssetPath !== asset.assetPath) {
+      if (queuedSpriteName !== asset.manifestKey || queuedAssetPath !== asset.assetPath) {
         return { reconciliation: 'content-conflict', branch };
       }
+      if (typeof queuedHash !== 'string' || png.stdoutBytes === undefined) {
+        return { reconciliation: 'ambiguous', branch };
+      }
+      const actualQueuedHash = createHash('sha256').update(png.stdoutBytes).digest('hex');
+      if (actualQueuedHash !== queuedHash) {
+        return { reconciliation: 'ambiguous', branch };
+      }
       return {
-        reconciliation: reconcileQueuedContent(
-          typeof queuedHash === 'string' ? { contentHash: queuedHash } : {},
-          asset.contentHash,
-        ),
+        reconciliation: reconcileQueuedContent({ contentHash: queuedHash }, asset.contentHash),
         branch,
       };
     } finally {
-      await realExec('git', ['update-ref', '-d', inspectionRef], { cwd: repoRoot });
+      await exec('git', ['update-ref', '-d', inspectionRef], { cwd: repoRoot });
     }
   };
 }
@@ -490,8 +510,15 @@ export function createDefaultCheckinDeps(
   repoRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): CheckinRunnerDeps {
+  const subprocessEnv = nonInteractiveCheckinEnv(env);
+  const exec: Exec = (command, args, options) =>
+    realExec(command, args, {
+      ...options,
+      env: options?.env ?? subprocessEnv,
+      timeoutMs: options?.timeoutMs ?? CHECKIN_SUBPROCESS_TIMEOUT_MS,
+    });
   return {
-    exec: realExec,
+    exec,
     copyArtSurface,
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-checkin-'))),
     removeDir: (dir) => {
@@ -500,7 +527,7 @@ export function createDefaultCheckinDeps(
     },
     readManifest: makeReadManifest(repoRoot),
     listQueuedAssets: makeListQueuedAssets(repoRoot),
-    inspectDurableQueueAsset: makeInspectDurableQueueAsset(repoRoot),
+    inspectDurableQueueAsset: makeInspectDurableQueueAsset(repoRoot, exec),
     withCrossProcessLock: makeCheckinFileLock(repoRoot),
     env,
   };

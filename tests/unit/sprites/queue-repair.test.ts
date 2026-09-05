@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -144,6 +144,55 @@ function corruptQueue(live: string): void {
     writeFileSync(path.join(queue, 'public/assets/generated/unrelated.png'), PNG_A);
     git(queue, 'add', '-A');
     git(queue, 'commit', '-m', 'corrupt whole-surface prune');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function addQueueAsset(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-later-asset-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    asset(queue, key);
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later valid queue asset');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function addQueueAnnotation(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-later-annotation-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    const annotationsPath = path.join(
+      queue,
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    const document = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+      version: 1;
+      sprites: Record<string, unknown>;
+    };
+    document.sprites[key] = { favorite: true, disliked: false, comment: 'later queue edit' };
+    writeJson(annotationsPath, document);
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later queue annotation');
     const sha = git(queue, 'rev-parse', 'HEAD').trim();
     git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
   } finally {
@@ -540,6 +589,59 @@ describe('runQueueRepair (real git)', () => {
       expect(() =>
         git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
       ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can discard a later complete queue asset',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAsset(live, 'later-approved-var-0');
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('would discard later queue write(s)'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/later-approved-var-0.png'),
+      ).not.toBe('');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can discard a later unrelated queue annotation',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAnnotation(live, 'later-annotation');
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining(
+          'would discard later queue annotation(s): later-annotation',
+        ),
+      });
     },
     GIT_TIMEOUT_MS,
   );

@@ -145,6 +145,18 @@ sprite-pipeline, sprite-workflow
   closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
   0 pending / 0 reference updates; and the final changed-test `verify:fast`
   selection passed 810/810.
+- The next independent review hardened the same boundaries further. Durable
+  queue identity now verifies the shard's exact `spriteName`, manifest-directed
+  path, recorded hash, and the actual queued PNG SHA-256 through bounded,
+  non-interactive Git calls. Queue repair still discards the explicitly modeled
+  partial-pair corruption, but refuses before rewriting if it would lose a later
+  complete asset pair, brief/catalog write, or unrelated valid annotation.
+  Store-backed approval hydration requests an authoritative listing, and
+  `/approve` plus `/accept` now preserve structured retry/conflict status for
+  check-in and queue-commit failures. The expanded focused matrix passed
+  179/179; lifecycle closure remained 0 removable / 20 retained / 7 unresolved /
+  0 deferred / 0 pending / 0 reference updates; and `verify:fast` passed
+  816/816.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

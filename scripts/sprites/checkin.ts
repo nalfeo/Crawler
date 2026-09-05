@@ -249,6 +249,8 @@ function renderIssueBody(
 
 export interface ExecResult {
   readonly stdout: string;
+  /** Raw stdout bytes when the production runner captured binary output. */
+  readonly stdoutBytes?: Buffer;
   readonly stderr: string;
   readonly code: number;
 }

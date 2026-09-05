@@ -48,6 +48,8 @@ import {
   type CheckinRunnerDeps,
   type QueuedAssetCheckin,
 } from '../../../scripts/sprites/checkin.js';
+import { makeCheckinFileLock } from '../../../scripts/sprites/checkin-runtime.js';
+import { QueueCommitError } from '../../../scripts/sprites/queue-commit.js';
 import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
 import {
   writeShard,
@@ -2213,6 +2215,51 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     ).toBe(false);
   });
 
+  it('maps durable queue state conflicts before accept mutation', async () => {
+    await app.close();
+    const checkinDeps = makeCheckinDeps(new Map<string, QueuedAssetCheckin>());
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        ...checkinDeps,
+        inspectDurableQueueAsset: () =>
+          Promise.reject(new QueueCommitError('queue-frozen', 'queue maintenance in progress')),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: 'queue-frozen',
+      message: 'queue maintenance in progress',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('maps approval lock contention as a retryable conflict', async () => {
+    const res = await makeCheckinFileLock(root)(() =>
+      app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/approve`,
+        payload: { variantIndex: 1 },
+      }),
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'checkin-locked' });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
   it('maps a queue-list failure from the POST-nothing-to-checkin retry reconciliation to the same structured body, not a generic 500', async () => {
     await app.close();
     let listCalls = 0;
@@ -2777,6 +2824,7 @@ describe('store-backed /approve hydration parity', () => {
   let manifestPath: string;
   let app: FastifyInstance;
   let backingStore: LocalRunStore;
+  let listCalls: { prefix: string; authoritative: boolean }[];
   const briefId = 'iron-sword';
   const runId = '2026-06-08T12-00-00-deadbeef';
   const briefRelPath = 'briefs/draft/iron-sword.yaml';
@@ -2788,7 +2836,10 @@ describe('store-backed /approve hydration parity', () => {
       put: async (key, data) => backingStore.put(key, data),
       get: async (key) => backingStore.get(key),
       has: async (key) => backingStore.has(key),
-      list: async (prefix) => backingStore.list(prefix),
+      list: async (prefix, options) => {
+        listCalls.push({ prefix, authoritative: options?.authoritative === true });
+        return backingStore.list(prefix);
+      },
       remove: async (key) => backingStore.remove(key),
       resolve: (key) => backingStore.resolve(key),
     };
@@ -2856,6 +2907,7 @@ describe('store-backed /approve hydration parity', () => {
     publicAssetsDir = path.join(root, 'public', 'assets');
     manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
     backingStore = new LocalRunStore(storeRoot);
+    listCalls = [];
     const store = remoteStore();
     app = buildServer({
       repoRoot: root,
@@ -2903,6 +2955,10 @@ describe('store-backed /approve hydration parity', () => {
     expect(body.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
     expect(body.sourceRun).not.toContain('external-');
     expect(body.sourceRun).not.toContain(tmpdir().replace(/\\/g, '/'));
+    expect(listCalls[0]).toEqual({
+      prefix: `${briefId}/${runId}/`,
+      authoritative: true,
+    });
   });
 
   it('writes a sourceRun that parses back to the exact store coordinates', async () => {

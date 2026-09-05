@@ -217,6 +217,63 @@ function parseNameStatus(
   return discarded.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function parseChangedPaths(stdout: string): ReadonlyMap<string, string> {
+  const changes = new Map<string, string>();
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line) continue;
+    const [status = '?', ...paths] = line.split('\t');
+    for (const changedPath of paths) {
+      if (changedPath) changes.set(changedPath, status);
+    }
+  }
+  return changes;
+}
+
+function findQueueWritesThatRecoveryWouldDrop(
+  stdout: string,
+  selectedPaths: ReadonlySet<string>,
+): readonly string[] {
+  const changes = parseChangedPaths(stdout);
+  const unsafe = new Set<string>();
+  for (const [changedPath, status] of changes) {
+    if (
+      status.startsWith('D') ||
+      selectedPaths.has(changedPath) ||
+      changedPath === ANNOTATIONS_PATH
+    ) {
+      continue;
+    }
+    const pngMatch = /^public\/assets\/generated\/(.+)\.png$/u.exec(changedPath);
+    const shardMatch = /^public\/assets\/generated\/entries\/(.+)\.json$/u.exec(changedPath);
+    if (pngMatch || shardMatch) {
+      const key = (pngMatch ?? shardMatch)![1]!;
+      const counterpart = pngMatch
+        ? `${GENERATED_ROOT}/entries/${key}.json`
+        : `${GENERATED_ROOT}/${key}.png`;
+      const counterpartStatus = changes.get(counterpart);
+      // A lone newly-added shard/PNG is the corrupt partial-pair shape this
+      // one-time recovery is allowed to discard. Any complete pair or edit to
+      // an existing path may be a legitimate later queue write and must block.
+      if (!status.startsWith('A') || (counterpartStatus && !counterpartStatus.startsWith('D'))) {
+        unsafe.add(changedPath);
+        if (counterpartStatus) unsafe.add(counterpart);
+      }
+      continue;
+    }
+    unsafe.add(changedPath);
+  }
+  return [...unsafe].sort();
+}
+
+function changedAnnotationKeys(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): readonly string[] {
+  return [...new Set([...Object.keys(left), ...Object.keys(right)])]
+    .filter((key) => JSON.stringify(left[key]) !== JSON.stringify(right[key]))
+    .sort((a, b) => a.localeCompare(b));
+}
+
 async function remoteSha(
   exec: Exec,
   repoRoot: string,
@@ -374,6 +431,26 @@ export async function runQueueRepair(
 
       const groups = selectedGroups();
       const selectedPaths = new Set(groups.flatMap((group) => [group.pngPath, group.shardPath]));
+      const queueDiff = await mustGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-status',
+        mainRef,
+        queueRef,
+        '--',
+        GENERATED_ROOT,
+        'briefs',
+        'src/shared/data/sprite-catalog.json',
+      ]);
+      const unsafeQueueWrites = findQueueWritesThatRecoveryWouldDrop(queueDiff, selectedPaths);
+      if (unsafeQueueWrites.length > 0) {
+        throw new QueueRepairError(
+          'source-invalid',
+          `Selective recovery would discard later queue write(s): ${unsafeQueueWrites.join(
+            ', ',
+          )}. Reconcile or promote those paths before retrying this one-time repair.`,
+        );
+      }
       const sourcePaths = new Set(
         (
           await mustGit(deps.exec, repoRoot, [
@@ -432,24 +509,43 @@ export async function runQueueRepair(
           // Best-effort local cleanup.
         }
       }
-      const [parentAnnotations, sourceAnnotations, sourceDiff] = await Promise.all([
-        mustGit(deps.exec, repoRoot, ['show', `${sourceParentSha}:${ANNOTATIONS_PATH}`]),
-        mustGit(deps.exec, repoRoot, ['show', `${sourceRef}:${ANNOTATIONS_PATH}`]),
-        mustGit(deps.exec, repoRoot, [
-          'diff',
-          '--no-renames',
-          '--name-status',
-          sourceParentSha,
-          sourceRef,
-          '--',
-          GENERATED_ROOT,
-        ]),
-      ]);
+      const [parentAnnotations, sourceAnnotations, mainAnnotations, queueAnnotations, sourceDiff] =
+        await Promise.all([
+          mustGit(deps.exec, repoRoot, ['show', `${sourceParentSha}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, ['show', `${sourceRef}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, ['show', `${mainRef}:${ANNOTATIONS_PATH}`]),
+          git(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, [
+            'diff',
+            '--no-renames',
+            '--name-status',
+            sourceParentSha,
+            sourceRef,
+            '--',
+            GENERATED_ROOT,
+          ]),
+        ]);
       const updates = annotationDelta(
         parseAnnotationDocument(parentAnnotations, sourceParentSha),
         parseAnnotationDocument(sourceAnnotations, sourceSha),
         immutableSourceSha,
       );
+      if (queueAnnotations.code === 0 && queueAnnotations.stdout.trim() !== '') {
+        const mainSprites = parseAnnotationDocument(mainAnnotations, mainSha);
+        const queueSprites = parseAnnotationDocument(queueAnnotations.stdout, queueSha);
+        const recoveryKeys = new Set(updates.map((update) => update.key));
+        const unrelatedKeys = changedAnnotationKeys(mainSprites, queueSprites).filter(
+          (key) => !recoveryKeys.has(key),
+        );
+        if (unrelatedKeys.length > 0) {
+          throw new QueueRepairError(
+            'source-invalid',
+            `Selective recovery would discard later queue annotation(s): ${unrelatedKeys.join(
+              ', ',
+            )}. Promote or preserve those annotations before retrying this one-time repair.`,
+          );
+        }
+      }
       const result = {
         policy: SELECTIVE_RECOVERY_POLICY,
         sourceSha: immutableSourceSha,
