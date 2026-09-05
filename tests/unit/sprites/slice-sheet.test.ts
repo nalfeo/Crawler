@@ -34,7 +34,7 @@ import {
   sliceSheetFromBrief,
   sliceSheetWithGrid,
 } from '../../../scripts/sprites/slice-sheet.js';
-import type { Brief } from '../../../scripts/sprites/brief-schema.js';
+import { sheetPixelDimensions, type Brief } from '../../../scripts/sprites/brief-schema.js';
 
 interface Rgb {
   r: number;
@@ -82,6 +82,41 @@ function encodeContentGrid(
           png.data[i] = col.r;
           png.data[i + 1] = col.g;
           png.data[i + 2] = col.b;
+        }
+      }
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+function encodeRectangularContentGrid(
+  rows: number,
+  cols: number,
+  cellWidth: number,
+  cellHeight: number,
+  gutter: number,
+  margin: number,
+): Buffer {
+  const width = margin * 2 + cols * cellWidth + (cols - 1) * gutter;
+  const height = margin * 2 + rows * cellHeight + (rows - 1) * gutter;
+  const png = new PNG({ width, height });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = BG.r;
+    png.data[i + 1] = BG.g;
+    png.data[i + 2] = BG.b;
+    png.data[i + 3] = 255;
+  }
+  const origin = (idx: number, cellSize: number): number => margin + idx * (cellSize + gutter);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x0 = origin(c, cellWidth);
+      const y0 = origin(r, cellHeight);
+      for (let y = y0; y < y0 + cellHeight; y++) {
+        for (let x = x0; x < x0 + cellWidth; x++) {
+          const i = (y * width + x) * 4;
+          png.data[i] = 80 + c * 30;
+          png.data[i + 1] = 40 + r * 40;
+          png.data[i + 2] = 180;
         }
       }
     }
@@ -435,6 +470,46 @@ describe('sliceSheetFromBrief', () => {
       color: (r, c) => BLOCK_COLORS[r]![c]!,
     });
   }
+
+  it('preserves rectangular source-cell geometry for a 1024x768 4x3 sheet', () => {
+    const sheetGeometry = {
+      rows: 3,
+      cols: 4,
+      emptyCells: [],
+      nativeWidth: 1024,
+      nativeHeight: 768,
+    };
+    const { width, height, cellWidth, cellHeight } = sheetPixelDimensions(sheetGeometry);
+    const gutter = 8;
+    const margin = 4;
+    const contentWidth =
+      (width - margin * 2 - (sheetGeometry.cols - 1) * gutter) / sheetGeometry.cols;
+    const contentHeight =
+      (height - margin * 2 - (sheetGeometry.rows - 1) * gutter) / sheetGeometry.rows;
+    expect(contentWidth).toBeLessThan(cellWidth);
+    expect(contentHeight).toBeLessThan(cellHeight);
+    const sheet = encodeRectangularContentGrid(
+      sheetGeometry.rows,
+      sheetGeometry.cols,
+      contentWidth,
+      contentHeight,
+      gutter,
+      margin,
+    );
+    const brief = {
+      generation: { sheet: sheetGeometry },
+    } as unknown as Brief;
+
+    const result = sliceSheetFromBrief(sheet, brief);
+    expect(PNG.sync.read(sheet).width).toBe(width);
+    expect(PNG.sync.read(sheet).height).toBe(height);
+    expect(result.grid).toEqual({ rows: 3, cols: 4, emptyCells: [] });
+    expect(result.cells).toHaveLength(12);
+    const firstCell = PNG.sync.read(result.cells[0]!);
+    expect(firstCell.width).toBe(firstCell.height);
+    expect(firstCell.width).toBeLessThanOrEqual(cellWidth);
+    expect(firstCell.height).toBeLessThanOrEqual(cellHeight);
+  });
 
   it('returns the actual data-driven grid and count (a BriefSliceResult)', () => {
     // A clean 2×2 whose content matches the commanded grid: the result carries

@@ -13,7 +13,7 @@ import { ProviderError } from '../../../scripts/sprites/provider/types.js';
 import { createImageProvider } from '../../../scripts/sprites/provider/factory.js';
 import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 
-function makeBrief(): Brief {
+function makeBrief(sheet?: Record<string, unknown>): Brief {
   return briefSchema.parse({
     type: 'weapon',
     name: 'iron-sword',
@@ -26,6 +26,7 @@ function makeBrief(): Brief {
       { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' },
       { path: 'public/assets/kenney/roguelike-rpg-pack/spritesheet.png' },
     ],
+    ...(sheet === undefined ? {} : { generation: { sheet } }),
   });
 }
 
@@ -206,6 +207,30 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
     // must NOT send the field. (dall-e-3 required it; gpt-image-1 errors on it.)
     expect(form.has('response_format')).toBe(false);
     expect(form.getAll('image[]')).toHaveLength(2);
+  });
+
+  it('sends rectangular brief geometry in the multipart size field', async () => {
+    const png = encodeSolidPng(8, 8);
+    let body: BodyInit | null | undefined;
+    const stubFetch: typeof fetch = async (_url, init) => {
+      body = init?.body;
+      return jsonResponse(200, { data: [{ b64_json: png.toString('base64') }] });
+    };
+    await provider(stubFetch).generateSheet({
+      brief: makeBrief({
+        rows: 3,
+        cols: 4,
+        emptyCells: [],
+        nativeWidth: 1024,
+        nativeHeight: 768,
+      }),
+      prompt: 'A rectangular character sheet',
+      referencePngs: [encodeSolidPng(2, 2)],
+      variants: 12,
+    });
+
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).get('size')).toBe('1024x768');
   });
 });
 

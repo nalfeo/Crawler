@@ -42,10 +42,18 @@ This addresses issue #4271 by porting the geometry semantics from PR #3234 onto 
 - `tests/integration/sprites/local-a1111-provider.test.ts`
   - Added parity coverage proving a 4x3 rectangular sheet yields the intended 1024x768 native canvas and uniform cell sizing.
 
+- `tests/unit/sprites/azure-openai.test.ts`
+  - Added deterministic multipart coverage proving Azure requests `1024x768` for a 4x3 rectangular brief.
+
+- `tests/unit/sprites/slice-sheet.test.ts`
+  - Added deterministic content-aware slicing coverage for a 1024x768 4x3 sheet and its shared source-cell geometry.
+
 ## Validation
 
 - `npm run verify:fast`
-- focused sprite geometry tests: 3 specs, 120 tests total, all passing
+- `npm run verify:pr-prereqs`
+- focused unit geometry tests: 2 files, 55 tests, all passing
+- local A1111 rectangular integration tests: 12 tests, all passing
 
 ## Notes
 
