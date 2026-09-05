@@ -209,7 +209,11 @@ export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
  */
 export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
   if (typeof entry.placeholder === 'boolean') return entry.placeholder;
-  return entry.assetPath.includes('-placeholder');
+  return (
+    entry.sourceRun === 'placeholder' ||
+    entry.sensorScore === 'placeholder' ||
+    entry.assetPath.toLowerCase().includes('-placeholder')
+  );
 }
 
 /**
@@ -226,6 +230,22 @@ export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
  */
 export function isRuntimeEligibleManifestEntry(entry: ManifestEntry): boolean {
   return entry.disliked !== true && !isPlaceholderManifestEntry(entry);
+}
+
+/**
+ * Resolve the selectable concept represented by one manifest row.
+ *
+ * Icon-batch rows share the batch brief id even though every cell is a distinct
+ * concept, so icons group by their concrete sprite name. Other generated art
+ * groups by brief lineage as usual.
+ */
+export function generatedManifestConceptId(
+  entry: ManifestEntry,
+  manifestKey = entry.spriteName,
+): string {
+  const sourceId =
+    entry.type === 'icon' ? entry.spriteName || manifestKey : entry.briefId || manifestKey;
+  return normalizeGeneratedSpriteConceptId(sourceId);
 }
 
 /**
@@ -338,7 +358,7 @@ export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpr
     // written brief-wide. The normalized concept is the grouping key.
     const resolved = toRegistryEntry(entry, manifestKey);
     flat.push(resolved);
-    const conceptId = normalizeGeneratedSpriteConceptId(resolved.briefId);
+    const conceptId = generatedManifestConceptId(entry, manifestKey);
     const group = byBrief.get(conceptId);
     if (group) {
       group.push(resolved);

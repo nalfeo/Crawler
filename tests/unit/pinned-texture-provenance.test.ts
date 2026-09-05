@@ -26,20 +26,17 @@ import path from 'node:path';
 import { TILE_SPRITES } from '../../src/engine/sprites/tile-visuals.js';
 import { TerrainType } from '../../src/shared/map-types.js';
 import substrate from '../../src/shared/data/set-piece-substrate.json' with { type: 'json' };
+import {
+  isRuntimeEligibleManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 
 const ENTRIES_DIR = path.resolve('public/assets/generated/entries');
 
-interface ShardEntry {
-  readonly briefId: string;
-  readonly assetPath: string;
-  readonly contentHash?: string;
-  readonly sourceRun?: string;
-}
-
-function loadEntry(key: string): ShardEntry | undefined {
+function loadEntry(key: string): ManifestEntry | undefined {
   const file = path.join(ENTRIES_DIR, `${key}.json`);
   if (!existsSync(file)) return undefined;
-  return JSON.parse(readFileSync(file, 'utf8')) as ShardEntry;
+  return JSON.parse(readFileSync(file, 'utf8')) as ManifestEntry;
 }
 
 describe('pinned texture-key provenance', () => {
@@ -68,7 +65,12 @@ describe('pinned texture-key provenance', () => {
     for (const [terrain, def] of Object.entries(TILE_SPRITES)) {
       const key = def?.textureKey;
       if (key === undefined) continue;
-      expect(loadEntry(key), `terrain ${terrain} pins missing key "${key}"`).toBeDefined();
+      const entry = loadEntry(key);
+      expect(entry, `terrain ${terrain} pins missing key "${key}"`).toBeDefined();
+      expect(
+        isRuntimeEligibleManifestEntry(entry!),
+        `terrain ${terrain} pins runtime-ineligible key "${key}"`,
+      ).toBe(true);
     }
   });
 

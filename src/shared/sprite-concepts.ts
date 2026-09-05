@@ -38,7 +38,8 @@ export function hasSpriteLineageTag(id: string): boolean {
  */
 export function normalizeGeneratedSpriteConceptId(id: string): string {
   const withoutVariant = id.replace(VARIANT_SUFFIX, '');
-  return normalizeSpriteLineageId(withoutVariant).replace(LEGACY_NPC_PREFIX, '');
+  const withoutLegacyNpcPrefix = withoutVariant.replace(LEGACY_NPC_PREFIX, '');
+  return normalizeSpriteLineageId(withoutLegacyNpcPrefix);
 }
 
 const PLACEHOLDER_SUFFIX = /-placeholder$/;

@@ -202,6 +202,34 @@ describe('loadGeneratedManifest', () => {
     expect(registry.has('welcome-goon')).toBe(true);
   });
 
+  it('indexes distinct icon-batch cells as distinct concepts', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'ability-icon-magic-missile': {
+          ...baseEntry,
+          briefId: 'ability-icons-batch-01',
+          spriteName: 'ability-icon-magic-missile',
+          assetPath: 'generated/ability-icon-magic-missile.png',
+          type: 'icon',
+        },
+        'ability-icon-frost-nova': {
+          ...baseEntry,
+          briefId: 'ability-icons-batch-01',
+          spriteName: 'ability-icon-frost-nova',
+          assetPath: 'generated/ability-icon-frost-nova.png',
+          variantIndex: 1,
+          type: 'icon',
+        },
+      },
+    });
+
+    expect(registry.lookup('ability-icon-magic-missile')?.textureKey).toBe(
+      'ability-icon-magic-missile',
+    );
+    expect(registry.lookup('ability-icon-frost-nova')?.textureKey).toBe('ability-icon-frost-nova');
+  });
+
   it('reports a concept with only disliked art as absent rather than falling back to it', () => {
     const registry = loadGeneratedManifest({
       version: GENERATED_MANIFEST_VERSION,

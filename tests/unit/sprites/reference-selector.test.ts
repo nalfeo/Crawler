@@ -469,6 +469,33 @@ describe('selectReferences — concept collapse + quality weighting', () => {
     );
   });
 
+  it('keeps distinct icon-batch cells as distinct concepts', () => {
+    const candidates: ManifestEntry[] = [
+      entry({
+        briefId: 'ability-icons-batch-01',
+        type: 'icon',
+        spriteName: 'ability-icon-magic-missile',
+      }),
+      entry({
+        briefId: 'ability-icons-batch-01',
+        type: 'icon',
+        spriteName: 'ability-icon-frost-nova',
+      }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-icon',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(new Set(names(result.selected))).toEqual(
+      new Set(['ability-icon-magic-missile', 'ability-icon-frost-nova']),
+    );
+    expect(result.eligibleCount).toBe(2);
+  });
+
   it('excludes a remapped alias when the disliked concept names its canonical id', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'angry-roomba-v2', type: 'enemy', spriteName: 'angry-roomba-v2-var-1' }),

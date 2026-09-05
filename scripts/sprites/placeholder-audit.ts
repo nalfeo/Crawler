@@ -26,7 +26,10 @@
  * onto these inputs.
  */
 
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  isPlaceholderManifestEntry as isSharedPlaceholderManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 import { normalizeSpriteConceptKey } from '../../src/shared/sprite-concepts.js';
 
 /** The shared generic placeholder spriteId every un-arted mob falls back to. */
@@ -150,11 +153,7 @@ export function normalizeConcept(name: string): string {
 
 /** True when a manifest entry is a placeholder rather than real generated art. */
 export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
-  return (
-    entry.sourceRun === 'placeholder' ||
-    entry.sensorScore === 'placeholder' ||
-    /-placeholder\.png$/i.test(entry.assetPath)
-  );
+  return isSharedPlaceholderManifestEntry(entry);
 }
 
 /** True when a sprite registry note marks a temporary placeholder frame. */

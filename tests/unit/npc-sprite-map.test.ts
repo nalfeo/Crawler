@@ -17,16 +17,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import npcSpriteMap from '../../src/shared/data/npc-sprite-map.json' with { type: 'json' };
+import { isRuntimeEligibleManifestEntry } from '../../src/shared/generated-assets.js';
 import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_KEY_BY_NPC_DEF,
   pickGeneratedNpcTextureKey,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
-
-function approvedSpriteKeys(): Set<string> {
-  const manifest = loadShippedManifest();
-  return new Set(Object.keys(manifest.entries ?? {}));
-}
 
 describe('NPC generated-sprite map', () => {
   const entries = Object.entries(npcSpriteMap.byNpcDefId);
@@ -42,8 +38,11 @@ describe('NPC generated-sprite map', () => {
   it('points every NPC at a sprite that is actually approved and shipped', () => {
     // A stale pointer does not throw - the renderer silently falls back to the
     // shared Kenney villager, which looks like "no art yet" instead of a bug.
-    const approved = approvedSpriteKeys();
-    const dangling = entries.filter(([, key]) => !approved.has(key));
+    const manifest = loadShippedManifest();
+    const dangling = entries.filter(([, key]) => {
+      const entry = manifest.entries[key];
+      return entry === undefined || !isRuntimeEligibleManifestEntry(entry);
+    });
     expect(dangling).toEqual([]);
   });
 

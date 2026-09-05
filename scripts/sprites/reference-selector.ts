@@ -21,12 +21,15 @@
  * This module does NO filesystem IO. The caller (`generate-one.ts`) pre-filters
  * candidates to those whose PNG exists on disk, then passes the survivors here.
  */
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  generatedManifestConceptId,
+  isPlaceholderManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import { hashStringToSeed, SeededRandom } from '../../src/shared/random.js';
 import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
-import { isPlaceholderManifestEntry } from './placeholder-audit.js';
 
 /** Bump when the selection algorithm changes in a way that alters output. */
 export const SELECTOR_VERSION = 'v1' as const;
@@ -126,7 +129,7 @@ function toEligible(
   if (isPlaceholderManifestEntry(entry)) return null;
   if (entry.disliked === true) return null;
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
-  const conceptId = normalizeGeneratedSpriteConceptId(entry.briefId);
+  const conceptId = generatedManifestConceptId(entry);
   if (dislikedConceptIds.has(conceptId)) return null;
   if (conceptId === normalizeGeneratedSpriteConceptId(briefName)) {
     return null;

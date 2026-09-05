@@ -10,8 +10,11 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
-import { isRuntimeEligibleManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  generatedManifestConceptId,
+  isRuntimeEligibleManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import {
   readPendingDislikedSpriteNames,
@@ -451,7 +454,7 @@ export function buildDislikedLifecyclePlan(
   const dislikedKeys = new Set(reconciled.map((item) => item.manifestKey));
   const groups = new Map<string, Array<[string, ManifestEntry]>>();
   for (const pair of Object.entries(input.manifestEntries)) {
-    const concept = normalizeGeneratedSpriteConceptId(pair[1].briefId || pair[0]);
+    const concept = generatedManifestConceptId(pair[1], pair[0]);
     const group = groups.get(concept) ?? [];
     group.push(pair);
     groups.set(concept, group);
@@ -778,7 +781,15 @@ export function validateDislikedLifecycleClosure(
     if (
       tombstone.manifestKey !== annotationKey ||
       typeof tombstone.conceptId !== 'string' ||
-      typeof tombstone.assetPath !== 'string'
+      typeof tombstone.assetPath !== 'string' ||
+      typeof tombstone.sourceRun !== 'string' ||
+      tombstone.sourceRun.length === 0 ||
+      typeof tombstone.variantIndex !== 'number' ||
+      !Number.isInteger(tombstone.variantIndex) ||
+      tombstone.variantIndex < 0 ||
+      !Array.isArray(tombstone.annotationKeys) ||
+      tombstone.annotationKeys.length === 0 ||
+      tombstone.annotationKeys.some((key) => typeof key !== 'string' || key.length === 0)
     ) {
       failures.push(`annotation tombstone is invalid for ${annotationKey}`);
       continue;

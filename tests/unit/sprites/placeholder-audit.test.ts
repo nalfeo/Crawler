@@ -95,6 +95,7 @@ describe('normalizeConcept', () => {
   it('honours the shared design-name remap instead of stripping the lineage tag', () => {
     expect(normalizeConcept('angry-roomba-v2')).toBe('angry-roomba-mk2');
     expect(normalizeConcept('angry-roomba-v2-var-1')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('npc-angry-roomba-v2-var-1')).toBe('angry-roomba-mk2');
     expect(normalizeConcept('angry-roomba-mk2')).toBe('angry-roomba-mk2');
   });
 

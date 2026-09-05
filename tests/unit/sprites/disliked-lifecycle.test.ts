@@ -158,6 +158,31 @@ describe('disliked sprite lifecycle planning', () => {
     expect(plan.retainedGroups).toEqual([{ conceptId: 'rat', manifestKeys: ['rat-var-0'] }]);
   });
 
+  it('does not treat another cell from the same icon batch as a concept survivor', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'ability-icon-fireball': entry('ability-icons-batch-01', 0, {
+          spriteName: 'ability-icon-fireball',
+          assetPath: 'generated/ability-icon-fireball.png',
+          type: 'icon',
+        }),
+        'ability-icon-frost-nova': entry('ability-icons-batch-01', 1, {
+          spriteName: 'ability-icon-frost-nova',
+          assetPath: 'generated/ability-icon-frost-nova.png',
+          type: 'icon',
+        }),
+      },
+      trackedAnnotations: annotations({ 'ability-icon-fireball': { disliked: true } }),
+    });
+
+    expect(plan.removed).toEqual([]);
+    expect(plan.retainedGroups).toEqual([
+      { conceptId: 'ability-icon-fireball', manifestKeys: ['ability-icon-fireball'] },
+    ]);
+  });
+
   it('promotes the tracked and pending dislike union before authorizing deletion', () => {
     const root = makeRoot();
     const plan = buildDislikedLifecyclePlan({
@@ -861,6 +886,29 @@ describe('disliked sprite lifecycle transaction', () => {
 
     writeFileSync(pinPath, '{"pin":"rat-var-1"}\n');
     expect(() => validateDislikedLifecycleClosure(root, cleanPlan)).not.toThrow();
+
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'rat-var-0': {
+            disliked: true,
+            tombstone: {
+              manifestKey: 'rat-var-0',
+              conceptId: 'rat',
+              assetPath: 'generated/rat-var-0.png',
+              sourceRun: '',
+              variantIndex: 0,
+              annotationKeys: [],
+            },
+          },
+        },
+      }),
+    );
+    expect(() => validateDislikedLifecycleClosure(root, cleanPlan)).toThrow(
+      /annotation tombstone is invalid for rat-var-0/,
+    );
   });
 
   it('aborts acceptance before mutation when removal requires a source pin repoint', async () => {

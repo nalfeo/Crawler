@@ -8,7 +8,10 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  generatedManifestConceptId,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 import { normalizeSpriteConceptKey } from '../../src/shared/sprite-concepts.js';
 import { loadGeneratedManifest } from './generated-shards.js';
 import { loadBrief } from './load-brief.js';
@@ -153,7 +156,7 @@ export function buildSpriteBacklogPlan(input: BuildSpriteBacklogPlanInput): Spri
   for (const spriteName of input.dislikedSpriteNames) {
     const entry = input.manifestEntries[spriteName];
     if (entry && !isPlaceholderManifestEntry(entry)) {
-      dislikedConcepts.add(normalizeSpriteConceptKey(entry.briefId || spriteName));
+      dislikedConcepts.add(generatedManifestConceptId(entry, spriteName));
     } else {
       // Deleted disliked sprites remain as annotation tombstones. Their keys
       // still carry the normalized concept demand needed to regenerate art.
