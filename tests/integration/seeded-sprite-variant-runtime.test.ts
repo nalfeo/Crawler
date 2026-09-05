@@ -8,12 +8,17 @@ import { pickGeneratedEnemyTextureKey } from '../../src/engine/phaser-bridge/spr
 import { runSimulationStep as runVisualSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
-import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { runHeadless, type HeadlessRunnerConfig } from '../../src/game/ai/headless-runner.js';
 import { runSimulationStep as runHeadlessSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { loadShippedGeneratedSpriteRegistry } from '../../src/game/ai/shipped-sprite-registry.js';
 import {
   buildGeneratedSpriteRegistry,
+  computeNormalizedWeaponAnchor,
+  getEntityNormalizedWeaponAnchor,
   normalizeGeneratedSpriteConceptId,
   resolveGeneratedSpriteVariantForEntity,
+  type GeneratedSpriteRegistry,
+  type NormalizedWeaponAnchor,
 } from '../../src/shared/generated-assets.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
@@ -155,6 +160,134 @@ async function appearanceStateThroughHeadlessRunner(seed: number, injectRegistry
   return observed;
 }
 
+/**
+ * Registry with authored `anchors.weapon` values. The shipped shard tree has no
+ * weapon anchors today, so proving the render/headless seams agree on ANCHORS
+ * (not just texture keys) needs art that actually carries one — otherwise both
+ * sides trivially agree on `null` and the check would rot silently the day a
+ * muzzle-anchored mob ships.
+ */
+const anchoredRegistry = buildGeneratedSpriteRegistry({
+  version: 1,
+  entries: {
+    'rat-var-0': {
+      ...baseEntry,
+      briefId: 'rat',
+      spriteName: 'rat-var-0',
+      assetPath: 'generated/rat-var-0.png',
+      variantIndex: 0,
+      facingDirection: 'right' as const,
+      anchors: {
+        hold: { x: 32, y: 60, source: 'derived' as const },
+        centerOfGravity: { x: 32, y: 32, source: 'derived' as const },
+        weapon: { x: 48, y: 36, source: 'manual' as const },
+      },
+    },
+    'rat-var-1': {
+      ...baseEntry,
+      briefId: 'rat',
+      spriteName: 'rat-var-1',
+      assetPath: 'generated/rat-var-1.png',
+      variantIndex: 1,
+      facingDirection: 'left' as const,
+      anchors: {
+        hold: { x: 30, y: 58, source: 'derived' as const },
+        centerOfGravity: { x: 30, y: 30, source: 'derived' as const },
+        weapon: { x: 12, y: 41, source: 'manual' as const },
+      },
+    },
+    'rat-var-2': {
+      ...baseEntry,
+      briefId: 'rat',
+      spriteName: 'rat-var-2',
+      assetPath: 'generated/rat-var-2.png',
+      variantIndex: 2,
+      facingDirection: 'right' as const,
+      anchors: {
+        hold: { x: 33, y: 61, source: 'derived' as const },
+        centerOfGravity: { x: 33, y: 29, source: 'derived' as const },
+        weapon: { x: 51, y: 20, source: 'manual' as const },
+      },
+    },
+  },
+});
+
+interface HeadlessRegistryProbe {
+  readonly registryPresent: boolean;
+  readonly registryIsShipped: boolean;
+  readonly variantRoll: number;
+  readonly headlessTextureKey: string | null;
+  readonly rendererTextureKey: string | null;
+  readonly headlessAnchor: NormalizedWeaponAnchor | null;
+  readonly rendererAnchor: NormalizedWeaponAnchor | null;
+  readonly gameplayRngTail: readonly number[];
+}
+
+/**
+ * Drive one frame of `runHeadless`, spawn a `rat`, and capture what BOTH seams
+ * resolve for it: the renderer's `pickGeneratedEnemyTextureKey` (what the player
+ * sees) and the simulation's `resolveGeneratedSpriteVariantForEntity` /
+ * `getEntityNormalizedWeaponAnchor` (what a sweep simulates).
+ *
+ * `'omitted'` leaves `generatedSpriteRegistry` off the config entirely — the
+ * standard sweep/headless call shape — so the default-registry contract is
+ * exercised through the real public entry point, not a hand-built world.
+ */
+async function probeHeadlessRegistry(
+  seed: number,
+  registryOverride: 'omitted' | { readonly registry: GeneratedSpriteRegistry | null },
+): Promise<HeadlessRegistryProbe> {
+  const shipped = await loadShippedGeneratedSpriteRegistry();
+  let observed: HeadlessRegistryProbe | undefined;
+  const baseConfig: HeadlessRunnerConfig = {
+    seed,
+    maxFrames: 1,
+    maxWallTimeMs: 30_000,
+    enforcePlayabilityInvariants: false,
+    simulationOptions: {
+      postSystems: [
+        (world) => {
+          const eid = spawnBehaviorEnemy(world, 0, 0, 10, 0, 1, 10, 1);
+          setEnemyAppearanceKey(world, eid, 'rat');
+          const variantRoll = world.stores.sprite.variantRoll[eid];
+          if (variantRoll === undefined) {
+            throw new Error(`Spawned entity ${eid} has no appearance variant roll.`);
+          }
+          const registry = world.generatedSpriteRegistry;
+          const rendererTextureKey = pickGeneratedEnemyTextureKey(
+            registry,
+            'enemy_rat',
+            variantRoll,
+            'rat',
+          );
+          const rendererEntry =
+            registry?.entries().find((entry) => entry.textureKey === rendererTextureKey) ?? null;
+          observed = {
+            registryPresent: registry !== null,
+            registryIsShipped: registry === shipped,
+            variantRoll,
+            headlessTextureKey:
+              resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null,
+            rendererTextureKey,
+            headlessAnchor: getEntityNormalizedWeaponAnchor(world, eid),
+            rendererAnchor: computeNormalizedWeaponAnchor(rendererEntry),
+            gameplayRngTail: Array.from({ length: 8 }, () => world.rng.next()),
+          };
+        },
+      ],
+    },
+  };
+  const config: HeadlessRunnerConfig =
+    registryOverride === 'omitted'
+      ? baseConfig
+      : { ...baseConfig, generatedSpriteRegistry: registryOverride.registry };
+  await runHeadless(new BehaviorTreeAI({ seed }), config);
+  if (observed === undefined) {
+    throw new Error('Headless runner did not execute the registry probe.');
+  }
+  return observed;
+}
+
 describe('seeded sprite variant runtime contract', () => {
   it('normalizes historical role and lineage IDs to one concept', () => {
     expect(
@@ -195,5 +328,58 @@ describe('seeded sprite variant runtime contract', () => {
     expect(withoutRegistry.textureKey).toBeNull();
     expect(first.variantRoll).toBe(withoutRegistry.variantRoll);
     expect(first.gameplayRngTail).toEqual(withoutRegistry.gameplayRngTail);
+  });
+
+  it('loads the shipped generated-sprite registry once and never empty', async () => {
+    const first = await loadShippedGeneratedSpriteRegistry();
+    const second = await loadShippedGeneratedSpriteRegistry();
+
+    expect(first).not.toBeNull();
+    // Cached: sweeps call runHeadless hundreds of times and must not re-walk
+    // the ~500-shard tree per run.
+    expect(second).toBe(first);
+    expect(first!.size).toBeGreaterThan(0);
+    // A concept the committed shard tree is known to ship — proves we loaded
+    // real art rather than silently falling back to an empty registry.
+    expect(first!.variants('rat').length).toBeGreaterThan(0);
+  });
+
+  it('defaults an omitted runHeadless registry to the shipped art the real game installs', async () => {
+    const omitted = await probeHeadlessRegistry(42, 'omitted');
+    const replay = await probeHeadlessRegistry(42, 'omitted');
+    const explicitNull = await probeHeadlessRegistry(42, { registry: null });
+
+    // MainGameScene always installs the shipped registry; the standard headless
+    // call shape now matches it instead of simulating a registry-free world.
+    expect(omitted.registryPresent).toBe(true);
+    expect(omitted.registryIsShipped).toBe(true);
+    expect(omitted.headlessTextureKey).not.toBeNull();
+    expect(omitted.headlessTextureKey).toBe(omitted.rendererTextureKey);
+    expect(omitted.headlessAnchor).toEqual(omitted.rendererAnchor);
+    expect(replay).toEqual(omitted);
+
+    // Explicit null remains the deliberate no-registry override.
+    expect(explicitNull.registryPresent).toBe(false);
+    expect(explicitNull.headlessTextureKey).toBeNull();
+
+    // Loading the registry must not draw from world.rng: same spawn roll, same
+    // downstream gameplay stream.
+    expect(omitted.variantRoll).toBe(explicitNull.variantRoll);
+    expect(omitted.gameplayRngTail).toEqual(explicitNull.gameplayRngTail);
+  });
+
+  it('resolves identical weapon anchors on the render and headless seams', async () => {
+    const anchored = await probeHeadlessRegistry(42, { registry: anchoredRegistry });
+    const withoutRegistry = await probeHeadlessRegistry(42, { registry: null });
+
+    // An explicitly injected registry still wins over the shipped default.
+    expect(anchored.registryIsShipped).toBe(false);
+    expect(anchored.headlessTextureKey).toBe(anchored.rendererTextureKey);
+    expect(anchored.headlessAnchor).not.toBeNull();
+    expect(anchored.headlessAnchor).toEqual(anchored.rendererAnchor);
+
+    expect(withoutRegistry.headlessAnchor).toBeNull();
+    expect(anchored.variantRoll).toBe(withoutRegistry.variantRoll);
+    expect(anchored.gameplayRngTail).toEqual(withoutRegistry.gameplayRngTail);
   });
 });

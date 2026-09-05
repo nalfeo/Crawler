@@ -29,6 +29,7 @@ import { TeamId } from '../../shared/constants.js';
 import {
   generatedBriefIdForEnemy,
   pickGeneratedVariantByRoll,
+  resolveGeneratedSpriteVariantForEntity,
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
@@ -313,6 +314,39 @@ export function generatedBriefIdForHarvestable(defId: string): string | undefine
   return GENERATED_BRIEF_BY_HARVESTABLE[defId];
 }
 
+/**
+ * Reusable structural adapter for {@link resolveGeneratedSpriteVariantForEntity}.
+ *
+ * The renderer resolves enemy textures from values it already holds (the scene
+ * registry plus the entity's `variantRoll`), not from a live `GameWorld`.
+ * Routing through the canonical resolver keeps concept normalization, dislike
+ * filtering, and roll clamping identical to what a headless sweep simulates —
+ * but this runs per rendered entity, so the adapter is a module-local singleton
+ * mutated in place rather than a fresh object per call. Safe because the
+ * resolver is synchronous and never re-enters this function.
+ */
+const ADAPTER_EID = 0;
+/** Slot 0 holds the current roll; the empty array reads back `undefined`. */
+const ROLL_SLOT: number[] = [0];
+const ABSENT_ROLL_SLOT: number[] = [];
+
+const VARIANT_ADAPTER: {
+  generatedSpriteRegistry: GeneratedSpriteRegistry | null;
+  readonly enemyAppearanceKeys: ReadonlyMap<number, string>;
+  readonly stores: { readonly sprite: { variantRoll: ArrayLike<number> } };
+} = {
+  // Unused: the caller always passes an explicit concept id.
+  generatedSpriteRegistry: null,
+  enemyAppearanceKeys: new Map<number, string>(),
+  stores: { sprite: { variantRoll: ABSENT_ROLL_SLOT } },
+};
+
+/**
+ * Resolve the generated-sprite `textureKey` for an enemy render kind, or `null`
+ * when there is no registry, no wired brief, or no approved variant. The brief
+ * is resolved here because the renderer knows the visual type and the
+ * ECS-facing resolver only knows the appearance key.
+ */
 export function pickGeneratedEnemyTextureKey(
   registry: GeneratedSpriteRegistry | null | undefined,
   type: string,
@@ -326,7 +360,22 @@ export function pickGeneratedEnemyTextureKey(
   if (briefId === undefined) {
     return null;
   }
-  return pickGeneratedVariantByRoll(registry, briefId, variantRoll)?.textureKey ?? null;
+  if (variantRoll === undefined) {
+    VARIANT_ADAPTER.stores.sprite.variantRoll = ABSENT_ROLL_SLOT;
+  } else {
+    ROLL_SLOT[0] = variantRoll;
+    VARIANT_ADAPTER.stores.sprite.variantRoll = ROLL_SLOT;
+  }
+  VARIANT_ADAPTER.generatedSpriteRegistry = registry;
+  try {
+    return (
+      resolveGeneratedSpriteVariantForEntity(VARIANT_ADAPTER, ADAPTER_EID, briefId)?.textureKey ??
+      null
+    );
+  } finally {
+    // Don't pin a swapped-out scene registry alive between frames.
+    VARIANT_ADAPTER.generatedSpriteRegistry = null;
+  }
 }
 
 /**

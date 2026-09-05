@@ -912,7 +912,7 @@ export function createEquipmentUI(
       fontSize: '12px',
       color: '#9ca3af',
     });
-    fallback.setOrigin(0.5, 0.5);
+    centerTextOnPixels(fallback, x, y);
     return fallback;
   }
 

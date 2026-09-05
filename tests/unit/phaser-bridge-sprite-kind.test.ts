@@ -437,6 +437,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
       'slime-pool-var-3',
     );
   });
+
+  it('treats an absent roll as the lowest variant', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0)).toBe('slime-var-2');
+  });
+
+  it('keeps interleaved calls independent despite the reused adapter', () => {
+    // The resolver runs against a module-local structural adapter mutated in
+    // place (no per-entity allocation on this rendering path). A stale roll or
+    // registry leaking between calls would show up here.
+    const empty = buildGeneratedSpriteRegistry({ version: 1, entries: {} });
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(empty, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(null, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+  });
 });
 
 describe('generatedBriefIdForEnemy', () => {

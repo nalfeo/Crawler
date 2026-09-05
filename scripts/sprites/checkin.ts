@@ -465,41 +465,63 @@ export async function prepareAssetCheckin(
   const assets: CheckinAsset[] = [];
   for (const asset of changedAssets) {
     const queued = queuedAssets.get(asset.assetPath);
-    const reconciliation = reconcileQueuedContent(queued, asset.contentHash);
-    if (reconciliation === 'new') {
-      assets.push(asset);
-      continue;
-    }
-    if (reconciliation === 'duplicate') {
-      // Already durably queued with identical content — dedupe silently,
-      // same as the historical path-only filter did unconditionally.
-      continue;
-    }
-    // 'content-conflict' / 'ambiguous' both require a queued record to
-    // compare against, so `queued` is guaranteed defined here.
-    const issueUrl = queued!.issueUrl;
-    if (reconciliation === 'content-conflict') {
+    const legacyReconciliation = reconcileQueuedContent(queued, asset.contentHash);
+    const durableInspection = deps.inspectDurableQueueAsset
+      ? await deps.inspectDurableQueueAsset({
+          manifestKey: asset.manifestKey ?? manifestKeyFromAssetPath(asset.assetPath),
+          assetPath: asset.assetPath,
+          ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
+        })
+      : { reconciliation: 'new' as const, branch: 'assets/queue' };
+    const states = [
+      {
+        reconciliation: legacyReconciliation,
+        location: queued?.issueUrl ?? 'the legacy asset-checkin queue',
+      },
+      {
+        reconciliation: durableInspection.reconciliation,
+        location: `branch ${durableInspection.branch}`,
+      },
+    ];
+    const conflict = states.find((state) => state.reconciliation === 'content-conflict');
+    if (conflict) {
       throw new CheckinError(
         'content-conflict',
-        `${asset.assetPath} is already queued (${issueUrl}) with different content. ` +
+        `${asset.assetPath} is already queued (${conflict.location}) with different content. ` +
           'Approve a different variant, or resolve the existing issue first.',
       );
     }
-    throw new CheckinError(
-      'ambiguous-queued-content',
-      `${asset.assetPath} is already queued (${issueUrl}) by an issue filed before content ` +
-        'hashes were recorded, so it cannot be verified against the current content. Resolve ' +
-        'the open issue manually before re-checking-in this asset.',
-    );
+    const ambiguous = states.find((state) => state.reconciliation === 'ambiguous');
+    if (ambiguous) {
+      throw new CheckinError(
+        'ambiguous-queued-content',
+        `${asset.assetPath} is already queued (${ambiguous.location}) without enough recorded ` +
+          'identity to verify the current content. Resolve the queued asset manually before ' +
+          're-checking it in.',
+      );
+    }
+    if (states.some((state) => state.reconciliation === 'duplicate')) {
+      continue;
+    }
+    assets.push(asset);
   }
 
   if (assets.length === 0) {
     const detail =
       changedAssets.length > 0
-        ? 'All approved art is already represented by an open asset-checkin issue.'
+        ? 'All approved art is already represented by the durable asset queue.'
         : `No approved art differs from ${remote}/${baseBranch}. Approve a sprite first ` +
           '(npm run sprites:gallery), then re-run check-in.';
     throw new CheckinError('nothing-to-checkin', detail);
+  }
+
+  function manifestKeyFromAssetPath(assetPath: string): string {
+    const prefix = 'generated/';
+    const suffix = '.png';
+    if (!assetPath.startsWith(prefix) || !assetPath.endsWith(suffix)) {
+      return assetPath;
+    }
+    return assetPath.slice(prefix.length, -suffix.length);
   }
 
   return {

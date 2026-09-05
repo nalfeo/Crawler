@@ -2637,7 +2637,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       return;
                     }
                   }
-                  response = mapCheckinError(reply, err);
+                  throw err;
                 }
               },
             });

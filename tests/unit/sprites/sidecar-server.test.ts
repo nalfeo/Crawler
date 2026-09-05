@@ -2316,6 +2316,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(res.statusCode).toBe(502);
     expect(res.json()).toMatchObject({ error: 'gh-failed' });
     expect(listCalls).toBe(3);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(
+      existsSync(path.join(publicAssetsDir, 'generated', 'entries', `${briefId}-var-1.json`)),
+    ).toBe(false);
   });
 
   it('derives assetCount for an EXISTING issue from the full parsed batch, not just this asset', async () => {
