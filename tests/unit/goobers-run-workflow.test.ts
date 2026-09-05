@@ -1948,6 +1948,11 @@ describe('Goobers automatic dispatch and recovery', () => {
       readSparseCheckoutPaths(workflow.jobs['release-unstarted-reservation']?.steps?.[0]),
     ).toStrictEqual(['scripts/agent']);
     expect(readSparseCheckoutPaths(workflow.jobs.reserve?.steps?.[0])).toContain('scripts/agent');
+    // Neither assertion here derives the FULL required cone; that is
+    // tests/unit/goobers-workflow-checkout-contract.test.ts, which reads every
+    // repo path a job actually executes out of the steps themselves. Pinning
+    // this list literally for `reserve` is what let the missing selector root
+    // ship green.
   });
 
   it('trusts only the GitHub Actions identity and only whole-line receipts', () => {
