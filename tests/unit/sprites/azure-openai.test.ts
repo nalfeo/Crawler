@@ -257,6 +257,18 @@ describe('createImageProvider (factory)', () => {
     expect(p).toBeInstanceOf(AzureOpenAIImageProvider);
   });
 
+  it('builds the Foundry image backend as the same Azure-compatible provider', () => {
+    const p = createImageProvider({
+      env: {
+        SPRITES_PROVIDER: 'foundry',
+        FOUNDRY_ENDPOINT: 'https://example.services.ai.azure.com',
+        FOUNDRY_API_KEY: 'k',
+        FOUNDRY_IMAGE_MODEL: 'my-image-deployment',
+      },
+    });
+    expect(p).toBeInstanceOf(AzureOpenAIImageProvider);
+  });
+
   it('rejects an unknown SPRITES_PROVIDER value', () => {
     expect(() =>
       createImageProvider({
