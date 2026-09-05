@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -162,6 +162,38 @@ function extractPinnedSha(script: string | null | undefined): string | null {
   return match?.[1] ?? null;
 }
 
+function readSparseCheckoutPaths(step: GoobersActionsStep | undefined): string[] {
+  const sparseCheckout = step?.with?.['sparse-checkout'];
+  if (typeof sparseCheckout !== 'string') {
+    return [];
+  }
+  return sparseCheckout
+    .split(/\r?\n/)
+    .map((entry) => entry.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+function extractReferencedRepoFiles(steps: GoobersActionsStep[]): string[] {
+  const references = new Set<string>();
+  const repoFilePattern =
+    /(?:\$\{GITHUB_WORKSPACE\}\/)?((?:\.github|scripts)\/[A-Za-z0-9._/-]+\.(?:cjs|js|json|mjs|sh|ts|yaml|yml))/g;
+
+  for (const step of steps) {
+    for (const match of step.run?.matchAll(repoFilePattern) ?? []) {
+      if (match[1]) {
+        references.add(match[1]);
+      }
+    }
+  }
+  return [...references].sort();
+}
+
+function sparseCheckoutIncludes(repoFile: string, sparsePaths: string[]): boolean {
+  return sparsePaths.some(
+    (sparsePath) => repoFile === sparsePath || repoFile.startsWith(`${sparsePath}/`),
+  );
+}
+
 describe('Goobers automatic dispatch and recovery', () => {
   it('dispatches immediately for eligible issue events and performs an hourly recovery sweep', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
@@ -190,6 +222,44 @@ describe('Goobers automatic dispatch and recovery', () => {
       group: 'goobers-run-lane-${{ matrix.lane }}',
       'cancel-in-progress': false,
     });
+  });
+
+  it('includes every checked-in file used after a sparse checkout', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const sparseJobs = Object.entries(workflow.jobs).filter(([, job]) =>
+      job?.steps?.some((step) => readSparseCheckoutPaths(step).length > 0),
+    );
+    const referencesByJob = new Map<string, string[]>();
+
+    expect(sparseJobs.map(([jobName]) => jobName)).toEqual(
+      expect.arrayContaining(['release-unstarted-reservation', 'reserve']),
+    );
+    for (const [jobName, job] of sparseJobs) {
+      const steps = job?.steps ?? [];
+      const checkoutIndex = steps.findIndex((step) => readSparseCheckoutPaths(step).length > 0);
+      const sparsePaths = readSparseCheckoutPaths(steps[checkoutIndex]);
+      const referencedFiles = extractReferencedRepoFiles(steps.slice(checkoutIndex + 1));
+      referencesByJob.set(jobName, referencedFiles);
+
+      expect(
+        referencedFiles,
+        `"${jobName}" sparse job must reference checked-in tooling`,
+      ).not.toEqual([]);
+      for (const repoFile of referencedFiles) {
+        expect(
+          existsSync(path.join(REPO_ROOT, repoFile)),
+          `"${jobName}" references missing repository file "${repoFile}"`,
+        ).toBe(true);
+        expect(
+          sparseCheckoutIncludes(repoFile, sparsePaths),
+          `"${jobName}" references "${repoFile}" after checkout, but sparse-checkout includes only: ${sparsePaths.join(', ')}. Add the file or its parent directory to that checkout.`,
+        ).toBe(true);
+      }
+    }
+
+    expect(referencesByJob.get('reserve')).toContain(
+      '.github/scripts/goobers/intake-selection.mjs',
+    );
   });
 
   it('runs two lanes of two isolated slots each — exactly four simultaneous issue workflows', () => {
@@ -1741,9 +1811,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     // Both jobs that read the lease must actually have the library on disk.
     expect(
-      workflow.jobs['release-unstarted-reservation']?.steps?.[0]?.with?.['sparse-checkout'],
-    ).toBe('scripts/agent');
-    expect(workflow.jobs.reserve?.steps?.[0]?.with?.['sparse-checkout']).toBe('scripts/agent');
+      readSparseCheckoutPaths(workflow.jobs['release-unstarted-reservation']?.steps?.[0]),
+    ).toContain('scripts/agent');
+    expect(readSparseCheckoutPaths(workflow.jobs.reserve?.steps?.[0])).toContain('scripts/agent');
   });
 
   it('trusts only the GitHub Actions identity and only whole-line receipts', () => {
