@@ -753,6 +753,69 @@ describe('disliked sprite lifecycle transaction', () => {
     expect(() => validateDislikedLifecycleClosure(root, plan)).not.toThrow();
   });
 
+  it('does not rewrite annotations when a lifecycle plan has no annotation delta', () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 0);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'retained');
+    const annotationsPath = path.join(generatedDir, 'sprite-editor-annotations.json');
+    const original = '{"version":1,"sprites":{"rat-var-0":{"disliked":true}}}\n';
+    writeFileSync(annotationsPath, original);
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: { [disliked.spriteName]: disliked },
+      trackedAnnotations: annotations({ 'rat-var-0': { disliked: true } }),
+    });
+
+    expect(plan.annotationUpdates).toEqual([]);
+    applyDislikedLifecyclePlan(root, plan);
+
+    expect(readFileSync(annotationsPath, 'utf8')).toBe(original);
+  });
+
+  it('merges lifecycle annotation updates into the latest tracked document', () => {
+    const root = makeRoot();
+    const generatedDir = path.join(root, 'public', 'assets', 'generated');
+    const disliked = entry('rat', 0);
+    const survivor = entry('rat', 1);
+    writeShard(generatedDir, disliked.spriteName, disliked);
+    writeShard(generatedDir, survivor.spriteName, survivor);
+    writeFileSync(path.join(generatedDir, 'rat-var-0.png'), 'bad');
+    writeFileSync(path.join(generatedDir, 'rat-var-1.png'), 'good');
+    const annotationsPath = path.join(generatedDir, 'sprite-editor-annotations.json');
+    const tracked = annotations({ 'rat-var-0': { disliked: true } });
+    writeFileSync(annotationsPath, JSON.stringify(tracked));
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        [disliked.spriteName]: disliked,
+        [survivor.spriteName]: survivor,
+      },
+      trackedAnnotations: tracked,
+    });
+
+    writeFileSync(
+      annotationsPath,
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          ...tracked.sprites,
+          'bat-var-9': { favorite: true, disliked: false, comment: 'concurrent edit' },
+        },
+      }),
+    );
+    applyDislikedLifecyclePlan(root, plan);
+
+    const applied = JSON.parse(readFileSync(annotationsPath, 'utf8')) as SpriteAnnotationsDocument;
+    expect(applied.sprites['bat-var-9']).toEqual({
+      favorite: true,
+      disliked: false,
+      comment: 'concurrent edit',
+    });
+    expect(applied.sprites['rat-var-0']?.tombstone?.manifestKey).toBe('rat-var-0');
+  });
+
   it('repoints only exact pins without corrupting longer variant identifiers', () => {
     const root = makeRoot();
     const generatedDir = path.join(root, 'public', 'assets', 'generated');

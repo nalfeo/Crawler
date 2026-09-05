@@ -94,6 +94,54 @@ export interface SpriteAnnotationUpdate {
   readonly reconciliation?: Readonly<Record<string, unknown>>;
 }
 
+export interface SpriteAnnotationsUpdateDocument {
+  readonly version: 1;
+  readonly sprites: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Apply per-key Sprite Editor updates without replacing unrelated annotations.
+ * Optional tombstone/reconciliation fields distinguish absent ("leave alone")
+ * from an explicit undefined value ("clear").
+ */
+export function applySpriteAnnotationUpdates(
+  document: SpriteAnnotationsUpdateDocument,
+  updates: readonly (Omit<SpriteAnnotationUpdate, 'tombstone' | 'reconciliation'> & {
+    readonly tombstone?: unknown;
+    readonly reconciliation?: unknown;
+  })[],
+): { version: 1; sprites: Record<string, unknown> } {
+  const sprites: Record<string, unknown> = { ...document.sprites };
+  for (const update of updates) {
+    if (update.delete === true) {
+      delete sprites[update.key];
+      continue;
+    }
+    const existing =
+      sprites[update.key] &&
+      typeof sprites[update.key] === 'object' &&
+      !Array.isArray(sprites[update.key])
+        ? (sprites[update.key] as Record<string, unknown>)
+        : {};
+    const next: Record<string, unknown> = {
+      ...existing,
+      favorite: update.favorite,
+      disliked: update.disliked,
+      comment: update.comment,
+    };
+    if (update.sourceRun !== undefined) next.sourceRun = update.sourceRun;
+    if (update.variantIndex !== undefined) next.variantIndex = update.variantIndex;
+    for (const field of ['tombstone', 'reconciliation'] as const) {
+      if (!Object.hasOwn(update, field)) continue;
+      const value = update[field];
+      if (value === undefined) delete next[field];
+      else next[field] = value;
+    }
+    sprites[update.key] = next;
+  }
+  return { version: 1, sprites };
+}
+
 export interface QueueCommitRemoval {
   readonly assetPath: string;
   readonly manifestKey: string;

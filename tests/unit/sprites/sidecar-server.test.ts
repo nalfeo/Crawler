@@ -1490,6 +1490,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
   function makeCheckinDeps(
     queued: Map<string, QueuedAssetCheckin>,
     onExec?: (command: string, args: readonly string[]) => Promise<void> | void,
+    changedPaths = `public/assets/generated/${briefId}-var-1.png\n`,
   ): CheckinRunnerDeps & { readonly exec: ReturnType<typeof vi.fn> } {
     let tempIndex = 0;
     const exec = vi.fn(
@@ -1505,7 +1506,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         if (command === 'git' && args[0] === 'diff') {
           return {
             code: 0,
-            stdout: `public/assets/generated/${briefId}-var-1.png\n`,
+            stdout: changedPaths,
             stderr: '',
           };
         }
@@ -1632,6 +1633,69 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
       assetCount: 1,
     });
+  });
+
+  it('returns an exact queued acceptance without filing unrelated changed assets', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    const unrelatedKey = 'unrelated-var-0';
+    writeShard(generatedDir, unrelatedKey, {
+      briefId: 'unrelated',
+      spriteName: unrelatedKey,
+      assetPath: `generated/${unrelatedKey}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/unrelated/run-0',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    writeFileSync(path.join(generatedDir, `${unrelatedKey}.png`), Buffer.from('UNRELATED'));
+
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+          branch: 'assets/checkin-existing',
+          contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+        },
+      ],
+    ]);
+    const checkinDeps = makeCheckinDeps(
+      queued,
+      undefined,
+      [
+        `public/assets/generated/${briefId}-var-1.png`,
+        `public/assets/generated/${unrelatedKey}.png`,
+        '',
+      ].join('\n'),
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+      assetCount: 1,
+    });
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+    expect(existsSync(path.join(generatedDir, `${unrelatedKey}.png`))).toBe(true);
   });
 
   it('returns a structured refusal when accept cannot prove run durability', async () => {

@@ -7,6 +7,8 @@ import {
 import { pickGeneratedEnemyTextureKey } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { runSimulationStep as runVisualSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { runSimulationStep as runHeadlessSimulationStep } from '../../src/game/ai/simulation-step.js';
 import {
   buildGeneratedSpriteRegistry,
@@ -116,6 +118,43 @@ function appearanceStateAfterHeadlessSpawn(seed: number, injectRegistry: boolean
   };
 }
 
+async function appearanceStateThroughHeadlessRunner(seed: number, injectRegistry: boolean) {
+  let observed:
+    | {
+        readonly textureKey: string | null;
+        readonly variantRoll: number;
+        readonly gameplayRngTail: readonly number[];
+      }
+    | undefined;
+  await runHeadless(new BehaviorTreeAI({ seed }), {
+    seed,
+    maxFrames: 1,
+    maxWallTimeMs: 30_000,
+    enforcePlayabilityInvariants: false,
+    generatedSpriteRegistry: injectRegistry ? registry : null,
+    simulationOptions: {
+      postSystems: [
+        (world) => {
+          const eid = spawnBehaviorEnemy(world, 0, 0, 10, 0, 1, 10, 1);
+          setEnemyAppearanceKey(world, eid, 'welcome-goon-v2');
+          const variantRoll = world.stores.sprite.variantRoll[eid];
+          if (variantRoll === undefined) {
+            throw new Error(`Spawned entity ${eid} has no appearance variant roll.`);
+          }
+          observed = {
+            textureKey: resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null,
+            variantRoll,
+            gameplayRngTail: Array.from({ length: 8 }, () => world.rng.next()),
+          };
+        },
+      ],
+    },
+  });
+  if (observed === undefined)
+    throw new Error('Headless runner did not execute the registry probe.');
+  return observed;
+}
+
 describe('seeded sprite variant runtime contract', () => {
   it('normalizes historical role and lineage IDs to one concept', () => {
     expect(
@@ -143,5 +182,18 @@ describe('seeded sprite variant runtime contract', () => {
 
     expect(registryInjected.gameplayRngTail).toEqual(defaultHeadless.gameplayRngTail);
     expect(registryInjected.variantRolls).toEqual(defaultHeadless.variantRolls);
+  });
+
+  it('uses the injected registry through runHeadless without drifting gameplay RNG', async () => {
+    const first = await appearanceStateThroughHeadlessRunner(42, true);
+    const replay = await appearanceStateThroughHeadlessRunner(42, true);
+    const withoutRegistry = await appearanceStateThroughHeadlessRunner(42, false);
+
+    expect(first).toEqual(replay);
+    expect(first.textureKey).toMatch(/^(npc-)?welcome-goon-var-(1|8)$/);
+    expect(first.textureKey).not.toBe('welcome-goon-v2-var-2');
+    expect(withoutRegistry.textureKey).toBeNull();
+    expect(first.variantRoll).toBe(withoutRegistry.variantRoll);
+    expect(first.gameplayRngTail).toEqual(withoutRegistry.gameplayRngTail);
   });
 });

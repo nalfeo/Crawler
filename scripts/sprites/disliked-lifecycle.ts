@@ -22,7 +22,7 @@ import {
 } from '../../.github/extensions/sprite-editor/lib/pending-annotation-overlay.mjs';
 import { unapproveVariant } from './approve.js';
 import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
-import type { SpriteAnnotationUpdate } from './queue-commit.js';
+import { applySpriteAnnotationUpdates, type SpriteAnnotationUpdate } from './queue-commit.js';
 
 const ANNOTATIONS_RELATIVE_PATH = 'public/assets/generated/sprite-editor-annotations.json';
 const REFERENCE_EXTENSIONS = new Set(['.json', '.js', '.mjs', '.ts', '.tsx', '.yaml', '.yml']);
@@ -887,7 +887,7 @@ export function applyDislikedLifecyclePlan(
   const manifestPath = path.join(generatedDir, 'manifest.json');
   const annotationsPath = path.join(repoRoot, ...ANNOTATIONS_RELATIVE_PATH.split('/'));
   const touched = [
-    annotationsPath,
+    ...(plan.annotationUpdates.length > 0 ? [annotationsPath] : []),
     ...plan.referenceUpdates.map((update) => update.path),
     ...plan.removed.flatMap((removal) => [
       shardPathForKey(generatedDir, removal.manifestKey),
@@ -933,7 +933,11 @@ export function applyDislikedLifecyclePlan(
       );
     }
     for (const update of plan.referenceUpdates) atomicWrite(update.path, update.after);
-    atomicWrite(annotationsPath, `${JSON.stringify(plan.annotations, null, 2)}\n`);
+    if (plan.annotationUpdates.length > 0) {
+      const current = readTrackedAnnotations(repoRoot);
+      const merged = applySpriteAnnotationUpdates(current, plan.annotationUpdates);
+      atomicWrite(annotationsPath, `${JSON.stringify(merged, null, 2)}\n`);
+    }
     for (const removal of plan.removed) {
       unapproveVariant({
         variantId: removal.manifestKey,
@@ -1076,7 +1080,7 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
       shardPathForKey(generatedDir, replacement.manifestKey),
       path.join(options.repoRoot, 'public', 'assets', ...replacement.assetPath.split('/')),
     ]),
-    annotationsPath,
+    ...(plan.annotationUpdates.length > 0 ? [annotationsPath] : []),
     ...plan.referenceUpdates.map((update) => update.path),
     ...plan.removed.flatMap((removal) => [
       shardPathForKey(generatedDir, removal.manifestKey),

@@ -94,8 +94,18 @@ sprite-pipeline, sprite-workflow
   to match its storage coordinates before any backfill or lifecycle mutation,
   and pending-overlay promotion preserves historical tombstones and provenance.
 - A matching legacy `asset-checkin` record no longer short-circuits explicit
-  re-acceptance: lifecycle cleanup still runs and publishes atomically through
-  `assets/queue`; only conflicting or unverifiable queued content refuses early.
+  re-acceptance when the scoped preflight finds cleanup or exact replacement
+  retry work. A converged exact match now returns its existing queue record
+  before unrelated changed assets can leak into a newly filed legacy issue;
+  conflicting or unverifiable queued content still refuses early.
+- Queue reconciliation now requires valid JSON with an object-valued `sprites`
+  map before promoting the annotations document. Malformed annotation-only
+  changes are withheld, and malformed deletion audits atomically withhold both
+  the annotations and their complete deletion set while unrelated art continues.
+- Lifecycle apply skips annotation writes when its per-key delta is empty. When
+  updates exist, it re-reads the latest tracked document and applies only the
+  owned keys, preserving unrelated Sprite Editor changes instead of replacing
+  the whole planning-time snapshot.
 - Placeholder exclusion remains the explicit ADR 0105 `ELG-001` behavior:
   placeholder-only item concepts use the existing non-generated UI fallback,
   and non-melee carried weapons remain hidden until eligible real art exists.
@@ -116,7 +126,11 @@ sprite-pipeline, sprite-workflow
   passed 515 tests with 1 intentional environment skip across the 12 affected
   sprite suites, 278/278 Workflow extension tests, and a 437/437 `verify:fast`
   changed-test selection. The final legacy-queue ordering follow-up passed
-  153/153 focused sidecar tests and its 172/172 `verify:fast` selection.
+  153/153 focused sidecar tests and its 172/172 `verify:fast` selection. The
+  exact-head closure fixes passed 356/356 focused lifecycle, queue, sidecar,
+  reconciler, and real `runHeadless` tests; typecheck passed; repository closure
+  remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates; and `verify:fast` passed 661/661 changed tests.
 - The originating worktree confirmed all five unapproved generated
   `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
   commit contains a `generated/runs/**` path.

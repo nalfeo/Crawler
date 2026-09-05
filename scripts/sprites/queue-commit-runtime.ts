@@ -25,7 +25,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
 import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
-import type { QueueCommitDeps, SpriteAnnotationUpdate } from './queue-commit.js';
+import {
+  applySpriteAnnotationUpdates,
+  type QueueCommitDeps,
+  type SpriteAnnotationUpdate,
+} from './queue-commit.js';
 import { shardPathForKey } from './generated-shards.js';
 
 /**
@@ -76,33 +80,7 @@ export async function mergeSpriteAnnotationUpdates(
       sprites: { ...((parsed as { sprites: Record<string, unknown> }).sprites ?? {}) },
     };
   }
-  for (const update of updates) {
-    if (update.delete === true) {
-      delete document.sprites[update.key];
-      continue;
-    }
-    const existing =
-      document.sprites[update.key] &&
-      typeof document.sprites[update.key] === 'object' &&
-      !Array.isArray(document.sprites[update.key])
-        ? (document.sprites[update.key] as Record<string, unknown>)
-        : {};
-    const next: Record<string, unknown> = {
-      ...existing,
-      favorite: update.favorite,
-      disliked: update.disliked,
-      comment: update.comment,
-    };
-    if (update.sourceRun !== undefined) next.sourceRun = update.sourceRun;
-    if (update.variantIndex !== undefined) next.variantIndex = update.variantIndex;
-    for (const field of ['tombstone', 'reconciliation'] as const) {
-      if (!Object.hasOwn(update, field)) continue;
-      const value = update[field];
-      if (value === undefined) delete next[field];
-      else next[field] = value;
-    }
-    document.sprites[update.key] = next;
-  }
+  document = applySpriteAnnotationUpdates(document, updates);
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {

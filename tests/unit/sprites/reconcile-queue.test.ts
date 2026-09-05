@@ -1115,6 +1115,30 @@ function seedQueueWithAnnotations(
   }
 }
 
+function seedQueueWithRawAnnotations(liveDir: string, raw: string): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-raw-annotations-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const annotationPath = path.join(
+      wt,
+      'public',
+      'assets',
+      'generated',
+      'sprite-editor-annotations.json',
+    );
+    mkdirSync(path.dirname(annotationPath), { recursive: true });
+    writeFileSync(annotationPath, raw);
+    gitSync(wt, 'add', '--', 'public/assets/generated/sprite-editor-annotations.json');
+    gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed sprite annotations');
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /**
  * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
  * flow that lands art without going through the queue branch).
@@ -1650,6 +1674,75 @@ describe('runReconcile (real git)', () => {
         ),
       ),
     ).toEqual({ version: 1, sprites: annotations });
+  });
+
+  it('(c2) withholds an annotation-only candidate with invalid JSON', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithRawAnnotations(liveDir, '{not-json');
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual([
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    expect(gh.prs).toHaveLength(0);
+  });
+
+  it('(c2) atomically withholds malformed annotations and their deletion set', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-lifecycle-delete-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const generatedDir = path.join(wt, 'public', 'assets', 'generated');
+      rmSync(path.join(generatedDir, `${key}.png`));
+      rmSync(path.join(generatedDir, 'entries', `${key}.json`));
+      writeFileSync(
+        path.join(generatedDir, 'sprite-editor-annotations.json'),
+        JSON.stringify({ version: 1, sprites: [] }),
+      );
+      writeFileSync(path.join(generatedDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(generatedDir, 'entries', 'unrelated-var-0.json'), {
+        assetPath: 'generated/unrelated-var-0.png',
+        spriteName: 'unrelated-var-0',
+        contentHash: TEST_CONTENT_HASH,
+        sourceRun: 'generated/runs/unrelated-var-0/run-0',
+        variantIndex: 0,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed deletion audit');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    expect(result.withheldPaths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      `public/assets/generated/${key}.png`,
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toContain(key);
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).not.toBe('');
   });
 
   it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {

@@ -72,6 +72,21 @@ export class ReconcileError extends Error {
   }
 }
 
+function isValidSpriteAnnotationsDocument(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { sprites?: unknown }).sprites === 'object' &&
+      (parsed as { sprites?: unknown }).sprites !== null &&
+      !Array.isArray((parsed as { sprites?: unknown }).sprites)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface ReconcileResult {
   readonly status: ReconcileStatus;
   /** Promotion branch the PR is opened from. */
@@ -1753,6 +1768,25 @@ export async function runReconcile(
       // do not clobber a main-side change the queue never saw (see
       // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
       queueVsMainArt = await keepPromotable(queueRef, parseNameOnly(delta));
+      let queueAnnotations:
+        | {
+            readonly code: number;
+            readonly stdout: string;
+          }
+        | undefined;
+      if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+        queueAnnotations = await runGit(deps.exec, repoRoot, [
+          'show',
+          `${queueRef}:${ANNOTATIONS_PATH}`,
+        ]);
+        if (
+          queueAnnotations.code !== 0 ||
+          !isValidSpriteAnnotationsDocument(queueAnnotations.stdout)
+        ) {
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
+        }
+      }
 
       const deleted = await mustGit(deps.exec, repoRoot, [
         'diff',
@@ -1766,27 +1800,23 @@ export async function runReconcile(
       ]);
       const deletedPaths = parseNameOnly(deleted);
       if (deletedPaths.length > 0) {
-        const annotations = await runGit(deps.exec, repoRoot, [
-          'show',
-          `${queueRef}:${ANNOTATIONS_PATH}`,
-        ]);
+        const annotations =
+          queueAnnotations ??
+          (await runGit(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]));
         let candidates: readonly AuthorizedLifecycleDeletion[] = [];
-        if (annotations.code === 0 && annotations.stdout.trim() !== '') {
-          let annotationsAreJson = true;
-          try {
-            JSON.parse(annotations.stdout);
-          } catch {
-            // An unreadable audit cannot authorize deletion. Preserve the
-            // reconciler's historical safe behavior: ignore queue-side deletes.
-            annotationsAreJson = false;
-          }
-          if (annotationsAreJson) {
-            // Per-tombstone partition: a single broken tombstone is refused on
-            // its own instead of throwing the whole hourly cycle away.
-            const partition = partitionLifecycleDeletions(deletedPaths, annotations.stdout);
-            candidates = partition.authorized;
-            rejectedLifecycleDeletions.push(...partition.rejected);
-          }
+        if (annotations.code === 0 && isValidSpriteAnnotationsDocument(annotations.stdout)) {
+          // Per-tombstone partition: a single broken tombstone is refused on
+          // its own instead of throwing the whole hourly cycle away.
+          const partition = partitionLifecycleDeletions(deletedPaths, annotations.stdout);
+          candidates = partition.authorized;
+          rejectedLifecycleDeletions.push(...partition.rejected);
+        } else {
+          // No structurally valid audit means no queue-side deletion has
+          // authority. Withhold the complete deletion set and annotation update
+          // as one fail-closed transaction.
+          for (const deletedPath of deletedPaths) withheld.add(deletedPath);
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
         }
         const annotationWillLand = queueVsMainArt.includes(ANNOTATIONS_PATH);
         let baseAnnotations = '';

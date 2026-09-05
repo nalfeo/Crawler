@@ -156,6 +156,7 @@ import {
 import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
 import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
 import {
+  loadDislikedLifecyclePlan,
   runAcceptedDislikedLifecycleTransaction,
   toQueueCommitAnnotationUpdates,
   type DislikedLifecyclePlan,
@@ -2426,11 +2427,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         }
 
         // Reconcile BEFORE mutating (concern #4): conflicting or unverifiable
-        // queued content refuses with 409. An exact queued match still enters
-        // the lifecycle transaction: the asset may have been disliked after
-        // its legacy issue was filed, and explicit re-acceptance must publish
-        // that cleanup atomically to assets/queue rather than short-circuiting
-        // on stale queue state.
+        // queued content refuses with 409. An exact queued match only re-enters
+        // the lifecycle transaction when a scoped preflight finds cleanup or
+        // exact replacement-retry work; otherwise return its existing record
+        // before unrelated changed assets can leak into a new legacy issue.
         let queuedBefore: ReadonlyMap<string, QueuedAssetCheckin>;
         try {
           queuedBefore = await listQueuedAssets();
@@ -2441,6 +2441,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         if (reconciledBefore !== undefined && 'error' in reconciledBefore) {
           return reconciledBefore;
         }
+        const lifecycleReplacement = {
+          manifestKey: identity.variantId,
+          conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+          assetPath: identity.assetPath,
+        };
 
         // Explicit human acceptance (the Workflow canvas's "Accept & queue")
         // is a REPLACEMENT acceptance, so it runs inside the same disliked-asset
@@ -2452,16 +2457,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         // pass-through lock so this cannot deadlock on itself.
         let response: unknown;
         try {
-          await makeCheckinFileLock(deps.repoRoot)(() =>
-            runAcceptedDislikedLifecycleTransaction({
+          await makeCheckinFileLock(deps.repoRoot)(async () => {
+            if (reconciledBefore !== undefined) {
+              const conceptScope = new Set([lifecycleReplacement.conceptId]);
+              const preflightPlan = loadDislikedLifecyclePlan(
+                deps.repoRoot,
+                [lifecycleReplacement],
+                conceptScope,
+              );
+              if (!requiresLifecycleQueue(preflightPlan, identity.variantId)) {
+                response = reconciledBefore;
+                return;
+              }
+            }
+            await runAcceptedDislikedLifecycleTransaction({
               repoRoot: deps.repoRoot,
-              replacements: [
-                {
-                  manifestKey: identity.variantId,
-                  conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
-                  assetPath: identity.assetPath,
-                },
-              ],
+              replacements: [lifecycleReplacement],
               approve: () => {
                 try {
                   approveVariant({
@@ -2567,8 +2578,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                   response = mapCheckinError(reply, err);
                 }
               },
-            }),
-          );
+            });
+          });
         } catch (err) {
           if (err instanceof ApproveError) return mapApproveError(reply, err);
           return mapCheckinError(reply, err);
