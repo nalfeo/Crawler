@@ -361,7 +361,7 @@ describe('resolveDialogueLines', () => {
     const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual(
       getNpcDef('spell-quest-giver')!
-        .dialogue.slice(0, 2)
+        .dialogue.filter((line) => !line.requiresMerchantQuest)
         .map((line) => line.text),
     );
 
