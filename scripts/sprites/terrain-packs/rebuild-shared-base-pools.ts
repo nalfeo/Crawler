@@ -41,6 +41,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { compositeInto, createImage, decodePng, encodePng, type RgbaImage } from './png-buffer.js';
 import { toPixelArtGround } from './gen/image-ops.js';
+import type { WallMaskFrameAssignment } from './gen/compose-pack.js';
 import {
   ATLAS_GRID_COLS,
   ATLAS_HEIGHT_PX,
@@ -54,7 +55,6 @@ import { isFullyOpaqueWallAlpha, isWallAlpha } from './wall-opacity.js';
 
 const PACK_DIR = 'public/assets/terrain-packs/industrial-cave';
 const MANIFEST_PATH = 'src/shared/data/terrain-packs/industrial-cave.manifest.json';
-type WallMaskFrameAssignment = { readonly maskId: number; readonly frameIndex: number };
 
 /** Untouched border on all four sides — the shared-edge guarantee. */ export const BORDER_MARGIN_PX = 10;
 
@@ -436,6 +436,11 @@ const WALL_GROUND_STYLE = {
   maxChroma: 24,
 };
 
+function readWallMaskFrameAssignments(): readonly WallMaskFrameAssignment[] {
+  return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')).wallAutotile
+    .masks as readonly WallMaskFrameAssignment[];
+}
+
 /**
  * The 47-mask silhouette sheet, alpha-only ground truth for the wall atlas.
  *
@@ -443,11 +448,6 @@ const WALL_GROUND_STYLE = {
  * pass — `restyleWallAtlas` does its own lighting and material sampling, so it
  * only needs the geometry.
  */
-function readWallMaskFrameAssignments(): readonly WallMaskFrameAssignment[] {
-  return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')).wallAutotile
-    .masks as readonly WallMaskFrameAssignment[];
-}
-
 function composeCanonicalSilhouetteAtlas(
   assignments: readonly WallMaskFrameAssignment[] = buildMaskFrameAssignments(),
 ): RgbaImage {

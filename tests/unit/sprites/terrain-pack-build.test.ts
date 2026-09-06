@@ -369,7 +369,7 @@ describe('validateTerrainPack — VENDORED_MIN_EDGE_PASS_RATE default constant i
    * is actually 0.90.
    *
    * This suite constructs a deterministic "degraded" atlas by swapping the
-   * frameIndex assignments for two pairs of opposite-corner masks in the
+   * frameIndex assignments for two pairs of opposite cardinal-arm masks in the
    * manifest (masks 5↔80 and 21↔84; pixel data is unchanged). The swap drops
    * the edge-pass rate from 0.957 to 0.8936 (168/188 edges pass), placing it
    * in the 0.85–0.90 window: above the old 0.85 floor but below the new 0.90
