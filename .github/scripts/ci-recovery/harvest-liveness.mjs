@@ -58,6 +58,8 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
   'queue-merge-train',
   'wait-admission',
   'wait-conflict-rebase-pending',
+  DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD,
+  DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
 ]);
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {

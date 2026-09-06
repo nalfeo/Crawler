@@ -413,6 +413,27 @@ test('selectLivenessRedispatchCandidates handles the incident fixture determinis
   );
 });
 
+test('protectedLivenessPullNumbers excludes actively owned PRs from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4217, action: 'skip-active-shepherd' },
+    { pr: 4214, action: 'skip-active-copilot-progress' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4217), blockedPull(4214), blockedPull(4224)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4224],
+    'active shepherd and Copilot ownership decisions must prevent redispatch',
+  );
+});
+
 test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
   const dispatches = [];
   const result = await dispatchLivenessRedispatches({
