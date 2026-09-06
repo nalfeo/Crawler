@@ -12,6 +12,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeIndustrialCavePack } from './build-industrial-cave.js';
 import { writeCaelesFixturePack } from './build-caeles-fixture.js';
+import { writeCompanionOverworldPack } from './build-companion-overworld.js';
 import { applySharedBasePoolRestyle } from './rebuild-shared-base-pools.js';
 import {
   validateTerrainPack,
@@ -39,6 +40,10 @@ function runBuild(): void {
   const repoRoot = repoRootFromHere();
   writeIndustrialCavePack(repoRoot);
   writeCaelesFixturePack(repoRoot);
+  // `companion-overworld` (Floor 3) is pure procedural art with no generated-image
+  // step, so — unlike industrial-cave — this write is UNGUARDED: it is the source
+  // of truth for the shipped bytes and re-running it must reproduce them exactly.
+  writeCompanionOverworldPack(repoRoot);
   // `writeIndustrialCavePack` emits plain procedural floor/corridor tiles and a
   // manifest with no pool weights. The shipped Floor 2 art is that output plus
   // the shared-base restyle, so the two steps are ONE build — running the pack
