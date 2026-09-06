@@ -157,6 +157,27 @@ function isAchievementNode(node: FloorEpicNode): boolean {
   return /\bachievements?\b/i.test(`${node.title}\n${node.body ?? ''}`);
 }
 
+function achievementAcceptanceEvidence(body: string): {
+  readonly hasUnlock: boolean;
+  readonly hasClaim: boolean;
+  readonly hasReward: boolean;
+} {
+  return {
+    hasUnlock: /\bunlock(?:s|ed|ing)?\b/i.test(body),
+    hasClaim: /\bclaim(?:s|ed|ing)?\b|\bclaimed\b/i.test(body),
+    hasReward: /\breward(?:s)?\b/i.test(body),
+  };
+}
+
+function achievementRequiresNumericHumanGate(body: string): boolean {
+  return (
+    /\b(?:at\s+(?:least|most)|exactly|no\s+more\s+than|no\s+less\s+than|threshold)\b/i.test(body) &&
+    /\b(?:kills?|damage|gold|time|score|health|reward|count|streak|wave|waves|seconds?|minutes?|rooms?|clear(?:s|ance)?)\b/i.test(
+      body,
+    )
+  );
+}
+
 function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
   const achievementNodes = epic.nodes.filter(isAchievementNode);
   if (achievementNodes.length === 0) {
@@ -184,10 +205,11 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
         message: `achievement node "${node.id}" must depend on its prerequisite floor mechanics.`,
       });
     }
-    if (!/\b(unlock|claim|claimed|reward|rewards)\b/i.test(body)) {
+    const acceptance = achievementAcceptanceEvidence(body);
+    if (!(acceptance.hasUnlock && acceptance.hasClaim && acceptance.hasReward)) {
       violations.push({
         code: 'achievement-acceptance-missing',
-        message: `achievement node "${node.id}" must define measurable unlock/claim or reward acceptance.`,
+        message: `achievement node "${node.id}" must define measurable achievement unlocking and reward-claim acceptance evidence.`,
       });
     }
     if (
@@ -198,6 +220,19 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
       violations.push({
         code: 'achievement-acceptance-missing',
         message: `achievement node "${node.id}" must include a measurable acceptance condition.`,
+      });
+    }
+    if (
+      achievementRequiresNumericHumanGate(body) &&
+      !(epic.human_gates ?? []).some(
+        (gate) =>
+          /\b(playtester|game designer)\b/i.test(gate) &&
+          /\b(?:achievement|threshold|numeric|balance|pacing|difficulty|fun)\b/i.test(gate),
+      )
+    ) {
+      violations.push({
+        code: 'achievement-human-gate-missing',
+        message: `achievement node "${node.id}" introduces a numeric threshold that must be deferred to an explicit Playtester or Game Designer HUMAN_GATE.`,
       });
     }
   }
@@ -482,10 +517,22 @@ function main(): void {
   process.exitCode = 1;
 }
 
-// `import.meta.url` is always a normalized `file:///...` URL, while
-// `process.argv[1]` is a raw filesystem path (`C:\...` on Windows). Comparing
-// them directly is false on Windows, so the CLI would import this module but
-// never call `main()`. Convert argv[1] through `pathToFileURL` first.
+// `import.meta.url` is normally a `file:///...` URL for the module itself, while
+// `process.argv[1]` is the raw filesystem path used to invoke the CLI. Some
+// loaders (including tsx) may normalize/virtualize the module URL slightly,
+// so compare both the canonical file URL and the script basename before
+// deciding whether this invocation is the real entry point.
+const invokedScript = process.argv[1];
+const invokedScriptName = invokedScript ? invokedScript.replace(/\\/g, '/').split('/').pop() : '';
+const moduleName = import.meta.url ? import.meta.url.replace(/\\/g, '/').split('/').pop() : '';
+const hasMatchingScriptName =
+  invokedScriptName === 'floor-epic-lint.ts' ||
+  invokedScriptName === 'floor-epic-lint.js' ||
+  invokedScriptName === 'floor-epic-lint.mjs';
 const isMain =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  typeof invokedScript === 'string' &&
+  hasMatchingScriptName &&
+  (import.meta.url === pathToFileURL(invokedScript).href ||
+    moduleName === invokedScriptName ||
+    import.meta.url.endsWith(`/${invokedScriptName}`));
 if (isMain) main();
