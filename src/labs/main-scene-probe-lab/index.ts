@@ -1108,6 +1108,12 @@ export interface MainSceneProbeApi {
    */
   getIssueReportPickerContent(): ModalPickerContentSnapshot | null;
   /**
+   * Arrange the live Floor-1 world with the initial shopkeeper dialogue ready
+   * and park the player on the merchant. The test still drives the real
+   * interaction and conversation path.
+   */
+  primeShopkeeperInitialDialogue(): ProbePoint | null;
+  /**
    * Arrange the live Floor-1 world so the shipped shopkeeper is at its
    * `ready-to-buy` stage with `gold` in the player's purse, and park the player
    * on the merchant. The test still drives the real interaction + real modal.
@@ -2814,6 +2820,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
       scene.requestAchievementsToggle?.();
       scene.queuedAbilitiesToggle = true;
+    },
+
+    primeShopkeeperInitialDialogue: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let shopkeeperEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = false;
+        if (instance.defId === 'shopkeeper') {
+          shopkeeperEid = npcEid;
+          instance.nearbyPlayer = true;
+        }
+      }
+      if (shopkeeperEid === null) {
+        return null;
+      }
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      const x = world.stores.position.x[shopkeeperEid] ?? 0;
+      const y = world.stores.position.y[shopkeeperEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { x, y };
     },
 
     primeShopkeeperPurchase: (gold: number): ProbePoint | null => {
