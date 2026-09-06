@@ -168,6 +168,14 @@ const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
   'tracks?|tracked|tracking|verif\\w*|implement\\w*|add(?:s|ed|ing)?|defin\\w*';
 
 /**
+ * Match-window bounds (in characters) for the clause-scoped regexes below.
+ * Named so a future retune keeps both windows' rationale co-located instead
+ * of drifting apart as separate magic numbers.
+ */
+const OWNERSHIP_WINDOW_CHARS = 80;
+const QUALIFIER_WINDOW_CHARS = 20;
+
+/**
  * A node merely *mentioning* "achievement" is not necessarily the node that
  * owns the achievement work — a downstream release/dependency slice can
  * legitimately say "release after achievement QA passes" without itself
@@ -180,8 +188,8 @@ const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
  * as achievement-*owning*.
  */
 const ACHIEVEMENT_OWNERSHIP_EVIDENCE = new RegExp(
-  `\\bachievements?\\b[^.\\n;]{0,80}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
-    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.\\n;]{0,80}\\bachievements?\\b`,
+  `\\bachievements?\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
+    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\bachievements?\\b`,
   'i',
 );
 
@@ -234,7 +242,7 @@ const THRESHOLD_QUALIFIER =
   'after|within|complete[sd]?|completing|finish(?:es|ed|ing)?(?:\\s+with)?)';
 const AMBIGUOUS_UNITS = '(?:health|hp|mana)';
 const AMBIGUOUS_UNITS_PATTERN = new RegExp(
-  `\\b${THRESHOLD_QUALIFIER}\\b[^.\\n;]{0,20}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
+  `\\b${THRESHOLD_QUALIFIER}\\b[^.\\n;]{0,${QUALIFIER_WINDOW_CHARS}}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
   'i',
 );
 
