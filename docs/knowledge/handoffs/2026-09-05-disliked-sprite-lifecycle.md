@@ -331,7 +331,8 @@ sprite-pipeline, sprite-workflow
   keys whose PNG names are flattened or carry placeholder suffixes. Candidate
   shard reads run in fail-closed batches of eight, avoiding a sequential
   subprocess per asset without creating unbounded runner pressure; malformed
-  candidate shards explicitly quarantine their immutable source snapshot.
+  candidate shards now fail with their exact path rather than silently
+  quarantining every approval behind a success-shaped no-op.
   Durable queue inspection uses the same eight-asset bound (sixteen concurrent
   shard/PNG reads) instead of fanning out across the full approval batch.
 

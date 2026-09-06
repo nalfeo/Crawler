@@ -35,6 +35,7 @@ import {
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
   computeClosingIssueNumbers,
+  filterPromotablePaths,
   findLifecycleOrphanCollisions,
   findLandedPromotion,
   formatSourceTrailers,
@@ -63,6 +64,56 @@ describe('isArtSurfacePath', () => {
     expect(isArtSurfacePath('public/assets/generated/skull-mace-var-2.png')).toBe(true);
     expect(isArtSurfacePath('public/assets/generated/nested/deep.png')).toBe(true);
     expect(isArtSurfacePath('briefs/enemies/panda-boba-sniper.yaml')).toBe(true);
+  });
+
+  describe('filterPromotablePaths', () => {
+    it('bounds candidate shard reads to eight concurrent git processes', async () => {
+      const keys = Array.from({ length: 10 }, (_, index) => `asset-${index}-var-0`);
+      const paths = keys.flatMap((key) => [
+        `public/assets/generated/entries/${key}.json`,
+        `public/assets/generated/${key}.png`,
+      ]);
+      let activeShows = 0;
+      let maxActiveShows = 0;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout:
+              ref === 'source'
+                ? paths.map((candidate) => `100644 blob ${'a'.repeat(40)}\t${candidate}`).join('\n')
+                : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'show') {
+          activeShows += 1;
+          maxActiveShows = Math.max(maxActiveShows, activeShows);
+          await Promise.resolve();
+          activeShows -= 1;
+          const shardPath = String(args[1]).split(':', 2)[1] ?? '';
+          const key = shardPath
+            .replace('public/assets/generated/entries/', '')
+            .replace(/\.json$/u, '');
+          return {
+            code: 0,
+            stdout: JSON.stringify({
+              spriteName: key,
+              assetPath: `generated/${key}.png`,
+            }),
+            stderr: '',
+          };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(filterPromotablePaths(exec, '/repo', 'base', 'source', paths)).resolves.toEqual(
+        paths,
+      );
+      expect(maxActiveShows).toBe(8);
+    });
   });
 
   it('rejects paths outside the art surface', () => {
@@ -1966,14 +2017,8 @@ describe('runReconcile (real git)', () => {
     }
     const gh = new FakeGh();
 
-    const result = await runReconcile(liveDir, realDeps(gh));
-
-    expect(result.status).toBe('noop');
-    expect(result.withheldPaths).toEqual(
-      expect.arrayContaining([
-        `public/assets/generated/${validKey}.png`,
-        `public/assets/generated/entries/${validKey}.json`,
-      ]),
+    await expect(runReconcile(liveDir, realDeps(gh))).rejects.toThrow(
+      new RegExp(`Candidate shard.*${brokenKey}.*malformed JSON`, 'u'),
     );
     expect(gh.prs).toHaveLength(0);
   });

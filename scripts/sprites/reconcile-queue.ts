@@ -854,14 +854,11 @@ async function historicBlobsAtPaths(
  * real approvals still land, and repeat edits of an asset the reconciler itself
  * promoted keep landing (main's current bytes came from the source's history).
  *
- * Fail closed: any git failure drops every path for that source. Promoting when
- * we cannot read the history is exactly the unbounded-regression case this guard
- * prevents, and dropping is non-destructive — the source keeps its bytes and a
- * later cycle promotes them once git answers again. A malformed or unsafe
- * candidate shard likewise quarantines the complete immutable source snapshot:
- * without its authored assetPath, the reconciler cannot prove which PNG must be
- * withheld atomically, so allowing unrelated paths would make the outcome
- * depend on an untrusted partial interpretation of that snapshot.
+ * Fail closed and visibly: any git failure or malformed/unsafe candidate shard
+ * throws a path-specific error before promotion. Without trustworthy history
+ * and authored asset paths, the reconciler cannot prove which PNG must be
+ * withheld atomically; returning a success-shaped empty set would silently park
+ * every approval on that immutable source snapshot.
  */
 export async function filterPromotablePaths(
   exec: Exec,
@@ -881,7 +878,10 @@ export async function filterPromotablePaths(
     baseHistory === null ||
     sourceHistory === null
   ) {
-    return [];
+    throw new ReconcileError(
+      'git-failed',
+      `Unable to inspect promotion history for source ${sourceRef} against ${baseRef}.`,
+    );
   }
 
   const perPathOk = (p: string): boolean => {
@@ -910,18 +910,34 @@ export async function filterPromotablePaths(
     const reads = await Promise.all(
       shardPaths.slice(offset, offset + shardReadConcurrency).map(async (shardPath) => {
         const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
-        if (shard.code !== 0) return { ok: false } as const;
+        if (shard.code !== 0) {
+          return {
+            ok: false,
+            kind: 'git-failed' as const,
+            reason: `Unable to read candidate shard "${shardPath}" from ${sourceRef}: ${shard.stderr || shard.stdout || 'git show failed'}`,
+          };
+        }
         let parsed: unknown;
         try {
           parsed = JSON.parse(shard.stdout);
         } catch {
-          return { ok: false } as const;
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate shard "${shardPath}" on ${sourceRef} is malformed JSON.`,
+          };
         }
         const assetPath =
           typeof parsed === 'object' && parsed !== null
             ? (parsed as { readonly assetPath?: unknown }).assetPath
             : undefined;
-        if (!isSafeQueueAssetPath(assetPath)) return { ok: false } as const;
+        if (!isSafeQueueAssetPath(assetPath)) {
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate shard "${shardPath}" on ${sourceRef} has an unsafe assetPath.`,
+          };
+        }
         const pngPath = `public/assets/${assetPath}`;
         return {
           ok: true,
@@ -929,7 +945,10 @@ export async function filterPromotablePaths(
         } as const;
       }),
     );
-    if (reads.some((read) => !read.ok)) return [];
+    const failed = reads.find((read) => !read.ok);
+    if (failed !== undefined && !failed.ok) {
+      throw new ReconcileError(failed.kind, failed.reason);
+    }
     for (const read of reads) {
       if (read.ok && read.pair !== undefined) pairs.push(read.pair);
     }
