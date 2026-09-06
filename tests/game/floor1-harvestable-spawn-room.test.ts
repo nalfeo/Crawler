@@ -29,7 +29,7 @@ function spawnRoomHarvestableTiles(
 }
 
 describe('floor 1 spawn-room harvestables', () => {
-  it('places at least one harvestable in the spawn room on representative seeds', () => {
+  it('never places harvestables in the spawn room on representative seeds', () => {
     for (const seed of SEEDS) {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
@@ -37,24 +37,18 @@ describe('floor 1 spawn-room harvestables', () => {
 
       expect(
         spawnRoomHarvestableTiles(world).length,
-        `seed ${seed} should spawn at least one harvestable in the spawn room`,
-      ).toBeGreaterThan(0);
+        `seed ${seed} must not spawn harvestables in the spawn room`,
+      ).toBe(0);
     }
   });
 
-  it('never places the spawn-room harvestable on the player spawn tile', () => {
+  it('continues spawning harvestables in ordinary rooms', () => {
     for (const seed of SEEDS) {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
 
-      const spawnTile = world.floorMap!.playerSpawn;
-      const onSpawnTile = spawnRoomHarvestableTiles(world).some(
-        (tile) => tile.x === spawnTile.x && tile.y === spawnTile.y,
-      );
-      expect(onSpawnTile, `seed ${seed} must not place a harvestable on the spawn tile`).toBe(
-        false,
-      );
+      expect(query(world.ecs, [Harvestable, Position]).length).toBeGreaterThan(0);
     }
   });
 });

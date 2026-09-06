@@ -38,6 +38,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { initializeFloor2Scenario } from '../../src/game/floor2Scenario.js';
 import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import { placePropsForFloor } from '../../src/game/systems/propPlacer.js';
+import { isPointInSafeSpace } from '../../src/core/safe-space.js';
 
 // ─── Harvestable defs ────────────────────────────────────────────────────────
 
@@ -394,5 +395,25 @@ describe('initializeFloor2Scenario harvestable spawning', () => {
     const countB = query(worldB.ecs, [Harvestable, Position]).length;
     expect(countA).toBe(countB);
     expect(countA).toBeGreaterThan(0);
+  });
+
+  it('never places harvestables in the starter or settlement safe rooms', () => {
+    for (const seed of [1, 42, 555, 4444]) {
+      const world = createTestWorld({ seed, floor: 2 });
+      const playerEid = spawnPlayer(world, 0, 0);
+      initializeFloor2Scenario(world, playerEid);
+
+      const nodes = query(world.ecs, [Harvestable, Position]);
+      expect(
+        nodes.filter((eid) =>
+          isPointInSafeSpace(
+            world,
+            world.stores.position.x[eid] ?? 0,
+            world.stores.position.y[eid] ?? 0,
+          ),
+        ),
+        `seed ${seed} must not place harvestables in safe space`,
+      ).toHaveLength(0);
+    }
   });
 });

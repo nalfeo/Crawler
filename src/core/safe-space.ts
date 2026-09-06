@@ -33,7 +33,9 @@ function isPointInAuthoredSafeSpace(world: GameWorld, tx: number, ty: number): b
       return true;
     }
   }
-  const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+  const safeRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.SAFE || room.role === RoomRole.SETTLEMENT);
   if (safeRooms.length === 0) return false;
   return safeRooms.some((room) => roomContainsTile(room, tx, ty));
 }
