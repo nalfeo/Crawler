@@ -102,6 +102,11 @@ jobs:
           fi
           exit "$code"
 
+      - name: Surface lifecycle convergence refusal
+        if: ${{ failure() && steps.reconcile.outputs.exit_code == '31' }}
+        run: |
+          echo "::error title=Sprite lifecycle convergence refused::The durable queue contains an inconsistent lifecycle deletion. Repair the named annotation key(s) reported by the reconciler before the next cycle."
+
       - name: Escalate untrusted-diff refusal
         # Exit 30 = the defense-in-depth guard saw a non-art path in the promote
         # diff and REFUSED to push/arm (fail-closed). This should be impossible

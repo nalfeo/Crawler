@@ -243,6 +243,34 @@ describe('normalizeSpriteNames', () => {
 
     expect(shardKeys()).toEqual(['lonely-thing-placeholder']);
   });
+
+  it('retires only the matching icon-cell placeholder from a shared batch brief', async () => {
+    for (const spriteName of ['achv-first-bonk-placeholder', 'achv-second-bonk-placeholder']) {
+      shard(spriteName, {
+        briefId: 'achievement-icon-batch',
+        spriteName,
+        assetPath: `generated/${spriteName}.png`,
+        sourceRun: 'placeholder',
+        type: 'icon',
+      });
+    }
+    shard('achv-first-bonk', {
+      briefId: 'achievement-icon-batch',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      sourceRun: 'generated/runs/achievement-icon-batch/run-0',
+      approvedAt: '2026-09-06T00:00:00.000Z',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '4',
+      type: 'icon',
+    });
+
+    await normalizeSpriteNames({ generatedDir: dir, mode: 'apply' });
+
+    expect(shardKeys()).toEqual(['achv-first-bonk', 'achv-second-bonk-placeholder']);
+  });
 });
 
 describe('lineage-violation sweep (independent of the rename planner)', () => {

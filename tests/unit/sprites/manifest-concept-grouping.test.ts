@@ -27,15 +27,9 @@
  *
  * SCOPE LIMIT (deliberate, stated so nobody over-trusts this gate): it detects
  * a concept-NORMALIZATION HELPER applied to a manifest-entry field. It does NOT
- * detect grouping that touches `entry.briefId` with no helper at all — e.g.
- * `conceptsWithRealArt.add(entry.briefId)`. Catching that shape without false
- * positives needs an AST pass, not a regex. One such site is known and open:
- * `scripts/sprites/normalize-sprite-names.ts::planPlaceholderRetirements`
- * buckets by raw `briefId`, which for icon batches means one cell's real art
- * can mark a DIFFERENT cell's placeholder retirable. It is latent today (the
- * shipped manifest has 20 icon rows and zero icon placeholders), and fixing it
- * changes a destructive tool's semantics for ~600 non-icon rows, so it is
- * tracked as follow-up rather than silently allowlisted here.
+ * detect grouping that touches `entry.briefId` with no helper at all; catching
+ * that shape without false positives needs an AST pass, not a regex. Destructive
+ * grouping sites therefore also need direct behavioral regression coverage.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';

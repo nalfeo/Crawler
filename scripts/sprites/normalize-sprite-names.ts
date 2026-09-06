@@ -31,6 +31,10 @@ import { existsSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import {
+  generatedManifestConceptId,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 import { formatJsonFiles } from './catalog-io.js';
 import { deleteShard, readAllShards, writeShard } from './generated-shards.js';
 import {
@@ -94,22 +98,18 @@ function assetAbsPath(generatedDir: string, assetPath: string): string {
  * from ever preferring placeholder art over the real thing.
  */
 export function planPlaceholderRetirements(
-  entries: Readonly<Record<string, { briefId: string; sourceRun?: string; assetPath?: string }>>,
-  plan: TaxonomyPlan,
+  entries: Readonly<Record<string, ManifestEntry>>,
 ): string[] {
   const conceptsWithRealArt = new Set<string>();
-  for (const rename of plan.renames) {
-    conceptsWithRealArt.add(rename.toBriefId);
-  }
   for (const [key, entry] of Object.entries(entries)) {
     if (!isPlaceholder(entry) && !key.endsWith('-placeholder')) {
-      conceptsWithRealArt.add(entry.briefId);
+      conceptsWithRealArt.add(generatedManifestConceptId(entry, key));
     }
   }
   const retired: string[] = [];
   for (const [key, entry] of Object.entries(entries)) {
     if (!isPlaceholder(entry)) continue;
-    const concept = entry.briefId.replace(/-placeholder$/, '');
+    const concept = generatedManifestConceptId(entry, key).replace(/-placeholder$/, '');
     if (conceptsWithRealArt.has(concept)) {
       retired.push(key);
     }
@@ -186,7 +186,7 @@ export async function normalizeSpriteNames(options: NormalizeOptions): Promise<N
     Record<string, unknown>
   >;
   const plan = buildTaxonomyPlan(entries as never);
-  const retiredPlaceholders = planPlaceholderRetirements(entries as never, plan);
+  const retiredPlaceholders = planPlaceholderRetirements(entries as never);
   const lineageViolations = findLineageViolations(entries as never);
   const clean =
     plan.renames.length === 0 && retiredPlaceholders.length === 0 && lineageViolations.length === 0;

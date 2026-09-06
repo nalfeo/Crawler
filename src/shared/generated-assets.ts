@@ -242,7 +242,7 @@ export function isRuntimeEligibleManifestEntry(entry: ManifestEntry): boolean {
  * groups by brief lineage as usual.
  */
 export function generatedManifestConceptId(
-  entry: ManifestEntry,
+  entry: Pick<ManifestEntry, 'briefId' | 'spriteName' | 'type'>,
   manifestKey = entry.spriteName,
 ): string {
   const sourceId =

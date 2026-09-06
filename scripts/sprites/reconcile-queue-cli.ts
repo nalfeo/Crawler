@@ -17,13 +17,22 @@
  *   10 usage error
  *   30 untrusted-diff — the promotion diff touched a non-art path; the
  *      reconciler REFUSED to push/arm (fail-closed). The workflow must escalate.
+ *   31 rejected-lifecycle-deletion — unrelated art may have promoted, but a
+ *      durable queue inconsistency blocked lifecycle convergence.
  *   1  any other failure (git/gh error)
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ReconcileError, runReconcile, type ReconcileOptions } from './reconcile-queue.js';
+import {
+  ReconcileError,
+  runReconcile,
+  type ReconcileOptions,
+  type ReconcileResult,
+} from './reconcile-queue.js';
 import { createDefaultReconcileDeps } from './reconcile-queue-runtime.js';
+
+export const REJECTED_LIFECYCLE_DELETION_EXIT_CODE = 31;
 
 interface ParsedArgs {
   readonly repoRoot: string;
@@ -76,6 +85,14 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   };
 }
 
+export function reconcileResultExitCode(
+  result: Pick<ReconcileResult, 'rejectedLifecycleDeletions'>,
+): number {
+  return (result.rejectedLifecycleDeletions?.length ?? 0) > 0
+    ? REJECTED_LIFECYCLE_DELETION_EXIT_CODE
+    : 0;
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
   let parsed: ParsedArgs;
   try {
@@ -108,7 +125,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       );
     }
     process.stdout.write(`${JSON.stringify(result)}\n`);
-    return 0;
+    return reconcileResultExitCode(result);
   } catch (err) {
     if (err instanceof ReconcileError) {
       process.stderr.write(`reconcile-queue failed (${err.kind}): ${err.message}\n`);
