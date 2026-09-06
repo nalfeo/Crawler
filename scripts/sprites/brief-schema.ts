@@ -85,22 +85,91 @@ const referenceSchema = z
  * - `nativeCanvas` is the requested square pixel side of the *whole sheet*
  *   sent to the provider. Defaults to 1024.
  */
+const normalizeSheetDimensions = (sheet: {
+  readonly rows: number;
+  readonly cols: number;
+  readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  readonly nativeWidth?: number;
+  readonly nativeHeight?: number;
+  readonly nativeCanvas?: number;
+}) => {
+  const nativeWidth = sheet.nativeWidth ?? sheet.nativeCanvas ?? 1024;
+  const nativeHeight = sheet.nativeHeight ?? sheet.nativeCanvas ?? 1024;
+  return {
+    ...sheet,
+    nativeWidth,
+    nativeHeight,
+    nativeCanvas: sheet.nativeCanvas ?? nativeWidth,
+  };
+};
+
 const sheetSchema = z
   .object({
     rows: z.number().int().min(1).max(8).default(4),
     cols: z.number().int().min(1).max(8).default(4),
     emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
+    nativeWidth: z.number().int().min(256).max(2048).optional(),
+    nativeHeight: z.number().int().min(256).max(2048).optional(),
     nativeCanvas: z.number().int().min(256).max(2048).default(1024),
   })
   .strict()
-  .default({ rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 });
+  .refine((sheet) => (sheet.nativeWidth === undefined) === (sheet.nativeHeight === undefined), {
+    message: 'nativeWidth and nativeHeight must either both be set or both omitted',
+    path: ['nativeWidth'],
+  })
+  .default({
+    rows: 4,
+    cols: 4,
+    emptyCells: [],
+    nativeCanvas: 1024,
+  });
 
 const generationSchema = z
   .object({
     sheet: sheetSchema,
   })
   .strict()
-  .default({ sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } });
+  .default({
+    sheet: {
+      rows: 4,
+      cols: 4,
+      emptyCells: [],
+      nativeCanvas: 1024,
+    },
+  });
+
+export type SheetGeometry = {
+  readonly rows: number;
+  readonly cols: number;
+  readonly emptyCells: ReadonlyArray<readonly [number, number]>;
+  readonly nativeWidth?: number;
+  readonly nativeHeight?: number;
+  readonly nativeCanvas?: number;
+};
+
+export function sheetPixelDimensions(sheet: SheetGeometry): {
+  readonly width: number;
+  readonly height: number;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+} {
+  const { nativeWidth, nativeHeight } = normalizeSheetDimensions(sheet);
+  const width = nativeWidth;
+  const height = nativeHeight;
+  const widthRemainder = width % sheet.cols;
+  const heightRemainder = height % sheet.rows;
+  if (widthRemainder > 1 || heightRemainder > 1) {
+    throw new Error(
+      `sheet dimensions ${width}x${height} are not compatible with a ${sheet.rows}x${sheet.cols} grid (remainder exceeds one pixel: ${widthRemainder}px x ${heightRemainder}px)`,
+    );
+  }
+  return {
+    width,
+    height,
+    cellWidth: Math.round(width / sheet.cols),
+    cellHeight: Math.round(height / sheet.rows),
+  };
+}
 
 /**
  * Optional per-brief sensor threshold overrides. Defaults are baked into
@@ -476,15 +545,24 @@ export const briefSchema = z
         message: `grid produces ${variantCount} variants — must be at least 1`,
       });
     }
-    // The slicer requires nativeCanvas to be evenly divisible by both rows
-    // and cols so every cell is an integer pixel grid. We catch this at
-    // brief-load time so we fail before a (slow, expensive) provider call.
-    const { nativeCanvas } = brief.generation.sheet;
-    if (nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0) {
+    // The slicer requires the sheet dimensions to divide cleanly into the
+    // requested rows/cols, allowing at most a 1px remainder to preserve the
+    // intended cell shape without silently reducing detail on a dense grid.
+    let width = brief.generation.sheet.nativeWidth ?? brief.generation.sheet.nativeCanvas ?? 1024;
+    let height = brief.generation.sheet.nativeHeight ?? brief.generation.sheet.nativeCanvas ?? 1024;
+    try {
+      ({ width, height } = sheetPixelDimensions(brief.generation.sheet));
+    } catch {
+      // fall through to the explicit remainder check below so the brief fails a
+      // clear validation issue instead of crashing during parse.
+    }
+    const widthRemainder = width % cols;
+    const heightRemainder = height % rows;
+    if (widthRemainder > 1 || heightRemainder > 1) {
       ctx.addIssue({
         code: 'custom',
         path: ['generation', 'sheet'],
-        message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
+        message: `sheet dimensions ${width}x${height} leave a ${widthRemainder}px x ${heightRemainder}px remainder in a ${rows}x${cols} grid — more than one pixel of detail would be lost`,
       });
     }
     // iconBatch mode: each cell is a DIFFERENT icon concept. The iconBatch

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   briefSchema,
   minimalBriefSchema,
+  sheetPixelDimensions,
   type Brief,
   SPRITE_TYPES,
   variantCount,
@@ -204,6 +205,102 @@ describe('briefSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts rectangular native sheet dimensions and rejects oversized remainders', () => {
+    const rectangular = briefSchema.parse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 3,
+          cols: 4,
+          emptyCells: [],
+          nativeWidth: 1024,
+          nativeHeight: 768,
+        },
+      },
+    });
+
+    expect(rectangular.generation.sheet.nativeWidth).toBe(1024);
+    expect(rectangular.generation.sheet.nativeHeight).toBe(768);
+    expect(sheetPixelDimensions(rectangular.generation.sheet)).toEqual({
+      width: 1024,
+      height: 768,
+      cellWidth: 256,
+      cellHeight: 256,
+    });
+
+    const transposed = briefSchema.parse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 4,
+          cols: 3,
+          emptyCells: [],
+          nativeWidth: 768,
+          nativeHeight: 1024,
+        },
+      },
+    });
+    expect(sheetPixelDimensions(transposed.generation.sheet)).toEqual({
+      width: 768,
+      height: 1024,
+      cellWidth: 256,
+      cellHeight: 256,
+    });
+
+    const tooLoose = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 3,
+          cols: 4,
+          emptyCells: [],
+          nativeWidth: 1024,
+          nativeHeight: 770,
+        },
+      },
+    });
+    expect(tooLoose.success).toBe(false);
+  });
+
+  it('rejects a brief that declares only one rectangular axis', () => {
+    const widthOnly = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 3, cols: 4, emptyCells: [], nativeWidth: 1024 },
+      },
+    });
+    expect(widthOnly.success).toBe(false);
+
+    const heightOnly = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 3, cols: 4, emptyCells: [], nativeHeight: 768 },
+      },
+    });
+    expect(heightOnly.success).toBe(false);
+  });
+
+  it('defaults nativeCanvas to 1024 when no size fields are declared', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: {
+        sheet: { rows: 4, cols: 4, emptyCells: [] },
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.generation.sheet.nativeCanvas).toBe(1024);
+      expect(result.data.generation.sheet.nativeWidth).toBeUndefined();
+      expect(result.data.generation.sheet.nativeHeight).toBeUndefined();
+      expect(sheetPixelDimensions(result.data.generation.sheet)).toEqual({
+        width: 1024,
+        height: 1024,
+        cellWidth: 256,
+        cellHeight: 256,
+      });
+    }
+  });
+
   it('defaults generation.sheet to a 4x4 grid with 16 variants and no empty cells', () => {
     const minimal = {
       type: 'weapon',
@@ -236,15 +333,30 @@ describe('briefSchema', () => {
     }
   });
 
-  it('rejects a sheet whose nativeCanvas is not divisible by both rows and cols', () => {
+  it('rejects a sheet whose remainder exceeds one pixel per axis', () => {
     const result = briefSchema.safeParse({
       ...validBrief,
-      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1025 } },
     });
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message);
-      expect(messages.some((m) => m.includes('not evenly divisible'))).toBe(true);
+      expect(messages.some((m) => m.includes('more than one pixel'))).toBe(true);
+    }
+  });
+
+  it('rounds cell bounds to whole pixels when the allowed one-pixel remainder is used', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const dims = sheetPixelDimensions(result.data.generation.sheet);
+      expect(Number.isInteger(dims.cellWidth)).toBe(true);
+      expect(Number.isInteger(dims.cellHeight)).toBe(true);
+      expect(dims.cellWidth).toBe(341);
+      expect(dims.cellHeight).toBe(341);
     }
   });
 

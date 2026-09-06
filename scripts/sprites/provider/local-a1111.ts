@@ -17,6 +17,7 @@
  */
 
 import { PNG } from 'pngjs';
+import { sheetPixelDimensions } from '../brief-schema.js';
 import type { GenerateSheetRequest, ImageProvider, ProviderErrorKind } from './types.js';
 import { ProviderError } from './types.js';
 import {
@@ -134,11 +135,26 @@ export class LocalA1111ImageProvider implements ImageProvider {
     }
 
     const { sheet } = request.brief.generation;
-    const sheetSize = request.size ?? sheet.nativeCanvas;
+    const sheetDims =
+      request.size === undefined
+        ? sheetPixelDimensions(sheet)
+        : typeof request.size === 'number'
+          ? {
+              width: request.size,
+              height: request.size,
+              cellWidth: request.size / sheet.cols,
+              cellHeight: request.size / sheet.rows,
+            }
+          : {
+              width: request.size.width,
+              height: request.size.height,
+              cellWidth: request.size.width / sheet.cols,
+              cellHeight: request.size.height / sheet.rows,
+            };
 
     // Grid-slot dimensions within the sheet.
-    const slotW = Math.floor(sheetSize / sheet.cols);
-    const slotH = Math.floor(sheetSize / sheet.rows);
+    const slotW = Math.floor(sheetDims.width / sheet.cols);
+    const slotH = Math.floor(sheetDims.height / sheet.rows);
     // Leave a deterministic background gutter so the content-aware slicer can
     // reliably recover row/column boundaries from the stitched output. Stable
     // Diffusion works in an 8x-downsampled latent space, so txt2img width/height
@@ -192,8 +208,8 @@ export class LocalA1111ImageProvider implements ImageProvider {
 
     // Stitch images into a grid.
     const sheet_png = new PNG({
-      width: sheetSize,
-      height: sheetSize,
+      width: sheetDims.width,
+      height: sheetDims.height,
       colorType: 6, // RGBA
     });
     fillPng(sheet_png, SHEET_BG_RGB[0], SHEET_BG_RGB[1], SHEET_BG_RGB[2], 255);
@@ -217,10 +233,10 @@ export class LocalA1111ImageProvider implements ImageProvider {
       // across the gutter into the adjacent slot even if the dimension check above
       // is bypassed. In the happy path srcImg is exactly cellW×cellH, so this is a
       // no-op.
-      for (let y = 0; y < srcImgHeight && y < cellH && dstY + y < sheetSize; y++) {
-        for (let x = 0; x < srcImgWidth && x < cellW && dstX + x < sheetSize; x++) {
+      for (let y = 0; y < srcImgHeight && y < cellH && dstY + y < sheetDims.height; y++) {
+        for (let x = 0; x < srcImgWidth && x < cellW && dstX + x < sheetDims.width; x++) {
           const srcIdx: number = (y * srcImgWidth + x) * 4;
-          const dstIdx: number = ((dstY + y) * sheetSize + (dstX + x)) * 4;
+          const dstIdx: number = ((dstY + y) * sheetDims.width + (dstX + x)) * 4;
 
           const r: number = srcImg.data[srcIdx] as number;
           const g: number = srcImg.data[srcIdx + 1] as number;
