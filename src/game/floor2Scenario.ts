@@ -918,7 +918,7 @@ export function confirmFloor2StairDescend(
 
 /**
  * Spawn Floor 2 harvestable ore and gem nodes across passable tiles in normal
- * and spawn rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
+ * rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
  * FLOOR2_HARVESTABLE_START_INDEX and above) are considered — Floor 1 mushroom/
  * flower/lichen defs are never placed here. Each def spawns between 2 and
  * maxPerFloor nodes, spaced ≥3 ft apart.
@@ -931,11 +931,16 @@ function spawnFloor2HarvestableNodes(world: GameWorld, rng: SeededRandom): void 
   const floorMap = world.floorMap;
   if (!floorMap) return;
 
-  const normalRooms = floorMap.roomGraph
+  const harvestableRooms = floorMap.roomGraph
     .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+    .filter(
+      (room) =>
+        room.role !== RoomRole.SPAWN &&
+        room.role !== RoomRole.SAFE &&
+        room.role !== RoomRole.SETTLEMENT,
+    );
 
-  if (normalRooms.length === 0) return;
+  if (harvestableRooms.length === 0) return;
 
   for (
     let defIndex = FLOOR2_HARVESTABLE_START_INDEX;
@@ -949,7 +954,7 @@ function spawnFloor2HarvestableNodes(world: GameWorld, rng: SeededRandom): void 
 
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const room = normalRooms[rng.nextInt(0, normalRooms.length - 1)]!;
+      const room = harvestableRooms[rng.nextInt(0, harvestableRooms.length - 1)]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       const tx = bx + 1 + rng.nextInt(0, Math.max(0, bw - 3));
