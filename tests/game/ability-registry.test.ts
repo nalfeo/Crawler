@@ -8,7 +8,10 @@ import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
   FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
 } from '../../src/shared/abilities.js';
-import { ABILITY_PRESENTATION_BY_ID } from '../../src/shared/ability-presentation.js';
+import {
+  ABILITY_PRESENTATION_BY_ID,
+  getAbilityPresentation,
+} from '../../src/shared/ability-presentation.js';
 
 describe('ability registry', () => {
   it('returns undefined for unknown ability id', () => {
@@ -76,6 +79,15 @@ describe('ability registry', () => {
     if (burst?.type === 'spell_enemy_slow_burst') {
       expect(burst.radiusTiles.base * 4).toBeGreaterThanOrEqual(16);
     }
+  });
+
+  it('keeps pistol skill upgrades active and uses human-readable names instead of internal ids', () => {
+    const bonus = getAbilityDefinition('pistol-rapid-fire');
+    expect(bonus?.kind).toBe('active');
+    expect(getAbilityPresentation('pistol-rapid-fire')?.name).toBe('Rapid Fire');
+    expect(getAbilityPresentation('pistol-rapid-fire')?.name).not.toContain('-');
+    expect(getAbilityPresentation('pistol-volley')?.name).toBe('Rapid Fire');
+    expect(getAbilityDefinition('pistol-volley')?.kind).toBe('active');
   });
 
   it('labels the fireball spell ability as "Fireball"', () => {
