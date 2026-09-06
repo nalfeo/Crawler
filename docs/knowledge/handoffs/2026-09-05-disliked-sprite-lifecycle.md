@@ -1,0 +1,448 @@
+# Handoff: Disliked sprite lifecycle
+
+## Date
+
+2026-09-05
+
+## Persona
+
+Producer coordinating Systems Engineer, DevOps Engineer, and QA Engineer slices.
+
+## Systems touched
+
+sprite-pipeline, sprite-workflow
+
+## Summary
+
+- Added ADR 0105 and one shared normalized-concept contract for runtime and
+  tooling aliases such as `npc-welcome-goon`, `welcome-goon`, and
+  `welcome-goon-v2`.
+- Preserved exact NPC and set-piece pins while making variant-selectable spawned
+  entities choose accepted, non-disliked variants reproducibly from their
+  per-entity seeded appearance roll in both real and headless simulation paths.
+- Added a transactional disliked lifecycle with deterministic dry-run inventory,
+  tracked plus pending dislike reconciliation, stale-key recovery, all-disliked
+  retention, acceptance-time cleanup, exact-pin repoint-or-abort, rollback,
+  tombstones, and post-apply closure validation.
+- Excluded exact disliked references and every same-normalized-concept alias from
+  generation references without generating or auto-approving replacement art.
+- Removed 28 disliked variants from mixed groups (28 manifest shards and their
+  manifest-directed PNGs), retained 20 provenance-backed all-disliked groups,
+  promoted 0 pending dislikes, and preserved 7 unresolved stale annotation keys.
+
+## Files touched
+
+- Runtime and architecture: `docs/knowledge/adr/0105-normalized-seeded-sprite-variant-selection.md`,
+  `src/shared/sprite-concepts.ts`, `src/shared/generated-assets.ts`, spawn/world
+  seams, engine sprite resolution, main-game preload, and the headless runner.
+- Lifecycle tooling: `scripts/sprites/disliked-lifecycle*.ts`, approval,
+  queue/reconciler/repair, reference selection, backlog, generation, and sidecar
+  acceptance seams.
+- Asset state: `public/assets/generated/sprite-editor-annotations.json`, 28
+  deleted shard/PNG pairs, `src/shared/data/npc-sprite-map.json`, and exact boss
+  status pins.
+- Regression coverage: lifecycle, approval/queue/reconcile/reference tests,
+  generation/manifest integration tests, and real/headless seeded runtime tests.
+
+## Verification
+
+- Pre-mutation dry-run and apply both reported 28 removed, 25 retained groups,
+  and 0 pending promotions.
+- Post-apply dry-run reported 0 removable, 25 retained groups, 0 pending
+  promotions, and 0 reference updates; persisted tombstone closure passed.
+- After review hardening removed name-similarity deletion authority, the final
+  dry-run reported 0 removable, 20 provenance-backed retained groups, and 7
+  unresolved stale annotation keys. Those unresolved assets remain preserved;
+  only exact keys, valid tombstones, or explicit source-run provenance can
+  authorize future deletion.
+- Fifteen initial cleanup tombstones are explicitly marked as a one-time
+  pre-hardening migration. Each records the deleted shard's `sourceRun` and
+  `variantIndex` corroboration; future lifecycle runs cannot reuse name
+  similarity as deletion authority.
+- Final post-review lifecycle/runtime matrix: 739 passed, 1 intentional
+  environment-gated skip; Sprite Editor persistence tests passed 9/9 and all
+  nine lifecycle requirements passed.
+- Review fixes isolated cosmetic variant rolls from gameplay RNG, shared the
+  harvestable roll selector, rejected manifest-level disliked references,
+  preserved cumulative tombstone-authorized queue deletions across later
+  approvals and queue repair, paired nested shard/PNG promotion paths
+  atomically, and made variant identity resolution fail closed before approval.
+- Every explicit human acceptance surface now uses the same concept-scoped
+  lifecycle transaction, including sidecar accept, frame sequences, and icon
+  batches. Queue-tip tombstones preserve absent-vs-explicit-clear semantics,
+  stale unresolved dislikes are conservatively excluded from generation
+  references without gaining deletion authority, and closure still checks every
+  historical tombstone in a single bounded scan per live reference file.
+- Final certification made the human approval CLI refuse before mutation under
+  CI; restored manual anchors and safe `briefs/**/*.yaml|yml` type context for
+  store-backed sidecar approvals; persisted canonical durable `sourceRun`
+  pointers; added strict sidecar hard-block overrides; and made brief-store
+  failures abort rather than publish incomplete metadata.
+- Icon-batch acceptance now scopes lifecycle cleanup and reference
+  self-exclusion per cell concept. Annotation/removal-only transactions publish
+  to `assets/queue`, and AST-backed source guards classify every approval caller
+  and manifest-concept derivation.
+- A lifecycle-changing sidecar `/accept` uses `assets/queue` as its single
+  durable commit point and skips the superseded issue publisher. The response
+  identifies the queue branch, so no later remote failure can trigger a
+  local-only rollback after the complete transaction is already durable.
+  Persisted exact replacement keys make re-accept idempotent on the same queue
+  path without rerouting later accepts for the same concept. Local and remote
+  approvals now fail before mutation unless complete run provenance is durably
+  present or backfilled.
+- Publication durability now also requires `summary.json` brief/run identity
+  to match its storage coordinates before any backfill or lifecycle mutation,
+  and pending-overlay promotion preserves historical tombstones and provenance.
+- A matching legacy `asset-checkin` record no longer short-circuits explicit
+  re-acceptance when the scoped preflight finds cleanup or exact replacement
+  retry work. A converged exact match now returns its existing queue record
+  before unrelated changed assets can leak into a newly filed legacy issue;
+  conflicting or unverifiable queued content still refuses early.
+- Queue reconciliation now requires valid JSON with an object-valued `sprites`
+  map before promoting the annotations document. Malformed annotation-only
+  changes are withheld, and malformed deletion audits atomically withhold both
+  the annotations and their complete deletion set while unrelated art continues.
+- Lifecycle apply skips annotation writes when its per-key delta is empty. When
+  updates exist, it re-reads the latest tracked document and applies only the
+  owned keys, preserving unrelated Sprite Editor changes instead of replacing
+  the whole planning-time snapshot.
+- Placeholder exclusion remains the explicit ADR 0105 `ELG-001` behavior:
+  placeholder-only item concepts use the existing non-generated UI fallback,
+  and non-melee carried weapons remain hidden until eligible real art exists.
+- The final review round also unified tooling concept keys with the runtime
+  normalizer, made conscious icon-batch hard-block overrides durable, added an
+  always-on repository tombstone closure test, let the hourly reconciler
+  quarantine invalid lifecycle deletions without blocking unrelated art, and
+  scoped pending-overlay promotion to the explicitly accepted concepts.
+- Final local evidence: `npm run test:sprites` passed 2,575 tests with 2
+  intentional environment-gated skips; the runtime integration matrix passed
+  165/165 while driving the real `src/engine/sim/simulation-step.ts` and
+  `src/game/ai/simulation-step.ts` pipelines with fixed seeds; Sprite Editor
+  tests passed 57/57; the certification-focused matrix
+  passed 250 tests with 1 Windows symlink-permission skip; lifecycle closure
+  remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates; `npm run verify:fast` passed 4,223 tests with 1
+  environment-gated skip; and the exact replacement-retry/provenance follow-up
+  passed 515 tests with 1 intentional environment skip across the 12 affected
+  sprite suites, 278/278 Workflow extension tests, and a 437/437 `verify:fast`
+  changed-test selection. The final legacy-queue ordering follow-up passed
+  153/153 focused sidecar tests and its 172/172 `verify:fast` selection. The
+  exact-head closure fixes passed 356/356 focused lifecycle, queue, sidecar,
+  reconciler, and real `runHeadless` tests; typecheck passed; repository closure
+  remained 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates; and `verify:fast` passed 661/661 changed tests.
+- The final durability review made `/accept` reconcile the exact manifest key,
+  manifest-directed PNG path, and recorded content hash against both legacy
+  issues and the canonical `assets/queue` branch before mutation. Production
+  inspection uses a unique temporary Git ref so concurrent sessions cannot
+  overwrite a shared remote-tracking ref. Exact matches return the existing
+  queue record without sweeping unrelated changed art; partial pairs,
+  unverifiable hashes, and content conflicts fail closed.
+- Queue repair now rejects structurally malformed, empty, or missing lifecycle
+  annotations instead of interpreting them as an empty authority map, so
+  rebuilding from `main` cannot resurrect a tombstone-authorized deletion. The focused queue,
+  reconciler, sidecar, and real-Git inspection matrix passed 277/277; lifecycle
+  closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
+  0 pending / 0 reference updates; and the final changed-test `verify:fast`
+  selection passed 810/810.
+- The next independent review hardened the same boundaries further. Durable
+  queue identity now verifies the shard's exact `spriteName`, manifest-directed
+  path, recorded hash, and the actual queued PNG SHA-256 through bounded,
+  non-interactive Git calls. Queue repair still discards the explicitly modeled
+  partial-pair corruption, but refuses before rewriting if it would lose a later
+  complete asset pair, brief/catalog write, or unrelated valid annotation.
+  Store-backed approval hydration requests an authoritative listing, and
+  `/approve` plus `/accept` now preserve structured retry/conflict status for
+  check-in and queue-commit failures. The expanded focused matrix passed
+  179/179; lifecycle closure remained 0 removable / 20 retained / 7 unresolved /
+  0 deferred / 0 pending / 0 reference updates; and `verify:fast` passed
+  816/816.
+- The final review follow-up keeps queue identity byte-exact by reading Git PNG
+  blobs as raw buffers, validates the regression with a non-ASCII PNG signature,
+  and rejects reserved source-run identities before allocating a hydration
+  directory. Deletion-only reconciliations now carry the exact queue SHA in
+  their `Queue-Source` trailer.
+- Partial icon batches now derive lifecycle scope from replacements that were
+  actually materialized by approval. A skipped cell remains disliked and
+  retained instead of rolling back successful cells, while single-candidate
+  exact pins still fail before mutation and multi-cell transactions validate
+  pins before lifecycle cleanup/publication with full rollback protection.
+  The focused durability matrix passed 314/314; typecheck passed; lifecycle
+  closure remained 0 removable / 20 retained / 7 unresolved / 0 deferred /
+  0 pending / 0 reference updates; and `verify:fast` passed 721/721 changed
+  tests.
+- Two exact-head reviews then found stale-state edge cases and all were closed:
+  icon batches report the exact keys actually approved instead of inferring
+  acceptance from old on-disk art; rollback snapshots expand to the final plan
+  and merge only transaction-owned annotation keys; provenance-resolved stale
+  dislikes migrate to the reaccepted key; and queue publication clears a
+  pre-existing tombstone whenever accepted art republishes that key.
+- Reconciliation now ignores malformed historical tombstones that name no path
+  in the current deletion set and atomically withholds lifecycle deletion plus
+  annotations when an orphan branch would overlay the same art. `/approve` and
+  `/accept` also share the `not-durable` error contract. The broader approval,
+  queue, repair, reconcile, and sidecar matrix passed 464/464; lifecycle closure
+  stayed 0 removable / 20 retained / 7 unresolved; and the resulting
+  `verify:fast` selection passed 678/678.
+- The final concurrency review closed six more destructive-boundary gaps. Queue
+  removals now carry expected `sourceRun` and `variantIndex` provenance and
+  validate the destination shard on every compare-and-swap retry; annotation
+  rollback ownership comes only from the final applied lifecycle plan; pending
+  overlay parsing fails safe on malformed or `null` JSON; complete promoted
+  annotation documents validate tombstone structure; scoped acceptance defers
+  unrelated ambiguous provenance while repository-wide cleanup still aborts;
+  and removal diagnostics no longer stringify a nullable path. The focused
+  lifecycle, queue, reconciler, and sidecar matrix passed 377/377 after adding
+  the nested-path regression; typecheck passed; repository closure remained
+  0 removable / 20 retained / 7 unresolved / 0 pending / 0 reference updates;
+  and the preceding exact-change `verify:fast` run passed 683/683.
+- Child reconciliation was explicit and produced no duplicate PRs.
+  `41729126e` is fully superseded by aggregate commit `267f11770` plus later
+  hardening: its fail-closed provenance authority, cumulative queue deletions,
+  no-resurrection repair, and expanded closure coverage are all present.
+  `ebca070af`'s production fixes are also present: manifest-level disliked
+  reference exclusion, slash-containing PNG/shard pairing, and fail-closed
+  variant-identity resolution before publication. Its previously missing
+  dedicated real-Git nested `equipment/weapons/...` A-to-B-to-A pairing
+  regression was ported directly rather than cherry-picking older APIs.
+- The originating worktree confirmed all five unapproved generated
+  `sheet-00.png` candidates still exist with nonzero sizes; neither integrated
+  commit contains a `generated/runs/**` path.
+- PR #4310 shepherding closed the three post-publication review gaps in one
+  batch. Sidecar publication failures now escape the lifecycle transaction so
+  approval and cleanup snapshots roll back; legacy check-in planning reconciles
+  every changed asset against both old issue records and canonical
+  `assets/queue` state with conflict/ambiguity precedence; and omitted headless
+  registries load the committed shard tree so projectile-anchor simulation
+  matches the shipped game. The renderer now consumes the canonical per-entity
+  variant resolver without per-frame allocation, while exact NPC/set-piece pins
+  remain unchanged. The unrelated Equipment UI CI regression was corrected by
+  snapping fallback text to whole-pixel bounds.
+- On the main-synchronized shepherd head, the combined focused matrix passed
+  274/274, the targeted Equipment UI E2E passed with zero fractional text
+  bounds, `check:test-only-exports` reported 0 blockers, `verify:fast` and
+  `verify:pr-prereqs` passed, and the prebundled real `ai:headless` pipeline
+  completed Floor 1 with a victory at seed 7. Lifecycle closure remained
+  0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates.
+- Two exact-head reviews then closed the remaining durability gaps before
+  publication. Canonical `assets/queue` deduplication now requires full shard
+  metadata equality in addition to PNG bytes; store-restored briefs are removed
+  if approval/acceptance rolls back; acceptance errors explicitly disclose the
+  rollback; and generation reference loading preserves authoritative manifest
+  keys so colliding legacy `spriteName` values cannot hide a disliked
+  provenance match. The icon-batch retry regression now models a real
+  pre-existing approval rather than an impossible empty result.
+- The zero-dangling lifecycle closure is now a named read-only package check,
+  part of `verify:fast`, and a lightweight CI step. Its wiring regressions plus
+  the final durability matrix passed 271/271; typecheck passed; and the gate
+  reported 0 removable / 20 retained / 7 unresolved / 0 deferred / 0 pending /
+  0 reference updates.
+- The required final review then found and closed four adjacent fail-closed
+  gaps. Manual unapproval now checks both legacy issues and canonical
+  `assets/queue` using the manifest-directed path before deleting; rejected
+  shipped-registry loads clear their cache so a transient read failure cannot
+  poison a full sweep; generated manifest shards are classified as
+  simulation-visible so art-only PRs run the headless gate; and the CI closure
+  command validates persisted tombstones independently of mutation-plan
+  ambiguity. The audited one-time queue-repair policy was versioned for its
+  changed key set, and the unused lifecycle `--json` option was removed.
+- The resulting focused sidecar, lifecycle, runtime, scope, CI-policy, and
+  queue-repair matrix passed 357/357; typecheck passed; persisted closure passed;
+  and the full dry-run inventory remained 0 removable / 20 retained /
+  7 unresolved / 0 deferred / 0 pending / 0 reference updates.
+- The final shepherd review batch closes the remaining queue race windows.
+  Multi-asset check-in now fetches one immutable `assets/queue` snapshot for the
+  entire batch; standalone unapproval checks both legacy and canonical queues
+  under the cross-process check-in lock; injected acceptance dependencies fail
+  closed when canonical inspection is absent; and one-time queue repair aborts
+  rather than overwriting newer edits to selected asset paths or annotation
+  keys. The exact-head lifecycle matrix passed 274 tests with one intentional
+  environment-gated skip, typecheck and browser build passed, the default
+  shipped-registry headless pipeline reached Floor 1 victory at seed 7 with no
+  failed quests, and `verify:fast` passed 843/843 changed tests.
+- Final persisted closure remains clean. The deterministic dry-run inventory is
+  0 removable variants, 20 retained all-disliked groups, 7 unresolved stale
+  annotation keys, 0 deferred groups, 0 pending promotions, and 0 reference
+  updates. No generated run artifact is tracked by the aggregate branch, and
+  the five unapproved review candidates remain outside this publication unit.
+- The first exact-head certification review found three final issues, all fixed:
+  the output-changing reference selector is now provenance-versioned as `v2`;
+  malformed annotation tombstones are named in reconciler rejection diagnostics
+  instead of silently withholding the whole document; and every standalone or
+  sidecar unapproval/acceptance seam fails closed when either legacy-issue or
+  canonical-queue inspection is unavailable. The focused regression matrix
+  passed 326/326 after these fixes, followed by 726/726 changed tests in
+  `verify:fast`; PR prerequisites passed.
+- The next independent exact-head review found three additional race windows,
+  all closed before publication: the reconciler now withholds an accepted
+  cleanup if its named replacement will not survive into the prospective
+  promotion tree; queue commit validates removal provenance against the actual
+  post-merge index rather than the stale fetched queue tip; and sidecar plus CLI
+  unapproval hold the shared cross-process lock across queue inspection and
+  deletion. Their complete queue/reconcile/sidecar regression matrix passed
+  336/336 with typecheck clean.
+- The final exact-head certification caught three adjacent composition races.
+  Reconciliation now revalidates every named replacement against the final
+  queue-plus-orphan overlay tree, not the pre-orphan snapshot; a conflict found
+  by the accept route's post-`nothing-to-checkin` retry now throws so the
+  lifecycle transaction restores its snapshots; and sidecar unapproval reads
+  its manifest entry only after acquiring the shared cross-process lock. The
+  complete reconciler/sidecar suites passed 275/275, followed by typecheck,
+  `verify:fast`, PR prerequisites, lifecycle closure, and a real default-registry
+  headless Floor 1 victory at seed 7. Final inventory remains 0 removable /
+  20 retained / 7 unresolved / 0 deferred / 0 pending / 0 reference updates.
+- The last certification pass closed two residual runtime/acceptance edges:
+  recycled entity IDs and changed appearance keys now invalidate cached weapon
+  anchors, and an all-skipped icon batch may take its documented no-op path only
+  when its initial lifecycle plan contains no replacement-authorized mutation.
+  The exact-head lifecycle/runtime matrix passed 732/732, `verify:fast` and PR
+  prerequisites passed, lifecycle closure remained clean, the real default-
+  registry headless pipeline won Floor 1 at seed 7 with zero failed quests, and
+  the targeted Equipment UI raster-alignment E2E passed. No generated run
+  artifact is tracked; all five unapproved review candidates remain untouched.
+- Independent review then closed two low-severity convergence gaps. The hourly
+  reconciler now exits with a distinct failing status and workflow error when a
+  durable queue inconsistency blocks lifecycle deletion, rather than succeeding
+  forever while repeating the refusal. The destructive name normalizer now uses
+  the canonical manifest concept helper when deciding placeholder retirement, so
+  real art for one icon-batch cell cannot retire another cell's placeholder.
+  The final exact-head lifecycle/runtime matrix passed 758/758, followed by
+  `verify:fast`, PR prerequisites, lifecycle closure, and another real seed-7
+  Floor 1 headless victory with zero failed quests.
+- The certification follow-up also excludes root-level lifecycle annotations
+  from untrusted legacy-orphan promotion, denies every CI publisher capability
+  lifecycle-removal authority, and treats source-authored queue deletions as
+  pending contributions until the paths are absent from `main`. The latter uses
+  the source branch's merge base so art added to `main` after the queue branch
+  diverged cannot falsely prevent safe retirement. The production variant
+  resolver remains a normal export because the Phaser bridge now consumes it
+  directly, and the world contract documents both default headless loading from
+  committed shards and the simulation-load-bearing entity generation counter.
+  Focused reconciler, queue, and seeded runtime coverage passed 178/178.
+- Independent exact-head review then tightened queue authorization to require
+  the complete persisted lifecycle identity (including concept and annotation
+  keys) and made the destructive name normalizer preserve nested asset paths
+  while refusing to reinterpret nested variant namespaces. A clean-review
+  follow-up also binds the tombstone concept to the current main shard before
+  any replacement can authorize deletion, preventing cross-concept retirement.
+  Shard/PNG promotion atomicity now follows each shard's validated `assetPath`
+  rather than deriving the PNG from its manifest key, covering shipped nested
+  keys whose PNG names are flattened or carry placeholder suffixes. Candidate
+  shard reads run in fail-closed batches of eight, avoiding a sequential
+  subprocess per asset without creating unbounded runner pressure; malformed
+  candidate shards now fail with their exact path rather than silently
+  quarantining every approval behind a success-shaped no-op. Quarantine is
+  scoped and reported per source snapshot, so one malformed legacy orphan
+  cannot abort healthy queue or sibling-orphan promotion. A quarantined queue
+  snapshot also cannot authorize lifecycle deletions until its candidate shards
+  are interpretable. Dedicated exit codes 32/33 surface quarantine alone or
+  quarantine combined with lifecycle refusal in the hourly workflow.
+  Durable queue inspection uses the same eight-asset bound (sixteen concurrent
+  shard/PNG reads) instead of fanning out across the full approval batch, and
+  follows the check-in's selected Git remote rather than silently inspecting
+  `origin`. Final certification also made candidate shards prove both the full
+  generated-entry schema and existence of their authored PNG within the same
+  immutable source snapshot before promotion. PNG-only changes must resolve to
+  exactly one schema-valid owner shard whose SHA-256 matches the source bytes;
+  unprovable pre-sharding branches are quarantined instead of producing a red
+  promotion PR.
+- Runtime-eligibility certification found five Welcome Room layers still pinned
+  to the now-ineligible `autograph-book-placeholder`. Both shipped layouts and
+  their redress source now use the approved `welcome-room-call-sheet-var-3`,
+  and the pinned-texture provenance gate walks every catalog-backed set-piece
+  layer so another exact placeholder pin cannot silently fall back to a grey
+  rectangle. Reusing the approved call sheet is intentional show-memorabilia
+  dressing; generating a distinct autograph book was deferred because this
+  lifecycle wiring repair did not commission new art.
+- Real-engine set-piece observation captured the old unloaded layers at
+  `files/welcome-room-before.png` and the replacement call sheets visibly
+  rendering on the merchant table, welcome desk, and wall shelf at
+  `files/welcome-room-after.png`. Composition stayed 12/12 for both
+  `welcome-room` and `welcome-room-v2`. Subjective scorecard: narrative verb
+  9/10, focal drama 8/10, vignette coherence 9/10, composition mode 8/10,
+  negative space 7/10, landmark uniqueness 9/10. Theme, palette/lighting,
+  pixel craft, and Crawler POV all remained coherent; no new art was
+  commissioned.
+- Exact-head CI additionally caught the call sheet's 48x64 upright aspect in the
+  declared-feet gate. The five replacement layers now declare the actual
+  height-authoritative widths (0.76, 1.14, and 1.43 ft), and the redress source
+  preserves the same aspect instead of regenerating square declarations.
+- Post-CI review found that a new queue writer could omit `replacementKey` and
+  inherit the pre-hardening tombstone exception. Replacement-free deletion is
+  now accepted only when the exact tombstone is already persisted on `main`;
+  new omissions fail closed. The same review found and fixed an asymmetric
+  annotation no-op guard that could materialize `{}` while clearing an already
+  absent reconciliation marker during a CAS retry.
+- Follow-up review closed the remaining trust-boundary variants: the persisted
+  base tombstone must itself be replacement-free, malformed tombstones are
+  rejected before queue publication, pre-existing queue deletions are authorized
+  only by persisted tombstones rather than caller-declared removals, and removal
+  plans preserve an explicit clear for stale reconciliation markers.
+- Final certification found that a caller could still request a new removal
+  without submitting its authority tombstone in the same transaction, leaving
+  an unpromotable deletion on `assets/queue`. Queue commit now rejects every
+  requested removal unless the same update contains a structurally valid,
+  identity-matching tombstone with an accepted replacement.
+- The last adversarial pass also closed self-erasing authority
+  (`delete: true` plus a tombstone) and hardened store-backed brief restoration:
+  it rejects symlink/reparse-point paths, verifies the real parent remains under
+  the repository, and creates the restored YAML exclusively so a dangling-link
+  race cannot redirect the write.
+
+## PR #3234 generic extraction audit
+
+- Incorporated normalized alias exclusion, including the
+  `npc-welcome-goon`/`welcome-goon` regression, and import-safe pure lifecycle
+  and selector seams.
+- Preserved current-main durability, checkpoint, resumability, and
+  `load-reference-pngs` behavior; did not port in-memory-only provenance,
+  palette-membership stubs, incomplete pixel-art dependencies, or divergent
+  request context.
+- Left Workflow preview/reference extraction to its dedicated owner. The only
+  `.github/extensions/workflow/**` integration is the minimal acceptance-result
+  handling needed to represent canonical `assets/queue` success when no legacy
+  asset-checkin issue is created.
+
+## Cleanup inventory
+
+- Removed 28 exact variants: `baseball-bat-var-6`,
+  `beetlefolk-boss-var-0`, `cactusfolk-boss-var-0/1`,
+  `crabfolk-boss-var-10`, `gnome-boss-var-7`, `imps-boss-var-5`,
+  `kobold-boss-var-0`, `myconid-boss-var-0`,
+  `npc-spell-broker-var-1`, `npc-sweaty-merchant-var-0`,
+  `npc-welcome-goon-var-0`, `rat-king-var-7`, `rat-queen-var-7`,
+  `ratfolk-elite-underboss-var-6`, `sweaty-merchant-var-5/7/9/10`,
+  `toadkin-boss-var-0`, `welcome-goon-var-3/4/5/6/7/9/10`, and
+  `welcome-room-floor-plate-cable-run-var-4`.
+- Retained 20 provenance-backed all-disliked groups:
+  `batfolk-boss`, `cave-floor`, `cave-wall`, `classified-dossier`,
+  `crabfolk-armored`, `directors-cue-card`, `faerie-boss`, `geese-boss`,
+  `goblin-boss`, `imp-flinger`, `llama-boss`, `molefolk-boss`,
+  `panda-boss`, `panda-bruiser`, `player-walk-cycle`, `raccoons-boss`,
+  `ratfolk-boss`, `slime-rat-boss`, `snailfolk-boss`, and
+  `welcome-room-cable-coil`.
+- Preserved 7 unresolved stale keys without deletion authority:
+  `ability-icon-fireball-v1-var-11`, `bent-pipe-v1-var-1`,
+  `bent-pipe-v1-var-5`, `faerie-boss-var-1`,
+  `frost-lichen-v1-var-12`, `green-slime-baby-v1-var-2`, and
+  `tile-boss-staircase-floor-v2-var-10`.
+
+## Unresolved issues
+
+None for the confirmed lifecycle contract. Replacement generation remains
+human-reviewed by design; 20 provenance-backed all-disliked groups stay
+available until explicit replacement acceptance, while 7 unresolved stale
+annotation keys remain preserved without deletion authority.
+
+## Recommended next steps
+
+Allow the normal judged/human-reviewed generation path to produce replacements
+for retained concepts. Explicit acceptance will invoke the transactional cleanup;
+do not auto-approve candidates.
+
+## Apples
+
+Estimated 5🍎, actual 5🍎 — 🎯 Exact. The work spanned a durable cross-system
+contract, destructive asset transactions, runtime determinism, checked-in data,
+and independent integration verification.

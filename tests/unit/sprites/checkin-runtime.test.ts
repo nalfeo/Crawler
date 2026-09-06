@@ -5,7 +5,9 @@
  * manifest/catalog-merge behavior is proven end-to-end, not just wired.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +16,10 @@ import {
   buildQueuedAssetMap,
 } from '../../../scripts/sprites/checkin-runtime.js';
 import { ASSET_CHECKIN_MARKER, type CheckinAsset } from '../../../scripts/sprites/checkin.js';
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+}
 
 function writeJson(filePath: string, data: unknown): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -154,6 +160,169 @@ describe('checkin-runtime copyArtSurface (selective projection)', () => {
     // No manifestKey to project — the shard-copy step must be skipped entirely
     // rather than touching (or corrupting) the base copy.
     expect(readFileSync(preexistingShard, 'utf8')).toBe(shardBefore);
+  });
+});
+
+describe('assets/queue identity inspection', () => {
+  const cleanups: string[] = [];
+
+  afterEach(() => {
+    for (const root of cleanups.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it('recognizes exact queued shard and PNG pairs by recorded content hash', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'checkin-queue-inspect-'));
+    cleanups.push(root);
+    const origin = path.join(root, 'origin.git');
+    const live = path.join(root, 'live');
+    mkdirSync(origin);
+    mkdirSync(live);
+    git(origin, 'init', '--bare', '-b', 'main');
+    git(live, 'init', '-b', 'main');
+    git(live, 'config', 'user.email', 'test@example.com');
+    git(live, 'config', 'user.name', 'Queue Inspect Test');
+    git(live, 'remote', 'add', 'origin', origin);
+    writeFileSync(path.join(live, 'README.md'), 'base\n');
+    git(live, 'add', 'README.md');
+    git(live, 'commit', '-m', 'base');
+    git(live, 'push', '-u', 'origin', 'main');
+
+    const manifestKey = 'nested/demo-var-1';
+    const assetPath = 'generated/nested/demo-var-1.png';
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const contentHash = createHash('sha256').update(pngBytes).digest('hex');
+    const queuedEntry = {
+      briefId: 'demo',
+      spriteName: manifestKey,
+      assetPath,
+      variantIndex: 1,
+      contentHash,
+    };
+    writeJson(
+      path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`),
+      queuedEntry,
+    );
+    const pngPath = path.join(live, 'public', 'assets', ...assetPath.split('/'));
+    mkdirSync(path.dirname(pngPath), { recursive: true });
+    writeFileSync(pngPath, pngBytes);
+    git(live, 'add', '-A');
+    git(live, 'commit', '-m', 'queue asset');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+
+    const inspect = createDefaultCheckinDeps(live).inspectDurableQueueAsset!;
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
+      reconciliation: 'duplicate',
+      branch: 'assets/queue',
+    });
+
+    await expect(
+      inspect({ manifestKey, assetPath, contentHash, manifestEntry: queuedEntry }),
+    ).resolves.toEqual({
+      reconciliation: 'duplicate',
+      branch: 'assets/queue',
+    });
+    await expect(
+      inspect({
+        manifestKey,
+        assetPath,
+        contentHash,
+        manifestEntry: { ...queuedEntry, sourceRun: 'generated/runs/demo/new-run' },
+      }),
+    ).resolves.toEqual({
+      reconciliation: 'content-conflict',
+      branch: 'assets/queue',
+    });
+    await expect(inspect({ manifestKey, assetPath, contentHash: 'other-hash' })).resolves.toEqual({
+      reconciliation: 'content-conflict',
+      branch: 'assets/queue',
+    });
+
+    writeFileSync(pngPath, 'CORRUPTED');
+    git(live, 'add', pngPath);
+    git(live, 'commit', '-m', 'corrupt queue png');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
+      reconciliation: 'ambiguous',
+      branch: 'assets/queue',
+    });
+
+    writeFileSync(pngPath, pngBytes);
+    writeJson(path.join(live, 'public', 'assets', 'generated', 'entries', `${manifestKey}.json`), {
+      briefId: 'demo',
+      spriteName: 'different-var-1',
+      assetPath,
+      variantIndex: 1,
+      contentHash,
+    });
+    git(live, 'add', '-A');
+    git(live, 'commit', '-m', 'miskey queue shard');
+    git(live, 'push', 'origin', 'HEAD:assets/queue');
+    await expect(inspect({ manifestKey, assetPath, contentHash })).resolves.toEqual({
+      reconciliation: 'content-conflict',
+      branch: 'assets/queue',
+    });
+    expect(git(live, 'for-each-ref', '--format=%(refname)', 'refs/queue-inspect')).toBe('');
+  });
+
+  it('fetches one immutable queue snapshot for a multi-asset inspection', async () => {
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const contentHash = createHash('sha256').update(pngBytes).digest('hex');
+    const entries = Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => `asset-${index}-var-0`).map((manifestKey) => [
+        manifestKey,
+        {
+          spriteName: manifestKey,
+          assetPath: `generated/${manifestKey}.png`,
+          contentHash,
+        },
+      ]),
+    );
+    let activeShows = 0;
+    let maxActiveShows = 0;
+    const exec = vi.fn(async (_command: string, args: readonly string[]) => {
+      if (args[0] === 'ls-remote') {
+        return { code: 0, stdout: `${'a'.repeat(40)}\trefs/heads/assets/queue\n`, stderr: '' };
+      }
+      if (args[0] === 'fetch' || args[0] === 'update-ref') {
+        return { code: 0, stdout: '', stderr: '' };
+      }
+      if (args[0] === 'show') {
+        activeShows += 1;
+        maxActiveShows = Math.max(maxActiveShows, activeShows);
+        await Promise.resolve();
+        activeShows -= 1;
+        const target = args[1] ?? '';
+        const manifestKey = /entries\/(.+)\.json$/u.exec(target)?.[1];
+        if (manifestKey !== undefined && entries[manifestKey] !== undefined) {
+          return { code: 0, stdout: JSON.stringify(entries[manifestKey]), stderr: '' };
+        }
+        if (target.endsWith('.png')) {
+          return { code: 0, stdout: '', stderr: '', stdoutBytes: pngBytes };
+        }
+      }
+      return { code: 1, stdout: '', stderr: 'unexpected command' };
+    });
+    const inspectBatch = createDefaultCheckinDeps('/repo', {}, exec).inspectDurableQueueAssets!;
+    const assets = Object.entries(entries).map(([manifestKey, manifestEntry]) => ({
+      manifestKey,
+      assetPath: manifestEntry.assetPath,
+      contentHash,
+      manifestEntry,
+    }));
+
+    await expect(inspectBatch(assets, 'upstream')).resolves.toEqual(
+      assets.map(() => ({ reconciliation: 'duplicate', branch: 'assets/queue' })),
+    );
+    expect(maxActiveShows).toBe(16);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'ls-remote')).toHaveLength(1);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'fetch')).toHaveLength(1);
+    expect(exec.mock.calls.filter(([, args]) => args[0] === 'update-ref')).toHaveLength(1);
+    expect(exec).toHaveBeenCalledWith(
+      'git',
+      ['ls-remote', '--heads', 'upstream', 'refs/heads/assets/queue'],
+      { cwd: '/repo' },
+    );
+    expect(exec.mock.calls.find(([, args]) => args[0] === 'fetch')?.[1]).toContain('upstream');
   });
 });
 

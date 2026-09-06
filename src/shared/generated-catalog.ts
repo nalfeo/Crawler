@@ -29,8 +29,14 @@
  *   - Placeholder entries are excluded via ONE predicate keyed on explicit
  *     `placeholder` metadata, falling back to the asset path.
  */
-import type { GeneratedManifest, ManifestEntry } from './generated-assets.js';
+import {
+  isPlaceholderManifestEntry,
+  type GeneratedManifest,
+  type ManifestEntry,
+} from './generated-assets.js';
 import type { SpriteCatalogRecord } from './sprite-catalog.js';
+
+export { isPlaceholderManifestEntry } from './generated-assets.js';
 
 /** Prefix marking a catalog row as derived from the generated manifest. */
 export const GENERATED_ID_PREFIX = 'generated:' as const;
@@ -40,22 +46,6 @@ export const GENERATED_SHEET_KEY = 'generated-manifest' as const;
 
 /** Trailing tags appended after the optional semantic type. */
 const BASE_GENERATED_TAGS = ['generated', 'pipeline-approved'] as const;
-
-/**
- * True when `entry` is a placeholder stand-in rather than real generated art.
- *
- * This is the ONE canonical placeholder predicate. Explicit `placeholder`
- * metadata (set on modern shards) is AUTHORITATIVE — `placeholder: false`
- * forces "not a placeholder" even when the asset path looks placeholder-like.
- * Only when the flag is absent does it fall back to the asset path — the path
- * check is deliberately used instead of `spriteName` because two placeholder
- * entries (`crescent-glaive`, `meteor-hammer`) carry a normal key/`spriteName`
- * yet a `-placeholder.png` asset path.
- */
-export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
-  if (typeof entry.placeholder === 'boolean') return entry.placeholder;
-  return typeof entry.assetPath === 'string' && entry.assetPath.includes('-placeholder');
-}
 
 /** True when a catalog id is a derived generated row. */
 export function isGeneratedCatalogId(id: string): boolean {
@@ -110,7 +100,9 @@ export function deriveGeneratedCatalogRow(
 
 /**
  * Derive every non-placeholder `generated:` row from a parsed manifest,
- * sorted by id for determinism. Placeholder entries are excluded.
+ * sorted by id for determinism. Placeholder entries are excluded. Disliked
+ * entries remain visible here for editor/review history; runtime selection uses
+ * `isRuntimeEligibleManifestEntry` instead.
  */
 export function deriveGeneratedCatalogRows(manifest: GeneratedManifest): SpriteCatalogRecord[] {
   const rows: SpriteCatalogRecord[] = [];

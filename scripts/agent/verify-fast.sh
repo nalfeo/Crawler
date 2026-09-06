@@ -293,6 +293,11 @@ echo "🔍 Step 3/3: Data-contract + integrity + coverage checks (parallel)..."
 #  - allowlist-expiry: every governed allowlist entry still has a specific
 #    reason and an unexpired / correctly-shaped deadline (npm audit exceptions
 #    went red because an allowlist quietly expired on a date).
+#  - disliked-lifecycle-closure: the disliked-sprite hard zero-dangling gate.
+#    Every HISTORICAL tombstone must still be closed (shard gone, PNG gone,
+#    tombstone intact, zero exact references left). Previously this only ran
+#    with `--closure-only`, independently of whether the current dislike state
+#    can produce an unambiguous mutation plan.
 CHECK_PIDS=()
 CHECK_NAMES=()
 run_check() {
@@ -332,6 +337,7 @@ run_health_check ai-equip-parity npx tsx scripts/agent/health/check-ai-equip-par
 run_health_check registry-integrity npx tsx scripts/agent/health/check-registry-integrity.ts
 run_health_check asset-integrity npx tsx scripts/agent/health/check-asset-integrity.ts
 run_health_check allowlist-expiry npx tsx scripts/agent/health/check-allowlist-expiry.ts
+run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --closure-only
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified

@@ -1571,6 +1571,7 @@ import {
   type ApproveIconBatchOptions,
   type IconBatchEntry,
 } from '../../../scripts/sprites/approve.js';
+import { validateNoHardBlockedEntries } from '../../../scripts/sprites/check-manifest-hard-blocked.js';
 
 /**
  * Write a synthetic icon-batch run directory under `repoRoot`. Returns the
@@ -1810,5 +1811,30 @@ describe('approveIconBatch', () => {
     });
     const entries = approveIconBatch(makeOpts(runDir, iconBatch, { allowHardBlocked: true }));
     expect(entries).toHaveLength(2);
+  });
+
+  /**
+   * Regression: an override must persist the SAME durable evidence
+   * `approveVariant` writes. Before this, an icon-batch override stored
+   * `hardBlocked: true` verbatim, so the very next `npm run
+   * check:manifest-hard-blocked` failed on the entry the human had just
+   * consciously authorized — a red repo produced by a supported flag.
+   */
+  it('clears hardBlocked and records humanHardBlockOverride on an override, like approveVariant', () => {
+    const { runDir, iconBatch } = writeIconBatchRun(repoRoot, {
+      cellCount: 2,
+      hardBlockedCells: [1],
+    });
+    const entries = approveIconBatch(makeOpts(runDir, iconBatch, { allowHardBlocked: true }));
+
+    const overridden = entries.find((e) => e.spriteName === 'achv-test-icon-1');
+    expect(overridden?.judgeScorecard?.hardBlocked).toBe(false);
+    expect(overridden?.judgeScorecard?.humanHardBlockOverride).toBe(true);
+    // The judge's rationale survives as audit history.
+    expect(overridden?.judgeScorecard?.hardBlockInstruction).toBe('This icon is unusable');
+    // A cell that was never hard-blocked is untouched.
+    expect(entries.find((e) => e.spriteName === 'achv-test-icon-0')?.judgeScorecard).toBeNull();
+    // And the CI invariant now passes over the written shards.
+    expect(validateNoHardBlockedEntries(readManifest(manifestPath).entries)).toEqual([]);
   });
 });

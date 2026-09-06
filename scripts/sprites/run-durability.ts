@@ -298,6 +298,38 @@ export function parseSourceRun(sourceRun: string): { briefId: string; runId: str
   return { briefId, runId };
 }
 
+/**
+ * The exact inverse of {@link parseSourceRun}: render durable store coordinates
+ * as the canonical repo-relative `sourceRun` pointer.
+ *
+ * Callers that approve from a run REMATERIALIZED outside the repo (the sidecar
+ * hydrates a remote run into an OS temp dir) must use this rather than letting
+ * `approveVariant` derive the pointer from the temp path — that derivation
+ * cannot produce a repo-relative path, so it degrades to a synthetic
+ * `generated/runs/<briefId>/external-<tmpname>` identity that
+ * {@link ensureRunDurable} can never resolve back to the run that actually
+ * exists in the store. One helper on both sides keeps the round-trip exact.
+ *
+ * FAILS CLOSED on the one pathological input where the round-trip does not
+ * hold: `parseSourceRun` locates the run by the LAST `runs` segment, so a brief
+ * literally named `runs` renders as `generated/runs/runs/<runId>` and parses
+ * back to `null`. Publishing an unresolvable pointer is precisely the failure
+ * this module exists to prevent, so it throws instead of emitting one.
+ */
+export function formatSourceRun(briefId: string, runId: string): string {
+  const pointer = `generated/runs/${briefId}/${runId}`;
+  const roundTripped = parseSourceRun(pointer);
+  if (roundTripped === null || roundTripped.briefId !== briefId || roundTripped.runId !== runId) {
+    throw new RunDurabilityError(
+      `Refusing to publish a sourceRun pointer that does not resolve back to its own run ` +
+        `coordinates: briefId='${briefId}', runId='${runId}' renders as '${pointer}', which ` +
+        `parseSourceRun reads as ${roundTripped === null ? 'unparseable' : JSON.stringify(roundTripped)}.\n` +
+        `Rename the brief so it is not a reserved path segment (e.g. 'runs'), then re-approve.`,
+    );
+  }
+  return pointer;
+}
+
 export interface EnsureRunDurableOptions {
   /** The durable store. `null` short-circuits to a typed failure. */
   readonly durable: RunStore | null;
@@ -316,6 +348,34 @@ export interface EnsureRunDurableResult {
   readonly backfilled: readonly string[];
   /** Every key verified present in the durable store. */
   readonly verified: readonly string[];
+}
+
+function validateLocalRunCoordinates(localRunDir: string, briefId: string, runId: string): void {
+  const summaryPath = path.join(localRunDir, 'summary.json');
+  if (!existsSync(summaryPath)) return;
+
+  let summary: unknown;
+  try {
+    summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as unknown;
+  } catch {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json is not valid JSON.`,
+    );
+  }
+  if (typeof summary !== 'object' || summary === null) {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json is not an object.`,
+    );
+  }
+
+  const record = summary as { readonly brief?: unknown; readonly runId?: unknown };
+  if (record.brief !== briefId || record.runId !== runId) {
+    throw new RunDurabilityError(
+      `Refusing to publish ${briefId}/${runId}: local summary.json identifies ` +
+        `${String(record.brief)}/${String(record.runId)} instead. Run storage coordinates and ` +
+        `summary provenance must match exactly.`,
+    );
+  }
 }
 
 /**
@@ -341,6 +401,7 @@ export async function ensureRunDurable(
   const backfilled: string[] = [];
   const localRunDir = options.localRunDir ?? null;
   if (localRunDir !== null && existsSync(localRunDir)) {
+    validateLocalRunCoordinates(localRunDir, briefId, runId);
     for (const rel of walkFiles(localRunDir)) {
       const key = `${prefix}/${rel}`;
       if (await durable.has(key)) continue;

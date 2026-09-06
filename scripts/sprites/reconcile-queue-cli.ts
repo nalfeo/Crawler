@@ -17,13 +17,27 @@
  *   10 usage error
  *   30 untrusted-diff — the promotion diff touched a non-art path; the
  *      reconciler REFUSED to push/arm (fail-closed). The workflow must escalate.
- *   1  any other failure (git/gh error)
+ *   31 rejected-lifecycle-deletion — unrelated art may have promoted, but a
+ *      durable queue inconsistency blocked lifecycle convergence.
+ *   32 source-quarantined — one source snapshot was withheld while healthy
+ *      independent sources continued.
+ *   33 both lifecycle deletion refusal and source quarantine occurred.
+ *   1  any other git/gh failure.
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ReconcileError, runReconcile, type ReconcileOptions } from './reconcile-queue.js';
+import {
+  ReconcileError,
+  runReconcile,
+  type ReconcileOptions,
+  type ReconcileResult,
+} from './reconcile-queue.js';
 import { createDefaultReconcileDeps } from './reconcile-queue-runtime.js';
+
+export const REJECTED_LIFECYCLE_DELETION_EXIT_CODE = 31;
+export const QUARANTINED_SOURCE_EXIT_CODE = 32;
+export const COMBINED_RECONCILE_WARNING_EXIT_CODE = 33;
 
 interface ParsedArgs {
   readonly repoRoot: string;
@@ -76,6 +90,17 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   };
 }
 
+export function reconcileResultExitCode(
+  result: Pick<ReconcileResult, 'rejectedLifecycleDeletions' | 'quarantinedSources'>,
+): number {
+  const hasLifecycleRefusal = (result.rejectedLifecycleDeletions?.length ?? 0) > 0;
+  const hasQuarantine = (result.quarantinedSources?.length ?? 0) > 0;
+  if (hasLifecycleRefusal && hasQuarantine) return COMBINED_RECONCILE_WARNING_EXIT_CODE;
+  if (hasLifecycleRefusal) return REJECTED_LIFECYCLE_DELETION_EXIT_CODE;
+  if (hasQuarantine) return QUARANTINED_SOURCE_EXIT_CODE;
+  return 0;
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
   let parsed: ParsedArgs;
   try {
@@ -91,8 +116,31 @@ export async function main(argv: readonly string[]): Promise<number> {
       createDefaultReconcileDeps(parsed.repoRoot),
       parsed.options,
     );
+    // Deterministic, actionable surface for refused lifecycle deletions. The
+    // cycle still promoted every unrelated asset, so this would otherwise be
+    // buried in the result JSON.
+    for (const rejection of result.rejectedLifecycleDeletions ?? []) {
+      process.stderr.write(
+        `reconcile-queue REFUSED lifecycle deletion "${rejection.annotationKey}": ` +
+          `${rejection.reason} Withheld: ${rejection.paths.join(', ') || '(none)'}.\n` +
+          `  Unrelated art still promoted, but EVERY lifecycle deletion and ` +
+          `public/assets/generated/sprite-editor-annotations.json were withheld this cycle so ` +
+          `main cannot gain a tombstone whose art is still present.\n` +
+          `  Fix: on assets/queue, either delete both ` +
+          `public/assets/generated/entries/${rejection.annotationKey}.json and its PNG together, ` +
+          `or drop the "${rejection.annotationKey}" tombstone from the annotations file. Verify ` +
+          `with \`npm run sprites:disliked-lifecycle -- --dry-run\`.\n`,
+      );
+    }
+    for (const quarantine of result.quarantinedSources ?? []) {
+      process.stderr.write(
+        `reconcile-queue QUARANTINED source ${quarantine.sourceRef}: ${quarantine.reason}\n` +
+          `  Withheld ${quarantine.paths.length} path(s): ${quarantine.paths.join(', ') || '(none)'}.\n` +
+          `  Other independent sources were still reconciled; repair this source snapshot before retrying.\n`,
+      );
+    }
     process.stdout.write(`${JSON.stringify(result)}\n`);
-    return 0;
+    return reconcileResultExitCode(result);
   } catch (err) {
     if (err instanceof ReconcileError) {
       process.stderr.write(`reconcile-queue failed (${err.kind}): ${err.message}\n`);

@@ -25,7 +25,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Exec } from './checkin.js';
 import { copyArtSurface, makeCheckinFileLock, realExec } from './checkin-runtime.js';
-import type { QueueCommitDeps, SpriteAnnotationUpdate } from './queue-commit.js';
+import {
+  applySpriteAnnotationUpdates,
+  type QueueCommitDeps,
+  type SpriteAnnotationUpdate,
+} from './queue-commit.js';
+import { shardPathForKey } from './generated-shards.js';
 
 /**
  * Hard deadline for any single git subprocess a queue-commit spawns. A
@@ -75,13 +80,7 @@ export async function mergeSpriteAnnotationUpdates(
       sprites: { ...((parsed as { sprites: Record<string, unknown> }).sprites ?? {}) },
     };
   }
-  for (const update of updates) {
-    document.sprites[update.key] = {
-      favorite: update.favorite,
-      disliked: update.disliked,
-      comment: update.comment,
-    };
-  }
+  document = applySpriteAnnotationUpdates(document, updates);
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {
@@ -134,6 +133,15 @@ export function createDefaultQueueCommitDeps(
   return {
     exec,
     copyArtSurface,
+    removeArtSurface: async (worktree, removals) => {
+      const generatedDir = path.join(worktree, 'public', 'assets', 'generated');
+      for (const removal of removals) {
+        rmSync(shardPathForKey(generatedDir, removal.manifestKey), { force: true });
+        rmSync(path.join(worktree, 'public', 'assets', ...removal.assetPath.split('/')), {
+          force: true,
+        });
+      }
+    },
     mergeSpriteAnnotations: mergeSpriteAnnotationUpdates,
     copyBriefFiles: async (sourceRoot, worktree, briefPaths) => {
       for (const briefPath of briefPaths) {

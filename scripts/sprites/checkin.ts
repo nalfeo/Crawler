@@ -249,6 +249,8 @@ function renderIssueBody(
 
 export interface ExecResult {
   readonly stdout: string;
+  /** Raw stdout bytes when the production runner captured binary output. */
+  readonly stdoutBytes?: Buffer;
   readonly stderr: string;
   readonly code: number;
 }
@@ -284,6 +286,7 @@ export interface CheckinManifest {
       readonly briefId?: string;
       readonly variantIndex?: number;
       readonly contentHash?: string;
+      readonly [key: string]: unknown;
     }
   >;
 }
@@ -311,6 +314,23 @@ export interface CheckinRunnerDeps {
   readonly readManifest?: () => Promise<CheckinManifest>;
   /** Open asset-checkin issues keyed by asset path for durable queue deduplication. */
   readonly listQueuedAssets?: () => Promise<ReadonlyMap<string, QueuedAssetCheckin>>;
+  /**
+   * Inspect the canonical assets/queue branch for one exact asset identity.
+   * Production provides this alongside legacy issue discovery; tests may omit it.
+   */
+  readonly inspectDurableQueueAsset?: (
+    asset: DurableQueueAssetIdentity,
+    remote?: string,
+  ) => Promise<DurableQueueAssetInspection>;
+  /**
+   * Inspect a batch against one immutable assets/queue snapshot. Production
+   * supplies this so multi-asset check-ins do not refetch a moving branch once
+   * per asset; tests may omit it and use the single-asset hook above.
+   */
+  readonly inspectDurableQueueAssets?: (
+    assets: readonly DurableQueueAssetIdentity[],
+    remote?: string,
+  ) => Promise<readonly DurableQueueAssetInspection[]>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
   /** Clock. Defaults to `() => new Date()`. */
@@ -358,6 +378,18 @@ export interface QueuedAssetCheckin {
   readonly contentHash?: string;
 }
 
+export interface DurableQueueAssetInspection {
+  readonly reconciliation: QueuedContentReconciliation;
+  readonly branch: string;
+}
+
+export interface DurableQueueAssetIdentity {
+  readonly manifestKey: string;
+  readonly assetPath: string;
+  readonly contentHash?: string;
+  readonly manifestEntry?: Readonly<Record<string, unknown>>;
+}
+
 export interface PreparedAssetCheckin {
   readonly plan: AssetCheckinPlan;
   readonly queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
@@ -388,7 +420,7 @@ export interface PreparedAssetCheckin {
 export type QueuedContentReconciliation = 'new' | 'duplicate' | 'content-conflict' | 'ambiguous';
 
 export function reconcileQueuedContent(
-  queued: QueuedAssetCheckin | undefined,
+  queued: Pick<QueuedAssetCheckin, 'contentHash'> | undefined,
   contentHash: string | undefined,
 ): QueuedContentReconciliation {
   if (!queued) return 'new';
@@ -420,6 +452,13 @@ function assertLocalCheckin(env: NodeJS.ProcessEnv): void {
  * `/api/checkin/prepare`) can surface a real conflict rather than quietly
  * losing newly-approved content that happens to share a path with something
  * already queued.
+ *
+ * The canonical `assets/queue` branch is reconciled the SAME way, first,
+ * through `deps.inspectDurableQueueAsset` — the exact inspector the sidecar's
+ * `/accept` route uses. Open issues are only the legacy record; art accepted
+ * after the durable queue landed exists on that branch with no issue at all,
+ * so an issue-only check would happily publish a second check-in branch for
+ * already-published art (or miss a genuine content conflict there).
  */
 export async function prepareAssetCheckin(
   repoRoot: string,
@@ -434,7 +473,9 @@ export async function prepareAssetCheckin(
 
   await git(deps.exec, repoRoot, ['fetch', remote, baseBranch]);
 
-  const manifest = deps.readManifest ? await deps.readManifest().catch(() => ({})) : {};
+  const manifest: CheckinManifest = deps.readManifest
+    ? await deps.readManifest().catch(() => ({}))
+    : {};
   const changedAssets = await detectApprovedAssets(
     deps.exec,
     repoRoot,
@@ -445,45 +486,85 @@ export async function prepareAssetCheckin(
   const queuedAssets = deps.listQueuedAssets
     ? await deps.listQueuedAssets()
     : new Map<string, QueuedAssetCheckin>();
+  const durableIdentities = changedAssets.map((asset): DurableQueueAssetIdentity => {
+    const manifestKey = asset.manifestKey ?? manifestKeyFromAssetPath(asset.assetPath);
+    const manifestEntry = manifest.entries?.[manifestKey];
+    return {
+      manifestKey,
+      assetPath: asset.assetPath,
+      ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
+      ...(manifestEntry !== undefined ? { manifestEntry } : {}),
+    };
+  });
+  const durableBatch = deps.inspectDurableQueueAssets
+    ? await deps.inspectDurableQueueAssets(durableIdentities, remote)
+    : undefined;
+  if (durableBatch !== undefined && durableBatch.length !== changedAssets.length) {
+    throw new CheckinError(
+      'git-failed',
+      `Canonical assets/queue inspection returned ${durableBatch.length} result(s) for ` +
+        `${changedAssets.length} asset(s).`,
+    );
+  }
 
   const assets: CheckinAsset[] = [];
-  for (const asset of changedAssets) {
+  for (const [index, asset] of changedAssets.entries()) {
     const queued = queuedAssets.get(asset.assetPath);
-    const reconciliation = reconcileQueuedContent(queued, asset.contentHash);
-    if (reconciliation === 'new') {
-      assets.push(asset);
-      continue;
-    }
-    if (reconciliation === 'duplicate') {
-      // Already durably queued with identical content — dedupe silently,
-      // same as the historical path-only filter did unconditionally.
-      continue;
-    }
-    // 'content-conflict' / 'ambiguous' both require a queued record to
-    // compare against, so `queued` is guaranteed defined here.
-    const issueUrl = queued!.issueUrl;
-    if (reconciliation === 'content-conflict') {
+    const legacyReconciliation = reconcileQueuedContent(queued, asset.contentHash);
+    const durableInspection =
+      durableBatch?.[index] ??
+      (deps.inspectDurableQueueAsset
+        ? await deps.inspectDurableQueueAsset(durableIdentities[index]!, remote)
+        : { reconciliation: 'new' as const, branch: 'assets/queue' });
+    const states = [
+      {
+        reconciliation: legacyReconciliation,
+        location: queued?.issueUrl ?? 'the legacy asset-checkin queue',
+      },
+      {
+        reconciliation: durableInspection.reconciliation,
+        location: `branch ${durableInspection.branch}`,
+      },
+    ];
+    const conflict = states.find((state) => state.reconciliation === 'content-conflict');
+    if (conflict) {
       throw new CheckinError(
         'content-conflict',
-        `${asset.assetPath} is already queued (${issueUrl}) with different content. ` +
+        `${asset.assetPath} is already queued (${conflict.location}) with different content. ` +
           'Approve a different variant, or resolve the existing issue first.',
       );
     }
-    throw new CheckinError(
-      'ambiguous-queued-content',
-      `${asset.assetPath} is already queued (${issueUrl}) by an issue filed before content ` +
-        'hashes were recorded, so it cannot be verified against the current content. Resolve ' +
-        'the open issue manually before re-checking-in this asset.',
-    );
+    const ambiguous = states.find((state) => state.reconciliation === 'ambiguous');
+    if (ambiguous) {
+      throw new CheckinError(
+        'ambiguous-queued-content',
+        `${asset.assetPath} is already queued (${ambiguous.location}) without enough recorded ` +
+          'identity to verify the current content. Resolve the queued asset manually before ' +
+          're-checking it in.',
+      );
+    }
+    if (states.some((state) => state.reconciliation === 'duplicate')) {
+      continue;
+    }
+    assets.push(asset);
   }
 
   if (assets.length === 0) {
     const detail =
       changedAssets.length > 0
-        ? 'All approved art is already represented by an open asset-checkin issue.'
+        ? 'All approved art is already represented by the durable asset queue.'
         : `No approved art differs from ${remote}/${baseBranch}. Approve a sprite first ` +
           '(npm run sprites:gallery), then re-run check-in.';
     throw new CheckinError('nothing-to-checkin', detail);
+  }
+
+  function manifestKeyFromAssetPath(assetPath: string): string {
+    const prefix = 'generated/';
+    const suffix = '.png';
+    if (!assetPath.startsWith(prefix) || !assetPath.endsWith(suffix)) {
+      return assetPath;
+    }
+    return assetPath.slice(prefix.length, -suffix.length);
   }
 
   return {
@@ -661,6 +742,13 @@ async function discoverLinkedAssetRequestIssueNumbers(
  * `public/assets/generated/**` is un-ignored, those brand-new PNGs must be
  * collected separately via `git ls-files --others`; otherwise the primary
  * approve→check-in flow sees no assets and throws `nothing-to-checkin`.
+ *
+ * DELETED paths are excluded (`--diff-filter=d` — a lowercase letter EXCLUDES
+ * that change kind). A PNG the disliked-asset lifecycle just retired is a
+ * deletion, not an approval: including it would file a check-in issue claiming
+ * a nonexistent asset with null manifest metadata, and `asset-pr` consolidation
+ * would then check that path back out of the source branch and resurrect the
+ * art without its manifest shard.
  */
 export async function detectApprovedAssets(
   exec: Exec,
@@ -672,6 +760,7 @@ export async function detectApprovedAssets(
   const diff = await git(exec, repoRoot, [
     'diff',
     '--name-only',
+    '--diff-filter=d',
     `${remote}/${baseBranch}`,
     '--',
     ...ASSET_SURFACE_PATHS,

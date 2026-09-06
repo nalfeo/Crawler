@@ -109,7 +109,7 @@ import {
   computeCarriedWeaponPlacement,
   kenneyCarriedWeaponSpriteId,
 } from './phaser-bridge/carried-weapon.js';
-import { _isPlaceholderEntry, resolveItemSprite } from '../shared/item-sprites.js';
+import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import type { EntitySpriteMappings } from '../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../shared/data/entity-sprite-mappings.json';
@@ -1056,13 +1056,14 @@ export function createPhaserBridge(
           generatedEntry !== null && scene.textures?.exists?.(generatedEntry.textureKey) === true;
         const kenneySpriteId = kenneyCarriedWeaponSpriteId(weaponDef.id, weaponDef.weaponType);
         const fallbackSpriteDef = kenneySpriteId ? getSprite(kenneySpriteId) : undefined;
-        // Real approved art wins; a generated PLACEHOLDER only wins when there
-        // is no hand-picked Kenney stand-in for this weapon (i.e. non-melee),
-        // so a melee weapon never downgrades to placeholder art.
-        const useGenerated =
-          generatedEntry !== null &&
-          generatedReady &&
-          (!_isPlaceholderEntry(generatedEntry) || fallbackSpriteDef === undefined);
+        // `resolveItemSprite` only draws from `registry.entries()`, which is
+        // filtered to runtime-eligible art — so a resolved entry is real
+        // approved art by construction and can never be a placeholder. The old
+        // "a generated placeholder only wins when there is no Kenney stand-in"
+        // arm was therefore unreachable; the placeholder-only case now shows up
+        // as `generatedEntry === null`, which already falls through to the
+        // Kenney stand-in below.
+        const useGenerated = generatedEntry !== null && generatedReady;
 
         let textureKey: string | null = null;
         let frame: string | number | undefined;

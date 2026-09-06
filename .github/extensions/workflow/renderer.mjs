@@ -1358,14 +1358,17 @@ const CLIENT_SCRIPT = String.raw`
     var key = acceptanceKey(sel.briefId, sel.runId, candidate.index);
     var acceptance = state.acceptance && state.acceptance[key];
     if (acceptance && acceptance.state === 'queued') {
-      var queued = h('div', { class: 'accept-state queued' }, [
-        document.createTextNode(acceptance.existing ? 'Already queued · ' : 'Queued · '),
-        h('a', {
+      var queueDetail = typeof acceptance.issueUrl === 'string'
+        ? h('a', {
           href: acceptance.issueUrl,
           target: '_blank',
           rel: 'noreferrer',
           text: 'Open asset issue'
         })
+        : document.createTextNode(acceptance.queueBranch || 'assets/queue');
+      var queued = h('div', { class: 'accept-state queued' }, [
+        document.createTextNode(acceptance.existing ? 'Already queued · ' : 'Queued · '),
+        queueDetail
       ]);
       card.appendChild(queued);
       // ADR 0066 RSK-003: check-in is intentionally batched — one acceptance

@@ -120,6 +120,30 @@ describe('buildSpriteBacklogPlan', () => {
     expect(plan.selected[0]?.name).toBe('sprite');
   });
 
+  /**
+   * Regression: dislike demand is keyed by the canonical concept id (which
+   * honours the shared design-name remaps), so brief indexing must use the SAME
+   * key. Both used to run separate `-vN` strippers, so a dislike on
+   * `angry-roomba-v2-var-1` resolved to `angry-roomba-mk2` while the brief
+   * indexed as `angry-roomba` — a permanent, silent `blockedDisliked` entry that
+   * no amount of brief authoring could clear.
+   */
+  it('matches a disliked remapped alias to the canonical concept brief', () => {
+    const plan = buildSpriteBacklogPlan({
+      briefs: [brief('angry-roomba-mk2', 1)],
+      manifestEntries: { 'angry-roomba-v2-var-1': manifestEntry('angry-roomba-v2') },
+      dislikedSpriteNames: new Set(['angry-roomba-v2-var-1']),
+      placeholderReport: { placeholderOnly: [] },
+      floors: new Set([1]),
+      limit: 5,
+    });
+
+    expect(plan.blockedDisliked).toEqual([]);
+    expect(plan.selected.map(({ source, concept }) => `${source}:${concept}`)).toEqual([
+      'disliked:angry-roomba-mk2',
+    ]);
+  });
+
   it('enforces a positive integer limit', () => {
     expect(() =>
       buildSpriteBacklogPlan({
@@ -286,6 +310,40 @@ describe('collectBacklogBriefs', () => {
       expect(discovered.briefs.map((item) => item.name)).toEqual(['valid']);
       expect(discovered.invalidBriefs).toHaveLength(1);
       expect(discovered.invalidBriefs[0]?.path).toContain('invalid.yaml');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Regression: brief indexing must produce the canonical concept key so a
+   * brief for a remapped design is discoverable by the dislike/missing demand,
+   * which is keyed the same way.
+   */
+  it('indexes a brief under the canonical remapped concept key', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'sprite-backlog-remap-'));
+    try {
+      mkdirSync(path.join(root, 'briefs', 'enemies'), { recursive: true });
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+      cpSync(
+        path.join(process.cwd(), 'data', 'sprite-types', 'item.json'),
+        path.join(root, 'data', 'sprite-types', 'item.json'),
+      );
+      cpSync(
+        path.join(process.cwd(), 'data', 'palettes', 'kenney-roguelike.json'),
+        path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      );
+      writeFileSync(
+        path.join(root, 'briefs', 'enemies', 'roomba.yaml'),
+        'type: item\nname: angry-roomba-v2\ndescription: A remapped design.\n',
+      );
+
+      const discovered = collectBacklogBriefs(root);
+
+      expect(discovered.briefs.map((item) => [item.name, item.concept])).toEqual([
+        ['angry-roomba-v2', 'angry-roomba-mk2'],
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

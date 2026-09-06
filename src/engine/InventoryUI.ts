@@ -416,9 +416,9 @@ export function createInventoryUI(
    * prefers real approved art over the placeholder — see `resolveItemSprite`.
    * Deterministic per (itemId, run): the same item keeps the same variant for
    * the whole run (no per-frame flicker) but may differ across runs/items.
-   * Returns null only when neither the item id nor its weaponId matches any
-   * generated entry; when the sole match is a placeholder, that placeholder is
-   * returned (real art is merely preferred) — see `resolveItemSprite`.
+   * Returns null when neither the item id nor its weaponId matches runtime-
+   * eligible generated art. Placeholder-only concepts intentionally return null
+   * so the UI uses its non-generated fallback — see `resolveItemSprite`.
    */
   const selectGeneratedEntry = (itemId: string): GeneratedSpriteEntry | null =>
     resolveItemSprite(

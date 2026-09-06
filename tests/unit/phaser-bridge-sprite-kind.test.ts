@@ -346,24 +346,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-king-var-7': {
+      'rat-king-var-8': {
         briefId: 'rat-king',
-        spriteName: 'rat-king-var-7',
-        assetPath: 'generated/rat-king-var-7.png',
+        spriteName: 'rat-king-var-8',
+        assetPath: 'generated/rat-king-var-8.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 8,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-queen-var-7': {
+      'rat-queen-var-2': {
         briefId: 'rat-queen',
-        spriteName: 'rat-queen-var-7',
-        assetPath: 'generated/rat-queen-var-7.png',
+        spriteName: 'rat-queen-var-2',
+        assetPath: 'generated/rat-queen-var-2.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 2,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
@@ -425,10 +425,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
 
   it('resolves rat monarch and slime-pool appearance keys to their generated briefs', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-king')).toBe(
-      'rat-king-var-7',
+      'rat-king-var-8',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-queen')).toBe(
-      'rat-queen-var-7',
+      'rat-queen-var-2',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.5, 'slime-pool')).toBe(
       'slime-pool-var-3',
@@ -448,6 +448,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.95)).toBe(
       'slime-pool-var-3',
     );
+  });
+
+  it('treats an absent roll as the lowest variant', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0)).toBe('slime-var-2');
+  });
+
+  it('keeps interleaved calls independent despite the reused adapter', () => {
+    // The resolver runs against a module-local structural adapter mutated in
+    // place (no per-entity allocation on this rendering path). A stale roll or
+    // registry leaking between calls would show up here.
+    const empty = buildGeneratedSpriteRegistry({ version: 1, entries: {} });
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(empty, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(null, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
   });
 });
 
@@ -534,7 +552,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     // Three DISTINCT keys — the whole point of the feature (no shared villager).
     expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-var-1');
     expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-var-3');
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     const keys = [
       pickGeneratedNpcTextureKey('tutorial-goon'),
       pickGeneratedNpcTextureKey('shopkeeper'),
@@ -555,7 +573,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     );
     expect(indices.every((n) => Number.isInteger(n))).toBe(true);
     expect(new Set(indices).size).toBeGreaterThan(1);
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).not.toBe('npc-spell-broker-var-0');
   });
 
@@ -655,6 +673,18 @@ describe('pickGeneratedHarvestableTextureKey', () => {
       'crimson-mushroom-var-0',
     );
     expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.95)).toBe(
+      'crimson-mushroom-var-3',
+    );
+  });
+
+  it('shares the canonical roll fallback and clamping semantics', () => {
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', Number.NaN)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', -1)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 1)).toBe(
       'crimson-mushroom-var-3',
     );
   });

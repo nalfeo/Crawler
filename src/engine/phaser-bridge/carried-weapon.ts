@@ -18,7 +18,8 @@ import { WeaponType, type WeaponTypeValue } from '../../shared/constants.js';
  * Only melee weapons get a placeholder: the Kenney tiny-dungeon sheet has a
  * sword and a mallet, and drawing a sword in the hand of a bow user would be a
  * lie. Returning `null` only withholds the Kenney stand-in; non-melee weapons
- * can still render generated art, including generated placeholder entries.
+ * still render approved, runtime-eligible generated art. Placeholder manifest
+ * entries are intentionally not runtime-eligible.
  */
 export function kenneyCarriedWeaponSpriteId(
   weaponId: string,

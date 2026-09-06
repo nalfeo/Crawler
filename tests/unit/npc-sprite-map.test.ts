@@ -4,7 +4,7 @@
  * WHY THIS EXISTS. The map was duplicated: `sprite-kind.ts` held one copy and the
  * Set Piece Editor extension held another. The Goon and Merchant were regenerated
  * to `-v3-` variants and the game copy was repointed; the editor copy was not. So
- * the editor kept drawing `npc-welcome-goon-var-0` / `npc-sweaty-merchant-var-0`
+ * the editor kept drawing the retired npc-prefixed Goon and Merchant variants
  * — art that had already been replaced — and every screenshot taken from the
  * editor showed the wrong characters while looking entirely plausible.
  *
@@ -17,16 +17,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import npcSpriteMap from '../../src/shared/data/npc-sprite-map.json' with { type: 'json' };
+import { isRuntimeEligibleManifestEntry } from '../../src/shared/generated-assets.js';
 import { loadShippedManifest } from '../helpers/generated-manifest.js';
 import {
   GENERATED_KEY_BY_NPC_DEF,
   pickGeneratedNpcTextureKey,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
-
-function approvedSpriteKeys(): Set<string> {
-  const manifest = loadShippedManifest();
-  return new Set(Object.keys(manifest.entries ?? {}));
-}
 
 describe('NPC generated-sprite map', () => {
   const entries = Object.entries(npcSpriteMap.byNpcDefId);
@@ -42,8 +38,11 @@ describe('NPC generated-sprite map', () => {
   it('points every NPC at a sprite that is actually approved and shipped', () => {
     // A stale pointer does not throw - the renderer silently falls back to the
     // shared Kenney villager, which looks like "no art yet" instead of a bug.
-    const approved = approvedSpriteKeys();
-    const dangling = entries.filter(([, key]) => !approved.has(key));
+    const manifest = loadShippedManifest();
+    const dangling = entries.filter(([, key]) => {
+      const entry = manifest.entries[key];
+      return entry === undefined || !isRuntimeEligibleManifestEntry(entry);
+    });
     expect(dangling).toEqual([]);
   });
 

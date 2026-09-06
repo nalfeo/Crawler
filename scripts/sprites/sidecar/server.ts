@@ -40,6 +40,11 @@
  *   - /approve, /checkin, and /accept all run their mutating work through the
  *     same process-wide `withCheckinMutationLock` so concurrent requests
  *     never race the shared art surface or the durable check-in queue.
+ *   - /approve and /accept accept an OPTIONAL strict-boolean `allowHardBlocked`
+ *     body field: the same conscious human override the CLI spells
+ *     `--allow-hard-blocked`. It is validated (never coerced) and is only
+ *     reachable AFTER the CI refusal and the origin guard, so it grants no
+ *     authority a caller did not already have.
  *
  * No business logic lives here. The sidecar is a thin HTTP shell over file
  * IO — every meaningful piece is implemented (and unit-tested) in the
@@ -69,10 +74,14 @@ import {
   resolveVariantIdentity,
   unapproveVariant,
   UnapproveError,
-  type ManifestEntry,
   type VariantIdentity,
 } from '../approve.js';
-import { runQueueCommit, QueueCommitError, type QueueCommitResult } from '../queue-commit.js';
+import {
+  runQueueCommit,
+  QueueCommitError,
+  type QueueCommitDeps,
+  type QueueCommitResult,
+} from '../queue-commit.js';
 import { createDefaultQueueCommitDeps } from '../queue-commit-runtime.js';
 import {
   runAssetCheckin,
@@ -82,7 +91,7 @@ import {
   type CheckinRunnerDeps,
   type QueuedAssetCheckin,
 } from '../checkin.js';
-import { createDefaultCheckinDeps } from '../checkin-runtime.js';
+import { createDefaultCheckinDeps, makeCheckinFileLock } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { briefDirectoryForType } from '../brief-paths.js';
 import { generateOne } from '../generate-one.js';
@@ -130,6 +139,12 @@ import {
   mirrorBriefToStore,
   toRepoRelativePath,
 } from '../brief-durability.js';
+import {
+  ensureRunDurable,
+  formatSourceRun,
+  resolvePublicationDurableStore,
+  RunDurabilityError,
+} from '../run-durability.js';
 import { parseSpriteCatalog, type SpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { formatJsonFilesSync, writeCatalogJson } from '../catalog-io.js';
 import {
@@ -138,6 +153,13 @@ import {
   isGeneratedCatalogId,
 } from '../../../src/shared/generated-catalog.js';
 import { composeManifestFromShards, readShard, writeShard } from '../generated-shards.js';
+import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
+import {
+  loadDislikedLifecyclePlan,
+  runAcceptedDislikedLifecycleTransaction,
+  toQueueCommitAnnotationUpdates,
+  type DislikedLifecyclePlan,
+} from '../disliked-lifecycle.js';
 import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreConditionalWriteError, StoreNotFoundError, type RunStore } from '../store/types.js';
@@ -322,6 +344,22 @@ export interface SidecarDeps {
    * assert the exact git/gh sequence without a real repo or network.
    */
   readonly checkinDeps?: CheckinRunnerDeps;
+  /**
+   * Durable `assets/queue` wiring for the approve/accept routes. Defaults to
+   * `createDefaultQueueCommitDeps(repoRoot, env)`. Inject a fake in tests to
+   * exercise a lifecycle publication (removals + annotation updates) without a
+   * real git remote — the same seam `checkinDeps` provides for the issue flow.
+   */
+  readonly queueCommitDeps?: QueueCommitDeps;
+  /**
+   * Pre-mutation provenance durability gate for local runs. Production uses the
+   * Azure publication store; tests may inject an isolated deterministic seam.
+   */
+  readonly ensureApprovalRunDurable?: (
+    runDir: string,
+    briefId: string,
+    runId: string,
+  ) => Promise<void>;
   /**
    * Exact browser origins allowed to invoke `/api/checkin`. Production passes
    * only this worktree's deterministic lab/devtools origins. Omit to reject
@@ -532,7 +570,7 @@ function mapApproveError(reply: FastifyReply, err: unknown): { error: string; me
 }
 
 /**
- * Map a `CheckinError` (or unknown thrown value) from ANY check-in-shaped
+ * Map a `CheckinError`, `QueueCommitError`, or unknown thrown value from ANY check-in-shaped
  * caller — `/api/checkin`, `/api/checkin/prepare`, the atomic `/accept`
  * route's own check-in step, and its pre-/post-mutation queue-list
  * reconciliation reads — to the SAME structured `{error, message}` body,
@@ -560,8 +598,68 @@ function mapCheckinError(
     reply.code(status);
     return { error: err.kind, message: err.message };
   }
+  if (err instanceof QueueCommitError) {
+    const status =
+      err.kind === 'ci-refused'
+        ? 403
+        : err.kind === 'queue-frozen' ||
+            err.kind === 'destination-conflict' ||
+            err.kind === 'generated-deletion-refused'
+          ? 409
+          : err.kind === 'invalid-asset-path' ||
+              err.kind === 'invalid-annotation' ||
+              err.kind === 'invalid-brief-path'
+            ? 400
+            : 502;
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
   reply.code(500);
   return { error: fallbackError, message: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * Actionable message for a malformed `allowHardBlocked` body field. Shared by
+ * `/approve` and `/accept` so both surfaces say the same thing.
+ */
+const ALLOW_HARD_BLOCKED_MESSAGE =
+  'body.allowHardBlocked must be a boolean when present. It is a CONSCIOUS human ' +
+  'override of the judge hard-block veto, so it is never coerced from a string or ' +
+  'a number — send true or false.';
+
+/**
+ * Validate the explicit hard-block override.
+ *
+ * Returns the boolean, or `null` when the field is present but not a boolean
+ * (which the caller turns into a 400). Absent means `false`: the veto stands
+ * unless a caller consciously overrules it, exactly like the CLI's
+ * `--allow-hard-blocked` flag.
+ *
+ * Deliberately does NOT coerce: `"false"`, `0`, and `"no"` are all truthy or
+ * falsy in ways that would make an override happen (or fail to happen) by
+ * accident. This mirrors the CLI, where the override only exists as an explicit
+ * flag. It grants no new authority — the route's CI refusal and CSRF/origin
+ * guards run BEFORE this value is read, so it is only reachable from the same
+ * trusted local caller that could already approve.
+ */
+function parseAllowHardBlocked(value: unknown): boolean | null {
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') return null;
+  return value;
+}
+
+/**
+ * Whether a repo-relative path may be RESTORED from the store's brief mirror.
+ *
+ * Mirrors the `PUT /api/workflow/brief` restriction: a brief is always a YAML
+ * under `briefs/`, so anything else is either a corrupt summary or an attempt
+ * to use the mirror as an arbitrary-file-write primitive. Exported for tests.
+ */
+export function isRestorableBriefPath(repoRelativePosixPath: string): boolean {
+  return (
+    repoRelativePosixPath.startsWith('briefs/') &&
+    (repoRelativePosixPath.endsWith('.yaml') || repoRelativePosixPath.endsWith('.yml'))
+  );
 }
 
 /** Number of durably-queued assets that share `issueUrl` — the batch size of that check-in. */
@@ -583,8 +681,18 @@ interface AcceptedResponse {
   readonly briefId: string;
   readonly variantIndex: number;
   readonly assetPath: string;
-  readonly issueUrl: string;
+  /** Legacy asset-checkin issue, absent when assets/queue is the durable authority. */
+  readonly issueUrl?: string;
+  /** Canonical durable queue branch, present for lifecycle-aware acceptance. */
+  readonly queueBranch?: string;
   readonly assetCount: number;
+}
+
+function requiresLifecycleQueue(plan: DislikedLifecyclePlan, replacementKey: string): boolean {
+  if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) return true;
+  return Object.values(plan.annotations.sprites).some(
+    (annotation) => annotation.tombstone?.replacementKey === replacementKey,
+  );
 }
 
 /**
@@ -600,7 +708,13 @@ function reconcileQueuedAsset(
   queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
   identity: VariantIdentity,
   variantIndex: number,
-): AcceptedResponse | { error: string; message: string } | undefined {
+):
+  | AcceptedResponse
+  | {
+      error: 'ambiguous-queued-content' | 'content-conflict';
+      message: string;
+    }
+  | undefined {
   const queued = queuedAssets.get(identity.assetPath);
   const reconciliation = reconcileQueuedContent(queued, identity.contentHash);
   if (reconciliation === 'new') return undefined;
@@ -652,6 +766,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
   // Default to a LocalRunStore rooted at runsDir — same layout as before.
   const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
+  const ensureApprovalRunDurable =
+    deps.ensureApprovalRunDurable ??
+    (async (runDir: string, briefId: string, runId: string): Promise<void> => {
+      const durable =
+        store.backend === 'local'
+          ? resolvePublicationDurableStore({
+              repoRoot: deps.repoRoot,
+              env: deps.env ?? process.env,
+            })
+          : store;
+      await ensureRunDurable({
+        briefId,
+        runId,
+        durable,
+        localRunDir: runDir,
+      });
+    });
   // Best-effort brief recovery for the sidecar's READ / degradation paths.
   // `materializeBriefFromStore` now THROWS on a transient store/fs outage (so
   // the queue worker can retry instead of mistaking a blip for a missing
@@ -664,6 +795,53 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     } catch {
       return false;
     }
+  };
+  /**
+   * Best-effort restore of the brief a hydrated run was generated from, so
+   * `approveVariant`'s `resolveBriefType` can read its declared `type:`.
+   *
+   * A store-hydrated run dir carries only the run artifacts. Its
+   * `summary.json.briefPath` still points at the repo-relative brief — but a
+   * draft brief lives under the gitignored `briefs/draft/**`, so on any worktree
+   * that did not itself generate the run the YAML is simply absent and the
+   * approval silently writes `type: null`. An untyped manifest row then drops
+   * out of every type-aware surface (reference selection favours same-`type`
+   * art; the catalog and asset search index by type), and nothing reports it.
+   *
+   * Reuses the EXISTING brief-durability mirror contract rather than inventing a
+   * per-run brief snapshot, so the sidecar's approve path resolves briefs
+   * exactly the way its read paths already do. A run that predates brief
+   * mirroring may still have no stored brief, in which case approval preserves
+   * the legacy `type: null` behavior. A transient store or filesystem failure
+   * must abort approval rather than silently publishing incomplete metadata.
+   *
+   * SECURITY: this materializes bytes from the run store onto DISK, and a
+   * store-resident `summary.json` is only semi-trusted input. Repo confinement
+   * alone is not enough — a crafted `briefPath` of `.github/workflows/x.yml`
+   * plus a matching mirror blob would create a workflow file. So it applies the
+   * SAME "must be a YAML under `briefs/`" restriction as the
+   * `PUT /api/workflow/brief` route, which is the only shape a real
+   * `summary.json.briefPath` ever has.
+   */
+  const restoreBriefContextForRunDir = async (runDir: string): Promise<string | null> => {
+    let briefPath: string;
+    try {
+      const summary = JSON.parse(readFileSync(path.join(runDir, 'summary.json'), 'utf8')) as {
+        briefPath?: unknown;
+      };
+      if (typeof summary.briefPath !== 'string' || summary.briefPath.trim() === '') return null;
+      briefPath = summary.briefPath;
+    } catch {
+      return null; // approveVariant reports an unreadable/invalid summary itself.
+    }
+    // Only repo-confined RELATIVE paths may be written. `resolveRepoPath`
+    // rejects absolute paths and `..` escapes.
+    const absPath = resolveRepoPath(deps.repoRoot, briefPath);
+    if (absPath === null) return null;
+    if (!isRestorableBriefPath(toRepoRelativePath(deps.repoRoot, absPath))) return null;
+    const existed = existsSync(absPath);
+    const available = await materializeBriefFromStore(store, deps.repoRoot, absPath);
+    return !existed && available ? absPath : null;
   };
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
   // The sidecar owns an in-process worker so a queue consumer always exists
@@ -1911,7 +2089,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.post<{
     Params: { briefId: string; runId: string };
-    Body: { variantIndex?: unknown };
+    Body: { variantIndex?: unknown; allowHardBlocked?: unknown };
   }>('/api/runs/:briefId/:runId/approve', async (req, reply) => {
     // Constitutional §3 (Deterministic CI Only): the approve route mutates
     // checked-in repo state. We refuse from CI for the same reason
@@ -1956,7 +2134,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return { error: 'run-not-found', briefId, runId };
     }
 
-    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const body = (req.body ?? {}) as { variantIndex?: unknown; allowHardBlocked?: unknown };
     const variantIndex = body.variantIndex;
     if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
       reply.code(400);
@@ -1964,6 +2142,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         error: 'bad-request',
         message: 'body.variantIndex must be a non-negative integer',
       };
+    }
+    const allowHardBlocked = parseAllowHardBlocked(body.allowHardBlocked);
+    if (allowHardBlocked === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: ALLOW_HARD_BLOCKED_MESSAGE };
     }
 
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
@@ -1979,8 +2162,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     // locked call — avoids deadlock.
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
-      let entry: ManifestEntry;
-      let alreadyApproved = false;
+      let restoredBriefPath: string | null = null;
+      let approvalCompleted = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -1991,70 +2174,111 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(403);
           return { error: 'forbidden-path' };
         }
-        try {
-          entry = approveVariant({
-            runDir,
-            variantIndex,
-            manifestPath,
-            catalogPath,
-            publicAssetsDir,
-            repoRoot: deps.repoRoot,
-          });
-        } catch (err) {
-          // Failed-push retry gap: a prior approval succeeded LOCALLY (so this
-          // re-approve is a no-op `already-approved`) but its best-effort durable
-          // queue-commit may never have pushed to assets/queue. Rather than
-          // return a bare 409 that can never re-attempt the push, load the stored
-          // manifest entry and fall through to re-run the queue-commit below so a
-          // retry actually persists the asset remotely.
-          if (err instanceof ApproveError && err.kind === 'already-approved') {
-            const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
-            if (stored === null) {
-              // The manifest entry is genuinely gone — nothing to re-queue.
-              reply.code(409);
-              return { error: err.kind, message: err.message };
-            }
-            entry = stored;
-            alreadyApproved = true;
-          } else {
-            throw err;
-          }
+        // Parity with a local approval: restore the run's brief so the manifest
+        // entry gets its declared `type`, and point `sourceRun` at the durable
+        // store identity instead of the throwaway temp path.
+        if (hydrated !== null) {
+          restoredBriefPath = await restoreBriefContextForRunDir(runDir);
         }
+        await ensureApprovalRunDurable(runDir, briefId, runId);
+        const identity = resolveVariantIdentity(runDir, variantIndex);
+        let alreadyApproved = false;
+        let queueCommit: QueueCommitResult | { status: 'failed'; error: string } = {
+          status: 'noop',
+          branch: 'assets/queue',
+          attempts: 0,
+        };
+        const queueDeps = deps.queueCommitDeps ?? createDefaultQueueCommitDeps(deps.repoRoot, env);
+        const transaction = await makeCheckinFileLock(deps.repoRoot)(() =>
+          runAcceptedDislikedLifecycleTransaction({
+            repoRoot: deps.repoRoot,
+            replacements: [
+              {
+                manifestKey: identity.variantId,
+                conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+                assetPath: identity.assetPath,
+              },
+            ],
+            approve: () => {
+              try {
+                return approveVariant({
+                  runDir,
+                  variantIndex,
+                  manifestPath,
+                  catalogPath,
+                  publicAssetsDir,
+                  repoRoot: deps.repoRoot,
+                  allowHardBlocked,
+                  ...(hydrated !== null ? { sourceRunOverride: hydrated.sourceRun } : {}),
+                });
+              } catch (err) {
+                if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+                const stored = loadApprovedEntry({ runDir, variantIndex, manifestPath });
+                if (stored === null) throw err;
+                alreadyApproved = true;
+                return stored;
+              }
+            },
+            publish: async (entry, plan) => {
+              try {
+                queueCommit = await runQueueCommit(
+                  deps.repoRoot,
+                  [
+                    {
+                      assetPath: entry.assetPath,
+                      manifestKey: entry.spriteName,
+                      briefId: entry.briefId,
+                      variantIndex: entry.variantIndex,
+                    },
+                  ],
+                  { ...queueDeps, withCrossProcessLock: (run) => run() },
+                  {
+                    message: `chore(assets): approve ${entry.spriteName}`,
+                    removals: plan.removed.map((removal) => ({
+                      assetPath: removal.assetPath,
+                      manifestKey: removal.manifestKey,
+                      sourceRun: removal.sourceRun,
+                      variantIndex: removal.variantIndex,
+                    })),
+                    annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
+                  },
+                );
+              } catch (error) {
+                // Fatal whenever this approval changed durable lifecycle state
+                // (a deletion, or an annotation/tombstone write): that change is
+                // already applied locally, and a retry would compute an empty
+                // delta and never republish it. Roll back so the retry is real.
+                if (plan.removed.length > 0 || plan.annotationUpdates.length > 0) throw error;
+                const message = error instanceof Error ? error.message : String(error);
+                req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
+                queueCommit = { status: 'failed', error: message };
+              }
+            },
+          }),
+        );
+        approvalCompleted = true;
+        return {
+          ...transaction.approved,
+          ...(alreadyApproved ? { alreadyApproved: true } : {}),
+          queueCommit,
+          lifecycle: {
+            removedCount: transaction.plan.removed.length,
+            retainedGroupCount: transaction.plan.retainedGroups.length,
+          },
+        };
       } catch (err) {
-        return mapApproveError(reply, err);
+        if (err instanceof ApproveError) return mapApproveError(reply, err);
+        if (err instanceof RunDurabilityError) {
+          reply.code(500);
+          return { error: 'not-durable', message: err.message };
+        }
+        return mapCheckinError(reply, err, 'approve-failed');
       } finally {
+        if (!approvalCompleted && restoredBriefPath !== null) {
+          rmSync(restoredBriefPath, { force: true });
+        }
         hydrated?.cleanup();
       }
-
-      // Durably persist the approved asset onto the remote assets/queue branch so
-      // the edit survives across sessions/worktrees/processes. Runs on the fresh
-      // approval AND on an `already-approved` retry (above) so a previously-failed
-      // push can be re-attempted. Best-effort: the local approve already
-      // succeeded, so a queue-commit failure is surfaced in the response (and
-      // logged) rather than rolling back. The route already refuses on CI above,
-      // so the primitive's CI guard never fires here.
-      let queueCommit: QueueCommitResult | { status: 'failed'; error: string };
-      try {
-        queueCommit = await runQueueCommit(
-          deps.repoRoot,
-          [
-            {
-              assetPath: entry.assetPath,
-              manifestKey: entry.spriteName,
-              briefId: entry.briefId,
-              variantIndex: entry.variantIndex,
-            },
-          ],
-          createDefaultQueueCommitDeps(deps.repoRoot, env),
-          { message: `chore(assets): approve ${entry.spriteName}` },
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        req.log.warn(`queue-commit failed for ${entry.spriteName}: ${message}`);
-        queueCommit = { status: 'failed', error: message };
-      }
-
-      return { ...entry, ...(alreadyApproved ? { alreadyApproved: true } : {}), queueCommit };
     });
   });
 
@@ -2090,59 +2314,115 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     return withCheckinMutationLock(async () => {
-      // Pre-mutation queue check: if this variant's asset is already in the
-      // durable asset-checkin queue (an `assets/*` branch + open issue filed
-      // by /accept), evicting the local copy won't remove it from that
-      // pipeline. Reject with 409 so the caller can close the issue first.
-      const assetPath = `generated/${variantId}.png`;
+      // Pre-mutation queue check: if this variant's manifest-directed asset is
+      // already in either the legacy issue queue or canonical assets/queue,
+      // evicting the local copy would not remove the durable queued copy.
       const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
-      const listQueuedAssets =
-        checkinDeps.listQueuedAssets ??
-        (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
-      let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
-      try {
-        queuedAssets = await listQueuedAssets();
-      } catch (err) {
-        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
-      }
-      const queued = queuedAssets.get(assetPath);
-      if (queued) {
-        reply.code(409);
-        return {
-          error: 'queued-conflict',
-          message:
-            `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
-            'Close or retract that issue before evicting this variant to prevent it ' +
-            'from reappearing in the next asset PR.',
-        };
-      }
-
-      let entry: ManifestEntry;
-      try {
-        entry = unapproveVariant({
-          variantId,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-        });
-      } catch (err) {
-        if (err instanceof UnapproveError) {
-          reply.code(err.kind === 'not-found' ? 404 : 500);
-          return { error: err.kind, message: err.message };
-        }
+      const listQueuedAssets = checkinDeps.listQueuedAssets;
+      const withCrossProcessLock = checkinDeps.withCrossProcessLock;
+      if (listQueuedAssets === undefined) {
         reply.code(500);
         return {
-          error: 'unapprove-failed',
-          message: err instanceof Error ? err.message : String(err),
+          error: 'unapprove-queue-check-failed',
+          message: 'Legacy asset-checkin inspection is unavailable.',
         };
       }
-      return entry;
+      if (withCrossProcessLock === undefined) {
+        reply.code(500);
+        return {
+          error: 'unapprove-queue-check-failed',
+          message: 'Cross-process check-in lock is unavailable.',
+        };
+      }
+      const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
+      if (inspectDurableQueueAsset === undefined) {
+        reply.code(500);
+        return {
+          error: 'unapprove-queue-check-failed',
+          message: 'Canonical assets/queue inspection is unavailable.',
+        };
+      }
+      return withCrossProcessLock(async () => {
+        let entry: ReturnType<typeof composeManifestFromShards>['entries'][string] | undefined;
+        try {
+          entry = composeManifestFromShards(path.dirname(manifestPath)).entries[variantId];
+        } catch (err) {
+          reply.code(500);
+          return {
+            error: 'unapprove-failed',
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+        if (entry === undefined) {
+          reply.code(404);
+          return { error: 'not-found', message: `Manifest entry not found: ${variantId}` };
+        }
+
+        const assetPath = entry.assetPath;
+        let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+        try {
+          queuedAssets = await listQueuedAssets();
+        } catch (err) {
+          return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+        }
+        const queued = queuedAssets.get(assetPath);
+        if (queued) {
+          reply.code(409);
+          return {
+            error: 'queued-conflict',
+            message:
+              `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
+              'Close or retract that issue before evicting this variant to prevent it ' +
+              'from reappearing in the next asset PR.',
+          };
+        }
+
+        try {
+          const durableQueue = await inspectDurableQueueAsset({
+            manifestKey: variantId,
+            assetPath,
+            ...(entry.contentHash !== undefined ? { contentHash: entry.contentHash } : {}),
+            manifestEntry: entry,
+          });
+          if (durableQueue.reconciliation !== 'new') {
+            reply.code(409);
+            return {
+              error: 'queued-conflict',
+              message:
+                `${assetPath} cannot be evicted while canonical ${durableQueue.branch} ` +
+                `reports ${durableQueue.reconciliation}. Reconcile or remove the queued ` +
+                'asset first to prevent it from reappearing.',
+            };
+          }
+        } catch (err) {
+          return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+        }
+
+        try {
+          return unapproveVariant({
+            variantId,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+          });
+        } catch (err) {
+          if (err instanceof UnapproveError) {
+            reply.code(err.kind === 'not-found' ? 404 : 500);
+            return { error: err.kind, message: err.message };
+          }
+          reply.code(500);
+          return {
+            error: 'unapprove-failed',
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+      });
     });
   });
 
   app.post<{
     Params: { briefId: string; runId: string };
-    Body: { variantIndex?: unknown };
+    Body: { variantIndex?: unknown; allowHardBlocked?: unknown };
   }>('/api/runs/:briefId/:runId/accept', async (req, reply) => {
     // CSRF guard (concern #1, ADR 0066 CTX-005): this atomic operation
     // approves AND files a GitHub issue in one shot, so binding to 127.0.0.1
@@ -2181,7 +2461,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return { error: 'forbidden-path' };
     }
 
-    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const body = (req.body ?? {}) as { variantIndex?: unknown; allowHardBlocked?: unknown };
     const variantIndex = body.variantIndex;
     if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
       reply.code(400);
@@ -2190,6 +2470,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: 'briefId, runId, and a non-negative integer variantIndex are required.',
       };
     }
+    const allowHardBlocked = parseAllowHardBlocked(body.allowHardBlocked);
+    if (allowHardBlocked === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: ALLOW_HARD_BLOCKED_MESSAGE };
+    }
 
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
     const manifestPath =
@@ -2197,14 +2482,29 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const catalogPath =
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
     const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
-    const listQueuedAssets =
-      checkinDeps.listQueuedAssets ??
-      (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+    const listQueuedAssets = checkinDeps.listQueuedAssets;
+    if (listQueuedAssets === undefined) {
+      reply.code(500);
+      return {
+        error: 'accept-failed',
+        message: 'Legacy asset-checkin inspection is unavailable.',
+      };
+    }
+    const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
+    if (inspectDurableQueueAsset === undefined) {
+      reply.code(500);
+      return {
+        error: 'accept-failed',
+        message: 'Canonical assets/queue inspection is unavailable.',
+      };
+    }
 
     // Serialized with /approve and /checkin (concern #5) — see
     // withCheckinMutationLock's docstring for why this can't deadlock.
     return withCheckinMutationLock(async () => {
       let hydrated: HydratedRunDir | null = null;
+      let restoredBriefPath: string | null = null;
+      let acceptanceCompleted = false;
       try {
         hydrated =
           store.backend === 'local'
@@ -2215,6 +2515,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           reply.code(403);
           return { error: 'forbidden-path' };
         }
+        // Same hydration parity as /approve — see that route.
+        if (hydrated !== null) {
+          restoredBriefPath = await restoreBriefContextForRunDir(runDir);
+        }
+        await ensureApprovalRunDurable(runDir, briefId, runId);
 
         let identity: VariantIdentity;
         try {
@@ -2223,13 +2528,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           return mapApproveError(reply, err);
         }
 
-        // Reconcile BEFORE mutating (concern #4): an already-queued assetPath
-        // short-circuits here — same content hash reports the existing queued
-        // state, a different hash (or an un-hashed legacy entry) refuses with
-        // 409 WITHOUT ever calling approveVariant/runAssetCheckin below. The
-        // queue-list read itself can fail (e.g. `gh issue list` erroring) —
-        // that must surface the SAME structured mapping as every other
-        // check-in failure, not an uncaught-rejection generic 500.
+        // Reconcile BEFORE mutating (concern #4): conflicting or unverifiable
+        // queued content refuses with 409. An exact queued match only re-enters
+        // the lifecycle transaction when a scoped preflight finds cleanup or
+        // exact replacement-retry work; otherwise return its existing record
+        // before unrelated changed assets can leak into a new legacy issue.
         let queuedBefore: ReadonlyMap<string, QueuedAssetCheckin>;
         try {
           queuedBefore = await listQueuedAssets();
@@ -2237,71 +2540,228 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           return mapCheckinError(reply, err);
         }
         const reconciledBefore = reconcileQueuedAsset(reply, queuedBefore, identity, variantIndex);
-        if (reconciledBefore !== undefined) {
+        if (reconciledBefore !== undefined && 'error' in reconciledBefore) {
           return reconciledBefore;
         }
-
+        let durableQueue;
         try {
-          approveVariant({
-            runDir,
-            variantIndex,
-            manifestPath,
-            catalogPath,
-            publicAssetsDir,
-            repoRoot: deps.repoRoot,
+          durableQueue = await inspectDurableQueueAsset({
+            manifestKey: identity.variantId,
+            assetPath: identity.assetPath,
+            contentHash: identity.contentHash,
           });
         } catch (err) {
-          // `already-approved` (exact requested slot already has this exact
-          // content) is a safe no-op here: approveVariant throws BEFORE
-          // writing anything, so it's fine to fall through to check-in using
-          // the identity resolved above — that identity/assetPath IS what's
-          // already approved. `duplicate-content` (cross-variant collision)
-          // is NOT safe to treat the same way: the requested variantId was
-          // refused and never created, so falling through would check in an
-          // asset that doesn't exist. Let it (and any other kind) fall to
-          // mapApproveError below, which reports it as a genuine 409 failure.
-          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') {
-            return mapApproveError(reply, err);
-          }
-        }
-
-        try {
-          const result = await runAssetCheckin(deps.repoRoot, checkinDeps, {});
-          return {
-            state: 'queued' as const,
-            existing: false,
-            briefId: identity.briefId,
-            variantIndex,
-            assetPath: identity.assetPath,
-            issueUrl: result.issueUrl,
-            assetCount: result.plan.assets.length,
-          } satisfies AcceptedResponse;
-        } catch (err) {
-          if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
-            // Race: another request/process queued this exact asset between
-            // our pre-mutation check and now. Reconcile once more before
-            // reporting failure — and, same as the pre-mutation read above, a
-            // queue-list failure here must map to the SAME structured body
-            // instead of an uncaught-rejection generic 500.
-            let queuedAfter: ReadonlyMap<string, QueuedAssetCheckin>;
-            try {
-              queuedAfter = await listQueuedAssets();
-            } catch (listErr) {
-              return mapCheckinError(reply, listErr);
-            }
-            const reconciledAfter = reconcileQueuedAsset(
-              reply,
-              queuedAfter,
-              identity,
-              variantIndex,
-            );
-            if (reconciledAfter !== undefined) {
-              return reconciledAfter;
-            }
-          }
           return mapCheckinError(reply, err);
         }
+        if (
+          durableQueue.reconciliation === 'ambiguous' ||
+          durableQueue.reconciliation === 'content-conflict'
+        ) {
+          reply.code(409);
+          return {
+            error:
+              durableQueue.reconciliation === 'ambiguous'
+                ? 'ambiguous-queued-content'
+                : 'content-conflict',
+            message:
+              durableQueue.reconciliation === 'ambiguous'
+                ? `${identity.assetPath} is present on ${durableQueue.branch}, but its exact content cannot be verified. Repair the queue entry before re-accepting this variant.`
+                : `${identity.assetPath} is present on ${durableQueue.branch} with different content. Approve a different variant, or reconcile the queue branch first.`,
+          };
+        }
+        const durableQueuedResponse =
+          durableQueue.reconciliation === 'duplicate'
+            ? ({
+                state: 'queued',
+                existing: true,
+                briefId: identity.briefId,
+                variantIndex,
+                assetPath: identity.assetPath,
+                queueBranch: durableQueue.branch,
+                assetCount: 1,
+              } satisfies AcceptedResponse)
+            : undefined;
+        const existingQueuedResponse = durableQueuedResponse ?? reconciledBefore;
+        const lifecycleReplacement = {
+          manifestKey: identity.variantId,
+          conceptId: normalizeGeneratedSpriteConceptId(identity.briefId),
+          assetPath: identity.assetPath,
+        };
+
+        // Explicit human acceptance (the Workflow canvas's "Accept & queue")
+        // is a REPLACEMENT acceptance, so it runs inside the same disliked-asset
+        // lifecycle transaction `/approve` uses instead of approving in the
+        // open. Cleanup is scoped to this variant's concept, closure is
+        // validated before publication, and a failed publish rolls the whole
+        // thing back — approval included. Serialized on the cross-process
+        // check-in file lock; the inner check-in/queue-commit runs are handed a
+        // pass-through lock so this cannot deadlock on itself.
+        let response: unknown;
+        try {
+          await makeCheckinFileLock(deps.repoRoot)(async () => {
+            if (existingQueuedResponse !== undefined) {
+              const conceptScope = new Set([lifecycleReplacement.conceptId]);
+              const preflightPlan = loadDislikedLifecyclePlan(
+                deps.repoRoot,
+                [lifecycleReplacement],
+                conceptScope,
+              );
+              if (!requiresLifecycleQueue(preflightPlan, identity.variantId)) {
+                response = existingQueuedResponse;
+                return;
+              }
+            }
+            await runAcceptedDislikedLifecycleTransaction({
+              repoRoot: deps.repoRoot,
+              replacements: [lifecycleReplacement],
+              approve: () => {
+                try {
+                  approveVariant({
+                    runDir,
+                    variantIndex,
+                    manifestPath,
+                    catalogPath,
+                    publicAssetsDir,
+                    repoRoot: deps.repoRoot,
+                    allowHardBlocked,
+                    ...(hydrated !== null ? { sourceRunOverride: hydrated.sourceRun } : {}),
+                  });
+                } catch (err) {
+                  // `already-approved` (exact requested slot already has this
+                  // exact content) is a safe no-op: approveVariant throws
+                  // BEFORE writing anything, so the identity resolved above IS
+                  // what is already approved. `duplicate-content` (cross-variant
+                  // collision) is NOT safe to treat the same way — the requested
+                  // variantId was refused and never created, so continuing would
+                  // check in an asset that does not exist. Rethrow it (and every
+                  // other kind) to roll back and report a genuine failure.
+                  if (!(err instanceof ApproveError) || err.kind !== 'already-approved') throw err;
+                }
+                return identity;
+              },
+              publish: async (accepted, plan) => {
+                // The legacy `asset-checkin` issue flow cannot express a
+                // deletion or annotation-only change. For such a transaction,
+                // assets/queue is the single durable commit point: once this
+                // push succeeds there must be no later fallible remote action
+                // that could report failure and trigger only a local rollback.
+                if (requiresLifecycleQueue(plan, accepted.variantId)) {
+                  const durableQueue = await runQueueCommit(
+                    deps.repoRoot,
+                    [
+                      {
+                        assetPath: accepted.assetPath,
+                        manifestKey: accepted.variantId,
+                        briefId: accepted.briefId,
+                        variantIndex,
+                      },
+                    ],
+                    {
+                      ...(deps.queueCommitDeps ?? createDefaultQueueCommitDeps(deps.repoRoot, env)),
+                      withCrossProcessLock: (run) => run(),
+                    },
+                    {
+                      message: `chore(assets): accept ${accepted.variantId}`,
+                      removals: plan.removed.map((removal) => ({
+                        assetPath: removal.assetPath,
+                        manifestKey: removal.manifestKey,
+                        sourceRun: removal.sourceRun,
+                        variantIndex: removal.variantIndex,
+                      })),
+                      annotations: toQueueCommitAnnotationUpdates(plan.annotationUpdates),
+                    },
+                  );
+                  response = {
+                    state: 'queued',
+                    existing: durableQueue.status === 'noop',
+                    briefId: accepted.briefId,
+                    variantIndex,
+                    assetPath: accepted.assetPath,
+                    queueBranch: durableQueue.branch,
+                    assetCount: 1,
+                  } satisfies AcceptedResponse;
+                  return;
+                }
+                try {
+                  const result = await runAssetCheckin(
+                    deps.repoRoot,
+                    { ...checkinDeps, withCrossProcessLock: (run) => run() },
+                    {},
+                  );
+                  response = {
+                    state: 'queued' as const,
+                    existing: false,
+                    briefId: accepted.briefId,
+                    variantIndex,
+                    assetPath: accepted.assetPath,
+                    issueUrl: result.issueUrl,
+                    assetCount: result.plan.assets.length,
+                  } satisfies AcceptedResponse;
+                  return;
+                } catch (err) {
+                  if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
+                    // Race: another request/process queued this exact asset
+                    // between our pre-mutation check and now. Reconcile once
+                    // more before reporting failure — and, same as the
+                    // pre-mutation read above, a queue-list failure here must
+                    // map to the SAME structured body instead of an
+                    // uncaught-rejection generic 500.
+                    const queuedAfter = await listQueuedAssets();
+                    const reconciledAfter = reconcileQueuedAsset(
+                      reply,
+                      queuedAfter,
+                      identity,
+                      variantIndex,
+                    );
+                    if (reconciledAfter !== undefined) {
+                      if ('error' in reconciledAfter) {
+                        throw new CheckinError(reconciledAfter.error, reconciledAfter.message);
+                      }
+                      response = reconciledAfter;
+                      return;
+                    }
+                  }
+                  throw err;
+                }
+              },
+            });
+          });
+        } catch (err) {
+          if (err instanceof ApproveError) return mapApproveError(reply, err);
+          const mapped = mapCheckinError(reply, err);
+          return {
+            ...mapped,
+            message: `${mapped.message} The local acceptance and lifecycle changes were rolled back.`,
+          };
+        }
+        if (response === undefined) {
+          // Unreachable by construction (publish either sets a response or
+          // throws), but never answer a mutating route with an empty body.
+          reply.code(500);
+          return {
+            error: 'accept-failed',
+            message:
+              'The acceptance transaction completed without producing a queue result. ' +
+              'Re-run the accept; if it repeats, run `npm run sprites:disliked-lifecycle -- --dry-run`.',
+          };
+        }
+        acceptanceCompleted = true;
+        return response;
+      } catch (err) {
+        if (err instanceof ApproveError) return mapApproveError(reply, err);
+        if (err instanceof RunDurabilityError) {
+          reply.code(500);
+          return { error: 'not-durable', message: err.message };
+        }
+        const mapped = mapCheckinError(reply, err, 'accept-failed');
+        return {
+          ...mapped,
+          message: `${mapped.message} The local acceptance and lifecycle changes were rolled back.`,
+        };
       } finally {
+        if (!acceptanceCompleted && restoredBriefPath !== null) {
+          rmSync(restoredBriefPath, { force: true });
+        }
         hydrated?.cleanup();
       }
     });
@@ -3343,15 +3803,35 @@ function resolveQueuedBriefId(briefPath: string): string {
 
 interface HydratedRunDir {
   readonly runDir: string;
+  /**
+   * The canonical repo-relative `sourceRun` pointer for this run, built from
+   * the DURABLE STORE identity (`<briefId>/<runId>`) rather than the temp
+   * directory the bytes were materialized into. Pass it to `approveVariant` as
+   * `sourceRunOverride`.
+   */
+  readonly sourceRun: string;
   cleanup(): void;
 }
 
+/**
+ * Materialize the subset of a store-resident run that `approveVariant` reads,
+ * into a private temp directory.
+ *
+ * The key set below is a CONTRACT with `approve.ts::resolveAnchors`, not a
+ * convenience list — anything omitted here is silently absent at approval time
+ * and degrades the manifest entry. `NN.manual-anchor.json` in particular is the
+ * HIGHEST-precedence hold anchor (an operator dragging the anchor in the
+ * gallery), is persisted to the store by `run-pipeline.ts`, and was previously
+ * dropped: a remote-store approval silently downgraded a hand-placed anchor to
+ * the derived one, with no error anywhere.
+ */
 async function hydrateRunDirForApproveFromStore(
   store: RunStore,
   briefId: string,
   runId: string,
   variantIndex: number,
 ): Promise<HydratedRunDir | null> {
+  const sourceRun = formatSourceRun(briefId, runId);
   const prefix = `${briefId}/${runId}/`;
   const summaryKey = `${prefix}summary.json`;
   const paddedIndex = String(variantIndex).padStart(2, '0');
@@ -3359,10 +3839,12 @@ async function hydrateRunDirForApproveFromStore(
     summaryKey,
     `${prefix}processed/${paddedIndex}.png`,
     `${prefix}processed/${paddedIndex}.anchor.json`,
+    // Manual (operator-authored) hold anchor — outranks the derived sidecar.
+    `${prefix}processed/${paddedIndex}.manual-anchor.json`,
     `${prefix}processed/${paddedIndex}.anchor.cog.json`,
     `${prefix}processed/${paddedIndex}.anchor.weapon.json`,
   ];
-  const runKeys = await store.list(prefix);
+  const runKeys = await store.list(prefix, { authoritative: true });
   if (runKeys.length === 0) {
     return null;
   }
@@ -3405,6 +3887,7 @@ async function hydrateRunDirForApproveFromStore(
   }
   return {
     runDir,
+    sourceRun,
     cleanup: () => {
       rmSync(tempRoot, { recursive: true, force: true });
     },

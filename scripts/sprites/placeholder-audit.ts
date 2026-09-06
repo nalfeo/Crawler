@@ -26,7 +26,12 @@
  * onto these inputs.
  */
 
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  generatedManifestConceptId,
+  isPlaceholderManifestEntry as isSharedPlaceholderManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
+import { normalizeSpriteConceptKey } from '../../src/shared/sprite-concepts.js';
 
 /** The shared generic placeholder spriteId every un-arted mob falls back to. */
 export const MOB_PLACEHOLDER_SPRITE_ID = 'mob-placeholder';
@@ -131,6 +136,11 @@ export interface PlaceholderAuditInput {
  * Normalize an art name down to its bare concept so a placeholder and its real
  * replacement collapse to the same key.
  *
+ * Thin alias for the shared {@link normalizeSpriteConceptKey}: keeping ONE
+ * implementation is what stops the audit, the reference selector, the sprite
+ * backlog, and the runtime variant pools from disagreeing about which ids are
+ * the same concept (notably across the explicit design remaps).
+ *
  * Examples:
  *   `slime-queen-var-0` -> `slime-queen`
  *   `iron-sword-v1`        -> `iron-sword`
@@ -139,22 +149,12 @@ export interface PlaceholderAuditInput {
  *   `npc.guide`            -> `guide`
  */
 export function normalizeConcept(name: string): string {
-  const lastSegment = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : name;
-  return lastSegment
-    .trim()
-    .toLowerCase()
-    .replace(/-var-\d+$/, '')
-    .replace(/-v\d+$/, '')
-    .replace(/-placeholder$/, '');
+  return normalizeSpriteConceptKey(name);
 }
 
 /** True when a manifest entry is a placeholder rather than real generated art. */
 export function isPlaceholderManifestEntry(entry: ManifestEntry): boolean {
-  return (
-    entry.sourceRun === 'placeholder' ||
-    entry.sensorScore === 'placeholder' ||
-    /-placeholder\.png$/i.test(entry.assetPath)
-  );
+  return isSharedPlaceholderManifestEntry(entry);
 }
 
 /** True when a sprite registry note marks a temporary placeholder frame. */
@@ -188,8 +188,13 @@ export function buildPlaceholderAudit(input: PlaceholderAuditInput): Placeholder
   const byConcept = new Map<string, MutableConcept>();
 
   // 1. Manifest entries: split into placeholders vs real generated assets.
+  //    Group by the SHARED manifest concept helper, then apply the tooling
+  //    tolerances (`-placeholder` suffix, namespacing, case). Deriving the key
+  //    from `entry.briefId` by hand put every cell of an icon batch under the
+  //    BATCH concept, so an icon placeholder never met the real icon art that
+  //    replaces it and the audit reported it as still-needed forever.
   for (const [mapKey, entry] of Object.entries(input.manifestEntries)) {
-    const concept = normalizeConcept(entry.briefId || mapKey);
+    const concept = normalizeConcept(generatedManifestConceptId(entry, mapKey));
     const bucket = conceptFor(byConcept, concept);
     if (isPlaceholderManifestEntry(entry)) {
       bucket.placeholders.push({

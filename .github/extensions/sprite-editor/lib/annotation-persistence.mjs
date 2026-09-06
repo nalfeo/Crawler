@@ -20,11 +20,41 @@
 
 export function normalizeSpriteAnnotation(value) {
   const favorite = value?.favorite === true;
-  return {
+  const normalized = {
     favorite,
     disliked: value?.disliked === true && !favorite,
     comment: typeof value?.comment === 'string' ? value.comment.trim().slice(0, 1000) : '',
   };
+  if (typeof value?.sourceRun === 'string' && value.sourceRun.trim() !== '') {
+    normalized.sourceRun = value.sourceRun;
+  }
+  if (Number.isInteger(value?.variantIndex) && value.variantIndex >= 0) {
+    normalized.variantIndex = value.variantIndex;
+  }
+  if (value?.tombstone && typeof value.tombstone === 'object' && !Array.isArray(value.tombstone)) {
+    normalized.tombstone = structuredClone(value.tombstone);
+  }
+  if (
+    value?.reconciliation &&
+    typeof value.reconciliation === 'object' &&
+    !Array.isArray(value.reconciliation)
+  ) {
+    normalized.reconciliation = structuredClone(value.reconciliation);
+  }
+  return normalized;
+}
+
+function mergeSpriteAnnotation(existing, update, provenance) {
+  const base = normalizeSpriteAnnotation(existing);
+  const incoming = update && typeof update === 'object' && !Array.isArray(update) ? update : {};
+  return normalizeSpriteAnnotation({
+    ...base,
+    ...incoming,
+    ...(typeof provenance?.sourceRun === 'string' ? { sourceRun: provenance.sourceRun } : {}),
+    ...(Number.isInteger(provenance?.variantIndex)
+      ? { variantIndex: provenance.variantIndex }
+      : {}),
+  });
 }
 
 export function equalAnnotation(left, right) {
@@ -32,7 +62,13 @@ export function equalAnnotation(left, right) {
   const lhs = normalizeSpriteAnnotation(left);
   const rhs = normalizeSpriteAnnotation(right);
   return (
-    lhs.favorite === rhs.favorite && lhs.disliked === rhs.disliked && lhs.comment === rhs.comment
+    lhs.favorite === rhs.favorite &&
+    lhs.disliked === rhs.disliked &&
+    lhs.comment === rhs.comment &&
+    lhs.sourceRun === rhs.sourceRun &&
+    lhs.variantIndex === rhs.variantIndex &&
+    JSON.stringify(lhs.tombstone) === JSON.stringify(rhs.tombstone) &&
+    JSON.stringify(lhs.reconciliation) === JSON.stringify(rhs.reconciliation)
   );
 }
 
@@ -88,17 +124,17 @@ export function createAnnotationPersistence({
      * Write the local aggregate and mint a monotonic per-sprite token. The token
      * prevents an earlier queue completion from cleaning a later local save.
      */
-    saveLocal(key, rawAnnotation) {
+    saveLocal(key, rawAnnotation, provenance = undefined) {
       if (isReservedAnnotationKey(key)) {
         throw new Error(
           `Invalid sprite annotation key ${JSON.stringify(key)}. Reserved object properties are not allowed.`,
         );
       }
-      const annotation = normalizeSpriteAnnotation(rawAnnotation);
       // Always start from the raw tracked file. A presentation document may
       // contain pending overlays for other sprites; serializing that view would
       // reintroduce already-durable annotation diffs into the worktree.
       const document = cloneDocument(readCurrent());
+      const annotation = mergeSpriteAnnotation(document.sprites[key], rawAnnotation, provenance);
       document.sprites[key] = annotation;
       writeCurrent(document);
       const version = (versions.get(key) ?? 0) + 1;

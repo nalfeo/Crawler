@@ -11,8 +11,7 @@ import { describe, expect, it } from 'vitest';
  *   - PR headless jobs start only when `sim_touched=true`.
  *   - Classifier failure cannot silently skip the gate (changes job failure
  *     propagates through the merge gate check).
- *   - Main-push and scheduled behavior remains a documented backstop
- *     (jobs run unconditionally on non-PR events).
+ *   - Non-docs main-push and scheduled behavior remains a documented backstop.
  *   - Merge gate accepts intentional scope skips (sim_touched=false) and still
  *     rejects failed scope detection (missing sim_touched with a skip).
  *
@@ -99,9 +98,9 @@ describe('ci.yml headless and coverage gating policy', () => {
     expect(condition).not.toContain('gameplay_safe');
   });
 
-  it('test-headless still skips on art_only and docs_only', () => {
+  it('test-headless skips docs but not simulation-visible art', () => {
     const condition = getJobIf(loadCiWorkflow(), 'test-headless');
-    expect(condition).toContain("art_only != 'true'");
+    expect(condition).not.toContain('art_only');
     expect(condition).toContain("docs_only != 'true'");
   });
 

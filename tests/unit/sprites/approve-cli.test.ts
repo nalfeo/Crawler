@@ -72,6 +72,25 @@ const mocks = vi.hoisted(() => {
   const approveFrameSequence = vi.fn(() => {
     throw new ApproveError('already-approved', 'player-walk-cycle already approved');
   });
+  const approveIconBatch = vi.fn((_options: { readonly allowHardBlocked?: boolean }) => [
+    {
+      briefId: 'achv-icons',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      variantIndex: 0,
+    },
+  ]);
+  const resolveVariantIdentity = vi.fn(() => ({
+    briefId: FAKE_ENTRY.briefId,
+    variantId: FAKE_ENTRY.spriteName,
+    assetPath: FAKE_ENTRY.assetPath,
+    contentHash: 'a'.repeat(64),
+  }));
+  const resolveFrameSequenceIdentity = vi.fn(() => ({
+    briefId: FAKE_SEQUENCE_ENTRY.briefId,
+    variantId: FAKE_SEQUENCE_ENTRY.spriteName,
+    assetPath: FAKE_SEQUENCE_ENTRY.assetPath,
+  }));
 
   return {
     runQueueCommit,
@@ -79,6 +98,9 @@ const mocks = vi.hoisted(() => {
     loadApprovedFrameSequenceEntry,
     approveVariant,
     approveFrameSequence,
+    approveIconBatch,
+    resolveVariantIdentity,
+    resolveFrameSequenceIdentity,
     ApproveError,
     FAKE_ENTRY,
     FAKE_SEQUENCE_ENTRY,
@@ -119,10 +141,50 @@ vi.mock('../../../scripts/sprites/approve.js', async (importOriginal) => {
     approveVariant: mocks.approveVariant,
     loadApprovedEntry: mocks.loadApprovedEntry,
     approveFrameSequence: mocks.approveFrameSequence,
+    approveIconBatch: mocks.approveIconBatch,
     loadApprovedFrameSequenceEntry: mocks.loadApprovedFrameSequenceEntry,
+    resolveVariantIdentity: mocks.resolveVariantIdentity,
+    resolveFrameSequenceIdentity: mocks.resolveFrameSequenceIdentity,
     ApproveError: mocks.ApproveError,
   };
 });
+
+const lifecycle = vi.hoisted(() => {
+  interface FakePlan {
+    removed: Array<{ manifestKey: string; assetPath: string }>;
+    retainedGroups: Array<{ conceptId: string; manifestKeys: string[] }>;
+    deferredGroups: Array<{ conceptId: string; manifestKeys: string[] }>;
+    annotationUpdates: Array<Record<string, unknown> & { key: string }>;
+  }
+  return {
+    runAcceptedDislikedLifecycleTransaction: vi.fn(
+      async (options: {
+        replacements: readonly { manifestKey: string; conceptId: string; assetPath: string }[];
+        approve: () => unknown;
+        publish: (approved: unknown, plan: FakePlan) => Promise<void>;
+      }) => {
+        const approved = options.approve();
+        const plan: FakePlan = {
+          removed: [],
+          retainedGroups: [],
+          deferredGroups: [],
+          annotationUpdates: [],
+        };
+        await options.publish(approved, plan);
+        return { approved, plan };
+      },
+    ),
+  };
+});
+
+vi.mock('../../../scripts/sprites/disliked-lifecycle.js', () => ({
+  runAcceptedDislikedLifecycleTransaction: lifecycle.runAcceptedDislikedLifecycleTransaction,
+  toQueueCommitAnnotationUpdates: vi.fn((updates: readonly unknown[]) => updates),
+}));
+
+vi.mock('../../../scripts/sprites/checkin-runtime.js', () => ({
+  makeCheckinFileLock: vi.fn(() => async (run: () => Promise<unknown>) => run()),
+}));
 
 // ── import the subject under test AFTER mocks are registered ───────────────
 const { main } = await import('../../../scripts/sprites/approve-cli.js');
@@ -145,6 +207,8 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     delete process.env.CI;
     mocks.runQueueCommit.mockClear();
     mocks.approveVariant.mockClear();
+    mocks.resolveVariantIdentity.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
     durability.ensureRunDurable.mockClear();
     durability.resolvePublicationDurableStore.mockClear();
   });
@@ -166,6 +230,7 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     const commitOrder = mocks.runQueueCommit.mock.invocationCallOrder[0] ?? 0;
     expect(durableOrder).toBeLessThan(approveOrder);
     expect(durableOrder).toBeLessThan(commitOrder);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
   });
 
   it('passes the run coordinates parsed from the run dir', async () => {
@@ -174,6 +239,19 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(durability.ensureRunDurable).toHaveBeenCalledWith(
       expect.objectContaining({ briefId: 'iron-sword', runId: 'run-01' }),
     );
+  });
+
+  it('fails closed when variant identity resolution fails', async () => {
+    mocks.resolveVariantIdentity.mockImplementationOnce(() => {
+      throw new Error('missing variant provenance');
+    });
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(1);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).not.toHaveBeenCalled();
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
   it('fails closed with exit code 5 and never publishes when the run is not durable', async () => {
@@ -213,13 +291,150 @@ describe('approve-cli durability gate (fail-closed before git publication)', () 
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
-  it('skips the gate on CI, where the CLI approves locally and never pushes', async () => {
+  it('surfaces a queue-commit failure that would strand an annotation-only lifecycle change', async () => {
+    // A tombstone clear (or any annotation write) is applied LOCALLY before
+    // publication. Swallowing the push failure would make the advertised
+    // "re-run to retry" a lie: the second run computes an empty delta and never
+    // republishes it. So the publish must throw and let the transaction roll back.
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockImplementationOnce(async (options) => {
+      const approved = options.approve();
+      const plan = {
+        removed: [],
+        retainedGroups: [],
+        deferredGroups: [],
+        annotationUpdates: [{ key: 'iron-sword-var-1', tombstone: undefined }],
+      };
+      await options.publish(approved, plan as never);
+      return { approved, plan };
+    });
+    mocks.runQueueCommit.mockRejectedValueOnce(new Error('push rejected'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).not.toBe(0);
+  });
+
+  it('still keeps a plain approval local-only (exit 0) when queue-commit fails with no lifecycle change', async () => {
+    mocks.runQueueCommit.mockRejectedValueOnce(new Error('push rejected'));
+
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(0);
+  });
+
+  it('refuses BEFORE the durability gate when CI is set (Constitutional §3)', async () => {
     process.env.CI = 'true';
 
-    await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
+    expect(exitCode).toBe(6);
     expect(durability.ensureRunDurable).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * FAIL-CLOSED CI refusal (certification finding #1).
+ *
+ * `sprites:approve` is the HUMAN acceptance surface. The old behaviour under CI
+ * was the worst of both worlds: it skipped the durability gate AND skipped the
+ * durable queue-commit, yet still ran the approval and the disliked-asset
+ * lifecycle transaction — mutating manifest shards, checked-in PNGs, and
+ * annotations that no other worktree would ever see, pointing at a `sourceRun`
+ * nobody had verified. Refusing outright is the only coherent position, and it
+ * strands nothing: unattended CI producers have their own classified
+ * entrypoints (see `acceptance-lifecycle-routing.test.ts`).
+ */
+describe('approve-cli CI refusal (fail closed before ANY mutation)', () => {
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    process.env.CI = 'true';
+    mocks.runQueueCommit.mockClear();
+    mocks.approveVariant.mockClear();
+    mocks.approveFrameSequence.mockClear();
+    mocks.approveIconBatch.mockClear();
+    mocks.resolveVariantIdentity.mockClear();
+    mocks.resolveFrameSequenceIdentity.mockClear();
+    mocks.loadApprovedEntry.mockClear();
+    mocks.loadApprovedFrameSequenceEntry.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
+    durability.ensureRunDurable.mockClear();
+  });
+
+  afterEach(() => {
+    if (savedCI !== undefined) process.env.CI = savedCI;
+    else delete process.env.CI;
+  });
+
+  /** Nothing the CLI can mutate may have been touched. */
+  function expectNoMutation(): void {
+    expect(durability.ensureRunDurable).not.toHaveBeenCalled();
+    expect(mocks.resolveVariantIdentity).not.toHaveBeenCalled();
+    expect(mocks.resolveFrameSequenceIdentity).not.toHaveBeenCalled();
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).not.toHaveBeenCalled();
+    expect(mocks.approveVariant).not.toHaveBeenCalled();
+    expect(mocks.approveFrameSequence).not.toHaveBeenCalled();
+    expect(mocks.approveIconBatch).not.toHaveBeenCalled();
+    expect(mocks.loadApprovedEntry).not.toHaveBeenCalled();
+    expect(mocks.loadApprovedFrameSequenceEntry).not.toHaveBeenCalled();
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  }
+
+  it('refuses --variant with a dedicated exit code and mutates nothing', async () => {
+    const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses --sequence and mutates nothing', async () => {
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses --icon-batch and mutates nothing', async () => {
+    const exitCode = await main(['/fake/runs/achv-icons/run-01', '--icon-batch'], '/fake/repo');
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses even with --allow-hard-blocked: the override does not unlock CI', async () => {
+    const exitCode = await main(
+      ['/fake/runs/iron-sword/run-01', '--variant', '1', '--allow-hard-blocked'],
+      '/fake/repo',
+    );
+
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('refuses before argument parsing, so a bad invocation cannot probe past the gate', async () => {
+    const exitCode = await main([], '/fake/repo');
+
+    // Exit 6 (ci-refused), NOT 1 (usage) — the refusal is the first thing that
+    // happens, so there is no ordering in which a mutation could sneak through.
+    expect(exitCode).toBe(6);
+    expectNoMutation();
+  });
+
+  it('names the refusal and points at the unattended producers', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
+      const written = stderr.mock.calls.map((call) => String(call[0])).join('');
+      expect(written).toContain('ci-refused');
+      expect(written).toContain('sprites:icon-batch');
+    } finally {
+      stderr.mockRestore();
+    }
   });
 });
 
@@ -260,14 +475,15 @@ describe('approve-cli already-approved idempotent retry (concern #6)', () => {
     expect(assets[0]?.manifestKey).toBe('iron-sword-var-1');
   });
 
-  it('returns exit code 0 on CI without calling runQueueCommit (already-approved CI path)', async () => {
+  it('refuses under CI instead of retrying an already-approved entry locally', async () => {
     process.env.CI = 'true';
 
     const exitCode = await main(['/fake/runs/iron-sword/run-01', '--variant', '1'], '/fake/repo');
 
-    // On CI the remote push is skipped, but the exit code must still be 0 —
-    // the already-approved retry is a success, not an error.
-    expect(exitCode).toBe(0);
+    // Under CI the human acceptance surface refuses outright — it must not
+    // "succeed" by silently doing nothing durable.
+    expect(exitCode).toBe(6);
+    expect(mocks.loadApprovedEntry).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
@@ -338,12 +554,39 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
     mocks.runQueueCommit.mockClear();
     mocks.loadApprovedFrameSequenceEntry.mockClear();
     mocks.approveFrameSequence.mockClear();
+    mocks.resolveFrameSequenceIdentity.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
   });
 
   afterEach(() => {
     if (savedCI !== undefined) {
       process.env.CI = savedCI;
     }
+  });
+
+  it('routes the frame-sequence acceptance through the disliked-asset lifecycle transaction', async () => {
+    const exitCode = await main(
+      ['/fake/runs/player-walk-cycle/run-01', '--sequence'],
+      '/fake/repo',
+    );
+
+    // Accepting a walk cycle replaces the art for a whole concept, so it must
+    // not approve outside the transaction that retires what it replaces.
+    expect(exitCode).toBe(0);
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
+    const options = lifecycle.runAcceptedDislikedLifecycleTransaction.mock.calls[0]?.[0];
+    expect(options?.replacements).toEqual([
+      {
+        manifestKey: 'player-walk-cycle',
+        conceptId: 'player-walk-cycle',
+        assetPath: 'generated/player-walk-cycle.png',
+      },
+    ]);
+    // Identity is resolved WITHOUT mutating, before approval runs.
+    expect(mocks.resolveFrameSequenceIdentity).toHaveBeenCalledOnce();
+    const identityOrder = mocks.resolveFrameSequenceIdentity.mock.invocationCallOrder[0] ?? 0;
+    const approveOrder = mocks.approveFrameSequence.mock.invocationCallOrder[0] ?? 0;
+    expect(identityOrder).toBeLessThan(approveOrder);
   });
 
   it('re-enters runQueueCommit for an already-approved frame sequence and returns exit code 0', async () => {
@@ -363,7 +606,7 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
     expect(assets[0]?.manifestKey).toBe('player-walk-cycle');
   });
 
-  it('returns exit code 0 on CI without calling runQueueCommit (already-approved sequence CI path)', async () => {
+  it('refuses under CI instead of retrying an already-approved sequence locally', async () => {
     process.env.CI = 'true';
 
     const exitCode = await main(
@@ -371,7 +614,8 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
       '/fake/repo',
     );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(6);
+    expect(mocks.loadApprovedFrameSequenceEntry).not.toHaveBeenCalled();
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 
@@ -384,6 +628,193 @@ describe('approve-cli --sequence already-approved idempotent retry (round-1 code
     );
 
     expect(exitCode).not.toBe(0);
+    expect(mocks.runQueueCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe('approve-cli --icon-batch lifecycle routing', () => {
+  const roots: string[] = [];
+  let savedCI: string | undefined;
+
+  beforeEach(() => {
+    savedCI = process.env.CI;
+    delete process.env.CI;
+    mocks.runQueueCommit.mockClear();
+    mocks.approveIconBatch.mockClear();
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockClear();
+  });
+
+  afterEach(async () => {
+    if (savedCI !== undefined) process.env.CI = savedCI;
+    else delete process.env.CI;
+    const { rm } = await import('node:fs/promises');
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it('routes an icon batch through the transaction with one replacement per declared icon', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n  - id: achv-deep-delve\n',
+    );
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    // Every declared icon id is its own concept, so each is an explicit
+    // replacement acceptance that scopes cleanup to that icon.
+    expect(lifecycle.runAcceptedDislikedLifecycleTransaction).toHaveBeenCalledOnce();
+    const options = lifecycle.runAcceptedDislikedLifecycleTransaction.mock.calls[0]?.[0];
+    expect(options?.replacements).toEqual([
+      {
+        manifestKey: 'achv-first-bonk',
+        conceptId: 'achv-first-bonk',
+        assetPath: 'generated/achv-first-bonk.png',
+      },
+      {
+        manifestKey: 'achv-deep-delve',
+        conceptId: 'achv-deep-delve',
+        assetPath: 'generated/achv-deep-delve.png',
+      },
+    ]);
+    // Approval and publication still happen, inside the transaction.
+    expect(mocks.approveIconBatch).toHaveBeenCalledOnce();
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+    // Default is fail-closed: no override unless the operator asks for one.
+    expect(mocks.approveIconBatch.mock.calls[0]?.[0]).toMatchObject({
+      allowHardBlocked: false,
+    });
+  });
+
+  /**
+   * Regression: `--allow-hard-blocked` was parsed and then dropped on the floor
+   * for `--icon-batch`, so a documented, conscious human override silently did
+   * nothing and the approval still failed with `hard-blocked`.
+   */
+  it('forwards --allow-hard-blocked to approveIconBatch', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-override-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+
+    const exitCode = await main([runDir, '--icon-batch', '--allow-hard-blocked'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    expect(mocks.approveIconBatch.mock.calls[0]?.[0]).toMatchObject({
+      allowHardBlocked: true,
+    });
+  });
+
+  it('publishes lifecycle changes when an icon batch reuses an existing approved entry', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-empty-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+
+    const existingEntry = {
+      briefId: 'achv-icons',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      variantIndex: 0,
+    };
+    mocks.approveIconBatch.mockReturnValueOnce([existingEntry] as never);
+    lifecycle.runAcceptedDislikedLifecycleTransaction.mockImplementationOnce(async (options) => {
+      const approved = options.approve();
+      const plan = {
+        removed: [{ manifestKey: 'achv-first-bonk-old', assetPath: 'generated/old.png' }],
+        retainedGroups: [],
+        deferredGroups: [],
+        annotationUpdates: [{ key: 'achv-first-bonk-old', tombstone: {} }],
+      };
+      await options.publish(approved, plan as never);
+      return { approved, plan };
+    });
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    expect(mocks.runQueueCommit).toHaveBeenCalledOnce();
+    const callArgs = (mocks.runQueueCommit.mock.calls[0] as unknown[]) ?? [];
+    expect(callArgs[1]).toEqual([
+      {
+        assetPath: existingEntry.assetPath,
+        manifestKey: existingEntry.spriteName,
+        briefId: existingEntry.briefId,
+        variantIndex: existingEntry.variantIndex,
+      },
+    ]);
+    const options = callArgs[3] as {
+      removals: readonly unknown[];
+      annotations: readonly unknown[];
+    };
+    expect(options.removals).toEqual([
+      { assetPath: 'generated/old.png', manifestKey: 'achv-first-bonk-old' },
+    ]);
+    expect(options.annotations).toHaveLength(1);
+  });
+
+  it('stays a no-op when there is nothing approved AND no lifecycle change', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const nodePath = (await import('node:path')).default;
+
+    const repoRoot = mkdtempSync(nodePath.join(tmpdir(), 'approve-cli-icons-noop-'));
+    roots.push(repoRoot);
+    const runDir = nodePath.join(repoRoot, 'generated', 'runs', 'achv-icons', 'run-01');
+    mkdirSync(runDir, { recursive: true });
+    mkdirSync(nodePath.join(repoRoot, 'briefs'), { recursive: true });
+    writeFileSync(
+      nodePath.join(runDir, 'summary.json'),
+      JSON.stringify({ briefPath: 'briefs/achv-icons.yaml' }),
+    );
+    writeFileSync(
+      nodePath.join(repoRoot, 'briefs', 'achv-icons.yaml'),
+      'name: achv-icons\niconBatch:\n  - id: achv-first-bonk\n',
+    );
+    mocks.approveIconBatch.mockReturnValueOnce([] as never);
+
+    const exitCode = await main([runDir, '--icon-batch'], repoRoot);
+
+    expect(exitCode).toBe(0);
+    // Genuinely nothing to publish — no empty commit is attempted.
     expect(mocks.runQueueCommit).not.toHaveBeenCalled();
   });
 });

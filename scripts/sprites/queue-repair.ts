@@ -9,8 +9,12 @@
 
 import type { SpriteAnnotationUpdate } from './queue-commit.js';
 import type { Exec } from './checkin.js';
+import {
+  assertLifecycleDeletionMatchesShard,
+  selectAuthorizedLifecycleDeletions,
+} from './reconcile-queue.js';
 
-export const SELECTIVE_RECOVERY_POLICY = 'acc25eda-selective-v1';
+export const SELECTIVE_RECOVERY_POLICY = 'acc25eda-selective-v2';
 export const SELECTIVE_RECOVERY_SOURCE_SHA = 'acc25eda2680af595f65d5248ed53049d1fe9ab3';
 export const SELECTIVE_RECOVERY_ANNOTATION_DELTA_COUNT = 52;
 
@@ -24,7 +28,6 @@ const SELECTED_GROUP_KEYS = [
   'welcome-room-crate-stack-var-3',
   'welcome-room-desk-var-0',
   'welcome-room-exit-sign-var-0',
-  'welcome-room-floor-plate-cable-run-var-4',
   'welcome-room-kitchenette-var-0',
   'welcome-room-lounge-stool-var-1',
   'welcome-room-show-poster-var-0',
@@ -214,6 +217,63 @@ function parseNameStatus(
   return discarded.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function parseChangedPaths(stdout: string): ReadonlyMap<string, string> {
+  const changes = new Map<string, string>();
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line) continue;
+    const [status = '?', ...paths] = line.split('\t');
+    for (const changedPath of paths) {
+      if (changedPath) changes.set(changedPath, status);
+    }
+  }
+  return changes;
+}
+
+function findQueueWritesThatRecoveryWouldDrop(
+  stdout: string,
+  selectedPaths: ReadonlySet<string>,
+): readonly string[] {
+  const changes = parseChangedPaths(stdout);
+  const unsafe = new Set<string>();
+  for (const [changedPath, status] of changes) {
+    if (
+      status.startsWith('D') ||
+      selectedPaths.has(changedPath) ||
+      changedPath === ANNOTATIONS_PATH
+    ) {
+      continue;
+    }
+    const pngMatch = /^public\/assets\/generated\/(.+)\.png$/u.exec(changedPath);
+    const shardMatch = /^public\/assets\/generated\/entries\/(.+)\.json$/u.exec(changedPath);
+    if (pngMatch || shardMatch) {
+      const key = (pngMatch ?? shardMatch)![1]!;
+      const counterpart = pngMatch
+        ? `${GENERATED_ROOT}/entries/${key}.json`
+        : `${GENERATED_ROOT}/${key}.png`;
+      const counterpartStatus = changes.get(counterpart);
+      // A lone newly-added shard/PNG is the corrupt partial-pair shape this
+      // one-time recovery is allowed to discard. Any complete pair or edit to
+      // an existing path may be a legitimate later queue write and must block.
+      if (!status.startsWith('A') || (counterpartStatus && !counterpartStatus.startsWith('D'))) {
+        unsafe.add(changedPath);
+        if (counterpartStatus) unsafe.add(counterpart);
+      }
+      continue;
+    }
+    unsafe.add(changedPath);
+  }
+  return [...unsafe].sort();
+}
+
+function changedAnnotationKeys(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): readonly string[] {
+  return [...new Set([...Object.keys(left), ...Object.keys(right)])]
+    .filter((key) => JSON.stringify(left[key]) !== JSON.stringify(right[key]))
+    .sort((a, b) => a.localeCompare(b));
+}
+
 async function remoteSha(
   exec: Exec,
   repoRoot: string,
@@ -308,8 +368,89 @@ export async function runQueueRepair(
         );
       }
 
+      const queueDeletions = (
+        await mustGit(deps.exec, repoRoot, [
+          'diff',
+          '--no-renames',
+          '--name-only',
+          '--diff-filter=D',
+          mainRef,
+          queueRef,
+          '--',
+          GENERATED_ROOT,
+        ])
+      )
+        .split(/\r?\n/)
+        .filter(Boolean);
+      if (queueDeletions.length > 0) {
+        const queueAnnotations = await git(deps.exec, repoRoot, [
+          'show',
+          `${queueRef}:${ANNOTATIONS_PATH}`,
+        ]);
+        if (queueAnnotations.code !== 0) {
+          throw new QueueRepairError(
+            'source-invalid',
+            `Cannot validate pending lifecycle deletions on ${queueBranch}: ${ANNOTATIONS_PATH} is missing or unreadable.`,
+          );
+        }
+        try {
+          const pendingLifecycleDeletions = selectAuthorizedLifecycleDeletions(
+            queueDeletions,
+            queueAnnotations.stdout,
+          );
+          for (const deletion of pendingLifecycleDeletions) {
+            const mainShard = await git(deps.exec, repoRoot, [
+              'show',
+              `${mainRef}:${deletion.paths[0]}`,
+            ]);
+            assertLifecycleDeletionMatchesShard(
+              deletion,
+              mainShard.code === 0 ? mainShard.stdout : null,
+            );
+          }
+          if (pendingLifecycleDeletions.length > 0) {
+            throw new QueueRepairError(
+              'source-invalid',
+              `Selective recovery would resurrect pending lifecycle deletion(s): ${pendingLifecycleDeletions
+                .map((deletion) => deletion.tombstone.manifestKey)
+                .join(
+                  ', ',
+                )}. Promote those tombstones to main before retrying this one-time repair.`,
+            );
+          }
+        } catch (error) {
+          if (error instanceof QueueRepairError) throw error;
+          throw new QueueRepairError(
+            'source-invalid',
+            `Cannot validate pending lifecycle deletions on ${queueBranch}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
       const groups = selectedGroups();
       const selectedPaths = new Set(groups.flatMap((group) => [group.pngPath, group.shardPath]));
+      const queueDiff = await mustGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-status',
+        mainRef,
+        queueRef,
+        '--',
+        GENERATED_ROOT,
+        'briefs',
+        'src/shared/data/sprite-catalog.json',
+      ]);
+      const unsafeQueueWrites = findQueueWritesThatRecoveryWouldDrop(queueDiff, selectedPaths);
+      if (unsafeQueueWrites.length > 0) {
+        throw new QueueRepairError(
+          'source-invalid',
+          `Selective recovery would discard later queue write(s): ${unsafeQueueWrites.join(
+            ', ',
+          )}. Reconcile or promote those paths before retrying this one-time repair.`,
+        );
+      }
       const sourcePaths = new Set(
         (
           await mustGit(deps.exec, repoRoot, [
@@ -329,6 +470,33 @@ export async function runQueueRepair(
         throw new QueueRepairError(
           'source-invalid',
           `Recovery source ${immutableSourceSha} does not contain ${missingSelectedPath}.`,
+        );
+      }
+      const conflictingSelectedPaths: string[] = [];
+      for (const selectedPath of [...selectedPaths].sort()) {
+        const queueBlob = await git(deps.exec, repoRoot, [
+          'rev-parse',
+          `${queueRef}:${selectedPath}`,
+        ]);
+        if (queueBlob.code !== 0) continue;
+        const [mainBlob, sourceBlob] = await Promise.all([
+          git(deps.exec, repoRoot, ['rev-parse', `${mainRef}:${selectedPath}`]),
+          mustGit(deps.exec, repoRoot, ['rev-parse', `${sourceRef}:${selectedPath}`]),
+        ]);
+        const queueOid = queueBlob.stdout.trim();
+        if (
+          queueOid !== sourceBlob.trim() &&
+          (mainBlob.code !== 0 || queueOid !== mainBlob.stdout.trim())
+        ) {
+          conflictingSelectedPaths.push(selectedPath);
+        }
+      }
+      if (conflictingSelectedPaths.length > 0) {
+        throw new QueueRepairError(
+          'source-invalid',
+          `Selective recovery would overwrite later queue edit(s) to selected path(s): ${conflictingSelectedPaths.join(
+            ', ',
+          )}. Promote or preserve those edits before retrying this one-time repair.`,
         );
       }
       // Audit is evidence, not a mere path listing: validate every selected
@@ -368,24 +536,56 @@ export async function runQueueRepair(
           // Best-effort local cleanup.
         }
       }
-      const [parentAnnotations, sourceAnnotations, sourceDiff] = await Promise.all([
-        mustGit(deps.exec, repoRoot, ['show', `${sourceParentSha}:${ANNOTATIONS_PATH}`]),
-        mustGit(deps.exec, repoRoot, ['show', `${sourceRef}:${ANNOTATIONS_PATH}`]),
-        mustGit(deps.exec, repoRoot, [
-          'diff',
-          '--no-renames',
-          '--name-status',
-          sourceParentSha,
-          sourceRef,
-          '--',
-          GENERATED_ROOT,
-        ]),
-      ]);
+      const [parentAnnotations, sourceAnnotations, mainAnnotations, queueAnnotations, sourceDiff] =
+        await Promise.all([
+          mustGit(deps.exec, repoRoot, ['show', `${sourceParentSha}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, ['show', `${sourceRef}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, ['show', `${mainRef}:${ANNOTATIONS_PATH}`]),
+          git(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]),
+          mustGit(deps.exec, repoRoot, [
+            'diff',
+            '--no-renames',
+            '--name-status',
+            sourceParentSha,
+            sourceRef,
+            '--',
+            GENERATED_ROOT,
+          ]),
+        ]);
       const updates = annotationDelta(
         parseAnnotationDocument(parentAnnotations, sourceParentSha),
         parseAnnotationDocument(sourceAnnotations, sourceSha),
         immutableSourceSha,
       );
+      if (queueAnnotations.code === 0 && queueAnnotations.stdout.trim() !== '') {
+        const mainSprites = parseAnnotationDocument(mainAnnotations, mainSha);
+        const queueSprites = parseAnnotationDocument(queueAnnotations.stdout, queueSha);
+        const sourceSprites = parseAnnotationDocument(sourceAnnotations, sourceSha);
+        const recoveryKeys = new Set(updates.map((update) => update.key));
+        const changedKeys = changedAnnotationKeys(mainSprites, queueSprites);
+        const conflictingRecoveryKeys = changedKeys.filter(
+          (key) =>
+            recoveryKeys.has(key) &&
+            JSON.stringify(queueSprites[key]) !== JSON.stringify(sourceSprites[key]),
+        );
+        if (conflictingRecoveryKeys.length > 0) {
+          throw new QueueRepairError(
+            'source-invalid',
+            `Selective recovery would overwrite later queue annotation edit(s): ${conflictingRecoveryKeys.join(
+              ', ',
+            )}. Promote or preserve those annotations before retrying this one-time repair.`,
+          );
+        }
+        const unrelatedKeys = changedKeys.filter((key) => !recoveryKeys.has(key));
+        if (unrelatedKeys.length > 0) {
+          throw new QueueRepairError(
+            'source-invalid',
+            `Selective recovery would discard later queue annotation(s): ${unrelatedKeys.join(
+              ', ',
+            )}. Promote or preserve those annotations before retrying this one-time repair.`,
+          );
+        }
+      }
       const result = {
         policy: SELECTIVE_RECOVERY_POLICY,
         sourceSha: immutableSourceSha,

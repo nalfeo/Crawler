@@ -19,7 +19,9 @@ function shard(key: string, entry: Record<string, unknown>): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(entry, null, 2)}\n`);
   // A matching PNG, so asset moves are exercised too.
-  writeFileSync(path.join(dir, `${key}.png`), key);
+  const png = path.join(dir, `${key}.png`);
+  mkdirSync(path.dirname(png), { recursive: true });
+  writeFileSync(png, key);
 }
 
 function shardKeys(): string[] {
@@ -242,6 +244,58 @@ describe('normalizeSpriteNames', () => {
     await normalizeSpriteNames({ generatedDir: dir, mode: 'apply' });
 
     expect(shardKeys()).toEqual(['lonely-thing-placeholder']);
+  });
+
+  it('retires only the matching icon-cell placeholder from a shared batch brief', async () => {
+    for (const spriteName of ['achv-first-bonk-placeholder', 'achv-second-bonk-placeholder']) {
+      shard(spriteName, {
+        briefId: 'achievement-icon-batch',
+        spriteName,
+        assetPath: `generated/${spriteName}.png`,
+        sourceRun: 'placeholder',
+        type: 'icon',
+      });
+    }
+    shard('achv-first-bonk', {
+      briefId: 'achievement-icon-batch',
+      spriteName: 'achv-first-bonk',
+      assetPath: 'generated/achv-first-bonk.png',
+      sourceRun: 'generated/runs/achievement-icon-batch/run-0',
+      approvedAt: '2026-09-06T00:00:00.000Z',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '4',
+      type: 'icon',
+    });
+
+    await normalizeSpriteNames({ generatedDir: dir, mode: 'apply' });
+
+    expect(shardKeys()).toEqual(['achv-first-bonk', 'achv-second-bonk-placeholder']);
+  });
+
+  it('retires a nested placeholder without deleting a same-basename root asset', async () => {
+    const placeholderKey = 'equipment/weapon/bone-saw-placeholder';
+    shard(placeholderKey, {
+      briefId: 'equipment/weapon/bone-saw',
+      spriteName: placeholderKey,
+      assetPath: `generated/${placeholderKey}.png`,
+      sourceRun: 'placeholder',
+    });
+    shard('equipment/weapon/bone-saw', {
+      briefId: 'equipment/weapon/bone-saw',
+      spriteName: 'equipment/weapon/bone-saw',
+      assetPath: 'generated/equipment/weapon/bone-saw.png',
+      sourceRun: 'generated/runs/bone-saw/run-0',
+    });
+    const rootDecoy = path.join(dir, 'bone-saw-placeholder.png');
+    writeFileSync(rootDecoy, 'unrelated root asset');
+
+    await normalizeSpriteNames({ generatedDir: dir, mode: 'apply' });
+
+    expect(shardKeys()).toEqual(['equipment/weapon/bone-saw']);
+    expect(readFileSync(rootDecoy, 'utf8')).toBe('unrelated root asset');
+    expect(() => readFileSync(path.join(dir, `${placeholderKey}.png`))).toThrow();
   });
 });
 

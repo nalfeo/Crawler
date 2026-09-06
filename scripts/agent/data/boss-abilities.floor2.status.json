@@ -207,7 +207,7 @@
       "runtimeState": "in-progress",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
-        "approvedAssetId": "kobold-boss-var-0",
+        "approvedAssetId": "kobold-boss-var-2",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,
@@ -241,7 +241,7 @@
       "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "myconid-boss",
-        "approvedAssetId": "myconid-boss-var-0",
+        "approvedAssetId": "myconid-boss-var-2",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,
@@ -281,7 +281,7 @@
       "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "gnome-boss",
-        "approvedAssetId": "gnome-boss-var-7",
+        "approvedAssetId": "gnome-boss-var-1",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,
@@ -361,7 +361,7 @@
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "cactusfolk-boss",
-        "approvedAssetId": "cactusfolk-boss-var-1",
+        "approvedAssetId": "cactusfolk-boss-var-2",
         "evidenceKind": "committed-brief",
         "sourceBriefPath": "briefs/enemies/cactusfolk-boss.yaml",
         "assetRequest": {
@@ -429,7 +429,7 @@
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "crabfolk-boss",
-        "approvedAssetId": "crabfolk-boss-var-10",
+        "approvedAssetId": "crabfolk-boss-var-0",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,
@@ -457,7 +457,7 @@
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "beetlefolk-boss",
-        "approvedAssetId": "beetlefolk-boss-var-0",
+        "approvedAssetId": "beetlefolk-boss-var-1",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": {
@@ -581,7 +581,7 @@
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "imps-boss",
-        "approvedAssetId": "imps-boss-var-5",
+        "approvedAssetId": "imps-boss-var-1",
         "evidenceKind": "runtime-alias",
         "sourceBriefPath": null,
         "assetRequest": null,
@@ -637,7 +637,7 @@
       "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "toadkin-boss",
-        "approvedAssetId": "toadkin-boss-var-0",
+        "approvedAssetId": "toadkin-boss-var-1",
         "evidenceKind": "manifest-only",
         "sourceBriefPath": null,
         "assetRequest": null,

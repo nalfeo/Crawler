@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ManifestEntry } from '../../../src/shared/generated-assets.js';
+import { normalizeGeneratedSpriteConceptId } from '../../../src/shared/sprite-concepts.js';
 import {
   MOB_PLACEHOLDER_SPRITE_ID,
   buildPlaceholderAudit,
@@ -81,6 +82,39 @@ describe('normalizeConcept', () => {
 
   it('leaves a bare concept untouched', () => {
     expect(normalizeConcept('slime')).toBe('slime');
+  });
+
+  /**
+   * Regression: tooling and the runtime variant pools must agree about what
+   * "the same concept" means. `normalizeConcept` used to be a second,
+   * hand-rolled `-vN` stripper, so it silently disagreed with
+   * `normalizeGeneratedSpriteConceptId` on the explicit design remaps and on a
+   * legacy `npc-` prefix — which is how a placeholder and its real replacement
+   * (or a dislike and its brief) landed in different buckets.
+   */
+  it('honours the shared design-name remap instead of stripping the lineage tag', () => {
+    expect(normalizeConcept('angry-roomba-v2')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('angry-roomba-v2-var-1')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('npc-angry-roomba-v2-var-1')).toBe('angry-roomba-mk2');
+    expect(normalizeConcept('angry-roomba-mk2')).toBe('angry-roomba-mk2');
+  });
+
+  it('strips the legacy npc- prefix like the runtime concept id does', () => {
+    expect(normalizeConcept('npc-guide')).toBe('guide');
+  });
+
+  it('matches normalizeGeneratedSpriteConceptId for every bare kebab id', () => {
+    for (const id of [
+      'iron-sword',
+      'iron-sword-v1',
+      'iron-sword-var-3',
+      'slime-king-v2-var-3',
+      'angry-roomba-v2',
+      'angry-roomba-v2-var-1',
+      'npc-guide',
+    ]) {
+      expect(normalizeConcept(id)).toBe(normalizeGeneratedSpriteConceptId(id));
+    }
   });
 });
 
@@ -203,6 +237,52 @@ describe('buildPlaceholderAudit — bucketing', () => {
     expect(elite?.placeholders).toEqual([
       { kind: 'enemy-pack', id: 'goblin-elite-joyrider', detail: 'missing-generated-art' },
     ]);
+  });
+
+  /**
+   * Regression (certification finding #4): grouping by `entry.briefId` put every
+   * cell of an icon batch under the BATCH concept, so a per-icon placeholder
+   * never met the real icon art that replaces it — the audit reported it as
+   * still-needed forever, and reported the batch as one giant "replaceable"
+   * concept. Grouping must use the shared manifest concept helper, which
+   * resolves an icon row to its own cell concept.
+   */
+  it('groups icon-batch cells by their own concept, not by the shared batch briefId', () => {
+    const iconEntry = (spriteName: string, over: Partial<ManifestEntry> = {}): ManifestEntry => ({
+      ...manifestEntry({ briefId: 'ability-icons' }),
+      spriteName,
+      assetPath: `generated/${spriteName}.png`,
+      type: 'icon',
+      ...over,
+    });
+    const report = audit({
+      manifestEntries: {
+        'icon-fireball-placeholder': iconEntry('icon-fireball-placeholder', {
+          sourceRun: 'placeholder',
+        }),
+        'icon-fireball': iconEntry('icon-fireball'),
+        'icon-frostbite': iconEntry('icon-frostbite'),
+      },
+    });
+
+    // Two distinct cell concepts — never one `ability-icons` bucket.
+    expect(report.concepts.map((c) => c.concept)).toEqual(['icon-fireball', 'icon-frostbite']);
+    // The fireball placeholder is matched with the fireball art that replaces it.
+    expect(report.replaceable.map((c) => c.concept)).toEqual(['icon-fireball']);
+    expect(report.newContent.map((c) => c.concept)).toEqual(['icon-frostbite']);
+    expect(report.placeholderOnly).toEqual([]);
+  });
+
+  it('still groups non-icon entries by brief lineage', () => {
+    const report = audit({
+      manifestEntries: {
+        'slime-king-v1-var-0': manifestEntry({ briefId: 'slime-king-v1' }),
+        'slime-king-v2-var-0': manifestEntry({ briefId: 'slime-king-v2' }),
+      },
+    });
+
+    expect(report.concepts.map((c) => c.concept)).toEqual(['slime-king']);
+    expect(report.concepts[0]?.realAssets).toHaveLength(2);
   });
 });
 
