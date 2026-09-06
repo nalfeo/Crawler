@@ -112,12 +112,18 @@ test('displayed-run actions validate route identity and invalidate only that run
     const end = source.indexOf("path: '/api/workflow/", start + path.length);
     const route = source.slice(start, end < 0 ? source.length : end);
     assert.match(route, /if \(body\.force === true\)/);
-    assert.match(route, /typeof body\.briefId !== 'string' \|\| typeof body\.runId !== 'string'/);
+    assert.match(route, /const displayedRun = readDisplayedRunIds\(body\)/);
+    assert.match(route, /if \(!displayedRun\)/);
     assert.match(
       route,
-      new RegExp(`entry\\.client\\.${clientCall}\\(body\\.briefId, body\\.runId`),
+      new RegExp(
+        `entry\\.client\\.${clientCall}\\(\\s*displayedRun\\.briefId,\\s*displayedRun\\.runId`,
+      ),
     );
-    assert.match(route, /invalidateRunView\(runViewKey\(body\.briefId, body\.runId\)\)/);
+    assert.match(
+      route,
+      /invalidateRunView\(runViewKey\(displayedRun\.briefId, displayedRun\.runId\)\)/,
+    );
     assert.doesNotMatch(
       route.slice(0, route.indexOf('if (typeof body.itemId')),
       /replaceWorkflowItem/,
