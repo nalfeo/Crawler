@@ -86,8 +86,8 @@
     "waves": {
       "enemyPackId": "floor4-arena",
       "cadence": {
-        "wavesPerAct": 8,
-        "intervalMs": 12000
+        "wavesPerAct": 10,
+        "intervalMs": 9000
       },
       "budget": {
         "base": 6.0,
