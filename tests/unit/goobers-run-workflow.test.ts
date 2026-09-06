@@ -2570,6 +2570,19 @@ ${queryScript}
     expect(retry?.run).toContain('outputs.disposition // empty');
     expect(retry?.run).toContain('no_work_disposition" = "completed-existing-work"');
     expect(retry?.run).toContain(
+      '.type == "error" or (.type == "stage.finished" and .status == "failed")',
+    );
+    expect(retry?.run).toContain('.name == "implement/unpushed-diff.patch"');
+    expect(retry?.run).toContain('(.ref.size // 0) | numbers');
+    const falseCompletionGuard =
+      retry?.run?.indexOf(
+        'if [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then',
+      ) ?? -1;
+    const terminalLabelMutation =
+      retry?.run?.indexOf("--add-label 'goobers/status:completed-existing-work'") ?? -1;
+    expect(falseCompletionGuard).toBeGreaterThanOrEqual(0);
+    expect(terminalLabelMutation).toBeGreaterThan(falseCompletionGuard);
+    expect(retry?.run).toContain(
       "ensure_repository_label 'goobers/status:completed-existing-work' '0e8a16'",
     );
     expect(retry?.run).toContain("--add-label 'goobers/status:completed-existing-work'");

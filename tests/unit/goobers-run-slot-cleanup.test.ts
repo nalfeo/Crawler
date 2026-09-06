@@ -513,6 +513,53 @@ describe.skipIf(!hasJq)('goobers-run.yml terminal label idempotency', () => {
 });
 
 /**
+ * Executable regression for production run 34000153009.
+ *
+ * Goobers timed out implement attempt 1 after recording a 139,854-byte
+ * unpushed diff, retried in the same dirty worktree, then accepted attempt 2's
+ * completed-existing-work no-work result and closed the run as completed. The
+ * scalar terminal phase cannot erase the earlier evidence that implementation
+ * is unfinished.
+ */
+const FALSE_COMPLETION_JOURNALS: Journal[] = [
+  {
+    slot: '1',
+    runId: 'e9bf8438976d7839850db0f2a0e59acd',
+    lines: [
+      '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"4273"}}',
+      '{"type":"stage.started","stage":"implement","attempt":1}',
+      '{"type":"artifact.recorded","stage":"implement","attempt":1,"name":"implement/unpushed-diff.patch","ref":{"path":"artifacts/sha256/3d/2fe74e","digest":"sha256:3d2fe74e","size":139854}}',
+      '{"type":"error","stage":"implement","attempt":1,"error":{"code":"executor_error"},"runner":{"errorClass":"timeout"}}',
+      '{"type":"stage.finished","stage":"implement","attempt":1,"status":"failed"}',
+      '{"type":"stage.started","stage":"implement","attempt":2,"attemptClass":"infra"}',
+      '{"type":"stage.finished","stage":"implement","attempt":2,"status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+      '{"type":"run.finished","status":"completed"}',
+    ],
+  },
+];
+
+describe.skipIf(!hasJq)('goobers-run.yml false completion recovery', () => {
+  it('restores retry eligibility when a retry calls timed-out unpushed work completed', () => {
+    const harness = runStep('Handle no-work disposition', {
+      journals: FALSE_COMPLETION_JOURNALS,
+      env: { GOOBERS_SLOTS: '1' },
+    });
+
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.log).toContain(
+      'gh issue edit 4273 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+    expect(harness.log).not.toContain('--add-label goobers/status:completed-existing-work');
+    expect(harness.stderr).toContain('a prior stage error/failed attempt');
+    expect(harness.stderr).toContain(
+      'a non-empty implement/unpushed-diff.patch artifact (139854 bytes)',
+    );
+    expect(harness.stderr).toContain('Refused to add goobers/status:completed-existing-work');
+    expect(harness.stderr).toContain('gh workflow run goobers-run.yml -f issue_number=4273');
+  });
+});
+
+/**
  * Executable regression for PER-SLOT recovery-journal synthesis.
  *
  * The reserved issue already carries `goobers/status:in-review` and belongs to

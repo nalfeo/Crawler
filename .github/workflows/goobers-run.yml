@@ -1733,6 +1733,7 @@ jobs:
             local run_id="" events_input="/dev/null"
             local assignment="" issue_number="" resume_pr="" run_phase="" run_outcome=""
             local no_work_stage="" no_work_disposition=""
+            local prior_stage_failure=false unpushed_diff_size=0
             local open_pr="" pr_lookup_complete=false stale_resume=false
             local source_line_count=0 valid_line_count=0
             local lookup_status=0
@@ -1772,6 +1773,16 @@ jobs:
               no_work_disposition="$(
                 jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
                   "$events_input" | tail -n 1
+              )"
+              if jq -e \
+                'select(.type == "error" or (.type == "stage.finished" and .status == "failed"))' \
+                "$events_input" >/dev/null; then
+                prior_stage_failure=true
+              fi
+              unpushed_diff_size="$(
+                jq -s -r \
+                  '[.[] | select(.type == "artifact.recorded" and .stage == "implement" and .name == "implement/unpushed-diff.patch") | (.ref.size // 0) | numbers] | max // 0' \
+                  "$events_input"
               )"
               # This run's OWN terminal phase, not the lane-wide job status:
               # with concurrent slots, one slot failing must not make a sibling
@@ -1920,6 +1931,26 @@ jobs:
             fi
 
             if [ "$no_work_disposition" = "completed-existing-work" ]; then
+              if [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then
+                evidence=""
+                if [ "$prior_stage_failure" = "true" ]; then
+                  evidence="a prior stage error/failed attempt"
+                fi
+                if [ "$unpushed_diff_size" -gt 0 ]; then
+                  if [ -n "$evidence" ]; then
+                    evidence="${evidence} and "
+                  fi
+                  evidence="${evidence}a non-empty implement/unpushed-diff.patch artifact (${unpushed_diff_size} bytes)"
+                fi
+                if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                  --remove-label 'goobers/status:in-review'; then
+                  echo "::error::Could not restore retry eligibility for issue #${issue_number} after rejecting an untrusted completed-existing-work disposition backed by ${evidence}. Remove only goobers/status:in-review with: gh issue edit ${issue_number} --repo ${GITHUB_REPOSITORY} --remove-label goobers/status:in-review" >&2
+                  return 1
+                fi
+                echo "::warning::Goobers stage '${no_work_stage}' reported completed-existing-work for issue #${issue_number}, but the same run journal contains ${evidence}. Refused to add goobers/status:completed-existing-work and removed only goobers/status:in-review to restore retry eligibility. Inspect artifact '${RUN_JOURNAL_ARTIFACT_ID}', then retry with: gh workflow run goobers-run.yml -f issue_number=${issue_number}" >&2
+                return 0
+              fi
+
               # Best-effort: a failed ensure must never abort the disposition,
               # because the label may already exist and only the probe failed.
               # The `gh issue edit` below stays the authoritative gate and
