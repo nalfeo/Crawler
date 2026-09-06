@@ -230,7 +230,7 @@ describe('formatAbilityTrigger', () => {
       'Auto: hits the nearest enemy, favoring clusters',
     );
     expect(formatAbilityTrigger('heal')).toBe('Auto: casts when HP deficit warrants it');
-    expect(formatAbilityTrigger('pulse-shield')).toBe('Auto: casts at low HP when surrounded');
+    expect(formatAbilityTrigger('pulse-shield')).toBe('Auto: casts when you take damage');
   });
 
   it('falls back to "Auto trigger" for any other id', () => {

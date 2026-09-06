@@ -32,12 +32,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   },
   {
     ...ABILITY_PRESENTATION_BY_ID['pulse-shield'],
-    trigger: {
-      kind: 'low_health_crowded',
-      healthBelowRatio: 0.5,
-      minEnemies: 3,
-      withinFeet: 5,
-    },
+    trigger: { kind: 'player_damage', minDamage: 1 },
     effects: [
       {
         type: 'spell_pulse_shield',
