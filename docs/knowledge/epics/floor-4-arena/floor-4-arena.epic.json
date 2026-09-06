@@ -39,7 +39,7 @@
     {
       "id": "slice-7-economy-balance",
       "title": "Floor 4 Slice 7: economy tuning, balance, win-rate gate, and achievements",
-      "body": "Implement per-act income budgets, price bands, Floor 4 tuning, tests/headless/floor4-arena-completion.test.ts win-rate gate, achievements/quests data, and seed-sweep evidence. Broad sweeps must use GitHub infrastructure by default.",
+      "body": "Owner: QA Engineer.\n\nImplement per-act income budgets, price bands, Floor 4 tuning, tests/headless/floor4-arena-completion.test.ts win-rate gate, achievements/quests data, and seed-sweep evidence. Verify each achievement unlocks after its measurable objective and that its reward can be claimed exactly once. Done when unlock, claim, and reward assertions pass. Broad sweeps must use GitHub infrastructure by default.",
       "labels": ["balance", "floor-4"],
       "depends_on": ["slice-6-hud-feedback"]
     },
