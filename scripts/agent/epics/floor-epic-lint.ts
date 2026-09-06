@@ -30,9 +30,9 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import { loadPersonaRouting } from '../shared/persona-routing.js';
 
@@ -520,22 +520,21 @@ function main(): void {
   process.exitCode = 1;
 }
 
-// `import.meta.url` is normally a `file:///...` URL for the module itself, while
-// `process.argv[1]` is the raw filesystem path used to invoke the CLI. Some
-// loaders (including tsx) may normalize/virtualize the module URL slightly,
-// so compare both the canonical file URL and the script basename before
-// deciding whether this invocation is the real entry point.
-const invokedScript = process.argv[1];
-const invokedScriptName = invokedScript ? invokedScript.replace(/\\/g, '/').split('/').pop() : '';
-const moduleName = import.meta.url ? import.meta.url.replace(/\\/g, '/').split('/').pop() : '';
-const hasMatchingScriptName =
-  invokedScriptName === 'floor-epic-lint.ts' ||
-  invokedScriptName === 'floor-epic-lint.js' ||
-  invokedScriptName === 'floor-epic-lint.mjs';
+// Match canonical filesystem paths first. A few loaders (including tsx) expose
+// the launched script in a different argv slot, so retain a basename fallback
+// only for the known CLI filename rather than relying on URL string formatting.
+const modulePath = fileURLToPath(import.meta.url);
+const moduleName = basename(modulePath);
+const invokedScriptIndex = process.argv.findIndex(
+  (argument, index) =>
+    index > 0 &&
+    ['floor-epic-lint.ts', 'floor-epic-lint.js', 'floor-epic-lint.mjs'].includes(
+      basename(argument),
+    ),
+);
+const invokedScript = invokedScriptIndex >= 0 ? process.argv[invokedScriptIndex] : undefined;
 const isMain =
   typeof invokedScript === 'string' &&
-  hasMatchingScriptName &&
-  (import.meta.url === pathToFileURL(invokedScript).href ||
-    moduleName === invokedScriptName ||
-    import.meta.url.endsWith(`/${invokedScriptName}`));
+  (resolve(invokedScript) === modulePath ||
+    (basename(invokedScript) === moduleName && invokedScriptIndex === 1));
 if (isMain) main();
