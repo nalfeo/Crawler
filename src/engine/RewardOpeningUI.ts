@@ -136,6 +136,8 @@ export interface OpenRewardOpeningParams {
   readonly world: GameWorld;
   readonly presentation: ResolvedRewardPresentation;
   readonly reducedMotion: boolean;
+  /** Auto-acknowledge once the summary appears so a caller can chain slots back to back. */
+  readonly autoAdvance?: boolean;
   /** Short label shown in the header, e.g. "Achievement Reward" / "Boss Chest". */
   readonly sourceLabel: string;
   /**
@@ -318,6 +320,7 @@ export function createRewardOpeningUI(
   let world: GameWorld | null = null;
   let presentation: ResolvedRewardPresentation | null = null;
   let sourceLabel = '';
+  let shouldAutoAdvance = false;
   let onAcknowledgeCallback: (() => void) | null = null;
   let nextReward: NextRewardAction | null = null;
   let sequenceState: RewardOpeningState | null = null;
@@ -472,6 +475,7 @@ export function createRewardOpeningUI(
     const wasOpen = sequenceState !== null;
     world = null;
     presentation = null;
+    shouldAutoAdvance = false;
     onAcknowledgeCallback = null;
     nextReward = null;
     sequenceState = null;
@@ -511,6 +515,12 @@ export function createRewardOpeningUI(
     // replay the skip cue (duplicate input must never overlap/leak audio).
     if (sequenceState.phase !== previousPhase) {
       hooks.onSkip?.();
+    }
+    // Open-all callers auto-advance intermediate summaries reached by either
+    // ticking or skipping. The aggregate summary opts out of autoAdvance, so
+    // it remains visible for the player's normal acknowledgement.
+    if (shouldAutoAdvance && sequenceState?.phase === 'summary') {
+      handleAcknowledge();
     }
   }
 
@@ -588,6 +598,7 @@ export function createRewardOpeningUI(
       world = params.world;
       presentation = params.presentation;
       sourceLabel = params.sourceLabel;
+      shouldAutoAdvance = params.autoAdvance === true;
       onAcknowledgeCallback = params.onAcknowledge;
       nextReward = params.nextReward ?? null;
       excitement = computeExcitement();
@@ -627,6 +638,9 @@ export function createRewardOpeningUI(
       const previousRevealedCount = sequenceState.revealedCount;
       sequenceState = next;
       if (needsRender) render();
+      if (shouldAutoAdvance && sequenceState?.phase === 'summary') {
+        handleAcknowledge();
+      }
       // Fire once per newly-revealed item, in order, ONLY from this forward
       // `tick()` progression — `skip()` jumps `revealedCount` straight to
       // `itemCount` without ever calling `tick()`, so it can never reach

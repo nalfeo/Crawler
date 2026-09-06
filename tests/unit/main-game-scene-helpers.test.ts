@@ -230,7 +230,7 @@ describe('formatAbilityTrigger', () => {
       'Auto: hits the nearest enemy, favoring clusters',
     );
     expect(formatAbilityTrigger('heal')).toBe('Auto: casts when HP deficit warrants it');
-    expect(formatAbilityTrigger('pulse-shield')).toBe('Auto: casts at low HP when surrounded');
+    expect(formatAbilityTrigger('pulse-shield')).toBe('Auto: casts when you take damage');
   });
 
   it('falls back to "Auto trigger" for any other id', () => {
@@ -281,6 +281,19 @@ describe('resolveDialogueLines', () => {
     const world = createTestWorld();
     const expected = getNpcDef('shopkeeper')!.dialogue.map((line) => line.text);
     expect(resolveDialogueLines('shopkeeper', world, baseDeps)).toEqual(expected);
+  });
+
+  it('keeps the merchant initial request coy but unmistakably suggestive', () => {
+    const world = createTestWorld();
+    const lines = resolveDialogueLines('shopkeeper', world, baseDeps);
+
+    expect(lines).toContain(
+      "Don't clean it. Don't ask. It's not for the shop—it's for the room, and the room has been lonely.",
+    );
+    expect(lines).not.toContain(
+      "Don't clean it. Don't ask. It's not for the shop. It's for the room.",
+    );
+    expect(lines).toHaveLength(3);
   });
 
   it('prefers a per-instance dialogue override when one exists', () => {
@@ -376,12 +389,28 @@ describe('resolveDialogueLines', () => {
     );
   });
 
+  it('switches to the post-boss progression beat on the very first return after the kill, before the spellbook is claimed', () => {
+    // Real kill -> return ordering: the Slime Rat death path only marks
+    // `bossBattles.get('slime-rat').defeated`; the `floor1-boss-battle-complete`
+    // goal flag isn't set until `claim-spellbook` also completes inside
+    // `meetSpellQuestGiver`, which runs *after* dialogue is resolved. So this
+    // must NOT rely on that goal flag being true yet.
+    const world = freshFloor1World();
+    world.floorScenario!.objective.bossBattles.get('slime-rat')!.defeated = true;
+    expect(world.goalFlags.get('floor1-boss-battle-complete')).not.toBe(true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+  });
+
   it('returns the locked line for a gated spell quest giver', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossDefeated: false,
         spellbookClaimed: false,
         merchantQuestStarted: false,
       })!,
@@ -396,6 +425,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: false,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,
@@ -420,6 +450,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,

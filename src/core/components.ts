@@ -31,6 +31,12 @@ export const AttackWaveRat = {};
 export const Spawner = {};
 export const Flying = {};
 export const Projectile = {};
+/** Presentation identity for a player projectile, independent of its physics. */
+export const ProjectileVisual = {};
+export enum ProjectileVisualKind {
+  ARROW = 0,
+  BULLET = 1,
+}
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
 export const XpGem = {};
@@ -252,6 +258,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       originX: new Float32Array(maxEntities),
       originY: new Float32Array(maxEntities),
     },
+    projectileVisual: { kind: new Uint8Array(maxEntities) },
     sprite: {
       textureId: new Uint16Array(maxEntities),
       width: new Float32Array(maxEntities),
