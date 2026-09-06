@@ -3358,6 +3358,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     primeAchievementToastWithCommentary: (): _AchievementToastProbe | null => {
       const scene = getScene();
       if (!scene) return null;
+      // Keep an explicit line break so this fixture is always multiline and can
+      // deterministically regress toast-vs-commentary overlap behavior.
       scene.queueDirectorCommentary?.(
         'A long director callout keeps the achievement notification\nbelow its rendered bounds.',
       );

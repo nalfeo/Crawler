@@ -11,7 +11,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * rows, regardless of catalog order.
  */
 
-function makeGameObjectStub(): unknown {
+function makeGameObjectStub(onDestroy?: () => void): unknown {
   const stub: unknown = new Proxy(function () {} as unknown as object, {
     get(_target, prop) {
       if (typeof prop === 'symbol') return undefined;
@@ -19,6 +19,7 @@ function makeGameObjectStub(): unknown {
       if (prop === 'width' || prop === 'height') return 64;
       if (prop === 'x' || prop === 'y' || prop === 'depth') return 0;
       if (prop === 'visible') return true;
+      if (prop === 'destroy') return () => onDestroy?.();
       return () => stub;
     },
     set() {
@@ -33,6 +34,7 @@ function makeGameObjectStub(): unknown {
 
 function makeRecordingScene(titles: string[]): unknown {
   const stub = makeGameObjectStub();
+  const titleEntries: { text: string; destroyed: boolean }[] = [];
   return {
     cameras: { main: { roundPixels: false } },
     add: {
@@ -43,11 +45,14 @@ function makeRecordingScene(titles: string[]): unknown {
       text: (_x: number, _y: number, text: string, style: { fontSize?: string }) => {
         // Row titles are the only text rendered at 15px that is NOT the reward
         // CTA. The CTA's label is a fixed string, so excluding it keeps this
-        // probe isolated to achievement titles in render order. Consecutive
-        // duplicates are measurement probes that are immediately followed by
-        // the real rendered title.
-        if (style?.fontSize === '15px' && text !== 'OPEN' && titles.at(-1) !== text)
-          titles.push(text);
+        // probe isolated to achievement titles in render order.
+        if (style?.fontSize === '15px' && text !== 'OPEN') {
+          const entry = { text, destroyed: false };
+          titleEntries.push(entry);
+          return makeGameObjectStub(() => {
+            entry.destroyed = true;
+          });
+        }
         return stub;
       },
       particles: () => stub,
@@ -58,6 +63,9 @@ function makeRecordingScene(titles: string[]): unknown {
     textures: { exists: () => false },
     tweens: { add: () => stub },
     time: { delayedCall: () => stub },
+    collectTitles: () => {
+      titles.push(...titleEntries.filter((entry) => !entry.destroyed).map((entry) => entry.text));
+    },
   };
 }
 
@@ -87,6 +95,7 @@ describe('AchievementsUI row order', () => {
       { height: 900 },
     );
     achievementsUI.toggle(world);
+    (scene as { collectTitles: () => void }).collectTitles();
 
     expect(titles).toEqual(['Room Sweeper', 'First Bonk']);
 
@@ -107,6 +116,7 @@ describe('AchievementsUI row order', () => {
       { height: 900 },
     );
     achievementsUI.toggle(world);
+    (scene as { collectTitles: () => void }).collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper']);
 
@@ -132,6 +142,7 @@ describe('AchievementsUI row order', () => {
       { height: 900 },
     );
     achievementsUI.toggle(world);
+    (scene as { collectTitles: () => void }).collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper', 'Gel Exit']);
 
