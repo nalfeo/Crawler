@@ -261,6 +261,18 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
   });
 
+  it('rejects an achievement slice with no Owner declaration', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
+        'Done when the unlock and claim assertions pass.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
+  });
+
   it('flags a missing hard gate', () => {
     const epic = cloneEpic(goodFloorEpic());
     delete (epic as { hard_gate?: string }).hard_gate;
