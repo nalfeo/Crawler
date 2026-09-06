@@ -854,8 +854,8 @@ export interface ProjectileRenderInfo {
   readonly renderKind: string;
   /** Texture key backing the named display object, or null if not found. */
   readonly textureKey: string | null;
-  /** 0 when a named display object was found, -1 otherwise. */
-  readonly distancePx: number;
+  /** Whether a display object named `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>` was found. */
+  readonly foundNamedObject: boolean;
 }
 
 /**
@@ -3136,9 +3136,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return [];
       }
       // Exact-name lookup (the render bridge names bullet/arrow sprites
-      // `projectile:<eid>`) rather than nearest-on-screen-distance, which
-      // could be fooled by a HUD icon, carried-weapon sprite, or the probe's
-      // own target enemy sitting closer to the projectile's feet position.
+      // `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) rather than
+      // nearest-on-screen-distance, which could be fooled by a HUD icon,
+      // carried-weapon sprite, or the probe's own target enemy sitting closer
+      // to the projectile's feet position.
       const named = new Map<string, string>();
       for (const child of phaserScene.children.list) {
         if (
@@ -3157,7 +3158,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           eid,
           renderKind: resolveRenderKind(world, eid),
           textureKey,
-          distancePx: textureKey !== null ? 0 : -1,
+          foundNamedObject: textureKey !== null,
         });
       }
       return infos;
