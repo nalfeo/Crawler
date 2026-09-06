@@ -239,7 +239,7 @@ describe('spawnHarvestableNode', () => {
     expect(() => spawnHarvestableNode(world, 0, 0, 9999)).toThrow(/unknown defIndex/);
   });
 
-  it('rejects SPAWN/SAFE/SETTLEMENT regions when spawn-room safety is enabled and still spawns in ordinary rooms', () => {
+  it('rejects SPAWN/SAFE/SETTLEMENT regions and still spawns in ordinary rooms', () => {
     const world = createTestWorld({ floor: 2 });
     const tileMap = new TileMap(20, 8);
     tileMap.fill(TilePresets.FLOOR);
@@ -277,36 +277,6 @@ describe('spawnHarvestableNode', () => {
 
     const normalEid = spawnHarvestableNode(world, normalPos.x, normalPos.y, 0);
     expect(normalEid).toBeGreaterThanOrEqual(0);
-    expect(query(world.ecs, [Harvestable])).toHaveLength(1);
-  });
-
-  it('allows SPAWN-room placement when the active floor does not treat spawn as safe space', () => {
-    const world = createTestWorld({ floor: 1 });
-    const tileMap = new TileMap(8, 8);
-    tileMap.fill(TilePresets.FLOOR);
-    const roomGraph = new RoomGraph();
-    roomGraph.add({ x: 1, y: 1, width: 3, height: 3 }, [], [], RoomRole.SPAWN);
-    world.floorMap = new FloorMap(
-      {
-        widthTiles: 8,
-        heightTiles: 8,
-        tileSizeFt: 4,
-        biome: BiomeType.DUNGEON,
-        seed: 7,
-        roomWidthRange: [3, 3],
-        roomHeightRange: [3, 3],
-        maxRooms: 1,
-        floorDensity: 0.5,
-      },
-      tileMap,
-      roomGraph,
-      new Uint8Array(8 * 8),
-      { x: 2, y: 2 },
-    );
-    const spawnPos = world.floorMap.tileToWorld(2, 2);
-
-    const eid = spawnHarvestableNode(world, spawnPos.x, spawnPos.y, 0);
-    expect(eid).toBeGreaterThanOrEqual(0);
     expect(query(world.ecs, [Harvestable])).toHaveLength(1);
   });
 });
