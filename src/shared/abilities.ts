@@ -36,7 +36,8 @@ export type AbilityTriggerKind =
   | 'enemy_cluster'
   | 'low_health'
   | 'low_health_crowded'
-  | 'health_deficit_at_least';
+  | 'health_deficit_at_least'
+  | 'player_damage';
 
 export type AbilityTriggerCondition =
   | {
@@ -63,15 +64,25 @@ export type AbilityTriggerCondition =
   | {
       kind: 'health_deficit_at_least';
       deficitAmount: number;
+    }
+  | {
+      kind: 'player_damage';
+      minDamage?: number;
     };
 
-export interface AbilityTriggerEvent {
-  holderEid?: number;
-  kind: 'skill_usage';
-  metric?: UsageMetric;
-  skillId?: string;
-  amount?: number;
-}
+export type AbilityTriggerEvent =
+  | {
+      holderEid?: number;
+      kind: 'skill_usage';
+      metric?: UsageMetric;
+      skillId?: string;
+      amount?: number;
+    }
+  | {
+      holderEid?: number;
+      kind: 'player_damage';
+      amount?: number;
+    };
 
 export type LearnedAbilityGrantSourceId = `learned:${string}`;
 export type SkillAbilityGrantSourceId = `skill:${string}:${number}`;
