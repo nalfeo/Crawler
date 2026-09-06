@@ -82,6 +82,25 @@ async function sampleTerrainColor(page: Page): Promise<{
   };
 }
 
+type TerrainRenderSummary = Awaited<ReturnType<typeof mainSceneProbe.getTerrainRenderSummary>>;
+
+async function waitForTerrainRenderSummary(page: Page): Promise<TerrainRenderSummary> {
+  let summary = await mainSceneProbe.getTerrainRenderSummary(page);
+  const maxAttempts = 50;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const total =
+      summary.packWallCount +
+      summary.packFloorCount +
+      summary.generatedCount +
+      summary.spriteCount +
+      summary.colorCount;
+    if (total > 0) return summary;
+    await page.waitForTimeout(100);
+    summary = await mainSceneProbe.getTerrainRenderSummary(page);
+  }
+  return summary;
+}
+
 describe('Terrain-pack render guard', () => {
   let browser: Browser;
   let context: BrowserContext;
@@ -105,20 +124,7 @@ describe('Terrain-pack render guard', () => {
 
     // A short poll for headroom in case the very first ready() window lands a
     // frame before the summary field is stored (defensive; bake is synchronous).
-    let summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    const deadline = Date.now() + 5_000;
-    while (
-      summary.packWallCount +
-        summary.packFloorCount +
-        summary.generatedCount +
-        summary.spriteCount +
-        summary.colorCount ===
-        0 &&
-      Date.now() < deadline
-    ) {
-      await page.waitForTimeout(100);
-      summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    }
+    const summary = await waitForTerrainRenderSummary(page);
 
     const total =
       summary.packWallCount +
@@ -163,20 +169,7 @@ describe('Terrain-pack render guard', () => {
     // scene can.
     await loadMainSceneProbeLab(page, { floor: 'floor2' });
 
-    let summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    const deadline = Date.now() + 5_000;
-    while (
-      summary.packWallCount +
-        summary.packFloorCount +
-        summary.generatedCount +
-        summary.spriteCount +
-        summary.colorCount ===
-        0 &&
-      Date.now() < deadline
-    ) {
-      await page.waitForTimeout(100);
-      summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    }
+    const summary = await waitForTerrainRenderSummary(page);
 
     expect(
       summary.packWallCount,
@@ -202,20 +195,7 @@ describe('Terrain-pack render guard', () => {
     // deterministic observation of the real artifact, not a test-double claim.
     await loadMainSceneProbeLab(page, { floor: 'floor3' });
 
-    let summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    const deadline = Date.now() + 5_000;
-    while (
-      summary.packWallCount +
-        summary.packFloorCount +
-        summary.generatedCount +
-        summary.spriteCount +
-        summary.colorCount ===
-        0 &&
-      Date.now() < deadline
-    ) {
-      await page.waitForTimeout(100);
-      summary = await mainSceneProbe.getTerrainRenderSummary(page);
-    }
+    const summary = await waitForTerrainRenderSummary(page);
 
     expect(
       summary.packWallCount,
