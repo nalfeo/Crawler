@@ -29,7 +29,7 @@ function lint(code: string) {
         },
       },
     ],
-    '/home/runner/work/Crawler/Crawler/tests/fixtures/inventorybag-lane-access-rule-fixture.ts',
+    'tests/fixtures/inventorybag-lane-access-rule-fixture.ts',
   );
 }
 

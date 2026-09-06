@@ -1503,13 +1503,13 @@
     "popupText": "New achievement: Roll Credits (Floor 1)!",
     "unlockCriteria": "Clear Floor 1 and take the stairs alive.",
     "details": "Unlock when you clear Floor 1 and take the stairs alive.",
-    "directorFlavor": "Floor 1 cleared and stairs alive—a complete production arc! Sure, you'll probably die horribly on Floor 2, but *that's* content! We filed this under 'baseline functionality' because there's no category lower. You're competent enough to avoid embarrassment but not interesting enough to warrant actual screen time. The editor asked if we could speed-run your entire Floor 1 clear at 2x speed and honestly nobody objected.",
+    "directorFlavor": "Congratulations on completing the tutorial floor. Reaching Floor 2 isn't an achievement—it's the bare minimum required to keep our broadcasting license active. We demoted this reward tier to Common because rewarding someone for simply breathing and walking down stairs felt like financial negligence. The focus groups didn't even cheer; they collectively checked their phones and asked when the real contestants arrive. Enjoy your budget loot box while you can. Floor 2's hazard budget rises exponentially, and production has already placed bets on which hallway dissolves you first.",
     "iconId": "achv-floor1-clear-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "lootTable": "floor1-materials",
-      "tier": "rare"
+      "tier": "common"
     },
     "unlockRules": [
       {

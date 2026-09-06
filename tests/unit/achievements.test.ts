@@ -62,6 +62,19 @@ describe('floor1 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('classifies reaching Floor 2 as common and uses the updated Director copy', () => {
+    const achievement = FLOOR1_ACHIEVEMENTS.find((entry) => entry.id === 'floor1-clear');
+
+    expect(achievement).toBeDefined();
+    expect(achievement?.reward).toMatchObject({
+      type: 'lootBox',
+      tier: 'common',
+    });
+    expect(achievement?.directorFlavor).toBe(
+      "Congratulations on completing the tutorial floor. Reaching Floor 2 isn't an achievement—it's the bare minimum required to keep our broadcasting license active. We demoted this reward tier to Common because rewarding someone for simply breathing and walking down stairs felt like financial negligence. The focus groups didn't even cheer; they collectively checked their phones and asked when the real contestants arrive. Enjoy your budget loot box while you can. Floor 2's hazard budget rises exponentially, and production has already placed bets on which hallway dissolves you first.",
+    );
+  });
+
   it('uses progressively longer Director flavor text for higher difficulty bands', () => {
     const basic = FLOOR1_ACHIEVEMENTS.filter((achievement) => achievement.difficulty === 'basic');
     const standard = FLOOR1_ACHIEVEMENTS.filter(
