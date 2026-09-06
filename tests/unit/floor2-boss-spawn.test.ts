@@ -147,7 +147,11 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     // falls back to the arena lab's debug shrink (which produced 7 HP bosses).
     expect(world.stores.health.max[eid]).toBe(archetype!.hp * FLOOR2_BOSS_HP_SCALE);
     expect(world.stores.health.current[eid]).toBe(world.stores.health.max[eid]);
-    expect(world.stores.health.max[eid]).toBeGreaterThan(archetype!.hp);
+    // Independent lower bound so a regression toward the arena lab's debug
+    // shrink fails here even though the equality above tracks the constant:
+    // 4× is the measured minimum that clears every signature-cycle window
+    // (tests/headless/floor2-boss-survival-gate.test.ts).
+    expect(world.stores.health.max[eid]).toBeGreaterThanOrEqual(archetype!.hp * 4);
   });
 
   it('spawns a ranged family boss that attacks the player', () => {

@@ -113,10 +113,11 @@ describe('Floor 2 boss survival gate — bosses outlive one signature cycle', ()
 
         for (const [familyId, fam] of startedFamilies) {
           const requiredMs = SIGNATURE_CYCLE_MS_BY_FAMILY.get(familyId);
-          expect(
-            requiredMs,
-            `Seed ${seed}: family '${familyId}' has no signature ability row in boss-abilities.floor2.json`,
-          ).toBeDefined();
+          if (requiredMs === undefined) {
+            throw new Error(
+              `Seed ${seed}: family '${familyId}' has no signature ability row in boss-abilities.floor2.json`,
+            );
+          }
 
           expect(
             fam.encounterDefeated,
@@ -137,7 +138,7 @@ describe('Floor 2 boss survival gate — bosses outlive one signature cycle', ()
           expect(
             durationMs,
             `Boss died in ${Math.round(durationMs)}ms, before one ${requiredMs}ms signature cycle ${ctx}`,
-          ).toBeGreaterThanOrEqual(requiredMs!);
+          ).toBeGreaterThanOrEqual(requiredMs);
 
           expect(
             durationMs,
