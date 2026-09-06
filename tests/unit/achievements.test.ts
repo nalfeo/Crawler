@@ -317,7 +317,7 @@ describe('floor4 achievements catalog', () => {
 
     for (const achievement of FLOOR4_ACHIEVEMENTS) {
       const sentenceCount = [...segmenter.segment(achievement.directorFlavor)].filter(
-        ({ segment }) => /[.!?]['"]?$/.test(segment.trim()),
+        ({ segment }) => /[.!?]['"”’]?$/.test(segment.trim()),
       ).length;
       const [minimum, maximum] = ranges[achievement.difficulty];
       expect(sentenceCount).toBeGreaterThanOrEqual(minimum);
