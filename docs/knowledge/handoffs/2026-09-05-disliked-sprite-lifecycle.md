@@ -301,6 +301,15 @@ sprite-pipeline, sprite-workflow
   registry headless pipeline won Floor 1 at seed 7 with zero failed quests, and
   the targeted Equipment UI raster-alignment E2E passed. No generated run
   artifact is tracked; all five unapproved review candidates remain untouched.
+- Independent review then closed two low-severity convergence gaps. The hourly
+  reconciler now exits with a distinct failing status and workflow error when a
+  durable queue inconsistency blocks lifecycle deletion, rather than succeeding
+  forever while repeating the refusal. The destructive name normalizer now uses
+  the canonical manifest concept helper when deciding placeholder retirement, so
+  real art for one icon-batch cell cannot retire another cell's placeholder.
+  The final exact-head lifecycle/runtime matrix passed 758/758, followed by
+  `verify:fast`, PR prerequisites, lifecycle closure, and another real seed-7
+  Floor 1 headless victory with zero failed quests.
 
 ## PR #3234 generic extraction audit
 
