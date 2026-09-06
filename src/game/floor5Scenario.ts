@@ -87,6 +87,7 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { acceptQuest, setTrackedQuest } from '../core/systems/questSystem.js';
@@ -3432,6 +3433,7 @@ export function initializeFloor5Scenario(
     initializePlayerWeaponSkills(world, playerEid);
   } else {
     equipFloor5StarterWeapon(world, playerEid, manifest.starterWeapons);
+    applyFloorSkipBaseline(world, playerEid, manifest);
   }
 
   for (const questId of FLOOR5_SLICE3_QUEST_IDS) {

@@ -32,7 +32,6 @@
  */
 import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
 import {
-  BaseStats,
   BroadcastScore,
   Damage,
   DoorState,
@@ -90,11 +89,7 @@ import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
 import { isLiveFamilyBoss } from './floor2BossIdentity.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
-import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
-import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
-import { statSystem } from '../core/systems/index.js';
-import { addStatModifier, removeStatModifiers, spendPoints } from './systems/statsSystem.js';
+import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
@@ -138,9 +133,7 @@ import {
   pickFromSpawnZones,
   type SpawnZoneWeights,
 } from './spawn-zones.js';
-import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
-import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
-import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import type { AchievementCatalogRegistry } from '../shared/achievements.js';
@@ -170,7 +163,6 @@ import type { AchievementCatalogRegistry } from '../shared/achievements.js';
  */
 const FLOOR2_BOSS_HP_SCALE = 4;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
-const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
@@ -1118,8 +1110,7 @@ export function initializeFloor2Scenario(
   // through MainGameScene's settlement shop interaction flow.
   world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   if (!options?.playerCarryover) {
-    applyFloor2DirectStartPlayerState(world, playerEid);
-    initializePlayerWeaponSkills(world, playerEid);
+    applyFloorSkipBaseline(world, playerEid, manifest);
     ensureBossBattleSpellReward(world, playerEid);
   }
   setGoalFlag(world, 'floor1-drops-unlocked', true);
@@ -1237,36 +1228,6 @@ export function initializeFloor2Scenario(
       : {}),
   });
 
-  if (!options?.playerCarryover) {
-    // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
-    // so player gets the same weapon on the same seed for consistency.
-    const starterWeaponPool = manifest.starterWeapons;
-    let selectedWeaponId: string | null = null;
-    if (starterWeaponPool && starterWeaponPool.length > 0) {
-      const weaponRng = new SeededRandomClass(
-        hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
-      );
-      const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
-      if (picked) {
-        const weaponDef = getWeaponDef(picked);
-        if (weaponDef) {
-          selectedWeaponId = weaponDef.id;
-          equipStarterOrFallback(world, weaponDef.id, weaponDef);
-        }
-      }
-    }
-
-    if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
-      const fallbackId = manifest.starterWeapons[0];
-      if (fallbackId) {
-        const fallbackDef = getWeaponDef(fallbackId);
-        if (fallbackDef) {
-          equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
-        }
-      }
-    }
-  }
-
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
     latchFloor2Victory(world);
   }
@@ -1352,22 +1313,6 @@ function popFloor2ResourceHeartStairs(world: GameWorld): void {
 function latchFloor2Victory(world: GameWorld): void {
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
   popFloor2ResourceHeartStairs(world);
-}
-
-function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number): void {
-  if (!hasComponent(world.ecs, playerEid, BaseStats)) {
-    initializeBaseStats(world, playerEid);
-  }
-
-  applyStartPlayerLevel(world, FLOOR2_DIRECT_START_LEVEL);
-  const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
-  if (Object.keys(allocations).length > 0) {
-    spendPoints(world, allocations);
-  }
-  statSystem(world);
-
-  unequip(world, playerEid, 'neck', { force: true });
-  equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 
 function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } | null {
