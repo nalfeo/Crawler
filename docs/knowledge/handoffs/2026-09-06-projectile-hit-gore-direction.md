@@ -28,9 +28,10 @@ unchanged.
 Before: the hit-gore path selected a random angle whenever source coordinates
 were unavailable or coincident with the target, so repeated equivalent impacts
 could have different fallback momentum. After: the real `createGoreVfx`
-renderer test consumes a hit event with an eastward projectile vector and
-observes all four spawned particles moving beyond the target along +X; the
-four deterministic resolver fixtures cover east, diagonal, zero-length, and
+renderer test now spawns a projectile and enemy, runs the real
+`collisionSystem` -> `damageSystem` path, consumes the resulting hit event, and
+observes every spawned particle moving beyond the target along +X; the four
+deterministic resolver fixtures cover east, diagonal, zero-length, and
 unavailable vectors.
 
 ## Apples

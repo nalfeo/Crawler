@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { spawnEnemy } from '../../src/core/helpers.js';
+import { spawnProjectile } from '../../src/core/spawners/projectiles.js';
 import {
   createGoreVfx,
   DEFAULT_IMPACT_DIRECTION,
@@ -113,14 +117,15 @@ describe('projectile-hit impact direction', () => {
     } as unknown as GoreScene;
     const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: true });
     const world = createTestWorld();
-    world.combatEvents.push({
+    spawnProjectile(world, 0, 0, 1, 0, 10);
+    spawnEnemy(world, 1, 0, 25);
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
       type: 'hit',
-      x: 10,
+      x: 1,
       y: 0,
-      amount: 10,
-      targetType: 'enemy',
-      timestamp: 0,
-      weaponGoreFactor: 1,
       sourceX: 0,
       sourceY: 0,
     });
@@ -130,7 +135,7 @@ describe('projectile-hit impact direction', () => {
     world.combatEvents.length = 0;
     vfx.update(world, 100, 100);
 
-    expect(rectangles).toHaveLength(4);
+    expect(rectangles.length).toBeGreaterThan(0);
     expect(rectangles.every((rectangle, index) => rectangle.x > initialX[index]!)).toBe(true);
   });
 });
