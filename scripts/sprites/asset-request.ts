@@ -46,7 +46,14 @@ const BRIEF_MIN_LENGTH = 8;
 const BRIEF_MAX_NORMALIZED_LENGTH = 2000;
 const BRIEF_MAX_RAW_LENGTH = 4000;
 
-export interface AssetRequestPayload {
+export interface AssetRequestContextPayload {
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: 'normal' | 'elite' | 'boss';
+  readonly injectionOverrides?: Record<string, unknown>;
+}
+
+export interface AssetRequestPayload extends AssetRequestContextPayload {
   readonly version: 1;
   readonly name: string;
   readonly briefSentence: string;
@@ -55,7 +62,7 @@ export interface AssetRequestPayload {
   readonly sizeVariant?: string;
 }
 
-export interface ParsedAssetRequestIssue {
+export interface ParsedAssetRequestIssue extends AssetRequestContextPayload {
   readonly name: string;
   readonly briefSentence: string;
   readonly type?: string;
@@ -104,12 +111,19 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           parsed.floor,
           explicitSizeVariant,
         );
+        const context = parseRequestContextPayload({
+          floorId: parsed.floorId,
+          familyId: parsed.familyId,
+          mobRole: parsed.mobRole,
+          injectionOverrides: parsed.injectionOverrides,
+        });
         const fingerprint = fingerprintParsedAssetRequest({
           name: parsed.name,
           briefSentence: parsed.briefSentence,
           type: parsed.type,
           floor: parsed.floor,
           explicitSizeVariant,
+          ...context,
         });
         // Machine-authored marker payload: preserve `briefSentence` verbatim so
         // the machine contract stays byte-stable for the downstream prompt. The
@@ -120,6 +134,7 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           briefSentence: parsed.briefSentence,
           type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
           floor: parsed.floor,
+          ...context,
           ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
           fingerprint,
           ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
@@ -136,6 +151,12 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
     fallback.briefSentence,
     fallback.floor,
     explicitSizeVariant,
+    {
+      floorId: fallback.floorId,
+      familyId: fallback.familyId,
+      mobRole: fallback.mobRole,
+      injectionOverrides: fallback.injectionOverrides,
+    },
   );
   const fingerprint = fingerprintParsedAssetRequest({
     name: fallback.name,
@@ -143,9 +164,17 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
     type: fallback.type,
     floor: fallback.floor,
     explicitSizeVariant,
+    floorId: fallback.floorId,
+    familyId: fallback.familyId,
+    mobRole: fallback.mobRole,
+    injectionOverrides: fallback.injectionOverrides,
   });
   return {
     ...request,
+    ...(fallback.floorId ? { floorId: fallback.floorId } : {}),
+    ...(fallback.familyId ? { familyId: fallback.familyId } : {}),
+    ...(fallback.mobRole ? { mobRole: fallback.mobRole } : {}),
+    ...(fallback.injectionOverrides ? { injectionOverrides: fallback.injectionOverrides } : {}),
     fingerprint,
     ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
   };
@@ -156,11 +185,13 @@ export function fingerprintAssetRequest(
   briefSentence: string,
   floor = 1,
   explicitSizeVariant?: SizeVariant,
+  context?: AssetRequestContextPayload,
 ): string {
   const normalized =
     `${name.trim().toLowerCase()}\n${briefSentence.trim().replace(/\s+/g, ' ')}` +
     (floor === 1 ? '' : `\nfloor:${floor}`) +
-    (explicitSizeVariant === undefined ? '' : `\nsize:${explicitSizeVariant}`);
+    (explicitSizeVariant === undefined ? '' : `\nsize:${explicitSizeVariant}`) +
+    serializeRequestContext(context);
   return createHash('sha256').update(normalized).digest('hex');
 }
 
@@ -176,12 +207,22 @@ function fingerprintParsedAssetRequest(input: {
   readonly type?: string;
   readonly floor?: number;
   readonly explicitSizeVariant?: SizeVariant;
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: 'normal' | 'elite' | 'boss';
+  readonly injectionOverrides?: Record<string, unknown>;
 }): string {
   const legacyFingerprint = fingerprintAssetRequest(
     input.name,
     input.briefSentence,
     input.floor,
     input.explicitSizeVariant,
+    {
+      floorId: input.floorId,
+      familyId: input.familyId,
+      mobRole: input.mobRole,
+      injectionOverrides: input.injectionOverrides,
+    },
   );
   if (input.explicitSizeVariant !== undefined) return legacyFingerprint;
   const normalizedType = input.type?.trim().toLowerCase();
@@ -268,6 +309,27 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
     return false;
   }
   if (
+    v.floorId !== undefined &&
+    (typeof v.floorId !== 'string' || v.floorId.trim() === '' || v.floorId.trim() === '_No response_')
+  ) {
+    return false;
+  }
+  if (
+    v.familyId !== undefined &&
+    (typeof v.familyId !== 'string' || v.familyId.trim() === '' || v.familyId.trim() === '_No response_')
+  ) {
+    return false;
+  }
+  if (v.mobRole !== undefined && normalizeMobRole(v.mobRole) === undefined) return false;
+  if (
+    v.injectionOverrides !== undefined &&
+    (typeof v.injectionOverrides !== 'object' ||
+      v.injectionOverrides === null ||
+      Array.isArray(v.injectionOverrides))
+  ) {
+    return false;
+  }
+  if (
     v.sizeVariant !== undefined &&
     (typeof v.sizeVariant !== 'string' ||
       (v.sizeVariant.trim() !== '' &&
@@ -347,6 +409,10 @@ function parseIssueFormBody(body: string): {
   readonly briefSentence: string;
   readonly type?: string;
   readonly floor?: number;
+  readonly floorId?: string;
+  readonly familyId?: string;
+  readonly mobRole?: 'normal' | 'elite' | 'boss';
+  readonly injectionOverrides?: Record<string, unknown>;
   readonly sizeVariant?: SizeVariant;
   readonly explicitSizeVariant?: SizeVariant;
 } | null {
@@ -382,6 +448,7 @@ function parseIssueFormBody(body: string): {
     floor = Number(floorMatch[1]!.trim());
     if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
   }
+  const context = parseRequestContextFromBody(body);
   const sizeMatch = body.match(
     /(?:^|\n)###\s+Size(?:\s+variant)?(?:\s+\(optional\))?\s*\n+([^\n]+)/i,
   );
@@ -396,7 +463,86 @@ function parseIssueFormBody(body: string): {
     briefSentence,
     type,
     floor,
+    ...context,
     ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
     ...(explicitSizeVariant ? { explicitSizeVariant } : {}),
   };
+}
+
+function parseRequestContextFromBody(body: string): AssetRequestContextPayload {
+  const floorIdMatch = body.match(/(?:^|\n)###\s+Floor\s+Id(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
+  const familyIdMatch = body.match(/(?:^|\n)###\s+Family\s+Id(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
+  const mobRoleMatch = body.match(/(?:^|\n)###\s+Mob\s+Role(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
+  const injectionOverridesMatch = body.match(
+    /(?:^|\n)###\s+Injection\s+Overrides(?:\s+\(optional\))?\s*\n+([\s\S]*?)(?=\n###\s|\n<!--|$)/i,
+  );
+  const floorId = cleanOptionalText(floorIdMatch?.[1]);
+  const familyId = cleanOptionalText(familyIdMatch?.[1]);
+  const mobRole = normalizeMobRole(cleanOptionalText(mobRoleMatch?.[1]));
+  const injectionOverrides = parseInjectionOverridesField(injectionOverridesMatch?.[1]);
+  return {
+    ...(floorId ? { floorId } : {}),
+    ...(familyId ? { familyId } : {}),
+    ...(mobRole ? { mobRole } : {}),
+    ...(injectionOverrides ? { injectionOverrides } : {}),
+  };
+}
+
+function parseRequestContextPayload(value: Partial<AssetRequestContextPayload>): AssetRequestContextPayload {
+  const floorId = cleanOptionalText(value.floorId);
+  const familyId = cleanOptionalText(value.familyId);
+  const mobRole = normalizeMobRole(value.mobRole);
+  const injectionOverrides =
+    value.injectionOverrides && typeof value.injectionOverrides === 'object' && !Array.isArray(value.injectionOverrides)
+      ? (value.injectionOverrides as Record<string, unknown>)
+      : undefined;
+  return {
+    ...(floorId ? { floorId } : {}),
+    ...(familyId ? { familyId } : {}),
+    ...(mobRole ? { mobRole } : {}),
+    ...(injectionOverrides ? { injectionOverrides } : {}),
+  };
+}
+
+function normalizeMobRole(value: unknown): 'normal' | 'elite' | 'boss' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'normal' || normalized === 'elite' || normalized === 'boss') return normalized;
+  return undefined;
+}
+
+function cleanOptionalText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed === '_No response_') return undefined;
+  return trimmed;
+}
+
+function parseInjectionOverridesField(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed === '_No response_') return undefined;
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function serializeRequestContext(context?: AssetRequestContextPayload): string {
+  if (!context) return '';
+  const entries: string[] = [];
+  if (context.floorId) entries.push(`\nfloorId:${context.floorId}`);
+  if (context.familyId) entries.push(`\nfamilyId:${context.familyId}`);
+  if (context.mobRole) entries.push(`\nmobRole:${context.mobRole}`);
+  if (context.injectionOverrides && Object.keys(context.injectionOverrides).length > 0) {
+    entries.push(`\ninjectionOverrides:${JSON.stringify(context.injectionOverrides, Object.keys(context.injectionOverrides).sort())}`);
+  }
+  return entries.join('');
 }
