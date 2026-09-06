@@ -1931,10 +1931,20 @@ jobs:
             fi
 
             if [ "$no_work_disposition" = "completed-existing-work" ]; then
-              if [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then
+              if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then
                 evidence=""
+                if [ "$run_outcome" != "success" ]; then
+                  outcome_evidence="${run_outcome}"
+                  if [ -n "$run_phase" ]; then
+                    outcome_evidence="${outcome_evidence}; phase=${run_phase}"
+                  fi
+                  evidence="a non-success terminal run outcome (${outcome_evidence})"
+                fi
                 if [ "$prior_stage_failure" = "true" ]; then
-                  evidence="a prior stage error/failed attempt"
+                  if [ -n "$evidence" ]; then
+                    evidence="${evidence} and "
+                  fi
+                  evidence="${evidence}a prior stage error/failed attempt"
                 fi
                 if [ "$unpushed_diff_size" -gt 0 ]; then
                   if [ -n "$evidence" ]; then

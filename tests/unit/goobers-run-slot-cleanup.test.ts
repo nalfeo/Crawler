@@ -557,6 +557,56 @@ describe.skipIf(!hasJq)('goobers-run.yml false completion recovery', () => {
     expect(harness.stderr).toContain('Refused to add goobers/status:completed-existing-work');
     expect(harness.stderr).toContain('gh workflow run goobers-run.yml -f issue_number=4273');
   });
+
+  it('restores retry eligibility when completed-existing-work exits with an aborted terminal phase', () => {
+    const harness = runStep('Handle no-work disposition', {
+      journals: [
+        {
+          slot: '1',
+          runId: 'run-aborted-no-work',
+          lines: [
+            '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"4274"}}',
+            '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+            '{"type":"run.finished","status":"aborted"}',
+          ],
+        },
+      ],
+      env: { GOOBERS_SLOTS: '1' },
+    });
+
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.log).toContain(
+      'gh issue edit 4274 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+    expect(harness.log).not.toContain('--add-label goobers/status:completed-existing-work');
+    expect(harness.stderr).toContain('a non-success terminal run outcome (failure; phase=aborted)');
+    expect(harness.stderr).toContain('Refused to add goobers/status:completed-existing-work');
+  });
+
+  it('restores retry eligibility when completed-existing-work exits with a failed terminal phase', () => {
+    const harness = runStep('Handle no-work disposition', {
+      journals: [
+        {
+          slot: '1',
+          runId: 'run-failed-no-work',
+          lines: [
+            '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"4275"}}',
+            '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+            '{"type":"run.finished","status":"failed"}',
+          ],
+        },
+      ],
+      env: { GOOBERS_SLOTS: '1' },
+    });
+
+    expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
+    expect(harness.log).toContain(
+      'gh issue edit 4275 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+    );
+    expect(harness.log).not.toContain('--add-label goobers/status:completed-existing-work');
+    expect(harness.stderr).toContain('a non-success terminal run outcome (failure; phase=failed)');
+    expect(harness.stderr).toContain('Refused to add goobers/status:completed-existing-work');
+  });
 });
 
 /**

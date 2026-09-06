@@ -2569,6 +2569,7 @@ ${queryScript}
     expect(retry?.run).toContain('.status == "no-work"');
     expect(retry?.run).toContain('outputs.disposition // empty');
     expect(retry?.run).toContain('no_work_disposition" = "completed-existing-work"');
+    expect(retry?.run).toContain('[ "$run_outcome" != "success" ]');
     expect(retry?.run).toContain(
       '.type == "error" or (.type == "stage.finished" and .status == "failed")',
     );
@@ -2576,7 +2577,7 @@ ${queryScript}
     expect(retry?.run).toContain('(.ref.size // 0) | numbers');
     const falseCompletionGuard =
       retry?.run?.indexOf(
-        'if [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then',
+        'if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then',
       ) ?? -1;
     const terminalLabelMutation =
       retry?.run?.indexOf("--add-label 'goobers/status:completed-existing-work'") ?? -1;
