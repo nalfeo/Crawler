@@ -94,10 +94,14 @@ describe('Floor 4 achievement facts', () => {
   it('only unlocks the clear achievement after the real Floor 4 victory phase', () => {
     const { world, arena } = initFloor4World();
 
+    arena.headlinerTelemetry.overtimeStarted = 0;
+    expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor4NoOvertime).toBe(false);
+
     evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
     expect(world.achievements.unlockedIds.has('floor4-main-event-clear')).toBe(false);
 
     arena.phase = { kind: 'VICTORY' };
+    expect(collectCurrentFloorAchievementFacts(world).booleanFacts.floor4NoOvertime).toBe(true);
     evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
 
     expect(world.achievements.unlockedIds.has('floor4-main-event-clear')).toBe(true);
