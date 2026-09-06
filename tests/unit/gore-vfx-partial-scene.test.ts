@@ -7,7 +7,7 @@ import {
   createGoreVfx,
   resolveImpactDirection,
 } from '../../src/engine/GoreVfx.js';
-import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { runSimulationStep } from '../../src/engine/sim/simulation-step.js';
 import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createSceneStub } from '../fixtures/phaser-bridge-harness.js';
@@ -125,7 +125,7 @@ describe('projectile-hit impact direction', () => {
     // than invoking GoreVfx directly. The zero-velocity projectile remains at
     // its origin while overlapping the target, preserving the incoming +X
     // vector for the renderer.
-    runSimulationStep(world, createInputState(), 16);
+    runSimulationStep(world, createInputState());
     bridge.sync(world, 0);
     const initialX = rectangles.map((rectangle) => rectangle.x);
     bridge.sync(world, 100);

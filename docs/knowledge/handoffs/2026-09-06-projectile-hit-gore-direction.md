@@ -27,11 +27,11 @@ unchanged.
 
 Before: the hit-gore path selected a random angle whenever source coordinates
 were unavailable or coincident with the target, so repeated equivalent impacts
-could have different fallback momentum. After: the real headless simulation
-pipeline (`runSimulationStep`) creates the hit event, and the production
-`createPhaserBridge` renderer consumes it; the test observes every spawned
-particle moving beyond the target along +X. The four deterministic resolver
-fixtures cover east, diagonal, zero-length, and unavailable vectors.
+could have different fallback momentum. After: the canonical visual simulation
+pipeline (`src/engine/sim/simulation-step.ts`) creates the hit event, and the
+production `createPhaserBridge` renderer consumes it; the test observes every
+spawned particle moving beyond the target along +X. The four deterministic
+resolver fixtures cover east, diagonal, zero-length, and unavailable vectors.
 
 ## Apples
 
