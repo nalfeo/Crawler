@@ -825,6 +825,20 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
       'Atomic purchase transaction for a Floor 6 run-scoped upgrade offer (no-op for unknown/duplicate/unaffordable/non-Floor-6 requests). The Floor 6 upgrade-picker UI that calls it lands in a follow-up slice; unit tests exercise every branch of the transaction directly in the interim.',
     expiresOn: '2026-11-22',
   },
+  {
+    file: 'src/engine/GoreVfx.ts',
+    name: 'resolveImpactDirection',
+    reason:
+      'Pure source-to-target direction resolver for projectile-hit gore, including the deterministic fallback for zero-length/missing vectors; production calls it from the hit-gore branch in the same file, tests import it directly to pin every edge case (forward, diagonal, zero-length, unavailable source).',
+    expiresOn: '2026-11-06',
+  },
+  {
+    file: 'src/engine/GoreVfx.ts',
+    name: 'DEFAULT_IMPACT_DIRECTION',
+    reason:
+      'Fixed fallback direction used by resolveImpactDirection in the same file when no usable impact vector is available; tests import the constant directly to assert the exact fallback value rather than duplicating it.',
+    expiresOn: '2026-11-06',
+  },
 ] as const satisfies readonly TestScaffoldAllowlistEntry[];
 
 function toAllowlistKey(file: string, name: string): string {
