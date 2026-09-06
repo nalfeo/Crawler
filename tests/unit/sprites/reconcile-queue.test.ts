@@ -307,9 +307,11 @@ describe('partitionLifecycleDeletions (per-tombstone fail-closed)', () => {
     const deletion = {
       tombstone: {
         manifestKey: 'rat-var-0',
+        conceptId: 'rat',
         assetPath: 'generated/rat-var-0.png',
         sourceRun: 'generated/runs/rat/run-0',
         variantIndex: 0,
+        annotationKeys: ['rat-var-0'],
       },
       paths: pathsFor('rat-var-0') as [string, string],
     } as const;

@@ -241,6 +241,11 @@ export interface AuthorizedLifecycleDeletion {
   readonly paths: readonly [string, string];
 }
 
+type LifecycleShardIdentity = Pick<
+  LifecycleDeletionTombstone,
+  'manifestKey' | 'assetPath' | 'sourceRun' | 'variantIndex'
+>;
+
 /** A queue-side lifecycle deletion this cycle REFUSES to promote. */
 export interface RejectedLifecycleDeletion {
   /** Annotation key (== tombstone `manifestKey`) whose deletion was refused. */
@@ -442,7 +447,8 @@ export function partitionLifecycleDeletions(
       });
       continue;
     }
-    const assetPath = `public/assets/${value.assetPath}`;
+    const validTombstone = tombstone;
+    const assetPath = `public/assets/${validTombstone.assetPath}`;
     const shardDeleted = deleted.has(shardPath);
     const assetDeleted = deleted.has(assetPath);
     if (shardDeleted !== assetDeleted) {
@@ -456,15 +462,15 @@ export function partitionLifecycleDeletions(
     if (shardDeleted) {
       authorized.push({
         tombstone: {
-          manifestKey: value.manifestKey,
-          ...(typeof value.conceptId === 'string' ? { conceptId: value.conceptId } : {}),
-          ...(typeof value.replacementKey === 'string'
-            ? { replacementKey: value.replacementKey }
+          manifestKey: validTombstone.manifestKey,
+          conceptId: validTombstone.conceptId,
+          ...(validTombstone.replacementKey !== undefined
+            ? { replacementKey: validTombstone.replacementKey }
             : {}),
-          assetPath: value.assetPath,
-          sourceRun: value.sourceRun,
-          variantIndex: value.variantIndex,
-          annotationKeys: value.annotationKeys,
+          assetPath: validTombstone.assetPath,
+          sourceRun: validTombstone.sourceRun,
+          variantIndex: validTombstone.variantIndex,
+          annotationKeys: validTombstone.annotationKeys,
         },
         paths: [shardPath, assetPath],
       });
@@ -492,7 +498,10 @@ export function selectAuthorizedLifecycleDeletions(
 
 /** Require a persisted tombstone to describe the exact asset currently on main. */
 export function assertLifecycleDeletionMatchesShard(
-  deletion: AuthorizedLifecycleDeletion,
+  deletion: {
+    readonly tombstone: LifecycleShardIdentity;
+    readonly paths: readonly [string, string];
+  },
   shardJson: string | null,
 ): void {
   let entry: {
