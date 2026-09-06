@@ -22,6 +22,7 @@ import {
   FLOOR2_LOOT_TIER_TO_EQUIPMENT_REWARD_TIER,
   _FLOOR1_COMMON_CRAFTING_MATERIALS as FLOOR1_COMMON_CRAFTING_MATERIALS,
   _LOOT_BOX_GOLD_BY_TIER as LOOT_BOX_GOLD_BY_TIER,
+  floor1AchievementGoldBeforeFirstBrokerCap,
   materialsTableForReward,
   materialsTableGoldForTier,
   materialsTablePool,
@@ -37,6 +38,10 @@ import {
 import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 import { ITEM_CATALOG, ItemRarity } from '../../src/shared/items.js';
 import { FLOOR6_DEFENSE_QUEST_ID } from '../../src/shared/quest-types.js';
+import {
+  FLOOR1_SPELL_BROKER_COST,
+  FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER,
+} from '../../src/shared/constants.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -60,6 +65,17 @@ describe('floor1 achievements catalog', () => {
   it('has unique achievement ids', () => {
     const ids = FLOOR1_ACHIEVEMENTS.map((achievement) => achievement.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('keeps pre-broker Floor 1 achievement gold below the three-offer broker rack', () => {
+    const brokerRackTotal =
+      FLOOR1_SPELL_BROKER_COST *
+      (1 +
+        FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER +
+        FLOOR1_SPELL_BROKER_REPEAT_COST_MULTIPLIER ** 2);
+
+    expect(floor1AchievementGoldBeforeFirstBrokerCap()).toBeLessThan(brokerRackTotal);
+    expect(floor1AchievementGoldBeforeFirstBrokerCap()).toBeLessThan(FLOOR1_SPELL_BROKER_COST * 3);
   });
 
   it('uses progressively longer Director flavor text for higher difficulty bands', () => {

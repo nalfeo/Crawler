@@ -116,13 +116,29 @@ export const LEGACY_TIER4_ACHIEVEMENT_BUNDLE_IDS: ReadonlySet<string> = new Set(
  */
 const LOOT_BOX_GOLD_BY_TIER: Readonly<Record<LootBoxTier, number>> = Object.freeze({
   trash: 10,
-  common: 25,
-  uncommon: 50,
-  rare: 100,
-  epic: 200,
-  legendary: 400,
-  divine: 800,
+  common: 20,
+  uncommon: 35,
+  rare: 70,
+  epic: 140,
+  legendary: 280,
+  divine: 560,
 });
+
+/**
+ * Floor 1's pre-broker achievement stack is intentionally capped below the three-
+ * offer broker rack. This keeps the first spell-broker decision meaningful: the
+ * run can earn a meaningful payout, but not enough gold to clear the whole three-
+ * spell rack from achievement loot boxes alone.
+ */
+export const FLOOR1_ACHIEVEMENT_GOLD_BEFORE_FIRST_BROKER_CAP =
+  LOOT_BOX_GOLD_BY_TIER.trash +
+  LOOT_BOX_GOLD_BY_TIER.common +
+  LOOT_BOX_GOLD_BY_TIER.uncommon +
+  LOOT_BOX_GOLD_BY_TIER.rare;
+
+export function floor1AchievementGoldBeforeFirstBrokerCap(): number {
+  return FLOOR1_ACHIEVEMENT_GOLD_BEFORE_FIRST_BROKER_CAP;
+}
 
 /**
  * Floor 1 achievement loot-box crafting-material COUNT grant, monotonically
