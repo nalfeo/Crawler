@@ -64,6 +64,7 @@ function makeRecordingScene(titles: string[]): unknown {
     tweens: { add: () => stub },
     time: { delayedCall: () => stub },
     collectTitles: () => {
+      titles.length = 0;
       titles.push(...titleEntries.filter((entry) => !entry.destroyed).map((entry) => entry.text));
     },
   };
@@ -78,6 +79,8 @@ const FIRST_CATALOG_ID = 'first-bonk';
 const SECOND_CATALOG_ID = 'room-sweeper';
 /** Catalog-adjacent to `first-bonk`, used for the three-way interleave case. */
 const CATALOG_MIDDLE_ID = 'slime-no-more';
+/** Must be tall enough to render three full achievement rows in probe mode. */
+const PROBE_PANEL_HEIGHT = 900;
 
 describe('AchievementsUI row order', () => {
   it('sorts an unopened loot box ahead of an already-claimed one earlier in catalog order', () => {
@@ -92,7 +95,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
-      { height: 900 },
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
     (scene as { collectTitles: () => void }).collectTitles();
@@ -113,7 +116,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
-      { height: 900 },
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
     (scene as { collectTitles: () => void }).collectTitles();
@@ -139,7 +142,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
-      { height: 900 },
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
     (scene as { collectTitles: () => void }).collectTitles();
