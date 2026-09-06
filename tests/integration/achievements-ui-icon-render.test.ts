@@ -210,7 +210,9 @@ describe('AchievementsUI generated-icon render path', () => {
   ])(
     'keeps title, multiline criteria, and multiline flavor separated at $name size',
     ({ displaySize }) => {
-      const achievement = ALL_ACHIEVEMENTS.find((entry) => entry.id === 'room-sweeper');
+      const achievement = ALL_ACHIEVEMENTS.find(
+        (entry) => entry.id === 'floor2-run-fully-outfitted',
+      );
       expect(achievement).toBeDefined();
       const recording = makeRecordingScene(
         {

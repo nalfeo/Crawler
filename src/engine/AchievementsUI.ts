@@ -529,6 +529,16 @@ export function createAchievementsUI(
     });
     container.add(t);
     rowObjects.push(t);
+    const addTextRegion = (id: string, text: Phaser.GameObjects.Text, parentId: string): void => {
+      const bounds = text.getBounds();
+      layoutRegions.push({
+        id,
+        box: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        kind: 'text',
+        parentId,
+      });
+    };
+    addTextRegion(`${rowId}.title`, t, rowId);
 
     const crit = crispText(textLeft, criteriaY, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
@@ -538,6 +548,7 @@ export function createAchievementsUI(
     });
     container.add(crit);
     rowObjects.push(crit);
+    addTextRegion(`${rowId}.criteria`, crit, rowId);
 
     const flavor = crispText(textLeft, flavorY, def.directorFlavor, {
       ...flavorStyle,
@@ -545,6 +556,7 @@ export function createAchievementsUI(
     });
     container.add(flavor);
     rowObjects.push(flavor);
+    addTextRegion(`${rowId}.flavor`, flavor, rowId);
 
     if (isLong) {
       const expanderY = flavorY + flavorH + 2;

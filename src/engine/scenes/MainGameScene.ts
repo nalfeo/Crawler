@@ -612,6 +612,13 @@ export interface _ScenarioHudProbe {
   readonly cueLabels: readonly string[];
 }
 
+export interface _AchievementToastProbe {
+  readonly commentary: ScreenBounds | null;
+  readonly toast: ScreenBounds | null;
+  readonly commentaryText: string | null;
+  readonly toastText: string | null;
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -1725,6 +1732,17 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getAchievementToastLayout(): _AchievementToastProbe {
+    return {
+      commentary: toScreenBounds(this.directorCommentaryText),
+      toast: toScreenBounds(this.achievementToast),
+      commentaryText: this.directorCommentaryText?.visible
+        ? (this.directorCommentaryText.text ?? null)
+        : null,
+      toastText: this.achievementToast?.visible ? (this.achievementToast.text ?? null) : null,
+    };
   }
 
   /**

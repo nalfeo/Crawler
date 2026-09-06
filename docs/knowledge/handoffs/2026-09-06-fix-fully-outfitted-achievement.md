@@ -2,7 +2,7 @@
 
 ## Systems touched
 
-quests, hud-ux, inventory
+quests, hud-ux, inventory, labs
 
 ## Apples
 
@@ -33,3 +33,8 @@ achievement toast moves below active director commentary.
   multiline catalog entry at standard (1280x720) and compact (640x360)
   viewports; the toast layout helper asserts placement below multiline
   commentary and restoration after commentary hides.
+- Repass regression coverage: `npm run test:e2e --
+tests/e2e/main-game-scene-achievement-toast.test.ts` boots the real
+  MainGameScene and confirms the toast is below active commentary, while the
+  rendered Awards text regions remain separated for Fully Outfitted at both
+  supported viewport sizes.
