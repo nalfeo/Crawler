@@ -306,6 +306,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       floor4EnemiesSpawned: floor4State?.waveTelemetry.enemiesSpawned ?? 0,
       floor4HeadlinersSpawned: floor4State?.headlinerTelemetry.spawned ?? 0,
       floor4HeadlinersDefeated: floor4State?.headlinerTelemetry.defeated ?? 0,
+      // Green Room visits use a zero-based opened index; -1 means none has opened.
       floor4GreenRoomVisits:
         world.floor === 4
           ? (world.floorExtendedState?.floor4GreenRoom?.lastOpenedVisitIndex ?? -1) + 1

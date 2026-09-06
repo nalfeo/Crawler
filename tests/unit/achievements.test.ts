@@ -313,13 +313,10 @@ describe('floor4 achievements catalog', () => {
       hard: [8, 12],
       brutal: [12, 20],
     } as const;
+    const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
 
     for (const achievement of FLOOR4_ACHIEVEMENTS) {
-      const sentenceCount = [
-        ...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(
-          achievement.directorFlavor,
-        ),
-      ].length;
+      const sentenceCount = [...segmenter.segment(achievement.directorFlavor)].length;
       const [minimum, maximum] = ranges[achievement.difficulty];
       expect(sentenceCount).toBeGreaterThanOrEqual(minimum);
       expect(sentenceCount).toBeLessThanOrEqual(maximum);
