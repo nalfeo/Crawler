@@ -2,6 +2,7 @@ import { addComponent, entityExists, hasComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   BroadcastScore,
+  Damage,
   DeathTimer,
   EnemyProjectile,
   Owner,
@@ -57,6 +58,18 @@ describe('damageSystem', () => {
     // The enemy died and is in its death-linger window: it keeps the Enemy
     // component but must not damage the player on contact.
     addComponent(world.ecs, enemy, set(DeathTimer, { remainingMs: 300 }));
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(100);
+    expect(world.combatEvents).toHaveLength(0);
+  });
+
+  it('does not turn zero-damage contact into chip damage after armor reduction', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 1, 0, 25);
+    addComponent(world.ecs, enemy, set(Damage, { amount: 0 }));
 
     damageSystem(world, collisionSystem(world));
 

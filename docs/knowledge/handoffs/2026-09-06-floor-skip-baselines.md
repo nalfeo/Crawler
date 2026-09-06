@@ -10,7 +10,7 @@ Game Designer
 
 ## Systems touched
 
-inventory, weapons, ai-combat-balance
+inventory, weapons, enemies, ai-combat-balance
 
 ## Apples
 
@@ -28,6 +28,10 @@ Added manifest-driven direct-start baselines for floors 2-6 and routed each
 no-carryover scenario start through a shared helper. Carryover snapshots remain
 authoritative and are not replaced by the direct-start baseline.
 
+The change also exposed a core damage bug where zero-damage contact could be
+rounded up into 1 HP of chip damage after armor reduction. That is now guarded
+by an ECS regression test.
+
 ## Files touched
 
 - `src/shared/floor-manifest.ts`
@@ -42,13 +46,16 @@ authoritative and are not replaced by the direct-start baseline.
 - `src/game/floor4Scenario.ts`
 - `src/game/floor5Scenario.ts`
 - `src/game/floor6Scenario.ts`
+- `src/core/systems/damageSystem.ts`
 - `tests/game/floor-skip-baseline.test.ts`
+- `tests/ecs/damage-system.test.ts`
 
 ## Verification
 
 - `npx vitest run tests/game/floor-skip-baseline.test.ts`
 - `npm run typecheck`
 - `npm run lint:game -- --no-cache tests/game/floor-skip-baseline.test.ts src/game/scenarios/floorSkipBaseline.ts src/game/floor2Scenario.ts src/game/floor3Scenario.ts src/game/floor4Scenario.ts src/game/floor5Scenario.ts src/game/floor6Scenario.ts`
+- `npx vitest run tests/game/floor1-main-scene-options.test.ts tests/unit/floor5-throne-capture.test.ts tests/game/floor-skip-baseline.test.ts tests/ecs/damage-system.test.ts`
 - `npm run ai:headless:tsx -- --floor floor3 --seed 42 --max-frames 1 --max-time-ms 60000`
   - Expected timeout due to the one-frame observation run.
   - Confirmed Floor 3 direct start now reports `Final Level: 8` and `Total XP: 135`

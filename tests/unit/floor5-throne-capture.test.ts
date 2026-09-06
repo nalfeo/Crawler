@@ -169,7 +169,7 @@ describe('Floor 5 throne capture interaction', () => {
     expect(state.finale.courtyardActors).toHaveLength(0);
   });
 
-  it('applies finale contact damage through the Floor 5 objective authority', () => {
+  it('routes finale contact damage only through the Floor 5 objective authority', () => {
     const { world, state, playerEid } = createFloor5World();
     state.breach.latched = true;
     world.floorObjectiveTick?.(world);
@@ -181,12 +181,11 @@ describe('Floor 5 throne capture interaction', () => {
     expect(hasComponent(world.ecs, actor.eid, Enemy)).toBe(true);
     expect(hasComponent(world.ecs, actor.eid, Damage)).toBe(true);
     damageSystem(world, collisionSystem(world));
-    const healthAfterCollision = world.stores.health.current[playerEid]!;
-    expect(healthAfterCollision).toBe(startingHealth - 1);
+    expect(world.stores.health.current[playerEid]).toBe(startingHealth);
 
     world.floorObjectiveTick?.(world);
     expect(world.stores.health.current[playerEid]).toBe(
-      healthAfterCollision - floor5Manifest.floor5.finale.crownAuditor.attackDamage,
+      startingHealth - floor5Manifest.floor5.finale.crownAuditor.attackDamage,
     );
   });
 

@@ -63,10 +63,20 @@ function raiseSkillLevel(
   const cappedLevel = Math.min(level, def.usageThresholds.length);
   const threshold = def.usageThresholds[cappedLevel - 1];
 
-  const holderSkills = world.skillStatesByEntity.get(playerEid);
-  const state: SkillState | undefined =
-    holderSkills?.get(skillId) ?? world.playerSkills.get(skillId);
-  if (threshold === undefined || state === undefined || state.level >= cappedLevel) return;
+  let holderSkills = world.skillStatesByEntity.get(playerEid);
+  if (holderSkills === undefined) {
+    holderSkills = new Map<string, SkillState>();
+    world.skillStatesByEntity.set(playerEid, holderSkills);
+  }
+  let state: SkillState | undefined = holderSkills.get(skillId) ?? world.playerSkills.get(skillId);
+  if (state === undefined) {
+    state = { level: 0, usage: 0, itemBonus: 0, triggeredMilestones: new Set() };
+    world.playerSkills.set(skillId, state);
+  }
+  if (!holderSkills.has(skillId)) {
+    holderSkills.set(skillId, state);
+  }
+  if (threshold === undefined || state.level >= cappedLevel) return;
 
   const neededUsage = Math.max(0, threshold - state.usage);
   if (neededUsage <= 0) return;

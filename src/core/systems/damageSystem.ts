@@ -239,7 +239,11 @@ function applyPlayerEnemyHit(
     getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE) *
     getMobAbilityMeleeDamageMultiplier(world, enemy);
   const hostileMult = world.hostileDamageMultiplier ?? 1;
-  const amount = applyArmorReduction(world, player, raw * hostileMult);
+  const scaled = raw * hostileMult;
+  if (scaled <= 0) {
+    return;
+  }
+  const amount = applyArmorReduction(world, player, scaled);
   applyDamage(
     world,
     player,
@@ -285,7 +289,12 @@ function applyEnemyProjectileHit(
 
   const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
   const hostileMult = world.hostileDamageMultiplier ?? 1;
-  const amount = applyArmorReduction(world, player, raw * hostileMult);
+  const scaled = raw * hostileMult;
+  if (scaled <= 0) {
+    destroyEntity(world, projectile);
+    return;
+  }
+  const amount = applyArmorReduction(world, player, scaled);
   const projectileOwner = hasComponent(world.ecs, projectile, Owner)
     ? (world.stores.owner.eid[projectile] ?? -1)
     : -1;
