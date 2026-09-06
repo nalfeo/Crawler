@@ -171,8 +171,11 @@ function achievementAcceptanceEvidence(body: string): {
 
 function achievementRequiresNumericHumanGate(body: string): boolean {
   return (
-    /\b(?:at\s+(?:least|most)|exactly|no\s+more\s+than|no\s+less\s+than|threshold)\b/i.test(body) &&
-    /\b(?:kills?|damage|gold|time|score|health|reward|count|streak|wave|waves|seconds?|minutes?|rooms?|clear(?:s|ance)?)\b/i.test(
+    /\bthreshold\b/i.test(body) ||
+    /\b(?:at\s+(?:least|most)|exactly|no\s+more\s+than|no\s+less\s+than|after|within|complete)\s+\d+(?:\.\d+)?\s+\b(?:kills?|damage|gold|seconds?|minutes?|points?|score|waves?|rooms?|runs?|clears?)\b/i.test(
+      body,
+    ) ||
+    /\b\d+(?:\.\d+)?\s+\b(?:kills?|damage|gold|seconds?|minutes?|points?|score|waves?|rooms?|runs?|clears?)\b/i.test(
       body,
     )
   );

@@ -225,6 +225,28 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
   });
 
+  it('detects ordinary numeric achievement wording as a threshold', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      human_gates: ['Balance numbers will be finalized later.'],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body:
+                'Owner: QA Engineer.\n\n' +
+                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once. ' +
+                'Done when the unlock and claim assertions pass.',
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
   it('requires an achievement slice to declare exactly one Owner persona', () => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = withNode(epic, 'achievement-qa', (node) => ({
