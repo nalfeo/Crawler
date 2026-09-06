@@ -580,9 +580,8 @@ export function queueAbilityTrigger(world: GameWorld, trigger: AbilityTriggerEve
 }
 
 function triggerMatches(condition: AbilityTriggerCondition, event: AbilityTriggerEvent): boolean {
-  if (condition.kind !== event.kind) return false;
-
   if (condition.kind === 'skill_usage') {
+    if (event.kind !== 'skill_usage') return false;
     if (condition.metric !== undefined && event.metric !== condition.metric) return false;
     if (condition.skillId !== undefined && event.skillId !== condition.skillId) return false;
     if ((event.amount ?? 0) < (condition.minAmount ?? 0)) return false;
@@ -590,6 +589,7 @@ function triggerMatches(condition: AbilityTriggerCondition, event: AbilityTrigge
   }
 
   if (condition.kind === 'player_damage') {
+    if (event.kind !== 'player_damage') return false;
     if ((event.amount ?? 0) < (condition.minDamage ?? 0)) return false;
     return true;
   }
