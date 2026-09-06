@@ -878,9 +878,11 @@ describe('runQueueCommit (control flow)', () => {
                 disliked: true,
                 tombstone: {
                   manifestKey: 'stale',
+                  conceptId: 'stale',
                   assetPath: 'generated/stale.png',
                   sourceRun: 'generated/runs/stale/old-run',
                   variantIndex: 0,
+                  annotationKeys: ['stale'],
                 },
               },
             },
