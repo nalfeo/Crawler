@@ -146,9 +146,9 @@ describe('skill L5 milestone ability grants', () => {
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
       expect(def, `ability ${abilityId} (for skill ${skill.id}) not found`).toBeDefined();
-      // Arcane is the one class whose L5 milestone unlocks an ACTIVE ability
-      // (issue #3676); every other L5 milestone is still a passive.
-      expect(def!.kind).toBe(skill.id === 'arcane' ? 'active' : 'passive');
+      // Arcane and pistol are the weapon skills whose milestone unlocks are real
+      // active abilities with weapon-gated triggers; the rest remain passive.
+      expect(def!.kind).toBe(skill.id === 'arcane' || skill.id === 'pistol' ? 'active' : 'passive');
     }
   });
 
@@ -190,15 +190,24 @@ describe('weapon-skill passive ability definitions', () => {
     }
   });
 
-  it('weapon TYPE skill abilities are passive stubs (active wiring is a follow-up)', () => {
-    for (const typeSkillId of WEAPON_TYPE_SKILL_IDS) {
-      const abilityId = getL5AbilityId(typeSkillId);
-      if (!abilityId) continue;
+  it('pistol milestone rewards stay active and expose canonical player-facing names', () => {
+    const pistol = getSkillDefinition('pistol')!;
+    const expectedIds = ['pistol-shot-base', 'pistol-rapid-fire', 'pistol-shot-evolved', 'pistol-barrage'];
+    expect(pistol.milestones.map((entry) => entry.abilityId)).toEqual(expectedIds);
+
+    for (const abilityId of expectedIds) {
       const def = getAbilityDefinition(abilityId);
-      // Weapon type skill L5 abilities are stubs: kind=passive, no weapon prerequisite yet.
-      // Active ability wiring is a follow-up task (see PR description).
-      expect(def?.kind).toBe('passive');
+      const presentation = getAbilityPresentation(abilityId);
+      expect(def?.kind).toBe('active');
+      expect(presentation?.name).toBeDefined();
+      expect(presentation?.name).not.toMatch(/[-]/);
+      expect(presentation?.name).not.toContain('pistol-');
     }
+
+    expect(getAbilityDefinition('pistol-volley')).toBe(getAbilityDefinition('pistol-rapid-fire'));
+    expect(getAbilityPresentation('pistol-volley')?.name).toBe('Rapid Fire');
+    expect(getAbilityDefinition('pistol-volley-evolved')).toBe(getAbilityDefinition('pistol-barrage'));
+    expect(getAbilityPresentation('pistol-volley-evolved')?.name).toBe('Barrage');
   });
 
   it('general skill abilities (swordsmanship, iron-skin, sprint) have no weaponPrerequisite', () => {
