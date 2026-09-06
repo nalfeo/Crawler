@@ -157,6 +157,28 @@ function isAchievementNode(node: FloorEpicNode): boolean {
   return /\bachievements?\b/i.test(`${node.title}\n${node.body ?? ''}`);
 }
 
+/**
+ * A node merely *mentioning* "achievement" is not necessarily the node that
+ * owns the achievement work — a downstream release/dependency slice can
+ * legitimately say "release after achievement QA passes" without itself
+ * doing any achievement work, and that reference must not be forced to
+ * satisfy the owning-node checks below (Owner count, dependency, unlock/
+ * claim/reward evidence, HUMAN_GATE deferral). Require the "achievement"
+ * mention to co-occur with an ownership verb/noun (implement/add/define/
+ * verify/track/unlock/claim/reward/coverage/slice/data/integrated) in
+ * either order within the same sentence-ish window before treating a node
+ * as achievement-*owning*.
+ */
+const ACHIEVEMENT_OWNERSHIP_EVIDENCE =
+  /\bachievements?\b[^.]{0,80}\b(?:unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|coverage|slice|data|integrated|tracks?|tracked|tracking|verif\w*|implement\w*|add(?:s|ed|ing)?|defin\w*)\b|\b(?:unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|verif\w*|implement\w*|add(?:s|ed|ing)?|defin\w*|tracks?|tracked|tracking)\b[^.]{0,80}\bachievements?\b/i;
+
+function isAchievementOwningNode(node: FloorEpicNode): boolean {
+  return (
+    isAchievementNode(node) &&
+    ACHIEVEMENT_OWNERSHIP_EVIDENCE.test(`${node.title}\n${node.body ?? ''}`)
+  );
+}
+
 function achievementAcceptanceEvidence(body: string): {
   readonly hasUnlock: boolean;
   readonly hasClaim: boolean;
@@ -169,20 +191,24 @@ function achievementAcceptanceEvidence(body: string): {
   };
 }
 
+/**
+ * Detects a numeric achievement threshold generally — not just a closed
+ * allowlist of nouns (kills/damage/gold/...) — so item counts ("collect 10
+ * relics"), levels ("reach level 20"), and percentages ("finish with 50%
+ * health") all require the HUMAN_GATE deferral, not just the originally
+ * listed combat-stat nouns.
+ */
 function achievementRequiresNumericHumanGate(body: string): boolean {
   return (
     /\bthreshold\b/i.test(body) ||
-    /\b(?:at\s+(?:least|most)|exactly|no\s+more\s+than|no\s+less\s+than|after|within|complete)\s+\d+(?:\.\d+)?\s+\b(?:kills?|damage|gold|seconds?|minutes?|points?|score|waves?|rooms?|runs?|clears?)\b/i.test(
-      body,
-    ) ||
-    /\b\d+(?:\.\d+)?\s+\b(?:kills?|damage|gold|seconds?|minutes?|points?|score|waves?|rooms?|runs?|clears?)\b/i.test(
-      body,
-    )
+    /\d+(?:\.\d+)?\s*%/.test(body) ||
+    /\b(?:level|tier|wave|stage|phase|act)\s+\d+(?:\.\d+)?\b/i.test(body) ||
+    /\b\d+(?:\.\d+)?\s+[a-z][a-z'-]*\b/i.test(body)
   );
 }
 
 function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
-  const achievementNodes = epic.nodes.filter(isAchievementNode);
+  const achievementNodes = epic.nodes.filter(isAchievementOwningNode);
   if (achievementNodes.length === 0) {
     return [
       {
@@ -230,7 +256,12 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
       !(epic.human_gates ?? []).some(
         (gate) =>
           /\b(playtester|game designer)\b/i.test(gate) &&
-          /\b(?:achievement|threshold|numeric|balance|pacing|difficulty|fun)\b/i.test(gate),
+          // The gate must explicitly reference achievements, not just an
+          // unrelated generic balance/pacing/difficulty/fun gate — otherwise
+          // a floor's existing catch-all balance HUMAN_GATE would silently
+          // satisfy the achievement-specific deferral contract.
+          /\bachievements?\b/i.test(gate) &&
+          /\b(?:threshold|numeric|balance|pacing|difficulty|fun)\b/i.test(gate),
       )
     ) {
       violations.push({

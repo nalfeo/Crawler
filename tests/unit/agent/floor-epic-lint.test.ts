@@ -247,6 +247,81 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
   });
 
+  it.each([
+    [
+      'item count',
+      'Verify the floor achievement unlocks after collecting 10 relics and its reward can be claimed exactly once.',
+    ],
+    [
+      'level target',
+      'Verify the floor achievement unlocks after the player reaches level 20 and its reward can be claimed exactly once.',
+    ],
+    [
+      'percentage target',
+      'Verify the floor achievement unlocks when the run finishes with 50% health remaining and its reward can be claimed exactly once.',
+    ],
+  ])('detects a numeric achievement threshold expressed as %s', (_label, sentence) => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      human_gates: ['Balance numbers will be finalized later.'],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body: `Owner: QA Engineer.\n\n${sentence} Done when the unlock and claim assertions pass.`,
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('rejects an achievement HUMAN_GATE that only defers a generic balance gate without naming achievements', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      // Owner-bearing, persona-named, but never mentions "achievement" —
+      // must not satisfy the achievement-specific deferral contract.
+      human_gates: [
+        'Defer numeric balance, pacing, and difficulty tuning to Playtester evidence and Game ' +
+          'Designer follow-up before any sweep-based sign-off.',
+      ],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body:
+                'Owner: QA Engineer.\n\n' +
+                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once. ' +
+                'Done when the unlock and claim assertions pass.',
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('does not treat a release node that only references achievement QA completion as achievement-owning', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    // The release node references the achievement slice's completion but
+    // does no achievement work itself — it must not be forced through the
+    // owner/dependency/acceptance/HUMAN_GATE checks meant for the node that
+    // actually owns the achievement work.
+    const mutated = withNode(epic, 'release', (node) => ({
+      ...node,
+      body:
+        'Owner: Producer.\n\n' +
+        'Enable the release/MVP flag now that the floor is released for players, gated ' +
+        'behind dual-runner acceptance and after achievement QA has passed.',
+    }));
+    expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
+  });
+
   it('requires an achievement slice to declare exactly one Owner persona', () => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = withNode(epic, 'achievement-qa', (node) => ({
