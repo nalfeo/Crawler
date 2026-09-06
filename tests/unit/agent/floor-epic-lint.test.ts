@@ -260,6 +260,10 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       'percentage target',
       'Verify the floor achievement unlocks when the run finishes with 50% health remaining and its reward can be claimed exactly once.',
     ],
+    [
+      'qualified ambiguous unit',
+      'Verify the floor achievement unlocks after the player reaches 30 hp remaining and its reward can be claimed exactly once.',
+    ],
   ])('detects a numeric achievement threshold expressed as %s', (_label, sentence) => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = {
@@ -304,6 +308,18 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     };
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('does not require a HUMAN_GATE for an unqualified ambiguous-unit mention (flavor text, not a threshold)', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Owner: QA Engineer.\n\n' +
+        'Verify the floor achievement unlocks when the boss deals 50 hp damage per hit and its ' +
+        'reward can be claimed exactly once. Done when the unlock and claim assertions pass.',
+    }));
+    expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
   });
 
   it('does not treat a release node that only references achievement QA completion as achievement-owning', () => {

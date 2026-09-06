@@ -175,12 +175,13 @@ const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
  * satisfy the owning-node checks below (Owner count, dependency, unlock/
  * claim/reward evidence, HUMAN_GATE deferral). Require the "achievement"
  * mention to co-occur with an ownership verb/noun in either order within
- * the same sentence-ish window before treating a node as achievement-
- * *owning*.
+ * the same clause (bounded by a period, newline, or semicolon so the window
+ * cannot bleed into an unrelated bullet-like clause) before treating a node
+ * as achievement-*owning*.
  */
 const ACHIEVEMENT_OWNERSHIP_EVIDENCE = new RegExp(
-  `\\bachievements?\\b[^.]{0,80}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
-    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.]{0,80}\\bachievements?\\b`,
+  `\\bachievements?\\b[^.\\n;]{0,80}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
+    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.\\n;]{0,80}\\bachievements?\\b`,
   'i',
 );
 
@@ -233,7 +234,7 @@ const THRESHOLD_QUALIFIER =
   'after|within|complete[sd]?|completing|finish(?:es|ed|ing)?(?:\\s+with)?)';
 const AMBIGUOUS_UNITS = '(?:health|hp|mana)';
 const AMBIGUOUS_UNITS_PATTERN = new RegExp(
-  `\\b${THRESHOLD_QUALIFIER}\\b[^.]{0,20}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
+  `\\b${THRESHOLD_QUALIFIER}\\b[^.\\n;]{0,20}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
   'i',
 );
 
