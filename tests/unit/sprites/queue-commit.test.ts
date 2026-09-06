@@ -317,6 +317,44 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('refuses delete updates that would erase same-transaction tombstone authority', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [],
+        controlDeps(exec, { removeArtSurface: () => Promise.resolve() }),
+        {
+          message: 'self-erasing removal authority',
+          removals: [
+            {
+              assetPath: 'generated/old-blade.png',
+              manifestKey: 'old-blade',
+              sourceRun: 'generated/runs/old-blade/run-0',
+              variantIndex: 0,
+            },
+          ],
+          annotations: [
+            {
+              key: 'old-blade',
+              delete: true,
+              tombstone: {
+                manifestKey: 'old-blade',
+                conceptId: 'old-blade',
+                replacementKey: 'new-blade',
+                assetPath: 'generated/old-blade.png',
+                sourceRun: 'generated/runs/old-blade/run-0',
+                variantIndex: 0,
+                annotationKeys: ['old-blade'],
+              },
+            },
+          ],
+        },
+      ),
+    ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
+    expect(calls).toHaveLength(0);
+  });
+
   it('rejects clean paths that escape the staged generated/ surface (silent no-op guard)', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     // Traversal-free, absolute-free POSIX paths — but OUTSIDE `generated/`, so

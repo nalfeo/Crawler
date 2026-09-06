@@ -384,6 +384,11 @@ sprite-pipeline, sprite-workflow
   an unpromotable deletion on `assets/queue`. Queue commit now rejects every
   requested removal unless the same update contains a structurally valid,
   identity-matching tombstone with an accepted replacement.
+- The last adversarial pass also closed self-erasing authority
+  (`delete: true` plus a tombstone) and hardened store-backed brief restoration:
+  it rejects symlink/reparse-point paths, verifies the real parent remains under
+  the repository, and creates the restored YAML exclusively so a dangling-link
+  race cannot redirect the write.
 
 ## PR #3234 generic extraction audit
 

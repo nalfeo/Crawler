@@ -617,6 +617,7 @@ export async function runQueueCommit(
     const update = annotations.find((candidate) => candidate.key === removal.manifestKey);
     const tombstone = update?.tombstone;
     if (
+      update?.delete === true ||
       !isLifecycleDeletionTombstone(removal.manifestKey, tombstone) ||
       tombstone.replacementKey === undefined ||
       tombstone.assetPath !== removal.assetPath ||
