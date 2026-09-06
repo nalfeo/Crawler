@@ -51,7 +51,8 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
 Floor epics have one additional planning requirement: at least one node must
 own achievement work or achievement-integrated QA. It must be dependency-ordered
 after the mechanics it measures and include deterministic acceptance evidence
-for unlocking the achievement and claiming its reward. Numeric achievement
+for unlocking the achievement, claiming its reward, and verifying the resulting
+reward outcome. Numeric achievement
 thresholds belong in an explicit `HUMAN_GATE` for Playtester or Game Designer
 approval, and the achievement evidence must remain on the floor's QA/telemetry
 path through release.

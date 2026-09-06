@@ -204,11 +204,19 @@ function achievementAcceptanceEvidence(body: string): {
   readonly hasUnlock: boolean;
   readonly hasClaim: boolean;
   readonly hasReward: boolean;
+  readonly hasRewardOutcome: boolean;
 } {
   return {
     hasUnlock: /\bunlock(?:s|ed|ing)?\b/i.test(body),
     hasClaim: /\bclaim(?:s|ed|ing)?\b|\bclaimed\b/i.test(body),
     hasReward: /\breward(?:s)?\b/i.test(body),
+    hasRewardOutcome:
+      /\b(?:reward|prize|payout)\b[^.\n;]{0,80}\b(?:grant(?:s|ed)?|award(?:s|ed)?|receive(?:s|d)?|appl(?:y|ies|ied)|deliver(?:s|ed)?)\b/i.test(
+        body,
+      ) ||
+      /\b(?:grant(?:s|ed)?|award(?:s|ed)?|receive(?:s|d)?|appl(?:y|ies|ied)|deliver(?:s|ed)?)\b[^.\n;]{0,80}\b(?:reward|prize|payout)\b/i.test(
+        body,
+      ),
   };
 }
 
@@ -290,10 +298,17 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
       });
     }
     const acceptance = achievementAcceptanceEvidence(body);
-    if (!(acceptance.hasUnlock && acceptance.hasClaim && acceptance.hasReward)) {
+    if (
+      !(
+        acceptance.hasUnlock &&
+        acceptance.hasClaim &&
+        acceptance.hasReward &&
+        acceptance.hasRewardOutcome
+      )
+    ) {
       violations.push({
         code: 'achievement-acceptance-missing',
-        message: `achievement node "${node.id}" must define measurable achievement unlocking and reward-claim acceptance evidence.`,
+        message: `achievement node "${node.id}" must define measurable achievement unlock, reward-claim, and reward-outcome acceptance evidence.`,
       });
     }
     if (
@@ -487,12 +502,15 @@ export function lintFloorEpic(
   // balance-ownership smell (that belongs behind a HUMAN_GATE, not a slice).
   const knownPersonas = new Set(personaNames);
   for (const { node, body } of nodeBodies(epic)) {
+    const ownerDeclarations = body.match(/^Owner:\s*/gm) ?? [];
     const match = OWNER_LINE.exec(body.trim());
-    if (!match) {
+    if (ownerDeclarations.length === 0 || !match) {
       push(
         'node-owner-missing',
         `node "${node.id}" body must start with "Owner: <Persona>." naming exactly one specialist persona.`,
       );
+    } else if (ownerDeclarations.length !== 1) {
+      push('node-owner-count', `node "${node.id}" body must declare exactly one Owner persona.`);
     } else if (!knownPersonas.has(match[1]!.trim())) {
       push(
         'node-owner-unknown',

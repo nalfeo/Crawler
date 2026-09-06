@@ -56,8 +56,8 @@ acceptance evidence per slice.
 
 Every floor epic must include an achievement slice or achievement-integrated QA
 slice. That node must have one Owner persona, depend on the mechanics it
-measures, and state a measurable acceptance condition covering achievement
-unlocking and reward claiming. Defer numeric achievement thresholds to an
+measures, and state measurable acceptance conditions covering achievement
+unlocking, reward claiming, and the resulting reward outcome. Defer numeric achievement thresholds to an
 explicit `HUMAN_GATE` for Playtester or Game Designer approval; achievement
 coverage remains in the same release-ready QA/telemetry path as the floor's
 other completion evidence.

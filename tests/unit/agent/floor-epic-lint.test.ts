@@ -94,7 +94,8 @@ function goodFloorEpic(): FloorEpic {
         body:
           'Owner: QA Engineer.\n\n' +
           'Verify the floor achievement unlocks after the measurable objective and that its ' +
-          'reward can be claimed exactly once. Done when the unlock, claim, and reward assertions pass.',
+          'reward can be claimed exactly once and is granted to the player. Done when the unlock, ' +
+          'claim, and reward-outcome assertions pass.',
         depends_on: ['dual-runner-acceptance'],
       },
       {
@@ -189,7 +190,7 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
   });
 
-  it('requires achievement evidence for both unlock and reward claiming', () => {
+  it('requires achievement evidence for unlock, reward claiming, and reward outcome', () => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = withNode(epic, 'achievement-qa', (node) => ({
       ...node,
@@ -214,8 +215,8 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
               ...node,
               body:
                 'Owner: QA Engineer.\n\n' +
-                'Verify the floor achievement unlocks after at least 25 kills and its reward can be claimed exactly once. ' +
-                'Done when the unlock and claim assertions pass.',
+                'Verify the floor achievement unlocks after at least 25 kills and its reward can be claimed exactly once ' +
+                'and is granted to the player. Done when the unlock, claim, and reward-outcome assertions pass.',
               depends_on: ['dual-runner-acceptance'],
             }
           : node,
@@ -236,8 +237,8 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
               ...node,
               body:
                 'Owner: QA Engineer.\n\n' +
-                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once. ' +
-                'Done when the unlock and claim assertions pass.',
+                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once ' +
+                'and is granted to the player. Done when the unlock, claim, and reward-outcome assertions pass.',
               depends_on: ['dual-runner-acceptance'],
             }
           : node,
@@ -273,7 +274,7 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
         node.id === 'achievement-qa'
           ? {
               ...node,
-              body: `Owner: QA Engineer.\n\n${sentence} Done when the unlock and claim assertions pass.`,
+              body: `Owner: QA Engineer.\n\n${sentence} The reward is granted to the player. Done when the unlock, claim, and reward-outcome assertions pass.`,
               depends_on: ['dual-runner-acceptance'],
             }
           : node,
@@ -317,7 +318,8 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       body:
         'Owner: QA Engineer.\n\n' +
         'Verify the floor achievement unlocks when the boss deals 50 hp damage per hit and its ' +
-        'reward can be claimed exactly once. Done when the unlock and claim assertions pass.',
+        'reward can be claimed exactly once and is granted to the player. Done when the unlock, ' +
+        'claim, and reward-outcome assertions pass.',
     }));
     expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
   });
@@ -345,8 +347,8 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       body:
         'Owner: QA Engineer.\n' +
         'Owner: Game Designer.\n\n' +
-        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
-        'Done when the unlock and claim assertions pass.',
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once and is granted. ' +
+        'Done when the unlock, claim, and reward-outcome assertions pass.',
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
@@ -357,8 +359,8 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     const mutated = withNode(epic, 'achievement-qa', (node) => ({
       ...node,
       body:
-        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
-        'Done when the unlock and claim assertions pass.',
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once and is granted. ' +
+        'Done when the unlock, claim, and reward-outcome assertions pass.',
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
@@ -418,6 +420,16 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('node-owner-unknown');
+  });
+
+  it('flags duplicate Owner declarations on any node', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'ai-mechanics', (n) => ({
+      ...n,
+      body: `Owner: Game AI Engineer.\nOwner: QA Engineer.\n\n${n.body!.split('\n\n')[1]}`,
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('node-owner-count');
   });
 
   it('flags a node that owns numeric balance/pacing directly instead of deferring it', () => {
