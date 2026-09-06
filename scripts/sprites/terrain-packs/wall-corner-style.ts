@@ -52,6 +52,7 @@ const WALL_CORNER_STYLE_BY_PACK: ReadonlyMap<string, WallCornerStyle> = new Map<
   // byte-identical, which is why `rounded` is also the default.
   ['floor1-cave', 'rounded'],
   ['industrial-cave', 'rounded'],
+  ['companion-overworld', 'rounded'],
   ['caeles-fixture', 'rounded'],
 ]);
 
