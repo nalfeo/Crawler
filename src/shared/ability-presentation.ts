@@ -298,7 +298,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-pulse-shield',
-    cooldownFrames: 1200,
+    cooldownFrames: 600,
   },
   'magic-missile': {
     id: 'magic-missile',
@@ -926,6 +926,12 @@ export const ABILITY_PRESENTATION_BY_ID = {
   },
 } as const satisfies Readonly<Record<string, AbilityPresentation>>;
 
+const LEGACY_ABILITY_PRESENTATION_ALIASES = new Map<string, string>([
+  ['pistol-volley', 'pistol-rapid-fire'],
+  ['pistol-volley-evolved', 'pistol-barrage'],
+]);
+
 export function getAbilityPresentation(id: string): AbilityPresentation | undefined {
-  return (ABILITY_PRESENTATION_BY_ID as Readonly<Record<string, AbilityPresentation>>)[id];
+  const canonicalId = LEGACY_ABILITY_PRESENTATION_ALIASES.get(id) ?? id;
+  return (ABILITY_PRESENTATION_BY_ID as Readonly<Record<string, AbilityPresentation>>)[canonicalId];
 }

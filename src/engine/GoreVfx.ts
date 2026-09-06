@@ -32,6 +32,44 @@ const PARTICLE_SPEED = 120;
 const PARTICLE_SIZE_MIN = 2;
 const PARTICLE_SIZE_MAX = 6;
 
+/** Deterministic direction used when a hit has no usable impact vector. */
+export const DEFAULT_IMPACT_DIRECTION = { x: 0, y: -1 } as const;
+
+export interface ImpactDirection {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * Resolve the direction in which hit gore travels: from the impact source to
+ * the target. Missing, non-finite, or zero-length vectors use the fixed
+ * upward fallback so VFX never depends on an unseeded/random direction.
+ */
+export function resolveImpactDirection(
+  targetX: number,
+  targetY: number,
+  sourceX?: number,
+  sourceY?: number,
+): ImpactDirection {
+  if (
+    sourceX === undefined ||
+    sourceY === undefined ||
+    !Number.isFinite(targetX) ||
+    !Number.isFinite(targetY) ||
+    !Number.isFinite(sourceX) ||
+    !Number.isFinite(sourceY)
+  ) {
+    return DEFAULT_IMPACT_DIRECTION;
+  }
+
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= 0.01) return DEFAULT_IMPACT_DIRECTION;
+
+  return { x: dx / distance, y: dy / distance };
+}
+
 /** Fallback red blood palette when no bloodColor is supplied. */
 const DEFAULT_BLOOD_COLORS = [DEFAULT_BLOOD_COLOR, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
@@ -337,26 +375,14 @@ export function createGoreVfx(
     const count = Math.round(HIT_BASE_PARTICLES * goreFactor * (event.amount / 10));
     const particleCount = Math.max(1, Math.min(count, 8));
 
-    // Compute direction: blood sprays AWAY from the source
-    let dirX: number;
-    let dirY: number;
-    if (
-      event.sourceX !== undefined &&
-      event.sourceY !== undefined &&
-      (Math.abs(event.x - event.sourceX) > 0.01 || Math.abs(event.y - event.sourceY) > 0.01)
-    ) {
-      // Direction from source to target (blood goes same way the force travels)
-      const dx = event.x - event.sourceX;
-      const dy = event.y - event.sourceY;
-      const dist = Math.hypot(dx, dy);
-      dirX = dx / dist;
-      dirY = dy / dist;
-    } else {
-      // Fallback: random direction when no source info
-      const angle = vfxRandom() * Math.PI * 2;
-      dirX = Math.cos(angle);
-      dirY = Math.sin(angle);
-    }
+    // Blood follows the incoming projectile direction, with a deterministic
+    // fallback when the impact source is unavailable.
+    const { x: dirX, y: dirY } = resolveImpactDirection(
+      event.x,
+      event.y,
+      event.sourceX,
+      event.sourceY,
+    );
 
     const { x: spawnX, y: spawnY } = resolvePosition(world, event, interpAlpha);
     const palette =

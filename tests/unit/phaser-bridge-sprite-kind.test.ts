@@ -14,6 +14,8 @@ import {
   Npc,
   Player,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
   SiegeHero,
   SiegeMinion,
@@ -87,7 +89,7 @@ const DEFINING_COMPONENT: ReadonlyArray<readonly [string, KindBuild]> = [
   ['returning', (w, e) => addComponent(w.ecs, e, Returning)],
   ['aoe_proj', (w, e) => addComponent(w.ecs, e, AoeOnImpact)],
   ['enemy_proj', (w, e) => addComponent(w.ecs, e, EnemyProjectile)],
-  ['proj', (w, e) => addComponent(w.ecs, e, Projectile)],
+  ['arrow', (w, e) => addComponent(w.ecs, e, Projectile)],
   [
     'welcome_sign',
     (w, e) => addComponent(w.ecs, e, set(Sprite, { textureId: 3, width: 0, height: 0 })),
@@ -122,6 +124,16 @@ describe('resolveRenderKind — team-split area damage', () => {
     addComponent(world.ecs, eid, AreaDamage);
     addComponent(world.ecs, eid, set(Team, { id: TeamId.ENEMY }));
     expect(resolveRenderKind(world, eid)).toBe('enemy_aoe');
+  });
+
+  describe('resolveRenderKind — player projectile visual identity', () => {
+    it('resolves a bullet identity without changing the projectile component', () => {
+      const world = createTestWorld();
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, Projectile);
+      addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.BULLET }));
+      expect(resolveRenderKind(world, eid)).toBe('bullet');
+    });
   });
 
   it('stays "aoe" when AreaDamage carries the PLAYER team', () => {

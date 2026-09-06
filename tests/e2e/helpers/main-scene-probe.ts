@@ -27,6 +27,7 @@ import type {
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
+  ProjectileRenderInfo,
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
   SafeAreaLayoutProbe,
@@ -131,6 +132,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
   getIssueReportPickerContent: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getIssueReportPickerContent()),
+  primeShopkeeperInitialDialogue: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeShopkeeperInitialDialogue()),
   primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
     page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
   primeShopkeeperPostQuestStock: (
@@ -322,6 +325,10 @@ export const mainSceneProbe = {
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
     page.evaluate(() => window.__mainSceneProbe!.getCarriedWeaponRenderInfo()),
+  fireActiveWeaponForProjectileProbe: (page: Page): Promise<number[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.fireActiveWeaponForProjectileProbe()),
+  getProjectileRenderInfo: (page: Page): Promise<ProjectileRenderInfo[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getProjectileRenderInfo()),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>
