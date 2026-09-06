@@ -160,6 +160,37 @@ describe('runQueueCommit (control flow)', () => {
     expect(calls.some((call) => call.args[0] === 'push')).toBe(true);
   });
 
+  it('denies lifecycle removal authority to every CI publisher capability', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [asset()],
+        controlDeps(exec, {
+          env: {
+            CI: 'true',
+            GITHUB_ACTIONS: 'true',
+            GITHUB_WORKFLOW_REF: 'nalfeo/Crawler/.github/workflows/icon-batch.yml@refs/heads/main',
+            SPRITES_ALLOW_CI_ICON_BATCH_PUBLISH: 'true',
+          },
+        }),
+        {
+          message: 'm',
+          ciAuthorization: { caller: 'icon-batch-publisher' },
+          removals: [
+            {
+              assetPath: 'generated/old-blade.png',
+              manifestKey: 'old-blade',
+              sourceRun: 'generated/runs/old-blade/run-0',
+              variantIndex: 0,
+            },
+          ],
+        },
+      ),
+    ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
+    expect(calls).toHaveLength(0);
+  });
+
   it('refuses the theme-equipment-publisher capability if the asset-request env flag was set instead', async () => {
     const { exec, calls } = makeFakeExec(() => ({}));
     await expect(

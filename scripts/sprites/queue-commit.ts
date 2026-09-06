@@ -591,6 +591,12 @@ export async function runQueueCommit(
       variantIndex: null,
     })),
   );
+  if (removals.length > 0 && options.ciAuthorization !== undefined) {
+    throw new QueueCommitError(
+      'generated-deletion-refused',
+      'CI-authorized asset publishers cannot submit lifecycle removals; destructive cleanup requires explicit human acceptance.',
+    );
+  }
   if (removals.length > 0 && deps.removeArtSurface === undefined) {
     throw new QueueCommitError(
       'invalid-asset-path',

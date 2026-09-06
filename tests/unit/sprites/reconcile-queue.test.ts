@@ -1304,6 +1304,7 @@ function seedLegacyCheckinBranch(
   liveDir: string,
   branchName: string,
   keys: readonly string[],
+  annotations?: unknown,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-legacy-'));
@@ -1316,6 +1317,9 @@ function seedLegacyCheckinBranch(
     }
     // Simulate the pre-shard aggregate manifest.json (no entries/ shards).
     writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    if (annotations !== undefined) {
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), annotations);
+    }
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `legacy checkin: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -2752,6 +2756,39 @@ describe('runReconcile (real git)', () => {
     expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
   });
 
+  it('(s) never promotes lifecycle annotations from a legacy orphan branch', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-annotations', ['orphan-var-1'], {
+      version: 1,
+      sprites: {
+        'unpaired-deletion': {
+          disliked: true,
+          tombstone: {
+            manifestKey: 'unpaired-deletion',
+            conceptId: 'unpaired-deletion',
+            assetPath: 'generated/unpaired-deletion.png',
+            sourceRun: 'generated/runs/unpaired-deletion/run-0',
+            variantIndex: 0,
+            annotationKeys: ['unpaired-deletion'],
+          },
+        },
+      },
+    });
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual(['public/assets/generated/orphan-var-1.png']);
+    expect(() =>
+      gitSync(
+        liveDir,
+        'show',
+        'origin/assets/promote:public/assets/generated/sprite-editor-annotations.json',
+      ),
+    ).toThrow();
+  });
+
   it('(t) filters pre-sharding aggregate manifest from legacy checkin branch — idempotent on re-run', async () => {
     // A legacy orphan branch (aggregate manifest, no shards) plus a queue branch.
     const { root, liveDir } = setupRepos();
@@ -2792,7 +2829,7 @@ describe('runReconcile (real git)', () => {
 // These cover the convergence fix: a promotion records the EXACT source tips it
 // harvested, and once that promotion MERGES the next cycle retires precisely
 // those snapshots under a compare-and-swap lease. Without the tidy-up the
-// reconciler oscillates — `--diff-filter=AM` only asks "does this source differ
+// reconciler oscillates — the path delta asks "does this source differ
 // from main", so whichever source currently disagrees with main always re-wins
 // the overlay and a promotion PR is opened every hour forever.
 // ---------------------------------------------------------------------------
@@ -3030,6 +3067,91 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     expect(second.tidiedQueue).toBe(true);
     expect(second.tidiedBranches).toEqual(['assets/checkin-converge-1']);
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+  });
+
+  it('never resets a queue snapshot while a lifecycle deletion is still pending on main', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'pending-deletion-var-0';
+    addArtDirectlyToMain(liveDir, [key]);
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const annotationsWorktree = mkdtempSync(path.join(tmpdir(), 'rq-main-tombstone-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', annotationsWorktree, '--detach', 'origin/main');
+      writeJson(
+        path.join(
+          annotationsWorktree,
+          'public',
+          'assets',
+          'generated',
+          'sprite-editor-annotations.json',
+        ),
+        {
+          version: 1,
+          sprites: {
+            [key]: {
+              disliked: true,
+              tombstone: {
+                manifestKey: key,
+                conceptId: 'pending-deletion',
+                assetPath: `generated/${key}.png`,
+                sourceRun: `generated/runs/${key}/run-0`,
+                variantIndex: 0,
+                annotationKeys: [key],
+              },
+            },
+          },
+        },
+      );
+      gitSync(annotationsWorktree, 'add', '--', 'public/assets/generated');
+      gitSync(annotationsWorktree, 'commit', '--no-verify', '-m', 'main: retain tombstone');
+      gitSync(annotationsWorktree, 'push', 'origin', 'HEAD:refs/heads/main');
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', annotationsWorktree);
+      rmSync(annotationsWorktree, { recursive: true, force: true });
+    }
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const queueWorktree = mkdtempSync(path.join(tmpdir(), 'rq-pending-delete-'));
+    let queueSha: string;
+    try {
+      gitSync(liveDir, 'worktree', 'add', queueWorktree, '--detach', 'origin/main');
+      rmSync(path.join(queueWorktree, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(queueWorktree, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      gitSync(queueWorktree, 'add', '-A');
+      gitSync(queueWorktree, 'commit', '--no-verify', '-m', 'queue: pending lifecycle deletion');
+      queueSha = gitSync(queueWorktree, 'rev-parse', 'HEAD').trim();
+      gitSync(queueWorktree, 'push', 'origin', 'HEAD:refs/heads/assets/queue');
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', queueWorktree);
+      rmSync(queueWorktree, { recursive: true, force: true });
+    }
+
+    const mainSha = remoteSha(liveDir, 'main')!;
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const mainTree = gitSync(liveDir, 'rev-parse', 'origin/main^{tree}').trim();
+    const promotionHead = gitSync(
+      liveDir,
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Reconcile Test',
+      'commit-tree',
+      mainTree,
+      '-p',
+      mainSha,
+      '-m',
+      `chore(assets): reconcile queued sprite edits\n\nQueue-Source: ${queueSha}`,
+    ).trim();
+    const gh = new FakeGh();
+    const prNumber = gh.seedMerged('assets/promote', 'main', promotionHead, '2026-09-06T00:00:00Z');
+    gitSync(liveDir, 'push', 'origin', `${promotionHead}:refs/pull/${prNumber}/head`);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+
+    expect(tidy.queueReset).toBe(false);
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueSha);
   });
 
   it('CAS MISS: never discards art that landed on a source after the harvest', async () => {

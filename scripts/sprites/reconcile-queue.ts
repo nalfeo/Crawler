@@ -712,7 +712,12 @@ function parseNameOnly(stdout: string): string[] {
  * that predate the shard migration (e.g. the aggregate `manifest.json`).
  * Shard files live under `entries/` and are safe to harvest; those are NOT matched.
  */
-function isLegacyAggregateManifestPath(p: string): boolean {
+/**
+ * Root-level generated JSON is derived or control state, never an independently
+ * promotable legacy-orphan asset. This includes aggregate manifests and the
+ * lifecycle annotations document; only assets/queue may author the latter.
+ */
+function isGeneratedRootJsonPath(p: string): boolean {
   return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
 }
 
@@ -1462,7 +1467,7 @@ async function sourceAddsNothingToBase(
   baseRef: string,
   sourceRef: string,
   options?: {
-    readonly dropLegacyAggregateManifestPaths?: boolean;
+    readonly dropGeneratedRootJsonPaths?: boolean;
     readonly landedRef?: string;
   },
 ): Promise<boolean> {
@@ -1470,7 +1475,7 @@ async function sourceAddsNothingToBase(
     'diff',
     '--no-renames',
     '--name-only',
-    '--diff-filter=AM',
+    '--diff-filter=AMD',
     baseRef,
     sourceRef,
     '--',
@@ -1478,8 +1483,8 @@ async function sourceAddsNothingToBase(
   ]);
   if (delta.code !== 0) return false;
   let paths = parseNameOnly(delta.stdout);
-  if (options?.dropLegacyAggregateManifestPaths === true) {
-    paths = paths.filter((p) => !isLegacyAggregateManifestPath(p));
+  if (options?.dropGeneratedRootJsonPaths === true) {
+    paths = paths.filter((p) => !isGeneratedRootJsonPath(p));
   }
   if (paths.length === 0) return true;
   if (options?.landedRef === undefined) return false;
@@ -1582,7 +1587,7 @@ export async function tidyUpLandedPromotion(
   const retirable = async (
     branch: string,
     expectedSha: string,
-    options?: { readonly dropLegacyAggregateManifestPaths?: boolean },
+    options?: { readonly dropGeneratedRootJsonPaths?: boolean },
   ): Promise<boolean> => {
     const currentTip = await remoteBranchSha(exec, repoRoot, remote, branch);
     // Already gone, or advanced past the harvested snapshot → never retire.
@@ -1622,7 +1627,7 @@ export async function tidyUpLandedPromotion(
 
   const deletedBranches: string[] = [];
   for (const orphan of landed.sources.orphans) {
-    if (!(await retirable(orphan.branch, orphan.sha, { dropLegacyAggregateManifestPaths: true })))
+    if (!(await retirable(orphan.branch, orphan.sha, { dropGeneratedRootJsonPaths: true })))
       continue;
     // Abort the whole sweep (not just this branch) the moment the base moves.
     if (!(await baseUnchanged())) break;
@@ -2135,7 +2140,7 @@ export async function runReconcile(
       ]);
       if (orphanDelta.code !== 0) continue;
       const candidates = parseNameOnly(orphanDelta.stdout).filter(
-        (p) => !isLegacyAggregateManifestPath(p),
+        (p) => !isGeneratedRootJsonPath(p),
       );
       // Same convergence guard as the queue delta: an orphan branch that has sat
       // unmerged for weeks holds art `main` has long since superseded (and a

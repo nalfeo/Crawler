@@ -427,8 +427,10 @@ export interface GameWorld {
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
   /**
-   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
-   * recycled entities without consulting or mutating gameplay state.
+   * Monotonic spawn identity per EID. Deterministic sprite variant selection
+   * includes it so recycled entities cannot inherit appearance or weapon-anchor
+   * state; because authored weapon anchors feed projectile origins, this value
+   * is simulation-load-bearing and must be assigned identically in every runtime.
    */
   entityRenderGeneration: Uint32Array;
   /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
