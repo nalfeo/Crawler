@@ -516,6 +516,12 @@ export function createRewardOpeningUI(
     if (sequenceState.phase !== previousPhase) {
       hooks.onSkip?.();
     }
+    // Open-all callers auto-advance intermediate summaries reached by either
+    // ticking or skipping. The aggregate summary opts out of autoAdvance, so
+    // it remains visible for the player's normal acknowledgement.
+    if (shouldAutoAdvance && sequenceState?.phase === 'summary') {
+      handleAcknowledge();
+    }
   }
 
   function handleAcknowledge(): void {

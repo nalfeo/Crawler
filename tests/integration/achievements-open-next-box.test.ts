@@ -144,6 +144,50 @@ describe('achievement loot boxes opened back to back', () => {
     rewardOpeningUI.destroy();
   });
 
+  it('continues open-all after skipping each intermediate reveal', () => {
+    const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
+    unlockAchievement(world, FIRST_ACHIEVEMENT);
+    unlockAchievement(world, SECOND_ACHIEVEMENT);
+
+    const scene = makeScene();
+    const rewardOpeningUI = createRewardOpeningUI(scene, {});
+    const achievementsUI = createAchievementsUI(scene, rewardOpeningUI);
+    achievementsUI.refresh(world);
+
+    achievementsUI.openAllPendingRewards();
+    rewardOpeningUI.skip();
+
+    // Skipping the first box must acknowledge it and immediately present the
+    // second box without requiring another input.
+    expect(rewardOpeningUI.isOpen()).toBe(true);
+    expect(rewardOpeningUI.getPhase()).toBe('anticipation');
+    expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
+
+    rewardOpeningUI.skip();
+
+    // The last intermediate skip immediately opens the aggregate presentation
+    // without requiring another click between boxes.
+    expect(rewardOpeningUI.isOpen()).toBe(true);
+    expect(rewardOpeningUI.getPhase()).toBe('anticipation');
+    expect(world.achievements.pendingPresentations.size).toBe(0);
+
+    while (rewardOpeningUI.getPhase() !== 'summary') {
+      rewardOpeningUI.tick(2000);
+    }
+
+    // The aggregate summary is intentionally player-acknowledged rather than
+    // auto-closed.
+    expect(rewardOpeningUI.getPhase()).toBe('summary');
+
+    rewardOpeningUI.acknowledge();
+    expect(rewardOpeningUI.isOpen()).toBe(false);
+    expect(world.achievements.pendingPresentations.size).toBe(0);
+
+    achievementsUI.destroy();
+    rewardOpeningUI.destroy();
+  });
+
   it('offers no chain when the only other unlocked achievement is already claimed', () => {
     const world = createTestWorld({ seed: 42 });
     spawnPlayer(world, 0, 0);
