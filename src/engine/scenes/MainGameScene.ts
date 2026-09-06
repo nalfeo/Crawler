@@ -727,6 +727,7 @@ export class MainGameScene extends Phaser.Scene {
   private issueButtonCompact = false;
   private issueButtonLayoutApplied = false;
   private issueReportPausedState?: boolean;
+  private pauseMenuPausedState?: boolean;
   private issueReportDescription = '';
   private issueReportIncludeLogs = true;
   private issueReportIncludeScreenshot = false;
@@ -1986,6 +1987,40 @@ export class MainGameScene extends Phaser.Scene {
       this.issueReportPicker?.handleKeyDown(event);
       return;
     }
+    if (this.modalPicker?.isOpen() && this.modalPicker.getKind() === 'pause-menu') {
+      // The pause menu is exclusive: swallow the key so it cannot leak to the
+      // other capture-phase window listeners (InputCapture, minimap overlay).
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.modalPicker.handleKeyDown(event);
+      return;
+    }
+    if (event.code === 'Escape' && !event.repeat) {
+      if (this.inventoryUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.inventoryUI.toggle(this.world);
+        return;
+      }
+      if (this.equipmentUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.equipmentUI.toggle(this.world);
+        return;
+      }
+      if (this.shopPanelUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.shopPanelUI.toggle(this.world);
+        return;
+      }
+      if (this.conversationNpcEid === null && !this.isBlockingSurfaceOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.openPauseMenu();
+        return;
+      }
+    }
     if (event.code === 'F8' && !event.repeat) {
       event.preventDefault();
       this.openIssueReport();
@@ -2351,6 +2386,77 @@ export class MainGameScene extends Phaser.Scene {
     if (this.hudUi?.isMapOverlayOpen()) {
       this.hudUi.closeMapOverlay();
     }
+  }
+
+  private openPauseMenu(): void {
+    if (!this.modalPicker || this.modalPicker.isOpen()) {
+      return;
+    }
+    this.pauseMenuPausedState = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    this.modalPicker.open(
+      {
+        kind: 'pause-menu',
+        title: 'Paused',
+        subtitle: 'The dungeon waits. Pick your next move.',
+        options: [
+          {
+            id: 'resume',
+            label: 'Resume',
+            description: 'Continue the run right where you left off.',
+          },
+          {
+            id: 'restart',
+            label: '↺ Restart',
+            description: 'Start the current run over from the beginning.',
+          },
+          {
+            id: 'quit',
+            label: '← Quit',
+            description: 'Return to the title screen.',
+          },
+        ],
+        allowCancel: true,
+        initialSelectedId: 'resume',
+      },
+      {
+        onCancel: () => {
+          this.closePauseMenu();
+        },
+        onConfirm: ({ option }) => {
+          if (option.id === 'resume') {
+            this.closePauseMenu();
+            return true;
+          }
+          if (option.id === 'restart') {
+            this.closePauseMenu();
+            if (this.canResetRunFromTerminalSurvey()) {
+              window.location.reload();
+            }
+            return true;
+          }
+          if (option.id === 'quit') {
+            this.closePauseMenu();
+            if (this.canResetRunFromTerminalSurvey()) {
+              this.emitRunBundle('quit');
+              window.location.reload();
+            }
+            return true;
+          }
+          return true;
+        },
+      },
+    );
+  }
+
+  private closePauseMenu(): void {
+    if (!this.modalPicker?.isOpen() || this.modalPicker.getKind() !== 'pause-menu') {
+      return;
+    }
+    const previousPauseState = this.pauseMenuPausedState ?? false;
+    this.modalPicker.close();
+    this.pauseMenuPausedState = undefined;
+    this.setSimulationPaused(previousPauseState);
   }
 
   /**

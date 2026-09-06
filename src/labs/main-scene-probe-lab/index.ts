@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query, removeEntity } from 'bitecs';
+import { entityExists, query, removeEntity } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -39,6 +39,7 @@ import {
   Health,
   Homing,
   Position,
+  Projectile,
   Prop,
 } from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
@@ -73,7 +74,11 @@ import {
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
-import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
+import {
+  generatedBriefIdForHarvestable,
+  PROJECTILE_OBJECT_NAME_PREFIX,
+  resolveRenderKind,
+} from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import type {
   _CornerButtonProbe as CornerButtonProbe,
@@ -99,7 +104,7 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/inde
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
-import { setActiveWeapon } from '../../game/weaponSystem.js';
+import { setActiveWeapon, weaponSystem } from '../../game/weaponSystem.js';
 import { CARRIED_WEAPON_OBJECT_NAME_PREFIX } from '../../engine/phaser-bridge/carried-weapon.js';
 import {
   addItem,
@@ -835,6 +840,25 @@ export interface PropRenderSize {
 }
 
 /**
+ * Real-render-bridge state of one live `Projectile` entity (issue #4274).
+ * The render bridge names bullet/arrow display objects
+ * `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`, so this looks the sprite up by its
+ * exact name (mirrors `getCarriedWeaponRenderInfo`'s named-object lookup)
+ * instead of guessing by nearest on-screen distance — a HUD icon, the probe's
+ * own spawned target enemy, or a carried-weapon sprite could otherwise sit
+ * closer to the projectile's feet position than its own display object.
+ */
+export interface ProjectileRenderInfo {
+  readonly eid: number;
+  /** `resolveRenderKind(world, eid)` result: 'bullet' or 'arrow'. */
+  readonly renderKind: string;
+  /** Texture key backing the named display object, or null if not found. */
+  readonly textureKey: string | null;
+  /** Whether a display object named `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>` was found. */
+  readonly foundNamedObject: boolean;
+}
+
+/**
  * Display-list state of the player's persistent carried main-hand weapon.
  * The carried sprite is named `carried-weapon:<eid>` by the render bridge, so
  * this reads the real scene's display list rather than inferring from pixels.
@@ -1389,6 +1413,23 @@ export interface MainSceneProbeApi {
    */
   getCarriedWeaponRenderInfo(): CarriedWeaponRenderInfo;
   /**
+   * Fires the player's currently-equipped weapon once through the real
+   * `weaponSystem` (issue #4274), spawning a nearby target enemy first so a
+   * ranged weapon actually fires. Returns the eids of any `Projectile`
+   * entities the shot spawned; call `getProjectileRenderInfo()` on a
+   * subsequent rendered frame to read their real bridge texture.
+   */
+  fireActiveWeaponForProjectileProbe(): number[];
+  /**
+   * Real render-bridge texture for every live `Projectile` entity (issue
+   * #4274), resolved by exact display-object name
+   * (`${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`, mirrors
+   * `getCarriedWeaponRenderInfo`'s named-object lookup). Proves — in the REAL
+   * booted scene, not a lab-only unit assertion — that pistol shots render as
+   * bullets while bow/crossbow shots keep the arrow texture.
+   */
+  getProjectileRenderInfo(): ProjectileRenderInfo[];
+  /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
    * approved generated tile textures stamp (`generatedCount > 0`).
@@ -1600,6 +1641,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
   let primedNpcEid: number | null = null;
+  let projectileProbeTargetEid: number | null = null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -3085,6 +3127,83 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayWidthPx: sprite.displayWidth,
         displayHeightPx: sprite.displayHeight,
       };
+    },
+
+    fireActiveWeaponForProjectileProbe: (): number[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) {
+        return [];
+      }
+      const player = playerEidOf(scene);
+      if (player < 0) {
+        return [];
+      }
+      // Remove any leftover projectiles from a prior probe call so a stale
+      // named sprite (`${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) can't be read
+      // by `getProjectileRenderInfo`. The render bridge only destroys visuals
+      // for removed entities during its own sync pass, so callers MUST wait
+      // for at least one more rendered frame (see `nextRenderedFrame` in the
+      // e2e suite) between firing and reading render info.
+      for (const eid of query(world.ecs, [Projectile])) {
+        removeEntity(world.ecs, eid);
+      }
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      // Ranged weapons only fire at a nearby target — reuse a single tracked
+      // probe target across calls (repositioned/respawned as needed) instead
+      // of spawning a fresh enemy every call, so target-acquisition state
+      // doesn't accumulate across an `it.each` loop of weapon ids.
+      // 6 (feet) keeps the target within every ranged weapon's acquisition
+      // radius; 20 (HP) keeps it alive across every weapon's `baseDamage` so
+      // repeated probe calls never need to respawn it mid-loop.
+      if (projectileProbeTargetEid === null || !entityExists(world.ecs, projectileProbeTargetEid)) {
+        projectileProbeTargetEid = spawnEnemy(world, px + 6, py, 20);
+      } else {
+        world.stores.position.x[projectileProbeTargetEid] = px + 6;
+        world.stores.position.y[projectileProbeTargetEid] = py;
+        world.stores.health.current[projectileProbeTargetEid] = 20;
+      }
+      weaponSystem(world);
+      return Array.from(query(world.ecs, [Projectile]));
+    },
+
+    getProjectileRenderInfo: (): ProjectileRenderInfo[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return [];
+      }
+      // Exact-name lookup (the render bridge names bullet/arrow sprites
+      // `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) rather than
+      // nearest-on-screen-distance, which could be fooled by a HUD icon,
+      // carried-weapon sprite, or the probe's own target enemy sitting closer
+      // to the projectile's feet position. A full display-list scan is fine
+      // here (test/probe-only code with a small fixed lab scene); switch to a
+      // dedicated container if the probe lab's display list ever grows large.
+      const named = new Map<string, string>();
+      for (const child of phaserScene.children.list) {
+        if (
+          (child instanceof Phaser.GameObjects.Image ||
+            child instanceof Phaser.GameObjects.Sprite) &&
+          typeof child.name === 'string' &&
+          child.name.startsWith(PROJECTILE_OBJECT_NAME_PREFIX)
+        ) {
+          named.set(child.name, child.texture.key);
+        }
+      }
+      const infos: ProjectileRenderInfo[] = [];
+      for (const eid of query(world.ecs, [Projectile])) {
+        const textureKey = named.get(`${PROJECTILE_OBJECT_NAME_PREFIX}${eid}`) ?? null;
+        infos.push({
+          eid,
+          renderKind: resolveRenderKind(world, eid),
+          textureKey,
+          foundNamedObject: textureKey !== null,
+        });
+      }
+      return infos;
     },
 
     getHarvestableRenderSummary: (): HarvestableRenderSummary => {

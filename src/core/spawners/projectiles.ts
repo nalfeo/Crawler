@@ -9,6 +9,8 @@ import {
   Owner,
   Position,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
   Size,
   Sprite,
@@ -34,6 +36,7 @@ export function spawnProjectile(
   maxRange: number = 0,
   weight: number = 1,
   ownerEid?: number,
+  visualKind: ProjectileVisualKind = ProjectileVisualKind.ARROW,
 ): number {
   const eid = createEntity(world);
 
@@ -56,6 +59,7 @@ export function spawnProjectile(
     eid,
     set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
   );
+  addComponent(world.ecs, eid, set(ProjectileVisual, { kind: visualKind }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   if (ownerEid !== undefined) {
     addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
@@ -73,11 +77,12 @@ export function spawnEnemyProjectile(
   vy: number,
   damage: number,
   ownerEid?: number,
+  visualKind: ProjectileVisualKind = ProjectileVisualKind.ARROW,
 ): number {
   // Thread the firing enemy through as Owner so a hit on the player records the
   // shooter (not the transient projectile eid, which is destroyed on impact) as
   // the attacker — Floor 2 Slice 3 ally-defend retaliation targets the shooter.
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, 0, 1, ownerEid);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, 0, 1, ownerEid, visualKind);
   addComponent(world.ecs, eid, EnemyProjectile);
   // Enemy-sourced damage never scales/crits (see apply-damage.ts) — tagged
   // explicitly (rather than left fail-closed/environment) so it stays correct
@@ -176,8 +181,21 @@ export function spawnBouncingProjectile(
   pierce: number = 0,
   maxRange: number = 0,
   ownerEid?: number,
+  visualKind: ProjectileVisualKind = ProjectileVisualKind.ARROW,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce, maxRange, 1, ownerEid);
+  const eid = spawnProjectile(
+    world,
+    x,
+    y,
+    vx,
+    vy,
+    damage,
+    pierce,
+    maxRange,
+    1,
+    ownerEid,
+    visualKind,
+  );
   addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }
