@@ -383,6 +383,7 @@ function blockedPull(number, overrides = {}) {
     blocked_since: '2026-07-30T10:00:00Z',
     head: { sha: `sha-${number}`, repo: { full_name: 'nalfeo/Crawler' } },
     base: { ref: 'main' },
+    labels: [],
     ...overrides,
   };
 }
@@ -434,6 +435,44 @@ test('protectedLivenessPullNumbers excludes actively owned PRs from redispatch',
   );
 });
 
+test('protectedLivenessPullNumbers excludes conflict-order and rebase backoff waits', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4225, action: 'skip-ci-conflict-order-wait' },
+    { pr: 4226, action: 'wait-conflict-rebase-backoff' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4225), blockedPull(4226), blockedPull(4227)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4227],
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes current ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4228, { labels: [{ name: 'ci-owner-pr-4228' }] }),
+      blockedPull(4229, { labels: [{ name: 'ci-recovery-waiting-transition' }] }),
+      blockedPull(4230),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4230],
+  );
+});
+
 test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
   const dispatches = [];
   const result = await dispatchLivenessRedispatches({
@@ -459,6 +498,31 @@ test('dispatchLivenessRedispatches re-fetches state and carries current head/bas
     expected_head_sha: 'new-head',
     expected_base_ref: 'main',
   });
+});
+
+test('dispatchLivenessRedispatches skips current ownership metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4231), blockedPull(4232)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels:
+          number === 4231
+            ? [{ name: 'ci-owner-pr-4231' }]
+            : [{ name: 'ci-recovery-waiting-transition' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4231, reason: 'state-changed' },
+    { number: 4232, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
 });
 
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {

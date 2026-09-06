@@ -39,6 +39,7 @@ import {
   isCopilotLogin,
   replaceIssueAssignees,
 } from './issue-intake-lib.mjs';
+import { OWNER_LABEL_PREFIX, WAITING_TRANSITION_LABEL } from './state.mjs';
 
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
 export const HARVEST_INCIDENT_TITLE = 'CI incident: stale-session harvest not completing';
@@ -57,7 +58,9 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
   'skip-merge-train-owned',
   'queue-merge-train',
   'wait-admission',
-  'wait-conflict-rebase-pending',
+  DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT,
+  DISPATCH_ACTION.WAIT_CONFLICT_REBASE_PENDING,
+  DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF,
   DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD,
   DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
 ]);
@@ -378,6 +381,16 @@ function isSameRepositoryPull(pull, owner, repo) {
   return fullName === `${owner}/${repo}`.toLowerCase();
 }
 
+function hasActiveRecoveryMetadata(pull) {
+  return (pull?.labels || []).some((label) => {
+    const name = typeof label === 'string' ? label : label?.name;
+    return (
+      String(name || '').startsWith(OWNER_LABEL_PREFIX) ||
+      String(name || '') === WAITING_TRANSITION_LABEL
+    );
+  });
+}
+
 function isStalePull(pull, now, gapMs) {
   const blockedAt = Date.parse(
     String(pull?.blocked_since || pull?.updated_at || pull?.created_at || ''),
@@ -411,6 +424,7 @@ export function selectLivenessRedispatchCandidates({
         pull.draft !== true &&
         String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
         isSameRepositoryPull(pull, owner, repo) &&
+        !hasActiveRecoveryMetadata(pull) &&
         isStalePull(pull, now, gapMs) &&
         !protectedNumbers.has(number) &&
         !dispatchedNumbers.has(number)
@@ -458,6 +472,7 @@ export async function dispatchLivenessRedispatches({
       pull.draft === true ||
       mergeableState !== 'blocked' ||
       !isSameRepositoryPull(pull, owner, repo) ||
+      hasActiveRecoveryMetadata(pull) ||
       !pull?.head?.sha ||
       String(pull?.base?.ref || '') !== ref
     ) {

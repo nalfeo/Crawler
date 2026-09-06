@@ -21,8 +21,12 @@ trusted `ci-recovery.yml` workflow with `ci-liveness-sweep`,
 
 The review repass also protects the canonical `skip-active-shepherd` and
 `skip-active-copilot-progress` ownership decisions, preventing the backstop
-from dispatching concurrently with an active owner. Regression coverage now
-asserts both ownership cases are excluded.
+from dispatching concurrently with an active owner. The final repass also
+protects canonical conflict-order and conflict-rebase backoff waits, and
+re-fetches current `ci-owner-pr-*` and
+`ci-recovery-waiting-transition` labels before dispatch to close the
+time-of-check/time-of-use ownership gap. Regression coverage asserts all of
+these cases are excluded.
 
 ## Files touched
 
@@ -42,6 +46,8 @@ asserts both ownership cases are excluded.
 - Review repass: active shepherd and active Copilot ownership fixtures pass with
   zero redispatches.
 - `npx vitest run tests/unit/ci-liveness-sweep-workflow.test.ts tests/unit/ci-knobs-guard.test.ts --project unit` — passed (207 tests).
+- Final repass: `node --test .github/scripts/ci-recovery/harvest-liveness.test.mjs`
+  — passed (36 tests), including conflict waits and current ownership labels.
 - `bash scripts/agent/verify-fast.sh` — passed.
 
 ## Runtime observation
