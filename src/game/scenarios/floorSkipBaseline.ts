@@ -1,7 +1,7 @@
 import { hasComponent } from 'bitecs';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { BaseStats, type GameWorld } from '../../core/index.js';
-import { equip, initializeBaseStats } from '../../core/systems/equipmentSystem.js';
+import { equip, initializeBaseStats, unequip } from '../../core/systems/equipmentSystem.js';
 import { statSystem } from '../../core/systems/statSystem.js';
 import type { FloorManifestDef } from '../../shared/floor-manifest.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
@@ -120,6 +120,9 @@ export function applyFloorSkipBaseline(
     const def = getEquipmentDefForItem(itemId);
     if (def === undefined) {
       throw new Error(`Unknown floor direct-start equipment item id: ${itemId}`);
+    }
+    for (const slotId of def.slots) {
+      unequip(world, playerEid, slotId, { force: true });
     }
     const result = equip(world, playerEid, def, { force: true });
     if (!result.ok) {

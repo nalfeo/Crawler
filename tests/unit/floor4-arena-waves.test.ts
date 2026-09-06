@@ -601,6 +601,8 @@ describe('floor4 wave cut', () => {
     const ownedBefore = waveWindow(world).ownedEnemies.size;
     expect(survivors.length).toBeGreaterThan(0);
     const vfxBefore = world.vfxEvents.filter((event) => event.kind === 'deathPop').length;
+    const startingXp = world.playerLevel.xp;
+    const startingGold = world.playerGold;
 
     advance(world, phase.waveWindowMs);
 
@@ -614,8 +616,8 @@ describe('floor4 wave cut', () => {
     // The cut is NOT a death: no XP, no gold, no drops, no death event, no kill.
     expect(world.lootLedger.xpSpawned).toBe(0);
     expect(world.lootLedger.goldSpawned).toBe(0);
-    expect(world.playerLevel.xp).toBe(0);
-    expect(world.playerGold).toBe(0);
+    expect(world.playerLevel.xp).toBe(startingXp);
+    expect(world.playerGold).toBe(startingGold);
     expect(world.combatEvents.filter((event) => event.type === 'death')).toHaveLength(0);
 
     // It still reads as an intentional exit rather than entities blinking out.
