@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const WORKFLOW_PATH = path.join(REPO_ROOT, '.github/workflows/ci-liveness-sweep.yml');
+const HARVEST_LIVENESS_PATH = path.join(
+  REPO_ROOT,
+  '.github/scripts/ci-recovery/harvest-liveness.mjs',
+);
 
 interface WorkflowDoc {
   on?: { schedule?: Array<{ cron?: string }>; workflow_dispatch?: unknown };
@@ -51,5 +55,18 @@ describe('CI liveness sweep workflow', () => {
     // dispatched directly from the sweep (verified in router.test.mjs).
     expect(raw).toContain("workflow_id: 'action-required-retrigger.yml'");
     expect(raw).toContain("workflow_id: 'ci-pr-disposition.yml'");
+  });
+
+  it('can dispatch bounded liveness recovery with TOCTOU metadata', () => {
+    const { doc, raw } = loadWorkflow();
+    const livenessSource = readFileSync(HARVEST_LIVENESS_PATH, 'utf8');
+    expect((doc as { permissions?: { actions?: string } }).permissions?.actions).toBe('write');
+    expect(raw).toContain('CI_RECOVERY_LIVENESS_REDISPATCH_CAP');
+    expect(raw).toContain('selectLivenessRedispatchCandidates');
+    expect(raw).toContain('dispatchLivenessRedispatches');
+    expect(livenessSource).toContain("workflow_id: 'ci-recovery.yml'");
+    expect(livenessSource).toContain("trigger = 'ci-liveness-sweep'");
+    expect(livenessSource).toContain('expected_head_sha');
+    expect(livenessSource).toContain('expected_base_ref');
   });
 });

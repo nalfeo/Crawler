@@ -1,0 +1,9 @@
+{
+  "date": "2026-09-06",
+  "session": "ci-dispatch-liveness-gap",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6
+}
