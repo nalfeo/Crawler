@@ -99,7 +99,7 @@ function spawnVariantSequence(seed: number, runtime: 'visual' | 'headless'): str
       world.stores.sprite.variantRoll[eid],
       appearanceKey,
     );
-    const headlessChoice = _resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null;
+    const headlessChoice = resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null;
 
     expect(headlessChoice).toBe(visualChoice);
     expect(visualChoice).not.toBe('welcome-goon-v2-var-2');
@@ -156,7 +156,7 @@ async function appearanceStateThroughHeadlessRunner(seed: number, injectRegistry
             throw new Error(`Spawned entity ${eid} has no appearance variant roll.`);
           }
           observed = {
-            textureKey: _resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null,
+            textureKey: resolveGeneratedSpriteVariantForEntity(world, eid)?.textureKey ?? null,
             variantRoll,
             gameplayRngTail: Array.from({ length: 8 }, () => world.rng.next()),
           };

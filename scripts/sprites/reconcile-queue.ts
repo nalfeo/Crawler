@@ -1437,6 +1437,11 @@ export async function findLandedPromotion(
  * retirement: a superseded source contributes no promotable path, so it produces
  * a `noop` cycle whether or not it is ever retired.
  *
+ * Source-authored deletions are checked separately against the source branch's
+ * merge base. A deletion remains a contribution while `base` still carries the
+ * path; ignoring it would let tidy-up erase the only durable record of an
+ * approved lifecycle removal. Paths already absent from `base` are converged.
+ *
  * LANDED-FIX AMNESTY (`landedRef`): the repo squash-merges, so when a bad path a
  * source harvested gets corrected by a FOLLOW-UP commit on the promotion branch
  * itself, before merge, the squash commit that lands on `main` is byte-identical
@@ -1471,11 +1476,34 @@ async function sourceAddsNothingToBase(
     readonly landedRef?: string;
   },
 ): Promise<boolean> {
+  const mergeBase = await runGit(exec, repoRoot, ['merge-base', baseRef, sourceRef]);
+  if (mergeBase.code !== 0 || !OBJECT_ID_PATTERN.test(mergeBase.stdout.trim())) return false;
+  const sourceDeletionDelta = await runGit(exec, repoRoot, [
+    'diff',
+    '--no-renames',
+    '--name-only',
+    '--diff-filter=D',
+    mergeBase.stdout.trim(),
+    sourceRef,
+    '--',
+    ...ART_SURFACE_ALLOWLIST,
+  ]);
+  if (sourceDeletionDelta.code !== 0) return false;
+  let sourceDeletedPaths = parseNameOnly(sourceDeletionDelta.stdout);
+  if (options?.dropGeneratedRootJsonPaths === true) {
+    sourceDeletedPaths = sourceDeletedPaths.filter((p) => !isGeneratedRootJsonPath(p));
+  }
+  if (sourceDeletedPaths.length > 0) {
+    const baseBlobs = await blobsAtPaths(exec, repoRoot, baseRef, sourceDeletedPaths);
+    if (baseBlobs === null) return false;
+    if (sourceDeletedPaths.some((deletedPath) => baseBlobs.has(deletedPath))) return false;
+  }
+
   const delta = await runGit(exec, repoRoot, [
     'diff',
     '--no-renames',
     '--name-only',
-    '--diff-filter=AMD',
+    '--diff-filter=AM',
     baseRef,
     sourceRef,
     '--',

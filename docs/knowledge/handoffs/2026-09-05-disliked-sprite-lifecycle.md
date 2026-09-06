@@ -310,6 +310,16 @@ sprite-pipeline, sprite-workflow
   The final exact-head lifecycle/runtime matrix passed 758/758, followed by
   `verify:fast`, PR prerequisites, lifecycle closure, and another real seed-7
   Floor 1 headless victory with zero failed quests.
+- The certification follow-up also excludes root-level lifecycle annotations
+  from untrusted legacy-orphan promotion, denies every CI publisher capability
+  lifecycle-removal authority, and treats source-authored queue deletions as
+  pending contributions until the paths are absent from `main`. The latter uses
+  the source branch's merge base so art added to `main` after the queue branch
+  diverged cannot falsely prevent safe retirement. The production variant
+  resolver remains a normal export because the Phaser bridge now consumes it
+  directly, and the world contract documents both default headless loading from
+  committed shards and the simulation-load-bearing entity generation counter.
+  Focused reconciler, queue, and seeded runtime coverage passed 178/178.
 
 ## PR #3234 generic extraction audit
 

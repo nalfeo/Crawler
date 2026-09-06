@@ -1008,8 +1008,9 @@ export interface CreateWorldOptions {
   entityCapacityMode?: 'game' | 'lab' | 'test';
   /**
    * Accepted generated-sprite variants available at spawn time. The visual
-   * runtime injects the manifest-backed registry; headless runs leave this
-   * unset (`null`) and only inject one for renderer-free parity probes.
+   * runtime injects the manifest-backed registry; default Node headless runs
+   * load the same committed shard tree. Explicit `null` is reserved for tests
+   * that intentionally exercise the no-registry path.
    */
   generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Explicit immutable run identity required before generated equipment can be created. */
