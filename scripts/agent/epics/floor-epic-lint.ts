@@ -17,6 +17,8 @@
  *   - explicit HUMAN_GATE deferrals for numeric balance/fun decisions;
  *   - every node tagged with exactly one specialist-persona owner;
  *   - a node that proves headless + visual AI Runner completion together;
+ *   - an owned, dependency-ordered achievement slice with measurable reward
+ *     unlock/claim acceptance;
  *   - a single terminal release/MVP slice gated behind that proof;
  *   - no floor-ID branch smell in shared runtime paths;
  *   - an eight-slice cap unless a human-approved exception is recorded.
@@ -28,9 +30,9 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import { loadPersonaRouting } from '../shared/persona-routing.js';
 
@@ -149,6 +151,181 @@ function isDualRunnerProofNode(body: string): boolean {
   return (
     mentionsHeadless && mentionsVisual && mentionsAiRunner && mentionsSpawn && mentionsWinVictory
   );
+}
+
+function isAchievementNode(node: FloorEpicNode): boolean {
+  return /\bachievements?\b/i.test(`${node.title}\n${node.body ?? ''}`);
+}
+
+/**
+ * Shared ownership verb/noun vocabulary reused by both directions of
+ * `ACHIEVEMENT_OWNERSHIP_EVIDENCE` (word-before-"achievement" and
+ * word-after-"achievement"), kept in one place so future additions to the
+ * vocabulary only need to be made once.
+ */
+const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
+  'unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|coverage|slice|data|integrated|' +
+  'tracks?|tracked|tracking|verif\\w*|implement\\w*|add(?:s|ed|ing)?|defin\\w*';
+
+/**
+ * Match-window bounds (in characters) for the clause-scoped regexes below.
+ * Named so a future retune keeps both windows' rationale co-located instead
+ * of drifting apart as separate magic numbers.
+ */
+const OWNERSHIP_WINDOW_CHARS = 80;
+const QUALIFIER_WINDOW_CHARS = 20;
+
+/**
+ * A node merely *mentioning* "achievement" is not necessarily the node that
+ * owns the achievement work — a downstream release/dependency slice can
+ * legitimately say "release after achievement QA passes" without itself
+ * doing any achievement work, and that reference must not be forced to
+ * satisfy the owning-node checks below (Owner count, dependency, unlock/
+ * claim/reward evidence, HUMAN_GATE deferral). Require the "achievement"
+ * mention to co-occur with an ownership verb/noun in either order within
+ * the same clause (bounded by a period, newline, or semicolon so the window
+ * cannot bleed into an unrelated bullet-like clause) before treating a node
+ * as achievement-*owning*.
+ */
+const ACHIEVEMENT_OWNERSHIP_EVIDENCE = new RegExp(
+  `\\bachievements?\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
+    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\bachievements?\\b`,
+  'i',
+);
+
+function isAchievementOwningNode(node: FloorEpicNode): boolean {
+  return (
+    isAchievementNode(node) &&
+    ACHIEVEMENT_OWNERSHIP_EVIDENCE.test(`${node.title}\n${node.body ?? ''}`)
+  );
+}
+
+function achievementAcceptanceEvidence(body: string): {
+  readonly hasUnlock: boolean;
+  readonly hasClaim: boolean;
+  readonly hasReward: boolean;
+} {
+  return {
+    hasUnlock: /\bunlock(?:s|ed|ing)?\b/i.test(body),
+    hasClaim: /\bclaim(?:s|ed|ing)?\b|\bclaimed\b/i.test(body),
+    hasReward: /\breward(?:s)?\b/i.test(body),
+  };
+}
+
+/**
+ * Quantity-bearing nouns/units a numeric achievement threshold is commonly
+ * expressed against. Deliberately broader than the original combat-stat-only
+ * list (kills/damage/gold/...) so item counts ("collect 10 relics") and
+ * other common goal nouns are covered too, but still a curated allowlist —
+ * NOT a fully generic "any digit + any word" match, which would also catch
+ * unrelated numeric mentions ("step 2 of 3", "v2 release") and either
+ * over-trigger the HUMAN_GATE requirement or mask the more specific
+ * level/percentage patterns below.
+ */
+const NUMERIC_THRESHOLD_UNITS =
+  '(?:kills?|damage|gold|seconds?|minutes?|hours?|points?|score|waves?|rooms?|runs?|clears?|' +
+  'relics?|items?|artifacts?|coins?|orbs?|gems?|tokens?|keys?|chests?|treasures?|' +
+  'enemies|monsters|bosses|xp|experience|quests?|objectives?|targets?)';
+const NUMERIC_THRESHOLD_UNITS_PATTERN = new RegExp(
+  `\\d+(?:\\.\\d+)?\\s+${NUMERIC_THRESHOLD_UNITS}\\b`,
+  'i',
+);
+
+/**
+ * "health"/"hp"/"mana" are ambiguous on their own — "the boss deals 50 hp
+ * damage per hit" is flavor text, not an achievement threshold — so these
+ * units only count when adjacent to a threshold-style qualifier word
+ * (at least/at most/exactly/reach/after/within/complete/finish with/...).
+ */
+const THRESHOLD_QUALIFIER =
+  '(?:at\\s+least|at\\s+most|no\\s+more\\s+than|no\\s+less\\s+than|exactly|reach(?:es|ed|ing)?|' +
+  'after|within|complete[sd]?|completing|finish(?:es|ed|ing)?(?:\\s+with)?)';
+const AMBIGUOUS_UNITS = '(?:health|hp|mana)';
+const AMBIGUOUS_UNITS_PATTERN = new RegExp(
+  `\\b${THRESHOLD_QUALIFIER}\\b[^.\\n;]{0,${QUALIFIER_WINDOW_CHARS}}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
+  'i',
+);
+
+/**
+ * Detects a numeric achievement threshold — not just the original combat-stat
+ * allowlist — so item counts ("collect 10 relics"), levels ("reach level
+ * 20"), and percentages ("finish with 50% health") all require the
+ * HUMAN_GATE deferral.
+ */
+function achievementRequiresNumericHumanGate(body: string): boolean {
+  return (
+    /\bthreshold\b/i.test(body) ||
+    /\d+(?:\.\d+)?\s*%/.test(body) ||
+    /\b(?:level|tier|wave|stage|phase|act)\s+\d+(?:\.\d+)?\b/i.test(body) ||
+    NUMERIC_THRESHOLD_UNITS_PATTERN.test(body) ||
+    AMBIGUOUS_UNITS_PATTERN.test(body)
+  );
+}
+
+function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
+  const achievementNodes = epic.nodes.filter(isAchievementOwningNode);
+  if (achievementNodes.length === 0) {
+    return [
+      {
+        code: 'achievement-slice-missing',
+        message: 'epic must include an owned achievement slice or achievement-integrated QA slice.',
+      },
+    ];
+  }
+
+  const violations: FloorEpicViolation[] = [];
+  for (const node of achievementNodes) {
+    const body = node.body ?? '';
+    const ownerDeclarations = body.match(/^Owner:\s*/gm) ?? [];
+    if (ownerDeclarations.length !== 1) {
+      violations.push({
+        code: 'achievement-owner-count',
+        message: `achievement node "${node.id}" must declare exactly one Owner persona.`,
+      });
+    }
+    if ((node.depends_on ?? []).length === 0) {
+      violations.push({
+        code: 'achievement-dependency-missing',
+        message: `achievement node "${node.id}" must depend on its prerequisite floor mechanics.`,
+      });
+    }
+    const acceptance = achievementAcceptanceEvidence(body);
+    if (!(acceptance.hasUnlock && acceptance.hasClaim && acceptance.hasReward)) {
+      violations.push({
+        code: 'achievement-acceptance-missing',
+        message: `achievement node "${node.id}" must define measurable achievement unlocking and reward-claim acceptance evidence.`,
+      });
+    }
+    if (
+      !/\b(done when|acceptance|assert|at least|at most|exactly|zero|threshold|verified|pass(?:es|ed)?)\b/i.test(
+        body,
+      )
+    ) {
+      violations.push({
+        code: 'achievement-acceptance-missing',
+        message: `achievement node "${node.id}" must include a measurable acceptance condition.`,
+      });
+    }
+    if (
+      achievementRequiresNumericHumanGate(body) &&
+      !(epic.human_gates ?? []).some(
+        (gate) =>
+          /\b(playtester|game designer)\b/i.test(gate) &&
+          // The gate must explicitly reference achievements, not just an
+          // unrelated generic balance/pacing/difficulty/fun gate — otherwise
+          // a floor's existing catch-all balance HUMAN_GATE would silently
+          // satisfy the achievement-specific deferral contract.
+          /\bachievements?\b/i.test(gate) &&
+          /\b(?:threshold|numeric|balance|pacing|difficulty|fun)\b/i.test(gate),
+      )
+    ) {
+      violations.push({
+        code: 'achievement-human-gate-missing',
+        message: `achievement node "${node.id}" introduces a numeric threshold that must be deferred to an explicit Playtester or Game Designer HUMAN_GATE.`,
+      });
+    }
+  }
+  return violations;
 }
 
 /**
@@ -359,6 +536,10 @@ export function lintFloorEpic(
     );
   }
 
+  for (const violation of achievementViolations(epic)) {
+    violations.push(violation);
+  }
+
   // Terminal release/MVP slice. Note: when there is exactly one terminal
   // node, every other node is necessarily its ancestor (a DAG can only have a
   // single sink if every node's forward chain feeds into it), so an existing
@@ -425,10 +606,21 @@ function main(): void {
   process.exitCode = 1;
 }
 
-// `import.meta.url` is always a normalized `file:///...` URL, while
-// `process.argv[1]` is a raw filesystem path (`C:\...` on Windows). Comparing
-// them directly is false on Windows, so the CLI would import this module but
-// never call `main()`. Convert argv[1] through `pathToFileURL` first.
+// Match canonical filesystem paths first. A few loaders (including tsx) expose
+// the launched script in a different argv slot, so retain a basename fallback
+// only for the known CLI filename rather than relying on URL string formatting.
+const modulePath = fileURLToPath(import.meta.url);
+const moduleName = basename(modulePath);
+const invokedScriptIndex = process.argv.findIndex(
+  (argument, index) =>
+    index > 0 &&
+    ['floor-epic-lint.ts', 'floor-epic-lint.js', 'floor-epic-lint.mjs'].includes(
+      basename(argument),
+    ),
+);
+const invokedScript = invokedScriptIndex >= 0 ? process.argv[invokedScriptIndex] : undefined;
 const isMain =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  typeof invokedScript === 'string' &&
+  (resolve(invokedScript) === modulePath ||
+    (basename(invokedScript) === moduleName && invokedScriptIndex === 1));
 if (isMain) main();
