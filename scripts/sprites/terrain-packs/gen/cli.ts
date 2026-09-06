@@ -126,6 +126,21 @@ function readPackPool(packId: string, prefix: string): readonly RgbaImage[] {
   return indices.map((i) => decodePng(fs.readFileSync(path.join(dir, `${prefix}-${i}.png`))));
 }
 
+function readExistingWallMaskFrameAssignments(
+  packId: string,
+): TerrainPackDef['wallAutotile']['masks'] | undefined {
+  const manifestPath = path.join(
+    REPO_ROOT,
+    'src',
+    'shared',
+    'data',
+    'terrain-packs',
+    `${packId}.manifest.json`,
+  );
+  if (!fs.existsSync(manifestPath)) return undefined;
+  return (JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as TerrainPackDef).wallAutotile.masks;
+}
+
 async function loadMaterial(spec: SurfaceMaterialSpec, options: CliOptions): Promise<RgbaImage> {
   const cachePath = path.join(REPO_ROOT, '.cache', 'terrain-gen', `${spec.cacheKey}.png`);
   if (options.composeOnly && !fs.existsSync(cachePath)) {
@@ -219,6 +234,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
       'generation is not byte-reproducible: the committed PNGs are the source of truth. ' +
       'Rebuild with scripts/sprites/terrain-packs/gen/cli.ts.',
     wallTile,
+    wallMaskFrameAssignments: readExistingWallMaskFrameAssignments(spec.id),
     floorVariants,
     corridorVariants,
     specialFloorPools,

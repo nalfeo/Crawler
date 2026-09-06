@@ -15,6 +15,7 @@ import {
   _computeRawMask8,
   BLOB47_CANONICAL_MASKS,
   CORNER_ADJACENCY,
+  EDGE_WANG_BIT,
   MASK_BIT,
   computeRawMask8Grid,
   edgeWangMaskFromOccupancy,
@@ -82,8 +83,8 @@ describe('normalizeBlob47Mask — exhaustive 256 -> 47 canonicalization', () => 
   });
 
   it('clears every diagonal bit when no cardinal bits are set at all', () => {
-    // raw = 0b11110000 = all 4 diagonals, 0 cardinals -> canonical must be 0.
-    expect(normalizeBlob47Mask(0b11110000)).toBe(0);
+    const diagonals = MASK_BIT.NE | MASK_BIT.SE | MASK_BIT.SW | MASK_BIT.NW;
+    expect(normalizeBlob47Mask(diagonals)).toBe(0);
   });
 
   it('mask 255 (fully surrounded) and mask 0 (fully isolated) are both canonical', () => {
@@ -102,7 +103,7 @@ describe('normalizeBlob47Mask — exhaustive 256 -> 47 canonicalization', () => 
 });
 
 describe('computeRawMask8 / neighborMask8InTerrain — bit order + OOB handling', () => {
-  it('sets bits in the pinned order N=1,E=2,S=4,W=8,NE=16,SE=32,SW=64,NW=128', () => {
+  it('sets bits in the pinned cr31 order N=1,NE=2,E=4,SE=8,S=16,SW=32,W=64,NW=128', () => {
     const allMatch = () => true;
     // 3x3 grid, center tile (1,1): every neighbour matches -> full 255.
     expect(_computeRawMask8(1, 1, 3, 3, allMatch)).toBe(255);
@@ -196,7 +197,7 @@ describe('edge-Wang helpers', () => {
       0, 1, 0,
     ]);
     expect(edgeWangMaskFromOccupancy(occupancy, 3, 3, 1, 1)).toBe(
-      MASK_BIT.N | MASK_BIT.E | MASK_BIT.S | MASK_BIT.W,
+      EDGE_WANG_BIT.N | EDGE_WANG_BIT.E | EDGE_WANG_BIT.S | EDGE_WANG_BIT.W,
     );
   });
 
@@ -206,7 +207,7 @@ describe('edge-Wang helpers', () => {
       1, 1,
       0, 0,
     ]);
-    expect(edgeWangMaskFromOccupancy(occupancy, 2, 2, 0, 0)).toBe(MASK_BIT.E);
+    expect(edgeWangMaskFromOccupancy(occupancy, 2, 2, 0, 0)).toBe(EDGE_WANG_BIT.E);
   });
 
   it('returns the inclusive-exclusive stub span', () => {
