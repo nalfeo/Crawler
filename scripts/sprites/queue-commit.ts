@@ -613,6 +613,22 @@ export async function runQueueCommit(
       'Lifecycle removals were provided but removeArtSurface is not wired.',
     );
   }
+  for (const removal of removals) {
+    const update = annotations.find((candidate) => candidate.key === removal.manifestKey);
+    const tombstone = update?.tombstone;
+    if (
+      !isLifecycleDeletionTombstone(removal.manifestKey, tombstone) ||
+      tombstone.replacementKey === undefined ||
+      tombstone.assetPath !== removal.assetPath ||
+      tombstone.sourceRun !== removal.sourceRun ||
+      tombstone.variantIndex !== removal.variantIndex
+    ) {
+      throw new QueueCommitError(
+        'generated-deletion-refused',
+        `Lifecycle removal for ${removal.manifestKey} requires a matching replacement-bearing tombstone in the same annotation update.`,
+      );
+    }
+  }
 
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';

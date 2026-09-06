@@ -270,11 +270,51 @@ describe('runQueueCommit (control flow)', () => {
             variantIndex: 0,
           },
         ],
+        annotations: [
+          {
+            key: 'old-blade',
+            favorite: false,
+            disliked: true,
+            comment: '',
+            tombstone: {
+              manifestKey: 'old-blade',
+              conceptId: 'old-blade',
+              replacementKey: 'skull-mace-var-2',
+              assetPath: 'generated/old-blade.png',
+              sourceRun: 'generated/runs/old-blade/run-0',
+              variantIndex: 0,
+              annotationKeys: ['old-blade'],
+            },
+          },
+        ],
       },
     );
 
     expect(result.status).toBe('committed');
     expect(removed).toEqual(['old-blade']);
+  });
+
+  it('refuses lifecycle removals without same-transaction tombstone authority', async () => {
+    const { exec, calls } = makeFakeExec(happyResponder);
+    await expect(
+      runQueueCommit(
+        '/repo',
+        [],
+        controlDeps(exec, { removeArtSurface: () => Promise.resolve() }),
+        {
+          message: 'unauthorized removal',
+          removals: [
+            {
+              assetPath: 'generated/old-blade.png',
+              manifestKey: 'old-blade',
+              sourceRun: 'generated/runs/old-blade/run-0',
+              variantIndex: 0,
+            },
+          ],
+        },
+      ),
+    ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
+    expect(calls).toHaveLength(0);
   });
 
   it('rejects clean paths that escape the staged generated/ surface (silent no-op guard)', async () => {
@@ -1437,6 +1477,7 @@ describe('runQueueCommit (real git)', () => {
       const tombstone = {
         manifestKey: removedKey,
         conceptId: 'old-alpha',
+        replacementKey: 'alpha',
         assetPath: `generated/${removedKey}.png`,
         sourceRun: 'generated/runs/old-alpha/run-0',
         variantIndex: 0,
@@ -1562,6 +1603,7 @@ describe('runQueueCommit (real git)', () => {
               tombstone: {
                 manifestKey: key,
                 conceptId: 'rat',
+                replacementKey: 'rat-var-1',
                 assetPath: `generated/${key}.png`,
                 sourceRun: 'generated/runs/rat/run-a',
                 variantIndex: 0,
@@ -1624,6 +1666,7 @@ describe('runQueueCommit (real git)', () => {
               tombstone: {
                 manifestKey: key,
                 conceptId: 'rat',
+                replacementKey: 'rat-var-1',
                 assetPath: `generated/${key}.png`,
                 sourceRun: 'generated/runs/rat/run-a',
                 variantIndex: 0,

@@ -379,6 +379,11 @@ sprite-pipeline, sprite-workflow
   rejected before queue publication, pre-existing queue deletions are authorized
   only by persisted tombstones rather than caller-declared removals, and removal
   plans preserve an explicit clear for stale reconciliation markers.
+- Final certification found that a caller could still request a new removal
+  without submitting its authority tombstone in the same transaction, leaving
+  an unpromotable deletion on `assets/queue`. Queue commit now rejects every
+  requested removal unless the same update contains a structurally valid,
+  identity-matching tombstone with an accepted replacement.
 
 ## PR #3234 generic extraction audit
 
