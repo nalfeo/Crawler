@@ -323,7 +323,9 @@ sprite-pipeline, sprite-workflow
 - Independent exact-head review then tightened queue authorization to require
   the complete persisted lifecycle identity (including concept and annotation
   keys) and made the destructive name normalizer preserve nested asset paths
-  while refusing to reinterpret nested variant namespaces.
+  while refusing to reinterpret nested variant namespaces. A clean-review
+  follow-up also binds the tombstone concept to the current main shard before
+  any replacement can authorize deletion, preventing cross-concept retirement.
 
 ## PR #3234 generic extraction audit
 

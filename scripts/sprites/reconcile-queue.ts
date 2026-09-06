@@ -244,7 +244,8 @@ export interface AuthorizedLifecycleDeletion {
 type LifecycleShardIdentity = Pick<
   LifecycleDeletionTombstone,
   'manifestKey' | 'assetPath' | 'sourceRun' | 'variantIndex'
->;
+> &
+  Partial<Pick<LifecycleDeletionTombstone, 'conceptId'>>;
 
 /** A queue-side lifecycle deletion this cycle REFUSES to promote. */
 export interface RejectedLifecycleDeletion {
@@ -505,10 +506,12 @@ export function assertLifecycleDeletionMatchesShard(
   shardJson: string | null,
 ): void {
   let entry: {
+    readonly briefId?: unknown;
     readonly spriteName?: unknown;
     readonly assetPath?: unknown;
     readonly sourceRun?: unknown;
     readonly variantIndex?: unknown;
+    readonly type?: unknown;
   };
   try {
     entry = shardJson === null ? {} : (JSON.parse(shardJson) as typeof entry);
@@ -520,7 +523,16 @@ export function assertLifecycleDeletionMatchesShard(
     entry.spriteName !== tombstone.manifestKey ||
     entry.assetPath !== tombstone.assetPath ||
     entry.sourceRun !== tombstone.sourceRun ||
-    entry.variantIndex !== tombstone.variantIndex
+    entry.variantIndex !== tombstone.variantIndex ||
+    (tombstone.conceptId !== undefined &&
+      generatedManifestConceptId(
+        {
+          briefId: typeof entry.briefId === 'string' ? entry.briefId : '',
+          spriteName: typeof entry.spriteName === 'string' ? entry.spriteName : '',
+          type: entry.type === 'icon' ? 'icon' : null,
+        },
+        tombstone.manifestKey,
+      ) !== tombstone.conceptId)
   ) {
     throw new ReconcileError(
       'invalid-state',

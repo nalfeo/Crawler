@@ -190,6 +190,29 @@ describe('selectAuthorizedLifecycleDeletions', () => {
       ),
     ).toThrow(/does not match the current main shard/);
   });
+
+  it('rejects a tombstone whose concept differs from the main shard', () => {
+    const deletion = selectAuthorizedLifecycleDeletions(
+      [
+        'public/assets/generated/entries/queue-goon-var-3.json',
+        'public/assets/generated/queue-goon-var-3.png',
+      ],
+      annotations,
+    )[0]!;
+
+    expect(() =>
+      assertLifecycleDeletionMatchesShard(
+        deletion,
+        JSON.stringify({
+          briefId: 'unrelated-bat',
+          spriteName: 'queue-goon-var-3',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
+          variantIndex: 3,
+        }),
+      ),
+    ).toThrow(/does not match the current main shard/);
+  });
 });
 
 /**
