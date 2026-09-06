@@ -189,6 +189,20 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
   });
 
+  it('requires an achievement slice to declare exactly one Owner persona', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Owner: QA Engineer.\n' +
+        'Owner: Game Designer.\n\n' +
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
+        'Done when the unlock and claim assertions pass.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
+  });
+
   it('flags a missing hard gate', () => {
     const epic = cloneEpic(goodFloorEpic());
     delete (epic as { hard_gate?: string }).hard_gate;
@@ -373,9 +387,7 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       ...epic,
       nodes: [
         ...epic.nodes.map((n) =>
-          n.id === 'release'
-            ? { ...n, depends_on: ['achievement-qa', 'extra-milestone'] }
-            : n,
+          n.id === 'release' ? { ...n, depends_on: ['achievement-qa', 'extra-milestone'] } : n,
         ),
         {
           id: 'extra-milestone',

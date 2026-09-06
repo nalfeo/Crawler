@@ -163,8 +163,7 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
     return [
       {
         code: 'achievement-slice-missing',
-        message:
-          'epic must include an owned achievement slice or achievement-integrated QA slice.',
+        message: 'epic must include an owned achievement slice or achievement-integrated QA slice.',
       },
     ];
   }
@@ -172,6 +171,13 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
   const violations: FloorEpicViolation[] = [];
   for (const node of achievementNodes) {
     const body = node.body ?? '';
+    const ownerDeclarations = body.match(/^Owner:\s*/gm) ?? [];
+    if (ownerDeclarations.length !== 1) {
+      violations.push({
+        code: 'achievement-owner-count',
+        message: `achievement node "${node.id}" must declare exactly one Owner persona.`,
+      });
+    }
     if ((node.depends_on ?? []).length === 0) {
       violations.push({
         code: 'achievement-dependency-missing',
