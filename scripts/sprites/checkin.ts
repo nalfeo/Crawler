@@ -450,6 +450,13 @@ function assertLocalCheckin(env: NodeJS.ProcessEnv): void {
  * `/api/checkin/prepare`) can surface a real conflict rather than quietly
  * losing newly-approved content that happens to share a path with something
  * already queued.
+ *
+ * The canonical `assets/queue` branch is reconciled the SAME way, first,
+ * through `deps.inspectDurableQueueAsset` — the exact inspector the sidecar's
+ * `/accept` route uses. Open issues are only the legacy record; art accepted
+ * after the durable queue landed exists on that branch with no issue at all,
+ * so an issue-only check would happily publish a second check-in branch for
+ * already-published art (or miss a genuine content conflict there).
  */
 export async function prepareAssetCheckin(
   repoRoot: string,

@@ -456,6 +456,82 @@ describe('runAssetCheckin', () => {
     ).rejects.toMatchObject({ kind: 'ambiguous-queued-content' });
   });
 
+  it('dedupes an asset already committed to the durable assets/queue branch, even with no open issue', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/skull-mace-var-2.png\n' +
+            'public/assets/generated/iron-sword-var-1.png\n',
+        };
+      }
+      return {};
+    });
+
+    const prepared = await prepareAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'skull-mace-var-2': {
+              assetPath: 'generated/skull-mace-var-2.png',
+              contentHash: 'hash-a',
+            },
+            'iron-sword-var-1': {
+              assetPath: 'generated/iron-sword-var-1.png',
+              contentHash: 'hash-b',
+            },
+          },
+        }),
+      inspectDurableQueueAsset: (queryAsset) =>
+        Promise.resolve(
+          queryAsset.manifestKey === 'skull-mace-var-2'
+            ? { reconciliation: 'duplicate' as const, branch: 'assets/queue' }
+            : { reconciliation: 'new' as const, branch: 'assets/queue' },
+        ),
+    });
+
+    expect(prepared.changedAssetCount).toBe(2);
+    expect(prepared.plan.assets.map((entry) => entry.assetPath)).toEqual([
+      'generated/iron-sword-var-1.png',
+    ]);
+    expect(calls.some((call) => call.command === 'gh' && call.args[0] === 'issue')).toBe(false);
+  });
+
+  it.each([
+    ['content-conflict' as const, 'content-conflict'],
+    ['ambiguous' as const, 'ambiguous-queued-content'],
+  ])(
+    'fails closed with %s against the durable assets/queue branch',
+    async (reconciliation, kind) => {
+      const { exec } = makeFakeExec((command, args) => {
+        if (command === 'git' && args[0] === 'diff') {
+          return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+        }
+        return {};
+      });
+
+      await expect(
+        prepareAssetCheckin('/repo', {
+          ...baseDeps(),
+          exec,
+          readManifest: () =>
+            Promise.resolve({
+              entries: {
+                'skull-mace-var-2': {
+                  assetPath: 'generated/skull-mace-var-2.png',
+                  contentHash: 'hash-a',
+                },
+              },
+            }),
+          inspectDurableQueueAsset: () =>
+            Promise.resolve({ reconciliation, branch: 'assets/queue' }),
+        }),
+      ).rejects.toMatchObject({ kind });
+    },
+  );
+
   it('does not create another issue when every changed asset is already queued with matching content', async () => {
     const { exec, calls } = makeFakeExec((command, args) => {
       if (command === 'git' && args[0] === 'diff') {

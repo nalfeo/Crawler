@@ -1007,8 +1007,9 @@ export interface CreateWorldOptions {
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
   /**
-   * Accepted generated-sprite variants available at spawn time. Both visual
-   * and headless runtimes inject the same shared registry contract.
+   * Accepted generated-sprite variants available at spawn time. The visual
+   * runtime injects the manifest-backed registry; headless runs leave this
+   * unset (`null`) and only inject one for renderer-free parity probes.
    */
   generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Explicit immutable run identity required before generated equipment can be created. */

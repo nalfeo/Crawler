@@ -867,8 +867,14 @@ export interface WeaponAnchorWorld extends GeneratedSpriteVariantWorld {
  * The entity's spawn-time roll is the only entropy. The registry owns concept
  * normalization and dislike filtering, so headless consumers see the same
  * entry the renderer resolves for the same world state.
+ *
+ * Underscore-prefixed by the repo's test-scaffolding convention (same as
+ * {@link _isPlaceholderEntry}): production callers reach it through
+ * {@link getEntityNormalizedWeaponAnchor} in this module, and the export exists
+ * so the renderer/headless parity regression can assert the resolution
+ * directly.
  */
-export function resolveGeneratedSpriteVariantForEntity(
+export function _resolveGeneratedSpriteVariantForEntity(
   world: GeneratedSpriteVariantWorld,
   eid: number,
   conceptId?: string,
@@ -907,7 +913,7 @@ export function getEntityNormalizedWeaponAnchor(
   const cached = world.entityWeaponAnchors.get(eid);
   if (cached !== undefined) return cached;
 
-  const entry = resolveGeneratedSpriteVariantForEntity(world, eid);
+  const entry = _resolveGeneratedSpriteVariantForEntity(world, eid);
   const anchor = computeNormalizedWeaponAnchor(entry);
   if (!anchor) return null;
 
