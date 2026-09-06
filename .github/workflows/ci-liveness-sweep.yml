@@ -173,6 +173,7 @@ jobs:
           HARVEST_LIVENESS_THRESHOLD_MINUTES: ${{ vars.HARVEST_LIVENESS_THRESHOLD_MINUTES || '60' }}
           CI_RECOVERY_DISPATCH_WINDOW_HOURS: ${{ vars.CI_RECOVERY_DISPATCH_WINDOW_HOURS || '8' }}
           CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS: ${{ vars.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS || '4' }}
+          CI_RECOVERY_LIVENESS_REDISPATCH_CAP: ${{ vars.CI_RECOVERY_LIVENESS_REDISPATCH_CAP || '3' }}
         with:
           script: |
             const { pathToFileURL } = require('node:url');
@@ -183,9 +184,10 @@ jobs:
             );
 
             const { owner, repo } = context.repo;
-            const thresholdMinutes =
-              Number.parseInt(process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES, 10) ||
-              lib.DEFAULT_HARVEST_THRESHOLD_MINUTES;
+            const thresholdMinutes = lib.parsePositiveIntEnv(
+              process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES,
+              lib.DEFAULT_HARVEST_THRESHOLD_MINUTES,
+            );
 
             const now = new Date();
             const harvestRuns = await lib.collectRecentReconcileHarvestRuns({
@@ -268,12 +270,14 @@ jobs:
               core.notice(`stale-session harvest healthy; incident ${result.action}`);
             }
 
-            const dispatchWindowHours =
-              Number.parseInt(process.env.CI_RECOVERY_DISPATCH_WINDOW_HOURS, 10) ||
-              lib.DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS;
-            const perPrDispatchGapHours =
-              Number.parseInt(process.env.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS, 10) ||
-              lib.DEFAULT_PR_DISPATCH_GAP_HOURS;
+            const dispatchWindowHours = lib.parsePositiveIntEnv(
+              process.env.CI_RECOVERY_DISPATCH_WINDOW_HOURS,
+              lib.DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
+            );
+            const perPrDispatchGapHours = lib.parsePositiveIntEnv(
+              process.env.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS,
+              lib.DEFAULT_PR_DISPATCH_GAP_HOURS,
+            );
             const dispatchCutoffMs = now.getTime() - dispatchWindowHours * 60 * 60 * 1000;
             const recoveryRuns = await lib.collectRecentWorkflowDispatchRuns({
               listWorkflowRuns: (params) => github.rest.actions.listWorkflowRuns(params),
@@ -329,6 +333,7 @@ jobs:
                 const mergeableState = String(details.data.mergeable_state || '').toLowerCase();
                 if (!['dirty', 'blocked', 'unstable', 'unmergeable'].includes(mergeableState)) continue;
                 openBlockedPulls.push({
+                  ...details.data,
                   number: pull.number,
                   html_url: pull.html_url,
                   updated_at: pull.updated_at,
@@ -365,6 +370,41 @@ jobs:
             } else {
               core.notice(`dispatch liveness healthy; incident ${dispatchResult.action}`);
             }
+
+            const dispatchedPullNumbers = new Set(
+              recoveryRuns
+                .filter((run) => String(run.status || '').toLowerCase() !== 'completed')
+                .map((run) => String(run.display_title || '').match(/PR #(\d+)/i)?.[1])
+                .filter(Boolean)
+                .map(Number),
+            );
+            const redispatchCandidates = lib.selectLivenessRedispatchCandidates({
+              pulls: dispatchSummary.neverSummonedBlockedPulls,
+              owner,
+              repo,
+              protectedPullNumbers: lib.protectedLivenessPullNumbers(decisionRecords),
+              alreadyDispatchedPullNumbers: dispatchedPullNumbers,
+              now,
+              gapHours: perPrDispatchGapHours,
+              cap: lib.parsePositiveIntEnv(
+                process.env.CI_RECOVERY_LIVENESS_REDISPATCH_CAP,
+                lib.DEFAULT_LIVENESS_REDISPATCH_CAP,
+              ),
+            });
+            const redispatchResult = await lib.dispatchLivenessRedispatches({
+              candidates: redispatchCandidates,
+              getPull: (pullNumber) =>
+                github.rest.pulls.get({ owner, repo, pull_number: pullNumber }),
+              dispatch: (request) => github.rest.actions.createWorkflowDispatch(request),
+              owner,
+              repo,
+              ref: context.payload.repository?.default_branch || 'main',
+              trigger: 'ci-liveness-sweep',
+            });
+            core.info(
+              `dispatch liveness redispatch dispatched=${redispatchResult.dispatched.length} ` +
+                `skipped=${redispatchResult.skipped.length}`,
+            );
 
       # Issue #2453: Detect PRs where auto-merge was silently cleared by an
       # automation-driven head advance (update-branch / conflict-coordinator

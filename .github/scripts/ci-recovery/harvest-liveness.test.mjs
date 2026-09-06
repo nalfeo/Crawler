@@ -11,6 +11,7 @@ import {
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
   DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
   DEFAULT_PR_DISPATCH_GAP_HOURS,
+  DEFAULT_LIVENESS_REDISPATCH_CAP,
   DISPATCH_LIVENESS_INCIDENT_LABEL,
   DISPATCH_LIVENESS_INCIDENT_MARKER,
   DISPATCH_LIVENESS_INCIDENT_TITLE,
@@ -25,6 +26,10 @@ import {
   reconcileHarvestIncident,
   summarizeDispatchLiveness,
   summarizeHarvestRuns,
+  selectLivenessRedispatchCandidates,
+  protectedLivenessPullNumbers,
+  dispatchLivenessRedispatches,
+  parsePositiveIntEnv,
 } from './harvest-liveness.mjs';
 
 const NOW = new Date('2026-07-30T17:00:00Z');
@@ -363,10 +368,338 @@ test('buildDispatchLivenessIncidentBody includes histogram and never-summoned bl
     workflowRunUrl: 'https://example.test/sweep',
     repository: 'nalfeo/Crawler',
   });
+
   assert.ok(body.startsWith(DISPATCH_LIVENESS_INCIDENT_MARKER));
   assert.match(body, /skip-merge-train-owned/);
   assert.match(body, /#2193/);
   assert.match(body, /https:\/\/github\.com\/nalfeo\/Crawler\/pull\/2193/);
+});
+
+function blockedPull(number, overrides = {}) {
+  return {
+    number,
+    state: 'open',
+    draft: false,
+    mergeable_state: 'blocked',
+    blocked_since: '2026-07-30T10:00:00Z',
+    head: { sha: `sha-${number}`, repo: { full_name: 'nalfeo/Crawler' } },
+    base: { ref: 'main' },
+    labels: [],
+    ...overrides,
+  };
+}
+
+test('selectLivenessRedispatchCandidates handles the incident fixture deterministically', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4217),
+      blockedPull(4214),
+      blockedPull(4220, { draft: true }),
+      blockedPull(4221, { state: 'closed' }),
+      blockedPull(4222, { head: { repo: { full_name: 'external/fork' } } }),
+      blockedPull(4223, { blocked_since: '2026-07-30T16:59:00Z' }),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedLivenessPullNumbers([
+      { pr: 4217, action: 'skip-merge-train-owned' },
+    ]),
+    now: NOW,
+    cap: DEFAULT_LIVENESS_REDISPATCH_CAP,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4214],
+    'protected, fresh, draft, closed, and fork PRs must not be selected',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes actively owned PRs from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4217, action: 'skip-active-shepherd' },
+    { pr: 4214, action: 'skip-active-copilot-progress' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4217), blockedPull(4214), blockedPull(4224)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4224],
+    'active shepherd and Copilot ownership decisions must prevent redispatch',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes conflict-order and rebase backoff waits', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4225, action: 'skip-ci-conflict-order-wait' },
+    { pr: 4226, action: 'wait-conflict-rebase-backoff' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4225), blockedPull(4226), blockedPull(4227)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4227],
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes current ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4228, { labels: [{ name: 'ci-owner-pr-4228' }] }),
+      blockedPull(4229, { labels: [{ name: 'ci-recovery-waiting-transition' }] }),
+      blockedPull(4230),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4230],
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes current merge-train ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4233, { labels: [{ name: 'merge-train' }] }),
+      blockedPull(4234, { labels: [{ name: 'merge-train-blocked' }] }),
+      blockedPull(4235, { labels: [{ name: 'merge-train-recovery-pending' }] }),
+      blockedPull(4236, { labels: [{ name: 'merge-train-validation-failed' }] }),
+      blockedPull(4237, { labels: [{ name: 'ci-conflict-order-wait' }] }),
+      blockedPull(4238),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4238],
+    'current merge-train ownership and wait labels must prevent redispatch',
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes lifecycle quarantine/abandon and opt-out labels', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4241, { labels: [{ name: 'ci-lifecycle-quarantined' }] }),
+      blockedPull(4242, { labels: [{ name: 'ci-lifecycle-abandoned' }] }),
+      blockedPull(4243, { labels: [{ name: 'ci-recovery-opt-out' }] }),
+      blockedPull(4244),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4244],
+    'quarantined, abandoned, and opt-out PRs must mirror the router exclusions and never be dispatched',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes PRs whose automation budget is intentionally exhausted', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4245, action: 'skip-stale-automation-exhausted' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4245), blockedPull(4246)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4246],
+    'a terminal exhausted decision must keep suppressing redispatch even after it ages out of the sampling window',
+  );
+});
+
+test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4217), blockedPull(4217), blockedPull(4218)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data:
+        number === 4217
+          ? blockedPull(4217, { head: { sha: 'new-head', repo: { full_name: 'nalfeo/Crawler' } } })
+          : blockedPull(4218, { state: 'closed' }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4217, headSha: 'new-head', baseRef: 'main' }]);
+  assert.deepEqual(result.skipped, [{ number: 4218, reason: 'state-changed' }]);
+  assert.equal(dispatches.length, 1);
+  assert.deepEqual(dispatches[0].inputs, {
+    operation: 'reconcile',
+    pr_number: '4217',
+    trigger: 'ci-liveness-sweep',
+    expected_head_sha: 'new-head',
+    expected_base_ref: 'main',
+  });
+});
+
+test('dispatchLivenessRedispatches dispatches stale PRs targeting non-default base refs', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4240, { base: { ref: 'release/1.2' } })],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    ref: 'main',
+    getPull: async () => ({
+      data: blockedPull(4240, {
+        base: { ref: 'release/1.2' },
+        head: { sha: 'release-head', repo: { full_name: 'nalfeo/Crawler' } },
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [
+    { number: 4240, headSha: 'release-head', baseRef: 'release/1.2' },
+  ]);
+  assert.deepEqual(dispatches[0], {
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    workflow_id: 'ci-recovery.yml',
+    ref: 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: '4240',
+      trigger: 'ci-liveness-sweep',
+      expected_head_sha: 'release-head',
+      expected_base_ref: 'release/1.2',
+    },
+  });
+});
+
+test('dispatchLivenessRedispatches skips current ownership metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4231), blockedPull(4232)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels:
+          number === 4231
+            ? [{ name: 'ci-owner-pr-4231' }]
+            : [{ name: 'ci-recovery-waiting-transition' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4231, reason: 'state-changed' },
+    { number: 4232, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches skips merge-train metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4238), blockedPull(4239)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels: [{ name: number === 4238 ? 'merge-train' : 'merge-train-validation-failed' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4238, reason: 'state-changed' },
+    { number: 4239, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches continues past a transient hydration failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4247), blockedPull(4248)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => {
+      if (number === 4247) throw new Error('secondary rate limit');
+      return { data: blockedPull(4248) };
+    },
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4248, headSha: 'sha-4248', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4247);
+  assert.equal(result.skipped[0].reason, 'hydration-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('dispatchLivenessRedispatches continues past a transient dispatch failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4249), blockedPull(4250)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({ data: blockedPull(number) }),
+    dispatch: async (request) => {
+      if (request.inputs.pr_number === '4249') throw new Error('workflow dispatch failed');
+      dispatches.push(request);
+    },
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4250, headSha: 'sha-4250', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4249);
+  assert.equal(result.skipped[0].reason, 'dispatch-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('parsePositiveIntEnv rejects unset, non-numeric, zero, and negative overrides', () => {
+  assert.equal(parsePositiveIntEnv(undefined, 3), 3);
+  assert.equal(parsePositiveIntEnv('', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('3junk', 7),
+    7,
+    'trailing garbage must not silently truncate to a number',
+  );
+  assert.equal(parsePositiveIntEnv('junk3', 7), 7);
+  assert.equal(parsePositiveIntEnv('0', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('-1', 3),
+    3,
+    'a negative cap must not silently disable the backstop',
+  );
+  assert.equal(parsePositiveIntEnv('5', 3), 5);
 });
 
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {
