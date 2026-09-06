@@ -414,6 +414,11 @@ test('selectLivenessRedispatchCandidates handles the incident fixture determinis
     false,
     'merge-train-owned PRs are intentionally excluded from the liveness dispatch backlog',
   );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler'),
+    false,
+    'a hydrated PR must explicitly remain open before redispatch',
+  );
 
   const candidates = selectLivenessRedispatchCandidates({
     pulls: [

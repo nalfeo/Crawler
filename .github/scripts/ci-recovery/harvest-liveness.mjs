@@ -449,7 +449,7 @@ function isStalePull(pull, now, gapMs) {
 export function isLivenessRedispatchEligible(pull, owner, repo) {
   return (
     pullNumber(pull) !== null &&
-    String(pull?.state || 'open').toLowerCase() === 'open' &&
+    String(pull?.state || '').toLowerCase() === 'open' &&
     pull.draft !== true &&
     String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
     isSameRepositoryPull(pull, owner, repo) &&
