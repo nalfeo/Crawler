@@ -139,7 +139,12 @@ export async function assignCopilotToIncident({ graphql, token, owner, repo, iss
       throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
     }
     return context.copilot.login;
-  } catch {
+  } catch (err) {
+    const rawMsg = String(err?.message || err);
+    const safeMsg = (token ? rawMsg.replaceAll(token, '***') : rawMsg)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(`copilot-assignment-failed issue=#${issueNumber} err=${safeMsg}\n`);
     return null;
   }
 }
