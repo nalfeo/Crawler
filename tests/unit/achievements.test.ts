@@ -71,7 +71,7 @@ describe('floor1 achievements catalog', () => {
       tier: 'common',
     });
     expect(achievement?.directorFlavor).toBe(
-      'Floor 1 cleared. Floor 2 is the minimum. Reward tier is Common. Open the budget box before Floor 2 liquefies you.',
+      "Floor 1 cleared. Floor 2 access is the legal minimum for airtime. We downgraded your prize to a budget box because applause has a line item now. The audience logged this as 'adequate breathing with stairs.' Our editors gave your highlight ten seconds and two sarcastic captions. Open it fast before Floor 2 turns you into a ratings graphic.",
     );
   });
 
