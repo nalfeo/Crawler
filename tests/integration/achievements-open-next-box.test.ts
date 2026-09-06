@@ -102,6 +102,34 @@ describe('achievement loot boxes opened back to back', () => {
     rewardOpeningUI.destroy();
   });
 
+  it('opens all pending loot boxes back to back without extra clicks', () => {
+    const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
+    unlockAchievement(world, FIRST_ACHIEVEMENT);
+    unlockAchievement(world, SECOND_ACHIEVEMENT);
+
+    const scene = makeScene();
+    const rewardOpeningUI = createRewardOpeningUI(scene, {});
+    const achievementsUI = createAchievementsUI(scene, rewardOpeningUI);
+    achievementsUI.refresh(world);
+
+    achievementsUI.openAllPendingRewards();
+    expect(rewardOpeningUI.isOpen()).toBe(true);
+    expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
+
+    while (rewardOpeningUI.isOpen()) {
+      rewardOpeningUI.tick(2000);
+    }
+
+    expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
+    expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
+    expect(world.achievements.pendingPresentations.size).toBe(0);
+    expect(rewardOpeningUI.isOpen()).toBe(false);
+
+    achievementsUI.destroy();
+    rewardOpeningUI.destroy();
+  });
+
   it('offers no chain when the only other unlocked achievement is already claimed', () => {
     const world = createTestWorld({ seed: 42 });
     spawnPlayer(world, 0, 0);
