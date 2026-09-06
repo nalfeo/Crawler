@@ -14,8 +14,9 @@ floor4-arena
 
 ## Apples
 
-1-2🍎 estimated, 2🍎 actual (exact: the authored cadence and wave-count change
-required no runtime-system edits or new test infrastructure).
+1-2🍎 estimated, 2🍎 actual (exact: review recovery added the wave-count
+correction, final-release coverage bound, and canonical-contract alignment;
+no runtime-system edits or new test infrastructure were required).
 
 ## Verdict
 
