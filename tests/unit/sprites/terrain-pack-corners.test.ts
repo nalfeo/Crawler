@@ -70,7 +70,9 @@ import {
   MASK_BIT,
   QUADRANT_CORNERS,
   cornerIsWallFromMask,
+  cr31ToOurMask,
   normalizeBlob47Mask,
+  ourMaskToCr31Mask,
   quadrantStateFromMask,
 } from '../../../src/shared/terrain-pack-mask.js';
 import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js';
@@ -209,7 +211,7 @@ describe('validateCompatibleCorners', () => {
     const { manifest, atlas } = buildCardinalOnlyAtlas();
     const result = validateCompatibleCorners(manifest, decodePng(atlas));
     expect(result.ok).toBe(false);
-    // A cardinal-only sheet collapses mask 255 onto mask 15, whose four corners
+    // A cardinal-only sheet collapses mask 255 onto mask 85, whose four corners
     // are nicked — so the "solid" reference is no longer solid at its corners.
     // That is the precise root cause, and the gate reports it as such rather
     // than emitting 47 downstream per-cell mismatches.
@@ -222,8 +224,8 @@ describe('validateCompatibleCorners', () => {
     // see this at all; the corner check must.
     const { manifest, atlas } = readCommittedPack('industrial-cave');
     const masks = manifest.wallAutotile.masks.map((m) => ({ ...m }));
-    const a = masks.findIndex((m) => m.maskId === 15);
-    const b = masks.findIndex((m) => m.maskId === 143);
+    const a = masks.findIndex((m) => m.maskId === 85);
+    const b = masks.findIndex((m) => m.maskId === 213);
     expect(a).toBeGreaterThanOrEqual(0);
     expect(b).toBeGreaterThanOrEqual(0);
     const swapped = masks[a]!.frameIndex;
@@ -279,10 +281,9 @@ describe('deriveTemplateCellMasks', () => {
    * https://www.boristhebrave.com/permanent/24/06/cr31/stagecast/wang/blob.html
    *
    * Indices are in cr31's canonical CLOCKWISE-CYCLE weighting
-   * (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128), NOT this repo's
-   * cardinals-then-diagonals weighting — see `toCr31Index` below. Pinning the
-   * published numbering rather than ours means this table is verifiable against
-   * an outside source and cannot silently drift with our internal convention.
+   * (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128). This is now the repo's
+   * canonical numbering as well, so the published layout matches the runtime mask
+   * IDs directly and the conversion utilities are used only for migration checks.
    */
   const CAELES_CR31_LAYOUT: readonly (readonly number[])[] = [
     [0, 4, 92, 112, 28, 124, 116, 64],
@@ -293,25 +294,14 @@ describe('deriveTemplateCellMasks', () => {
     [5, 68, 71, 193, 7, 199, 197, 65],
   ];
 
-  const CR31_BIT: Readonly<Record<keyof typeof MASK_BIT, number>> = {
-    N: 1,
-    NE: 2,
-    E: 4,
-    SE: 8,
-    S: 16,
-    SW: 32,
-    W: 64,
-    NW: 128,
-  };
-
-  /** Re-weight one of our canonical masks into cr31's clockwise-cycle numbering. */
-  function toCr31Index(ourMask: number): number {
-    let out = 0;
-    for (const key of Object.keys(CR31_BIT) as (keyof typeof MASK_BIT)[]) {
-      if (ourMask & MASK_BIT[key]) out |= CR31_BIT[key];
+  it('converts legacy cardinals-first masks to the cr31 canonical order bijectively', () => {
+    const legacySet = new Set<number>(BLOB47_CANONICAL_MASKS.map((maskId) => cr31ToOurMask(maskId)));
+    expect(legacySet.size).toBe(BLOB47_CANONICAL_MASKS.length);
+    for (const maskId of BLOB47_CANONICAL_MASKS) {
+      expect(ourMaskToCr31Mask(cr31ToOurMask(maskId))).toBe(maskId);
+      expect(cr31ToOurMask(ourMaskToCr31Mask(maskId))).toBe(maskId);
     }
-    return out;
-  }
+  });
 
   function sliceTemplateCells() {
     const template = decodePng(
@@ -372,7 +362,7 @@ describe('deriveTemplateCellMasks', () => {
         const cellIndex = r * 8 + c;
         // The spare cell is the duplicate of solid tile-255.
         if (cellIndex === spareCellIndex) return 255;
-        return toCr31Index(cellToMask.get(cellIndex)!);
+        return cellToMask.get(cellIndex)!;
       }),
     );
 
@@ -381,10 +371,10 @@ describe('deriveTemplateCellMasks', () => {
 
   it('produces a mask set closed under cr31 90-degree rotation (index * 4 mod 255)', () => {
     // cr31's clockwise-cycle weighting exists so that rotating a blob tile 90
-    // degrees clockwise is exactly `index * 4 mod 255`. If our 47 canonical
-    // masks really are the blob47 set (just re-weighted), the corresponding
-    // cr31 index set must be closed under that operation.
-    const cr31Indices = new Set(BLOB47_CANONICAL_MASKS.map(toCr31Index));
+    // degrees clockwise is exactly `index * 4 mod 255`. The canonical set we now
+    // ship is the published cr31 set, so it must remain closed under that
+    // operation without any re-weighting shim.
+    const cr31Indices = new Set(BLOB47_CANONICAL_MASKS);
     expect(cr31Indices.size).toBe(47);
     for (const index of cr31Indices) {
       if (index === 255) continue;
@@ -466,13 +456,13 @@ describe('rounded cave corners', () => {
     // than trusting the arithmetic.
     const size = cellSize();
     const sample = Math.ceil(size * 0.09);
-    // Mask 15 = N|E|S|W with no diagonals → all four corners are `concave`.
+    // Mask 85 = N|E|S|W with no diagonals → all four corners are `concave`.
     for (let y = 0; y < sample; y += 1) {
       for (let x = 0; x < sample; x += 1) {
-        expect(alphaAt(15, x, y)).toBe(0);
-        expect(alphaAt(15, size - 1 - x, y)).toBe(0);
-        expect(alphaAt(15, x, size - 1 - y)).toBe(0);
-        expect(alphaAt(15, size - 1 - x, size - 1 - y)).toBe(0);
+        expect(alphaAt(85, x, y)).toBe(0);
+        expect(alphaAt(85, size - 1 - x, y)).toBe(0);
+        expect(alphaAt(85, x, size - 1 - y)).toBe(0);
+        expect(alphaAt(85, size - 1 - x, size - 1 - y)).toBe(0);
       }
     }
   });
@@ -563,10 +553,10 @@ describe('square dungeon corners', () => {
     const sample = Math.ceil(size * 0.09);
     for (let y = 0; y < sample; y += 1) {
       for (let x = 0; x < sample; x += 1) {
-        expect(alphaAt(15, x, y)).toBe(0);
-        expect(alphaAt(15, size - 1 - x, y)).toBe(0);
-        expect(alphaAt(15, x, size - 1 - y)).toBe(0);
-        expect(alphaAt(15, size - 1 - x, size - 1 - y)).toBe(0);
+        expect(alphaAt(85, x, y)).toBe(0);
+        expect(alphaAt(85, size - 1 - x, y)).toBe(0);
+        expect(alphaAt(85, x, size - 1 - y)).toBe(0);
+        expect(alphaAt(85, size - 1 - x, size - 1 - y)).toBe(0);
       }
     }
   });
@@ -903,7 +893,7 @@ describe('exact-silhouette gate closes the interior blind spot', () => {
    * Both sampling gates read only the cell RIM — four cardinal edge bands and
    * four corner squares. A defect sitting in the middle of a cell is invisible
    * to them. This is not theoretical: the generator once carved the `concave`
-   * notch at the cell CENTRE instead of the outer corner, so mask 15 rendered
+   * notch at the cell CENTRE instead of the outer corner, so mask 85 rendered
    * as a donut and every gate passed it.
    *
    * Punching that exact defect back in must leave the perimeter gates green

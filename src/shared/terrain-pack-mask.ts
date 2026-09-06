@@ -9,31 +9,19 @@
  * never drift between build time and render time (reviewed-design refinement
  * #3).
  *
- * Bit order (pinned — do not renumber without updating every manifest):
- *   bit 0 (  1): N   bit 1 (  2): E   bit 2 (  4): S   bit 3 (  8): W
- *   bit 4 ( 16): NE  bit 5 ( 32): SE  bit 6 ( 64): SW  bit 7 (128): NW
- *
- * Relationship to the canonical cr31 numbering
- * --------------------------------------------
- * The reference blob47 literature (cr31 "Wang Blob", mirrored at
- * https://www.boristhebrave.com/permanent/24/06/cr31/stagecast/wang/blob.html,
- * and every OpenGameArt blob tileset that follows it) weights the bits as a
- * CONTINUOUS CLOCKWISE CYCLE instead:
+ * Canonical blob47 bit order
+ * -------------------------
+ * Crawler is aligned with the published cr31 / Caeles numbering, which uses a
+ * continuous clockwise cycle instead of the legacy cardinals-then-diagonals
+ * order:
  *
  *   N=1  NE=2  E=4  SE=8  S=16  SW=32  W=64  NW=128
  *
- * Both weightings are bijections onto the same 47 shapes — only the *labels*
- * differ — so nothing about our geometry, gating, or packing is affected. But
- * the two numberings are NOT interchangeable: our mask 15 is not cr31's tile 15.
- * Any cross-reference against published blob47 tables, tools, or tilesets must
- * re-weight first (see `toCr31Index` in
- * `tests/unit/sprites/terrain-pack-corners.test.ts`).
- *
- * The cr31 ordering has one property ours lacks: rotating a tile 90 degrees
- * clockwise is exactly `index * 4 mod 255`. We do not currently rotate tiles at
- * build or render time, so this buys us nothing today; adopting it would be a
- * breaking migration of every manifest's `maskId` values and should be a
- * deliberate, separately-scoped decision rather than a silent change.
+ * This is the canonical ordering used by every published blob47 tileset and by
+ * the Caeles minimum-packing layout. Adopting it is a breaking migration of the
+ * persisted `maskId` values in every terrain-pack manifest, but it makes the
+ * runtime numbering directly comparable to the reference sources and preserves
+ * the useful cr31 rotation identity `index * 4 mod 255`.
  *
  * Diagonal gating rule: a diagonal bit only survives normalization if BOTH of
  * its adjacent cardinal bits are also set in the raw mask, e.g. NE survives
@@ -48,8 +36,20 @@
  * site — see its doc comment for why the wall-mask callers need `true`.
  */
 
-/** Bit values for each of the 8 neighbour directions. Pinned — see module doc. */
+/** Bit values for each of the 8 neighbour directions in canonical cr31 clockwise order. */
 export const MASK_BIT = {
+  N: 1,
+  NE: 2,
+  E: 4,
+  SE: 8,
+  S: 16,
+  SW: 32,
+  W: 64,
+  NW: 128,
+} as const;
+
+/** Legacy cardinals-first bit weights used before the cr31 migration. */
+const LEGACY_MASK_BIT = {
   N: 1,
   E: 2,
   S: 4,
@@ -61,6 +61,31 @@ export const MASK_BIT = {
 } as const;
 
 export type MaskDirection = keyof typeof MASK_BIT;
+
+/**
+ * Convert a legacy cardinals-first blob47 mask to the canonical cr31 clockwise
+ * ordering used by the published blob47 references.
+ *
+ * This is a one-shot migration utility for tooling and tests; runtime code must
+ * use the canonical `MASK_BIT` ordering directly and never carry both schemes in
+ * the live path.
+ */
+export function ourMaskToCr31Mask(mask: number): number {
+  let out = 0;
+  for (const dir of ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW'] as const) {
+    if (mask & LEGACY_MASK_BIT[dir]) out |= MASK_BIT[dir];
+  }
+  return out;
+}
+
+/** Inverse of `ourMaskToCr31Mask`, for migration validation and tooling. */
+export function cr31ToOurMask(mask: number): number {
+  let out = 0;
+  for (const dir of Object.keys(MASK_BIT) as MaskDirection[]) {
+    if (mask & MASK_BIT[dir]) out |= LEGACY_MASK_BIT[dir];
+  }
+  return out;
+}
 
 /** The four corner (diagonal) directions and their two adjacent cardinals. */
 export const CORNER_ADJACENCY = {
@@ -396,8 +421,9 @@ function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): Quadra
  * (`frameIndex === maskId`) is why an edge-Wang atlas needs no `masks` table,
  * unlike `wallAutotile`.
  *
- * Bit order is the SAME as `MASK_BIT` (N=1, E=2, S=4, W=8) so the two families
- * can never disagree about what "north" means.
+ * Bit order is the SAME as `MASK_BIT` (N=1, NE=2, E=4, SE=8, S=16, SW=32,
+ * W=64, NW=128) so the two families can never disagree about what "north"
+ * means.
  */
 export const EDGE_WANG_FRAME_COUNT = 16;
 
