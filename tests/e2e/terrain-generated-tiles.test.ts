@@ -140,4 +140,54 @@ describe('Terrain-pack render guard', () => {
     // so we confirm this test is actually running Floor 2 and not Floor 1.
     // (If the floor param is ignored, both would fail the packWallCount > 0 check.)
   });
+
+  it('Floor 3 renders the companion-overworld terrain pack in the real booted scene', async () => {
+    // Hard gate for issue #4294: a lab-only pass cannot prove the shipped Floor 3
+    // scene actually mounts the companion-overworld pack. The probe lab boots the
+    // real scene through the shipped floor bootstrap, so the pack counts below are a
+    // deterministic observation of the real artifact, not a test-double claim.
+    await loadMainSceneProbeLab(page, { floor: 'floor3' });
+
+    let summary = await mainSceneProbe.getTerrainRenderSummary(page);
+    const deadline = Date.now() + 5_000;
+    while (
+      summary.packWallCount +
+        summary.packFloorCount +
+        summary.generatedCount +
+        summary.spriteCount +
+        summary.colorCount ===
+        0 &&
+      Date.now() < deadline
+    ) {
+      await page.waitForTimeout(100);
+      summary = await mainSceneProbe.getTerrainRenderSummary(page);
+    }
+
+    expect(
+      summary.packWallCount,
+      `Floor 3 should stamp companion-overworld WALL tiles in the real scene; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(0);
+
+    expect(
+      summary.packFloorCount,
+      `Floor 3 should stamp companion-overworld FLOOR tiles in the real scene; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(0);
+
+    const sourceCounts = summary.packFloorSourceCounts;
+    const sourceIds = Object.keys(sourceCounts);
+    expect(
+      sourceIds.length,
+      `Floor 3 should expose multiple outdoor floor variants in the real scene; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThanOrEqual(3);
+    for (const sourceId of ['floor-0', 'floor-1', 'floor-2']) {
+      expect(
+        sourceCounts[sourceId] ?? 0,
+        `Floor 3's outdoor pack must stamp ${sourceId} in the real scene; ` +
+          `summary=${JSON.stringify(summary)}`,
+      ).toBeGreaterThan(0);
+    }
+  });
 });
