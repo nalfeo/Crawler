@@ -160,16 +160,6 @@ function isAchievementNode(node: FloorEpicNode): boolean {
 }
 
 /**
- * Shared ownership verb/noun vocabulary reused by both directions of
- * `ACHIEVEMENT_OWNERSHIP_EVIDENCE` (word-before-"achievement" and
- * word-after-"achievement"), kept in one place so future additions to the
- * vocabulary only need to be made once.
- */
-const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
-  'unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|coverage|slice|data|integrated|' +
-  'tracks?|tracked|tracking|verif\\w*|implement\\w*|add(?:s|ed|ing)?|defin\\w*';
-
-/**
  * Match-window bounds (in characters) for the clause-scoped regexes below.
  * Named so a future retune keeps both windows' rationale co-located instead
  * of drifting apart as separate magic numbers.
@@ -183,15 +173,16 @@ const QUALIFIER_WINDOW_CHARS = 20;
  * legitimately say "release after achievement QA passes" without itself
  * doing any achievement work, and that reference must not be forced to
  * satisfy the owning-node checks below (Owner count, dependency, unlock/
- * claim/reward evidence, HUMAN_GATE deferral). Require the "achievement"
- * mention to co-occur with an ownership verb/noun in either order within
- * the same clause (bounded by a period, newline, or semicolon so the window
- * cannot bleed into an unrelated bullet-like clause) before treating a node
- * as achievement-*owning*.
+ * claim/reward evidence, HUMAN_GATE deferral). Require explicit ownership
+ * phrasing: an achievement-integrated slice, or an achievement mentioned
+ * alongside work verbs such as verify, implement, or unlock. Generic nouns
+ * such as "slice", "coverage", and "data" are intentionally excluded because
+ * downstream nodes commonly refer to the owned achievement slice by name.
  */
 const ACHIEVEMENT_OWNERSHIP_EVIDENCE = new RegExp(
-  `\\bachievements?\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
-    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\bachievements?\\b`,
+  `\\bachievements?[- ]integrated\\b` +
+    `|\\bachievements?\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\b(?:unlock\\w*|claim\\w*|reward\\w*|track\\w*|verif\\w*|implement\\w*|add\\w*|defin\\w*)\\b` +
+    `|\\b(?:unlock\\w*|claim\\w*|reward\\w*|track\\w*|verif\\w*|implement\\w*|add\\w*|defin\\w*)\\b[^.\\n;]{0,${OWNERSHIP_WINDOW_CHARS}}\\bachievements?\\b`,
   'i',
 );
 

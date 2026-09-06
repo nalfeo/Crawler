@@ -370,7 +370,7 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       body:
         'Owner: Producer.\n\n' +
         'Enable the release/MVP flag now that the floor is released for players, gated ' +
-        'behind dual-runner acceptance and after achievement QA has passed.',
+        'behind dual-runner acceptance and after the achievement slice passes.',
     }));
     expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
   });
