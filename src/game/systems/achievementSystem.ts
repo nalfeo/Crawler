@@ -309,7 +309,10 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       // Green Room visits use a zero-based opened index; -1 means none has opened.
       floor4GreenRoomVisits:
         world.floor === 4
-          ? (world.floorExtendedState?.floor4GreenRoom?.lastOpenedVisitIndex ?? -1) + 1
+          ? Math.max(
+              world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount ?? 0,
+              (world.floorExtendedState?.floor4GreenRoom?.lastOpenedVisitIndex ?? -1) + 1,
+            )
           : 0,
       floor4OvertimeStarted: floor4State?.headlinerTelemetry.overtimeStarted ?? 0,
       floor4GoldEarned,

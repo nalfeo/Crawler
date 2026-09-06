@@ -320,8 +320,8 @@ describe('floor4 achievements catalog', () => {
         ({ segment }) => /[.!?]['"”’]?$/.test(segment.trim()),
       ).length;
       const [minimum, maximum] = ranges[achievement.difficulty];
-      expect(sentenceCount).toBeGreaterThanOrEqual(minimum);
-      expect(sentenceCount).toBeLessThanOrEqual(maximum);
+      expect(sentenceCount, achievement.id).toBeGreaterThanOrEqual(minimum);
+      expect(sentenceCount, achievement.id).toBeLessThanOrEqual(maximum);
     }
   });
 
