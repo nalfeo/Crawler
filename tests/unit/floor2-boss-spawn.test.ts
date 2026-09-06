@@ -135,14 +135,18 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     expect(resolveFloor2ArchetypeAIType(chase!)).toBe(AI_TYPE.CHASE);
   });
 
-  it('uses the full production HP for live Floor 2 bosses so they survive a telegraphed cycle', () => {
+  it('scales live Floor 2 boss HP above the archetype base so a signature cycle can play', () => {
     const world = createTestWorld({ floor: 2 });
     const archetype = floor2EnemyPack.archetypes.find((a) => a.id === 'goblin-boss');
     const eid = spawnFamilyBoss(world, 0, 0, 0, asFamilyId('goblins'));
 
     expect(archetype).toBeDefined();
-    expect(world.stores.health.max[eid]).toBe(archetype!.hp);
-    expect(world.stores.health.current[eid]).toBe(archetype!.hp);
+    // The production scale (4×, issue #4291) is derived from measured headless
+    // time-to-kill; the observable contract here is that the live spawn never
+    // falls back to the arena lab's debug shrink (which produced 7 HP bosses).
+    expect(world.stores.health.max[eid]).toBe(archetype!.hp * 4);
+    expect(world.stores.health.current[eid]).toBe(world.stores.health.max[eid]);
+    expect(world.stores.health.max[eid]).toBeGreaterThan(archetype!.hp);
   });
 
   it('spawns a ranged family boss that attacks the player', () => {

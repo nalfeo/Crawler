@@ -2,29 +2,64 @@
 
 ## Summary
 
-Fixed the production Floor 2 boss spawn path so family bosses use their full authored HP instead of the 3% arena debug scale that was killing them before a single telegraphed signature cycle could play. The retune keeps the fight readable, avoids invulnerability or seed exceptions, and locks the regression behind a deterministic boss-spawn unit test.
+Floor 2 den bosses died before any telegraphed mechanic could read (issue
+#4291). The live spawn path applied a 0.03 HP scale, shrinking a 220 HP boss to
+7 HP. The fix derives the live scale from measured headless time-to-kill instead:
+the shipped multiplier is 4× the authored archetype HP, which is the smallest
+whole multiplier that keeps every den boss alive past its own signature-ability
+window while all three gate seeds still reach `victory`.
 
 ## Systems touched
 
 enemies, boss-rooms, ai-combat-balance
 
-## Persona routing
+## Evidence (headless, `BehaviorTreeAI`, seeds 1–3, floor2)
 
-- Producer scoped the fix to the live Floor 2 boss spawn pipeline and trapped it with a regression test.
-- AI balance coverage focused on the canonical progression baseline and the boss-level gate.
-- QA checked the spawn path and the deterministic boss HP contract rather than a single cherry-picked run.
+Per-den time-to-kill (`encounterStartedMs` → `encounterDefeatedMs`) versus the
+family's signature-cycle window (`firstEligibleAfterMs + telegraph.durationMs`
+from `src/shared/data/boss-abilities.floor2.json`, 9.25 s–12.5 s):
+
+| HP scale | measured TTK     | verdict                                            |
+| -------- | ---------------- | -------------------------------------------------- |
+| 0.03     | one melee volley | boss dies before any telegraph                     |
+| 1×       | 5.5–6.7 s        | still below every ability window                   |
+| 3×       | 9.4–19.6 s       | goblins @ lv19 cleared 9.25 s by only 134 ms       |
+| 4×       | 12.1–27.0 s      | ≥ 30 % margin on every window; 3/3 seeds still win |
+
+All three seeds finish `outcome='victory'` with `floor2Progression.exitCompleted`
+true at 4×, so completion viability is preserved.
 
 ## Key decisions
 
-- Live Floor 2 boss spawns now respect the archetype's authored HP.
-- The 3% HP reduction remains isolated to arena-lab debug presets and is not used by the shipped floor pipeline.
-- Bosses survive long enough for their telegraphs and signature cycle without introducing invulnerability or special cases.
+- Live Floor 2 boss HP = authored archetype HP × 4; the arena lab keeps its own
+  debug scaling.
+- No invulnerability, no seed-specific exception, telegraph readability
+  unchanged.
+- The duration target is read from the boss-ability catalog, so re-timing an
+  ability automatically re-times the gate.
+
+## Known scope limit
+
+Production Floor 2 does not yet _execute_ the cataloged signature abilities —
+`floor2-boss-production-enable` in
+`scripts/agent/data/boss-abilities.floor2.status.json` is `not-started`, only 7
+of 18 abilities have a verified runtime, and `registerMobAbility` /
+`setMobAbilitiesEnabled` are wired for Floor 5 and the arena lab only. This
+change delivers the durability half of #4291's acceptance criteria (the fight
+window is long enough for the authored cycle) and gates it, so the separate
+production-activation slice cannot land on bosses that die before their own
+telegraph. The activation itself is escalated as a separate scope decision.
 
 ## Verification
 
-- `npx vitest run tests/unit/floor2-boss-spawn.test.ts tests/headless/floor2-boss-level-gate.test.ts --reporter=dot`
-- `bash scripts/agent/verify-fast.sh` (the repo still shows unrelated baseline regression failures in `tests/unit/baseline-regression-check.test.ts`; the Floor 2 boss suite remains green)
+- `npx vitest run --project headless tests/headless/floor2-boss-survival-gate.test.ts`
+  (3 seeds, full Floor 2 victories, ~4 min)
+- Negative check: reverting the scale to 1× fails the gate
+  (`Boss died in 5517ms, before one 10200ms signature cycle`), so the gate has
+  teeth.
+- `npx vitest run tests/unit/floor2-boss-spawn.test.ts`
+- `npm run typecheck`, `npx eslint` on the touched files
 
 ## Apples
 
-3 estimated, 3 actual. The fix stayed scoped to the Floor 2 boss spawn contract and the matching regression coverage.
+3 estimated, 3 actual.
