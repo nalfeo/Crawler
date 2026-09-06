@@ -57,8 +57,9 @@ weapon, fires it through the real `weaponSystem` (new probe methods
 `fireActiveWeaponForProjectileProbe` / `getProjectileRenderInfo`), and reads
 the live display list's texture key for the spawned `Projectile` entity:
 
-- `pistol`, `musketeer-rifle`, and `cog-pistol` (all `weaponTypeSkillId:
-'pistol'`) render with the `__cw_bullet` texture (`renderKind: 'bullet'`).
+- `pistol`, `musketeer-rifle`, `cog-pistol`, and the Wave B firearm-family
+  `weapon.rivet-gun` (all `weaponTypeSkillId: 'pistol'`) render with the
+  `__cw_bullet` texture (`renderKind: 'bullet'`).
 - `bow` and `crossbow` render with the `__cw_arrow` texture (`renderKind:
 'arrow'`).
 
@@ -70,9 +71,9 @@ e2e suite against the pre-fix and post-fix `weaponSystem.ts`.
 ## Validation
 
 - `tests/game/ranged-weapons.test.ts`: pistol bullet, firearm-variant
-  (`musketeer-rifle`, `cog-pistol`) bullet classification via
-  `weaponTypeSkillId`, bow arrow, crossbow arrow, and impact/lifecycle
-  assertions.
+  (`musketeer-rifle`, `cog-pistol`, Wave B `weapon.rivet-gun`) bullet
+  classification via `weaponTypeSkillId`, bow arrow, crossbow arrow, and
+  impact/lifecycle assertions.
 - `tests/e2e/pistol-bullet-projectile-render.test.ts`: real booted-scene
   display-list evidence that pistol/firearm variants render `__cw_bullet` and
   bow/crossbow render `__cw_arrow`.

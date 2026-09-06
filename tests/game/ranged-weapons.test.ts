@@ -36,7 +36,7 @@ describe('ranged weapons', () => {
     expect(resolveRenderKind(world, p)).toBe('bullet');
   });
 
-  it.each(['musketeer-rifle', 'cog-pistol'] as const)(
+  it.each(['musketeer-rifle', 'cog-pistol', 'weapon.rivet-gun'] as const)(
     '%s (firearm, weaponTypeSkillId=pistol) fires a bullet projectile',
     (weaponId) => {
       const world = createTestWorld();

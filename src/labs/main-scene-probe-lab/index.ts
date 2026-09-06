@@ -3139,7 +3139,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) rather than
       // nearest-on-screen-distance, which could be fooled by a HUD icon,
       // carried-weapon sprite, or the probe's own target enemy sitting closer
-      // to the projectile's feet position.
+      // to the projectile's feet position. A full display-list scan is fine
+      // here (test/probe-only code with a small fixed lab scene); switch to a
+      // dedicated container if the probe lab's display list ever grows large.
       const named = new Map<string, string>();
       for (const child of phaserScene.children.list) {
         if (

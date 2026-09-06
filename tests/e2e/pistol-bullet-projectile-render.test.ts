@@ -51,7 +51,7 @@ describe('pistol/firearm projectiles render as bullets in the real booted scene'
     await closeQuietly(browser);
   });
 
-  it.each(['pistol', 'musketeer-rifle', 'cog-pistol'] as const)(
+  it.each(['pistol', 'musketeer-rifle', 'cog-pistol', 'weapon.rivet-gun'] as const)(
     '%s renders its shot with the real bullet texture',
     async (weaponId) => {
       expect(await mainSceneProbe.equipMainHandWeapon(page, weaponId)).toBe(true);
