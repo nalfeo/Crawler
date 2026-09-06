@@ -36,6 +36,7 @@ import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { type SkillState } from '../../src/game/skills/types.js';
+import { getWeaponSwingVfxSpec } from '../../src/shared/weapon-swing-vfx.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -192,7 +193,12 @@ describe('weapon-skill passive ability definitions', () => {
 
   it('pistol milestone rewards stay active and expose canonical player-facing names', () => {
     const pistol = getSkillDefinition('pistol')!;
-    const expectedIds = ['pistol-shot-base', 'pistol-rapid-fire', 'pistol-shot-evolved', 'pistol-barrage'];
+    const expectedIds = [
+      'pistol-shot-base',
+      'pistol-rapid-fire',
+      'pistol-shot-evolved',
+      'pistol-barrage',
+    ];
     expect(pistol.milestones.map((entry) => entry.abilityId)).toEqual(expectedIds);
 
     for (const abilityId of expectedIds) {
@@ -206,8 +212,29 @@ describe('weapon-skill passive ability definitions', () => {
 
     expect(getAbilityDefinition('pistol-volley')).toBe(getAbilityDefinition('pistol-rapid-fire'));
     expect(getAbilityPresentation('pistol-volley')?.name).toBe('Rapid Fire');
-    expect(getAbilityDefinition('pistol-volley-evolved')).toBe(getAbilityDefinition('pistol-barrage'));
+    expect(getAbilityDefinition('pistol-volley-evolved')).toBe(
+      getAbilityDefinition('pistol-barrage'),
+    );
     expect(getAbilityPresentation('pistol-volley-evolved')?.name).toBe('Barrage');
+  });
+
+  it('keeps pistol active milestone VFX on canonical IDs while preserving legacy aliases', () => {
+    expect(getWeaponSwingVfxSpec('pistol-rapid-fire')).toEqual({
+      preset: 'volleyTrail',
+      color: 0xfde047,
+      intensity: 1.1,
+    });
+    expect(getWeaponSwingVfxSpec('pistol-barrage')).toEqual({
+      preset: 'spinRing',
+      color: 0xca8a04,
+      intensity: 1.25,
+    });
+    expect(getWeaponSwingVfxSpec('pistol-volley')).toEqual(
+      getWeaponSwingVfxSpec('pistol-rapid-fire'),
+    );
+    expect(getWeaponSwingVfxSpec('pistol-volley-evolved')).toEqual(
+      getWeaponSwingVfxSpec('pistol-barrage'),
+    );
   });
 
   it('general skill abilities (swordsmanship, iron-skin, sprint) have no weaponPrerequisite', () => {

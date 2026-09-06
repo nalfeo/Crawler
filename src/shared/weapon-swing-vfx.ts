@@ -11,6 +11,17 @@ export interface WeaponSwingVfxSpec {
   readonly intensity?: number;
 }
 
+const PISTOL_RAPID_FIRE_VFX: WeaponSwingVfxSpec = {
+  preset: 'volleyTrail',
+  color: 0xfde047,
+  intensity: 1.1,
+};
+const PISTOL_BARRAGE_VFX: WeaponSwingVfxSpec = {
+  preset: 'spinRing',
+  color: 0xca8a04,
+  intensity: 1.25,
+};
+
 const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
   'sword-strike-base': { preset: 'swingArc', color: 0xff6b6b, intensity: 1.0 },
   'sword-cleave': { preset: 'volleyTrail', color: 0xff8787, intensity: 1.1 },
@@ -38,9 +49,11 @@ const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec
   'crossbow-barrage-evolved': { preset: 'spinRing', color: 0x2563eb, intensity: 1.25 },
 
   'pistol-shot-base': { preset: 'swingArc', color: 0xfacc15, intensity: 1.0 },
-  'pistol-volley': { preset: 'volleyTrail', color: 0xfde047, intensity: 1.1 },
+  'pistol-rapid-fire': PISTOL_RAPID_FIRE_VFX,
+  'pistol-volley': PISTOL_RAPID_FIRE_VFX,
   'pistol-shot-evolved': { preset: 'impactBurst', color: 0xeab308, intensity: 1.2 },
-  'pistol-volley-evolved': { preset: 'spinRing', color: 0xca8a04, intensity: 1.25 },
+  'pistol-barrage': PISTOL_BARRAGE_VFX,
+  'pistol-volley-evolved': PISTOL_BARRAGE_VFX,
 
   'throwing-toss-base': { preset: 'swingArc', color: 0x22d3ee, intensity: 1.0 },
   'throwing-boomerang': { preset: 'volleyTrail', color: 0x67e8f9, intensity: 1.1 },
