@@ -68,6 +68,7 @@ describe('floor4 wave manifests', () => {
   it('releases waves on the authored cadence', () => {
     const manifests = buildFloor4ActWaveManifests(waves, 404, 1, GATE_COUNT);
 
+    expect(waves.cadence.wavesPerAct).toBe(10);
     expect(waves.cadence.intervalMs).toBe(9000);
     expect(manifests).toHaveLength(waves.cadence.wavesPerAct);
     expect(manifests.map((manifest) => manifest.releaseAtActMs)).toEqual(
@@ -77,6 +78,9 @@ describe('floor4 wave manifests', () => {
     // waves it can never release.
     const windowMs = getFloorManifest('floor4')!.floor4!.phase.waveWindowMs;
     expect(manifests[manifests.length - 1]!.releaseAtActMs).toBeLessThan(windowMs);
+    expect(manifests[manifests.length - 1]!.releaseAtActMs).toBeGreaterThanOrEqual(
+      windowMs - waves.cadence.intervalMs,
+    );
   });
 
   it('ramps the threat budget within and across acts (FR3.3)', () => {
