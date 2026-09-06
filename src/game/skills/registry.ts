@@ -708,7 +708,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 10,
         name: 'Gunslinger',
         description: '+15% attack speed with pistols',
-        abilityId: 'pistol-volley',
+        abilityId: 'pistol-rapid-fire',
       },
       {
         level: 15,
@@ -720,7 +720,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 20,
         name: 'Trigger Mastery',
         description: 'Evolved Gunslinger ability',
-        abilityId: 'pistol-volley-evolved',
+        abilityId: 'pistol-barrage',
       },
     ],
     flavorText: '"Bang. Quick. Effective. Peak entertainment." — The Director',
