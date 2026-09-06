@@ -14,7 +14,7 @@ Fixed the Floor 1 spell broker re-playing the Slime Rat intro after the objectiv
 
 ## Changes
 
-- Added a `bossBattleComplete` branch to `selectSpellBrokerDialogue()` so the post-boss beat suppresses the stale intro while keeping the reward flow locked behind the real claim state.
+- Added a `bossDefeated` branch to `selectSpellBrokerDialogue()` so the post-boss beat suppresses the stale intro while keeping the reward flow locked behind the real claim state.
 - Threaded the Slime Rat kill state (`objective.bossBattles.get('slime-rat').defeated`) — not the `floor1-boss-battle-complete` goal flag — into `resolveDialogueLines('spell-quest-giver', ...)`. That goal flag is the quest's `onCompleteGoalFlag`, which only fires once the `claim-spellbook` objective is _also_ done; `claim-spellbook` is satisfied by `meetSpellQuestGiver()`, which runs after dialogue is resolved. Gating on the goal flag meant the very first post-kill Broker interaction still replayed the stale intro. Reading the kill objective directly covers that first return correctly.
 - Added deterministic unit coverage for the completed-objective (using real kill → return ordering via `freshFloor1World()`), post-claim, and locked-state broker dialogue branches.
 
