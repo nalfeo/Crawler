@@ -14,6 +14,8 @@ import {
   Npc,
   Player,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
   SiegeHero,
   SiegeMinion,
@@ -68,6 +70,7 @@ export interface RenderKindWorld {
   readonly stores: {
     readonly team: { readonly id: ArrayLike<number> };
     readonly sprite: { readonly textureId: ArrayLike<number> };
+    readonly projectileVisual: { readonly kind: ArrayLike<number> };
   };
 }
 
@@ -106,7 +109,12 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
     return 'aoe_proj';
   }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
-  if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
+  if (hasComponent(world.ecs, eid, Projectile)) {
+    return hasComponent(world.ecs, eid, ProjectileVisual) &&
+      world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
+      ? 'bullet'
+      : 'arrow';
+  }
   if (
     hasComponent(world.ecs, eid, Sprite) &&
     world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN

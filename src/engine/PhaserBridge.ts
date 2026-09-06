@@ -1914,7 +1914,8 @@ export function createPhaserBridge(
 
         // Per-type updates
         switch (entityType) {
-          case 'proj':
+          case 'bullet':
+          case 'arrow':
           case 'enemy_proj': {
             const vx = velocity.x[eid] ?? 0;
             const vy = velocity.y[eid] ?? 0;
