@@ -30,7 +30,11 @@ these cases are excluded. This repass additionally re-fetches the current
 `merge-train`, `merge-train-blocked`, `merge-train-recovery-pending`,
 `merge-train-validation-failed`, and `ci-conflict-order-wait` labels before
 dispatch, protecting merge-train ownership even when its decision record is
-outside the lookback window.
+outside the lookback window. It also protects current conflict escalation,
+recovery-waiting, and human-approval labels. The dispatch workflow ref remains
+the repository default branch for locating `ci-recovery.yml`, while each
+candidate's actual base ref is validated and passed as `expected_base_ref`;
+release and maintenance branch PRs are therefore not silently skipped.
 
 ## Files touched
 
@@ -52,7 +56,7 @@ outside the lookback window.
 - `npx vitest run tests/unit/ci-liveness-sweep-workflow.test.ts tests/unit/ci-knobs-guard.test.ts --project unit` — passed (207 tests).
 - Final repass: `node --test .github/scripts/ci-recovery/harvest-liveness.test.mjs`
   — passed (38 tests), including conflict waits and current merge-train
-  ownership labels.
+  ownership labels and non-default base refs.
 - `bash scripts/agent/verify-fast.sh` — passed.
 
 ## Runtime observation
@@ -61,8 +65,8 @@ This is CI tooling, not a game runtime or visual change. The deterministic
 workflow contract and Node regression fixture cover the real scheduled sweep
 and dispatch request path.
 
-## Recommended next steps
+## Review status
 
-The ready-for-review change should be reviewed under the 3-apple independent
-post-diff review policy; the attached review finding was addressed in this
-repass. This repass remains recommended and is an exact 3-apple estimate.
+The attached review findings were addressed in this repass. The ready-for-review
+change still requires the one independent post-diff review mandated for a
+3-apple tooling change.

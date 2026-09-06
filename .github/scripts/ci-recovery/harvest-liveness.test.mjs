@@ -522,6 +522,40 @@ test('dispatchLivenessRedispatches re-fetches state and carries current head/bas
   });
 });
 
+test('dispatchLivenessRedispatches dispatches stale PRs targeting non-default base refs', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4240, { base: { ref: 'release/1.2' } })],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    ref: 'main',
+    getPull: async () => ({
+      data: blockedPull(4240, {
+        base: { ref: 'release/1.2' },
+        head: { sha: 'release-head', repo: { full_name: 'nalfeo/Crawler' } },
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [
+    { number: 4240, headSha: 'release-head', baseRef: 'release/1.2' },
+  ]);
+  assert.deepEqual(dispatches[0], {
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    workflow_id: 'ci-recovery.yml',
+    ref: 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: '4240',
+      trigger: 'ci-liveness-sweep',
+      expected_head_sha: 'release-head',
+      expected_base_ref: 'release/1.2',
+    },
+  });
+});
+
 test('dispatchLivenessRedispatches skips current ownership metadata after re-fetch', async () => {
   const dispatches = [];
   const result = await dispatchLivenessRedispatches({

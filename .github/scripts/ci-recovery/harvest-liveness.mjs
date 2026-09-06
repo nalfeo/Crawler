@@ -47,6 +47,9 @@ const MERGE_TRAIN_LIVENESS_LABELS = new Set([
   'merge-train-recovery-pending',
   'merge-train-validation-failed',
   'ci-conflict-order-wait',
+  'ci-conflict-escalation',
+  'ci-recovery-waiting',
+  'human-approval-required',
 ]);
 
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
@@ -483,7 +486,7 @@ export async function dispatchLivenessRedispatches({
       !isSameRepositoryPull(pull, owner, repo) ||
       hasActiveRecoveryMetadata(pull) ||
       !pull?.head?.sha ||
-      String(pull?.base?.ref || '') !== ref
+      !pull?.base?.ref
     ) {
       skipped.push({ number, reason: 'state-changed' });
       continue;
