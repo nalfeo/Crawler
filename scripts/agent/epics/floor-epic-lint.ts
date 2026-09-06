@@ -158,19 +158,31 @@ function isAchievementNode(node: FloorEpicNode): boolean {
 }
 
 /**
+ * Shared ownership verb/noun vocabulary reused by both directions of
+ * `ACHIEVEMENT_OWNERSHIP_EVIDENCE` (word-before-"achievement" and
+ * word-after-"achievement"), kept in one place so future additions to the
+ * vocabulary only need to be made once.
+ */
+const ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS =
+  'unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|coverage|slice|data|integrated|' +
+  'tracks?|tracked|tracking|verif\\w*|implement\\w*|add(?:s|ed|ing)?|defin\\w*';
+
+/**
  * A node merely *mentioning* "achievement" is not necessarily the node that
  * owns the achievement work — a downstream release/dependency slice can
  * legitimately say "release after achievement QA passes" without itself
  * doing any achievement work, and that reference must not be forced to
  * satisfy the owning-node checks below (Owner count, dependency, unlock/
  * claim/reward evidence, HUMAN_GATE deferral). Require the "achievement"
- * mention to co-occur with an ownership verb/noun (implement/add/define/
- * verify/track/unlock/claim/reward/coverage/slice/data/integrated) in
- * either order within the same sentence-ish window before treating a node
- * as achievement-*owning*.
+ * mention to co-occur with an ownership verb/noun in either order within
+ * the same sentence-ish window before treating a node as achievement-
+ * *owning*.
  */
-const ACHIEVEMENT_OWNERSHIP_EVIDENCE =
-  /\bachievements?\b[^.]{0,80}\b(?:unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|coverage|slice|data|integrated|tracks?|tracked|tracking|verif\w*|implement\w*|add(?:s|ed|ing)?|defin\w*)\b|\b(?:unlocks?|unlocked|unlocking|claims?|claimed|claiming|rewards?|verif\w*|implement\w*|add(?:s|ed|ing)?|defin\w*|tracks?|tracked|tracking)\b[^.]{0,80}\bachievements?\b/i;
+const ACHIEVEMENT_OWNERSHIP_EVIDENCE = new RegExp(
+  `\\bachievements?\\b[^.]{0,80}\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b` +
+    `|\\b(?:${ACHIEVEMENT_OWNERSHIP_VERBS_NOUNS})\\b[^.]{0,80}\\bachievements?\\b`,
+  'i',
+);
 
 function isAchievementOwningNode(node: FloorEpicNode): boolean {
   return (
@@ -204,9 +216,24 @@ function achievementAcceptanceEvidence(body: string): {
 const NUMERIC_THRESHOLD_UNITS =
   '(?:kills?|damage|gold|seconds?|minutes?|hours?|points?|score|waves?|rooms?|runs?|clears?|' +
   'relics?|items?|artifacts?|coins?|orbs?|gems?|tokens?|keys?|chests?|treasures?|' +
-  'enemies|monsters|bosses|health|hp|mana|xp|experience|quests?|objectives?|targets?)';
+  'enemies|monsters|bosses|xp|experience|quests?|objectives?|targets?)';
 const NUMERIC_THRESHOLD_UNITS_PATTERN = new RegExp(
   `\\d+(?:\\.\\d+)?\\s+${NUMERIC_THRESHOLD_UNITS}\\b`,
+  'i',
+);
+
+/**
+ * "health"/"hp"/"mana" are ambiguous on their own — "the boss deals 50 hp
+ * damage per hit" is flavor text, not an achievement threshold — so these
+ * units only count when adjacent to a threshold-style qualifier word
+ * (at least/at most/exactly/reach/after/within/complete/finish with/...).
+ */
+const THRESHOLD_QUALIFIER =
+  '(?:at\\s+least|at\\s+most|no\\s+more\\s+than|no\\s+less\\s+than|exactly|reach(?:es|ed|ing)?|' +
+  'after|within|complete[sd]?|finish(?:es|ed|ing)?(?:\\s+with)?)';
+const AMBIGUOUS_UNITS = '(?:health|hp|mana)';
+const AMBIGUOUS_UNITS_PATTERN = new RegExp(
+  `\\b${THRESHOLD_QUALIFIER}\\b[^.]{0,20}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
   'i',
 );
 
@@ -221,7 +248,8 @@ function achievementRequiresNumericHumanGate(body: string): boolean {
     /\bthreshold\b/i.test(body) ||
     /\d+(?:\.\d+)?\s*%/.test(body) ||
     /\b(?:level|tier|wave|stage|phase|act)\s+\d+(?:\.\d+)?\b/i.test(body) ||
-    NUMERIC_THRESHOLD_UNITS_PATTERN.test(body)
+    NUMERIC_THRESHOLD_UNITS_PATTERN.test(body) ||
+    AMBIGUOUS_UNITS_PATTERN.test(body)
   );
 }
 
