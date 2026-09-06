@@ -135,6 +135,24 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     expect(resolveFloor2ArchetypeAIType(chase!)).toBe(AI_TYPE.CHASE);
   });
 
+  it('scales live Floor 2 boss HP above the archetype base so a signature cycle can play', () => {
+    const world = createTestWorld({ floor: 2 });
+    const archetype = floor2EnemyPack.archetypes.find((a) => a.id === 'goblin-boss');
+    const eid = spawnFamilyBoss(world, 0, 0, 0, asFamilyId('goblins'));
+
+    expect(archetype).toBeDefined();
+    // The expected multiplier is spelled out rather than imported from
+    // `floor2Scenario.ts`: importing the shipped constant would make this
+    // assertion tautological (it would pass for any scale, including a
+    // regression back to the arena lab's 0.03 debug shrink), and the constant
+    // has no production caller outside its own module. 4× is the measured
+    // minimum that clears every signature-cycle window — see
+    // `tests/headless/floor2-boss-survival-gate.test.ts` for the evidence.
+    expect(world.stores.health.max[eid]).toBe(archetype!.hp * 4);
+    expect(world.stores.health.current[eid]).toBe(world.stores.health.max[eid]);
+    expect(world.stores.health.max[eid]).toBeGreaterThan(archetype!.hp);
+  });
+
   it('spawns a ranged family boss that attacks the player', () => {
     const world = createTestWorld({ floor: 2 });
     world.elapsedMs = 100;
