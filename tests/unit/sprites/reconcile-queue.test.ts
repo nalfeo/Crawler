@@ -1098,6 +1098,7 @@ function seedQueueWithArt(
   liveDir: string,
   keys: readonly string[],
   queueBranch = 'assets/queue',
+  assetPathForKey: (key: string) => string = (key) => `generated/${key}.png`,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-'));
@@ -1108,14 +1109,15 @@ function seedQueueWithArt(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      const pngPath = path.join(genDir, `${key}.png`);
+      const assetPath = assetPathForKey(key);
+      const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
       const shardPath = path.join(entriesDir, `${key}.json`);
       mkdirSync(path.dirname(pngPath), { recursive: true });
       mkdirSync(path.dirname(shardPath), { recursive: true });
       writeFileSync(pngPath, PNG_BYTES);
       // One self-contained shard per asset — the sharded source of truth.
       writeJson(shardPath, {
-        assetPath: `generated/${key}.png`,
+        assetPath,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
         sourceRun: `generated/runs/${key}/run-0`,
@@ -1234,6 +1236,7 @@ function addArtDirectlyToMain(
   liveDir: string,
   keys: readonly string[],
   bytes: Buffer = PNG_BYTES,
+  assetPathForKey: (key: string) => string = (key) => `generated/${key}.png`,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-main-'));
@@ -1243,13 +1246,14 @@ function addArtDirectlyToMain(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      const pngPath = path.join(genDir, `${key}.png`);
+      const assetPath = assetPathForKey(key);
+      const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
       const shardPath = path.join(entriesDir, `${key}.json`);
       mkdirSync(path.dirname(pngPath), { recursive: true });
       mkdirSync(path.dirname(shardPath), { recursive: true });
       writeFileSync(pngPath, bytes);
       writeJson(shardPath, {
-        assetPath: `generated/${key}.png`,
+        assetPath,
         spriteName: key,
         contentHash: TEST_CONTENT_HASH,
         sourceRun: `generated/runs/${key}/run-0`,
@@ -1291,7 +1295,11 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
  * A→B→A re-approval where the user approves the same pixels again after main
  * has moved to a different version.
  */
-function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: string): void {
+function reapproveQueueWithOriginalBytesAndFreshShard(
+  liveDir: string,
+  key: string,
+  assetPath = `generated/${key}.png`,
+): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-reapprove-'));
   try {
@@ -1299,14 +1307,15 @@ function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: stri
     const genDir = path.join(wt, 'public', 'assets', 'generated');
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
-    mkdirSync(path.dirname(path.join(genDir, `${key}.png`)), { recursive: true });
+    const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
+    mkdirSync(path.dirname(pngPath), { recursive: true });
     mkdirSync(path.dirname(path.join(entriesDir, `${key}.json`)), { recursive: true });
     // PNG goes back to original bytes (A→B→A).
-    writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    writeFileSync(pngPath, PNG_BYTES);
     // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
     // by itself — the atomicity fix must withhold it alongside its paired PNG.
     writeJson(path.join(entriesDir, `${key}.json`), {
-      assetPath: `generated/${key}.png`,
+      assetPath,
       spriteName: key,
       contentHash: 'reapproved-' + TEST_CONTENT_HASH,
     });
@@ -1907,6 +1916,28 @@ describe('runReconcile (real git)', () => {
     const second = await runReconcile(liveDir, realDeps(gh));
     expect(second.status).toBe('noop');
     expect(second.withheldPaths).toContain(`public/assets/generated/${key}.png`);
+    expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
+  });
+
+  it('(d7) pairs a nested shard with its authored flattened PNG path', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'equipment/accessory/lucky-feather';
+    const assetPath = 'generated/equipment-accessory-lucky-feather.png';
+    const assetPathForKey = () => assetPath;
+    seedQueueWithArt(liveDir, [key], 'assets/queue', assetPathForKey);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES, assetPathForKey);
+    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key, assetPath);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain(`public/assets/${assetPath}`);
     expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
     expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
   });

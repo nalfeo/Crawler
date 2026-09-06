@@ -892,48 +892,41 @@ export async function filterPromotablePaths(
     return sourceHistory.get(p)?.has(baseSha) === true;
   };
 
-  // Atomic PNG+shard grouping: a PNG at `public/assets/generated/<key>.png` and
-  // its shard at `public/assets/generated/entries/<key>.json` must be accepted or
-  // withheld together. Without this, a stale PNG (whose bytes main already
-  // carried) would be withheld while a freshly-stamped shard (a new blob, never
-  // seen by main) passes — landing a shard whose `contentHash` describes the
-  // withheld PNG while main still holds the superseding bytes.
-  const safeRelativeKey = (value: string): string | undefined => {
-    if (
-      value === '' ||
-      value.includes('\\') ||
-      value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
-    ) {
-      return undefined;
+  // Atomic PNG+shard grouping must follow each shard's authored assetPath, not
+  // derive a PNG path from the manifest key. Nested equipment keys can point to
+  // flattened or suffixed PNG names.
+  const pathSet = new Set(paths);
+  const pairs: Array<readonly [string, string]> = [];
+  const shardPrefix = 'public/assets/generated/entries/';
+  for (const shardPath of paths) {
+    if (!shardPath.startsWith(shardPrefix) || !shardPath.endsWith('.json')) continue;
+    const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
+    if (shard.code !== 0) return [];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(shard.stdout);
+    } catch {
+      return [];
     }
-    return value;
-  };
-  const pngFromShard = (p: string): string | undefined => {
-    const prefix = 'public/assets/generated/entries/';
-    const suffix = '.json';
-    if (!p.startsWith(prefix) || !p.endsWith(suffix)) return undefined;
-    const key = safeRelativeKey(p.slice(prefix.length, -suffix.length));
-    return key === undefined ? undefined : `public/assets/generated/${key}.png`;
-  };
-  const shardFromPng = (p: string): string | undefined => {
-    const prefix = 'public/assets/generated/';
-    const suffix = '.png';
-    if (!p.startsWith(prefix) || !p.endsWith(suffix)) return undefined;
-    const key = safeRelativeKey(p.slice(prefix.length, -suffix.length));
-    return key === undefined ? undefined : `public/assets/generated/entries/${key}.json`;
-  };
+    const assetPath =
+      typeof parsed === 'object' && parsed !== null
+        ? (parsed as { readonly assetPath?: unknown }).assetPath
+        : undefined;
+    if (!isSafeQueueAssetPath(assetPath)) return [];
+    const pngPath = `public/assets/${assetPath}`;
+    if (pathSet.has(pngPath)) pairs.push([shardPath, pngPath]);
+  }
 
-  // Build a set of individually-passing paths, then suppress any whose paired
-  // counterpart failed.
+  // Build a set of individually-passing paths, then suppress either half of a
+  // changed logical pair when its counterpart failed.
   const passingSet = new Set(paths.filter(perPathOk));
-  const withheldByPair = new Set<string>();
-  for (const p of passingSet) {
-    const counterpart = p.endsWith('.json') ? pngFromShard(p) : shardFromPng(p);
-    if (counterpart !== undefined && !passingSet.has(counterpart) && paths.includes(counterpart)) {
-      withheldByPair.add(p);
+  for (const [shardPath, pngPath] of pairs) {
+    if (passingSet.has(shardPath) !== passingSet.has(pngPath)) {
+      passingSet.delete(shardPath);
+      passingSet.delete(pngPath);
     }
   }
-  return [...passingSet].filter((p) => !withheldByPair.has(p));
+  return [...passingSet];
 }
 
 /** Destination tree-entry modes the reconciler will allow onto `main`. */

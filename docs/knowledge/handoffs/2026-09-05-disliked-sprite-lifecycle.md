@@ -326,6 +326,9 @@ sprite-pipeline, sprite-workflow
   while refusing to reinterpret nested variant namespaces. A clean-review
   follow-up also binds the tombstone concept to the current main shard before
   any replacement can authorize deletion, preventing cross-concept retirement.
+  Shard/PNG promotion atomicity now follows each shard's validated `assetPath`
+  rather than deriving the PNG from its manifest key, covering shipped nested
+  keys whose PNG names are flattened or carry placeholder suffixes.
 
 ## PR #3234 generic extraction audit
 
