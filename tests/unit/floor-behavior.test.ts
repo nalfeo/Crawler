@@ -3,6 +3,7 @@ import { createTestWorld } from '../helpers/world-factory';
 import { getWorldFloorBehavior, getWorldFloorManifest } from '../../src/core/floor-behavior';
 import { DEFAULT_FLOOR_BEHAVIOR } from '../../src/shared/floor-behavior';
 import { floor1Manifest, floor2Manifest, floor3Manifest } from '../../src/shared/floor-manifest';
+import { getTerrainPack } from '../../src/shared/terrain-pack-registry';
 
 describe('floor behavior config', () => {
   it('ships Floor 1 safe-room and boss-chest semantics in the manifest', () => {
@@ -54,6 +55,16 @@ describe('floor behavior config', () => {
       settlementEquipmentEconomy: false,
       trashAttackWaves: false,
     });
+  });
+
+  it('uses the bright outdoor Companion League terrain set on Floor 3', () => {
+    expect(floor3Manifest.terrainPackId).toBe('companion-overworld');
+    expect(floor3Manifest.props?.biomeTag).toBe('organic');
+    expect(floor3Manifest.lighting.ambient).toBeGreaterThan(0.35);
+
+    const pack = getTerrainPack('companion-overworld');
+    expect(pack.name).toBe('Companion League Overworld');
+    expect(pack.wallAutotile.textureKey).toContain('companion-overworld');
   });
 
   it('defaults every flag to off when a manifest omits the block', () => {

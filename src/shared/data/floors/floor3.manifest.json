@@ -30,7 +30,7 @@
     "floorDensity": 0.35,
     "tileSizeFt": 4.0
   },
-  "terrainPackId": "industrial-cave",
+  "terrainPackId": "companion-overworld",
   "enemyPackId": "floor3-wild",
   "floorLootTableId": "floor_3",
   "player": {
@@ -51,12 +51,13 @@
     "bossChests": false
   },
   "lighting": {
-    "ambient": 0.1
+    "ambient": 0.45
   },
   "props": {
-    "biomeTag": "cave",
-    "densityMultiplier": 0.85,
-    "allowedCategories": ["rubbish", "light-source", "structural"]
+    "biomeTag": "organic",
+    "densityMultiplier": 0.9,
+    "allowedCategories": ["organic"],
+    "allowedPropIds": ["vine", "moss-patch"]
   },
   "floor3": {
     "biomeRegionCount": 7

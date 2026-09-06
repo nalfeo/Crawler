@@ -29,6 +29,7 @@ export const RUNTIME_TERRAIN_PACK_IDS = [
   'industrial-cave',
   'floor1-dungeon',
   'floor1-cave',
+  'companion-overworld',
 ] as const;
 export const runtimeTerrainPackIdSchema = z.enum(RUNTIME_TERRAIN_PACK_IDS);
 export type RuntimeTerrainPackId = z.infer<typeof runtimeTerrainPackIdSchema>;
