@@ -131,7 +131,9 @@ describe('Floor 1 Spell Broker', () => {
     expect(purchased).toBe(FLOOR1_SPELL_BROKER_MAX_PURCHASES);
 
     const remaining = getSpellBrokerOffers(world).filter((offer) => !offer.purchased);
-    expect(remaining.length).toBeGreaterThan(0);
+    expect(remaining.length).toBe(
+      FLOOR1_SPELL_BROKER_OFFER_COUNT - FLOOR1_SPELL_BROKER_MAX_PURCHASES,
+    );
     for (const offer of remaining) {
       expect(canPurchaseSpellBrokerSpell(world, player, offer.spellId)).toBe(false);
     }
