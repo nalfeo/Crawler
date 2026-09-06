@@ -40,6 +40,10 @@ function decide(entry, env = GOOBERS_ENV) {
 
 test('gh bot logins are restored to their REST [bot] form', () => {
   assert.equal(normalizeGhLogin({ login: 'github-actions', is_bot: true }), 'github-actions[bot]');
+  assert.equal(
+    normalizeGhLogin({ login: 'app/github-actions', is_bot: true }),
+    'github-actions[bot]',
+  );
   assert.equal(normalizeGhLogin({ login: 'Copilot', is_bot: true }), 'Copilot[bot]');
   assert.equal(
     normalizeGhLogin({ login: 'copilot-swe-agent[bot]', is_bot: true }),
@@ -47,6 +51,19 @@ test('gh bot logins are restored to their REST [bot] form', () => {
   );
   assert.equal(normalizeGhLogin({ login: 'nalfeo', is_bot: false }), 'nalfeo');
   assert.equal(normalizeGhLogin(undefined), '');
+});
+
+test('search and issue-view aliases produce the same canonical Actions eligibility', () => {
+  const searchDecision = decide(
+    ghIssue({ number: 4248, author: { login: 'github-actions[bot]', is_bot: false } }),
+  );
+  const issueViewDecision = decide(
+    ghIssue({ number: 4248, author: { login: 'app/github-actions', is_bot: true } }),
+  );
+
+  assert.deepEqual(issueViewDecision, searchDecision);
+  assert.equal(issueViewDecision.eligible, true);
+  assert.equal(issueViewDecision.cohort, 'legacy-parity');
 });
 
 test('gh records normalize onto the REST issue shape the canonical library consumes', () => {
@@ -217,6 +234,25 @@ test('selection prioritizes approved issues and otherwise preserves creation ord
       [15, 'approved'],
       [10, 'legacy-parity'],
       [13, 'legacy-parity'],
+    ],
+  );
+});
+
+test('selection excludes an untrusted bot ahead of valid legacy-parity candidates', () => {
+  const selected = selectGoobersIntakeIssues(
+    [
+      ghIssue({ number: 9, author: { login: 'untrusted-automation', is_bot: true } }),
+      ghIssue({ number: 10 }),
+      ghIssue({ number: 11, author: { login: 'github-actions[bot]', is_bot: false } }),
+    ],
+    { maintainerLogin: 'nalfeo', env: GOOBERS_ENV },
+  );
+
+  assert.deepEqual(
+    selected.map((decision) => [decision.number, decision.cohort]),
+    [
+      [10, 'legacy-parity'],
+      [11, 'legacy-parity'],
     ],
   );
 });

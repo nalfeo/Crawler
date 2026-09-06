@@ -39,6 +39,9 @@ export function normalizeGhLogin(actor) {
   const login = String((typeof actor === 'string' ? actor : (actor?.login ?? '')) || '').trim();
   if (!login) return '';
   const isBot = actor?.is_bot === true || actor?.isBot === true;
+  // `gh issue view` uses this app-qualified alias for the same Actions bot that
+  // `gh search issues` reports as `github-actions[bot]`.
+  if (isBot && login.toLowerCase() === 'app/github-actions') return 'github-actions[bot]';
   return isBot && !login.endsWith('[bot]') ? `${login}[bot]` : login;
 }
 
