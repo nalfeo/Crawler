@@ -39,6 +39,23 @@ import {
   isCopilotLogin,
   replaceIssueAssignees,
 } from './issue-intake-lib.mjs';
+import { OWNER_LABEL_PREFIX, WAITING_TRANSITION_LABEL } from './state.mjs';
+
+const MERGE_TRAIN_LIVENESS_LABELS = new Set([
+  'merge-train',
+  'merge-train-blocked',
+  'merge-train-recovery-pending',
+  'merge-train-validation-failed',
+  'ci-conflict-order-wait',
+  'ci-conflict-escalation',
+  'ci-recovery-waiting',
+  'human-approval-required',
+  // Mirror router.mjs's DISPATCH_BLOCKED_LABEL_NAMES/opt-out exclusions so this
+  // direct backstop never dispatches a PR the canonical router would refuse.
+  'ci-lifecycle-quarantined', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.QUARANTINED]
+  'ci-lifecycle-abandoned', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.ABANDONED]
+  'ci-recovery-opt-out', // router.mjs hasOptOutLabel
+]);
 
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
 export const HARVEST_INCIDENT_TITLE = 'CI incident: stale-session harvest not completing';
@@ -51,6 +68,41 @@ export const DISPATCH_LIVENESS_INCIDENT_MARKER = '<!-- crawler:ci-dispatch-liven
 export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
 export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
+export const DEFAULT_LIVENESS_REDISPATCH_CAP = 3;
+
+/**
+ * Parse an env-var override as a strictly positive integer, falling back to
+ * `fallback` when the value is unset, non-numeric (including trailing
+ * garbage such as `'3junk'`), zero, or negative.
+ *
+ * `Number.parseInt(value, 10) || fallback` looks equivalent but is not:
+ * `-1` parses to a truthy `-1`, so it is accepted rather than falling back,
+ * and a downstream `slice(0, cap)` silently disables the caller (a negative
+ * `cap` clamps to `slice(0, 0)`). `Number.parseInt` also tolerates trailing
+ * non-digit characters (`parseInt('3junk', 10) === 3`), so the whole string
+ * must match a plain positive-integer pattern before it is parsed.
+ */
+export function parsePositiveIntEnv(value, fallback) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const PROTECTED_LIVENESS_ACTIONS = new Set([
+  'skip-duplicate-fingerprint',
+  'skip-merge-train-owned',
+  'queue-merge-train',
+  'wait-admission',
+  DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT,
+  DISPATCH_ACTION.WAIT_CONFLICT_REBASE_PENDING,
+  DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF,
+  DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD,
+  DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
+  // Terminal decision: the PR's automation budget is intentionally exhausted
+  // (dispatch-table.mjs:349-351). Once the decision record ages out of the
+  // sampling window this is the only thing that still remembers it.
+  DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
+]);
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
   const context = await getCopilotIssueAssignmentContext({
@@ -356,6 +408,144 @@ export function summarizeDispatchLiveness({
       (left, right) => right[1] - left[1],
     ),
   };
+}
+
+function pullNumber(pull) {
+  const number = Number(pull?.number);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function isSameRepositoryPull(pull, owner, repo) {
+  const fullName = String(pull?.head?.repo?.full_name || '').toLowerCase();
+  return fullName === `${owner}/${repo}`.toLowerCase();
+}
+
+function hasActiveRecoveryMetadata(pull) {
+  return (pull?.labels || []).some((label) => {
+    const name = typeof label === 'string' ? label : label?.name;
+    return (
+      String(name || '').startsWith(OWNER_LABEL_PREFIX) ||
+      String(name || '') === WAITING_TRANSITION_LABEL ||
+      MERGE_TRAIN_LIVENESS_LABELS.has(String(name || '').toLowerCase())
+    );
+  });
+}
+
+function isStalePull(pull, now, gapMs) {
+  const blockedAt = Date.parse(
+    String(pull?.blocked_since || pull?.updated_at || pull?.created_at || ''),
+  );
+  return Number.isFinite(blockedAt) && now.getTime() - blockedAt >= gapMs;
+}
+
+/**
+ * Select never-summoned blocked PRs that are safe for the liveness backstop.
+ * The caller must still hydrate each selected PR before dispatching.
+ */
+export function selectLivenessRedispatchCandidates({
+  pulls,
+  owner = '',
+  repo = '',
+  protectedPullNumbers = new Set(),
+  alreadyDispatchedPullNumbers = new Set(),
+  now = new Date(),
+  gapHours = DEFAULT_PR_DISPATCH_GAP_HOURS,
+  cap = DEFAULT_LIVENESS_REDISPATCH_CAP,
+}) {
+  const gapMs = gapHours * 60 * 60 * 1000;
+  const protectedNumbers = new Set([...protectedPullNumbers].map(Number));
+  const dispatchedNumbers = new Set([...alreadyDispatchedPullNumbers].map(Number));
+  return (pulls || [])
+    .filter((pull) => {
+      const number = pullNumber(pull);
+      return (
+        number !== null &&
+        String(pull?.state || 'open').toLowerCase() === 'open' &&
+        pull.draft !== true &&
+        String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
+        isSameRepositoryPull(pull, owner, repo) &&
+        !hasActiveRecoveryMetadata(pull) &&
+        isStalePull(pull, now, gapMs) &&
+        !protectedNumbers.has(number) &&
+        !dispatchedNumbers.has(number)
+      );
+    })
+    .sort((left, right) => pullNumber(left) - pullNumber(right))
+    .slice(0, Math.max(0, cap));
+}
+
+export function protectedLivenessPullNumbers(decisions) {
+  return new Set(
+    (decisions || [])
+      .filter((record) => PROTECTED_LIVENESS_ACTIONS.has(String(record?.action || '')))
+      .map((record) => Number(record?.pr))
+      .filter((number) => Number.isInteger(number) && number > 0),
+  );
+}
+
+/**
+ * Re-fetch and dispatch selected PRs with TOCTOU guards. A changed head is
+ * intentionally dispatched with its new SHA; ci-recovery then validates that
+ * exact SHA immediately before any mutation.
+ */
+export async function dispatchLivenessRedispatches({
+  candidates,
+  getPull,
+  dispatch,
+  owner,
+  repo,
+  ref = 'main',
+  trigger = 'ci-liveness-sweep',
+}) {
+  const dispatched = [];
+  const skipped = [];
+  const seen = new Set();
+  for (const candidate of candidates || []) {
+    const number = pullNumber(candidate);
+    if (number === null || seen.has(number)) continue;
+    seen.add(number);
+    let response;
+    try {
+      response = await getPull(number);
+    } catch (error) {
+      skipped.push({ number, reason: 'hydration-failed', error: String(error?.message || error) });
+      continue;
+    }
+    const pull = response?.data || response;
+    const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
+    if (
+      String(pull?.state || '').toLowerCase() !== 'open' ||
+      pull.draft === true ||
+      mergeableState !== 'blocked' ||
+      !isSameRepositoryPull(pull, owner, repo) ||
+      hasActiveRecoveryMetadata(pull) ||
+      !pull?.head?.sha ||
+      !pull?.base?.ref
+    ) {
+      skipped.push({ number, reason: 'state-changed' });
+      continue;
+    }
+    try {
+      await dispatch({
+        owner,
+        repo,
+        workflow_id: 'ci-recovery.yml',
+        ref,
+        inputs: {
+          operation: 'reconcile',
+          pr_number: String(number),
+          trigger,
+          expected_head_sha: pull.head.sha,
+          expected_base_ref: pull.base.ref,
+        },
+      });
+    } catch (error) {
+      skipped.push({ number, reason: 'dispatch-failed', error: String(error?.message || error) });
+      continue;
+    }
+    dispatched.push({ number, headSha: pull.head.sha, baseRef: pull.base.ref });
+  }
+  return { dispatched, skipped };
 }
 
 /**
