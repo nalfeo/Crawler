@@ -2314,11 +2314,35 @@ describe('runReconcile (real git)', () => {
     expect(parseSourceTrailers(body).queueSha).toBe(queueSha);
   });
 
-  it('(c3) refuses a newly minted replacement-free lifecycle tombstone', async () => {
+  it('(c3) refuses stripping the replacement from a persisted lifecycle tombstone', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     const key = 'queue-goon-var-3';
     addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'pull', '--ff-only', 'origin', 'main');
+    writeJson(
+      path.join(liveDir, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'),
+      {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              replacementKey: 'queue-goon-var-4',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      },
+    );
+    gitSync(liveDir, 'add', '-A');
+    gitSync(liveDir, 'commit', '--no-verify', '-m', 'persist named replacement tombstone');
+    gitSync(liveDir, 'push', 'origin', 'main');
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
     const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-no-replacement-'));
     try {

@@ -297,7 +297,7 @@ function isSafeQueueAssetPath(value: unknown): value is string {
   );
 }
 
-function isLifecycleDeletionTombstone(
+export function isLifecycleDeletionTombstone(
   annotationKey: string,
   value: unknown,
 ): value is LifecycleDeletionTombstone {
@@ -344,6 +344,7 @@ async function describeUnavailableLifecycleReplacement(
         };
         const base = document.sprites?.[deletion.tombstone.manifestKey]?.tombstone;
         if (
+          base?.replacementKey === undefined &&
           base?.manifestKey === deletion.tombstone.manifestKey &&
           base.conceptId === deletion.tombstone.conceptId &&
           base.assetPath === deletion.tombstone.assetPath &&

@@ -622,6 +622,7 @@ export function buildDislikedLifecyclePlan(
         variantIndex: removal.variantIndex,
         annotationKeys: removal.annotationKeys,
       },
+      reconciliation: undefined,
     };
   }
 

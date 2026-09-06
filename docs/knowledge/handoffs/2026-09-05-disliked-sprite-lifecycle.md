@@ -374,6 +374,11 @@ sprite-pipeline, sprite-workflow
   new omissions fail closed. The same review found and fixed an asymmetric
   annotation no-op guard that could materialize `{}` while clearing an already
   absent reconciliation marker during a CAS retry.
+- Follow-up review closed the remaining trust-boundary variants: the persisted
+  base tombstone must itself be replacement-free, malformed tombstones are
+  rejected before queue publication, pre-existing queue deletions are authorized
+  only by persisted tombstones rather than caller-declared removals, and removal
+  plans preserve an explicit clear for stale reconciliation markers.
 
 ## PR #3234 generic extraction audit
 

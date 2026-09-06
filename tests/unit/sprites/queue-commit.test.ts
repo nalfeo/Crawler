@@ -351,6 +351,27 @@ describe('runQueueCommit (control flow)', () => {
     ).toThrow(/Duplicate sprite annotation key/);
   });
 
+  it('assertSafeAnnotationUpdates: rejects malformed lifecycle tombstones', () => {
+    expect(() =>
+      assertSafeAnnotationUpdates([
+        {
+          key: 'rat-var-0',
+          favorite: false,
+          disliked: true,
+          comment: '',
+          tombstone: {
+            manifestKey: 'different-key',
+            conceptId: 'rat',
+            assetPath: 'generated/rat-var-0.png',
+            sourceRun: 'generated/runs/rat/run-0',
+            variantIndex: 0,
+            annotationKeys: ['rat-var-0'],
+          },
+        },
+      ]),
+    ).toThrow(/Invalid lifecycle tombstone/);
+  });
+
   it('does not materialize an empty annotation when clearing an absent reconciliation', () => {
     expect(
       applySpriteAnnotationUpdates({ version: 1, sprites: {} }, [
@@ -1540,9 +1561,11 @@ describe('runQueueCommit (real git)', () => {
               comment: '',
               tombstone: {
                 manifestKey: key,
+                conceptId: 'rat',
                 assetPath: `generated/${key}.png`,
                 sourceRun: 'generated/runs/rat/run-a',
                 variantIndex: 0,
+                annotationKeys: [key],
               },
             },
           ],
@@ -1600,9 +1623,11 @@ describe('runQueueCommit (real git)', () => {
               comment: '',
               tombstone: {
                 manifestKey: key,
+                conceptId: 'rat',
                 assetPath: `generated/${key}.png`,
                 sourceRun: 'generated/runs/rat/run-a',
                 variantIndex: 0,
+                annotationKeys: [key],
               },
             },
           ],

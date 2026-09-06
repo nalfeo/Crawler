@@ -688,6 +688,31 @@ describe('disliked sprite lifecycle planning', () => {
     expect(Object.hasOwn(update!, 'reconciliation')).toBe(true);
   });
 
+  it('retracts a stale reconciliation marker when the resolved sprite is removed', () => {
+    const root = makeRoot();
+    const plan = buildDislikedLifecyclePlan({
+      repoRoot: root,
+      manifestEntries: {
+        'rat-var-0': entry('rat', 0),
+        'rat-var-1': entry('rat', 1),
+      },
+      trackedAnnotations: annotations({
+        'rat-var-0': {
+          disliked: true,
+          reconciliation: { outcome: 'unmatched', annotationKey: 'rat-var-0' },
+        },
+      }),
+    });
+
+    expect(plan.removed.map((item) => item.manifestKey)).toEqual(['rat-var-0']);
+    const tombstoned = plan.annotations.sprites['rat-var-0']!;
+    expect(Object.hasOwn(tombstoned, 'reconciliation')).toBe(true);
+    expect(tombstoned.reconciliation).toBeUndefined();
+    const update = plan.annotationUpdates.find((item) => item.key === 'rat-var-0');
+    expect(update).toBeDefined();
+    expect(Object.hasOwn(update!, 'reconciliation')).toBe(true);
+  });
+
   it('leaves an out-of-scope reconciliation marker for the repo-wide sweep to retract', () => {
     const root = makeRoot();
     const plan = buildDislikedLifecyclePlan({

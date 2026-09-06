@@ -45,6 +45,7 @@
 import { ASSET_SURFACE_PATHS, type CheckinAsset, type Exec } from './checkin.js';
 import {
   assertLifecycleDeletionMatchesShard,
+  isLifecycleDeletionTombstone,
   selectAuthorizedLifecycleDeletions,
 } from './reconcile-queue.js';
 
@@ -401,6 +402,15 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
     }
     seen.add(update.key);
     if (update.delete === true) continue;
+    if (
+      update.tombstone !== undefined &&
+      !isLifecycleDeletionTombstone(update.key, update.tombstone)
+    ) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Invalid lifecycle tombstone for ${update.key}.`,
+      );
+    }
     const isCompleteCuration =
       typeof update.favorite === 'boolean' &&
       typeof update.disliked === 'boolean' &&
@@ -694,12 +704,7 @@ export async function runQueueCommit(
             .split(/\r?\n/)
             .filter((deletedPath) => deletedPath.trim() !== '');
           const generatedAssetDeletionPaths = deletedPaths.filter(isGeneratedAssetDeletionPath);
-          const allowedDeletionPaths = new Set(
-            removals.flatMap((removal) => [
-              `public/assets/${removal.assetPath}`,
-              `public/assets/generated/entries/${removal.manifestKey}.json`,
-            ]),
-          );
+          const allowedDeletionPaths = new Set<string>();
           if (generatedAssetDeletionPaths.length > 0) {
             const persistedAnnotations = await runGit(deps.exec, repoRoot, [
               'show',
