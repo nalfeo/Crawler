@@ -69,6 +69,7 @@ import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
 import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
+import { resolveAchievementToastY } from '../../shared/achievement-toast-layout.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
@@ -5309,7 +5310,11 @@ export class MainGameScene extends Phaser.Scene {
 
   private positionAchievementToast(): void {
     const commentary = this.directorCommentaryText;
-    const y = commentary?.visible === true ? commentary.y + commentary.height + 12 : 150;
+    const y = resolveAchievementToastY(
+      commentary?.visible === true,
+      commentary?.y ?? 96,
+      commentary?.height ?? 0,
+    );
     this.achievementToast?.setY(y);
   }
 

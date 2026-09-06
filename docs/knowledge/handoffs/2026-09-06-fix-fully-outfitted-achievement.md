@@ -22,9 +22,10 @@ achievement toast moves below active director commentary.
 - `npm run typecheck`
 - `npm run lint -- --quiet`
 - `npx vitest run tests/game/achievement-system.test.ts tests/property/achievement-facts-properties.test.ts tests/integration/achievements-ui-icon-render.test.ts`
+- `npx vitest run tests/integration/achievements-ui-icon-render.test.ts tests/unit/main-game-scene-achievement-toast.test.ts`
 - `npm run verify:fast` — 294 files and 3714 tests passed; fast verification passed.
-- Deterministic before/after coverage: the achievement-system regression exercises
+- Deterministic regression coverage: the achievement-system regression exercises
   empty, partial, and fully occupied equipment state plus a bag-only item; the
-  real `AchievementsUI` integration path remains covered by the generated-icon
-  render tests, and the real scene toast path now positions from measured
-  commentary height.
+  real `AchievementsUI` integration path captures rendered text bounds and
+  asserts title/criteria/flavor separation; the toast layout helper asserts
+  placement below multiline commentary and restoration after commentary hides.
