@@ -51,12 +51,14 @@ function initializeEnemyAppearance(world: GameWorld, eid: number): void {
 export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string): void {
   if (key.length === 0) {
     world.enemyAppearanceKeys.delete(eid);
+    world.entityWeaponAnchors.delete(eid);
     return;
   }
   if (world.enemyAppearanceKeys.get(eid) === key) {
     return;
   }
   world.enemyAppearanceKeys.set(eid, key);
+  world.entityWeaponAnchors.delete(eid);
   const appearanceSeed = hashStringToSeed(
     `enemy-appearance-key:${world.seed}:${world.entityRenderGeneration[eid]}:${key}`,
   );

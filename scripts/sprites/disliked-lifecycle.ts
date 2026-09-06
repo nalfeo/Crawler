@@ -1156,7 +1156,10 @@ export async function runAcceptedDislikedLifecycleTransaction<T>(
       }
     }
     const approvedKeySet = new Set(approvedKeys);
-    if (approvedKeySet.size === 0) {
+    if (
+      approvedKeySet.size === 0 &&
+      options.replacements.some((replacement) => planMutatesReplacement(initialPlan, replacement))
+    ) {
       throw new Error(
         'Acceptance produced no approved replacements; skipped candidates cannot authorize lifecycle changes.',
       );

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   setEnemyAppearanceKey,
@@ -429,5 +430,56 @@ describe('seeded sprite variant runtime contract', () => {
     expect(withoutRegistry.headlessAnchor).toBeNull();
     expect(anchored.variantRoll).toBe(withoutRegistry.variantRoll);
     expect(anchored.gameplayRngTail).toEqual(withoutRegistry.gameplayRngTail);
+  });
+
+  it('invalidates cached weapon anchors when a headless entity id is recycled', async () => {
+    let observed:
+      | {
+          readonly firstAnchor: NormalizedWeaponAnchor | null;
+          readonly recycledAnchor: NormalizedWeaponAnchor | null;
+          readonly expectedAnchor: NormalizedWeaponAnchor | null;
+          readonly changedKeyAnchor: NormalizedWeaponAnchor | null;
+        }
+      | undefined;
+
+    await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      maxFrames: 1,
+      maxWallTimeMs: 30_000,
+      enforcePlayabilityInvariants: false,
+      generatedSpriteRegistry: anchoredRegistry,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            const firstEid = spawnBehaviorEnemy(world, 0, 0, 10, 0, 1, 10, 1);
+            setEnemyAppearanceKey(world, firstEid, 'rat');
+            world.stores.sprite.variantRoll[firstEid] = 0;
+            const firstAnchor = getEntityNormalizedWeaponAnchor(world, firstEid);
+            removeEntity(world.ecs, firstEid);
+
+            const recycledEid = spawnBehaviorEnemy(world, 0, 0, 10, 0, 1, 10, 1);
+            expect(recycledEid).toBe(firstEid);
+            setEnemyAppearanceKey(world, recycledEid, 'rat');
+            world.stores.sprite.variantRoll[recycledEid] = 0.999_999;
+            const recycledEntry = resolveGeneratedSpriteVariantForEntity(world, recycledEid);
+            const recycledAnchor = getEntityNormalizedWeaponAnchor(world, recycledEid);
+            setEnemyAppearanceKey(world, recycledEid, 'unregistered-enemy');
+            observed = {
+              firstAnchor,
+              recycledAnchor,
+              expectedAnchor: computeNormalizedWeaponAnchor(recycledEntry),
+              changedKeyAnchor: getEntityNormalizedWeaponAnchor(world, recycledEid),
+            };
+          },
+        ],
+      },
+    });
+
+    if (observed === undefined) {
+      throw new Error('Headless runner did not execute the recycled-anchor probe.');
+    }
+    expect(observed.firstAnchor).not.toEqual(observed.expectedAnchor);
+    expect(observed.recycledAnchor).toEqual(observed.expectedAnchor);
+    expect(observed.changedKeyAnchor).toBeNull();
   });
 });

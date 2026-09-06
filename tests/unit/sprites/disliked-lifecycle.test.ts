@@ -1357,6 +1357,13 @@ describe('disliked sprite lifecycle transaction', () => {
       path.join(generatedDir, 'sprite-editor-annotations.json'),
       JSON.stringify({ version: 1, sprites: { 'icon-skipped': { disliked: true, tombstone } } }),
     );
+    const skipped = {
+      ...entry('icon-skipped', 0),
+      spriteName: 'icon-skipped',
+      assetPath: 'generated/icon-skipped.png',
+    };
+    writeShard(generatedDir, skipped.spriteName, skipped);
+    writeFileSync(path.join(generatedDir, 'icon-skipped.png'), 'old-art');
 
     await expect(
       runAcceptedDislikedLifecycleTransaction({
@@ -1382,6 +1389,30 @@ describe('disliked sprite lifecycle transaction', () => {
     ) as SpriteAnnotationsDocument;
     expect(after.sprites['icon-skipped']?.tombstone).toEqual(tombstone);
     expect(after.sprites['icon-skipped']?.disliked).toBe(true);
+  });
+
+  it('allows an all-skipped batch to complete as a no-op when no lifecycle state would change', async () => {
+    const root = makeRoot();
+    const publish = vi.fn(() => Promise.resolve());
+
+    const result = await runAcceptedDislikedLifecycleTransaction({
+      repoRoot: root,
+      replacements: [
+        {
+          manifestKey: 'icon-unchanged',
+          conceptId: 'icon-unchanged',
+          assetPath: 'generated/icon-unchanged.png',
+        },
+      ],
+      approve: () => [],
+      approvedReplacementKeys: (entries) => entries,
+      publish,
+    });
+
+    expect(result.approved).toEqual([]);
+    expect(result.plan.removed).toEqual([]);
+    expect(result.plan.annotationUpdates).toEqual([]);
+    expect(publish).toHaveBeenCalledOnce();
   });
 
   it('defers a skipped batch cell while accepting and cleaning materialized cells', async () => {
