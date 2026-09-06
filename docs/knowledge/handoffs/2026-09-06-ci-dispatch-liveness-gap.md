@@ -26,7 +26,11 @@ protects canonical conflict-order and conflict-rebase backoff waits, and
 re-fetches current `ci-owner-pr-*` and
 `ci-recovery-waiting-transition` labels before dispatch to close the
 time-of-check/time-of-use ownership gap. Regression coverage asserts all of
-these cases are excluded.
+these cases are excluded. This repass additionally re-fetches the current
+`merge-train`, `merge-train-blocked`, `merge-train-recovery-pending`,
+`merge-train-validation-failed`, and `ci-conflict-order-wait` labels before
+dispatch, protecting merge-train ownership even when its decision record is
+outside the lookback window.
 
 ## Files touched
 
@@ -47,7 +51,8 @@ these cases are excluded.
   zero redispatches.
 - `npx vitest run tests/unit/ci-liveness-sweep-workflow.test.ts tests/unit/ci-knobs-guard.test.ts --project unit` — passed (207 tests).
 - Final repass: `node --test .github/scripts/ci-recovery/harvest-liveness.test.mjs`
-  — passed (36 tests), including conflict waits and current ownership labels.
+  — passed (38 tests), including conflict waits and current merge-train
+  ownership labels.
 - `bash scripts/agent/verify-fast.sh` — passed.
 
 ## Runtime observation
@@ -60,4 +65,4 @@ and dispatch request path.
 
 The ready-for-review change should be reviewed under the 3-apple independent
 post-diff review policy; the attached review finding was addressed in this
-repass.
+repass. This repass remains recommended and is an exact 3-apple estimate.

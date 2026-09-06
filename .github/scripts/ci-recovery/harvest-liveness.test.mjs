@@ -473,6 +473,28 @@ test('selectLivenessRedispatchCandidates excludes current ownership metadata', (
   );
 });
 
+test('selectLivenessRedispatchCandidates excludes current merge-train ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4233, { labels: [{ name: 'merge-train' }] }),
+      blockedPull(4234, { labels: [{ name: 'merge-train-blocked' }] }),
+      blockedPull(4235, { labels: [{ name: 'merge-train-recovery-pending' }] }),
+      blockedPull(4236, { labels: [{ name: 'merge-train-validation-failed' }] }),
+      blockedPull(4237, { labels: [{ name: 'ci-conflict-order-wait' }] }),
+      blockedPull(4238),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4238],
+    'current merge-train ownership and wait labels must prevent redispatch',
+  );
+});
+
 test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
   const dispatches = [];
   const result = await dispatchLivenessRedispatches({
@@ -521,6 +543,28 @@ test('dispatchLivenessRedispatches skips current ownership metadata after re-fet
   assert.deepEqual(result.skipped, [
     { number: 4231, reason: 'state-changed' },
     { number: 4232, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches skips merge-train metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4238), blockedPull(4239)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels: [{ name: number === 4238 ? 'merge-train' : 'merge-train-validation-failed' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4238, reason: 'state-changed' },
+    { number: 4239, reason: 'state-changed' },
   ]);
   assert.equal(dispatches.length, 0);
 });

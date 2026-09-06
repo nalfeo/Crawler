@@ -41,6 +41,14 @@ import {
 } from './issue-intake-lib.mjs';
 import { OWNER_LABEL_PREFIX, WAITING_TRANSITION_LABEL } from './state.mjs';
 
+const MERGE_TRAIN_LIVENESS_LABELS = new Set([
+  'merge-train',
+  'merge-train-blocked',
+  'merge-train-recovery-pending',
+  'merge-train-validation-failed',
+  'ci-conflict-order-wait',
+]);
+
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
 export const HARVEST_INCIDENT_TITLE = 'CI incident: stale-session harvest not completing';
 export const HARVEST_INCIDENT_MARKER = '<!-- crawler:ci-harvest-liveness -->';
@@ -386,7 +394,8 @@ function hasActiveRecoveryMetadata(pull) {
     const name = typeof label === 'string' ? label : label?.name;
     return (
       String(name || '').startsWith(OWNER_LABEL_PREFIX) ||
-      String(name || '') === WAITING_TRANSITION_LABEL
+      String(name || '') === WAITING_TRANSITION_LABEL ||
+      MERGE_TRAIN_LIVENESS_LABELS.has(String(name || '').toLowerCase())
     );
   });
 }
