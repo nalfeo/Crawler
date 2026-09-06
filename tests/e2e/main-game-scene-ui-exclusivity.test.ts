@@ -142,6 +142,60 @@ describe('MainGameScene UI exclusivity', () => {
     });
   });
 
+  it('opens the pause menu with Escape when no panel is open and restores the previous pause state', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation running before pause menu',
+    });
+
+    await page.keyboard.press('Escape');
+    const pauseState = await waitForState(page, (s) => s.simulationPaused && !!s.modalOpen, {
+      label: 'pause menu opened and simulation paused',
+    });
+    expect(pauseState.modalOpen, 'pause menu should open through the shared modal picker').toBe(
+      true,
+    );
+
+    const pauseContent = await page.evaluate(() =>
+      window.__mainSceneProbe!.getModalPickerContent(),
+    );
+    expect(
+      pauseContent?.options.map((option) => option.label),
+      'pause menu should offer Resume, Restart, and Quit',
+    ).toEqual(['Resume', '↺ Restart', '← Quit']);
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.simulationPaused && !s.modalOpen, {
+      label: 'pause menu closed and simulation resumed',
+    });
+
+    await mainSceneProbe.setSimulationPaused(page, true);
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => s.simulationPaused && s.modalOpen, {
+      label: 'pause menu can open while the scene is already paused',
+    });
+    await page.keyboard.press('Enter');
+    await waitForState(page, (s) => s.simulationPaused && !s.modalOpen, {
+      label: 'resume command closes pause menu without changing prior paused state',
+    });
+  });
+
+  it('closes an inventory panel on Escape without also pausing the run', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await waitForState(page, (s) => s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory opened in paused safe-room state',
+    });
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory closed by Escape and safe-room pause preserved',
+    });
+  });
+
   it('keeps the Issue button clickable over inventory without closing the underlying UX', async () => {
     await bootPlayingSafeScene();
 
