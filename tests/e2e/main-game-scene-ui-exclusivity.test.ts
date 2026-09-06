@@ -142,6 +142,77 @@ describe('MainGameScene UI exclusivity', () => {
     });
   });
 
+  it('opens the pause menu with Escape when no panel is open and restores the previous pause state', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation running before pause menu',
+    });
+    // Prove the frame counter is live before pausing, so the frozen-frame
+    // assertion below cannot pass against a counter that never advances.
+    const runningFrameCount = (await mainSceneProbe.getState(page)).frameCount ?? 0;
+    await waitForState(page, (s) => (s.frameCount ?? 0) > runningFrameCount, {
+      label: 'sim frames advancing while unpaused',
+    });
+
+    await page.keyboard.press('Escape');
+    const pauseState = await waitForState(page, (s) => s.simulationPaused && !!s.modalOpen, {
+      label: 'pause menu opened and simulation paused',
+    });
+    expect(pauseState.modalOpen, 'pause menu should open through the shared modal picker').toBe(
+      true,
+    );
+
+    // Gameplay time must actually stop, not just flip a flag: the fixed-step
+    // sim frame counter must not advance at all while the pause menu is open.
+    const pausedFrameCount = (await mainSceneProbe.getState(page)).frameCount;
+    expect(pausedFrameCount, 'probe should expose the live sim frame count').not.toBeNull();
+    await page.waitForTimeout(600);
+    const stillPaused = await mainSceneProbe.getState(page);
+    expect(stillPaused.frameCount, 'sim frames must not advance while paused').toBe(
+      pausedFrameCount,
+    );
+    expect(stillPaused.simulationPaused).toBe(true);
+
+    const pauseContent = await page.evaluate(() =>
+      window.__mainSceneProbe!.getModalPickerContent(),
+    );
+    expect(
+      pauseContent?.options.map((option) => option.label),
+      'pause menu should offer Resume, Restart, and Quit',
+    ).toEqual(['Resume', '↺ Restart', '← Quit']);
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.simulationPaused && !s.modalOpen, {
+      label: 'pause menu closed and simulation resumed',
+    });
+
+    await mainSceneProbe.setSimulationPaused(page, true);
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => s.simulationPaused && s.modalOpen, {
+      label: 'pause menu can open while the scene is already paused',
+    });
+    await page.keyboard.press('Enter');
+    await waitForState(page, (s) => s.simulationPaused && !s.modalOpen, {
+      label: 'resume command closes pause menu without changing prior paused state',
+    });
+  });
+
+  it('closes an inventory panel on Escape without also pausing the run', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await waitForState(page, (s) => s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory opened in paused safe-room state',
+    });
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory closed by Escape and safe-room pause preserved',
+    });
+  });
+
   it('keeps the Issue button clickable over inventory without closing the underlying UX', async () => {
     await bootPlayingSafeScene();
 
