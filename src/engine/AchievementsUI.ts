@@ -410,8 +410,7 @@ export function createAchievementsUI(
       (def) =>
         def.reward.type === 'lootBox' &&
         world.achievements.unlockedIds.has(def.id) &&
-        !world.achievements.claimedIds.has(def.id) &&
-        matchesFilter(def, activeFilter),
+        !world.achievements.claimedIds.has(def.id),
     );
   }
 
@@ -523,6 +522,32 @@ export function createAchievementsUI(
     };
 
     playNext(0, []);
+  }
+
+  function renderOpenAllAction(openCount: number): void {
+    if (openCount <= 1 || openAllInProgress) return;
+    const x2 = panelX + panelWidth - PANEL_PADDING - 104;
+    const y2 = panelY + PANEL_PADDING + 18;
+    const bg = scene.add.rectangle(x2, y2, 104, 26, COLORS.btnBg, 1);
+    bg.setStrokeStyle(1, COLORS.btnTopBevel, 0.9);
+    container.add(bg);
+    rowObjects.push(bg);
+    const label = crispText(x2, y2, 'OPEN ALL', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: hex(COLORS.textPrimary),
+      align: 'center',
+    });
+    label.setOrigin(0.5, 0.5);
+    container.add(label);
+    rowObjects.push(label);
+    bg.setInteractive({ useHandCursor: true })
+      .on('pointerdown', onPointerDown)
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.id === draggedPointerId) return;
+        openAllPendingRewards(lastWorld!);
+      });
   }
 
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
@@ -862,6 +887,7 @@ export function createAchievementsUI(
     layoutRegions = [];
     if (!lastWorld) return;
     const defs = unlockedDefs(lastWorld);
+    const openCount = pendingOpenableLootBoxDefs(lastWorld).length;
     const x = panelX + PANEL_PADDING;
     const w = panelWidth - PANEL_PADDING * 2 - SCROLLBAR_GUTTER;
 
@@ -883,7 +909,8 @@ export function createAchievementsUI(
       );
       container.add(empty);
       rowObjects.push(empty);
-      summary.setText('0 unlocked  ·  0 rewards ready');
+      summary.setText(`0 unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`);
+      renderOpenAllAction(openCount);
       if (scrollbarTrack) scrollbarTrack.setVisible(false);
       if (scrollbarThumb) scrollbarThumb.setVisible(false);
       layoutRegions.unshift({
@@ -894,37 +921,10 @@ export function createAchievementsUI(
       return;
     }
 
-    const openCount = defs.filter(
-      (def) => def.reward.type === 'lootBox' && !lastWorld?.achievements.claimedIds.has(def.id),
-    ).length;
-    const canOpenAll = openCount > 1 && !openAllInProgress;
     summary.setText(
       `${defs.length} unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`,
     );
-    if (canOpenAll) {
-      const x2 = panelX + panelWidth - PANEL_PADDING - 104;
-      const y2 = panelY + PANEL_PADDING + 18;
-      const bg = scene.add.rectangle(x2, y2, 104, 26, COLORS.btnBg, 1);
-      bg.setStrokeStyle(1, COLORS.btnTopBevel, 0.9);
-      container.add(bg);
-      rowObjects.push(bg);
-      const label = crispText(x2, y2, 'OPEN ALL', {
-        fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        fontStyle: 'bold',
-        color: hex(COLORS.textPrimary),
-        align: 'center',
-      });
-      label.setOrigin(0.5, 0.5);
-      container.add(label);
-      rowObjects.push(label);
-      bg.setInteractive({ useHandCursor: true })
-        .on('pointerdown', onPointerDown)
-        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
-          if (pointer.id === draggedPointerId) return;
-          openAllPendingRewards(lastWorld!);
-        });
-    }
+    renderOpenAllAction(openCount);
 
     if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
 

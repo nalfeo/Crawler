@@ -210,4 +210,32 @@ describe('achievement loot boxes opened back to back', () => {
     achievementsUI.destroy();
     rewardOpeningUI.destroy();
   });
+
+  it('opens pending boxes even when the active filter shows no boxes', () => {
+    const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
+    unlockAchievement(world, FIRST_ACHIEVEMENT);
+    unlockAchievement(world, SECOND_ACHIEVEMENT);
+
+    const scene = makeScene();
+    const rewardOpeningUI = createRewardOpeningUI(scene, {});
+    const achievementsUI = createAchievementsUI(scene, rewardOpeningUI);
+    achievementsUI.refresh(world);
+    achievementsUI.setFilterForProbe('floor:2');
+
+    achievementsUI.openAllPendingRewards();
+    expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
+
+    while (rewardOpeningUI.getPhase() !== 'summary') {
+      rewardOpeningUI.tick(2000);
+    }
+    rewardOpeningUI.acknowledge();
+
+    expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
+    expect(rewardOpeningUI.isOpen()).toBe(false);
+    expect(world.achievements.pendingPresentations.size).toBe(0);
+
+    achievementsUI.destroy();
+    rewardOpeningUI.destroy();
+  });
 });
