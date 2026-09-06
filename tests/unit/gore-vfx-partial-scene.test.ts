@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
-import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
 import { spawnProjectile } from '../../src/core/spawners/projectiles.js';
+import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import {
-  createGoreVfx,
   DEFAULT_IMPACT_DIRECTION,
+  createGoreVfx,
   resolveImpactDirection,
 } from '../../src/engine/GoreVfx.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
+import { createInputState } from '../../src/shared/input.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { createSceneStub } from '../fixtures/phaser-bridge-harness.js';
 import type { CombatEvent } from '../../src/shared/combat-events.js';
 
 /**
@@ -89,53 +91,47 @@ describe('projectile-hit impact direction', () => {
 
   it('moves real hit particles beyond the target along the incoming vector', () => {
     const rectangles: Array<{ x: number; y: number }> = [];
-    const scene = {
-      add: {
-        rectangle: vi.fn((x: number, y: number) => {
-          const rectangle = {
-            x,
-            y,
-            setX(nextX: number) {
-              rectangle.x = nextX;
-              return rectangle;
-            },
-            setY(nextY: number) {
-              rectangle.y = nextY;
-              return rectangle;
-            },
-            setDepth: vi.fn(() => rectangle),
-            setAlpha: vi.fn(() => rectangle),
-            setScale: vi.fn(() => rectangle),
-            setSize: vi.fn(() => rectangle),
-            destroy: vi.fn(),
-          };
-          rectangles.push(rectangle);
-          return rectangle;
-        }),
-      },
-      cameras: { getCamera: vi.fn(() => null) },
-    } as unknown as GoreScene;
-    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: true });
-    const world = createTestWorld();
-    spawnProjectile(world, 0, 0, 1, 0, 10);
-    spawnEnemy(world, 1, 0, 25);
-    damageSystem(world, collisionSystem(world));
-
-    expect(world.combatEvents).toHaveLength(1);
-    expect(world.combatEvents[0]).toMatchObject({
-      type: 'hit',
-      x: 1,
-      y: 0,
-      sourceX: 0,
-      sourceY: 0,
+    const sceneStub = createSceneStub();
+    const scene = sceneStub.scene;
+    const rectangle = vi.fn((x: number, y: number) => {
+      const shape = {
+        x,
+        y,
+        setX(nextX: number) {
+          shape.x = nextX;
+          return shape;
+        },
+        setY(nextY: number) {
+          shape.y = nextY;
+          return shape;
+        },
+        setDepth: vi.fn(() => shape),
+        setAlpha: vi.fn(() => shape),
+        setScale: vi.fn(() => shape),
+        setSize: vi.fn(() => shape),
+        destroy: vi.fn(),
+      };
+      rectangles.push(shape);
+      return shape;
     });
+    Object.assign(scene.add, { rectangle });
+    const world = createTestWorld();
+    world.state = 'playing';
+    spawnProjectile(world, 0, 0, 0, 0, 10);
+    spawnEnemy(world, 1, 0, 25);
+    const bridge = createPhaserBridge(scene);
 
-    vfx.update(world, 0, 0);
+    // Exercise the production simulation pipeline and PhaserBridge seam rather
+    // than invoking GoreVfx directly. The zero-velocity projectile remains at
+    // its origin while overlapping the target, preserving the incoming +X
+    // vector for the renderer.
+    runSimulationStep(world, createInputState(), 16);
+    bridge.sync(world, 0);
     const initialX = rectangles.map((rectangle) => rectangle.x);
-    world.combatEvents.length = 0;
-    vfx.update(world, 100, 100);
+    bridge.sync(world, 100);
 
     expect(rectangles.length).toBeGreaterThan(0);
     expect(rectangles.every((rectangle, index) => rectangle.x > initialX[index]!)).toBe(true);
+    bridge.destroy();
   });
 });
