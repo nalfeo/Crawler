@@ -23,7 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -2008,6 +2008,120 @@ describe('runReconcile (real git)', () => {
         reason: expect.stringContaining(`no promotable replacement shard for "${replacementKey}"`),
       }),
     ]);
+  });
+
+  it('(c3b) withholds cleanup when an orphan overlay makes its replacement unusable', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const removedKey = 'queue-goon-var-0';
+    const replacementKey = 'queue-goon-var-1';
+    addArtDirectlyToMain(liveDir, [removedKey, replacementKey]);
+    gitSync(liveDir, 'pull', '--ff-only', 'origin', 'main');
+    for (const key of [removedKey, replacementKey]) {
+      writeJson(path.join(liveDir, 'public', 'assets', 'generated', 'entries', `${key}.json`), {
+        briefId: 'queue-goon',
+        spriteName: key,
+        assetPath: `generated/${key}.png`,
+        approvedAt: '2026-09-05T00:00:00.000Z',
+        sourceRun: `generated/runs/${key}/run-0`,
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+        type: 'enemy',
+        contentHash: TEST_CONTENT_HASH,
+      });
+    }
+    gitSync(liveDir, 'add', '-A');
+    gitSync(liveDir, 'commit', '-m', 'complete orphan-overlay lifecycle metadata');
+    gitSync(liveDir, 'push', 'origin', 'main');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const queueWt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-orphan-queue-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', queueWt, '--detach', 'origin/main');
+      const generatedDir = path.join(queueWt, 'public', 'assets', 'generated');
+      rmSync(path.join(generatedDir, `${removedKey}.png`));
+      rmSync(path.join(generatedDir, 'entries', `${removedKey}.json`));
+      writeJson(path.join(generatedDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [removedKey]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: removedKey,
+              conceptId: 'queue-goon',
+              replacementKey,
+              assetPath: `generated/${removedKey}.png`,
+              sourceRun: `generated/runs/${removedKey}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [removedKey],
+            },
+          },
+        },
+      });
+      gitSync(queueWt, 'add', '-A');
+      gitSync(queueWt, 'commit', '--no-verify', '-m', 'queue lifecycle deletion');
+      const sha = gitSync(queueWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', queueWt);
+      rmSync(queueWt, { recursive: true, force: true });
+    }
+
+    const orphanWt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-orphan-overlay-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', orphanWt, '--detach', 'origin/main');
+      const shardPath = path.join(
+        orphanWt,
+        'public',
+        'assets',
+        'generated',
+        'entries',
+        `${replacementKey}.json`,
+      );
+      const replacement = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, unknown>;
+      writeJson(shardPath, { ...replacement, disliked: true });
+      gitSync(orphanWt, 'add', '-A');
+      gitSync(orphanWt, 'commit', '--no-verify', '-m', 'orphan dislikes replacement');
+      const sha = gitSync(orphanWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/checkin-disliked-replacement`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', orphanWt);
+      rmSync(orphanWt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      expect.objectContaining({
+        annotationKey: removedKey,
+        reason: expect.stringContaining(`unusable replacement "${replacementKey}"`),
+      }),
+    ]);
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/entries/${removedKey}.json`,
+        `public/assets/generated/${removedKey}.png`,
+        'public/assets/generated/sprite-editor-annotations.json',
+      ]),
+    );
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(
+        liveDir,
+        'show',
+        `origin/assets/promote:public/assets/generated/entries/${removedKey}.json`,
+      ),
+    ).toContain(`"spriteName": "${removedKey}"`);
+    expect(
+      gitSync(
+        liveDir,
+        'show',
+        `origin/assets/promote:public/assets/generated/entries/${replacementKey}.json`,
+      ),
+    ).toContain('"disliked": true');
   });
 
   /**

@@ -708,7 +708,13 @@ function reconcileQueuedAsset(
   queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
   identity: VariantIdentity,
   variantIndex: number,
-): AcceptedResponse | { error: string; message: string } | undefined {
+):
+  | AcceptedResponse
+  | {
+      error: 'ambiguous-queued-content' | 'content-conflict';
+      message: string;
+    }
+  | undefined {
   const queued = queuedAssets.get(identity.assetPath);
   const reconciliation = reconcileQueuedContent(queued, identity.contentHash);
   if (reconciliation === 'new') return undefined;
@@ -2308,25 +2314,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     return withCheckinMutationLock(async () => {
-      let entry: ReturnType<typeof composeManifestFromShards>['entries'][string] | undefined;
-      try {
-        entry = composeManifestFromShards(path.dirname(manifestPath)).entries[variantId];
-      } catch (err) {
-        reply.code(500);
-        return {
-          error: 'unapprove-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
-      if (entry === undefined) {
-        reply.code(404);
-        return { error: 'not-found', message: `Manifest entry not found: ${variantId}` };
-      }
-
       // Pre-mutation queue check: if this variant's manifest-directed asset is
       // already in either the legacy issue queue or canonical assets/queue,
       // evicting the local copy would not remove the durable queued copy.
-      const assetPath = entry.assetPath;
       const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
       const listQueuedAssets = checkinDeps.listQueuedAssets;
       const withCrossProcessLock = checkinDeps.withCrossProcessLock;
@@ -2353,6 +2343,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         };
       }
       return withCrossProcessLock(async () => {
+        let entry: ReturnType<typeof composeManifestFromShards>['entries'][string] | undefined;
+        try {
+          entry = composeManifestFromShards(path.dirname(manifestPath)).entries[variantId];
+        } catch (err) {
+          reply.code(500);
+          return {
+            error: 'unapprove-failed',
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+        if (entry === undefined) {
+          reply.code(404);
+          return { error: 'not-found', message: `Manifest entry not found: ${variantId}` };
+        }
+
+        const assetPath = entry.assetPath;
         let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
         try {
           queuedAssets = await listQueuedAssets();
@@ -2708,6 +2714,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                       variantIndex,
                     );
                     if (reconciledAfter !== undefined) {
+                      if ('error' in reconciledAfter) {
+                        throw new CheckinError(reconciledAfter.error, reconciledAfter.message);
+                      }
                       response = reconciledAfter;
                       return;
                     }

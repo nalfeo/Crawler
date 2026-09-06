@@ -2523,7 +2523,7 @@ export function createEquipmentUI(
         selectedSlotFilter ? 'NO MATCHING GEAR' : 'NO EQUIPPABLE ITEMS',
         { fontFamily: FONT_FAMILY, fontSize: '12px', color: hex(COLORS.textSecondary) },
       );
-      empty.setOrigin(0.5, 0.5);
+      centerTextOnPixels(empty, bagX + bagW / 2, gridTop + 40);
       container.add(empty);
       bagObjects.push(empty);
       return;
@@ -2577,14 +2577,15 @@ export function createEquipmentUI(
           )
         : def
           ? createItemIcon(itemId, def, cx, cy, cell - 12)
-          : crispText(snap(cx), snap(cy), '?', {
-              fontFamily: FONT_FAMILY,
-              fontSize: '12px',
-              color: '#9ca3af',
-            });
-      if (!def && 'setOrigin' in icon) {
-        (icon as Phaser.GameObjects.Text).setOrigin(0.5, 0.5);
-      }
+          : centerTextOnPixels(
+              crispText(cx, cy, '?', {
+                fontFamily: FONT_FAMILY,
+                fontSize: '12px',
+                color: '#9ca3af',
+              }),
+              cx,
+              cy,
+            );
 
       box.on('pointerover', () => {
         box.setFillStyle(COLORS.slotHover);

@@ -2337,6 +2337,78 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     ).toBe(false);
   });
 
+  it('rolls back acceptance when the POST-nothing-to-checkin retry finds conflicting queued content', async () => {
+    await app.close();
+    let listCalls = 0;
+    const checkinDeps: CheckinRunnerDeps = {
+      exec: vi.fn(async (command: string, args: readonly string[]) => {
+        if (command === 'git' && args[0] === 'diff') return { code: 0, stdout: '', stderr: '' };
+        return { code: 0, stdout: '', stderr: '' };
+      }),
+      makeTempDir: async () => {
+        const dir = path.join(root, 'checkin-worktree-post-conflict');
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: () => {
+        listCalls += 1;
+        if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
+        return Promise.resolve(
+          new Map<string, QueuedAssetCheckin>([
+            [
+              `generated/${briefId}-var-1.png`,
+              {
+                issueUrl: 'https://github.com/nalfeo/Crawler/issues/61',
+                branch: 'assets/conflicting-batch',
+                contentHash: 'f'.repeat(64),
+              },
+            ],
+          ]),
+        );
+      },
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: 'content-conflict',
+      message: expect.stringContaining('local acceptance and lifecycle changes were rolled back'),
+    });
+    expect(listCalls).toBe(3);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(
+      existsSync(path.join(publicAssetsDir, 'generated', 'entries', `${briefId}-var-1.json`)),
+    ).toBe(false);
+  });
+
   it('derives assetCount for an EXISTING issue from the full parsed batch, not just this asset', async () => {
     await app.close();
     // Compute the content hash the SAME way approveVariant does, so the
@@ -3407,6 +3479,42 @@ describe('store-backed /approve hydration parity', () => {
     expect(entry.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
   });
 
+  it('/accept rolls the approval back when publication fails instead of reporting a half-accepted state', async () => {
+    await app.close();
+    await seedStoreRun();
+    const deps = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: {
+        ...deps,
+        exec: async (command, args, options) => {
+          if (command === 'git' && args[0] === 'push') {
+            return { code: 1, stdout: '', stderr: 'remote rejected' };
+          }
+          return deps.exec(command, args, options);
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[`${briefId}-var-1`]).toBe(
+      undefined,
+    );
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
   it('/accept refuses a hard-blocked variant by default and honours an explicit override', async () => {
     await app.close();
     await seedStoreRun({ hardBlocked: true });
@@ -3510,7 +3618,10 @@ describe('DELETE /api/manifest/:variantId', () => {
   const briefId = 'iron-sword';
 
   /** Write an approved variant as its per-asset manifest shard. */
-  function writeApprovedManifest(variantId: string = `${briefId}-var-1`): void {
+  function writeApprovedManifest(
+    variantId: string = `${briefId}-var-1`,
+    contentHash?: string,
+  ): void {
     const generatedDir = path.join(publicAssetsDir, 'generated');
     writeShard(generatedDir, variantId, {
       briefId,
@@ -3524,6 +3635,7 @@ describe('DELETE /api/manifest/:variantId', () => {
       sensorScore: '7/7',
       judgeScore: '4',
       type: null,
+      ...(contentHash === undefined ? {} : { contentHash }),
     } as never);
   }
 
@@ -3731,6 +3843,51 @@ describe('DELETE /api/manifest/:variantId', () => {
     expect(withCrossProcessLock).toHaveBeenCalledOnce();
     expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
     expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
+  });
+
+  it('reads the manifest entry only after acquiring the cross-process unapproval lock', async () => {
+    const variantId = `${briefId}-var-1`;
+    const initialHash = 'a'.repeat(64);
+    const lockedHash = 'b'.repeat(64);
+    writeApprovedManifest(variantId, initialHash);
+    writeAsset(variantId);
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'new' as const,
+      branch: 'assets/queue',
+    }));
+    const withCrossProcessLock = vi.fn(async <T>(run: () => Promise<T>) => {
+      writeApprovedManifest(variantId, lockedHash);
+      return run();
+    });
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset,
+        withCrossProcessLock,
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifestKey: variantId,
+        contentHash: lockedHash,
+        manifestEntry: expect.objectContaining({ contentHash: lockedHash }),
+      }),
+    );
   });
 
   it('fails closed before unapproval when legacy queue inspection is unavailable', async () => {

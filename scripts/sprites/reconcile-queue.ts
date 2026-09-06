@@ -298,6 +298,7 @@ async function describeUnavailableLifecycleReplacement(
   deletion: AuthorizedLifecycleDeletion,
   deletedPaths: ReadonlySet<string>,
   promotablePaths: ReadonlySet<string>,
+  finalOverlayRefsByPath: ReadonlyMap<string, string>,
   queueRef: string,
   baseRef: string,
   exec: Exec,
@@ -319,7 +320,9 @@ async function describeUnavailableLifecycleReplacement(
   if (deletedPaths.has(replacementShardPath)) {
     return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
   }
-  const shardRef = promotablePaths.has(replacementShardPath) ? queueRef : baseRef;
+  const shardRef =
+    finalOverlayRefsByPath.get(replacementShardPath) ??
+    (promotablePaths.has(replacementShardPath) ? queueRef : baseRef);
   const shard = await runGit(exec, repoRoot, ['show', `${shardRef}:${replacementShardPath}`]);
   if (shard.code !== 0 || shard.stdout.trim() === '') {
     return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no promotable replacement shard for "${replacementKey}".`;
@@ -347,7 +350,9 @@ async function describeUnavailableLifecycleReplacement(
   if (deletedPaths.has(replacementAssetPath)) {
     return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
   }
-  const assetRef = promotablePaths.has(replacementAssetPath) ? queueRef : baseRef;
+  const assetRef =
+    finalOverlayRefsByPath.get(replacementAssetPath) ??
+    (promotablePaths.has(replacementAssetPath) ? queueRef : baseRef);
   const asset = await runGit(exec, repoRoot, [
     'cat-file',
     '-e',
@@ -1922,6 +1927,7 @@ export async function runReconcile(
 
     let queueVsMainArt: readonly string[] = [];
     let queueLifecycleDeletions: readonly AuthorizedLifecycleDeletion[] = [];
+    const queueDeletedPathSet = new Set<string>();
     if (queueRef !== null) {
       const delta = await mustGit(deps.exec, repoRoot, [
         'diff',
@@ -1980,8 +1986,8 @@ export async function runReconcile(
         'public/assets/generated/',
       ]);
       const deletedPaths = parseNameOnly(deleted);
+      for (const deletedPath of deletedPaths) queueDeletedPathSet.add(deletedPath);
       if (deletedPaths.length > 0) {
-        const deletedPathSet = new Set(deletedPaths);
         const promotablePathSet = new Set(queueVsMainArt);
         const annotations =
           queueAnnotations ??
@@ -2065,8 +2071,9 @@ export async function runReconcile(
           }
           const replacementFailure = await describeUnavailableLifecycleReplacement(
             candidate,
-            deletedPathSet,
+            queueDeletedPathSet,
             promotablePathSet,
+            new Map(),
             queueRef,
             baseRef,
             deps.exec,
@@ -2158,6 +2165,48 @@ export async function runReconcile(
       if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
         queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
         withheld.add(ANNOTATIONS_PATH);
+      }
+    }
+
+    if (queueLifecycleDeletions.length > 0 && queueRef !== null) {
+      // Orphan branches overlay the queue in-order below, so validate named
+      // replacements against that final composed tree rather than the queue/base
+      // snapshot alone. A later orphan may replace an otherwise-good shard with
+      // disliked or malformed metadata without touching the variant being deleted.
+      const finalOverlayRefsByPath = new Map<string, string>();
+      for (const { ref, paths } of orphanedPathsByBranch) {
+        for (const overlayPath of paths) finalOverlayRefsByPath.set(overlayPath, ref);
+      }
+      const postOverlayRejections: RejectedLifecycleDeletion[] = [];
+      for (const deletion of queueLifecycleDeletions) {
+        const replacementFailure = await describeUnavailableLifecycleReplacement(
+          deletion,
+          queueDeletedPathSet,
+          new Set(queueVsMainArt),
+          finalOverlayRefsByPath,
+          queueRef,
+          baseRef,
+          deps.exec,
+          repoRoot,
+        );
+        if (replacementFailure !== null) {
+          postOverlayRejections.push({
+            annotationKey: deletion.tombstone.manifestKey,
+            reason: replacementFailure,
+            paths: [...deletion.paths].sort(),
+          });
+        }
+      }
+      if (postOverlayRejections.length > 0) {
+        for (const deletion of queueLifecycleDeletions) {
+          for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+        }
+        rejectedLifecycleDeletions.push(...postOverlayRejections);
+        queueLifecycleDeletions = [];
+        if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
+        }
       }
     }
 

@@ -282,6 +282,16 @@ sprite-pipeline, sprite-workflow
   unapproval hold the shared cross-process lock across queue inspection and
   deletion. Their complete queue/reconcile/sidecar regression matrix passed
   336/336 with typecheck clean.
+- The final exact-head certification caught three adjacent composition races.
+  Reconciliation now revalidates every named replacement against the final
+  queue-plus-orphan overlay tree, not the pre-orphan snapshot; a conflict found
+  by the accept route's post-`nothing-to-checkin` retry now throws so the
+  lifecycle transaction restores its snapshots; and sidecar unapproval reads
+  its manifest entry only after acquiring the shared cross-process lock. The
+  complete reconciler/sidecar suites passed 275/275, followed by typecheck,
+  `verify:fast`, PR prerequisites, lifecycle closure, and a real default-registry
+  headless Floor 1 victory at seed 7. Final inventory remains 0 removable /
+  20 retained / 7 unresolved / 0 deferred / 0 pending / 0 reference updates.
 
 ## PR #3234 generic extraction audit
 
