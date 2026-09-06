@@ -443,13 +443,21 @@ function isStalePull(pull, now, gapMs) {
 
 /**
  * Return whether a PR may enter the liveness-monitored redispatch backlog.
- * Dirty/unstable PRs and PRs with current ownership, quarantine, or opt-out
- * metadata are intentionally excluded because CI Recovery cannot dispatch them.
+ * Only open, non-draft, same-repository blocked PRs without current ownership,
+ * quarantine, or opt-out metadata qualify. Dirty/unstable PRs are intentionally
+ * excluded because CI Recovery cannot dispatch them. List payloads may omit
+ * `state`; hydration callers require the explicit open state.
  */
-export function isLivenessRedispatchEligible(pull, owner, repo) {
+export function isLivenessRedispatchEligible(
+  pull,
+  owner,
+  repo,
+  { requireExplicitOpenState = false } = {},
+) {
+  const state = String(pull?.state || '').toLowerCase();
   return (
     pullNumber(pull) !== null &&
-    String(pull?.state || '').toLowerCase() === 'open' &&
+    (state === 'open' || (!requireExplicitOpenState && state === '')) &&
     pull.draft !== true &&
     String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
     isSameRepositoryPull(pull, owner, repo) &&
@@ -526,7 +534,11 @@ export async function dispatchLivenessRedispatches({
       continue;
     }
     const pull = response?.data || response;
-    if (!isLivenessRedispatchEligible(pull, owner, repo) || !pull?.head?.sha || !pull?.base?.ref) {
+    if (
+      !isLivenessRedispatchEligible(pull, owner, repo, { requireExplicitOpenState: true }) ||
+      !pull?.head?.sha ||
+      !pull?.base?.ref
+    ) {
       skipped.push({ number, reason: 'state-changed' });
       continue;
     }

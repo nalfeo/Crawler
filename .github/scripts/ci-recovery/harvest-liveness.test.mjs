@@ -390,7 +390,7 @@ function blockedPull(number, overrides = {}) {
   };
 }
 
-test('selectLivenessRedispatchCandidates handles the incident fixture deterministically', () => {
+test('liveness eligibility and selection handle the incident fixture deterministically', () => {
   const quarantinedIncidentPull = blockedPull(4217, {
     mergeable_state: 'dirty',
     labels: [
@@ -416,8 +416,15 @@ test('selectLivenessRedispatchCandidates handles the incident fixture determinis
   );
   assert.equal(
     isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler'),
+    true,
+    'discovery payloads may omit state',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler', {
+      requireExplicitOpenState: true,
+    }),
     false,
-    'a hydrated PR must explicitly remain open before redispatch',
+    'hydrated PRs must explicitly remain open before redispatch',
   );
 
   const candidates = selectLivenessRedispatchCandidates({
