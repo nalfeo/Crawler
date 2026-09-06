@@ -3105,9 +3105,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (player < 0) {
         return [];
       }
-      // Remove any leftover projectiles from a prior probe call so stray,
-      // never-moved shots sitting at the same spawn point can't be picked up
-      // by the nearest-image texture lookup in `getProjectileRenderInfo`.
+      // Remove any leftover projectiles from a prior probe call so a stale
+      // named sprite (`${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) can't be read
+      // by `getProjectileRenderInfo`. The render bridge only destroys visuals
+      // for removed entities during its own sync pass, so callers MUST wait
+      // for at least one more rendered frame (see `nextRenderedFrame` in the
+      // e2e suite) between firing and reading render info.
       for (const eid of query(world.ecs, [Projectile])) {
         removeEntity(world.ecs, eid);
       }
@@ -3117,6 +3120,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // probe target across calls (repositioned/respawned as needed) instead
       // of spawning a fresh enemy every call, so target-acquisition state
       // doesn't accumulate across an `it.each` loop of weapon ids.
+      // 6 (feet) keeps the target within every ranged weapon's acquisition
+      // radius; 20 (HP) keeps it alive across every weapon's `baseDamage` so
+      // repeated probe calls never need to respawn it mid-loop.
       if (projectileProbeTargetEid === null || !entityExists(world.ecs, projectileProbeTargetEid)) {
         projectileProbeTargetEid = spawnEnemy(world, px + 6, py, 20);
       } else {
