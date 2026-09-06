@@ -292,6 +292,15 @@ sprite-pipeline, sprite-workflow
   `verify:fast`, PR prerequisites, lifecycle closure, and a real default-registry
   headless Floor 1 victory at seed 7. Final inventory remains 0 removable /
   20 retained / 7 unresolved / 0 deferred / 0 pending / 0 reference updates.
+- The last certification pass closed two residual runtime/acceptance edges:
+  recycled entity IDs and changed appearance keys now invalidate cached weapon
+  anchors, and an all-skipped icon batch may take its documented no-op path only
+  when its initial lifecycle plan contains no replacement-authorized mutation.
+  The exact-head lifecycle/runtime matrix passed 732/732, `verify:fast` and PR
+  prerequisites passed, lifecycle closure remained clean, the real default-
+  registry headless pipeline won Floor 1 at seed 7 with zero failed quests, and
+  the targeted Equipment UI raster-alignment E2E passed. No generated run
+  artifact is tracked; all five unapproved review candidates remain untouched.
 
 ## PR #3234 generic extraction audit
 
