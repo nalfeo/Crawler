@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createGoreVfx } from '../../src/engine/GoreVfx.js';
+import {
+  createGoreVfx,
+  DEFAULT_IMPACT_DIRECTION,
+  resolveImpactDirection,
+} from '../../src/engine/GoreVfx.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { CombatEvent } from '../../src/shared/combat-events.js';
 
@@ -61,5 +65,72 @@ describe('GoreVfx on a scene without add.graphics', () => {
 
     // Gore is not silently fully disabled: death particles (rectangles) still spawn.
     expect(rectangle).toHaveBeenCalled();
+  });
+});
+
+describe('projectile-hit impact direction', () => {
+  it.each([
+    ['forward east', [10, 0, 0, 0], { x: 1, y: 0 }],
+    ['diagonal', [10, 10, 0, 0], { x: Math.SQRT1_2, y: Math.SQRT1_2 }],
+    ['zero-length', [10, 10, 10, 10], DEFAULT_IMPACT_DIRECTION],
+    ['unavailable source', [10, 10, undefined, undefined], DEFAULT_IMPACT_DIRECTION],
+  ] as const)('%s resolves to a normalized deterministic direction', (_name, args, expected) => {
+    const [targetX, targetY, sourceX, sourceY] = args;
+    const direction = resolveImpactDirection(targetX, targetY, sourceX, sourceY);
+
+    expect(direction.x).toBeCloseTo(expected.x);
+    expect(direction.y).toBeCloseTo(expected.y);
+    expect(Math.hypot(direction.x, direction.y)).toBeCloseTo(1);
+  });
+
+  it('moves real hit particles beyond the target along the incoming vector', () => {
+    const rectangles: Array<{ x: number; y: number }> = [];
+    const scene = {
+      add: {
+        rectangle: vi.fn((x: number, y: number) => {
+          const rectangle = {
+            x,
+            y,
+            setX(nextX: number) {
+              rectangle.x = nextX;
+              return rectangle;
+            },
+            setY(nextY: number) {
+              rectangle.y = nextY;
+              return rectangle;
+            },
+            setDepth: vi.fn(() => rectangle),
+            setAlpha: vi.fn(() => rectangle),
+            setScale: vi.fn(() => rectangle),
+            setSize: vi.fn(() => rectangle),
+            destroy: vi.fn(),
+          };
+          rectangles.push(rectangle);
+          return rectangle;
+        }),
+      },
+      cameras: { getCamera: vi.fn(() => null) },
+    } as unknown as GoreScene;
+    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: true });
+    const world = createTestWorld();
+    world.combatEvents.push({
+      type: 'hit',
+      x: 10,
+      y: 0,
+      amount: 10,
+      targetType: 'enemy',
+      timestamp: 0,
+      weaponGoreFactor: 1,
+      sourceX: 0,
+      sourceY: 0,
+    });
+
+    vfx.update(world, 0, 0);
+    const initialX = rectangles.map((rectangle) => rectangle.x);
+    world.combatEvents.length = 0;
+    vfx.update(world, 100, 100);
+
+    expect(rectangles).toHaveLength(4);
+    expect(rectangles.every((rectangle, index) => rectangle.x > initialX[index]!)).toBe(true);
   });
 });
