@@ -283,6 +283,14 @@ export function resolveDialogueLines(
   if (defId === 'spell-quest-giver') {
     const brokerLines = selectSpellBrokerDialogue({
       locked: deps.spellQuestGiver?.isLocked?.(world) === true,
+      // Use the Slime Rat's `defeated` kill-state directly rather than the
+      // `floor1-boss-battle-complete` goal flag: that flag is only set once
+      // `claim-spellbook` also completes (see `onCompleteGoalFlag` on the
+      // `floor1-boss-battle` quest), which happens inside `meetSpellQuestGiver`
+      // — after this dialogue is resolved. Gating on the goal flag meant the
+      // very first post-kill Broker interaction still replayed the stale
+      // "Kill the Slime Rat" intro.
+      bossDefeated: objective?.bossBattles.get('slime-rat')?.defeated === true,
       spellbookClaimed:
         world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
         world.featureUnlocks.spells === true,
