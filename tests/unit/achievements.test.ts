@@ -316,7 +316,9 @@ describe('floor4 achievements catalog', () => {
     const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
 
     for (const achievement of FLOOR4_ACHIEVEMENTS) {
-      const sentenceCount = [...segmenter.segment(achievement.directorFlavor)].length;
+      const sentenceCount = [...segmenter.segment(achievement.directorFlavor)].filter(
+        ({ segment }) => /[.!?]['"]?$/.test(segment.trim()),
+      ).length;
       const [minimum, maximum] = ranges[achievement.difficulty];
       expect(sentenceCount).toBeGreaterThanOrEqual(minimum);
       expect(sentenceCount).toBeLessThanOrEqual(maximum);
