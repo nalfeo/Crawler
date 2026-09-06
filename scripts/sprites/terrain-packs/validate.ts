@@ -1050,16 +1050,87 @@ export function validateVariantTransformEligibility(
  */
 export function validateTerrainDepthAndPerspective(
   manifest: TerrainPackDef,
+  wallAtlas: RgbaImage,
+  accentAtlases: readonly RgbaImage[],
 ): ValidationResult {
   const issues: ValidationIssue[] = [];
-  const hasWallAccents = (manifest.wallAccents?.length ?? 0) > 0;
-  if (!hasWallAccents) {
+  const declaredAccents = manifest.wallAccents ?? [];
+  if (declaredAccents.length === 0 || accentAtlases.length === 0) {
     fail(
       issues,
       'terrain-pack-lacks-depth',
-      `Terrain pack '${manifest.id}' lacks depth and perspective cues (no wall accents or vertical wall facet overlays; reads as flat top-down tiles). Floor 2 industrial-cave is the canonical positive reference for depth and perspective.`,
+      `Terrain pack '${manifest.id}' lacks depth and perspective cues (no decoded wall accent overlays; reads as flat top-down tiles). Floor 2 industrial-cave is the canonical positive reference for depth and perspective.`,
     );
+    return { ok: false, issues };
+  }
+
+  if (accentAtlases.length !== declaredAccents.length) {
+    fail(
+      issues,
+      'terrain-pack-depth-assets-mismatch',
+      `Terrain pack '${manifest.id}' declares ${declaredAccents.length} wall accents but decoded ${accentAtlases.length}.`,
+    );
+    return { ok: false, issues };
+  }
+
+  const expectedPixels = wallAtlas.width * wallAtlas.height;
+  for (let accentIndex = 0; accentIndex < accentAtlases.length; accentIndex++) {
+    const accent = accentAtlases[accentIndex];
+    const accentId = declaredAccents[accentIndex]?.id ?? `accent-${accentIndex}`;
+    if (accent === undefined) continue;
+    if (accent.width !== wallAtlas.width || accent.height !== wallAtlas.height) {
+      fail(
+        issues,
+        'terrain-pack-depth-dimensions',
+        `Wall accent '${accentId}' in '${manifest.id}' is ${accent.width}x${accent.height}; expected ${wallAtlas.width}x${wallAtlas.height}.`,
+      );
+      continue;
+    }
+
+    let opaquePixels = 0;
+    let differingPixels = 0;
+    let minLuminance = 255;
+    let maxLuminance = 0;
+    const colors = new Set<string>();
+    const verticalBands = new Set<number>();
+    for (let pixel = 0; pixel < accent.data.length; pixel += 4) {
+      const alpha = accent.data[pixel + 3] ?? 0;
+      if (alpha === 0) continue;
+      opaquePixels++;
+      const red = accent.data[pixel] ?? 0;
+      const green = accent.data[pixel + 1] ?? 0;
+      const blue = accent.data[pixel + 2] ?? 0;
+      colors.add(`${red},${green},${blue}`);
+      const luminance = Math.round(0.2126 * red + 0.7152 * green + 0.0722 * blue);
+      minLuminance = Math.min(minLuminance, luminance);
+      maxLuminance = Math.max(maxLuminance, luminance);
+      const y = Math.floor(pixel / 4 / accent.width);
+      verticalBands.add(Math.min(3, Math.floor((y * 4) / accent.height)));
+      if (
+        red !== (wallAtlas.data[pixel] ?? 0) ||
+        green !== (wallAtlas.data[pixel + 1] ?? 0) ||
+        blue !== (wallAtlas.data[pixel + 2] ?? 0)
+      ) {
+        differingPixels++;
+      }
+    }
+
+    const coverage = opaquePixels / expectedPixels;
+    const visibleOverlay = differingPixels / Math.max(opaquePixels, 1);
+    if (
+      coverage < 0.01 ||
+      coverage > 0.9 ||
+      colors.size < 8 ||
+      maxLuminance - minLuminance < 24 ||
+      verticalBands.size < 3 ||
+      visibleOverlay < 0.5
+    ) {
+      fail(
+        issues,
+        'terrain-pack-lacks-depth',
+        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}).`,
+      );
+    }
   }
   return { ok: issues.length === 0, issues };
 }
-

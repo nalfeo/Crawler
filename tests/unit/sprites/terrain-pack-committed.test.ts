@@ -45,6 +45,7 @@ import {
   restyleWallAtlas,
 } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
+import { createImage, fillRect } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 
 function repoRoot(): string {
   return path.resolve(import.meta.dirname, '..', '..', '..');
@@ -679,7 +680,11 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
 describe('validateTerrainDepthAndPerspective', () => {
   it('Floor 2 (industrial-cave) passes the depth and perspective visual check', () => {
     const floor2Pack = getTerrainPack('industrial-cave');
-    const result = validateTerrainDepthAndPerspective(floor2Pack);
+    const wallAtlas = decodePng(readCommittedAtlas(floor2Pack));
+    const accentAtlases = floor2Pack.wallAccents!.map((accent) =>
+      decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+    );
+    const result = validateTerrainDepthAndPerspective(floor2Pack, wallAtlas, accentAtlases);
     expect(result.ok).toBe(true);
     expect(result.issues).toHaveLength(0);
   });
@@ -687,7 +692,11 @@ describe('validateTerrainDepthAndPerspective', () => {
   it('Floor 1 (floor1-dungeon, floor1-cave) fails the depth check for flat top-down tiles', () => {
     for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
       const pack = getTerrainPack(id);
-      const result = validateTerrainDepthAndPerspective(pack);
+      const result = validateTerrainDepthAndPerspective(
+        pack,
+        decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+        [],
+      );
       expect(result.ok).toBe(false);
       expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
     }
@@ -695,7 +704,25 @@ describe('validateTerrainDepthAndPerspective', () => {
 
   it('Floor 3 (companion-overworld) fails the depth check for flat top-down tiles', () => {
     const pack = getTerrainPack('companion-overworld');
-    const result = validateTerrainDepthAndPerspective(pack);
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+      [],
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('rejects a declared accent whose pixels are a flat fill', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    fillRect(flatAccent, 0, 0, flatAccent.width, flatAccent.height, 80, 80, 80, 255);
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
     expect(result.ok).toBe(false);
     expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
   });

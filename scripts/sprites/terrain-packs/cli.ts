@@ -21,6 +21,7 @@ import {
   validateWallAutotileImagePath,
   validateWallAccentImagePaths,
   validateWallAccentTopology,
+  validateTerrainDepthAndPerspective,
   validateCrossPackWallSilhouettes,
   validateVariantTransformEligibility,
   validateGroundDecalImages,
@@ -139,6 +140,7 @@ function runValidate(): void {
     const atlasAbsPath = path.join(repoRoot, 'public', atlasRelPath);
     const atlasBytes = fs.readFileSync(atlasAbsPath);
     const result = validateTerrainPack(manifestJson, atlasBytes);
+    const wallAtlas = decodePng(atlasBytes);
 
     const allIssues = [
       ...result.issues,
@@ -147,10 +149,24 @@ function runValidate(): void {
       ...decalPathResult.issues,
     ];
 
+    if (accentPathResult.ok && (RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
+      const accentAtlases = (manifest.wallAccents ?? []).map((accent) =>
+        decodePng(
+          fs.readFileSync(path.join(repoRoot, 'public', accent.imagePath.replace(/\\/g, '/'))),
+        ),
+      );
+      const depthResult = validateTerrainDepthAndPerspective(manifest, wallAtlas, accentAtlases);
+      allIssues.push(...depthResult.issues);
+    } else if ((RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
+      allIssues.push({
+        code: 'terrain-pack-lacks-depth',
+        message: `Terrain pack '${manifest.id}' could not be evaluated for wall depth because its accent paths are invalid.`,
+      });
+    }
+
     // Wall-accent topology ("no spill") — only meaningful once paths/dims are
     // confirmed safe above; skip if the accent path validation already failed
     // (avoids reading an unsafe/missing path).
-    const wallAtlas = decodePng(atlasBytes);
     if (accentPathResult.ok) {
       for (const accent of manifest.wallAccents ?? []) {
         const accentAbsPath = path.join(repoRoot, 'public', accent.imagePath.replace(/\\/g, '/'));
