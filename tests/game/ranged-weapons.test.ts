@@ -36,6 +36,27 @@ describe('ranged weapons', () => {
     expect(resolveRenderKind(world, p)).toBe('bullet');
   });
 
+  it.each(['musketeer-rifle', 'cog-pistol'] as const)(
+    '%s (firearm, weaponTypeSkillId=pistol) fires a bullet projectile',
+    (weaponId) => {
+      const world = createTestWorld();
+      spawnPlayer(world, 0, 0);
+      spawnEnemy(world, 6.25, 0, 20);
+      const def = getWeaponDef(weaponId)!;
+      expect(def.weaponTypeSkillId).toBe('pistol');
+      setActiveWeapon(world, def);
+      world.elapsedMs = def.cooldownMs;
+
+      weaponSystem(world);
+
+      const projectiles = Array.from(query(world.ecs, [Projectile, Position, Velocity, Damage]));
+      expect(projectiles).toHaveLength(1);
+      const p = projectiles[0]!;
+      expect(world.stores.projectileVisual.kind[p]).toBe(ProjectileVisualKind.BULLET);
+      expect(resolveRenderKind(world, p)).toBe('bullet');
+    },
+  );
+
   it.each([
     ['bow', ProjectileVisualKind.ARROW],
     ['crossbow', ProjectileVisualKind.ARROW],

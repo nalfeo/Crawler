@@ -514,7 +514,8 @@ function fireRangedAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): number {
-  const visualKind = def.id === 'pistol' ? ProjectileVisualKind.BULLET : ProjectileVisualKind.ARROW;
+  const visualKind =
+    def.weaponTypeSkillId === 'pistol' ? ProjectileVisualKind.BULLET : ProjectileVisualKind.ARROW;
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
   if (def.bounceCount > 0) {

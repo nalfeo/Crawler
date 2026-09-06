@@ -39,6 +39,7 @@ import {
   Health,
   Homing,
   Position,
+  Projectile,
   Prop,
 } from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
@@ -73,7 +74,10 @@ import {
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
-import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
+import {
+  generatedBriefIdForHarvestable,
+  resolveRenderKind,
+} from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import type {
   _CornerButtonProbe as CornerButtonProbe,
@@ -99,7 +103,7 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/inde
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
-import { setActiveWeapon } from '../../game/weaponSystem.js';
+import { setActiveWeapon, weaponSystem } from '../../game/weaponSystem.js';
 import { CARRIED_WEAPON_OBJECT_NAME_PREFIX } from '../../engine/phaser-bridge/carried-weapon.js';
 import {
   addItem,
@@ -835,6 +839,23 @@ export interface PropRenderSize {
 }
 
 /**
+ * Real-render-bridge state of one live `Projectile` entity (issue #4274). The
+ * generic entity render pass in `PhaserBridge.ts` has no per-eid object name,
+ * so this locates the nearest live `Image`/`Sprite` to the projectile's feet
+ * position (mirrors `getNpcRenderInfo`'s nearest-sprite lookup) and reports
+ * its real texture key alongside the `resolveRenderKind` classification the
+ * bridge itself used to pick that texture.
+ */
+export interface ProjectileRenderInfo {
+  readonly eid: number;
+  /** `resolveRenderKind(world, eid)` result: 'bullet' or 'arrow'. */
+  readonly renderKind: string;
+  /** Texture key backing the nearest live display object, or null if none. */
+  readonly textureKey: string | null;
+  readonly distancePx: number;
+}
+
+/**
  * Display-list state of the player's persistent carried main-hand weapon.
  * The carried sprite is named `carried-weapon:<eid>` by the render bridge, so
  * this reads the real scene's display list rather than inferring from pixels.
@@ -1382,6 +1403,23 @@ export interface MainSceneProbeApi {
    * swings, not only for the duration of a `MeleeSwing`.
    */
   getCarriedWeaponRenderInfo(): CarriedWeaponRenderInfo;
+  /**
+   * Fires the player's currently-equipped weapon once through the real
+   * `weaponSystem` (issue #4274), spawning a nearby target enemy first so a
+   * ranged weapon actually fires. Returns the eids of any `Projectile`
+   * entities the shot spawned; call `getProjectileRenderInfo()` on a
+   * subsequent rendered frame to read their real bridge texture.
+   */
+  fireActiveWeaponForProjectileProbe(): number[];
+  /**
+   * Real render-bridge texture for every live `Projectile` entity (issue
+   * #4274), resolved by locating the nearest live display object to each
+   * projectile's feet position (mirrors `getNpcRenderInfo`'s nearest-sprite
+   * lookup). Proves — in the REAL booted scene, not a lab-only unit
+   * assertion — that pistol shots render as bullets while bow/crossbow shots
+   * keep the arrow texture.
+   */
+  getProjectileRenderInfo(): ProjectileRenderInfo[];
   /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
@@ -3051,6 +3089,64 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayWidthPx: sprite.displayWidth,
         displayHeightPx: sprite.displayHeight,
       };
+    },
+
+    fireActiveWeaponForProjectileProbe: (): number[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) {
+        return [];
+      }
+      const player = playerEidOf(scene);
+      if (player < 0) {
+        return [];
+      }
+      // Remove any leftover projectiles from a prior probe call so stray,
+      // never-moved shots sitting at the same spawn point can't be picked up
+      // by the nearest-image texture lookup in `getProjectileRenderInfo`.
+      for (const eid of query(world.ecs, [Projectile])) {
+        removeEntity(world.ecs, eid);
+      }
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      // Ranged weapons only fire at a nearby target — spawn one in front of
+      // the player so weaponSystem's target-acquisition gate is satisfied.
+      spawnEnemy(world, px + 6, py, 20);
+      weaponSystem(world);
+      return Array.from(query(world.ecs, [Projectile]));
+    },
+
+    getProjectileRenderInfo: (): ProjectileRenderInfo[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return [];
+      }
+      const images = phaserScene.children.list.filter(
+        (obj): obj is Phaser.GameObjects.Image => obj instanceof Phaser.GameObjects.Image,
+      );
+      const infos: ProjectileRenderInfo[] = [];
+      for (const eid of query(world.ecs, [Projectile])) {
+        const px = ftToPx(world.stores.position.x[eid] ?? 0);
+        const py = ftToPx(world.stores.position.y[eid] ?? 0);
+        let bestKey: string | null = null;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (const img of images) {
+          const dist = Math.hypot(img.x - px, img.y - py);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestKey = img.texture.key;
+          }
+        }
+        infos.push({
+          eid,
+          renderKind: resolveRenderKind(world, eid),
+          textureKey: bestKey,
+          distancePx: Number.isFinite(bestDist) ? Math.round(bestDist) : -1,
+        });
+      }
+      return infos;
     },
 
     getHarvestableRenderSummary: (): HarvestableRenderSummary => {
