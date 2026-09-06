@@ -775,7 +775,9 @@ describe('validateTerrainDepthAndPerspective', () => {
         JSON.stringify(flatManifest),
       );
 
-      expect(runValidate(tempRoot, ['industrial-cave'])).toBe(false);
+      const issues: Array<{ code: string; message: string }> = [];
+      expect(runValidate(tempRoot, ['industrial-cave'], issues)).toBe(false);
+      expect(issues.some((issue) => issue.code === 'terrain-pack-lacks-depth')).toBe(true);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

@@ -25,6 +25,7 @@ import {
   validateCrossPackWallSilhouettes,
   validateVariantTransformEligibility,
   validateGroundDecalImages,
+  type ValidationIssue,
 } from './validate.js';
 import { decodePng } from './png-buffer.js';
 import {
@@ -52,7 +53,11 @@ function runBuild(): void {
   applySharedBasePoolRestyle();
 }
 
-export function runValidate(repoRoot = repoRootFromHere(), packIds?: readonly string[]): boolean {
+export function runValidate(
+  repoRoot = repoRootFromHere(),
+  packIds?: readonly string[],
+  reportedIssues?: ValidationIssue[],
+): boolean {
   const manifestDir = path.join(repoRoot, 'src', 'shared', 'data', 'terrain-packs');
   const discoveredPacks = fs
     .readdirSync(manifestDir)
@@ -208,6 +213,7 @@ export function runValidate(repoRoot = repoRootFromHere(), packIds?: readonly st
         }
       }
     }
+    reportedIssues?.push(...allIssues);
 
     if (
       result.ok &&

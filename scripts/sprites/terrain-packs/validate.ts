@@ -1171,6 +1171,71 @@ export function validateTerrainDepthAndPerspective(
     const directionalEdgeCoverage = accentedExposedEdgePixels.map(
       (count, edgeIndex) => count / Math.max(exposedEdgePixels[edgeIndex]!, 1),
     );
+    const coherentEdges: number[] = [];
+    const layeredEdges: number[] = [];
+    for (let frameY = 0; frameY < manifest.wallAutotile.gridRows; frameY += 1) {
+      for (let frameX = 0; frameX < manifest.wallAutotile.gridCols; frameX += 1) {
+        const frameIndex = frameY * manifest.wallAutotile.gridCols + frameX;
+        const maskId =
+          manifest.wallAutotile.masks.find((entry) => entry.frameIndex === frameIndex)?.maskId ?? 0;
+        const edgeDefinitions = [
+          { bit: MASK_BIT.N, length: manifest.wallAutotile.cellPx, horizontal: true },
+          { bit: MASK_BIT.E, length: manifest.wallAutotile.cellPx, horizontal: false },
+          { bit: MASK_BIT.S, length: manifest.wallAutotile.cellPx, horizontal: true },
+          { bit: MASK_BIT.W, length: manifest.wallAutotile.cellPx, horizontal: false },
+        ] as const;
+        for (const [edgeIndex, edge] of edgeDefinitions.entries()) {
+          if (maskId & edge.bit) continue;
+          const occupiedAlongEdge: boolean[] = [];
+          let nearLayerCount = 0;
+          let farLayerCount = 0;
+          for (let along = 0; along < edge.length; along += 1) {
+            let occupied = 0;
+            for (let depth = 0; depth < 12; depth += 1) {
+              const localX =
+                edgeIndex === 1
+                  ? manifest.wallAutotile.cellPx - 12 + depth
+                  : edgeIndex === 3
+                    ? 12 + depth
+                    : along;
+              const localY =
+                edgeIndex === 0
+                  ? 12 + depth
+                  : edgeIndex === 2
+                    ? manifest.wallAutotile.cellPx - 12 + depth
+                    : along;
+              const pixel =
+                ((frameY * manifest.wallAutotile.cellPx + localY) * accent.width +
+                  frameX * manifest.wallAutotile.cellPx +
+                  localX) *
+                4;
+              if ((accent.data[pixel + 3] ?? 0) === 0) continue;
+              occupied += 1;
+              if (depth < 6) {
+                nearLayerCount += 1;
+              } else {
+                farLayerCount += 1;
+              }
+            }
+            occupiedAlongEdge.push(occupied >= 3);
+          }
+          let longestRun = 0;
+          let currentRun = 0;
+          for (const occupied of occupiedAlongEdge) {
+            currentRun = occupied ? currentRun + 1 : 0;
+            longestRun = Math.max(longestRun, currentRun);
+          }
+          if (longestRun >= 8) {
+            coherentEdges.push(edgeIndex);
+            if (nearLayerCount > 0 && farLayerCount > 0) {
+              layeredEdges.push(edgeIndex);
+            }
+          }
+        }
+      }
+    }
+    const hasDirectionalRelief = new Set(coherentEdges).size >= 2;
+    const hasLayeredRelief = new Set(layeredEdges).size >= 1;
     if (
       coverage < 0.01 ||
       coverage > 0.9 ||
@@ -1181,12 +1246,14 @@ export function validateTerrainDepthAndPerspective(
       exposedEdgeCoverage < 0.15 ||
       exposedEdgeCoverage > 0.85 ||
       exposedEdgeShare > 0.25 ||
-      directionalEdgeCoverage.some((coverage) => coverage < 0.08 || coverage > 0.75)
+      directionalEdgeCoverage.some((coverage) => coverage < 0.08 || coverage > 0.75) ||
+      !hasDirectionalRelief ||
+      !hasLayeredRelief
     ) {
       fail(
         issues,
         'terrain-pack-lacks-depth',
-        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}, directionalEdgeCoverage=${directionalEdgeCoverage.map((value) => value.toFixed(3)).join('/')}).`,
+        `Wall accent '${accentId}' in '${manifest.id}' does not contain coherent wall-face relief (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}, directionalEdgeCoverage=${directionalEdgeCoverage.map((value) => value.toFixed(3)).join('/')}, coherentEdges=${new Set(coherentEdges).size}, layeredEdges=${new Set(layeredEdges).size}).`,
       );
     }
   }
