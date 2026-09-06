@@ -108,32 +108,40 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
 // a blocked PR has remained stale past the per-PR gap threshold.
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
-  const context = await getCopilotIssueAssignmentContext({
-    graphql,
-    token,
-    owner,
-    repo,
-    issueNumber,
-  });
-  if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
-    throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
+  if (typeof token !== 'string' || token.trim() === '') {
+    return null;
   }
 
-  const actorIds = buildIssueActorIds({
-    assignees: context.assignees,
-    copilotActorId: context.copilot.id,
-    includeCopilot: true,
-  });
-  const assignedLogins = await replaceIssueAssignees({
-    graphql,
-    token,
-    assignableId: context.issueId,
-    actorIds,
-  });
-  if (!assignedLogins.some(isCopilotLogin)) {
-    throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
+  try {
+    const context = await getCopilotIssueAssignmentContext({
+      graphql,
+      token,
+      owner,
+      repo,
+      issueNumber,
+    });
+    if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
+      throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
+    }
+
+    const actorIds = buildIssueActorIds({
+      assignees: context.assignees,
+      copilotActorId: context.copilot.id,
+      includeCopilot: true,
+    });
+    const assignedLogins = await replaceIssueAssignees({
+      graphql,
+      token,
+      assignableId: context.issueId,
+      actorIds,
+    });
+    if (!assignedLogins.some(isCopilotLogin)) {
+      throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
+    }
+    return context.copilot.login;
+  } catch {
+    return null;
   }
-  return context.copilot.login;
 }
 
 function parseRunTimestamp(run) {
@@ -784,7 +792,7 @@ export async function reconcileHarvestIncident({
       owner,
       repo,
       issueNumber: existing.number,
-    });
+    }).catch(() => null);
     return { action: 'updated', issueNumber: existing.number };
   }
 
@@ -798,7 +806,7 @@ export async function reconcileHarvestIncident({
     owner,
     repo,
     issueNumber: created.data.number,
-  });
+  }).catch(() => null);
   return { action: 'created', issueNumber: created.data.number };
 }
 

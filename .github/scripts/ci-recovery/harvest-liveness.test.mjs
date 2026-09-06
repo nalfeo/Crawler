@@ -832,6 +832,29 @@ function fakeApi({ existing = [] } = {}) {
 const STALLED = { stalled: true, reason: 'no-successful-run-in-window' };
 const HEALTHY = { stalled: false, reason: 'healthy' };
 
+test('reconcileHarvestIncident still creates the issue when Copilot assignment is unavailable', async () => {
+  const api = {
+    ...fakeApi(),
+    graphql: async () => {
+      throw new Error('assignment token exhausted');
+    },
+  };
+  const result = await reconcileHarvestIncident({
+    ...api,
+    token: 't',
+    assignmentToken: '',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    verdict: STALLED,
+    summary: summarizeHarvestRuns([], NOW),
+    backlogCount: 21,
+    now: NOW,
+  });
+
+  assert.equal(result.action, 'created');
+  assert.equal(api.calls.filter((call) => call.method === 'POST').length, 1);
+});
+
 test('reconcileHarvestIncident creates a labelled incident when stalled', async () => {
   const api = fakeApi();
   const result = await reconcileHarvestIncident({
