@@ -32,12 +32,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   },
   {
     ...ABILITY_PRESENTATION_BY_ID['pulse-shield'],
-    trigger: {
-      kind: 'low_health_crowded',
-      healthBelowRatio: 0.5,
-      minEnemies: 3,
-      withinFeet: 5,
-    },
+    trigger: { kind: 'player_damage', minDamage: 1 },
     effects: [
       {
         type: 'spell_pulse_shield',
@@ -777,41 +772,30 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
   },
 
-  // Pistol type abilities
+  // Pistol type abilities — canonical player-facing names remain active abilities,
+  // matching their real weapon-skill UI and trigger behavior.
   {
-    id: 'pistol-shot-base',
-    name: 'Pistol Shot',
-    shortLabel: 'SHOT',
-    description: 'Basic pistol shot',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['pistol-shot-base'],
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
+    weaponPrerequisite: 'pistol',
     effects: [{ type: 'stat_add', stat: 'damage', value: 0 }],
   },
   {
-    id: 'pistol-volley',
-    name: 'Pistol Volley',
-    shortLabel: 'VOLLEY',
-    description: 'Rapid pistol fire',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['pistol-rapid-fire'],
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
+    weaponPrerequisite: 'pistol',
     effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.15 }],
   },
   {
-    id: 'pistol-shot-evolved',
-    name: 'Pistol Shot (Evolved)',
-    shortLabel: 'SHOT+',
-    description: 'Evolved pistol shot',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['pistol-shot-evolved'],
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
+    weaponPrerequisite: 'pistol',
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.15 }],
   },
   {
-    id: 'pistol-volley-evolved',
-    name: 'Pistol Volley (Evolved)',
-    shortLabel: 'VOLLEY+',
-    description: 'Evolved rapid fire',
-    category: 'combat',
-    kind: 'passive',
+    ...ABILITY_PRESENTATION_BY_ID['pistol-barrage'],
+    trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
+    weaponPrerequisite: 'pistol',
     effects: [{ type: 'stat_multiply', stat: 'attackSpeed', value: 0.25 }],
   },
 
@@ -1215,8 +1199,13 @@ for (const ability of ABILITY_DEFINITIONS) {
   registry.set(ability.id, ability);
 }
 
+const LEGACY_ABILITY_ID_ALIASES = new Map<string, string>([
+  ['pistol-volley', 'pistol-rapid-fire'],
+  ['pistol-volley-evolved', 'pistol-barrage'],
+]);
+
 export function getAbilityDefinition(id: string): AbilityDefinition | undefined {
-  return registry.get(id);
+  return registry.get(LEGACY_ABILITY_ID_ALIASES.get(id) ?? id);
 }
 
 export function getAllAbilityDefinitions(): readonly AbilityDefinition[] {

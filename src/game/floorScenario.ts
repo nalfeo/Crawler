@@ -87,6 +87,7 @@ import {
   FLOOR1_POST_QUEST_WEAPON_COSTS,
   FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST,
   FLOOR1_SPELL_BROKER_COST,
+  FLOOR1_SPELL_BROKER_MAX_PURCHASES,
   GAME,
   PLAYER_SPEED,
 } from '../shared/constants.js';
@@ -4633,12 +4634,27 @@ export function getSpellBrokerOffers(world: GameWorld): readonly Floor1SpellBrok
 }
 
 /**
+ * Spells already bought off this run's broker rack, read from the durable
+ * offer list (`offer.purchased`) rather than the AI-only intent state, so the
+ * count is identical for a headless run and a human player.
+ */
+function spellBrokerPurchaseCount(world: GameWorld): number {
+  return getSpellBrokerOffers(world).filter((offer) => offer.purchased).length;
+}
+
+/**
  * True when a holder is eligible to buy a particular broker offer, ignoring
  * gold. Used to distinguish "unavailable" (already purchased/learned, no
  * spell slot, quest not unlocked) from "merely unaffordable right now" —
  * callers that pick a fallback offer must not skip ahead in the priced rack
  * just because the player is momentarily short on gold for their intended
  * pick (see {@link canPurchaseSpellBrokerSpell}).
+ *
+ * The per-run cap ({@link FLOOR1_SPELL_BROKER_MAX_PURCHASES}, canonically
+ * below `FLOOR1_SPELL_BROKER_OFFER_COUNT`) is enforced HERE rather than
+ * only in the AI's broker intent, so clearing the whole three-spell rack is
+ * impossible for a human player too — no matter how much gold achievement
+ * loot boxes paid out before the broker opened (issue #4284).
  */
 export function isSpellBrokerSpellEligibleIgnoringGold(
   world: GameWorld,
@@ -4652,6 +4668,7 @@ export function isSpellBrokerSpellEligibleIgnoringGold(
   ) {
     return false;
   }
+  if (spellBrokerPurchaseCount(world) >= FLOOR1_SPELL_BROKER_MAX_PURCHASES) return false;
   const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
   if (!offer || offer.purchased) return false;
   const state = getOrCreateAbilityState(world, playerEid);

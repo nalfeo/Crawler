@@ -29,6 +29,7 @@ import {
   type GameWorld,
 } from '../../src/core/index.js';
 import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
+import { applyDamage } from '../../src/core/apply-damage.js';
 import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
@@ -138,33 +139,28 @@ describe('Fireball auto-triggers in the shipped visual pipeline', () => {
 });
 
 describe('Pulse Shield auto-triggers in the shipped visual pipeline', () => {
-  it('fires when the player is at low HP surrounded by 3 enemies within 5 ft', () => {
+  it('fires when the player takes hostile damage', () => {
     const { world, playerEid } = createPlayingFloor1World(11);
     const options = createFloor1MainSceneOptions();
 
-    // Force pulse-shield into the offered set — seed 11 may not generate it by
-    // default, but this test's concern is the visual-pipeline auto-trigger behaviour.
     world.floorScenario!.offeredRewardSpellIds = ['pulse-shield', 'heal', 'fireball'];
     world.goalFlags.set('floor1-boss-battle-complete', true);
     const learned = selectSpellFromBossBattle(world, playerEid, 'pulse-shield');
     expect(learned).toBe(true);
     expect(world.featureUnlocks.spells).toBe(true);
 
-    // Step one frame FIRST so floor1PlayerStatSystem latches its one-shot HP
-    // bonus (it forces current=max on its first run) before we drop the player
-    // to low HP. In real gameplay the bonus latches on frame 1 of the scenario,
-    // long before any boss fight leaves the player wounded.
-    stepVisualPipeline(world, options, 1);
-
-    // low_health_crowded needs HP < 50% and 3+ enemies within 5 ft.
-    const maxHp = world.stores.health.max[playerEid] ?? 100;
-    setComponent(world.ecs, playerEid, Health, {
-      current: Math.floor(maxHp * 0.25),
-      max: maxHp,
+    const attackerEid = spawnStationaryEnemyNearPlayer(world, playerEid, 2);
+    const playerX = world.stores.position.x[playerEid] ?? 0;
+    const playerY = world.stores.position.y[playerEid] ?? 0;
+    applyDamage(world, playerEid, 10, playerX, playerY, {
+      origin: 'enemy',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceEid: attackerEid,
+      sourceX: playerX + 2,
+      sourceY: playerY,
     });
-    spawnStationaryEnemyNearPlayer(world, playerEid, 2);
-    spawnStationaryEnemyNearPlayer(world, playerEid, -2);
-    spawnStationaryEnemyNearPlayer(world, playerEid, 3);
 
     stepVisualPipeline(world, options, 5);
 
@@ -172,8 +168,6 @@ describe('Pulse Shield auto-triggers in the shipped visual pipeline', () => {
     const cooldownFrame = state?.cooldownByAbilityId.get('pulse-shield');
     expect(cooldownFrame).toBeDefined();
     expect(cooldownFrame).toBeGreaterThan(0);
-    // Same visibility guard as fireball above — the pulse-shield wave VFX must
-    // land on the queue during a shipped-pipeline auto-cast.
     const waves = world.vfxEvents.filter((e) => e.kind === 'pulseShieldWave');
     expect(waves.length).toBeGreaterThanOrEqual(1);
   });
