@@ -101,24 +101,7 @@ function validateSpriteAnnotationsDocument(raw: string): SpriteAnnotationsValida
         if (typeof rawAnnotation !== 'object' || rawAnnotation === null) continue;
         const tombstone = (rawAnnotation as { tombstone?: unknown }).tombstone;
         if (tombstone === undefined) continue;
-        const value =
-          typeof tombstone === 'object' && tombstone !== null
-            ? (tombstone as Partial<LifecycleDeletionTombstone>)
-            : {};
-        if (
-          value.manifestKey !== annotationKey ||
-          !isSafeQueueAssetPath(value.assetPath) ||
-          typeof value.sourceRun !== 'string' ||
-          value.sourceRun.trim() === '' ||
-          (value.replacementKey !== undefined &&
-            (typeof value.replacementKey !== 'string' ||
-              value.replacementKey.trim() === '' ||
-              typeof value.conceptId !== 'string' ||
-              value.conceptId.trim() === '')) ||
-          typeof value.variantIndex !== 'number' ||
-          !Number.isInteger(value.variantIndex) ||
-          value.variantIndex < 0
-        ) {
+        if (!isLifecycleDeletionTombstone(annotationKey, tombstone)) {
           rejections.push({
             annotationKey,
             reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
@@ -245,11 +228,12 @@ const ANNOTATIONS_PATH = 'public/assets/generated/sprite-editor-annotations.json
 
 interface LifecycleDeletionTombstone {
   readonly manifestKey: string;
-  readonly conceptId?: string;
+  readonly conceptId: string;
   readonly replacementKey?: string;
   readonly assetPath: string;
   readonly sourceRun: string;
   readonly variantIndex: number;
+  readonly annotationKeys: readonly string[];
 }
 
 export interface AuthorizedLifecycleDeletion {
@@ -291,6 +275,30 @@ function isSafeQueueAssetPath(value: unknown): value is string {
     value.startsWith('generated/') &&
     !value.includes('\\') &&
     !value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  );
+}
+
+function isLifecycleDeletionTombstone(
+  annotationKey: string,
+  value: unknown,
+): value is LifecycleDeletionTombstone {
+  if (typeof value !== 'object' || value === null) return false;
+  const tombstone = value as Partial<LifecycleDeletionTombstone>;
+  return (
+    tombstone.manifestKey === annotationKey &&
+    typeof tombstone.conceptId === 'string' &&
+    tombstone.conceptId.trim() !== '' &&
+    isSafeQueueAssetPath(tombstone.assetPath) &&
+    typeof tombstone.sourceRun === 'string' &&
+    tombstone.sourceRun.trim() !== '' &&
+    (tombstone.replacementKey === undefined ||
+      (typeof tombstone.replacementKey === 'string' && tombstone.replacementKey.trim() !== '')) &&
+    typeof tombstone.variantIndex === 'number' &&
+    Number.isInteger(tombstone.variantIndex) &&
+    tombstone.variantIndex >= 0 &&
+    Array.isArray(tombstone.annotationKeys) &&
+    tombstone.annotationKeys.length > 0 &&
+    tombstone.annotationKeys.every((key) => typeof key === 'string' && key.length > 0)
   );
 }
 
@@ -413,16 +421,12 @@ export function partitionLifecycleDeletions(
         ? (rawAnnotation as { tombstone?: unknown }).tombstone
         : undefined;
     if (typeof tombstone !== 'object' || tombstone === null) continue;
-    const value = tombstone as Partial<LifecycleDeletionTombstone>;
+    const value =
+      typeof tombstone === 'object' && tombstone !== null
+        ? (tombstone as Partial<LifecycleDeletionTombstone>)
+        : {};
     const shardPath = `public/assets/generated/entries/${annotationKey}.json`;
-    if (
-      value.manifestKey !== annotationKey ||
-      !isSafeQueueAssetPath(value.assetPath) ||
-      typeof value.sourceRun !== 'string' ||
-      typeof value.variantIndex !== 'number' ||
-      !Number.isInteger(value.variantIndex) ||
-      value.variantIndex < 0
-    ) {
+    if (!isLifecycleDeletionTombstone(annotationKey, tombstone)) {
       // Withhold exactly the deleted paths this broken tombstone could name.
       // An unnameable path cannot be promoted anyway: only AUTHORIZED pairs are
       // ever `git rm`-ed, so refusing here is already fail-closed.
@@ -460,6 +464,7 @@ export function partitionLifecycleDeletions(
           assetPath: value.assetPath,
           sourceRun: value.sourceRun,
           variantIndex: value.variantIndex,
+          annotationKeys: value.annotationKeys,
         },
         paths: [shardPath, assetPath],
       });

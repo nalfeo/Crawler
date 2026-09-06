@@ -150,6 +150,7 @@ describe('selectAuthorizedLifecycleDeletions', () => {
           assetPath: 'generated/queue-goon-var-3.png',
           sourceRun: 'generated/runs/queue-goon-v2/run-a',
           variantIndex: 3,
+          annotationKeys: ['queue-goon-v2-var-3'],
         },
         paths: [
           'public/assets/generated/entries/queue-goon-var-3.json',
@@ -258,6 +259,33 @@ describe('partitionLifecycleDeletions (per-tombstone fail-closed)', () => {
     expect(rejected[0]?.annotationKey).toBe('broken-var-1');
     expect(rejected[0]?.reason).toMatch(/Invalid disliked-sprite tombstone/);
     expect(rejected[0]?.paths).toEqual(pathsFor('broken-var-1').sort());
+  });
+
+  it('withholds a tombstone missing the persisted lifecycle identity fields', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'broken-var-1': tombstone('broken-var-1', {
+          conceptId: undefined,
+          annotationKeys: undefined,
+        }),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), ...pathsFor('broken-var-1')],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toEqual([
+      {
+        annotationKey: 'broken-var-1',
+        reason: 'Invalid disliked-sprite tombstone "broken-var-1" on assets/queue.',
+        paths: pathsFor('broken-var-1').sort(),
+      },
+    ]);
   });
 
   it('ignores malformed historical tombstones unrelated to the current deletion set', () => {

@@ -135,6 +135,7 @@ export function hasLineageTag(briefId: string): boolean {
  * entry keyed by the bare brief id, or a nested `equipment/weapon/...` key).
  */
 export function splitVariantKey(key: string): { brief: string; variantIndex: number } | null {
+  if (key.includes('/')) return null;
   const match = VARIANT_SUFFIX.exec(key);
   if (match === null) return null;
   return { brief: match[1]!, variantIndex: Number(match[2]!) };

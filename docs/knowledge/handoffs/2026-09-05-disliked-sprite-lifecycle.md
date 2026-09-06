@@ -320,6 +320,10 @@ sprite-pipeline, sprite-workflow
   directly, and the world contract documents both default headless loading from
   committed shards and the simulation-load-bearing entity generation counter.
   Focused reconciler, queue, and seeded runtime coverage passed 178/178.
+- Independent exact-head review then tightened queue authorization to require
+  the complete persisted lifecycle identity (including concept and annotation
+  keys) and made the destructive name normalizer preserve nested asset paths
+  while refusing to reinterpret nested variant namespaces.
 
 ## PR #3234 generic extraction audit
 

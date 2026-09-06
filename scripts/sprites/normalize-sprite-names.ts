@@ -89,7 +89,16 @@ export function findLineageViolations(entries: Record<string, { briefId?: string
 
 /** Resolve the absolute PNG path for an entry `assetPath` (`generated/x.png`). */
 function assetAbsPath(generatedDir: string, assetPath: string): string {
-  return path.join(generatedDir, path.basename(assetPath));
+  const prefix = 'generated/';
+  const relative = assetPath.startsWith(prefix) ? assetPath.slice(prefix.length) : '';
+  if (
+    relative === '' ||
+    assetPath.includes('\\') ||
+    relative.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`Refusing unsafe generated asset path: ${assetPath}`);
+  }
+  return path.join(generatedDir, ...relative.split('/'));
 }
 
 /**
