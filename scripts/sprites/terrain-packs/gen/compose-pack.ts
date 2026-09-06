@@ -34,6 +34,7 @@ import {
   toMaterialTile,
   type MaterialTileOptions,
 } from './image-ops.js';
+import { buildWallReliefAtlases } from '../wall-relief.js';
 
 export interface PackOutputFile {
   readonly relativePath: string;
@@ -43,7 +44,7 @@ export interface PackOutputFile {
 export type WallMaskFrameAssignment = { readonly maskId: number; readonly frameIndex: number };
 
 /** How far in from a silhouette boundary the wall darkening reaches. */
-const WALL_RIM = { rimPx: 3, rimDarken: 0.35, topLift: 0.5 } as const;
+const WALL_RIM = { rimPx: 7, rimDarken: 0.52, topLift: 0.72 } as const;
 
 /**
  * Cut a raw material into 4 quadrants and turn each into an independent
@@ -142,6 +143,16 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   // reason.
   files.push({ relativePath: `${packDir}/wall-material.png`, buffer: encodePng(input.wallTile) });
 
+  const wallAccents = buildWallReliefAtlases(input.wallTile, atlas).map(({ id, image }) => {
+    const relPath = `${packDir}/accent-${id}.png`;
+    files.push({ relativePath: relPath, buffer: encodePng(image) });
+    return {
+      id,
+      imagePath: relPath,
+      textureKey: `terrain-pack-${input.id}-accent-${id}`,
+    };
+  });
+
   const buildPool = (
     kind: string,
     variants: readonly RgbaImage[],
@@ -180,6 +191,7 @@ export function composePack(input: ComposePackInput): ComposePackResult {
       gridRows: ATLAS_GRID_ROWS,
       masks,
     },
+    wallAccents,
     floorPool,
     corridorPool,
     ...(Object.keys(specialFloorPools).length > 0

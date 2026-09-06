@@ -4,7 +4,7 @@
   "provenance": {
     "kind": "authored",
     "author": "Crawler agent (deterministic procedural build script)",
-    "derivationNote": "Original procedural art with NO external or generated-image input: rendered deterministically by scripts/sprites/terrain-packs/build-companion-overworld.ts from SeededRandom, and composed onto the canonical 20-quadrant blob47 wall silhouettes via composeWallAtlas (scripts/sprites/terrain-packs/gen/compose-pack.ts). Fully reproducible and byte-identical: run `npm run terrain-packs:build`. Palette is a bright sunlit grass/dirt overworld for the Floor 3 Companion League brief. Pools are weighted 10:8:1x6 (grass base : quiet grass : sparse detail) so ground reads as continuous grassland with occasional punctuation rather than a uniform patchwork."
+    "derivationNote": "Original procedural art with NO external or generated-image input: rendered deterministically by scripts/sprites/terrain-packs/build-companion-overworld.ts from SeededRandom, and composed onto the canonical 20-quadrant blob47 wall silhouettes via composeWallAtlas (scripts/sprites/terrain-packs/gen/compose-pack.ts). Fully reproducible and byte-identical: run `npm run terrain-packs:build`. Palette is a bright sunlit grass/dirt overworld for the Floor 3 Companion League brief. Four deterministic mask-aware raised-face overlays add visible wall ledges and recessed courses instead of a flat top-down rock stamp. Pools are weighted 10:8:1x6 (grass base : quiet grass : sparse detail) so ground reads as continuous grassland with occasional punctuation rather than a uniform patchwork."
   },
   "wallAutotile": {
     "imagePath": "assets/terrain-packs/companion-overworld/wall-atlas.png",
@@ -203,6 +203,28 @@
       }
     ]
   },
+  "wallAccents": [
+    {
+      "id": "raised-course",
+      "imagePath": "assets/terrain-packs/companion-overworld/accent-raised-course.png",
+      "textureKey": "terrain-pack-companion-overworld-accent-raised-course"
+    },
+    {
+      "id": "recessed-seam",
+      "imagePath": "assets/terrain-packs/companion-overworld/accent-recessed-seam.png",
+      "textureKey": "terrain-pack-companion-overworld-accent-recessed-seam"
+    },
+    {
+      "id": "broken-ledge",
+      "imagePath": "assets/terrain-packs/companion-overworld/accent-broken-ledge.png",
+      "textureKey": "terrain-pack-companion-overworld-accent-broken-ledge"
+    },
+    {
+      "id": "inset-face",
+      "imagePath": "assets/terrain-packs/companion-overworld/accent-inset-face.png",
+      "textureKey": "terrain-pack-companion-overworld-accent-inset-face"
+    }
+  ],
   "floorPool": [
     {
       "id": "floor-0",
