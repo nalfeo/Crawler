@@ -192,18 +192,36 @@ function achievementAcceptanceEvidence(body: string): {
 }
 
 /**
- * Detects a numeric achievement threshold generally — not just a closed
- * allowlist of nouns (kills/damage/gold/...) — so item counts ("collect 10
- * relics"), levels ("reach level 20"), and percentages ("finish with 50%
- * health") all require the HUMAN_GATE deferral, not just the originally
- * listed combat-stat nouns.
+ * Quantity-bearing nouns/units a numeric achievement threshold is commonly
+ * expressed against. Deliberately broader than the original combat-stat-only
+ * list (kills/damage/gold/...) so item counts ("collect 10 relics") and
+ * other common goal nouns are covered too, but still a curated allowlist —
+ * NOT a fully generic "any digit + any word" match, which would also catch
+ * unrelated numeric mentions ("step 2 of 3", "v2 release") and either
+ * over-trigger the HUMAN_GATE requirement or mask the more specific
+ * level/percentage patterns below.
+ */
+const NUMERIC_THRESHOLD_UNITS =
+  '(?:kills?|damage|gold|seconds?|minutes?|hours?|points?|score|waves?|rooms?|runs?|clears?|' +
+  'relics?|items?|artifacts?|coins?|orbs?|gems?|tokens?|keys?|chests?|treasures?|' +
+  'enemies|monsters|bosses|health|hp|mana|xp|experience|quests?|objectives?|targets?)';
+const NUMERIC_THRESHOLD_UNITS_PATTERN = new RegExp(
+  `\\d+(?:\\.\\d+)?\\s+${NUMERIC_THRESHOLD_UNITS}\\b`,
+  'i',
+);
+
+/**
+ * Detects a numeric achievement threshold — not just the original combat-stat
+ * allowlist — so item counts ("collect 10 relics"), levels ("reach level
+ * 20"), and percentages ("finish with 50% health") all require the
+ * HUMAN_GATE deferral.
  */
 function achievementRequiresNumericHumanGate(body: string): boolean {
   return (
     /\bthreshold\b/i.test(body) ||
     /\d+(?:\.\d+)?\s*%/.test(body) ||
     /\b(?:level|tier|wave|stage|phase|act)\s+\d+(?:\.\d+)?\b/i.test(body) ||
-    /\b\d+(?:\.\d+)?\s+[a-z][a-z'-]*\b/i.test(body)
+    NUMERIC_THRESHOLD_UNITS_PATTERN.test(body)
   );
 }
 
