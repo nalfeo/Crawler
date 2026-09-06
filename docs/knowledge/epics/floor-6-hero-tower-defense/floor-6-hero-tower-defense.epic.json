@@ -100,7 +100,7 @@
     {
       "id": "slice-9-balance-and-release",
       "title": "Floor 6 Slice 9: integrated QA, evidence-backed balance, achievements, and release gate",
-      "body": "Owner: QA Engineer.\n\nAdd integrated/property/E2E/headless gates, achievements as validated data, and telemetry for phase durations, wave manifests, leaks, Relay health, build/upgrade choices, loot flow, hero versus tower contribution, boss state, path stalls, live entities, frame cost, cleanup, and terminal integrity. The visual AI Runner and headless runner must both prove spawn-to-win/victory through the real pipeline. Verify each achievement unlocks after its measurable objective and that its reward can be claimed exactly once. Obtain every deferred numeric HUMAN_GATE approval using representative GitHub-backed sweeps: wave count/cadence and caps, route pressure, tower roster/costs/caps/range/damage, loot and offer rates, upgrade values, break duration, Deadline timing, floor duration, completion-rate target, Relay-health cushion, and frame/entity budgets. Tune through owned data paths; do not weaken sensors or cherry-pick seeds. Done when unlock, claim, and reward assertions pass, achievements uniquely match their measured requirements, no objective is unreachable, no route/build/economy state soft-locks, no run is non-terminal, visual/runtime evidence is attached, the floor is marked released through the registry's existing release path, and repository fast/PR prerequisite gates are green.",
+      "body": "Owner: QA Engineer.\n\nAdd integrated/property/E2E/headless gates, achievements as validated data, and telemetry for phase durations, wave manifests, leaks, Relay health, build/upgrade choices, loot flow, hero versus tower contribution, boss state, path stalls, live entities, frame cost, cleanup, and terminal integrity. The visual AI Runner and headless runner must both prove spawn-to-win/victory through the real pipeline. Verify each achievement unlocks after its measurable objective and that its reward can be claimed exactly once and the reward outcome is granted. Obtain every deferred numeric HUMAN_GATE approval using representative GitHub-backed sweeps: wave count/cadence and caps, route pressure, tower roster/costs/caps/range/damage, loot and offer rates, upgrade values, break duration, Deadline timing, floor duration, completion-rate target, Relay-health cushion, and frame/entity budgets. Tune through owned data paths; do not weaken sensors or cherry-pick seeds. Done when unlock, claim, and reward assertions pass, achievements uniquely match their measured requirements, no objective is unreachable, no route/build/economy state soft-locks, no run is non-terminal, visual/runtime evidence is attached, the floor is marked released through the registry's existing release path, and repository fast/PR prerequisite gates are green.",
       "labels": ["balance", "qa", "achievements", "floor-6"],
       "depends_on": [
         "slice-3-wave-director-and-routing",
@@ -109,7 +109,8 @@
         "slice-6-hero-combat-and-automation",
         "slice-7-deadline-finale",
         "slice-8-content-presentation-and-assets"
-      ]
+      ],
+      "prerequisite_mechanics": ["slice-7-deadline-finale"]
     }
   ]
 }

@@ -1,7 +1,12 @@
 {
   "epic_id": "floor-5-hostile-takeover",
   "title": "Floor 5 Hostile Takeover castle siege",
-  "description": "Implement Floor 5 as a deterministic MOBA-shaped castle siege: opposing autonomous waves, boss-strength enemy Heroes, field-task-gated siege construction, Command Post defense, a protected Ratings Ram breach, and a courtyard-to-throne capture finale.",
+  "description": "Implement Floor 5 as a deterministic MOBA-shaped castle siege: opposing autonomous waves, boss-strength enemy Heroes, field-task-gated siege construction, Command Post defense, a protected Ratings Ram breach, and a courtyard-to-throne capture finale. The plan distinguishes scaffolded, bootable, playable, completable, MVP, and released stages.",
+  "hard_gate": "A representative seed must spawn opposing siege waves and reach the real win/victory condition through both the production headless runner and the visual AI Runner.",
+  "non_goals": [
+    "Rank 1: numeric balance, pacing, and completion-rate tuning remain HUMAN_GATE decisions.",
+    "Rank 2: other floors and unrelated polish are out of scope."
+  ],
   "human_gates": [
     "HUMAN_GATE-8: Playtester or Game Designer must approve numeric achievement thresholds after representative runtime evidence exists."
   ],
@@ -14,49 +19,49 @@
     {
       "id": "slice-1-foundation",
       "title": "Floor 5 Slice 1: siege architecture, floor plumbing, authored map, and phase skeleton",
-      "body": "Implement the Floor 5 manifest/registry/scenario foundation, authored Command Post-to-throne map, siege phase state, siegeDirectorSystem authority boundary, isolated RNG stream keys, and a minimal scenario-AI route. Add the required lab and real ScenarioDefinition wiring. Done when the windowed game and headless runner load the same reachable map and emit the same empty deterministic phase trace.",
+      "body": "Owner: Systems Engineer.\n\nImplement the Floor 5 manifest/registry/scenario foundation, authored Command Post-to-throne map, siege phase state, siegeDirectorSystem authority boundary, isolated RNG stream keys, and a minimal scenario-AI route. Add the required lab and real ScenarioDefinition wiring. Done when the windowed game and headless runner load the same reachable map and emit the same empty deterministic phase trace, moving the floor from scaffolded to bootable.",
       "labels": ["architecture", "mapgen", "floor-5"],
       "depends_on": []
     },
     {
       "id": "slice-2-lane-war",
       "title": "Floor 5 Slice 2: teams, minion waves, structures, and Command Post defense",
-      "body": "Implement explicit team/structure contracts, siegeMinionSystem strategic targeting, opposing immutable wave manifests, bounded per-team spawn debt, checkpoint fronts, and immediate Command Post defeat precedence. Reuse shared navigation, attacks, and damage. Done when a real headless run completes an opposing-wave cycle, contests a checkpoint, damages only legal targets, and records no path stalls.",
+      "body": "Owner: Game AI Engineer.\n\nImplement explicit team/structure contracts, siegeMinionSystem strategic targeting, opposing immutable wave manifests, bounded per-team spawn debt, checkpoint fronts, and immediate Command Post defeat precedence. Reuse shared navigation, attacks, and damage. Done when a real headless run completes an opposing-wave cycle, contests a checkpoint, damages only legal targets, and records no path stalls.",
       "labels": ["gameplay", "ai", "floor-5"],
       "depends_on": ["slice-1-foundation"]
     },
     {
       "id": "slice-3-field-tasks",
       "title": "Floor 5 Slice 3: field tasks, requisition milestones, and siege construction",
-      "body": "Implement the Siege Yard, opening-push and component/checkpoint task contracts, floor-scoped requisition milestones, quest-event projection, and interruptible Ratings Ram construction prerequisites. Done when headless completes every task, cannot build early, and deterministically pauses/resumes construction under attack without consuming persistent inventory or gold.",
+      "body": "Owner: Content Designer.\n\nImplement the Siege Yard, opening-push and component/checkpoint task contracts, floor-scoped requisition milestones, quest-event projection, and interruptible Ratings Ram construction prerequisites. Done when headless completes every task, cannot build early, and deterministically pauses/resumes construction under attack without consuming persistent inventory or gold.",
       "labels": ["quests", "gameplay", "floor-5"],
       "depends_on": ["slice-1-foundation"]
     },
     {
       "id": "slice-4-enemy-heroes",
       "title": "Floor 5 Slice 4: enemy Hero roster, strategic AI, and respawn contracts",
-      "body": "Author the append-only field-Hero roster and implement seeded without-replacement slots, siegeHeroSystem role-scoped targeting, task/build-aware target priorities, abilities, telegraphs, defeat handling, and fixed-tick respawns. Done when headless reproduces the same Hero card, observes behavior consistent with each Hero's single declared role, defeats a Hero, and verifies its manifest-authored respawn or permanent defeat.",
+      "body": "Owner: Game AI Engineer.\n\nAuthor the append-only field-Hero roster and implement seeded without-replacement slots, siegeHeroSystem role-scoped targeting, task/build-aware target priorities, abilities, telegraphs, defeat handling, and fixed-tick respawns. Done when headless reproduces the same Hero card, observes behavior consistent with each Hero's single declared role, defeats a Hero, and verifies its manifest-authored respawn or permanent defeat.",
       "labels": ["bosses", "ai", "floor-5"],
       "depends_on": ["slice-2-lane-war", "slice-3-field-tasks"]
     },
     {
       "id": "slice-5-ratings-ram",
       "title": "Floor 5 Slice 5: Ratings Ram escort, recovery, and atomic wall breach",
-      "body": "Implement the full Ratings Ram state machine, authored route, protection condition, destruction/rebuild path, wall attacks, persistent breach latch, and atomic collision/navigation/front-line transition. Apply explicit cleanup/retreat rules to Heroes, minions, route markers, and spawn debt. Done when headless builds, destroys and rebuilds, escorts, and breaches without a soft lock or render/navigation mismatch.",
+      "body": "Owner: Systems Engineer.\n\nImplement the full Ratings Ram state machine, authored route, protection condition, destruction/rebuild path, wall attacks, persistent breach latch, and atomic collision/navigation/front-line transition. Apply explicit cleanup/retreat rules to Heroes, minions, route markers, and spawn debt. Done when headless builds, destroys and rebuilds, escorts, and breaches without a soft lock or render/navigation mismatch.",
       "labels": ["gameplay", "mapgen", "floor-5"],
       "depends_on": ["slice-2-lane-war", "slice-3-field-tasks", "slice-4-enemy-heroes"]
     },
     {
       "id": "slice-6-throne-finale",
       "title": "Floor 5 Slice 6: courtyard, Crown Auditor, Regent, and throne capture",
-      "body": "Implement the breach-to-courtyard handoff, fixed Crown Auditor encounter, throne-door gate, Regent Emeritus boss, bounded summons, separate capture interaction, terminal cleanup, and Winner's Balcony exit. Done when a real headless run crosses the latched breach, clears both encounters, cannot capture early, captures exactly once, and produces one terminal outcome.",
+      "body": "Owner: Systems Engineer.\n\nImplement the breach-to-courtyard handoff, fixed Crown Auditor encounter, throne-door gate, Regent Emeritus boss, bounded summons, separate capture interaction, terminal cleanup, and Winner's Balcony exit. Done when a real headless run crosses the latched breach, clears both encounters, cannot capture early, captures exactly once, and produces one terminal outcome.",
       "labels": ["bosses", "gameplay", "floor-5"],
       "depends_on": ["slice-5-ratings-ram"]
     },
     {
       "id": "slice-7-presentation",
       "title": "Floor 5 Slice 7: narrative, quests, HUD, audio, sprites, and visual proof",
-      "body": "Ship the Hostile Takeover quest pack and authored Director lines, phase/objective/Base/Ram/checkpoint/Hero/capture HUD, accessible team markers, deterministic audio/VFX cues, castle/engine/Hero assets, and set-piece dressing. Done when deterministic real-game captures prove lane allegiance, base alarm, task/build state, Hero salience, engine damage, persistent breach, throne escalation, and victory without color-only meaning.",
+      "body": "Owner: Graphics Designer.\n\nShip the Hostile Takeover quest pack and authored Director lines, phase/objective/Base/Ram/checkpoint/Hero/capture HUD, accessible team markers, deterministic audio/VFX cues, castle/engine/Hero assets, and set-piece dressing. Done when deterministic real-game captures prove lane allegiance, base alarm, task/build state, Hero salience, engine damage, persistent breach, throne escalation, and victory without color-only meaning.",
       "labels": ["ux", "content", "sprites", "floor-5"],
       "depends_on": [
         "slice-1-foundation",
@@ -70,7 +75,7 @@
     {
       "id": "slice-8-balance-verification",
       "title": "Floor 5 Slice 8: integrated QA, performance, balance, and achievements",
-      "body": "Owner: QA Engineer.\n\nAdd integrated/property/E2E/headless gates, achievements, and telemetry for outcomes, phase durations, base health, ram lifecycle, breach, Heroes, path stalls, allegiance, and terminal integrity. Verify each achievement unlocks after its measurable objective and that its reward can be claimed exactly once. Obtain every deferred numeric HUMAN_GATE approval here, now that representative runtime evidence exists: requisition component/checkpoint counts (HUMAN_GATE-1), ram HP, protection thresholds, advance speed and rebuild delay/cost (HUMAN_GATE-2), Hero slot count and respawn cadence (HUMAN_GATE-3), Regent summon cap and telegraph timing (HUMAN_GATE-6), stall-backstop duration (HUMAN_GATE-7), achievement thresholds (HUMAN_GATE-8), and completion-rate, duration, base-health cushion, ram survival and entity/frame budgets (spec FR10.4); then tune against representative GitHub-backed sweeps. Done when unlock, claim, and reward assertions pass with zero unreachable objectives, phase violations, invalid targets, navigation mismatches, unbounded debt, or non-terminal runs.",
+      "body": "Owner: QA Engineer.\n\nAdd integrated/property/E2E/headless gates, achievements, and telemetry for outcomes, phase durations, base health, ram lifecycle, breach, Heroes, path stalls, allegiance, and terminal integrity. Verify each achievement unlocks after its measurable objective and that its reward can be claimed exactly once and the reward outcome is granted. The headless and visual AI Runner paths must both prove spawn to win/victory. Obtain every deferred numeric HUMAN_GATE approval here, now that representative runtime evidence exists: requisition component/checkpoint counts (HUMAN_GATE-1), ram HP, protection thresholds, advance speed and rebuild delay/cost (HUMAN_GATE-2), Hero slot count and respawn cadence (HUMAN_GATE-3), Regent summon cap and telegraph timing (HUMAN_GATE-6), stall-backstop duration (HUMAN_GATE-7), achievement thresholds (HUMAN_GATE-8), and completion-rate, duration, base-health cushion, ram survival and entity/frame budgets (spec FR10.4); then tune against representative GitHub-backed sweeps. Done when unlock, claim, and reward assertions pass with zero unreachable objectives, phase violations, invalid targets, navigation mismatches, unbounded debt, or non-terminal runs, making the floor completable and ready for MVP release.",
       "labels": ["balance", "qa", "floor-5"],
       "depends_on": [
         "slice-2-lane-war",
@@ -79,7 +84,8 @@
         "slice-5-ratings-ram",
         "slice-6-throne-finale",
         "slice-7-presentation"
-      ]
+      ],
+      "prerequisite_mechanics": ["slice-6-throne-finale"]
     }
   ]
 }
