@@ -145,7 +145,12 @@ import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCa
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import type { AchievementCatalogRegistry } from '../shared/achievements.js';
 
-const FLOOR2_BOSS_HP_SCALE = 0.03;
+// Floor 2 bosses are tuned against the normal player progression baseline and
+// must survive at least one full telegraphed signature cycle. A 3% HP scale
+// shrank them to a single melee volley and made the fight feel like a softlock
+// rather than a den boss encounter. Use the archetype's full production HP here
+// and keep the arena lab's 3% scale isolated to its own debug presets.
+const FLOOR2_BOSS_HP_SCALE = 1;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;

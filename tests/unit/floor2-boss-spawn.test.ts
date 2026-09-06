@@ -135,6 +135,16 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     expect(resolveFloor2ArchetypeAIType(chase!)).toBe(AI_TYPE.CHASE);
   });
 
+  it('uses the full production HP for live Floor 2 bosses so they survive a telegraphed cycle', () => {
+    const world = createTestWorld({ floor: 2 });
+    const archetype = floor2EnemyPack.archetypes.find((a) => a.id === 'goblin-boss');
+    const eid = spawnFamilyBoss(world, 0, 0, 0, asFamilyId('goblins'));
+
+    expect(archetype).toBeDefined();
+    expect(world.stores.health.max[eid]).toBe(archetype!.hp);
+    expect(world.stores.health.current[eid]).toBe(archetype!.hp);
+  });
+
   it('spawns a ranged family boss that attacks the player', () => {
     const world = createTestWorld({ floor: 2 });
     world.elapsedMs = 100;
