@@ -193,6 +193,24 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'VICTORY' });
   });
 
+  it('evaluates Floor 4 completion achievements through the public exit path', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+
+    advance(world, phase.countdownMs);
+    for (let act = 1; act <= phase.actCount; act += 1) {
+      advance(world, phase.waveWindowMs);
+      defeatActiveHeadliner(world);
+      advance(world, phase.headlineWindowMs);
+      advance(world, phase.intermissionMs);
+      expect(confirmFloor4GreenRoomInteraction(world, movePlayerToGreenRoom(world))).toBe(true);
+    }
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'VICTORY' });
+    expect(world.achievements.unlockedIds.has('floor4-main-event-clear')).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor4-clean-broadcast')).toBe(true);
+  });
+
   it('withholds the Green Room exit until the player stands inside the public marker radius', () => {
     const world = setupFloor4();
     const phase = getFloorManifest('floor4')!.floor4!.phase;

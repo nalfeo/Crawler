@@ -94,6 +94,7 @@ import { initializePlayerWeaponSkills } from './floorScenario.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import type {
   Floor4ActIndex,
   Floor4ArenaPhase,
@@ -1439,6 +1440,7 @@ function confirmFloor4StairDescend(world?: GameWorld, playerEid?: number): boole
     return false;
   }
   recordFloor4PhaseTransition(world, state, { kind: 'VICTORY' }, 'floor4-stairs-confirmed');
+  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
   return true;
 }
 
