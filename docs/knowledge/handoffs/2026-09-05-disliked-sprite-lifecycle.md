@@ -274,6 +274,14 @@ sprite-pipeline, sprite-workflow
   canonical-queue inspection is unavailable. The focused regression matrix
   passed 326/326 after these fixes, followed by 726/726 changed tests in
   `verify:fast`; PR prerequisites passed.
+- The next independent exact-head review found three additional race windows,
+  all closed before publication: the reconciler now withholds an accepted
+  cleanup if its named replacement will not survive into the prospective
+  promotion tree; queue commit validates removal provenance against the actual
+  post-merge index rather than the stale fetched queue tip; and sidecar plus CLI
+  unapproval hold the shared cross-process lock across queue inspection and
+  deletion. Their complete queue/reconcile/sidecar regression matrix passed
+  336/336 with typecheck clean.
 
 ## PR #3234 generic extraction audit
 

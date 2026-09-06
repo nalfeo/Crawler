@@ -89,7 +89,10 @@ export async function main(
 
   try {
     const deps = injectedDeps ?? createDefaultCheckinDeps(repoRoot);
-    const withLock = deps.withCrossProcessLock ?? ((run) => run());
+    if (deps.withCrossProcessLock === undefined) {
+      throw new Error('Cross-process check-in lock is unavailable.');
+    }
+    const withLock = deps.withCrossProcessLock;
     const entry = await withLock(async () => {
       const manifestEntry = composeManifestFromShards(path.join(publicAssetsDir, 'generated'))
         .entries[parsed.variantId];

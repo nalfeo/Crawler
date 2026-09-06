@@ -58,6 +58,12 @@ import {
   ASSET_SURFACE_PATHS,
   type Exec,
 } from './checkin.js';
+import {
+  generatedManifestConceptId,
+  isRuntimeEligibleManifestEntry,
+  manifestEntrySchema,
+} from '../../src/shared/generated-assets.js';
+import { assertSafeManifestKey } from './generated-shards.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -104,6 +110,11 @@ function validateSpriteAnnotationsDocument(raw: string): SpriteAnnotationsValida
           !isSafeQueueAssetPath(value.assetPath) ||
           typeof value.sourceRun !== 'string' ||
           value.sourceRun.trim() === '' ||
+          (value.replacementKey !== undefined &&
+            (typeof value.replacementKey !== 'string' ||
+              value.replacementKey.trim() === '' ||
+              typeof value.conceptId !== 'string' ||
+              value.conceptId.trim() === '')) ||
           typeof value.variantIndex !== 'number' ||
           !Number.isInteger(value.variantIndex) ||
           value.variantIndex < 0
@@ -234,6 +245,8 @@ const ANNOTATIONS_PATH = 'public/assets/generated/sprite-editor-annotations.json
 
 interface LifecycleDeletionTombstone {
   readonly manifestKey: string;
+  readonly conceptId?: string;
+  readonly replacementKey?: string;
   readonly assetPath: string;
   readonly sourceRun: string;
   readonly variantIndex: number;
@@ -279,6 +292,71 @@ function isSafeQueueAssetPath(value: unknown): value is string {
     !value.includes('\\') &&
     !value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
   );
+}
+
+async function describeUnavailableLifecycleReplacement(
+  deletion: AuthorizedLifecycleDeletion,
+  deletedPaths: ReadonlySet<string>,
+  promotablePaths: ReadonlySet<string>,
+  queueRef: string,
+  baseRef: string,
+  exec: Exec,
+  repoRoot: string,
+): Promise<string | null> {
+  const { replacementKey, conceptId } = deletion.tombstone;
+  // Historical pre-hardening tombstones intentionally carry no replacement key.
+  if (replacementKey === undefined) return null;
+  if (conceptId === undefined || conceptId === '') {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" names replacement "${replacementKey}" without a concept id.`;
+  }
+  try {
+    assertSafeManifestKey(replacementKey);
+  } catch {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" names unsafe replacement key "${replacementKey}".`;
+  }
+
+  const replacementShardPath = `public/assets/generated/entries/${replacementKey}.json`;
+  if (deletedPaths.has(replacementShardPath)) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
+  }
+  const shardRef = promotablePaths.has(replacementShardPath) ? queueRef : baseRef;
+  const shard = await runGit(exec, repoRoot, ['show', `${shardRef}:${replacementShardPath}`]);
+  if (shard.code !== 0 || shard.stdout.trim() === '') {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no promotable replacement shard for "${replacementKey}".`;
+  }
+
+  let rawEntry: unknown;
+  try {
+    rawEntry = JSON.parse(shard.stdout);
+  } catch {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has malformed replacement shard "${replacementKey}".`;
+  }
+  const parsed = manifestEntrySchema.safeParse(rawEntry);
+  if (!parsed.success || parsed.data.spriteName !== replacementKey) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has invalid replacement shard "${replacementKey}".`;
+  }
+  if (
+    generatedManifestConceptId(parsed.data, replacementKey) !== conceptId ||
+    !isRuntimeEligibleManifestEntry(parsed.data) ||
+    !isSafeQueueAssetPath(parsed.data.assetPath)
+  ) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has unusable replacement "${replacementKey}".`;
+  }
+
+  const replacementAssetPath = `public/assets/${parsed.data.assetPath}`;
+  if (deletedPaths.has(replacementAssetPath)) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
+  }
+  const assetRef = promotablePaths.has(replacementAssetPath) ? queueRef : baseRef;
+  const asset = await runGit(exec, repoRoot, [
+    'cat-file',
+    '-e',
+    `${assetRef}:${replacementAssetPath}`,
+  ]);
+  if (asset.code !== 0) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no promotable replacement PNG for "${replacementKey}".`;
+  }
+  return null;
 }
 
 /**
@@ -370,6 +448,10 @@ export function partitionLifecycleDeletions(
       authorized.push({
         tombstone: {
           manifestKey: value.manifestKey,
+          ...(typeof value.conceptId === 'string' ? { conceptId: value.conceptId } : {}),
+          ...(typeof value.replacementKey === 'string'
+            ? { replacementKey: value.replacementKey }
+            : {}),
           assetPath: value.assetPath,
           sourceRun: value.sourceRun,
           variantIndex: value.variantIndex,
@@ -1899,6 +1981,8 @@ export async function runReconcile(
       ]);
       const deletedPaths = parseNameOnly(deleted);
       if (deletedPaths.length > 0) {
+        const deletedPathSet = new Set(deletedPaths);
+        const promotablePathSet = new Set(queueVsMainArt);
         const annotations =
           queueAnnotations ??
           (await runGit(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]));
@@ -1975,6 +2059,23 @@ export async function runReconcile(
             rejectedLifecycleDeletions.push({
               annotationKey: candidate.tombstone.manifestKey,
               reason: error instanceof Error ? error.message : String(error),
+              paths: [...candidate.paths].sort(),
+            });
+            continue;
+          }
+          const replacementFailure = await describeUnavailableLifecycleReplacement(
+            candidate,
+            deletedPathSet,
+            promotablePathSet,
+            queueRef,
+            baseRef,
+            deps.exec,
+            repoRoot,
+          );
+          if (replacementFailure !== null) {
+            rejectedLifecycleDeletions.push({
+              annotationKey: candidate.tombstone.manifestKey,
+              reason: replacementFailure,
               paths: [...candidate.paths].sort(),
             });
             continue;

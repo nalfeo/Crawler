@@ -3555,6 +3555,7 @@ describe('DELETE /api/manifest/:variantId', () => {
           reconciliation: 'new',
           branch: 'assets/queue',
         }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
       } as unknown as CheckinRunnerDeps,
     });
   });
@@ -3670,6 +3671,7 @@ describe('DELETE /api/manifest/:variantId', () => {
           reconciliation: 'new',
           branch: 'assets/queue',
         }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
       } as unknown as CheckinRunnerDeps,
     });
 
@@ -3697,6 +3699,7 @@ describe('DELETE /api/manifest/:variantId', () => {
       reconciliation: 'duplicate' as const,
       branch: 'assets/queue',
     }));
+    const withCrossProcessLock = vi.fn(<T>(run: () => Promise<T>) => run());
     await app.close();
     app = buildServer({
       repoRoot: root,
@@ -3709,6 +3712,7 @@ describe('DELETE /api/manifest/:variantId', () => {
       checkinDeps: {
         listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
         inspectDurableQueueAsset,
+        withCrossProcessLock,
       } as unknown as CheckinRunnerDeps,
     });
 
@@ -3724,6 +3728,7 @@ describe('DELETE /api/manifest/:variantId', () => {
       assetPath,
       manifestEntry: expect.objectContaining({ spriteName: variantId, assetPath }),
     });
+    expect(withCrossProcessLock).toHaveBeenCalledOnce();
     expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
     expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
   });
@@ -3746,6 +3751,7 @@ describe('DELETE /api/manifest/:variantId', () => {
           reconciliation: 'new',
           branch: 'assets/queue',
         }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
       } as unknown as CheckinRunnerDeps,
     });
 
@@ -3758,6 +3764,42 @@ describe('DELETE /api/manifest/:variantId', () => {
     expect(res.json()).toEqual({
       error: 'unapprove-queue-check-failed',
       message: 'Legacy asset-checkin inspection is unavailable.',
+    });
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
+  });
+
+  it('fails closed before unapproval when the cross-process lock is unavailable', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'unapprove-queue-check-failed',
+      message: 'Cross-process check-in lock is unavailable.',
     });
     expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
     expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);

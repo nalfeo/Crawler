@@ -836,10 +836,7 @@ export async function runQueueCommit(
         }
         for (const removal of removals) {
           const shardPath = `public/assets/generated/entries/${removal.manifestKey}.json`;
-          const destinationShard = await runGit(deps.exec, repoRoot, [
-            'show',
-            `${baseRef}:${shardPath}`,
-          ]);
+          const destinationShard = await runGit(deps.exec, worktree, ['show', `:${shardPath}`]);
           if (destinationShard.code !== 0 || destinationShard.stdout.trim() === '') continue;
           try {
             assertLifecycleDeletionMatchesShard(

@@ -2329,6 +2329,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const assetPath = entry.assetPath;
       const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
       const listQueuedAssets = checkinDeps.listQueuedAssets;
+      const withCrossProcessLock = checkinDeps.withCrossProcessLock;
       if (listQueuedAssets === undefined) {
         reply.code(500);
         return {
@@ -2336,25 +2337,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           message: 'Legacy asset-checkin inspection is unavailable.',
         };
       }
-      const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
-      let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
-      try {
-        queuedAssets = await listQueuedAssets();
-      } catch (err) {
-        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
-      }
-      const queued = queuedAssets.get(assetPath);
-      if (queued) {
-        reply.code(409);
+      if (withCrossProcessLock === undefined) {
+        reply.code(500);
         return {
-          error: 'queued-conflict',
-          message:
-            `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
-            'Close or retract that issue before evicting this variant to prevent it ' +
-            'from reappearing in the next asset PR.',
+          error: 'unapprove-queue-check-failed',
+          message: 'Cross-process check-in lock is unavailable.',
         };
       }
-
+      const inspectDurableQueueAsset = checkinDeps.inspectDurableQueueAsset;
       if (inspectDurableQueueAsset === undefined) {
         reply.code(500);
         return {
@@ -2362,45 +2352,65 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           message: 'Canonical assets/queue inspection is unavailable.',
         };
       }
-      try {
-        const durableQueue = await inspectDurableQueueAsset({
-          manifestKey: variantId,
-          assetPath,
-          ...(entry.contentHash !== undefined ? { contentHash: entry.contentHash } : {}),
-          manifestEntry: entry,
-        });
-        if (durableQueue.reconciliation !== 'new') {
+      return withCrossProcessLock(async () => {
+        let queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>;
+        try {
+          queuedAssets = await listQueuedAssets();
+        } catch (err) {
+          return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
+        }
+        const queued = queuedAssets.get(assetPath);
+        if (queued) {
           reply.code(409);
           return {
             error: 'queued-conflict',
             message:
-              `${assetPath} cannot be evicted while canonical ${durableQueue.branch} ` +
-              `reports ${durableQueue.reconciliation}. Reconcile or remove the queued ` +
-              'asset first to prevent it from reappearing.',
+              `${assetPath} is already queued for check-in (${queued.issueUrl}). ` +
+              'Close or retract that issue before evicting this variant to prevent it ' +
+              'from reappearing in the next asset PR.',
           };
         }
-      } catch (err) {
-        return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
-      }
 
-      try {
-        return unapproveVariant({
-          variantId,
-          manifestPath,
-          catalogPath,
-          publicAssetsDir,
-        });
-      } catch (err) {
-        if (err instanceof UnapproveError) {
-          reply.code(err.kind === 'not-found' ? 404 : 500);
-          return { error: err.kind, message: err.message };
+        try {
+          const durableQueue = await inspectDurableQueueAsset({
+            manifestKey: variantId,
+            assetPath,
+            ...(entry.contentHash !== undefined ? { contentHash: entry.contentHash } : {}),
+            manifestEntry: entry,
+          });
+          if (durableQueue.reconciliation !== 'new') {
+            reply.code(409);
+            return {
+              error: 'queued-conflict',
+              message:
+                `${assetPath} cannot be evicted while canonical ${durableQueue.branch} ` +
+                `reports ${durableQueue.reconciliation}. Reconcile or remove the queued ` +
+                'asset first to prevent it from reappearing.',
+            };
+          }
+        } catch (err) {
+          return mapCheckinError(reply, err, 'unapprove-queue-check-failed');
         }
-        reply.code(500);
-        return {
-          error: 'unapprove-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
+
+        try {
+          return unapproveVariant({
+            variantId,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+          });
+        } catch (err) {
+          if (err instanceof UnapproveError) {
+            reply.code(err.kind === 'not-found' ? 404 : 500);
+            return { error: err.kind, message: err.message };
+          }
+          reply.code(500);
+          return {
+            error: 'unapprove-failed',
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+      });
     });
   });
 

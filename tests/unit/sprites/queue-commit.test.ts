@@ -1511,6 +1511,66 @@ describe('runQueueCommit (real git)', () => {
   );
 
   it(
+    'refuses a lifecycle removal after main advances the destination shard provenance',
+    async () => {
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      const key = 'rat-var-0';
+      stageAssetOnDisk(liveDir, key, PNG_BYTES);
+      writeJson(shardFilePath(liveDir, key), {
+        assetPath: `generated/${key}.png`,
+        spriteName: key,
+        sourceRun: 'generated/runs/rat/run-a',
+        variantIndex: 0,
+      });
+      gitSync(liveDir, 'add', '-A');
+      gitSync(liveDir, 'commit', '-m', 'seed old rat');
+      gitSync(liveDir, 'push', 'origin', 'main');
+      gitSync(liveDir, 'push', 'origin', 'main:refs/heads/assets/queue');
+
+      stageAssetOnDisk(liveDir, key, PNG_BYTES_B);
+      writeJson(shardFilePath(liveDir, key), {
+        assetPath: `generated/${key}.png`,
+        spriteName: key,
+        sourceRun: 'generated/runs/rat/run-b',
+        variantIndex: 0,
+      });
+      gitSync(liveDir, 'add', '-A');
+      gitSync(liveDir, 'commit', '-m', 'advance main rat provenance');
+      gitSync(liveDir, 'push', 'origin', 'main');
+
+      await expect(
+        runQueueCommit(liveDir, [], realGitDeps(liveDir), {
+          message: 'stale removal after main advance',
+          removals: [
+            {
+              assetPath: `generated/${key}.png`,
+              manifestKey: key,
+              sourceRun: 'generated/runs/rat/run-a',
+              variantIndex: 0,
+            },
+          ],
+          annotations: [
+            {
+              key,
+              favorite: false,
+              disliked: true,
+              comment: '',
+              tombstone: {
+                manifestKey: key,
+                assetPath: `generated/${key}.png`,
+                sourceRun: 'generated/runs/rat/run-a',
+                variantIndex: 0,
+              },
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ kind: 'generated-deletion-refused' });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
     'reapplies a prior tombstone-authorized deletion while migrating an orphan queue',
     async () => {
       const { root, liveDir } = setupRepos();
