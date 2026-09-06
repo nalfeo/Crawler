@@ -307,7 +307,9 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       floor4HeadlinersSpawned: floor4State?.headlinerTelemetry.spawned ?? 0,
       floor4HeadlinersDefeated: floor4State?.headlinerTelemetry.defeated ?? 0,
       floor4GreenRoomVisits:
-        world.floor === 4 ? (world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount ?? 0) : 0,
+        world.floor === 4
+          ? (world.floorExtendedState?.floor4GreenRoom?.lastOpenedVisitIndex ?? -1) + 1
+          : 0,
       floor4OvertimeStarted: floor4State?.headlinerTelemetry.overtimeStarted ?? 0,
       floor4GoldEarned,
     },

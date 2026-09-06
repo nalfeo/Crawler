@@ -802,7 +802,6 @@ export const FLOOR2_ACHIEVEMENT_COUNT = FLOOR2_ACHIEVEMENT_CATALOG.floorScoped.l
 /** Count of Floor 2 `current_run`-scoped (run-global) achievements. */
 export const FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT =
   FLOOR2_ACHIEVEMENT_CATALOG.currentRunGlobal.length;
-export const FLOOR4_ACHIEVEMENT_COUNT = FLOOR4_ACHIEVEMENT_CATALOG.floorScoped.length;
 
 export function isAchievementFloor(value: number): value is AchievementFloor {
   return value === 1 || value === 2 || value === 4 || value === 5 || value === 6;

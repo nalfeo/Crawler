@@ -12,7 +12,6 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
-  FLOOR4_ACHIEVEMENT_COUNT,
   _FLOOR4_ACHIEVEMENTS as FLOOR4_ACHIEVEMENTS,
   _FLOOR5_ACHIEVEMENTS as FLOOR5_ACHIEVEMENTS,
   _FLOOR6_ACHIEVEMENTS as FLOOR6_ACHIEVEMENTS,
@@ -307,8 +306,23 @@ describe('floor6 achievements catalog', () => {
 });
 
 describe('floor4 achievements catalog', () => {
+  it('keeps Director flavor within each difficulty range', () => {
+    const ranges = {
+      basic: [2, 4],
+      standard: [4, 8],
+      hard: [8, 12],
+      brutal: [12, 20],
+    } as const;
+
+    for (const achievement of FLOOR4_ACHIEVEMENTS) {
+      const sentenceCount = achievement.directorFlavor.match(/[.!?]['"]?(?:\s|$)/g)?.length ?? 0;
+      const [minimum, maximum] = ranges[achievement.difficulty];
+      expect(sentenceCount).toBeGreaterThanOrEqual(minimum);
+      expect(sentenceCount).toBeLessThanOrEqual(maximum);
+    }
+  });
+
   it('contains 30 floor-scoped achievements with a trash-to-rare distribution', () => {
-    expect(FLOOR4_ACHIEVEMENT_COUNT).toBe(30);
     expect(FLOOR4_ACHIEVEMENTS).toHaveLength(30);
     expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.floor === 4)).toBe(true);
     expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.scope === 'floor')).toBe(true);

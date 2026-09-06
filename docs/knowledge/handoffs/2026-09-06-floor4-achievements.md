@@ -21,7 +21,10 @@ acts, Green Room visits, overtime, act income, carried Companion co-stars, and
 the Winner's Circle clear. Rewards use the standard 5/12/8/5 trash/common/
 uncommon/rare ladder, with difficulty bands aligned to those tiers. Every
 unlock rule references a measured fact emitted by the production
-`collectCurrentFloorAchievementFacts` path.
+`collectCurrentFloorAchievementFacts` path. Green Room reach facts now use the
+monotonic opened-visit index, so they unlock during the active visit rather
+than after its retirement; act-income achievements explicitly describe
+cumulative earnings.
 
 ## Evidence
 
@@ -32,3 +35,7 @@ unlock rule references a measured fact emitted by the production
   options, populates production `Floor4ArenaState` telemetry and Green Room
   lifecycle state, then evaluates the production achievement system before and
   after the arena reaches its `VICTORY` phase.
+- The same production-system test observes `floor4-commercial-break` unlocking
+  during the first opened Green Room visit, before that visit is retired.
+- The catalog test enforces the 2–4 / 4–8 / 8–12 / 12–20 Director-flavor
+  sentence ranges for basic / standard / hard / brutal achievements.

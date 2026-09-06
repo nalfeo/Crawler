@@ -102,4 +102,19 @@ describe('Floor 4 achievement facts', () => {
 
     expect(world.achievements.unlockedIds.has('floor4-main-event-clear')).toBe(true);
   });
+
+  it('counts an opened Green Room visit before it is retired', () => {
+    const { world } = initFloor4World();
+    world.floorExtendedState!.floor4GreenRoom = {
+      retiredVisitCount: 0,
+      lastOpenedVisitIndex: 0,
+    };
+
+    const facts = collectCurrentFloorAchievementFacts(world);
+
+    expect(facts.numberFacts.floor4GreenRoomVisits).toBe(1);
+
+    evaluateAchievementUnlocksForPhase(world, 'tick');
+    expect(world.achievements.unlockedIds.has('floor4-commercial-break')).toBe(true);
+  });
 });
