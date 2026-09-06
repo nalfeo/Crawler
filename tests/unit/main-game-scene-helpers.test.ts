@@ -283,6 +283,19 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('shopkeeper', world, baseDeps)).toEqual(expected);
   });
 
+  it('keeps the merchant initial request coy but unmistakably suggestive', () => {
+    const world = createTestWorld();
+    const lines = resolveDialogueLines('shopkeeper', world, baseDeps);
+
+    expect(lines).toContain(
+      "Don't clean it. Don't ask. It's not for the shop—it's for the room, and the room has been lonely.",
+    );
+    expect(lines).not.toContain(
+      "Don't clean it. Don't ask. It's not for the shop. It's for the room.",
+    );
+    expect(lines).toHaveLength(3);
+  });
+
   it('prefers a per-instance dialogue override when one exists', () => {
     const world = createTestWorld();
     world.npcs.set(7, {
