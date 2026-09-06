@@ -149,6 +149,12 @@ describe('MainGameScene UI exclusivity', () => {
     await waitForState(page, (s) => !s.simulationPaused, {
       label: 'simulation running before pause menu',
     });
+    // Prove the frame counter is live before pausing, so the frozen-frame
+    // assertion below cannot pass against a counter that never advances.
+    const runningFrameCount = (await mainSceneProbe.getState(page)).frameCount ?? 0;
+    await waitForState(page, (s) => (s.frameCount ?? 0) > runningFrameCount, {
+      label: 'sim frames advancing while unpaused',
+    });
 
     await page.keyboard.press('Escape');
     const pauseState = await waitForState(page, (s) => s.simulationPaused && !!s.modalOpen, {
@@ -157,6 +163,17 @@ describe('MainGameScene UI exclusivity', () => {
     expect(pauseState.modalOpen, 'pause menu should open through the shared modal picker').toBe(
       true,
     );
+
+    // Gameplay time must actually stop, not just flip a flag: the fixed-step
+    // sim frame counter must not advance at all while the pause menu is open.
+    const pausedFrameCount = (await mainSceneProbe.getState(page)).frameCount;
+    expect(pausedFrameCount, 'probe should expose the live sim frame count').not.toBeNull();
+    await page.waitForTimeout(600);
+    const stillPaused = await mainSceneProbe.getState(page);
+    expect(stillPaused.frameCount, 'sim frames must not advance while paused').toBe(
+      pausedFrameCount,
+    );
+    expect(stillPaused.simulationPaused).toBe(true);
 
     const pauseContent = await page.evaluate(() =>
       window.__mainSceneProbe!.getModalPickerContent(),

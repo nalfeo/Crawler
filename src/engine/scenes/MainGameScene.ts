@@ -1988,6 +1988,10 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.modalPicker?.isOpen() && this.modalPicker.getKind() === 'pause-menu') {
+      // The pause menu is exclusive: swallow the key so it cannot leak to the
+      // other capture-phase window listeners (InputCapture, minimap overlay).
+      event.preventDefault();
+      event.stopImmediatePropagation();
       this.modalPicker.handleKeyDown(event);
       return;
     }
