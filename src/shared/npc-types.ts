@@ -204,8 +204,8 @@ const SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE: readonly string[] = [
 interface SpellBrokerDialogueState {
   /** The Spell Broker is still gated behind the Goon's opening quest. */
   readonly locked: boolean;
-  /** The player has completed the Slime Rat objective but not yet claimed the spellbook reward. */
-  readonly bossBattleComplete: boolean;
+  /** The Slime Rat has been defeated (raw kill-state, independent of the spellbook claim). */
+  readonly bossDefeated: boolean;
   /** The player has claimed their spellbook reward. */
   readonly spellbookClaimed: boolean;
   /** The merchant errand has been accepted and the tail-reference beat is now valid. */
@@ -229,7 +229,7 @@ export function selectSpellBrokerDialogue(
   if (state.spellbookClaimed) {
     return SPELL_BROKER_POST_CLAIM_DIALOGUE;
   }
-  if (state.bossBattleComplete) {
+  if (state.bossDefeated) {
     return SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE;
   }
   if (state.merchantQuestStarted) {

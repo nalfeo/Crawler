@@ -410,7 +410,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
-        bossBattleComplete: false,
+        bossDefeated: false,
         spellbookClaimed: false,
         merchantQuestStarted: false,
       })!,
@@ -425,7 +425,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: false,
-        bossBattleComplete: false,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,
@@ -450,7 +450,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
-        bossBattleComplete: false,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,

@@ -290,7 +290,7 @@ export function resolveDialogueLines(
       // — after this dialogue is resolved. Gating on the goal flag meant the
       // very first post-kill Broker interaction still replayed the stale
       // "Kill the Slime Rat" intro.
-      bossBattleComplete: objective?.bossBattles.get('slime-rat')?.defeated === true,
+      bossDefeated: objective?.bossBattles.get('slime-rat')?.defeated === true,
       spellbookClaimed:
         world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
         world.featureUnlocks.spells === true,
