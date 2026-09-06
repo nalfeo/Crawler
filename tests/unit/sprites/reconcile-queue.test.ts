@@ -67,6 +67,18 @@ describe('isArtSurfacePath', () => {
   });
 
   describe('filterPromotablePaths', () => {
+    const candidateEntry = (key: string) => ({
+      briefId: key,
+      spriteName: key,
+      assetPath: `generated/${key}.png`,
+      approvedAt: '2026-09-06T00:00:00.000Z',
+      sourceRun: `generated/runs/${key}/run-0`,
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '1',
+      judgeScore: null,
+    });
+
     it('bounds candidate shard reads to eight concurrent git processes', async () => {
       const keys = Array.from({ length: 10 }, (_, index) => `asset-${index}-var-0`);
       const paths = keys.flatMap((key) => [
@@ -99,13 +111,11 @@ describe('isArtSurfacePath', () => {
             .replace(/\.json$/u, '');
           return {
             code: 0,
-            stdout: JSON.stringify({
-              spriteName: key,
-              assetPath: `generated/${key}.png`,
-            }),
+            stdout: JSON.stringify(candidateEntry(key)),
             stderr: '',
           };
         }
+        if (args[0] === 'cat-file') return { code: 0, stdout: '', stderr: '' };
         return { code: 1, stdout: '', stderr: 'unexpected command' };
       };
 
@@ -113,6 +123,36 @@ describe('isArtSurfacePath', () => {
         paths,
       );
       expect(maxActiveShows).toBe(8);
+    });
+
+    it('rejects a candidate shard whose authored PNG is absent from the source snapshot', async () => {
+      const key = 'missing-png-var-0';
+      const shardPath = `public/assets/generated/entries/${key}.json`;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout: ref === 'source' ? `100644 blob ${'a'.repeat(40)}\t${shardPath}` : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'show') {
+          return { code: 0, stdout: JSON.stringify(candidateEntry(key)), stderr: '' };
+        }
+        if (args[0] === 'cat-file') {
+          return { code: 1, stdout: '', stderr: 'missing object' };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(
+        filterPromotablePaths(exec, '/repo', 'base', 'source', [shardPath]),
+      ).rejects.toMatchObject({
+        kind: 'invalid-state',
+        message: expect.stringContaining('references missing PNG'),
+      });
     });
   });
 
@@ -1115,6 +1155,25 @@ function writeJson(file: string, value: unknown): void {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function validShardEntry(
+  key: string,
+  assetPath = `generated/${key}.png`,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    briefId: key,
+    spriteName: key,
+    assetPath,
+    approvedAt: '2026-09-06T00:00:00.000Z',
+    sourceRun: `generated/runs/${key}/run-0`,
+    variantIndex: 0,
+    anchor: null,
+    sensorScore: '7/7',
+    judgeScore: null,
+    ...overrides,
+  };
+}
+
 interface Repos {
   root: string;
   originDir: string;
@@ -1168,11 +1227,8 @@ function seedQueueWithArt(
       writeFileSync(pngPath, PNG_BYTES);
       // One self-contained shard per asset — the sharded source of truth.
       writeJson(shardPath, {
-        assetPath,
-        spriteName: key,
+        ...validShardEntry(key, assetPath),
         contentHash: TEST_CONTENT_HASH,
-        sourceRun: `generated/runs/${key}/run-0`,
-        variantIndex: 0,
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -1304,11 +1360,8 @@ function addArtDirectlyToMain(
       mkdirSync(path.dirname(shardPath), { recursive: true });
       writeFileSync(pngPath, bytes);
       writeJson(shardPath, {
-        assetPath,
-        spriteName: key,
+        ...validShardEntry(key, assetPath),
         contentHash: TEST_CONTENT_HASH,
-        sourceRun: `generated/runs/${key}/run-0`,
-        variantIndex: 0,
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -1366,8 +1419,7 @@ function reapproveQueueWithOriginalBytesAndFreshShard(
     // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
     // by itself — the atomicity fix must withhold it alongside its paired PNG.
     writeJson(path.join(entriesDir, `${key}.json`), {
-      assetPath,
-      spriteName: key,
+      ...validShardEntry(key, assetPath),
       contentHash: 'reapproved-' + TEST_CONTENT_HASH,
     });
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -1915,11 +1967,8 @@ describe('runReconcile (real git)', () => {
       );
       writeFileSync(path.join(generatedDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(generatedDir, 'entries', 'unrelated-var-0.json'), {
-        assetPath: 'generated/unrelated-var-0.png',
-        spriteName: 'unrelated-var-0',
+        ...validShardEntry('unrelated-var-0'),
         contentHash: TEST_CONTENT_HASH,
-        sourceRun: 'generated/runs/unrelated-var-0/run-0',
-        variantIndex: 0,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed deletion audit');
@@ -2417,11 +2466,8 @@ describe('runReconcile (real git)', () => {
       // Unrelated, perfectly valid new art in the same queue commit.
       writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
-        assetPath: 'generated/unrelated-var-0.png',
-        spriteName: 'unrelated-var-0',
+        ...validShardEntry('unrelated-var-0'),
         contentHash: TEST_CONTENT_HASH,
-        sourceRun: 'generated/runs/unrelated-var-0/run-0',
-        variantIndex: 0,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue: half-deleted pair + unrelated art');
@@ -2504,11 +2550,8 @@ describe('runReconcile (real git)', () => {
       });
       writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
-        assetPath: 'generated/unrelated-var-0.png',
-        spriteName: 'unrelated-var-0',
+        ...validShardEntry('unrelated-var-0'),
         contentHash: TEST_CONTENT_HASH,
-        sourceRun: 'generated/runs/unrelated-var-0/run-0',
-        variantIndex: 0,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue: stale tombstone + unrelated art');
@@ -3660,8 +3703,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
         mkdirSync(entriesDir, { recursive: true });
         writeFileSync(path.join(genDir, 'player-walk.png'), PNG_BYTES);
         writeJson(path.join(entriesDir, 'player-walk.json'), {
-          assetPath: 'generated/player-walk.png',
-          spriteName: 'player-walk',
+          ...validShardEntry('player-walk'),
           contentHash: TEST_CONTENT_HASH,
         });
         gitSync(goodWt, 'add', '--', 'public/assets/generated');

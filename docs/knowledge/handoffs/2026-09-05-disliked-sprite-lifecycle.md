@@ -339,7 +339,11 @@ sprite-pipeline, sprite-workflow
   are interpretable. Dedicated exit codes 32/33 surface quarantine alone or
   quarantine combined with lifecycle refusal in the hourly workflow.
   Durable queue inspection uses the same eight-asset bound (sixteen concurrent
-  shard/PNG reads) instead of fanning out across the full approval batch.
+  shard/PNG reads) instead of fanning out across the full approval batch, and
+  follows the check-in's selected Git remote rather than silently inspecting
+  `origin`. Final certification also made candidate shards prove both the full
+  generated-entry schema and existence of their authored PNG within the same
+  immutable source snapshot before promotion.
 
 ## PR #3234 generic extraction audit
 

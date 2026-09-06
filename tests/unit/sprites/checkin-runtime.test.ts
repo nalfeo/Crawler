@@ -310,13 +310,19 @@ describe('assets/queue identity inspection', () => {
       manifestEntry,
     }));
 
-    await expect(inspectBatch(assets)).resolves.toEqual(
+    await expect(inspectBatch(assets, 'upstream')).resolves.toEqual(
       assets.map(() => ({ reconciliation: 'duplicate', branch: 'assets/queue' })),
     );
     expect(maxActiveShows).toBe(16);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'ls-remote')).toHaveLength(1);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'fetch')).toHaveLength(1);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'update-ref')).toHaveLength(1);
+    expect(exec).toHaveBeenCalledWith(
+      'git',
+      ['ls-remote', '--heads', 'upstream', 'refs/heads/assets/queue'],
+      { cwd: '/repo' },
+    );
+    expect(exec.mock.calls.find(([, args]) => args[0] === 'fetch')?.[1]).toContain('upstream');
   });
 });
 

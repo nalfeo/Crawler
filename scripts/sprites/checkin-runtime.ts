@@ -353,10 +353,10 @@ function makeInspectDurableQueueAssets(
   repoRoot: string,
   exec: Exec,
 ): NonNullable<CheckinRunnerDeps['inspectDurableQueueAssets']> {
-  return async (assets): Promise<readonly DurableQueueAssetInspection[]> => {
+  return async (assets, remote = 'origin'): Promise<readonly DurableQueueAssetInspection[]> => {
     for (const asset of assets) assertSafeDurableQueueAsset(asset);
     const branch = 'assets/queue';
-    const listed = await exec('git', ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`], {
+    const listed = await exec('git', ['ls-remote', '--heads', remote, `refs/heads/${branch}`], {
       cwd: repoRoot,
     });
     if (listed.code !== 0) {
@@ -372,7 +372,7 @@ function makeInspectDurableQueueAssets(
     const inspectionRef = `refs/queue-inspect/${randomUUID()}`;
     const fetched = await exec(
       'git',
-      ['fetch', '--no-tags', 'origin', `+refs/heads/${branch}:${inspectionRef}`],
+      ['fetch', '--no-tags', remote, `+refs/heads/${branch}:${inspectionRef}`],
       { cwd: repoRoot },
     );
     if (fetched.code !== 0) {
@@ -406,8 +406,8 @@ function makeInspectDurableQueueAssets(
 function makeInspectDurableQueueAsset(
   inspectBatch: NonNullable<CheckinRunnerDeps['inspectDurableQueueAssets']>,
 ): NonNullable<CheckinRunnerDeps['inspectDurableQueueAsset']> {
-  return async (asset): Promise<DurableQueueAssetInspection> => {
-    const [inspection] = await inspectBatch([asset]);
+  return async (asset, remote = 'origin'): Promise<DurableQueueAssetInspection> => {
+    const [inspection] = await inspectBatch([asset], remote);
     if (inspection === undefined) {
       throw new CheckinError('git-failed', 'Canonical assets/queue inspection returned no result.');
     }

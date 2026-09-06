@@ -938,10 +938,15 @@ export async function filterPromotablePaths(
             reason: `Candidate shard "${shardPath}" on ${sourceRef} is malformed JSON.`,
           };
         }
-        const assetPath =
-          typeof parsed === 'object' && parsed !== null
-            ? (parsed as { readonly assetPath?: unknown }).assetPath
-            : undefined;
+        const parsedEntry = manifestEntrySchema.safeParse(parsed);
+        if (!parsedEntry.success) {
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the generated manifest entry schema.`,
+          };
+        }
+        const assetPath = parsedEntry.data.assetPath;
         if (!isSafeQueueAssetPath(assetPath)) {
           return {
             ok: false,
@@ -950,6 +955,14 @@ export async function filterPromotablePaths(
           };
         }
         const pngPath = `public/assets/${assetPath}`;
+        const png = await runGit(exec, repoRoot, ['cat-file', '-e', `${sourceRef}:${pngPath}`]);
+        if (png.code !== 0) {
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate shard "${shardPath}" on ${sourceRef} references missing PNG "${pngPath}".`,
+          };
+        }
         return {
           ok: true,
           pair: pathSet.has(pngPath) ? ([shardPath, pngPath] as const) : undefined,

@@ -320,6 +320,7 @@ export interface CheckinRunnerDeps {
    */
   readonly inspectDurableQueueAsset?: (
     asset: DurableQueueAssetIdentity,
+    remote?: string,
   ) => Promise<DurableQueueAssetInspection>;
   /**
    * Inspect a batch against one immutable assets/queue snapshot. Production
@@ -328,6 +329,7 @@ export interface CheckinRunnerDeps {
    */
   readonly inspectDurableQueueAssets?: (
     assets: readonly DurableQueueAssetIdentity[],
+    remote?: string,
   ) => Promise<readonly DurableQueueAssetInspection[]>;
   /** Env consulted for the CI refusal. Defaults to `process.env`. */
   readonly env?: NodeJS.ProcessEnv;
@@ -495,7 +497,7 @@ export async function prepareAssetCheckin(
     };
   });
   const durableBatch = deps.inspectDurableQueueAssets
-    ? await deps.inspectDurableQueueAssets(durableIdentities)
+    ? await deps.inspectDurableQueueAssets(durableIdentities, remote)
     : undefined;
   if (durableBatch !== undefined && durableBatch.length !== changedAssets.length) {
     throw new CheckinError(
@@ -512,7 +514,7 @@ export async function prepareAssetCheckin(
     const durableInspection =
       durableBatch?.[index] ??
       (deps.inspectDurableQueueAsset
-        ? await deps.inspectDurableQueueAsset(durableIdentities[index]!)
+        ? await deps.inspectDurableQueueAsset(durableIdentities[index]!, remote)
         : { reconciliation: 'new' as const, branch: 'assets/queue' });
     const states = [
       {

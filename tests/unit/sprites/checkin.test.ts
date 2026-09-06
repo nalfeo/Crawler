@@ -499,6 +499,40 @@ describe('runAssetCheckin', () => {
     expect(calls.some((call) => call.command === 'gh' && call.args[0] === 'issue')).toBe(false);
   });
 
+  it('inspects the durable queue on the selected remote', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    let inspectedRemote: string | undefined;
+
+    await prepareAssetCheckin(
+      '/repo',
+      {
+        ...baseDeps(),
+        exec,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'hash-a',
+              },
+            },
+          }),
+        inspectDurableQueueAssets: (_assets, remote) => {
+          inspectedRemote = remote;
+          return Promise.resolve([{ reconciliation: 'new', branch: 'assets/queue' }]);
+        },
+      },
+      { remote: 'upstream' },
+    );
+
+    expect(inspectedRemote).toBe('upstream');
+  });
+
   it.each([
     ['content-conflict' as const, 'content-conflict'],
     ['ambiguous' as const, 'ambiguous-queued-content'],
