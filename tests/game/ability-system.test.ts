@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EffectiveStats, Homing, SkillHolder, Size, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { applyDamage } from '../../src/core/apply-damage.js';
 import { getStatusEffects } from '../../src/core/status-effects.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
@@ -343,6 +344,33 @@ describe('abilitySystem', () => {
     world.frameCount = 700;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(700);
+  });
+
+  it('queues a player-damage trigger for environment-origin hostile damage', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    memorizeSpell(world, player, 'pulse-shield');
+    const state = world.abilityStatesByEntity.get(player)!;
+
+    // Hostile scenario damage (e.g. the Floor 5 finale) is authored as
+    // `origin: 'environment'`, and must still arm damage-triggered abilities.
+    const dealt = applyDamage(world, player, 9, 0, 0, {
+      origin: 'environment',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+    });
+
+    expect(dealt).toBe(9);
+    expect(world.abilityTriggerEvents).toContainEqual({
+      holderEid: player,
+      kind: 'player_damage',
+      amount: 9,
+    });
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(100);
   });
 
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {

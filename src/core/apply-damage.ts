@@ -309,7 +309,12 @@ export function applyDamage(
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
     }
 
-    if (isPlayerTarget && options.origin === 'enemy') {
+    // Any landed damage on the player arms damage-triggered abilities. A player
+    // target is only ever hit by an enemy/environment source (see the dodge note
+    // above), so this deliberately does NOT filter on `options.origin` —
+    // hostile scenario damage (e.g. the Floor 5 finale) is authored as
+    // `origin: 'environment'` and must still trigger.
+    if (isPlayerTarget) {
       world.abilityTriggerEvents.push({
         holderEid: target,
         kind: 'player_damage',
