@@ -410,8 +410,8 @@ test('selectLivenessRedispatchCandidates handles the incident fixture determinis
 
   assert.deepEqual(
     candidates.map((pull) => pull.number),
-    [4214],
-    'protected, fresh, draft, closed, and fork PRs must not be selected',
+    [4214, 4217],
+    'protected, fresh, draft, closed, and fork PRs must not be selected; stale no-op decisions no longer suppress redispatch',
   );
 });
 
@@ -454,6 +454,34 @@ test('protectedLivenessPullNumbers excludes conflict-order and rebase backoff wa
     candidates.map((pull) => pull.number),
     [4227],
   );
+});
+
+test('protectedLivenessPullNumbers does not fence stale no-op decisions from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4251, action: 'skip-duplicate-fingerprint' },
+    { pr: 4252, action: 'skip-merge-train-owned' },
+    { pr: 4253, action: 'queue-merge-train' },
+    { pr: 4254, action: 'wait-admission' },
+    { pr: 4255, action: 'skip-active-shepherd' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4251),
+      blockedPull(4252),
+      blockedPull(4253),
+      blockedPull(4254),
+      blockedPull(4255),
+      blockedPull(4256),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+    cap: 10,
+  });
+
+  assert.deepEqual(candidates.map((pull) => pull.number), [4251, 4252, 4253, 4254, 4256]);
 });
 
 test('selectLivenessRedispatchCandidates excludes current ownership metadata', () => {
