@@ -117,10 +117,24 @@ describe('achievement loot boxes opened back to back', () => {
     expect(rewardOpeningUI.isOpen()).toBe(true);
     expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
 
+    // Each individual box auto-advances, but the final aggregate summary must
+    // remain visible until the player acknowledges it instead of closing on the
+    // first tick after the phase flips to `summary`.
+    let reachedAggregateSummary = false;
     while (rewardOpeningUI.isOpen()) {
+      const phaseBefore = rewardOpeningUI.getPhase();
       rewardOpeningUI.tick(2000);
+      const phaseAfter = rewardOpeningUI.getPhase();
+      if (phaseBefore !== 'summary' && phaseAfter === 'summary') {
+        reachedAggregateSummary = true;
+        expect(rewardOpeningUI.isOpen()).toBe(true);
+      }
+      if (reachedAggregateSummary && phaseAfter === 'summary') {
+        rewardOpeningUI.acknowledge();
+      }
     }
 
+    expect(reachedAggregateSummary).toBe(true);
     expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
     expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
     expect(world.achievements.pendingPresentations.size).toBe(0);

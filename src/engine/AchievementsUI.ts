@@ -422,8 +422,15 @@ export function createAchievementsUI(
       readonly gold: number;
       readonly materials: readonly string[];
     }[],
-  ): { readonly kind: 'lootBox'; readonly tier: LootBoxTier; readonly gold: number; readonly materials: readonly string[] } {
-    const tierOrder = new Map<LootBoxTier, number>(LOOT_BOX_TIERS.map((tier, index) => [tier, index]));
+  ): {
+    readonly kind: 'lootBox';
+    readonly tier: LootBoxTier;
+    readonly gold: number;
+    readonly materials: readonly string[];
+  } {
+    const tierOrder = new Map<LootBoxTier, number>(
+      LOOT_BOX_TIERS.map((tier, index) => [tier, index]),
+    );
     const tier = presentations.reduce<LootBoxTier>((best, current) => {
       return (tierOrder.get(current.tier) ?? -1) > (tierOrder.get(best) ?? -1)
         ? current.tier
@@ -451,7 +458,15 @@ export function createAchievementsUI(
     if (queue.length <= 1) return;
 
     openAllInProgress = true;
-    const playNext = (index: number, aggregate: readonly { readonly kind: 'lootBox'; readonly tier: LootBoxTier; readonly gold: number; readonly materials: readonly string[] }[]) => {
+    const playNext = (
+      index: number,
+      aggregate: readonly {
+        readonly kind: 'lootBox';
+        readonly tier: LootBoxTier;
+        readonly gold: number;
+        readonly materials: readonly string[];
+      }[],
+    ) => {
       if (index >= queue.length) {
         const summaryPresentation = aggregateLootBoxPresentation(aggregate);
         rewardOpeningUI.open({
@@ -459,7 +474,11 @@ export function createAchievementsUI(
           presentation: summaryPresentation,
           reducedMotion: prefersReducedMotion(),
           sourceLabel: `${aggregate.length} achievement rewards`,
-          autoAdvance: true,
+          // Keep the aggregate summary visible for normal acknowledgement; unlike
+          // intermediate box reveals, the final summary is a player-facing
+          // recap, not an auto-advance continuation. The follow-up open-all run
+          // only auto-advances each individual box before the aggregate summary.
+          autoAdvance: false,
           onAcknowledge: () => {
             openAllInProgress = false;
             lastSignature = null;
@@ -899,8 +918,7 @@ export function createAchievementsUI(
       label.setOrigin(0.5, 0.5);
       container.add(label);
       rowObjects.push(label);
-      bg
-        .setInteractive({ useHandCursor: true })
+      bg.setInteractive({ useHandCursor: true })
         .on('pointerdown', onPointerDown)
         .on('pointerup', (pointer: Phaser.Input.Pointer) => {
           if (pointer.id === draggedPointerId) return;
