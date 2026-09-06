@@ -72,14 +72,18 @@ export const DEFAULT_LIVENESS_REDISPATCH_CAP = 3;
 
 /**
  * Parse an env-var override as a strictly positive integer, falling back to
- * `fallback` when the value is unset, non-numeric, zero, or negative.
+ * `fallback` when the value is unset, non-numeric (including trailing
+ * garbage such as `'3junk'`), zero, or negative.
  *
  * `Number.parseInt(value, 10) || fallback` looks equivalent but is not:
  * `-1` parses to a truthy `-1`, so it is accepted rather than falling back,
  * and a downstream `slice(0, cap)` silently disables the caller (a negative
- * `cap` clamps to `slice(0, 0)`). Any override must be a positive integer.
+ * `cap` clamps to `slice(0, 0)`). `Number.parseInt` also tolerates trailing
+ * non-digit characters (`parseInt('3junk', 10) === 3`), so the whole string
+ * must match a plain positive-integer pattern before it is parsed.
  */
 export function parsePositiveIntEnv(value, fallback) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

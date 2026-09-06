@@ -687,7 +687,12 @@ test('dispatchLivenessRedispatches continues past a transient dispatch failure',
 test('parsePositiveIntEnv rejects unset, non-numeric, zero, and negative overrides', () => {
   assert.equal(parsePositiveIntEnv(undefined, 3), 3);
   assert.equal(parsePositiveIntEnv('', 3), 3);
-  assert.equal(parsePositiveIntEnv('3junk', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('3junk', 7),
+    7,
+    'trailing garbage must not silently truncate to a number',
+  );
+  assert.equal(parsePositiveIntEnv('junk3', 7), 7);
   assert.equal(parsePositiveIntEnv('0', 3), 3);
   assert.equal(
     parsePositiveIntEnv('-1', 3),
