@@ -1035,3 +1035,31 @@ export function validateVariantTransformEligibility(
   ).map((i) => ({ code: i.code, message: i.message }));
   return { ok: issues.length === 0, issues };
 }
+
+/**
+ * Visual depth and perspective validator for terrain packs.
+ *
+ * Evaluates whether a terrain pack conveys perspective and depth (such as
+ * obvious vertical wall faces, wall accents, or visible wall-to-floor elevation
+ * layering) rather than reading as flat top-down stone.
+ *
+ * Floor 2 (industrial-cave) is the canonical positive reference for depth and
+ * perspective (it provides vertical facet accents and wall depth cues).
+ * Floor 1 and 3 terrain packs lack these vertical depth cues and fail this
+ * check when evaluated for depth and perspective.
+ */
+export function validateTerrainDepthAndPerspective(
+  manifest: TerrainPackDef,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const hasWallAccents = (manifest.wallAccents?.length ?? 0) > 0;
+  if (!hasWallAccents) {
+    fail(
+      issues,
+      'terrain-pack-lacks-depth',
+      `Terrain pack '${manifest.id}' lacks depth and perspective cues (no wall accents or vertical wall facet overlays; reads as flat top-down tiles). Floor 2 industrial-cave is the canonical positive reference for depth and perspective.`,
+    );
+  }
+  return { ok: issues.length === 0, issues };
+}
+

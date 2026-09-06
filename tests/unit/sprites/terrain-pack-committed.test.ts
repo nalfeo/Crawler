@@ -34,7 +34,9 @@ import {
   validateWallAccentImagePaths,
   validateWallAccentTopology,
   validateCrossPackWallSilhouettes,
+  validateTerrainDepthAndPerspective,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
+import { getTerrainPack } from '../../../src/shared/terrain-pack-registry.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import {
   BORDER_MARGIN_PX,
@@ -671,5 +673,30 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
           `scripts/sprites/terrain-packs/import-floor2-materials.ts.`,
       ).toBe(true);
     }
+  });
+});
+
+describe('validateTerrainDepthAndPerspective', () => {
+  it('Floor 2 (industrial-cave) passes the depth and perspective visual check', () => {
+    const floor2Pack = getTerrainPack('industrial-cave');
+    const result = validateTerrainDepthAndPerspective(floor2Pack);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('Floor 1 (floor1-dungeon, floor1-cave) fails the depth check for flat top-down tiles', () => {
+    for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
+      const pack = getTerrainPack(id);
+      const result = validateTerrainDepthAndPerspective(pack);
+      expect(result.ok).toBe(false);
+      expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+    }
+  });
+
+  it('Floor 3 (companion-overworld) fails the depth check for flat top-down tiles', () => {
+    const pack = getTerrainPack('companion-overworld');
+    const result = validateTerrainDepthAndPerspective(pack);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
   });
 });
