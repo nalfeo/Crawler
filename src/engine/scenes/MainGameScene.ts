@@ -5303,12 +5303,20 @@ export class MainGameScene extends Phaser.Scene {
     // Substitute {playerName} with the player's chosen name (all occurrences).
     const resolved = text.replace(/{playerName}/g, () => this.world.playerName);
     this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
+    this.positionAchievementToast();
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private positionAchievementToast(): void {
+    const commentary = this.directorCommentaryText;
+    const y = commentary?.visible === true ? commentary.y + commentary.height + 12 : 150;
+    this.achievementToast?.setY(y);
   }
 
   private updateDirectorCommentary(): void {
     if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
       this.directorCommentaryText?.setVisible(false);
+      this.positionAchievementToast();
       this.commentaryHideAtMs = 0;
     }
 

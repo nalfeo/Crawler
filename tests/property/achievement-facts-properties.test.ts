@@ -29,7 +29,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
     }),
     reachedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
     clearedFloorIds: fc.uniqueArray(fc.integer({ min: 1, max: 10 }), { maxLength: 5 }),
-    booleans: fc.array(fc.boolean(), { minLength: 24, maxLength: 24 }),
+    booleans: fc.array(fc.boolean(), { minLength: 25, maxLength: 25 }),
   })
   .map((value) => {
     const empty = createEmptyAchievementFactSnapshot();
@@ -77,6 +77,7 @@ const factSnapshotArbitrary: fc.Arbitrary<AchievementFactSnapshot> = fc
         floor6BreakCleared: value.booleans[21]!,
         floor6DeadlineDefeated: value.booleans[22]!,
         floor6RelaySecured: value.booleans[23]!,
+        allEquipmentSlotsOccupied: value.booleans[24]!,
       },
       questIds: value.questIds,
       completedQuestIds: value.completedQuestIds,
