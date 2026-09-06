@@ -230,7 +230,7 @@ const NUMERIC_THRESHOLD_UNITS_PATTERN = new RegExp(
  */
 const THRESHOLD_QUALIFIER =
   '(?:at\\s+least|at\\s+most|no\\s+more\\s+than|no\\s+less\\s+than|exactly|reach(?:es|ed|ing)?|' +
-  'after|within|complete[sd]?|finish(?:es|ed|ing)?(?:\\s+with)?)';
+  'after|within|complete[sd]?|completing|finish(?:es|ed|ing)?(?:\\s+with)?)';
 const AMBIGUOUS_UNITS = '(?:health|hp|mana)';
 const AMBIGUOUS_UNITS_PATTERN = new RegExp(
   `\\b${THRESHOLD_QUALIFIER}\\b[^.]{0,20}\\d+(?:\\.\\d+)?\\s+${AMBIGUOUS_UNITS}\\b`,
