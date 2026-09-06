@@ -17,6 +17,8 @@
  *   - explicit HUMAN_GATE deferrals for numeric balance/fun decisions;
  *   - every node tagged with exactly one specialist-persona owner;
  *   - a node that proves headless + visual AI Runner completion together;
+ *   - an owned, dependency-ordered achievement slice with measurable reward
+ *     unlock/claim acceptance;
  *   - a single terminal release/MVP slice gated behind that proof;
  *   - no floor-ID branch smell in shared runtime paths;
  *   - an eight-slice cap unless a human-approved exception is recorded.
@@ -149,6 +151,51 @@ function isDualRunnerProofNode(body: string): boolean {
   return (
     mentionsHeadless && mentionsVisual && mentionsAiRunner && mentionsSpawn && mentionsWinVictory
   );
+}
+
+function isAchievementNode(node: FloorEpicNode): boolean {
+  return /\bachievements?\b/i.test(`${node.title}\n${node.body ?? ''}`);
+}
+
+function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
+  const achievementNodes = epic.nodes.filter(isAchievementNode);
+  if (achievementNodes.length === 0) {
+    return [
+      {
+        code: 'achievement-slice-missing',
+        message:
+          'epic must include an owned achievement slice or achievement-integrated QA slice.',
+      },
+    ];
+  }
+
+  const violations: FloorEpicViolation[] = [];
+  for (const node of achievementNodes) {
+    const body = node.body ?? '';
+    if ((node.depends_on ?? []).length === 0) {
+      violations.push({
+        code: 'achievement-dependency-missing',
+        message: `achievement node "${node.id}" must depend on its prerequisite floor mechanics.`,
+      });
+    }
+    if (!/\b(unlock|claim|claimed|reward|rewards)\b/i.test(body)) {
+      violations.push({
+        code: 'achievement-acceptance-missing',
+        message: `achievement node "${node.id}" must define measurable unlock/claim or reward acceptance.`,
+      });
+    }
+    if (
+      !/\b(done when|acceptance|assert|at least|at most|exactly|zero|threshold|verified|pass(?:es|ed)?)\b/i.test(
+        body,
+      )
+    ) {
+      violations.push({
+        code: 'achievement-acceptance-missing',
+        message: `achievement node "${node.id}" must include a measurable acceptance condition.`,
+      });
+    }
+  }
+  return violations;
 }
 
 /**
@@ -357,6 +404,10 @@ export function lintFloorEpic(
       'dual-runner-proof-missing',
       'no node body proves headless + visual AI Runner completion together (must mention "headless", "visual", "AI Runner", "spawn", and "win"/"victory").',
     );
+  }
+
+  for (const violation of achievementViolations(epic)) {
+    violations.push(violation);
   }
 
   // Terminal release/MVP slice. Note: when there is exactly one terminal

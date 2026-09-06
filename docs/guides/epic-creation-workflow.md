@@ -48,6 +48,14 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
 | `nodes[].labels`      | no       | Extra labels applied to this node's issue only.                                         |
 | `nodes[].depends_on`  | no       | Array of other node `id`s this node depends on.                                         |
 
+Floor epics have one additional planning requirement: at least one node must
+own achievement work or achievement-integrated QA. It must be dependency-ordered
+after the mechanics it measures and include deterministic acceptance evidence
+for unlocking the achievement and claiming its reward. Numeric achievement
+thresholds belong in an explicit `HUMAN_GATE` for Playtester or Game Designer
+approval, and the achievement evidence must remain on the floor's QA/telemetry
+path through release.
+
 ## What the workflow does
 
 1. The workflow runs [`epic-create.mjs`](../../.github/scripts/epics/epic-create.mjs)

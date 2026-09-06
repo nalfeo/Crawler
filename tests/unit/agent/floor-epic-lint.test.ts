@@ -89,13 +89,22 @@ function goodFloorEpic(): FloorEpic {
         depends_on: ['ai-mechanics', 'presentation'],
       },
       {
+        id: 'achievement-qa',
+        title: 'Floor 9 slice 5: achievement-integrated QA',
+        body:
+          'Owner: QA Engineer.\n\n' +
+          'Verify the floor achievement unlocks after the measurable objective and that its ' +
+          'reward can be claimed exactly once. Done when the unlock, claim, and reward assertions pass.',
+        depends_on: ['dual-runner-acceptance'],
+      },
+      {
         id: 'release',
-        title: 'Floor 9 slice 5: release',
+        title: 'Floor 9 slice 6: release',
         body:
           'Owner: Producer.\n\n' +
           'Enable the release/MVP flag now that the floor is released for players, gated ' +
           'behind dual-runner acceptance.',
-        depends_on: ['dual-runner-acceptance'],
+        depends_on: ['achievement-qa'],
       },
     ],
   };
@@ -154,6 +163,32 @@ describe('lintFloorEpic — generic schema/DAG constraints', () => {
 });
 
 describe('lintFloorEpic — regression fixtures (one violated invariant each)', () => {
+  it('flags a floor epic without an achievement slice', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const withoutAchievement = {
+      ...epic,
+      nodes: epic.nodes
+        .filter((node) => node.id !== 'achievement-qa')
+        .map((node) =>
+          node.id === 'release' ? { ...node, depends_on: ['dual-runner-acceptance'] } : node,
+        ),
+    };
+    const violations = lintFloorEpic(withoutAchievement, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-slice-missing');
+  });
+
+  it('requires achievement acceptance to include dependency and reward claims', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body: 'Owner: QA Engineer.\n\nAdd achievement coverage.',
+      depends_on: [],
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-dependency-missing');
+    expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
+  });
+
   it('flags a missing hard gate', () => {
     const epic = cloneEpic(goodFloorEpic());
     delete (epic as { hard_gate?: string }).hard_gate;
@@ -338,7 +373,9 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       ...epic,
       nodes: [
         ...epic.nodes.map((n) =>
-          n.id === 'release' ? { ...n, depends_on: ['extra-milestone'] } : n,
+          n.id === 'release'
+            ? { ...n, depends_on: ['achievement-qa', 'extra-milestone'] }
+            : n,
         ),
         {
           id: 'extra-milestone',
