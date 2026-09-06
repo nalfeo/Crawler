@@ -32,6 +32,7 @@ import path from 'node:path';
 import { statSync, readFileSync } from 'node:fs';
 import {
   BLOB47_CANONICAL_MASKS,
+  MASK_BIT,
   edgeConnectionsFromMask,
   isCanonicalBlob47Mask,
 } from '../../../src/shared/terrain-pack-mask.js';
@@ -1033,5 +1034,228 @@ export function validateVariantTransformEligibility(
     variant.allowedTransforms ?? ['none'],
     `${poolLabel}[${variant.id}]`,
   ).map((i) => ({ code: i.code, message: i.message }));
+  return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Visual depth and perspective validator for terrain packs.
+ *
+ * Evaluates whether a terrain pack conveys perspective and depth (such as
+ * obvious vertical wall faces, wall accents, or visible wall-to-floor elevation
+ * layering) rather than reading as flat top-down stone.
+ *
+ * Floor 2 (industrial-cave) is the canonical positive reference for depth and
+ * perspective (it provides vertical facet accents and wall depth cues).
+ * Floor 1 and 3 terrain packs lack these vertical depth cues and fail this
+ * check when evaluated for depth and perspective.
+ */
+export function validateTerrainDepthAndPerspective(
+  manifest: TerrainPackDef,
+  wallAtlas: RgbaImage,
+  accentAtlases: readonly RgbaImage[],
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  const declaredAccents = manifest.wallAccents ?? [];
+  if (declaredAccents.length === 0 || accentAtlases.length === 0) {
+    fail(
+      issues,
+      'terrain-pack-lacks-depth',
+      `Terrain pack '${manifest.id}' lacks depth and perspective cues (no decoded wall accent overlays; reads as flat top-down tiles). Floor 2 industrial-cave is the canonical positive reference for depth and perspective.`,
+    );
+    return { ok: false, issues };
+  }
+
+  if (accentAtlases.length !== declaredAccents.length) {
+    fail(
+      issues,
+      'terrain-pack-depth-assets-mismatch',
+      `Terrain pack '${manifest.id}' declares ${declaredAccents.length} wall accents but decoded ${accentAtlases.length}.`,
+    );
+    return { ok: false, issues };
+  }
+
+  const expectedPixels = wallAtlas.width * wallAtlas.height;
+  for (let accentIndex = 0; accentIndex < accentAtlases.length; accentIndex++) {
+    const accent = accentAtlases[accentIndex];
+    const accentId = declaredAccents[accentIndex]?.id ?? `accent-${accentIndex}`;
+    if (accent === undefined) continue;
+    if (accent.width !== wallAtlas.width || accent.height !== wallAtlas.height) {
+      fail(
+        issues,
+        'terrain-pack-depth-dimensions',
+        `Wall accent '${accentId}' in '${manifest.id}' is ${accent.width}x${accent.height}; expected ${wallAtlas.width}x${wallAtlas.height}.`,
+      );
+      continue;
+    }
+
+    let opaquePixels = 0;
+    let differingPixels = 0;
+    let minLuminance = 255;
+    let maxLuminance = 0;
+    const colors = new Set<string>();
+    const verticalBands = new Set<number>();
+    let exposedWallPixels = 0;
+    let accentedExposedWallPixels = 0;
+    let accentedInteriorPixels = 0;
+    const exposedEdgePixels = [0, 0, 0, 0];
+    const accentedExposedEdgePixels = [0, 0, 0, 0];
+    const edgeBits = [MASK_BIT.N, MASK_BIT.E, MASK_BIT.S, MASK_BIT.W];
+    for (let pixel = 0; pixel < accent.data.length; pixel += 4) {
+      const alpha = accent.data[pixel + 3] ?? 0;
+      const pixelIndex = pixel / 4;
+      const pixelX = pixelIndex % accent.width;
+      const pixelY = Math.floor(pixelIndex / accent.width);
+      const wallAlpha = wallAtlas.data[pixel + 3] ?? 0;
+      if (wallAlpha !== 0) {
+        const frameIndex =
+          Math.floor(pixelX / manifest.wallAutotile.cellPx) +
+          Math.floor(pixelY / manifest.wallAutotile.cellPx) * manifest.wallAutotile.gridCols;
+        const localX = pixelX % manifest.wallAutotile.cellPx;
+        const localY = pixelY % manifest.wallAutotile.cellPx;
+        const edgeBand = 12;
+        const borderMargin = 12;
+        const maskEntry = manifest.wallAutotile.masks.find(
+          (entry) => entry.frameIndex === frameIndex,
+        );
+        const maskId = maskEntry?.maskId ?? 0;
+        const nearExposedEdges = [
+          !(maskId & MASK_BIT.N) && localY >= borderMargin && localY < borderMargin + edgeBand,
+          !(maskId & MASK_BIT.E) &&
+            localX >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
+            localX < manifest.wallAutotile.cellPx - borderMargin,
+          !(maskId & MASK_BIT.S) &&
+            localY >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
+            localY < manifest.wallAutotile.cellPx - borderMargin,
+          !(maskId & MASK_BIT.W) && localX >= borderMargin && localX < borderMargin + edgeBand,
+        ];
+        for (let edgeIndex = 0; edgeIndex < nearExposedEdges.length; edgeIndex += 1) {
+          if (!nearExposedEdges[edgeIndex] || maskId & edgeBits[edgeIndex]!) continue;
+          exposedEdgePixels[edgeIndex] = (exposedEdgePixels[edgeIndex] ?? 0) + 1;
+          if (alpha !== 0) {
+            accentedExposedEdgePixels[edgeIndex] = (accentedExposedEdgePixels[edgeIndex] ?? 0) + 1;
+          }
+        }
+        const nearExposedEdge = nearExposedEdges.some(Boolean);
+        if (nearExposedEdge) {
+          exposedWallPixels++;
+          if (alpha !== 0) accentedExposedWallPixels++;
+        } else if (alpha !== 0) {
+          accentedInteriorPixels++;
+        }
+      }
+      if (alpha === 0) continue;
+      opaquePixels++;
+      const red = accent.data[pixel] ?? 0;
+      const green = accent.data[pixel + 1] ?? 0;
+      const blue = accent.data[pixel + 2] ?? 0;
+      colors.add(`${red},${green},${blue}`);
+      const luminance = Math.round(0.2126 * red + 0.7152 * green + 0.0722 * blue);
+      minLuminance = Math.min(minLuminance, luminance);
+      maxLuminance = Math.max(maxLuminance, luminance);
+      const y = Math.floor(pixel / 4 / accent.width);
+      verticalBands.add(Math.min(3, Math.floor((y * 4) / accent.height)));
+      if (
+        red !== (wallAtlas.data[pixel] ?? 0) ||
+        green !== (wallAtlas.data[pixel + 1] ?? 0) ||
+        blue !== (wallAtlas.data[pixel + 2] ?? 0)
+      ) {
+        differingPixels++;
+      }
+    }
+
+    const coverage = opaquePixels / expectedPixels;
+    const visibleOverlay = differingPixels / Math.max(opaquePixels, 1);
+    const exposedEdgeCoverage = accentedExposedWallPixels / Math.max(exposedWallPixels, 1);
+    const exposedEdgeShare =
+      accentedExposedWallPixels / Math.max(accentedExposedWallPixels + accentedInteriorPixels, 1);
+    const directionalEdgeCoverage = accentedExposedEdgePixels.map(
+      (count, edgeIndex) => count / Math.max(exposedEdgePixels[edgeIndex]!, 1),
+    );
+    const coherentEdges: number[] = [];
+    const layeredEdges: number[] = [];
+    for (let frameY = 0; frameY < manifest.wallAutotile.gridRows; frameY += 1) {
+      for (let frameX = 0; frameX < manifest.wallAutotile.gridCols; frameX += 1) {
+        const frameIndex = frameY * manifest.wallAutotile.gridCols + frameX;
+        const maskId =
+          manifest.wallAutotile.masks.find((entry) => entry.frameIndex === frameIndex)?.maskId ?? 0;
+        const edgeDefinitions = [
+          { bit: MASK_BIT.N, length: manifest.wallAutotile.cellPx, horizontal: true },
+          { bit: MASK_BIT.E, length: manifest.wallAutotile.cellPx, horizontal: false },
+          { bit: MASK_BIT.S, length: manifest.wallAutotile.cellPx, horizontal: true },
+          { bit: MASK_BIT.W, length: manifest.wallAutotile.cellPx, horizontal: false },
+        ] as const;
+        for (const [edgeIndex, edge] of edgeDefinitions.entries()) {
+          if (maskId & edge.bit) continue;
+          const occupiedAlongEdge: boolean[] = [];
+          let nearLayerCount = 0;
+          let farLayerCount = 0;
+          for (let along = 0; along < edge.length; along += 1) {
+            let occupied = 0;
+            for (let depth = 0; depth < 12; depth += 1) {
+              const localX =
+                edgeIndex === 1
+                  ? manifest.wallAutotile.cellPx - 12 + depth
+                  : edgeIndex === 3
+                    ? 12 + depth
+                    : along;
+              const localY =
+                edgeIndex === 0
+                  ? 12 + depth
+                  : edgeIndex === 2
+                    ? manifest.wallAutotile.cellPx - 12 + depth
+                    : along;
+              const pixel =
+                ((frameY * manifest.wallAutotile.cellPx + localY) * accent.width +
+                  frameX * manifest.wallAutotile.cellPx +
+                  localX) *
+                4;
+              if ((accent.data[pixel + 3] ?? 0) === 0) continue;
+              occupied += 1;
+              if (depth < 6) {
+                nearLayerCount += 1;
+              } else {
+                farLayerCount += 1;
+              }
+            }
+            occupiedAlongEdge.push(occupied >= 3);
+          }
+          let longestRun = 0;
+          let currentRun = 0;
+          for (const occupied of occupiedAlongEdge) {
+            currentRun = occupied ? currentRun + 1 : 0;
+            longestRun = Math.max(longestRun, currentRun);
+          }
+          if (longestRun >= 8) {
+            coherentEdges.push(edgeIndex);
+            if (nearLayerCount > 0 && farLayerCount > 0) {
+              layeredEdges.push(edgeIndex);
+            }
+          }
+        }
+      }
+    }
+    const hasDirectionalRelief = new Set(coherentEdges).size >= 2;
+    const hasLayeredRelief = new Set(layeredEdges).size >= 1;
+    if (
+      coverage < 0.01 ||
+      coverage > 0.9 ||
+      colors.size < 8 ||
+      maxLuminance - minLuminance < 24 ||
+      verticalBands.size < 3 ||
+      visibleOverlay < 0.5 ||
+      exposedEdgeCoverage < 0.15 ||
+      exposedEdgeCoverage > 0.85 ||
+      exposedEdgeShare > 0.25 ||
+      directionalEdgeCoverage.some((coverage) => coverage < 0.08 || coverage > 0.75) ||
+      !hasDirectionalRelief ||
+      !hasLayeredRelief
+    ) {
+      fail(
+        issues,
+        'terrain-pack-lacks-depth',
+        `Wall accent '${accentId}' in '${manifest.id}' does not contain coherent wall-face relief (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}, directionalEdgeCoverage=${directionalEdgeCoverage.map((value) => value.toFixed(3)).join('/')}, coherentEdges=${new Set(coherentEdges).size}, layeredEdges=${new Set(layeredEdges).size}).`,
+      );
+    }
+  }
   return { ok: issues.length === 0, issues };
 }

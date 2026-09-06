@@ -384,6 +384,7 @@ function typeRulesBlock(brief: Brief): string | null {
       '- Fill the tile frame edge-to-edge; do not center a floating icon, object, or isolated subject.',
       '- Make edges tile seamlessly in both axes: left matches right and top matches bottom.',
       '- Avoid directional lighting seams that break when repeated in a grid.',
+      '- Convey clear depth and perspective with obvious vertical wall faces, visible wall-to-floor elevation layering, and structural relief rather than flat, top-down stone. Floor 2 terrain sets (industrial cave) are the canonical good example for depth and perspective.',
     ].join('\n');
   }
   if (brief.type === 'character') {

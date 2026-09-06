@@ -22,7 +22,7 @@
  * beyond the aggregate cardinal-edge metric.
  */
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   validateManifestSchema,
@@ -34,7 +34,10 @@ import {
   validateWallAccentImagePaths,
   validateWallAccentTopology,
   validateCrossPackWallSilhouettes,
+  validateTerrainDepthAndPerspective,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
+import { runValidate } from '../../../scripts/sprites/terrain-packs/cli.js';
+import { getTerrainPack } from '../../../src/shared/terrain-pack-registry.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import {
   BORDER_MARGIN_PX,
@@ -43,6 +46,7 @@ import {
   restyleWallAtlas,
 } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
+import { createImage, fillRect } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 
 function repoRoot(): string {
   return path.resolve(import.meta.dirname, '..', '..', '..');
@@ -670,6 +674,112 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
           `run partially or the file was edited by hand. Re-run ` +
           `scripts/sprites/terrain-packs/import-floor2-materials.ts.`,
       ).toBe(true);
+    }
+  });
+});
+
+describe('validateTerrainDepthAndPerspective', () => {
+  it('Floor 2 (industrial-cave) passes the depth and perspective visual check', () => {
+    const floor2Pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(floor2Pack));
+    const accentAtlases = floor2Pack.wallAccents!.map((accent) =>
+      decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+    );
+    const result = validateTerrainDepthAndPerspective(floor2Pack, wallAtlas, accentAtlases);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('Floor 1 (floor1-dungeon, floor1-cave) fails the depth check for flat top-down tiles', () => {
+    for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
+      const pack = getTerrainPack(id);
+      const result = validateTerrainDepthAndPerspective(
+        pack,
+        decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+        [],
+      );
+      expect(result.ok).toBe(false);
+      expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+    }
+  });
+
+  it('Floor 3 (companion-overworld) fails the depth check for flat top-down tiles', () => {
+    const pack = getTerrainPack('companion-overworld');
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+      [],
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('rejects a declared accent whose pixels are a flat fill', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    fillRect(flatAccent, 0, 0, flatAccent.width, flatAccent.height, 80, 80, 80, 255);
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('rejects a varied full-wall texture that has no wall-to-floor layering', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    for (let pixel = 0; pixel < flatAccent.data.length; pixel += 4) {
+      const x = (pixel / 4) % flatAccent.width;
+      const y = Math.floor(pixel / 4 / flatAccent.width);
+      flatAccent.data[pixel] = (x * 5 + y * 3) % 256;
+      flatAccent.data[pixel + 1] = (x * 2 + y * 7) % 256;
+      flatAccent.data[pixel + 2] = (x + y * 11) % 256;
+      flatAccent.data[pixel + 3] = wallAtlas.data[pixel + 3] ?? 0;
+    }
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('keeps the production terrain-pack validation command gated for a pack without depth assets', () => {
+    const tempRoot = mkdtempSync(path.join(repoRoot(), 'files', 'terrain-pack-cli-fixture-'));
+    try {
+      const manifestDir = path.join(tempRoot, 'src', 'shared', 'data', 'terrain-packs');
+      const assetDir = path.join(tempRoot, 'public', 'assets', 'terrain-packs', 'industrial-cave');
+      const sourceManifestPath = path.join(
+        repoRoot(),
+        'src',
+        'shared',
+        'data',
+        'terrain-packs',
+        'industrial-cave.manifest.json',
+      );
+      cpSync(path.dirname(sourceManifestPath), manifestDir, { recursive: true });
+      cpSync(
+        path.join(repoRoot(), 'public', 'assets', 'terrain-packs', 'industrial-cave'),
+        assetDir,
+        { recursive: true },
+      );
+      const manifest = JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as TerrainPackDef;
+      const flatManifest = { ...manifest, wallAccents: undefined };
+      writeFileSync(
+        path.join(manifestDir, 'industrial-cave.manifest.json'),
+        JSON.stringify(flatManifest),
+      );
+
+      const issues: Array<{ code: string; message: string }> = [];
+      expect(runValidate(tempRoot, ['industrial-cave'], issues)).toBe(false);
+      expect(issues.some((issue) => issue.code === 'terrain-pack-lacks-depth')).toBe(true);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 });
