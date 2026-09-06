@@ -39,7 +39,10 @@ import type {
   StaircaseMarkerRenderInfo,
   VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
-import type { _CornerButtonProbe as CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
+import type {
+  _AchievementToastProbe as AchievementToastProbe,
+  _CornerButtonProbe as CornerButtonProbe,
+} from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
@@ -106,6 +109,20 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
   getScenarioHudState: (page: Page): Promise<ScenarioHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getScenarioHudState()),
+  primeAchievementToastWithCommentary: (page: Page): Promise<AchievementToastProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeAchievementToastWithCommentary()),
+  getAchievementsLayoutRegions: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getAchievementsLayoutRegions()),
+  seedAchievementForPresentation: (page: Page, achievementId: string): Promise<void> =>
+    page.evaluate(
+      (id) => window.__mainSceneProbe!.seedAchievementForPresentation(id),
+      achievementId,
+    ),
+  setAchievementsFilter: (
+    page: Page,
+    filter: 'all' | 'global' | `floor:${number}`,
+  ): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.setAchievementsFilter(value), filter),
   getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   getFloor3LeagueHudState: (page: Page): Promise<Floor3LeagueHudProbeState> =>

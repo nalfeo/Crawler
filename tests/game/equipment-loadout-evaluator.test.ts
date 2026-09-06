@@ -419,6 +419,38 @@ describe('equipment loadout expected-run-value evaluator', () => {
     expect(highRate).toBeCloseTo(0.15, 10);
   });
 
+  it('caps damage-triggered activations by expected qualifying incoming hits', () => {
+    const current: EquipmentLoadoutSnapshot = {
+      ...snapshot([]),
+      activeAbilityGrantSources: new Map([
+        ['pulse-shield', [learnedAbilityGrantSourceId('pulse-shield')]],
+      ]),
+      equippedActiveAbilityIds: ['pulse-shield'],
+    };
+    const helm = candidate(generated('iron-helm', 'erv-damage-trigger-rate'));
+    const rare = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [helm], [{ ...SINGLE_TARGET, incomingHitsPerSecond: 0.01 }]),
+      current,
+    }).ranked[0]!;
+    const frequent = evaluateEquipmentLoadoutCandidates({
+      ...inputShape([], [helm], [{ ...SINGLE_TARGET, incomingHitsPerSecond: 100 }]),
+      current,
+    }).ranked[0]!;
+
+    const landRate = 1 - rare.nextScore.effectiveStats.dodgeChance;
+    const cooldownActivations =
+      (SINGLE_TARGET.durationSeconds * 60) /
+      applyCooldownReduction(600, rare.nextScore.effectiveStats.cooldownReduction);
+    const rareActivations = 0.01 * SINGLE_TARGET.durationSeconds * landRate;
+
+    expect(rareActivations).toBeLessThan(cooldownActivations);
+    expect(frequent.nextScore.components.activeAbility).toBeGreaterThan(0);
+    expect(rare.nextScore.components.activeAbility).toBeCloseTo(
+      (frequent.nextScore.components.activeAbility * rareActivations) / cooldownActivations,
+      10,
+    );
+  });
+
   it('excludes runtime-inert stats from timed-buff value', () => {
     const current: EquipmentLoadoutSnapshot = {
       ...snapshot([]),

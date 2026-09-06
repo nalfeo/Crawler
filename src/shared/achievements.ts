@@ -354,10 +354,12 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'floor6BreakCleared',
   'floor6DeadlineDefeated',
   'floor6RelaySecured',
+  'allEquipmentSlotsOccupied',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
   'equipmentUnlocked',
+  'allEquipmentSlotsOccupied',
   'runClearedFloor',
 ] as const;
 export type AchievementCurrentRunBooleanFact =
@@ -862,6 +864,7 @@ export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
       floor6BreakCleared: false,
       floor6DeadlineDefeated: false,
       floor6RelaySecured: false,
+      allEquipmentSlotsOccupied: false,
     },
     questIds: [],
     completedQuestIds: [],
