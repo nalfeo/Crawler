@@ -61,6 +61,13 @@ function makeScene(): import('phaser').Scene {
 const FIRST_ACHIEVEMENT = 'first-bonk';
 const SECOND_ACHIEVEMENT = 'room-sweeper';
 
+/**
+ * Upper bound on 2000ms advance steps for a two-box sequence. Generous enough
+ * for the real reveal timings, small enough that a regression that never
+ * settles fails fast instead of hanging until the runner timeout.
+ */
+const MAX_TICK_STEPS = 100;
+
 describe('achievement loot boxes opened back to back', () => {
   it('chains from one summary straight into the next unclaimed box', () => {
     const world = createTestWorld({ seed: 42 });
@@ -121,7 +128,9 @@ describe('achievement loot boxes opened back to back', () => {
     // remain visible until the player acknowledges it instead of closing on the
     // first tick after the phase flips to `summary`.
     let reachedAggregateSummary = false;
-    while (rewardOpeningUI.isOpen()) {
+    let steps = 0;
+    while (rewardOpeningUI.isOpen() && steps < MAX_TICK_STEPS) {
+      steps += 1;
       const phaseBefore = rewardOpeningUI.getPhase();
       rewardOpeningUI.tick(2000);
       const phaseAfter = rewardOpeningUI.getPhase();
@@ -133,7 +142,7 @@ describe('achievement loot boxes opened back to back', () => {
         rewardOpeningUI.acknowledge();
       }
     }
-
+    expect(steps).toBeLessThan(MAX_TICK_STEPS);
     expect(reachedAggregateSummary).toBe(true);
     expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
     expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
@@ -172,9 +181,12 @@ describe('achievement loot boxes opened back to back', () => {
     expect(rewardOpeningUI.getPhase()).toBe('anticipation');
     expect(world.achievements.pendingPresentations.size).toBe(0);
 
-    while (rewardOpeningUI.getPhase() !== 'summary') {
+    let steps = 0;
+    while (rewardOpeningUI.getPhase() !== 'summary' && steps < MAX_TICK_STEPS) {
+      steps += 1;
       rewardOpeningUI.tick(2000);
     }
+    expect(steps).toBeLessThan(MAX_TICK_STEPS);
 
     // The aggregate summary is intentionally player-acknowledged rather than
     // auto-closed.
@@ -226,9 +238,12 @@ describe('achievement loot boxes opened back to back', () => {
     achievementsUI.openAllPendingRewards();
     expect(world.achievements.claimedIds.has(FIRST_ACHIEVEMENT)).toBe(true);
 
-    while (rewardOpeningUI.getPhase() !== 'summary') {
+    let steps = 0;
+    while (rewardOpeningUI.getPhase() !== 'summary' && steps < MAX_TICK_STEPS) {
+      steps += 1;
       rewardOpeningUI.tick(2000);
     }
+    expect(steps).toBeLessThan(MAX_TICK_STEPS);
     rewardOpeningUI.acknowledge();
 
     expect(world.achievements.claimedIds.has(SECOND_ACHIEVEMENT)).toBe(true);
