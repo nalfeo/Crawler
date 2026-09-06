@@ -219,6 +219,7 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'DEFAULT_HARVEST_THRESHOLD_MINUTES', // default stale-session harvest liveness alarm threshold
   'DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS', // default decision-log lookback window for dispatch-liveness sweep
   'DEFAULT_PR_DISPATCH_GAP_HOURS', // default per-PR dispatch gap threshold for blocked PRs
+  'DEFAULT_LIVENESS_REDISPATCH_CAP', // bounded per-sweep liveness redispatch cap, overridden by workflow input
   // ci-recovery/issue-intake-lib.mjs
   'RECOVERY_PLAN_CHECKLIST_MAX_ITEMS', // max checklist items in a recovery plan
   'RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH', // max length per checklist item

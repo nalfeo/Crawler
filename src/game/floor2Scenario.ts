@@ -145,7 +145,30 @@ import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCa
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import type { AchievementCatalogRegistry } from '../shared/achievements.js';
 
-const FLOOR2_BOSS_HP_SCALE = 0.03;
+/**
+ * Multiplier applied to the authored boss archetype HP for the *live* Floor 2
+ * den encounters (issue #4291).
+ *
+ * The previous 0.03 scale shrank a 220 HP boss to 7 HP — one melee volley — so
+ * a boss died before any telegraphed cycle could read on screen. Full authored
+ * HP is still not enough: measured headless runs (seeds 1–3, `BehaviorTreeAI`)
+ * killed the first den boss in 5.5–6.7 s of game time, while the shortest
+ * signature-ability window in `boss-abilities.floor2.json` is 9.25 s
+ * (`firstEligibleAfterMs` + telegraph duration) and the longest is 12.5 s.
+ *
+ * Measured time-to-kill for every den boss on seeds 1–3 (four dens per run):
+ *   1× → 5.5–6.7 s (first den only; below every ability window)
+ *   3× → 9.4–19.6 s (goblins at level 19 cleared 9.25 s by only 134 ms)
+ *   4× → 12.1–27.0 s (≥ 30 % margin over every ability window)
+ *
+ * 4× is the smallest whole multiplier that keeps every den boss alive past its
+ * own signature-cycle window on the canonical progression baseline without
+ * turning the fight into a slog, and all three seeds still reach `victory`
+ * with the Floor 2 exit completed. Gated by
+ * `tests/headless/floor2-boss-survival-gate.test.ts`. No invulnerability and no
+ * seed-specific exception is used; the arena lab keeps its own debug scaling.
+ */
+const FLOOR2_BOSS_HP_SCALE = 4;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
