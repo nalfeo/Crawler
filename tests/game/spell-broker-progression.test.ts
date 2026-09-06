@@ -40,6 +40,7 @@ import {
 } from '../../src/shared/constants.js';
 import {
   FLOOR1_SPELL_BROKER_COST,
+  FLOOR1_SPELL_BROKER_OFFER_COUNT,
   SPELL_SKILL_ID_BY_SPELL_ID,
   _floor1SpellBrokerOfferCost,
   generateFloor1SpellBrokerOffers,
@@ -103,6 +104,39 @@ describe('Floor 1 Spell Broker', () => {
     world.playerGold = offer!.cost;
 
     expect(purchaseSpellBrokerSpell(world, player, offer!.spellId)).toBe(false);
+  });
+
+  it('never lets one run clear the whole rack, however much gold it banked (#4284)', () => {
+    // Canonical bound: the per-run cap is strictly below the rack size, so the
+    // whole three-spell rack can never be bought regardless of achievement
+    // payouts before the broker opens.
+    expect(FLOOR1_SPELL_BROKER_MAX_PURCHASES).toBeLessThan(FLOOR1_SPELL_BROKER_OFFER_COUNT);
+
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeBaseStats(world, player);
+    initializeFloor1Scenario(world, player);
+    world.featureUnlocks.spells = true;
+    world.goalFlags.set('floor1-boss-spellbook-claimed', true);
+    const offers = getSpellBrokerOffers(world);
+    expect(offers).toHaveLength(FLOOR1_SPELL_BROKER_OFFER_COUNT);
+
+    // Far more gold than the whole rack costs — only the cap may stop the run.
+    const rackTotal = offers.reduce((total, offer) => total + offer.cost, 0);
+    world.playerGold = rackTotal * 10;
+
+    const purchased = offers.filter((offer) =>
+      purchaseSpellBrokerSpell(world, player, offer.spellId),
+    ).length;
+    expect(purchased).toBe(FLOOR1_SPELL_BROKER_MAX_PURCHASES);
+
+    const remaining = getSpellBrokerOffers(world).filter((offer) => !offer.purchased);
+    expect(remaining.length).toBeGreaterThan(0);
+    for (const offer of remaining) {
+      expect(canPurchaseSpellBrokerSpell(world, player, offer.spellId)).toBe(false);
+    }
+    // The rejected purchases never charged the player.
+    expect(world.goldLedger.spellPurchases).toBe(FLOOR1_SPELL_BROKER_MAX_PURCHASES);
   });
 
   it('prices a broker spell as the headline Floor 1 purchase', () => {
