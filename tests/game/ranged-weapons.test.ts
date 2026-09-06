@@ -1,11 +1,18 @@
 import { entityExists, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Damage, Position, Projectile, Velocity } from '../../src/core/components.js';
+import {
+  Damage,
+  Position,
+  Projectile,
+  ProjectileVisualKind,
+  Velocity,
+} from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer, spawnProjectile } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('ranged weapons', () => {
@@ -25,7 +32,65 @@ describe('ranged weapons', () => {
     expect(world.stores.velocity.x[p]).toBeCloseTo(def.projectileSpeed, 2);
     expect(world.stores.velocity.y[p]).toBeCloseTo(0, 2);
     expect(world.stores.damage.amount[p]).toBe(def.baseDamage);
+    expect(world.stores.projectileVisual.kind[p]).toBe(ProjectileVisualKind.BULLET);
+    expect(resolveRenderKind(world, p)).toBe('bullet');
   });
+
+  it.each(['musketeer-rifle', 'cog-pistol', 'weapon.rivet-gun'] as const)(
+    '%s (firearm, weaponTypeSkillId=pistol) fires a bullet projectile',
+    (weaponId) => {
+      const world = createTestWorld();
+      spawnPlayer(world, 0, 0);
+      spawnEnemy(world, 6.25, 0, 20);
+      const def = getWeaponDef(weaponId)!;
+      expect(def.weaponTypeSkillId).toBe('pistol');
+      setActiveWeapon(world, def);
+      world.elapsedMs = def.cooldownMs;
+
+      weaponSystem(world);
+
+      const projectiles = Array.from(query(world.ecs, [Projectile, Position, Velocity, Damage]));
+      expect(projectiles).toHaveLength(1);
+      const p = projectiles[0]!;
+      expect(world.stores.projectileVisual.kind[p]).toBe(ProjectileVisualKind.BULLET);
+      expect(resolveRenderKind(world, p)).toBe('bullet');
+    },
+  );
+
+  it.each([
+    ['bow', ProjectileVisualKind.ARROW],
+    ['crossbow', ProjectileVisualKind.ARROW],
+  ] as const)(
+    '%s keeps its arrow projectile presentation through impact',
+    (weaponId, expectedKind) => {
+      const world = createTestWorld();
+      spawnPlayer(world, 0, 0);
+      const enemy = spawnEnemy(world, 1.25, 0, 50);
+      const def = getWeaponDef(weaponId)!;
+      setActiveWeapon(world, def);
+      world.elapsedMs = def.cooldownMs;
+
+      weaponSystem(world);
+
+      const projectiles = Array.from(query(world.ecs, [Projectile, Position, Velocity, Damage]));
+      expect(projectiles).toHaveLength(1);
+      const projectile = projectiles[0]!;
+      expect(world.stores.projectileVisual.kind[projectile]).toBe(expectedKind);
+      expect(resolveRenderKind(world, projectile)).toBe('arrow');
+
+      world.stores.position.x[projectile] = 1.25;
+      const collision = collisionSystem(world);
+      damageSystem(world, collision);
+      expect(world.stores.health.current[enemy]).toBeLessThan(50);
+      if (def.pierce > 0) {
+        expect(entityExists(world.ecs, projectile)).toBe(true);
+        expect(world.stores.projectileVisual.kind[projectile]).toBe(expectedKind);
+        expect(resolveRenderKind(world, projectile)).toBe('arrow');
+      } else {
+        expect(entityExists(world.ecs, projectile)).toBe(false);
+      }
+    },
+  );
 
   it('bow fires slower but deals more damage than pistol', () => {
     const bow = getWeaponDef('bow')!;

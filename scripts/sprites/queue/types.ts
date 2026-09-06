@@ -32,7 +32,20 @@ export interface BriefPathAssetRequest extends AssetRequestBase {
 }
 
 /** New queue job shape: generate from an `asset-request` GitHub issue. */
-export interface IssueAssetRequest extends AssetRequestBase {
+export type IssueAssetRequestMobRole = 'normal' | 'elite' | 'boss';
+
+export interface IssueAssetRequestContext {
+  /** Optional floor key or mnemonic carried with the request and frozen for synthesis/judging. */
+  readonly floorId?: string;
+  /** Optional family key or grouping carried with the request and frozen for synthesis/judging. */
+  readonly familyId?: string;
+  /** Optional mob-role override. If omitted, the pipeline may infer from the request name/brief. */
+  readonly mobRole?: IssueAssetRequestMobRole;
+  /** Optional request-level overrides carried through subsequent pipeline stages without recomputation. */
+  readonly injectionOverrides?: Record<string, unknown>;
+}
+
+export interface IssueAssetRequest extends AssetRequestBase, IssueAssetRequestContext {
   readonly kind: 'issue-request';
   /** Source issue number (for comments + idempotency). */
   readonly issueNumber: number;
@@ -92,6 +105,36 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
     ) {
       return null;
     }
+    if (
+      'floorId' in v &&
+      v.floorId !== undefined &&
+      (typeof v.floorId !== 'string' || v.floorId.trim() === '')
+    ) {
+      return null;
+    }
+    if (
+      'familyId' in v &&
+      v.familyId !== undefined &&
+      (typeof v.familyId !== 'string' || v.familyId.trim() === '')
+    ) {
+      return null;
+    }
+    if (
+      'mobRole' in v &&
+      v.mobRole !== undefined &&
+      !['normal', 'elite', 'boss'].includes(String(v.mobRole).toLowerCase())
+    ) {
+      return null;
+    }
+    if (
+      'injectionOverrides' in v &&
+      v.injectionOverrides !== undefined &&
+      (typeof v.injectionOverrides !== 'object' ||
+        v.injectionOverrides === null ||
+        Array.isArray(v.injectionOverrides))
+    ) {
+      return null;
+    }
     if ('sizeVariant' in v && v.sizeVariant !== undefined && !isSizeVariant(v.sizeVariant)) {
       throw new InvalidAssetRequestMessageError(
         `Invalid persisted asset-request size '${String(v.sizeVariant)}'. Expected one of ${SIZE_VARIANTS.join(', ')}.`,
@@ -109,6 +152,22 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
         : {}),
       ...(typeof v.floor === 'number' && Number.isInteger(v.floor) && v.floor >= 1 && v.floor <= 20
         ? { floor: v.floor }
+        : {}),
+      ...(typeof v.floorId === 'string' && v.floorId.trim() !== ''
+        ? { floorId: v.floorId.trim() }
+        : {}),
+      ...(typeof v.familyId === 'string' && v.familyId.trim() !== ''
+        ? { familyId: v.familyId.trim() }
+        : {}),
+      ...(typeof v.mobRole === 'string' &&
+      ['normal', 'elite', 'boss'].includes(v.mobRole.toLowerCase())
+        ? { mobRole: v.mobRole.toLowerCase() as 'normal' | 'elite' | 'boss' }
+        : {}),
+      ...(v.injectionOverrides !== undefined &&
+      typeof v.injectionOverrides === 'object' &&
+      v.injectionOverrides !== null &&
+      !Array.isArray(v.injectionOverrides)
+        ? { injectionOverrides: v.injectionOverrides as Record<string, unknown> }
         : {}),
       ...(isSizeVariant(v.sizeVariant) ? { sizeVariant: v.sizeVariant } : {}),
       fingerprint: v.fingerprint,
