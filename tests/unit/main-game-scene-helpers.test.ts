@@ -389,12 +389,28 @@ describe('resolveDialogueLines', () => {
     );
   });
 
+  it('switches to the post-boss progression beat on the very first return after the kill, before the spellbook is claimed', () => {
+    // Real kill -> return ordering: the Slime Rat death path only marks
+    // `bossBattles.get('slime-rat').defeated`; the `floor1-boss-battle-complete`
+    // goal flag isn't set until `claim-spellbook` also completes inside
+    // `meetSpellQuestGiver`, which runs *after* dialogue is resolved. So this
+    // must NOT rely on that goal flag being true yet.
+    const world = freshFloor1World();
+    world.floorScenario!.objective.bossBattles.get('slime-rat')!.defeated = true;
+    expect(world.goalFlags.get('floor1-boss-battle-complete')).not.toBe(true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+  });
+
   it('returns the locked line for a gated spell quest giver', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossDefeated: false,
         spellbookClaimed: false,
         merchantQuestStarted: false,
       })!,
@@ -409,6 +425,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: false,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,
@@ -433,6 +450,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossDefeated: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,
