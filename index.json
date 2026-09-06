@@ -1,5 +1,44 @@
 [
   {
+    "commit": "32e2eebcee5c0448d44e93fcd026d2df125424d4",
+    "commitDate": "2026-09-06T22:05:51Z",
+    "commitSubject": "Floor 4: add new achievements (#4385)",
+    "capturedAt": "2026-09-06T23:34:14.757Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/34064443582",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/32e2eebcee5c0448d44e93fcd026d2df125424d4.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9,
+        "totalWins": 135,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 33.75,
+      "gatePass": false,
+      "path": "by-sha/32e2eebcee5c0448d44e93fcd026d2df125424d4.fun-report.json"
+    }
+  },
+  {
     "commit": "08cf9d4adbefdb8733d226d6484ec7a1e471ab1c",
     "commitDate": "2026-09-05T19:53:07Z",
     "commitSubject": "fix(goobers): preserve isolated instance path through materialization (#4307)",
