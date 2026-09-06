@@ -36,7 +36,10 @@ import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { type SkillState } from '../../src/game/skills/types.js';
-import { getWeaponSwingVfxSpec } from '../../src/shared/weapon-swing-vfx.js';
+import {
+  WEAPON_SWING_VFX_BY_ABILITY_ID,
+  getWeaponSwingVfxSpec,
+} from '../../src/shared/weapon-swing-vfx.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -219,6 +222,9 @@ describe('weapon-skill passive ability definitions', () => {
   });
 
   it('keeps pistol active milestone VFX on canonical IDs while preserving legacy aliases', () => {
+    expect(Object.hasOwn(WEAPON_SWING_VFX_BY_ABILITY_ID, 'pistol-volley')).toBe(false);
+    expect(Object.hasOwn(WEAPON_SWING_VFX_BY_ABILITY_ID, 'pistol-volley-evolved')).toBe(false);
+
     expect(getWeaponSwingVfxSpec('pistol-rapid-fire')).toEqual({
       preset: 'volleyTrail',
       color: 0xfde047,

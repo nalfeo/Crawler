@@ -22,7 +22,7 @@ const PISTOL_BARRAGE_VFX: WeaponSwingVfxSpec = {
   intensity: 1.25,
 };
 
-const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
+export const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec>> = {
   'sword-strike-base': { preset: 'swingArc', color: 0xff6b6b, intensity: 1.0 },
   'sword-cleave': { preset: 'volleyTrail', color: 0xff8787, intensity: 1.1 },
   'sword-strike-evolved': { preset: 'impactBurst', color: 0xff4d4d, intensity: 1.2 },
@@ -50,10 +50,8 @@ const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec
 
   'pistol-shot-base': { preset: 'swingArc', color: 0xfacc15, intensity: 1.0 },
   'pistol-rapid-fire': PISTOL_RAPID_FIRE_VFX,
-  'pistol-volley': PISTOL_RAPID_FIRE_VFX,
   'pistol-shot-evolved': { preset: 'impactBurst', color: 0xeab308, intensity: 1.2 },
   'pistol-barrage': PISTOL_BARRAGE_VFX,
-  'pistol-volley-evolved': PISTOL_BARRAGE_VFX,
 
   'throwing-toss-base': { preset: 'swingArc', color: 0x22d3ee, intensity: 1.0 },
   'throwing-boomerang': { preset: 'volleyTrail', color: 0x67e8f9, intensity: 1.1 },
@@ -71,8 +69,14 @@ const WEAPON_SWING_VFX_BY_ABILITY_ID: Readonly<Record<string, WeaponSwingVfxSpec
   'sports-grand-slam': { preset: 'spinRing', color: 0x0284c7, intensity: 1.3 },
 };
 
+const LEGACY_WEAPON_SWING_VFX_ALIASES = new Map<string, string>([
+  ['pistol-volley', 'pistol-rapid-fire'],
+  ['pistol-volley-evolved', 'pistol-barrage'],
+]);
+
 export function getWeaponSwingVfxSpec(abilityId: string): WeaponSwingVfxSpec | undefined {
-  return WEAPON_SWING_VFX_BY_ABILITY_ID[abilityId];
+  const canonicalId = LEGACY_WEAPON_SWING_VFX_ALIASES.get(abilityId) ?? abilityId;
+  return WEAPON_SWING_VFX_BY_ABILITY_ID[canonicalId];
 }
 
 export function weaponSwingVfxKindForPreset(preset: WeaponSwingVfxPreset): WeaponSwingVfxKind {
