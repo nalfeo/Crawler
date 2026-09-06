@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query, removeEntity } from 'bitecs';
+import { entityExists, query, removeEntity } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -1632,6 +1632,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
   let primedNpcEid: number | null = null;
+  let projectileProbeTargetEid: number | null = null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -3109,9 +3110,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
       const px = world.stores.position.x[player] ?? 0;
       const py = world.stores.position.y[player] ?? 0;
-      // Ranged weapons only fire at a nearby target — spawn one in front of
-      // the player so weaponSystem's target-acquisition gate is satisfied.
-      spawnEnemy(world, px + 6, py, 20);
+      // Ranged weapons only fire at a nearby target — reuse a single tracked
+      // probe target across calls (repositioned/respawned as needed) instead
+      // of spawning a fresh enemy every call, so target-acquisition state
+      // doesn't accumulate across an `it.each` loop of weapon ids.
+      if (projectileProbeTargetEid === null || !entityExists(world.ecs, projectileProbeTargetEid)) {
+        projectileProbeTargetEid = spawnEnemy(world, px + 6, py, 20);
+      } else {
+        world.stores.position.x[projectileProbeTargetEid] = px + 6;
+        world.stores.position.y[projectileProbeTargetEid] = py;
+        world.stores.health.current[projectileProbeTargetEid] = 20;
+      }
       weaponSystem(world);
       return Array.from(query(world.ecs, [Projectile]));
     },
@@ -3124,7 +3133,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         return [];
       }
       const images = phaserScene.children.list.filter(
-        (obj): obj is Phaser.GameObjects.Image => obj instanceof Phaser.GameObjects.Image,
+        (obj): obj is Phaser.GameObjects.Image | Phaser.GameObjects.Sprite =>
+          obj instanceof Phaser.GameObjects.Image || obj instanceof Phaser.GameObjects.Sprite,
       );
       const infos: ProjectileRenderInfo[] = [];
       for (const eid of query(world.ecs, [Projectile])) {
