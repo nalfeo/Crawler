@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CheckinAsset, Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import {
   ASSET_QUEUE_FREEZE_ENV,
+  applySpriteAnnotationUpdates,
   isAssetQueueFrozen,
   runQueueCommit,
   isNonFastForwardRejection,
@@ -348,6 +349,14 @@ describe('runQueueCommit (control flow)', () => {
         { key: 'alpha', favorite: false, disliked: true, comment: '' },
       ]),
     ).toThrow(/Duplicate sprite annotation key/);
+  });
+
+  it('does not materialize an empty annotation when clearing an absent reconciliation', () => {
+    expect(
+      applySpriteAnnotationUpdates({ version: 1, sprites: {} }, [
+        { key: 'already-clean-var-0', reconciliation: undefined },
+      ]),
+    ).toEqual({ version: 1, sprites: {} });
   });
 
   it('throws invalid-brief-path when briefs supplied but copyBriefFiles dep is absent', async () => {

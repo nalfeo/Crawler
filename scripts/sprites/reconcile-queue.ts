@@ -332,8 +332,37 @@ async function describeUnavailableLifecycleReplacement(
   repoRoot: string,
 ): Promise<string | null> {
   const { replacementKey, conceptId } = deletion.tombstone;
-  // Historical pre-hardening tombstones intentionally carry no replacement key.
-  if (replacementKey === undefined) return null;
+  if (replacementKey === undefined) {
+    // Historical pre-hardening tombstones intentionally carry no replacement
+    // key. Bind that compatibility exception to the exact tombstone already on
+    // main so a new queue writer cannot mint its own replacement-free deletion.
+    const persisted = await runGit(exec, repoRoot, ['show', `${baseRef}:${ANNOTATIONS_PATH}`]);
+    if (persisted.code === 0) {
+      try {
+        const document = JSON.parse(persisted.stdout) as {
+          sprites?: Record<string, { tombstone?: Partial<LifecycleDeletionTombstone> }>;
+        };
+        const base = document.sprites?.[deletion.tombstone.manifestKey]?.tombstone;
+        if (
+          base?.manifestKey === deletion.tombstone.manifestKey &&
+          base.conceptId === deletion.tombstone.conceptId &&
+          base.assetPath === deletion.tombstone.assetPath &&
+          base.sourceRun === deletion.tombstone.sourceRun &&
+          base.variantIndex === deletion.tombstone.variantIndex &&
+          Array.isArray(base.annotationKeys) &&
+          base.annotationKeys.length === deletion.tombstone.annotationKeys.length &&
+          base.annotationKeys.every(
+            (key, index) => key === deletion.tombstone.annotationKeys[index],
+          )
+        ) {
+          return null;
+        }
+      } catch {
+        // Report the same fail-closed lifecycle error for unreadable base data.
+      }
+    }
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no accepted replacement and is not an unchanged historical tombstone on main.`;
+  }
   if (conceptId === undefined || conceptId === '') {
     return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" names replacement "${replacementKey}" without a concept id.`;
   }

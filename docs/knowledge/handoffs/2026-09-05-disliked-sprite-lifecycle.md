@@ -352,7 +352,9 @@ sprite-pipeline, sprite-workflow
   their redress source now use the approved `welcome-room-call-sheet-var-3`,
   and the pinned-texture provenance gate walks every catalog-backed set-piece
   layer so another exact placeholder pin cannot silently fall back to a grey
-  rectangle.
+  rectangle. Reusing the approved call sheet is intentional show-memorabilia
+  dressing; generating a distinct autograph book was deferred because this
+  lifecycle wiring repair did not commission new art.
 - Real-engine set-piece observation captured the old unloaded layers at
   `files/welcome-room-before.png` and the replacement call sheets visibly
   rendering on the merchant table, welcome desk, and wall shelf at
@@ -366,6 +368,12 @@ sprite-pipeline, sprite-workflow
   declared-feet gate. The five replacement layers now declare the actual
   height-authoritative widths (0.76, 1.14, and 1.43 ft), and the redress source
   preserves the same aspect instead of regenerating square declarations.
+- Post-CI review found that a new queue writer could omit `replacementKey` and
+  inherit the pre-hardening tombstone exception. Replacement-free deletion is
+  now accepted only when the exact tombstone is already persisted on `main`;
+  new omissions fail closed. The same review found and fixed an asymmetric
+  annotation no-op guard that could materialize `{}` while clearing an already
+  absent reconciliation marker during a CAS retry.
 
 ## PR #3234 generic extraction audit
 

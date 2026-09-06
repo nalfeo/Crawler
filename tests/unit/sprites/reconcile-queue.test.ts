@@ -2256,7 +2256,8 @@ describe('runReconcile (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     const key = 'queue-goon-var-3';
-    addArtDirectlyToMain(liveDir, [key]);
+    const replacementKey = 'queue-goon-var-4';
+    addArtDirectlyToMain(liveDir, [key, replacementKey]);
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
     const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-delete-'));
     try {
@@ -2271,6 +2272,7 @@ describe('runReconcile (real git)', () => {
             tombstone: {
               manifestKey: key,
               conceptId: 'queue-goon',
+              replacementKey,
               assetPath: `generated/${key}.png`,
               sourceRun: `generated/runs/${key}/run-0`,
               variantIndex: 0,
@@ -2310,6 +2312,60 @@ describe('runReconcile (real git)', () => {
       encoding: 'utf8',
     });
     expect(parseSourceTrailers(body).queueSha).toBe(queueSha);
+  });
+
+  it('(c3) refuses a newly minted replacement-free lifecycle tombstone', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-no-replacement-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue untrusted replacement-free deletion');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/entries/${key}.json`,
+        `public/assets/generated/${key}.png`,
+        'public/assets/generated/sprite-editor-annotations.json',
+      ]),
+    );
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      expect.objectContaining({
+        annotationKey: key,
+        reason: expect.stringContaining('is not an unchanged historical tombstone on main'),
+      }),
+    ]);
   });
 
   it('(c3) withholds cleanup when its accepted replacement is absent from the promotion tree', async () => {

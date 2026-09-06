@@ -100,7 +100,9 @@ export function deriveGeneratedCatalogRow(
 
 /**
  * Derive every non-placeholder `generated:` row from a parsed manifest,
- * sorted by id for determinism. Placeholder entries are excluded.
+ * sorted by id for determinism. Placeholder entries are excluded. Disliked
+ * entries remain visible here for editor/review history; runtime selection uses
+ * `isRuntimeEligibleManifestEntry` instead.
  */
 export function deriveGeneratedCatalogRows(manifest: GeneratedManifest): SpriteCatalogRecord[] {
   const rows: SpriteCatalogRecord[] = [];

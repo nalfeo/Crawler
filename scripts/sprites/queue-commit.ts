@@ -131,7 +131,7 @@ export function applySpriteAnnotationUpdates(
       update.sourceRun === undefined &&
       update.variantIndex === undefined &&
       update.tombstone === undefined &&
-      !Object.hasOwn(update, 'reconciliation')
+      update.reconciliation === undefined
     ) {
       continue;
     }

@@ -139,11 +139,12 @@ describe('generated-catalog composer', () => {
   });
 
   describe('deriveGeneratedCatalogRows', () => {
-    it('excludes placeholder entries and sorts by id', () => {
+    it('excludes placeholders, retains disliked review history, and sorts by id', () => {
       const rows = deriveGeneratedCatalogRows(
         manifest({
           'b-key': entry({ type: 'weapon' }),
           'a-key': entry({ type: 'item' }),
+          'disliked-key': entry({ disliked: true }),
           'z-placeholder-key': entry({ placeholder: true }),
           'path-placeholder': entry({ assetPath: 'generated/y-placeholder.png' }),
         }),
@@ -151,6 +152,7 @@ describe('generated-catalog composer', () => {
       expect(rows.map((r) => r.id)).toEqual([
         `${GENERATED_ID_PREFIX}a-key`,
         `${GENERATED_ID_PREFIX}b-key`,
+        `${GENERATED_ID_PREFIX}disliked-key`,
       ]);
     });
   });
