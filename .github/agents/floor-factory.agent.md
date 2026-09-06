@@ -55,8 +55,10 @@ outcome, owned systems/paths, dependencies, non-goals, and deterministic
 acceptance evidence per slice.
 
 Every floor epic must include an achievement slice or achievement-integrated QA
-slice. That node must have one Owner persona, depend on the mechanics it
-measures, and state measurable acceptance conditions covering achievement
+slice, and exactly one node may own that work. That node must have one Owner
+persona, list the direct mechanic node IDs it measures in
+`prerequisite_mechanics`, depend directly on every listed mechanic, and state
+measurable acceptance conditions covering achievement
 unlocking, reward claiming, and the resulting reward outcome. Defer numeric achievement thresholds to an
 explicit `HUMAN_GATE` for Playtester or Game Designer approval; achievement
 coverage remains in the same release-ready QA/telemetry path as the floor's

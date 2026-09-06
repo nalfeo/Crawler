@@ -57,6 +57,8 @@ export interface FloorEpicNode {
   readonly body?: string;
   readonly labels?: ReadonlyArray<string>;
   readonly depends_on?: ReadonlyArray<string>;
+  /** Direct dependency IDs whose mechanics are measured by an achievement node. */
+  readonly prerequisite_mechanics?: ReadonlyArray<string>;
 }
 
 /**
@@ -282,6 +284,12 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
   }
 
   const violations: FloorEpicViolation[] = [];
+  if (achievementNodes.length !== 1) {
+    violations.push({
+      code: 'achievement-slice-count',
+      message: `epic must include exactly one owned achievement slice or achievement-integrated QA slice; found ${achievementNodes.length}.`,
+    });
+  }
   for (const node of achievementNodes) {
     const body = node.body ?? '';
     const ownerDeclarations = body.match(/^Owner:\s*/gm) ?? [];
@@ -291,7 +299,20 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
         message: `achievement node "${node.id}" must declare exactly one Owner persona.`,
       });
     }
-    if ((node.depends_on ?? []).length === 0) {
+    const dependencies = new Set(node.depends_on ?? []);
+    const prerequisiteMechanics = node.prerequisite_mechanics ?? [];
+    if (prerequisiteMechanics.length === 0) {
+      violations.push({
+        code: 'achievement-prerequisite-mechanics-missing',
+        message: `achievement node "${node.id}" must list its prerequisite mechanic node IDs in prerequisite_mechanics.`,
+      });
+    } else if (prerequisiteMechanics.some((mechanicId) => !dependencies.has(mechanicId))) {
+      violations.push({
+        code: 'achievement-dependency-missing',
+        message: `achievement node "${node.id}" must directly depend on every prerequisite mechanic listed in prerequisite_mechanics.`,
+      });
+    }
+    if (dependencies.size === 0) {
       violations.push({
         code: 'achievement-dependency-missing',
         message: `achievement node "${node.id}" must depend on its prerequisite floor mechanics.`,

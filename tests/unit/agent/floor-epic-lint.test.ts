@@ -97,6 +97,7 @@ function goodFloorEpic(): FloorEpic {
           'reward can be claimed exactly once and is granted to the player. Done when the unlock, ' +
           'claim, and reward-outcome assertions pass.',
         depends_on: ['dual-runner-acceptance'],
+        prerequisite_mechanics: ['dual-runner-acceptance'],
       },
       {
         id: 'release',
@@ -184,10 +185,33 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       ...node,
       body: 'Owner: QA Engineer.\n\nAdd achievement coverage.',
       depends_on: [],
+      prerequisite_mechanics: [],
     }));
     const violations = lintFloorEpic(mutated, PERSONA_NAMES);
     expect(violations.map((v) => v.code)).toContain('achievement-dependency-missing');
     expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
+  });
+
+  it('requires exactly one achievement-owned slice', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const duplicate = {
+      ...epic.nodes.find((node) => node.id === 'achievement-qa')!,
+      id: 'achievement-qa-duplicate',
+      title: 'Floor 9 slice 5b: achievement-integrated QA',
+    };
+    const violations = lintFloorEpic({ ...epic, nodes: [...epic.nodes, duplicate] }, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-slice-count');
+  });
+
+  it('rejects a dependency that is not the marked prerequisite mechanic', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      depends_on: ['presentation'],
+      prerequisite_mechanics: ['dual-runner-acceptance'],
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-dependency-missing');
   });
 
   it('requires achievement evidence for unlock, reward claiming, and reward outcome', () => {

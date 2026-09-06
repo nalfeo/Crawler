@@ -33,24 +33,26 @@ Place the file anywhere under `docs/knowledge/epics/` (conventionally
 `docs/knowledge/epics/<epic-id>/<epic-id>.epic.json`). See
 [`example.epic.json.txt`](example.epic.json.txt) for a complete example. Shape:
 
-| Field                 | Required | Description                                                                             |
-| --------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `epic_id`             | yes      | Lowercase kebab-case identifier. Used to label every created issue as `epic:<epic_id>`. |
-| `title`               | yes      | Human-readable epic name, used in the review issue title.                               |
-| `description`         | no       | One paragraph of context, shown on the review issue.                                    |
-| `review.title_prefix` | no       | Prefix for the review issue title (default `[Epic Review]`).                            |
-| `review.body`         | no       | Extra reviewer-facing context appended to the generated plan summary.                   |
-| `labels`              | no       | Extra labels applied to every issue created for this epic.                              |
-| `nodes`               | yes      | Non-empty array of slice/node definitions (see below).                                  |
-| `nodes[].id`          | yes      | Unique node id within the epic, referenced by other nodes' `depends_on`.                |
-| `nodes[].title`       | yes      | Issue title for this node.                                                              |
-| `nodes[].body`        | no       | Issue body for this node.                                                               |
-| `nodes[].labels`      | no       | Extra labels applied to this node's issue only.                                         |
-| `nodes[].depends_on`  | no       | Array of other node `id`s this node depends on.                                         |
+| Field                            | Required | Description                                                                                       |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `epic_id`                        | yes      | Lowercase kebab-case identifier. Used to label every created issue as `epic:<epic_id>`.           |
+| `title`                          | yes      | Human-readable epic name, used in the review issue title.                                         |
+| `description`                    | no       | One paragraph of context, shown on the review issue.                                              |
+| `review.title_prefix`            | no       | Prefix for the review issue title (default `[Epic Review]`).                                      |
+| `review.body`                    | no       | Extra reviewer-facing context appended to the generated plan summary.                             |
+| `labels`                         | no       | Extra labels applied to every issue created for this epic.                                        |
+| `nodes`                          | yes      | Non-empty array of slice/node definitions (see below).                                            |
+| `nodes[].id`                     | yes      | Unique node id within the epic, referenced by other nodes' `depends_on`.                          |
+| `nodes[].title`                  | yes      | Issue title for this node.                                                                        |
+| `nodes[].body`                   | no       | Issue body for this node.                                                                         |
+| `nodes[].labels`                 | no       | Extra labels applied to this node's issue only.                                                   |
+| `nodes[].depends_on`             | no       | Array of other node `id`s this node depends on.                                                   |
+| `nodes[].prerequisite_mechanics` | no       | For the achievement slice, direct dependency `id`s for the mechanics measured by the achievement. |
 
-Floor epics have one additional planning requirement: at least one node must
-own achievement work or achievement-integrated QA. It must be dependency-ordered
-after the mechanics it measures and include deterministic acceptance evidence
+Floor epics have one additional planning requirement: exactly one node must
+own achievement work or achievement-integrated QA. It must list the direct
+mechanic node IDs it measures in `prerequisite_mechanics`, depend directly on
+each listed mechanic, and include deterministic acceptance evidence
 for unlocking the achievement, claiming its reward, and verifying the resulting
 reward outcome. Numeric achievement
 thresholds belong in an explicit `HUMAN_GATE` for Playtester or Game Designer
