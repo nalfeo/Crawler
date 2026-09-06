@@ -32,7 +32,7 @@
 /** One cell of every linework atlas. Matches `TERRAIN_PACK_CELL_PX`. */
 export const LINEWORK_CELL_PX = 64;
 
-/** Bit order must match `MASK_BIT` / `EDGE_WANG_DIRECTIONS` in `terrain-pack-mask.ts`. */
+/** Bit order must match `EDGE_WANG_BIT` / `EDGE_WANG_DIRECTIONS` in `terrain-pack-mask.ts`. */
 const BIT_N = 1;
 const BIT_E = 2;
 const BIT_S = 4;
