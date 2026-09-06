@@ -582,7 +582,7 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     // which only samples cardinal edges): the original bug notched the exposed
     // wall top into per-quadrant battlements.
     //
-    // We use mask 10 (E|W, N absent) — a straight exposed north cap spanning
+    // We use mask 68 (E|W, N absent) — a straight exposed north cap spanning
     // the full cell width. With the OLD edge-band geometry, all four quadrants
     // produce separate top strips, which creates TWO separated horizontal runs
     // at the first opaque row (one left strip, one right strip with a gap
@@ -598,12 +598,12 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     // check.
     const atlas = decodePng(readCommittedAtlas(manifest));
 
-    // N=1, E=2, S=4, W=8 → E|W = 10 (N absent: exposed north face)
-    const ewCapFrame = frameForMask(manifest, 10);
+    // N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128 → E|W = 68.
+    const ewCapFrame = frameForMask(manifest, 68);
     const topRow = firstOpaqueRow(atlas, manifest, ewCapFrame);
     expect(topRow).toBeGreaterThanOrEqual(0);
     for (let y = topRow; y < topRow + 4; y += 1) {
-      expect(cellRowRuns(atlas, manifest, ewCapFrame, y), `mask 10 row ${y}`).toHaveLength(1);
+      expect(cellRowRuns(atlas, manifest, ewCapFrame, y), `mask 68 row ${y}`).toHaveLength(1);
     }
 
     const solidFrame = frameForMask(manifest, 255);

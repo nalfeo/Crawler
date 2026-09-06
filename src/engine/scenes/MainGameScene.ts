@@ -69,6 +69,7 @@ import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
 import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
+import { resolveAchievementToastY } from '../../shared/achievement-toast-layout.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
@@ -609,6 +610,13 @@ export interface _ScenarioHudProbe {
   /** Whether the one-shot `vfx` cue flash is currently showing. */
   readonly vfxVisible: boolean;
   readonly cueLabels: readonly string[];
+}
+
+export interface _AchievementToastProbe {
+  readonly commentary: ScreenBounds | null;
+  readonly toast: ScreenBounds | null;
+  readonly commentaryText: string | null;
+  readonly toastText: string | null;
 }
 
 declare global {
@@ -1729,6 +1737,17 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getAchievementToastLayout(): _AchievementToastProbe {
+    return {
+      commentary: toScreenBounds(this.directorCommentaryText),
+      toast: toScreenBounds(this.achievementToast),
+      commentaryText: this.directorCommentaryText?.visible
+        ? (this.directorCommentaryText.text ?? null)
+        : null,
+      toastText: this.achievementToast?.visible ? (this.achievementToast.text ?? null) : null,
+    };
   }
 
   /**
@@ -3176,6 +3195,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.achievementToast.setText(message).setVisible(true);
+    this.positionAchievementToast();
     this.time.delayedCall(2800, () => {
       if (this.achievementToast?.text === message) {
         this.achievementToast.setVisible(false);
@@ -5308,12 +5328,24 @@ export class MainGameScene extends Phaser.Scene {
     // Substitute {playerName} with the player's chosen name (all occurrences).
     const resolved = text.replace(/{playerName}/g, () => this.world.playerName);
     this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
+    this.positionAchievementToast();
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private positionAchievementToast(): void {
+    const commentary = this.directorCommentaryText;
+    const y = resolveAchievementToastY(
+      commentary?.visible === true,
+      commentary?.y ?? 96,
+      commentary?.height ?? 0,
+    );
+    this.achievementToast?.setY(y);
   }
 
   private updateDirectorCommentary(): void {
     if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
       this.directorCommentaryText?.setVisible(false);
+      this.positionAchievementToast();
       this.commentaryHideAtMs = 0;
     }
 

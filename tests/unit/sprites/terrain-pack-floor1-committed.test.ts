@@ -243,7 +243,11 @@ describe.each(FLOOR1_PACK_IDS)('committed terrain pack — %s', (packId) => {
     const wallTile = decodePng(readFileSync(sourcePath));
     expect({ width: wallTile.width, height: wallTile.height }).toEqual({ width: 64, height: 64 });
 
-    const rebuilt = composeWallAtlas(wallTile, wallCornerStyleForPack(packId));
+    const rebuilt = composeWallAtlas(
+      wallTile,
+      wallCornerStyleForPack(packId),
+      manifest.wallAutotile.masks,
+    );
     expect({ width: rebuilt.atlas.width, height: rebuilt.atlas.height }).toEqual({
       width: atlas.width,
       height: atlas.height,

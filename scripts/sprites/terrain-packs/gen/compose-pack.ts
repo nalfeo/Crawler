@@ -40,6 +40,8 @@ export interface PackOutputFile {
   readonly buffer: Buffer;
 }
 
+export type WallMaskFrameAssignment = { readonly maskId: number; readonly frameIndex: number };
+
 /** How far in from a silhouette boundary the wall darkening reaches. */
 const WALL_RIM = { rimPx: 3, rimDarken: 0.35, topLift: 0.5 } as const;
 
@@ -70,12 +72,12 @@ export function deriveVariantTiles(
 export function composeWallAtlas(
   wallTile: RgbaImage,
   cornerStyle: WallCornerStyle = DEFAULT_WALL_CORNER_STYLE,
+  assignments: readonly WallMaskFrameAssignment[] = buildMaskFrameAssignments(),
 ): {
   readonly atlas: RgbaImage;
-  readonly masks: readonly { readonly maskId: number; readonly frameIndex: number }[];
+  readonly masks: readonly WallMaskFrameAssignment[];
 } {
   const quadrantKit = generateQuadrantKit(cornerStyle);
-  const assignments = buildMaskFrameAssignments();
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
   for (const { maskId, frameIndex } of assignments) {
     const silhouette = composeWallCellOutput(maskId, quadrantKit);
@@ -103,6 +105,7 @@ export interface ComposePackInput {
   readonly wallTile: RgbaImage;
   readonly floorVariants: readonly RgbaImage[];
   readonly corridorVariants: readonly RgbaImage[];
+  readonly wallMaskFrameAssignments?: readonly WallMaskFrameAssignment[];
   /** Role-keyed floor pools (welcome/safe/boss-stair); walls are shared. */
   readonly specialFloorPools?: readonly SpecialFloorPoolInput[];
 }
@@ -121,7 +124,11 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   const packDir = `assets/terrain-packs/${input.id}`;
   const files: PackOutputFile[] = [];
 
-  const { atlas, masks } = composeWallAtlas(input.wallTile, wallCornerStyleForPack(input.id));
+  const { atlas, masks } = composeWallAtlas(
+    input.wallTile,
+    wallCornerStyleForPack(input.id),
+    input.wallMaskFrameAssignments,
+  );
   const atlasRelPath = `${packDir}/wall-atlas.png`;
   files.push({ relativePath: atlasRelPath, buffer: encodePng(atlas) });
 

@@ -1026,7 +1026,7 @@ ${queryScript}
     expect(start).toContain('if [ "$cohort" != "resume" ]');
     expect(start).toContain('left the Goobers intake cohort');
     expect(workflow.jobs.reserve?.outputs?.slot_assignments).toBe(
-      '${{ steps.recovery.outputs.slot_assignments }}',
+      '${{ steps.reserve.outputs.slot_assignments || steps.recovery.outputs.slot_assignments }}',
     );
     const runSteps = workflow.jobs.run?.steps ?? [];
     const adoptStep = runSteps.find((step) => step.name === 'Adopt reserved slot assignments');
@@ -1190,8 +1190,9 @@ ${queryScript}
     expect(workflowShape.jobs.run?.needs).toBe('reserve');
     expect(workflowShape.jobs.run?.if).toBe("needs.reserve.outputs.should_run != 'false'");
     expect(workflowShape.jobs.reserve?.outputs).toEqual({
-      should_run: '${{ steps.recovery.outputs.should_run }}',
-      slot_assignments: '${{ steps.recovery.outputs.slot_assignments }}',
+      should_run: '${{ steps.reserve.outputs.should_run || steps.recovery.outputs.should_run }}',
+      slot_assignments:
+        '${{ steps.reserve.outputs.slot_assignments || steps.recovery.outputs.slot_assignments }}',
     });
     // `Set up Node.js` is deliberately ungated and ahead of target resolution:
     // the eligibility selector itself runs on Node, so gating it on the
@@ -1810,6 +1811,11 @@ ${queryScript}
     expect(reserveStep?.run).toContain('gh issue view "$issue_number"');
     expect(reserveStep?.run).toContain("grep -qxF 'goobers/status:in-review'");
     expect(reserveStep?.run).toContain('confirmed goobers/status:in-review');
+    expect(reserveStep?.run).toContain('VALIDATED_ASSIGNMENTS');
+    expect(reserveStep?.run).toContain('ATTEMPTED_ASSIGNMENTS');
+    expect(reserveStep?.run).toContain('Skipping stale assignment');
+    expect(reserveStep?.run).toContain('publish_reservation_outputs false');
+    expect(reserveStep?.run).toContain('publish_reservation_outputs true');
     // Fails closed: an unconfirmed reservation must stop the dispatch, not
     // start four slots and hope.
     expect(reserveStep?.run).toMatch(/::error::Reserved issue #\$\{issue_number\}/);
@@ -2234,7 +2240,7 @@ ${queryScript}
     );
     expect(start?.run).toContain('[.assignees[]] | length == 0');
     expect(start?.run).toContain('issues/${issue_number}/dependencies/blocked_by');
-    expect(start?.run).toContain('Retry the dispatch so no stale assignment starts');
+    expect(start?.run).toContain('Unrelated valid assignments will still launch');
     expect(start?.run).toContain(
       'https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}',
     );
