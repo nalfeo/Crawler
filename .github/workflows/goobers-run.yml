@@ -141,11 +141,13 @@ jobs:
       LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
       ISSUE_OWNER: nalfeo
     outputs:
-      should_run: ${{ steps.recovery.outputs.should_run }}
+      should_run: ${{ steps.reserve.outputs.should_run || steps.recovery.outputs.should_run }}
       # Compact JSON array of {lane,slot,issue,cohort,resumePr,resumeBranch}.
-      # It is emitted before any reservation mutation so the always()-gated
-      # release job can reconcile a partially failed reservation pass.
-      slot_assignments: ${{ steps.recovery.outputs.slot_assignments }}
+      # Reservation replaces the planned set with the live-validated set. During
+      # mutation it publishes each attempted claim before touching GitHub, so the
+      # always()-gated release job can reconcile a partially failed pass without
+      # removing labels from candidates that were skipped as stale.
+      slot_assignments: ${{ steps.reserve.outputs.slot_assignments || steps.recovery.outputs.slot_assignments }}
     steps:
       - name: Fetch reservation tooling
         # The lease reader and the intake selector below are checked-in code,
@@ -667,6 +669,19 @@ jobs:
           RESERVED_ASSIGNMENTS: ${{ steps.recovery.outputs.slot_assignments }}
         run: |
           set -euo pipefail
+          VALIDATED_ASSIGNMENTS='[]'
+          ATTEMPTED_ASSIGNMENTS='[]'
+          publish_reservation_outputs() {
+            echo "should_run=$1" >> "${GITHUB_OUTPUT}"
+            echo "slot_assignments=$2" >> "${GITHUB_OUTPUT}"
+          }
+          # If validation fails before any mutation, cleanup must see an empty
+          # set rather than the planner's larger, entirely unreserved set.
+          publish_reservation_outputs false "${ATTEMPTED_ASSIGNMENTS}"
+
+          # Validate the complete assignment set before mutating any issue.
+          # Candidate state may legitimately change after planning; such stale
+          # entries are skipped while unrelated valid assignments continue.
           while IFS= read -r assignment; do
             issue_number="$(jq -r '.issue' <<<"$assignment")"
             cohort="$(jq -r '.cohort' <<<"$assignment")"
@@ -676,30 +691,56 @@ jobs:
               echo "::error::Reservation reached with non-numeric issue '${issue_number}' for lane ${lane} slot ${slot}; fix the workflow's assignment planner." >&2
               exit 1
             fi
-            issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json number,state,labels,assignees,author)"
+            if ! issue_json="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json number,state,labels,assignees,author)"; then
+              echo "::error::Could not revalidate issue #${issue_number} for lane ${lane} slot ${slot}. No reservation was mutated; check GitHub API availability and retry: gh workflow run goobers-run.yml" >&2
+              exit 1
+            fi
             if [ "$(jq -r '.state' <<<"$issue_json")" != "OPEN" ] ||
                [ "$(jq -r '[.assignees[]] | length == 0' <<<"$issue_json")" != "true" ]; then
-              echo "::error::Issue #${issue_number} assigned to lane ${lane} slot ${slot} is no longer open and unassigned. Retry the dispatch so the assignment set can be rebuilt." >&2
-              exit 1
+              echo "::warning::Skipping stale assignment for issue #${issue_number} at lane ${lane} slot ${slot}: it is no longer open and unassigned. Unrelated valid assignments will still launch." >&2
+              continue
             fi
             if [ "$cohort" != "resume" ]; then
               issue_file="${RUNNER_TEMP}/goobers-run-start-issue-${issue_number}.json"
               printf '%s' "$issue_json" > "$issue_file"
               decision="$(node .github/scripts/goobers/intake-selection.mjs --issue "$issue_file")"
               if [ "$(jq -r '.eligible' <<<"$decision")" != "true" ]; then
-                echo "::error::Issue #${issue_number} assigned to lane ${lane} slot ${slot} left the Goobers intake cohort ($(jq -r '.reason' <<<"$decision")). Retry the dispatch so no stale assignment starts." >&2
-                exit 1
+                echo "::warning::Skipping stale assignment for issue #${issue_number} at lane ${lane} slot ${slot}: it left the Goobers intake cohort ($(jq -r '.reason' <<<"$decision")). Unrelated valid assignments will still launch." >&2
+                continue
               fi
+              cohort="$(jq -r '.cohort' <<<"$decision")"
+              assignment="$(jq -c --arg cohort "$cohort" '.cohort = $cohort' <<<"$assignment")"
             fi
-            blocked_by="$(
+            if ! blocked_by="$(
               gh api --paginate \
                 "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/dependencies/blocked_by" \
                 --jq '.[] | select(.state == "open") | "#\(.number) \(.title)"'
-            )"
-            if [ -n "$blocked_by" ]; then
-              echo "::error::Issue #${issue_number} assigned to lane ${lane} slot ${slot} became blocked: ${blocked_by}. Retry after its prerequisites close." >&2
+            )"; then
+              echo "::error::Could not revalidate dependency blockers for issue #${issue_number} at lane ${lane} slot ${slot}. No reservation was mutated; retry: gh workflow run goobers-run.yml" >&2
               exit 1
             fi
+            if [ -n "$blocked_by" ]; then
+              echo "::warning::Skipping stale assignment for issue #${issue_number} at lane ${lane} slot ${slot}: it became blocked by ${blocked_by}. Unrelated valid assignments will still launch." >&2
+              continue
+            fi
+            VALIDATED_ASSIGNMENTS="$(jq -c --argjson assignment "$assignment" '. + [$assignment]' <<<"$VALIDATED_ASSIGNMENTS")"
+          done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
+
+          if [ "$(jq 'length' <<<"$VALIDATED_ASSIGNMENTS")" -eq 0 ]; then
+            echo "::notice::Every planned Goobers assignment became stale before reservation; no issue was mutated and no lane will launch."
+            exit 0
+          fi
+
+          while IFS= read -r assignment; do
+            issue_number="$(jq -r '.issue' <<<"$assignment")"
+            cohort="$(jq -r '.cohort' <<<"$assignment")"
+            lane="$(jq -r '.lane' <<<"$assignment")"
+            slot="$(jq -r '.slot' <<<"$assignment")"
+
+            # Publish before mutation. If this or any later command fails, the
+            # release job sees every issue whose label may have changed.
+            ATTEMPTED_ASSIGNMENTS="$(jq -c --argjson assignment "$assignment" '. + [$assignment]' <<<"$ATTEMPTED_ASSIGNMENTS")"
+            publish_reservation_outputs false "${ATTEMPTED_ASSIGNMENTS}"
             gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
               --add-label 'goobers/status:in-review'
 
@@ -738,7 +779,8 @@ jobs:
             } > "$body"
 
             gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
-          done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
+          done < <(jq -c '.[]' <<<"$VALIDATED_ASSIGNMENTS")
+          publish_reservation_outputs true "${VALIDATED_ASSIGNMENTS}"
 
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
