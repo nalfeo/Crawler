@@ -31,7 +31,11 @@
  * engine, by tests, and by offline tooling alike.
  */
 import { hashStringToSeed, SeededRandom } from './random.js';
-import { EDGE_WANG_DIRECTIONS, EDGE_WANG_OPPOSITE_BIT, MASK_BIT } from './terrain-pack-mask.js';
+import {
+  EDGE_WANG_BIT,
+  EDGE_WANG_DIRECTIONS,
+  EDGE_WANG_OPPOSITE_BIT,
+} from './terrain-pack-mask.js';
 
 /** Occupancy grid values. */
 export const LINEWORK_EMPTY = 0;
@@ -740,10 +744,10 @@ function groundMask(
  * sits across the track.
  */
 export function lineworkRunAxis(mask: number): 'x' | 'y' | null {
-  const N = MASK_BIT.N;
-  const E = MASK_BIT.E;
-  const S = MASK_BIT.S;
-  const W = MASK_BIT.W;
+  const N = EDGE_WANG_BIT.N;
+  const E = EDGE_WANG_BIT.E;
+  const S = EDGE_WANG_BIT.S;
+  const W = EDGE_WANG_BIT.W;
   // Straights: the through-line is the pair itself.
   if (mask === (N | S)) return 'y';
   if (mask === (E | W)) return 'x';

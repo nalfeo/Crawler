@@ -9,31 +9,19 @@
  * never drift between build time and render time (reviewed-design refinement
  * #3).
  *
- * Bit order (pinned — do not renumber without updating every manifest):
- *   bit 0 (  1): N   bit 1 (  2): E   bit 2 (  4): S   bit 3 (  8): W
- *   bit 4 ( 16): NE  bit 5 ( 32): SE  bit 6 ( 64): SW  bit 7 (128): NW
- *
- * Relationship to the canonical cr31 numbering
- * --------------------------------------------
- * The reference blob47 literature (cr31 "Wang Blob", mirrored at
- * https://www.boristhebrave.com/permanent/24/06/cr31/stagecast/wang/blob.html,
- * and every OpenGameArt blob tileset that follows it) weights the bits as a
- * CONTINUOUS CLOCKWISE CYCLE instead:
+ * Canonical blob47 bit order
+ * -------------------------
+ * Crawler is aligned with the published cr31 / Caeles numbering, which uses a
+ * continuous clockwise cycle instead of the legacy cardinals-then-diagonals
+ * order:
  *
  *   N=1  NE=2  E=4  SE=8  S=16  SW=32  W=64  NW=128
  *
- * Both weightings are bijections onto the same 47 shapes — only the *labels*
- * differ — so nothing about our geometry, gating, or packing is affected. But
- * the two numberings are NOT interchangeable: our mask 15 is not cr31's tile 15.
- * Any cross-reference against published blob47 tables, tools, or tilesets must
- * re-weight first (see `toCr31Index` in
- * `tests/unit/sprites/terrain-pack-corners.test.ts`).
- *
- * The cr31 ordering has one property ours lacks: rotating a tile 90 degrees
- * clockwise is exactly `index * 4 mod 255`. We do not currently rotate tiles at
- * build or render time, so this buys us nothing today; adopting it would be a
- * breaking migration of every manifest's `maskId` values and should be a
- * deliberate, separately-scoped decision rather than a silent change.
+ * This is the canonical ordering used by every published blob47 tileset and by
+ * the Caeles minimum-packing layout. Adopting it is a breaking migration of the
+ * persisted `maskId` values in every terrain-pack manifest, but it makes the
+ * runtime numbering directly comparable to the reference sources and preserves
+ * the useful cr31 rotation identity `index * 4 mod 255`.
  *
  * Diagonal gating rule: a diagonal bit only survives normalization if BOTH of
  * its adjacent cardinal bits are also set in the raw mask, e.g. NE survives
@@ -48,19 +36,17 @@
  * site — see its doc comment for why the wall-mask callers need `true`.
  */
 
-/** Bit values for each of the 8 neighbour directions. Pinned — see module doc. */
+/** Bit values for each of the 8 neighbour directions in canonical cr31 clockwise order. */
 export const MASK_BIT = {
   N: 1,
-  E: 2,
-  S: 4,
-  W: 8,
-  NE: 16,
-  SE: 32,
-  SW: 64,
+  NE: 2,
+  E: 4,
+  SE: 8,
+  S: 16,
+  SW: 32,
+  W: 64,
   NW: 128,
 } as const;
-
-export type MaskDirection = keyof typeof MASK_BIT;
 
 /** The four corner (diagonal) directions and their two adjacent cardinals. */
 export const CORNER_ADJACENCY = {
@@ -396,17 +382,27 @@ function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): Quadra
  * (`frameIndex === maskId`) is why an edge-Wang atlas needs no `masks` table,
  * unlike `wallAutotile`.
  *
- * Bit order is the SAME as `MASK_BIT` (N=1, E=2, S=4, W=8) so the two families
- * can never disagree about what "north" means.
+ * Edge-Wang uses its own compact 4-bit order because renderers use the mask
+ * directly as a 16-frame atlas index. Blob47's cr31 clockwise cardinals are not
+ * compact (S=16, W=64), so sharing those bit weights would select invalid
+ * frames.
  */
 export const EDGE_WANG_FRAME_COUNT = 16;
 
+/** Compact N/E/S/W bit values for 16-frame edge-Wang atlases. */
+export const EDGE_WANG_BIT = {
+  N: 1,
+  E: 2,
+  S: 4,
+  W: 8,
+} as const;
+
 /** The 4 cardinal directions in edge-Wang bit order, with their tile deltas. */
 export const EDGE_WANG_DIRECTIONS = [
-  { dir: 'N', bit: MASK_BIT.N, dx: 0, dy: -1 },
-  { dir: 'E', bit: MASK_BIT.E, dx: 1, dy: 0 },
-  { dir: 'S', bit: MASK_BIT.S, dx: 0, dy: 1 },
-  { dir: 'W', bit: MASK_BIT.W, dx: -1, dy: 0 },
+  { dir: 'N', bit: EDGE_WANG_BIT.N, dx: 0, dy: -1 },
+  { dir: 'E', bit: EDGE_WANG_BIT.E, dx: 1, dy: 0 },
+  { dir: 'S', bit: EDGE_WANG_BIT.S, dx: 0, dy: 1 },
+  { dir: 'W', bit: EDGE_WANG_BIT.W, dx: -1, dy: 0 },
 ] as const satisfies ReadonlyArray<{
   dir: 'N' | 'E' | 'S' | 'W';
   bit: number;
@@ -416,10 +412,10 @@ export const EDGE_WANG_DIRECTIONS = [
 
 /** The opposite direction bit — the edge a neighbour shares with this tile. */
 export const EDGE_WANG_OPPOSITE_BIT: Readonly<Record<'N' | 'E' | 'S' | 'W', number>> = {
-  N: MASK_BIT.S,
-  E: MASK_BIT.W,
-  S: MASK_BIT.N,
-  W: MASK_BIT.E,
+  N: EDGE_WANG_BIT.S,
+  E: EDGE_WANG_BIT.W,
+  S: EDGE_WANG_BIT.N,
+  W: EDGE_WANG_BIT.E,
 };
 
 /**
