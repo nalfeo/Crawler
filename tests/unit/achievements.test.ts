@@ -71,7 +71,7 @@ describe('floor1 achievements catalog', () => {
       tier: 'common',
     });
     expect(achievement?.directorFlavor).toBe(
-      "Congratulations on completing the tutorial floor. Reaching Floor 2 isn't an achievement—it's the bare minimum required to keep our broadcasting license active. We demoted this reward tier to Common because rewarding someone for simply breathing and walking down stairs felt like financial negligence. The focus groups didn't even cheer; they collectively checked their phones and asked when the real contestants arrive. Enjoy your budget loot box while you can. Floor 2's hazard budget rises exponentially, and production has already placed bets on which hallway dissolves you first.",
+      'Floor 1 cleared. Floor 2 is the minimum. Reward tier is Common. Open the budget box before Floor 2 liquefies you.',
     );
   });
 
