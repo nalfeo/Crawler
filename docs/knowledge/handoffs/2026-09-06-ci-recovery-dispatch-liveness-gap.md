@@ -20,7 +20,8 @@ This created the exact incident signature in the issue: a blocked backlog with z
 
 - In `.github/scripts/ci-recovery/harvest-liveness.mjs`, narrowed `PROTECTED_LIVENESS_ACTIONS` to actual ownership / active-guard signals.
 - Retained protection for real owner-aware blockers such as active shepherd ownership, active Copilot progress, conflict-order waits, conflict-rebase backoff, and terminal exhausted-automation states.
-- Added a deterministic regression test in `.github/scripts/ci-recovery/harvest-liveness.test.mjs` covering the stale no-op case.
+- Applied the same dispatch-eligibility predicate when the liveness sweep builds its monitored blocked backlog, so dirty, quarantined, merge-train-owned, or human-approval-gated PRs do not produce an incident that cannot redispatch them.
+- Added deterministic regression coverage for the stale no-op case and the reported dirty, labelled incident states.
 
 ## Verification
 

@@ -107,7 +107,6 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
 // from the liveness backstop. The backstop is meant to force a redispatch once
 // a blocked PR has remained stale past the per-PR gap threshold.
 
-
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
   const context = await getCopilotIssueAssignmentContext({
     graphql,
@@ -442,6 +441,17 @@ function isStalePull(pull, now, gapMs) {
   return Number.isFinite(blockedAt) && now.getTime() - blockedAt >= gapMs;
 }
 
+export function isLivenessRedispatchEligible(pull, owner, repo) {
+  return (
+    pullNumber(pull) !== null &&
+    String(pull?.state || 'open').toLowerCase() === 'open' &&
+    pull.draft !== true &&
+    String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
+    isSameRepositoryPull(pull, owner, repo) &&
+    !hasActiveRecoveryMetadata(pull)
+  );
+}
+
 /**
  * Select never-summoned blocked PRs that are safe for the liveness backstop.
  * The caller must still hydrate each selected PR before dispatching.
@@ -463,12 +473,7 @@ export function selectLivenessRedispatchCandidates({
     .filter((pull) => {
       const number = pullNumber(pull);
       return (
-        number !== null &&
-        String(pull?.state || 'open').toLowerCase() === 'open' &&
-        pull.draft !== true &&
-        String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
-        isSameRepositoryPull(pull, owner, repo) &&
-        !hasActiveRecoveryMetadata(pull) &&
+        isLivenessRedispatchEligible(pull, owner, repo) &&
         isStalePull(pull, now, gapMs) &&
         !protectedNumbers.has(number) &&
         !dispatchedNumbers.has(number)
@@ -516,16 +521,7 @@ export async function dispatchLivenessRedispatches({
       continue;
     }
     const pull = response?.data || response;
-    const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
-    if (
-      String(pull?.state || '').toLowerCase() !== 'open' ||
-      pull.draft === true ||
-      mergeableState !== 'blocked' ||
-      !isSameRepositoryPull(pull, owner, repo) ||
-      hasActiveRecoveryMetadata(pull) ||
-      !pull?.head?.sha ||
-      !pull?.base?.ref
-    ) {
+    if (!isLivenessRedispatchEligible(pull, owner, repo) || !pull?.head?.sha || !pull?.base?.ref) {
       skipped.push({ number, reason: 'state-changed' });
       continue;
     }

@@ -330,8 +330,7 @@ jobs:
                   repo,
                   pull_number: pull.number,
                 });
-                const mergeableState = String(details.data.mergeable_state || '').toLowerCase();
-                if (!['dirty', 'blocked', 'unstable', 'unmergeable'].includes(mergeableState)) continue;
+                if (!lib.isLivenessRedispatchEligible(details.data, owner, repo)) continue;
                 openBlockedPulls.push({
                   ...details.data,
                   number: pull.number,
