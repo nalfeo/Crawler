@@ -163,13 +163,14 @@ describe(`committed terrain pack — ${PACK_ID}`, () => {
       ['floorPool', manifest.floorPool],
       ['corridorPool', manifest.corridorPool],
     ] as const) {
-      const weights = pool.map((v) => v.weight ?? 0);
+      const declared = pool.map((v) => v.weight);
       expect(
-        weights.every((w) => w !== undefined),
+        declared.every((w) => typeof w === 'number' && w > 0),
         `${label} has unweighted variants`,
       ).toBe(true);
-      const total = weights.reduce((a, b) => a + (b ?? 0), 0);
-      const sorted = [...weights].map((w) => w ?? 0).sort((a, b) => b - a);
+      const weights = declared as number[];
+      const total = weights.reduce((a, b) => a + b, 0);
+      const sorted = [...weights].sort((a, b) => b - a);
       // The two calmest sources must own most of the ground.
       expect((sorted[0]! + sorted[1]!) / total, `${label} base share`).toBeGreaterThan(0.6);
       // No single detail variant may rival the base.
