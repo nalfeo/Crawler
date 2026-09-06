@@ -512,6 +512,44 @@ describe('sliceSheetFromBrief', () => {
     expect(cellHeight).toBe(256);
   });
 
+  it('preserves rectangular source-cell geometry for a 768x1024 3x4 sheet', () => {
+    const sheetGeometry = {
+      rows: 4,
+      cols: 3,
+      emptyCells: [],
+      nativeWidth: 768,
+      nativeHeight: 1024,
+    };
+    const { width, height, cellWidth, cellHeight } = sheetPixelDimensions(sheetGeometry);
+    const gutter = 8;
+    const margin = 4;
+    const contentWidth =
+      (width - margin * 2 - (sheetGeometry.cols - 1) * gutter) / sheetGeometry.cols;
+    const contentHeight =
+      (height - margin * 2 - (sheetGeometry.rows - 1) * gutter) / sheetGeometry.rows;
+    const sheet = encodeRectangularContentGrid(
+      sheetGeometry.rows,
+      sheetGeometry.cols,
+      contentWidth,
+      contentHeight,
+      gutter,
+      margin,
+    );
+    const result = sliceSheetFromBrief(sheet, {
+      generation: { sheet: sheetGeometry },
+    } as unknown as Brief);
+
+    expect(PNG.sync.read(sheet).width).toBe(width);
+    expect(PNG.sync.read(sheet).height).toBe(height);
+    expect(result.grid).toEqual({ rows: 4, cols: 3, emptyCells: [] });
+    expect(result.cells).toHaveLength(12);
+    const firstCell = PNG.sync.read(result.cells[0]!);
+    expect(firstCell.width).toBeLessThanOrEqual(cellWidth);
+    expect(firstCell.height).toBeLessThanOrEqual(cellHeight);
+    expect(cellWidth).toBe(256);
+    expect(cellHeight).toBe(256);
+  });
+
   it('rejects a provider sheet whose dimensions disagree with the declared geometry', () => {
     const sheetGeometry = {
       rows: 3,

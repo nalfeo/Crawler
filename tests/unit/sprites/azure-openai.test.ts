@@ -232,6 +232,30 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
     expect(body).toBeInstanceOf(FormData);
     expect((body as FormData).get('size')).toBe('1024x768');
   });
+
+  it('sends transposed rectangular brief geometry in the multipart size field', async () => {
+    const png = encodeSolidPng(8, 8);
+    let body: BodyInit | null | undefined;
+    const stubFetch: typeof fetch = async (_url, init) => {
+      body = init?.body;
+      return jsonResponse(200, { data: [{ b64_json: png.toString('base64') }] });
+    };
+    await provider(stubFetch).generateSheet({
+      brief: makeBrief({
+        rows: 4,
+        cols: 3,
+        emptyCells: [],
+        nativeWidth: 768,
+        nativeHeight: 1024,
+      }),
+      prompt: 'A transposed rectangular character sheet',
+      referencePngs: [encodeSolidPng(2, 2)],
+      variants: 12,
+    });
+
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).get('size')).toBe('768x1024');
+  });
 });
 
 describe('createImageProvider (factory)', () => {

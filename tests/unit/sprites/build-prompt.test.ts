@@ -96,6 +96,24 @@ describe('buildPrompt (single)', () => {
     expect(out).toContain('256x256');
   });
 
+  it('prints exact rectangular sheet dimensions for transposed 3x4 grids', () => {
+    const brief = makeBrief({
+      generation: {
+        sheet: {
+          rows: 4,
+          cols: 3,
+          emptyCells: [],
+          nativeWidth: 768,
+          nativeHeight: 1024,
+          nativeCanvas: 768,
+        },
+      } as Brief['generation'],
+    });
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('768×1024');
+    expect(out).toContain('256x256');
+  });
+
   it('adds the shocking/wonderful apex guidance for floor 20', () => {
     const out = buildPrompt(makeBrief({ floor: 20 }), FAKE_STYLE_GUIDE);
     expect(out).toContain('FLOOR: 20 of 20');

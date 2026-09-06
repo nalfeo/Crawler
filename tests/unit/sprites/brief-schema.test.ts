@@ -228,6 +228,25 @@ describe('briefSchema', () => {
       cellHeight: 256,
     });
 
+    const transposed = briefSchema.parse({
+      ...validBrief,
+      generation: {
+        sheet: {
+          rows: 4,
+          cols: 3,
+          emptyCells: [],
+          nativeWidth: 768,
+          nativeHeight: 1024,
+        },
+      },
+    });
+    expect(sheetPixelDimensions(transposed.generation.sheet)).toEqual({
+      width: 768,
+      height: 1024,
+      cellWidth: 256,
+      cellHeight: 256,
+    });
+
     const tooLoose = briefSchema.safeParse({
       ...validBrief,
       generation: {

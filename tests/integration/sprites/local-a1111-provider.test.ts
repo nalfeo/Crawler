@@ -142,6 +142,41 @@ describe('LocalA1111ImageProvider', () => {
     expect(mockFetch).toHaveBeenCalledTimes(12);
   });
 
+  it('preserves transposed rectangular sheet geometry for 3x4 grids', async () => {
+    provider = new LocalA1111ImageProvider({
+      endpoint: 'http://localhost:7860',
+      model: 'sd_xl_turbo',
+      fetch: mockFetch,
+    });
+
+    mockFetch.mockImplementation(async (_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      const png = new PNG({ width: body.width, height: body.height });
+      for (let i = 0; i < png.data.length; i += 4) png.data[i + 3] = 255;
+      return {
+        ok: true,
+        json: async () => ({ images: [PNG.sync.write(png).toString('base64')] }),
+      } as Response;
+    });
+
+    const request = makeRequest({
+      brief: {
+        type: 'item',
+        variations: [],
+        generation: {
+          sheet: { rows: 4, cols: 3, emptyCells: [], nativeWidth: 768, nativeHeight: 1024 },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      variants: 12,
+    });
+
+    const sheet = PNG.sync.read(await provider.generateSheet(request));
+    expect(sheet.width).toBe(768);
+    expect(sheet.height).toBe(1024);
+    expect(mockFetch).toHaveBeenCalledTimes(12);
+  });
+
   it('handles network errors gracefully', async () => {
     mockFetch.mockRejectedValue(new Error('Connection refused'));
 
