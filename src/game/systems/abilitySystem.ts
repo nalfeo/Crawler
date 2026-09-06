@@ -580,18 +580,17 @@ export function queueAbilityTrigger(world: GameWorld, trigger: AbilityTriggerEve
 }
 
 function triggerMatches(condition: AbilityTriggerCondition, event: AbilityTriggerEvent): boolean {
-  if (condition.kind === 'skill_usage') {
-    if (event.kind !== 'skill_usage') return false;
-    if (condition.metric !== undefined && event.metric !== condition.metric) return false;
-    if (condition.skillId !== undefined && event.skillId !== condition.skillId) return false;
-    if ((event.amount ?? 0) < (condition.minAmount ?? 0)) return false;
-    return true;
-  }
-
-  if (condition.kind === 'player_damage') {
-    if (event.kind !== 'player_damage') return false;
-    if ((event.amount ?? 0) < (condition.minDamage ?? 0)) return false;
-    return true;
+  switch (event.kind) {
+    case 'skill_usage':
+      if (condition.kind !== 'skill_usage') return false;
+      if (condition.metric !== undefined && event.metric !== condition.metric) return false;
+      if (condition.skillId !== undefined && event.skillId !== condition.skillId) return false;
+      if ((event.amount ?? 0) < (condition.minAmount ?? 0)) return false;
+      return true;
+    case 'player_damage':
+      if (condition.kind !== 'player_damage') return false;
+      if ((event.amount ?? 0) < (condition.minDamage ?? 0)) return false;
+      return true;
   }
 
   return false;
@@ -1001,7 +1000,11 @@ export function abilitySystem(world: GameWorld): void {
       const def = getAbilityDefinition(abilityId);
       if (def === undefined || def.kind === 'passive') continue;
       if (def.trigger.kind === 'enemy_cluster' || def.trigger.kind === 'low_health') continue;
-      if (def.trigger.kind === 'low_health_crowded' || def.trigger.kind === 'health_deficit_at_least') continue;
+      if (
+        def.trigger.kind === 'low_health_crowded' ||
+        def.trigger.kind === 'health_deficit_at_least'
+      )
+        continue;
       if (!triggerMatches(def.trigger, event)) continue;
 
       activateAbility(world, holderEid, abilityId);
