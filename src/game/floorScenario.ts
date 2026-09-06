@@ -31,6 +31,7 @@ import {
 } from '../core/map/stampSetPiece.js';
 import { applySolidProps } from '../core/map/applySolidProps.js';
 import { isFloorTimerPaused } from '../core/floor-timer.js';
+import { isPointInSafeSpace } from '../core/safe-space.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import {
   getSetPieceDef,
@@ -42,7 +43,6 @@ import {
   Rotation,
   Player,
   Health,
-  Harvestable,
   BroadcastScore,
   Size,
   Sprite,
@@ -51,6 +51,7 @@ import {
   Spawner,
   Damage,
   DeathTimer,
+  Harvestable,
   Npc,
 } from '../core/components.js';
 import type { GameWorld, VendorStockEntry } from '../core/world.js';
@@ -484,15 +485,6 @@ function resolvePassableRoomCenter(
 
 function tileKey(x: number, y: number): string {
   return `${x},${y}`;
-}
-
-function isTileWithinRoomBounds(room: RoomData, tx: number, ty: number): boolean {
-  return (
-    tx >= room.bounds.x &&
-    tx < room.bounds.x + room.bounds.width &&
-    ty >= room.bounds.y &&
-    ty < room.bounds.y + room.bounds.height
-  );
 }
 
 /**
@@ -1075,7 +1067,12 @@ function resolveRoutableNpcSpawnPosition(
  * Spawn harvestable resource nodes (mushrooms, flowers, lichens) across the
  * normal and spawn rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
  * `def.maxPerFloor` nodes, placed at randomly selected passable tiles in rooms
- * with role NORMAL or SPAWN (i.e. not safe room, boss room, or stair room).
+ * with role NORMAL or SPAWN, excluding the slime-rat encounter room because it
+ * becomes runtime safe space after boss clear.
+ *
+ * After base placement, one node is guaranteed in the spawn room by relocating
+ * the farthest existing node into a deterministic legal spawn-room tile.
+ * Relocation still honors the safe-space guard.
  * Uses `world.rng` for all randomness.
  *
  * Only iterates Floor 1 defs (indices 0–FLOOR2_HARVESTABLE_START_INDEX-1).
@@ -1086,12 +1083,24 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
 
-  // Gather candidate tiles from all normal rooms.
-  const normalRooms = floorMap.roomGraph
+  // Gather candidate tiles from normal + spawn rooms, excluding the encounter
+  // room that turns into runtime safe space once the slime-rat boss is cleared.
+  const slimeRatSafeRoomId = (() => {
+    const slimeRatRoomPos = world.floorScenario?.objective.slimeRatRoomPos;
+    if (!slimeRatRoomPos) return null;
+    const tile = floorMap.worldToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    return roomId >= 0 ? roomId : null;
+  })();
+  const candidateRooms = floorMap.roomGraph
     .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+    .filter(
+      (room) =>
+        (room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN) &&
+        room.id !== slimeRatSafeRoomId,
+    );
 
-  if (normalRooms.length === 0) return;
+  if (candidateRooms.length === 0) return;
 
   // Cap loop at FLOOR2_HARVESTABLE_START_INDEX so Floor 2 ore/gem defs are
   // never spawned on Floor 1.
@@ -1106,7 +1115,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     // We allow multiple attempts per node to avoid clustering.
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
+      const room = candidateRooms[world.rng.nextInt(0, candidateRooms.length - 1)]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       // Pick a random tile inside the room interior (1 tile margin from walls).
@@ -1134,13 +1143,18 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   if (!spawnRoom) {
     return;
   }
+  const isInSpawnRoom = (tx: number, ty: number): boolean =>
+    tx >= spawnRoom.bounds.x &&
+    tx < spawnRoom.bounds.x + spawnRoom.bounds.width &&
+    ty >= spawnRoom.bounds.y &&
+    ty < spawnRoom.bounds.y + spawnRoom.bounds.height;
   const hasSpawnRoomHarvestable = Array.from(query(world.ecs, [Harvestable, Position])).some(
     (eid) => {
       const tile = floorMap.worldToTile(
         world.stores.position.x[eid] ?? 0,
         world.stores.position.y[eid] ?? 0,
       );
-      return isTileWithinRoomBounds(spawnRoom, tile.x, tile.y);
+      return isInSpawnRoom(tile.x, tile.y);
     },
   );
   if (hasSpawnRoomHarvestable) {
@@ -1153,7 +1167,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
       world.stores.position.x[eid] ?? 0,
       world.stores.position.y[eid] ?? 0,
     );
-    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+    if (isInSpawnRoom(tile.x, tile.y)) {
       blockedTiles.add(tileKey(tile.x, tile.y));
     }
   }
@@ -1180,20 +1194,15 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
         continue;
       }
       const spawnDistanceSq = (tx - spawnTile.x) ** 2 + (ty - spawnTile.y) ** 2;
-      const nearestDoorDistanceSq =
-        doorTiles.length === 0
-          ? Number.POSITIVE_INFINITY
-          : Math.min(...doorTiles.map((door) => (tx - door.x) ** 2 + (ty - door.y) ** 2));
+      let nearestDoorDistanceSq = Number.POSITIVE_INFINITY;
+      for (const door of doorTiles) {
+        const distanceSq = (tx - door.x) ** 2 + (ty - door.y) ** 2;
+        if (distanceSq < nearestDoorDistanceSq) {
+          nearestDoorDistanceSq = distanceSq;
+        }
+      }
       const score = Math.min(spawnDistanceSq, nearestDoorDistanceSq);
-      if (
-        score > bestScore ||
-        (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq) ||
-        (score === bestScore &&
-          spawnDistanceSq === bestSpawnDistanceSq &&
-          (guaranteeTile === null ||
-            ty < guaranteeTile.y ||
-            (ty === guaranteeTile.y && tx < guaranteeTile.x)))
-      ) {
+      if (score > bestScore || (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq)) {
         guaranteeTile = { x: tx, y: ty };
         bestScore = score;
         bestSpawnDistanceSq = spawnDistanceSq;
@@ -1205,6 +1214,9 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   }
 
   const guaranteePos = floorMap.tileToWorld(guaranteeTile.x, guaranteeTile.y);
+  if (isPointInSafeSpace(world, guaranteePos.x, guaranteePos.y)) {
+    return;
+  }
   let relocatedEid: number | null = null;
   let farthestDistanceSq = Number.NEGATIVE_INFINITY;
   for (const eid of query(world.ecs, [Harvestable, Position])) {
@@ -1212,7 +1224,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
       world.stores.position.x[eid] ?? 0,
       world.stores.position.y[eid] ?? 0,
     );
-    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+    if (isInSpawnRoom(tile.x, tile.y)) {
       continue;
     }
     const distanceSq = (tile.x - spawnTile.x) ** 2 + (tile.y - spawnTile.y) ** 2;

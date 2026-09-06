@@ -82,6 +82,7 @@ import {
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import type {
   _CornerButtonProbe as CornerButtonProbe,
+  _AchievementToastProbe,
   _ScenarioHudProbe,
 } from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
@@ -213,6 +214,9 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getAchievementToastLayout?(): _AchievementToastProbe;
+  queueDirectorCommentary?(text: string): void;
+  flashAchievementToast?(message: string): void;
   getScenarioHudState?(): ScenarioHudProbeState;
   getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
@@ -1071,6 +1075,8 @@ export interface MainSceneProbeApi {
   }[];
   /** Select an Awards scope filter through the scene-owned UI. */
   setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
+  /** Seed a catalog entry for presentation-only layout observations. */
+  seedAchievementForPresentation(achievementId: string): void;
   /** Expand or collapse an achievement through the scene-owned UI. */
   setAchievementExpanded(achievementId: string, expanded: boolean): void;
   setAchievementsScrollIndex(index: number): void;
@@ -1088,6 +1094,8 @@ export interface MainSceneProbeApi {
   getFamilyHudState(): FamilyHudProbeState;
   /** Real rendered generic scenario HUD strip (see `MainGameScene._ScenarioHudProbe`). */
   getScenarioHudState(): ScenarioHudProbeState;
+  /** Trigger the real commentary and achievement-toast render paths in order. */
+  primeAchievementToastWithCommentary(): _AchievementToastProbe | null;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
@@ -3347,12 +3355,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    primeAchievementToastWithCommentary: (): _AchievementToastProbe | null => {
+      const scene = getScene();
+      if (!scene) return null;
+      // Keep an explicit line break so this fixture is always multiline and can
+      // deterministically regress toast-vs-commentary overlap behavior.
+      scene.queueDirectorCommentary?.(
+        'A long director callout keeps the achievement notification\nbelow its rendered bounds.',
+      );
+      scene.flashAchievementToast?.('🏆 New achievement: Fully Outfitted');
+      return scene.getAchievementToastLayout?.() ?? null;
+    },
+
     unlockAchievement: (achievementId: string) => {
       const scene = getScene();
       const world = scene?.world;
       if (!world) return;
       unlockAchievement(world, achievementId);
       scene?.achievementsUI?.refresh(world);
+    },
+
+    seedAchievementForPresentation: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      world.achievements.unlockedIds.add(achievementId);
+      scene.achievementsUI?.refresh(world);
     },
 
     openAchievements: () => {

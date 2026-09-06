@@ -584,10 +584,29 @@ export function createAchievementsUI(
     const expandedFlavorH = FLAVOR_EXPANDED_LINES * FLAVOR_LINE_H;
     const flavorH = isLong ? (isExpanded ? expandedFlavorH : collapsedFlavorH) : fullFlavorH;
     const expanderH = isLong ? EXPANDER_BTN_H : 0;
+    const titleMeasure = crispText(textLeft, y, def.title, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: hex(DIFFICULTY_HEX[def.difficulty]),
+    });
+    const titleH = titleMeasure.height;
+    titleMeasure.destroy();
+    const criteriaMeasure = crispText(textLeft, y, def.unlockCriteria, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '14px',
+      color: hex(COLORS.textSecondary),
+      wordWrap: { width: detailsWidth },
+    });
+    const criteriaH = criteriaMeasure.height;
+    criteriaMeasure.destroy();
+    const titleY = y + 8;
+    const criteriaY = titleY + titleH + 4;
+    const flavorY = criteriaY + criteriaH + 6;
     // The reward column (chest + tier label + button) is often taller than the
     // text column; the row must reserve whichever is larger or the chest leaks.
     const rewardColumnH = 10 + rewardChestBounds(0, 0, CHEST_SIZE).height + 4 + 18 + 30 + 10;
-    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8, rewardColumnH);
+    const rowHeight = Math.max(ROW_HEIGHT, flavorY - y + flavorH + expanderH + 8, rewardColumnH);
 
     const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
@@ -651,7 +670,7 @@ export function createAchievementsUI(
       rowObjects.push(placeholder);
     }
 
-    const t = crispText(textLeft, y + 8, def.title, {
+    const t = crispText(textLeft, titleY, def.title, {
       fontFamily: FONT_FAMILY,
       fontSize: '15px',
       fontStyle: 'bold',
@@ -659,8 +678,18 @@ export function createAchievementsUI(
     });
     container.add(t);
     rowObjects.push(t);
+    const addTextRegion = (id: string, text: Phaser.GameObjects.Text, parentId: string): void => {
+      const bounds = text.getBounds();
+      layoutRegions.push({
+        id,
+        box: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        kind: 'text',
+        parentId,
+      });
+    };
+    addTextRegion(`${rowId}.title`, t, rowId);
 
-    const crit = crispText(textLeft, y + 30, def.unlockCriteria, {
+    const crit = crispText(textLeft, criteriaY, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
       fontSize: '14px',
       color: hex(COLORS.textSecondary),
@@ -668,16 +697,18 @@ export function createAchievementsUI(
     });
     container.add(crit);
     rowObjects.push(crit);
+    addTextRegion(`${rowId}.criteria`, crit, rowId);
 
-    const flavor = crispText(textLeft, y + 50, def.directorFlavor, {
+    const flavor = crispText(textLeft, flavorY, def.directorFlavor, {
       ...flavorStyle,
       maxLines: isLong ? (isExpanded ? FLAVOR_EXPANDED_LINES : FLAVOR_COLLAPSED_LINES) : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
+    addTextRegion(`${rowId}.flavor`, flavor, rowId);
 
     if (isLong) {
-      const expanderY = y + 50 + flavorH + 2;
+      const expanderY = flavorY + flavorH + 2;
       const expanderLabel = isExpanded ? '▲ Show less' : '▼ Show more';
       const expander = crispText(textLeft, expanderY, expanderLabel, {
         fontFamily: FONT_FAMILY,

@@ -62,6 +62,19 @@ describe('floor1 achievements catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('classifies reaching Floor 2 as common and uses the updated Director copy', () => {
+    const achievement = FLOOR1_ACHIEVEMENTS.find((entry) => entry.id === 'floor1-clear');
+
+    expect(achievement).toBeDefined();
+    expect(achievement?.reward).toMatchObject({
+      type: 'lootBox',
+      tier: 'common',
+    });
+    expect(achievement?.directorFlavor).toBe(
+      "Floor 1 cleared. Floor 2 access is the legal minimum for airtime. We downgraded your prize to a budget box because applause has a line item now. The audience logged this as 'adequate breathing with stairs.' Our editors gave your highlight ten seconds and two sarcastic captions. Open it fast before Floor 2 turns you into a ratings graphic.",
+    );
+  });
+
   it('uses progressively longer Director flavor text for higher difficulty bands', () => {
     const basic = FLOOR1_ACHIEVEMENTS.filter((achievement) => achievement.difficulty === 'basic');
     const standard = FLOOR1_ACHIEVEMENTS.filter(

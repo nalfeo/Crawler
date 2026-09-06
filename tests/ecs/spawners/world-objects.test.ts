@@ -22,7 +22,11 @@ import {
   addSetPieceProp,
   spawnTrap,
 } from '../../../src/core/spawners/world-objects.js';
+import { FloorMap } from '../../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../../src/core/map/TileMap.js';
 import { HARVESTABLE_DEFS } from '../../../src/shared/harvestableDefs.js';
+import { BiomeType, RoomRole, TilePresets } from '../../../src/shared/map-types.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 
 describe('spawnTrap', () => {
@@ -233,5 +237,46 @@ describe('spawnHarvestableNode', () => {
   it('throws on an unknown defIndex', () => {
     const world = createTestWorld();
     expect(() => spawnHarvestableNode(world, 0, 0, 9999)).toThrow(/unknown defIndex/);
+  });
+
+  it('rejects SPAWN/SAFE/SETTLEMENT regions and still spawns in ordinary rooms', () => {
+    const world = createTestWorld({ floor: 2 });
+    const tileMap = new TileMap(20, 8);
+    tileMap.fill(TilePresets.FLOOR);
+    const roomGraph = new RoomGraph();
+    roomGraph.add({ x: 1, y: 1, width: 3, height: 3 }, [], [], RoomRole.SPAWN);
+    roomGraph.add({ x: 5, y: 1, width: 3, height: 3 }, [], [], RoomRole.SAFE);
+    roomGraph.add({ x: 9, y: 1, width: 3, height: 3 }, [], [], RoomRole.SETTLEMENT);
+    roomGraph.add({ x: 13, y: 1, width: 3, height: 3 }, [], [], RoomRole.NORMAL);
+    world.floorMap = new FloorMap(
+      {
+        widthTiles: 20,
+        heightTiles: 8,
+        tileSizeFt: 4,
+        biome: BiomeType.DUNGEON,
+        seed: 42,
+        roomWidthRange: [3, 3],
+        roomHeightRange: [3, 3],
+        maxRooms: 4,
+        floorDensity: 0.5,
+      },
+      tileMap,
+      roomGraph,
+      new Uint8Array(20 * 8),
+      { x: 2, y: 2 },
+    );
+
+    const spawnPos = world.floorMap.tileToWorld(2, 2);
+    const safePos = world.floorMap.tileToWorld(6, 2);
+    const settlementPos = world.floorMap.tileToWorld(10, 2);
+    const normalPos = world.floorMap.tileToWorld(14, 2);
+    expect(spawnHarvestableNode(world, spawnPos.x, spawnPos.y, 0)).toBe(-1);
+    expect(spawnHarvestableNode(world, safePos.x, safePos.y, 0)).toBe(-1);
+    expect(spawnHarvestableNode(world, settlementPos.x, settlementPos.y, 0)).toBe(-1);
+    expect(query(world.ecs, [Harvestable])).toHaveLength(0);
+
+    const normalEid = spawnHarvestableNode(world, normalPos.x, normalPos.y, 0);
+    expect(normalEid).toBeGreaterThanOrEqual(0);
+    expect(query(world.ecs, [Harvestable])).toHaveLength(1);
   });
 });
