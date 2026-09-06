@@ -1,0 +1,452 @@
+[
+  {
+    "id": "floor4-first-broadcast",
+    "floor": 4,
+    "title": "Now Streaming",
+    "popupText": "New achievement: Now Streaming!",
+    "unlockCriteria": "Release the first Floor 4 wave.",
+    "details": "Enter the arena's first live wave window.",
+    "directorFlavor": "The cameras are on and you have not immediately embarrassed the production team. This is the minimum viable broadcast.",
+    "iconId": "achv-floor4-first-broadcast-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "trash" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4WavesReleased", "op": ">=", "value": 1 }
+    ]
+  },
+  {
+    "id": "floor4-first-knockout",
+    "floor": 4,
+    "title": "Warm-Up Act",
+    "popupText": "New achievement: Warm-Up Act!",
+    "unlockCriteria": "Spawn ten Floor 4 arena enemies.",
+    "details": "Survive long enough for the arena to produce a modest audience count.",
+    "directorFlavor": "Ten arena nuisances have made their contractual entrance and are no longer available for interviews. The Director calls this an opening number because it is too early to be impressed.",
+    "iconId": "achv-floor4-first-knockout-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "trash" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4EnemiesSpawned", "op": ">=", "value": 10 }
+    ]
+  },
+  {
+    "id": "floor4-first-headliner",
+    "floor": 4,
+    "title": "Name on the Marquee",
+    "popupText": "New achievement: Name on the Marquee!",
+    "unlockCriteria": "Spawn the first Floor 4 Headliner.",
+    "details": "Reach the first act's headline presentation.",
+    "directorFlavor": "The first Headliner has arrived and the arena has upgraded from crowd control to programming. Try not to make the marquee spell your name as a warning.",
+    "iconId": "achv-floor4-first-headliner-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "trash" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersSpawned", "op": ">=", "value": 1 }
+    ]
+  },
+  {
+    "id": "floor4-commercial-break",
+    "floor": 4,
+    "title": "Backstage Pass",
+    "popupText": "New achievement: Backstage Pass!",
+    "unlockCriteria": "Reach the first Floor 4 Green Room visit.",
+    "details": "Complete an act and enter the untimed sponsor break.",
+    "directorFlavor": "You have reached the Green Room, where the violence pauses and the prices become aggressive. Please enjoy this commercial break before the arena remembers your name.",
+    "iconId": "achv-floor4-commercial-break-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "trash" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GreenRoomVisits", "op": ">=", "value": 1 }
+    ]
+  },
+  {
+    "id": "floor4-act-one-complete",
+    "floor": 4,
+    "title": "First Segment Wrapped",
+    "popupText": "New achievement: First Segment Wrapped!",
+    "unlockCriteria": "Complete Floor 4 Act 1.",
+    "details": "Reach the first intermission with the Headliner segment resolved.",
+    "directorFlavor": "Act One has been wrapped, which is producer language for nobody important died on schedule. The crew is already resetting the arena while pretending this was always the plan.",
+    "iconId": "achv-floor4-act-one-complete-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "trash" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4ActsCompleted", "op": ">=", "value": 1 }
+    ]
+  },
+  {
+    "id": "floor4-prime-time",
+    "floor": 4,
+    "title": "Prime-Time Problem",
+    "popupText": "New achievement: Prime-Time Problem!",
+    "unlockCriteria": "Release four Floor 4 waves.",
+    "details": "Keep the arena schedule moving through its opening act.",
+    "directorFlavor": "Four waves have entered the schedule and none of them requested a reshoot. The ratings department has upgraded your survival from novelty to usable footage.",
+    "iconId": "achv-floor4-prime-time-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4WavesReleased", "op": ">=", "value": 4 }
+    ]
+  },
+  {
+    "id": "floor4-crowd-work",
+    "floor": 4,
+    "title": "Crowd Work",
+    "popupText": "New achievement: Crowd Work!",
+    "unlockCriteria": "Spawn fifty Floor 4 arena enemies.",
+    "details": "Handle a substantial live arena roster.",
+    "directorFlavor": "Fifty bodies have been booked into the venue and you are still occupying the center of the shot. The audience cannot tell whether this is skill or a refusal to read the evacuation signage.",
+    "iconId": "achv-floor4-crowd-work-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4EnemiesSpawned", "op": ">=", "value": 50 }
+    ]
+  },
+  {
+    "id": "floor4-second-billing",
+    "floor": 4,
+    "title": "Second Billing",
+    "popupText": "New achievement: Second Billing!",
+    "unlockCriteria": "Spawn two Floor 4 Headliners.",
+    "details": "Reach the second act's headline presentation.",
+    "directorFlavor": "A second Headliner has accepted the booking, which means the first one did not scare production into canceling. Your continued employment is becoming an inconveniently compelling subplot.",
+    "iconId": "achv-floor4-second-billing-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersSpawned", "op": ">=", "value": 2 }
+    ]
+  },
+  {
+    "id": "floor4-green-room-regular",
+    "floor": 4,
+    "title": "Break-Room Regular",
+    "popupText": "New achievement: Break-Room Regular!",
+    "unlockCriteria": "Reach two Floor 4 Green Room visits.",
+    "details": "Use the arena's first two commercial breaks.",
+    "directorFlavor": "You have visited the Green Room twice, proving that the curtain is not an elaborate trap door. The sponsors are delighted to see a returning customer and have adjusted nothing in your favor.",
+    "iconId": "achv-floor4-green-room-regular-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GreenRoomVisits", "op": ">=", "value": 2 }
+    ]
+  },
+  {
+    "id": "floor4-second-segment",
+    "floor": 4,
+    "title": "Two Segments Deep",
+    "popupText": "New achievement: Two Segments Deep!",
+    "unlockCriteria": "Complete two Floor 4 acts.",
+    "details": "Survive the first two timed arena segments.",
+    "directorFlavor": "Two acts are complete and the arena has stopped pretending the difficulty curve is a gentle suggestion. Production has moved your emergency contact from pencil to permanent marker.",
+    "iconId": "achv-floor4-second-segment-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4ActsCompleted", "op": ">=", "value": 2 }
+    ]
+  },
+  {
+    "id": "floor4-gold-in-the-edit",
+    "floor": 4,
+    "title": "Gold in the Edit",
+    "popupText": "New achievement: Gold in the Edit!",
+    "unlockCriteria": "Bank at least 18 gold from Floor 4 act income.",
+    "details": "Turn the opening arena segment into a useful sponsor budget.",
+    "directorFlavor": "The ledger contains eighteen pieces of arena-earned gold and not one of them was labeled sympathy. The sponsors will now call your spending power a storyline instead of an accounting error.",
+    "iconId": "achv-floor4-gold-in-the-edit-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GoldEarned", "op": ">=", "value": 18 }
+    ]
+  },
+  {
+    "id": "floor4-opening-marathon",
+    "floor": 4,
+    "title": "Opening Marathon",
+    "popupText": "New achievement: Opening Marathon!",
+    "unlockCriteria": "Release eight Floor 4 waves.",
+    "details": "Complete the full wave schedule of an opening act.",
+    "directorFlavor": "Eight waves have crossed the threshold and the arena still has enough floor visible for camera operators to panic on it. The Director has filed your stamina under marketable assets.",
+    "iconId": "achv-floor4-opening-marathon-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4WavesReleased", "op": ">=", "value": 8 }
+    ]
+  },
+  {
+    "id": "floor4-third-headliner",
+    "floor": 4,
+    "title": "Midcard Survivor",
+    "popupText": "New achievement: Midcard Survivor!",
+    "unlockCriteria": "Spawn three Floor 4 Headliners.",
+    "details": "Reach the third act's headline presentation.",
+    "directorFlavor": "Three Headliners have taken their turn at the spotlight and the spotlight has not yet been declared a hazard. The midcard is where careers go to become contractual obligations, so congratulations on the promotion.",
+    "iconId": "achv-floor4-third-headliner-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersSpawned", "op": ">=", "value": 3 }
+    ]
+  },
+  {
+    "id": "floor4-three-break-tour",
+    "floor": 4,
+    "title": "Three-Break Tour",
+    "popupText": "New achievement: Three-Break Tour!",
+    "unlockCriteria": "Reach three Floor 4 Green Room visits.",
+    "details": "Use three commercial breaks between arena acts.",
+    "directorFlavor": "The Green Room has seen you three times and is beginning to recognize your footsteps. Its vendors are practicing your name, mostly so they can put it on an invoice.",
+    "iconId": "achv-floor4-three-break-tour-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GreenRoomVisits", "op": ">=", "value": 3 }
+    ]
+  },
+  {
+    "id": "floor4-waves-on-waves",
+    "floor": 4,
+    "title": "Waves on Waves",
+    "popupText": "New achievement: Waves on Waves!",
+    "unlockCriteria": "Release twelve Floor 4 waves.",
+    "details": "Keep the broadcast schedule alive into the middle acts.",
+    "directorFlavor": "Twelve waves have been released, which is enough content for a season recap and an uncomfortable number of sponsor bumpers. You continue to provide both, so production has stopped asking whether you understand the format.",
+    "iconId": "achv-floor4-waves-on-waves-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4WavesReleased", "op": ">=", "value": 12 }
+    ]
+  },
+  {
+    "id": "floor4-midshow-roster",
+    "floor": 4,
+    "title": "Midshow Roster",
+    "popupText": "New achievement: Midshow Roster!",
+    "unlockCriteria": "Spawn seventy-five Floor 4 arena enemies.",
+    "details": "Carry the broadcast through its middle-act roster.",
+    "directorFlavor": "Seventy-five extras have filled the arena and the camera still finds you on the first try. This is no longer crowd work; it is a staffing crisis with choreography. The Director has asked Facilities whether the floor comes with a warranty.",
+    "iconId": "achv-floor4-midshow-roster-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4EnemiesSpawned", "op": ">=", "value": 75 }
+    ]
+  },
+  {
+    "id": "floor4-middle-purse",
+    "floor": 4,
+    "title": "Middle Management",
+    "popupText": "New achievement: Middle Management!",
+    "unlockCriteria": "Bank at least 40 gold from Floor 4 act income.",
+    "details": "Turn the first two acts into a working arena budget.",
+    "directorFlavor": "Forty pieces of arena income have survived contact with your shopping decisions. You are now managing a budget in the middle of a siege, which is exactly the sort of promotion nobody should accept. The sponsors have prepared a larger invoice and a smaller smile.",
+    "iconId": "achv-floor4-middle-purse-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "common" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GoldEarned", "op": ">=", "value": 40 }
+    ]
+  },
+  {
+    "id": "floor4-fourth-segment",
+    "floor": 4,
+    "title": "Nearly Main Event",
+    "popupText": "New achievement: Nearly Main Event!",
+    "unlockCriteria": "Complete four Floor 4 acts.",
+    "details": "Reach the final act's Green Room break.",
+    "directorFlavor": "Four acts are wrapped and the arena is down to its final excuse for being built. Your build has survived long enough that the Director is reviewing the finale notes with genuine, measurable concern.",
+    "iconId": "achv-floor4-fourth-segment-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4ActsCompleted", "op": ">=", "value": 4 }
+    ]
+  },
+  {
+    "id": "floor4-headliner-hunter",
+    "floor": 4,
+    "title": "Headliner Hunter",
+    "popupText": "New achievement: Headliner Hunter!",
+    "unlockCriteria": "Defeat two Floor 4 Headliners.",
+    "details": "Claim two headline encounters in the arena.",
+    "directorFlavor": "Two Headliners have been removed from the running and their entrance music is now being used to fill dead air. Production wanted a rivalry; you supplied a cancellation notice with excellent timing. The audience is beginning to understand that the headline act is not always the person wearing the expensive costume. The Director is revising the booking sheet and quietly removing the word 'favorite.'",
+    "iconId": "achv-floor4-headliner-hunter-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersDefeated", "op": ">=", "value": 2 }
+    ]
+  },
+  {
+    "id": "floor4-arena-veteran",
+    "floor": 4,
+    "title": "Arena Veteran",
+    "popupText": "New achievement: Arena Veteran!",
+    "unlockCriteria": "Spawn one hundred Floor 4 arena enemies.",
+    "details": "Remain in the broadcast through a full mid-floor roster.",
+    "directorFlavor": "One hundred arena enemies have been assigned to your segment and the set is still technically standing. The camera crew has stopped counting entrances because your refusal to leave is easier to track. Every surviving extra has learned your movement pattern, which is unfortunate for them and educational for you. The Director has ordered a commemorative tally mark and billed it to audience development.",
+    "iconId": "achv-floor4-arena-veteran-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4EnemiesSpawned", "op": ">=", "value": 100 }
+    ]
+  },
+  {
+    "id": "floor4-fourth-billing",
+    "floor": 4,
+    "title": "Fourth Billing",
+    "popupText": "New achievement: Fourth Billing!",
+    "unlockCriteria": "Spawn four Floor 4 Headliners.",
+    "details": "Reach the fourth act's headline presentation.",
+    "directorFlavor": "Four Headliners have entered the arena and the booking office has run out of polite ways to ask you to lose. The main-event roster is now watching you with professional interest. Their contracts describe this as entertainment; the contracts are lying. The Director has upgraded your threat assessment from contestant to recurring production problem.",
+    "iconId": "achv-floor4-fourth-billing-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersSpawned", "op": ">=", "value": 4 }
+    ]
+  },
+  {
+    "id": "floor4-fourth-break",
+    "floor": 4,
+    "title": "The Expensive Break",
+    "popupText": "New achievement: The Expensive Break!",
+    "unlockCriteria": "Reach four Floor 4 Green Room visits.",
+    "details": "Enter the final commercial break before the Winner's Circle.",
+    "directorFlavor": "Four Green Room visits have turned hospitality into a recurring expense report. The tables keep rerolling, the prices keep climbing, and you keep returning with enough life left to shop. Sponsors call this customer loyalty; the arena calls it a countdown. The Director calls it a scheduling inconvenience with excellent retention.",
+    "iconId": "achv-floor4-fourth-break-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GreenRoomVisits", "op": ">=", "value": 4 }
+    ]
+  },
+  {
+    "id": "floor4-overtime-credit",
+    "floor": 4,
+    "title": "Bought the Extra Minute",
+    "popupText": "New achievement: Bought the Extra Minute!",
+    "unlockCriteria": "Enter Floor 4 Overtime.",
+    "details": "Survive long enough for a Headliner fight to exceed its scheduled window.",
+    "directorFlavor": "The Headliner refused to leave, so the network bought an extra minute and called it premium content. You are still fighting inside the overrun, which is either admirable or a serious misunderstanding of labor law. The arena clock has become a threat with numerals. Production is charging the audience for every second you make them watch. The Director is pleased to discover that panic has a billing code.",
+    "iconId": "achv-floor4-overtime-credit-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4OvertimeStarted", "op": ">=", "value": 1 }
+    ]
+  },
+  {
+    "id": "floor4-four-act-purse",
+    "floor": 4,
+    "title": "Four-Act Purse",
+    "popupText": "New achievement: Four-Act Purse!",
+    "unlockCriteria": "Bank at least 75 gold from Floor 4 act income.",
+    "details": "Accumulate enough arena income to fund late-floor choices.",
+    "directorFlavor": "Seventy-five pieces of arena-earned gold now sit in your ledger, each one carrying the faint smell of a sponsor's regret. You have converted escalating danger into a budget and then survived long enough to spend it. The vendors are thrilled; the enemies are less so. The Director has marked your economy as a second weapon and assigned it a camera angle.",
+    "iconId": "achv-floor4-four-act-purse-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GoldEarned", "op": ">=", "value": 75 }
+    ]
+  },
+  {
+    "id": "floor4-kept-companion",
+    "floor": 4,
+    "title": "Co-Star Contract",
+    "popupText": "New achievement: Co-Star Contract!",
+    "unlockCriteria": "Host a carried Companion co-star on Floor 4.",
+    "details": "Bring a completed Floor 3 Companion contract into the arena.",
+    "directorFlavor": "A Companion has joined the arena and production must now account for a second set of heroics. The contract says co-star; the footage says emergency management with better posture. The Headliners did not budget for teamwork. The Director has reluctantly expanded the shot list and is already pricing matching merchandise.",
+    "iconId": "achv-floor4-kept-companion-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "uncommon" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor4KeptCompanionCoStar", "value": true }]
+  },
+  {
+    "id": "floor4-final-headliner",
+    "floor": 4,
+    "title": "Final Billing",
+    "popupText": "New achievement: Final Billing!",
+    "unlockCriteria": "Defeat all five Floor 4 Headliners.",
+    "details": "Clear every Headliner encounter before the final exit.",
+    "directorFlavor": "Five Headliners have taken the stage and five have been removed from the schedule. The arena has become a very expensive lesson in refusing to be impressed. Their entrance announcements are now archival material. The audience expected a finale and received a complete staffing reduction. Production has run out of replacement bosses, which is the closest thing this floor has to an apology. The Director is checking whether the Winner's Circle has a vacancy for you or merely another trap.",
+    "iconId": "achv-floor4-final-headliner-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "rare" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4HeadlinersDefeated", "op": ">=", "value": 5 }
+    ]
+  },
+  {
+    "id": "floor4-five-act-finish",
+    "floor": 4,
+    "title": "Five Acts, No Notes",
+    "popupText": "New achievement: Five Acts, No Notes!",
+    "unlockCriteria": "Complete all five Floor 4 acts.",
+    "details": "Reach the fifth Green Room and finish the full timed program.",
+    "directorFlavor": "All five acts are complete and the arena has delivered its entire authored program without a mercy edit. You survived every schedule, every escalation, and every Headliner booking. The Green Room is now a Winner's Circle because language is cheaper than construction. The audience is on its feet, mostly because the seats have been removed for cleanup. Production has filed your run under 'unexpectedly reusable footage.' The Director has no notes, which is not the same as approval but is considerably rarer. Take the exit before somebody invents a sixth act.",
+    "iconId": "achv-floor4-five-act-finish-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "rare" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4ActsCompleted", "op": ">=", "value": 5 }
+    ]
+  },
+  {
+    "id": "floor4-main-event-clear",
+    "floor": 4,
+    "title": "The Main Event",
+    "popupText": "New achievement: The Main Event!",
+    "unlockCriteria": "Clear Floor 4 and confirm the Winner's Circle exit.",
+    "details": "Complete the five-act broadcast and leave through the terminal Green Room.",
+    "directorFlavor": "The Main Event has ended with you standing in the Winner's Circle and the arena unable to schedule another problem. Five acts, five Headliners, one contestant who declined every obvious exit opportunity. The cameras found their closing shot and the sponsors found a new adjective for your survival. The audience wanted a collapse and got a completed program instead. The Director is forced to admit the format worked exactly as intended, which is humiliating for everyone involved. Floor 5 is waiting with a different kind of paperwork. Please leave before the set changes its mind.",
+    "iconId": "achv-floor4-main-event-clear-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "rare" },
+    "unlockRules": [
+      { "type": "booleanIs", "fact": "floor4Victory", "value": true, "phase": "run_end_clear" },
+      { "type": "booleanIs", "fact": "runClearedFloor", "value": true, "phase": "run_end_clear" }
+    ]
+  },
+  {
+    "id": "floor4-clean-broadcast",
+    "floor": 4,
+    "title": "Clean Broadcast",
+    "popupText": "New achievement: Clean Broadcast!",
+    "unlockCriteria": "Clear Floor 4 without entering Overtime.",
+    "details": "Defeat every Headliner within its scheduled headline window.",
+    "directorFlavor": "The broadcast reached its finale without buying a single extra minute. Every Headliner left on schedule, every act stayed inside its slot, and production did not have to invent a premium cut called 'The Clock Ate Us.' The audience received a clean escalation instead of a delay notice. The crew is furious because competence has ruined three emergency segments. The Director has reviewed the timeline twice and found no useful disaster. This is not luck; it is an aggressively maintained margin. The Winner's Circle is open, and for once nobody is shouting about overtime.",
+    "iconId": "achv-floor4-clean-broadcast-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "rare" },
+    "unlockRules": [
+      { "type": "booleanIs", "fact": "floor4Victory", "value": true, "phase": "run_end_clear" },
+      { "type": "booleanIs", "fact": "floor4NoOvertime", "value": true, "phase": "run_end_clear" }
+    ]
+  },
+  {
+    "id": "floor4-season-purse",
+    "floor": 4,
+    "title": "Season Purse",
+    "popupText": "New achievement: Season Purse!",
+    "unlockCriteria": "Bank at least 160 gold from Floor 4 act income.",
+    "details": "Finish the arena program with a substantial earned reserve.",
+    "directorFlavor": "One hundred sixty pieces of arena-earned gold have made it through five acts and your purchasing impulses. The economy segment has become a second finale, complete with escalating stakes and no competent accountant. Sponsors are calling your reserve an investment while quietly checking whether it can be repossessed. The audience expected a survival story and got a budget report with explosions. Production has added a cash-counting camera to the Winner's Circle. The Director approves of any contestant who turns danger into liquidity. Spend it wisely, or at least spend it where the cameras can see.",
+    "iconId": "achv-floor4-season-purse-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "lootBox", "lootTable": "floor1-materials", "tier": "rare" },
+    "unlockRules": [
+      { "type": "numberCompare", "fact": "floor4GoldEarned", "op": ">=", "value": 160 }
+    ]
+  }
+]

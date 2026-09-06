@@ -183,6 +183,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     (world.floor === 2 &&
       (world.floorExtendedState?.familyState?.staircaseDiscovered === true ||
         world.goalFlags.get('floor2.objective.staircaseDiscovered') === true)) ||
+    (world.floor === 4 && world.floorExtendedState?.floor4Arena?.phase.kind === 'VICTORY') ||
     (world.floor === 5 &&
       world.goalFlags.get('floor5.siege.castleCaptured') === true &&
       world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED') ||
@@ -265,6 +266,17 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     floor5CastleCaptured === true &&
     floor5ReleaseGate !== undefined &&
     floor5CommandPostHealthPct >= floor5ReleaseGate.cleanSweepMinCommandPostHealthPct;
+  const floor4State = world.floor === 4 ? world.floorExtendedState?.floor4Arena : undefined;
+  const floor4ActsCompleted = floor4State
+    ? new Set(
+        floor4State.timeline.flatMap((entry) =>
+          entry.phase.kind === 'INTERMISSION' ? [entry.phase.act] : [],
+        ),
+      ).size
+    : 0;
+  const floor4Victory = floor4State?.phase.kind === 'VICTORY';
+  const floor4GoldEarned =
+    floor4State?.actIncome.reduce((total, entry) => total + entry.totalGold, 0) ?? 0;
 
   return {
     numberFacts: {
@@ -289,6 +301,15 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       familyBossesDefeated,
       familyBossEncounterCount,
       familiesEngagedInCombatCount,
+      floor4ActsCompleted,
+      floor4WavesReleased: floor4State?.waveTelemetry.wavesReleased ?? 0,
+      floor4EnemiesSpawned: floor4State?.waveTelemetry.enemiesSpawned ?? 0,
+      floor4HeadlinersSpawned: floor4State?.headlinerTelemetry.spawned ?? 0,
+      floor4HeadlinersDefeated: floor4State?.headlinerTelemetry.defeated ?? 0,
+      floor4GreenRoomVisits:
+        world.floor === 4 ? (world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount ?? 0) : 0,
+      floor4OvertimeStarted: floor4State?.headlinerTelemetry.overtimeStarted ?? 0,
+      floor4GoldEarned,
     },
     booleanFacts: {
       ...empty.booleanFacts,
@@ -317,6 +338,11 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.goalFlags.get('floor6.defense.relaySecured') === true &&
         world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
         world.floorExtendedState.floor6Defense.exit.confirmed === true,
+      floor4Victory: world.floor === 4 && floor4Victory,
+      floor4NoOvertime:
+        world.floor === 4 && floor4Victory && floor4State?.headlinerTelemetry.overtimeStarted === 0,
+      floor4KeptCompanionCoStar:
+        world.floor === 4 && floor4State?.keptCompanionCoStarActive === true,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseSpawned:
         floor1Objective?.staircaseSpawned === true ||

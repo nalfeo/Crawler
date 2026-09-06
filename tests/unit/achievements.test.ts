@@ -12,6 +12,8 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
+  FLOOR4_ACHIEVEMENT_COUNT,
+  _FLOOR4_ACHIEVEMENTS as FLOOR4_ACHIEVEMENTS,
   _FLOOR5_ACHIEVEMENTS as FLOOR5_ACHIEVEMENTS,
   _FLOOR6_ACHIEVEMENTS as FLOOR6_ACHIEVEMENTS,
   FLOOR2_ACHIEVEMENT_LOOT_TIERS,
@@ -118,6 +120,7 @@ describe('floor1 achievements catalog', () => {
   it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(4)?.all).toEqual(FLOOR4_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
 
@@ -168,6 +171,7 @@ describe('floor1 achievements catalog', () => {
     expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
       FLOOR1_ACHIEVEMENT_COUNT +
         FLOOR2_ACHIEVEMENTS.length +
+        FLOOR4_ACHIEVEMENTS.length +
         FLOOR5_ACHIEVEMENTS.length +
         FLOOR6_ACHIEVEMENTS.length,
     );
@@ -179,6 +183,7 @@ describe('floor1 achievements catalog', () => {
   it('keeps floor-aware catalog lookup isolated by floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(4)?.all).toEqual(FLOOR4_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
   });
@@ -298,6 +303,44 @@ describe('floor6 achievements catalog', () => {
         ),
       ),
     ).toBe(true);
+  });
+});
+
+describe('floor4 achievements catalog', () => {
+  it('contains 30 floor-scoped achievements with a trash-to-rare distribution', () => {
+    expect(FLOOR4_ACHIEVEMENT_COUNT).toBe(30);
+    expect(FLOOR4_ACHIEVEMENTS).toHaveLength(30);
+    expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.floor === 4)).toBe(true);
+    expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.scope === 'floor')).toBe(true);
+
+    const counts = { trash: 0, common: 0, uncommon: 0, rare: 0 };
+    for (const achievement of FLOOR4_ACHIEVEMENTS) {
+      expect(achievement.reward.type).toBe('lootBox');
+      if (achievement.reward.type === 'lootBox') {
+        counts[achievement.reward.tier as keyof typeof counts]++;
+      }
+    }
+    expect(counts).toEqual({ trash: 5, common: 12, uncommon: 8, rare: 5 });
+    expect(
+      FLOOR4_ACHIEVEMENTS.every((achievement) => {
+        if (achievement.reward.type !== 'lootBox') return false;
+        return (
+          (achievement.reward.tier === 'trash' && achievement.difficulty === 'basic') ||
+          (achievement.reward.tier === 'common' && achievement.difficulty === 'standard') ||
+          (achievement.reward.tier === 'uncommon' && achievement.difficulty === 'hard') ||
+          (achievement.reward.tier === 'rare' && achievement.difficulty === 'brutal')
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it('uses unique measured Floor 4 requirements across the catalog', () => {
+    const ids = FLOOR4_ACHIEVEMENTS.map((achievement) => achievement.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const requirements = FLOOR4_ACHIEVEMENTS.map((achievement) =>
+      JSON.stringify(achievement.unlockRules),
+    );
+    expect(new Set(requirements).size).toBe(requirements.length);
   });
 });
 
