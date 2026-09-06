@@ -441,6 +441,11 @@ function isStalePull(pull, now, gapMs) {
   return Number.isFinite(blockedAt) && now.getTime() - blockedAt >= gapMs;
 }
 
+/**
+ * Return whether a PR may enter the liveness-monitored redispatch backlog.
+ * Dirty/unstable PRs and PRs with current ownership, quarantine, or opt-out
+ * metadata are intentionally excluded because CI Recovery cannot dispatch them.
+ */
 export function isLivenessRedispatchEligible(pull, owner, repo) {
   return (
     pullNumber(pull) !== null &&
