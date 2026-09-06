@@ -30,6 +30,7 @@
  */
 
 import * as runFilterFns from './lib/run-filter.mjs';
+import * as requestFilterFns from './lib/request-filter.mjs';
 import * as sheetDisplayFns from './lib/sheet-display.mjs';
 import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
 import * as briefLookupFns from './lib/brief-lookup.mjs';
@@ -231,6 +232,7 @@ const CLIENT_SCRIPT = String.raw`
 (function () {
   'use strict';
   /*__RUN_FILTER_FNS__*/
+  /*__REQUEST_FILTER_FNS__*/
   /*__SHEET_DISPLAY_FNS__*/
   /*__FEEDBACK_SUMMARY_FNS__*/
   /*__BRIEF_LOOKUP_FNS__*/
@@ -268,14 +270,19 @@ const CLIENT_SCRIPT = String.raw`
     { key: 'themeAdherence', label: 'Theme adherence' }
   ];
   var TABS = [
-    { id: 'author', label: 'Author' },
     { id: 'backlog', label: 'Backlog' },
-    { id: 'files', label: 'Plans & Briefs' },
-    { id: 'runs', label: 'Runs' }
+    { id: 'briefs', label: 'Briefs' },
+    { id: 'sprites', label: 'Sprites' }
+  ];
+  var REQUEST_STAGE_FILTERS = [
+    'draft', 'synthesizing', 'candidates', 'generating', 'sheet', 'postprocessing',
+    'postprocessed', 'judging', 'variants', 'approved', 'checked-in', 'tagging', 'done'
   ];
   var app = document.getElementById('app');
   var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
-  var activeTab = 'author';
+  var activeTab = 'backlog';
+  var requestStageFilter = 'all';
+  var requestSearch = '';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
@@ -749,10 +756,34 @@ const CLIENT_SCRIPT = String.raw`
     }
 
     var toolbar = h('div', { class: 'sheet-toolbar' }, []);
+    var backToBriefs = h('button', { type: 'button', text: 'Back to Briefs' });
+    backToBriefs.addEventListener('click', function () {
+      activeTab = 'briefs';
+      if (lastState) render(lastState);
+    });
+    toolbar.appendChild(backToBriefs);
     var viewBriefBtn = h('button', { id: 'view-brief-btn', type: 'button', text: 'View Brief' });
     viewBriefBtn.addEventListener('click', function (ev) { openBriefModal(state, ev.currentTarget); });
     toolbar.appendChild(viewBriefBtn);
     toolbar.appendChild(renderPostprocessHandoff(sel, null));
+    toolbar.appendChild(h('button', {
+      type: 'button',
+      text: 'Force reprocess',
+      onclick: function () {
+        workflowPost('/api/workflow/postprocess', {
+          briefId: sel.briefId, runId: sel.runId, force: true, reset: true
+        }, 'Reprocessing displayed run…');
+      }
+    }));
+    toolbar.appendChild(h('button', {
+      type: 'button',
+      text: 'Judge run',
+      onclick: function () {
+        workflowPost('/api/workflow/judge', {
+          briefId: sel.briefId, runId: sel.runId, force: true
+        }, 'Judging displayed run…');
+      }
+    }));
     wrap.appendChild(toolbar);
 
     if (sheets.length === 0) {
@@ -1480,6 +1511,46 @@ const CLIENT_SCRIPT = String.raw`
     return wrap;
   }
 
+  function filteredWorkflowItems(state) {
+    return filterWorkflowItems(
+      state.workflow && state.workflow.items,
+      requestStageFilter,
+      requestSearch
+    );
+  }
+
+  function renderRequestPicker(state) {
+    var workflow = state.workflow || { items: [] };
+    var visible = filteredWorkflowItems(state);
+    var stage = h('select', { title: 'Filter requests by stage', 'aria-label': 'Filter requests by stage' });
+    var options = [['all', 'All stages']].concat(REQUEST_STAGE_FILTERS.map(function (value) {
+      return [value, value];
+    }));
+    options.forEach(function (option) {
+      var el = h('option', { value: option[0], text: option[1] });
+      if (option[0] === requestStageFilter) el.selected = true;
+      stage.appendChild(el);
+    });
+    stage.addEventListener('change', function () {
+      requestStageFilter = stage.value;
+      if (lastState) render(lastState);
+    });
+    var search = h('input', {
+      type: 'search',
+      placeholder: 'Filter requests…',
+      'aria-label': 'Filter requests',
+      value: requestSearch
+    });
+    search.addEventListener('input', function () {
+      requestSearch = search.value;
+      if (lastState) render(lastState);
+    });
+    return h('div', { class: 'row', style: { marginBottom: '8px' } }, [
+      h('span', { class: 'muted', text: 'Stage:' }), stage, search,
+      h('span', { class: 'muted', text: visible.length + ' of ' + workflow.items.length + ' shown' })
+    ]);
+  }
+
   function renderRuns(state) {
     var wrap = h('div', null, []);
     if (!state.health || state.health.state !== 'up') {
@@ -1593,7 +1664,8 @@ const CLIENT_SCRIPT = String.raw`
       return wrap;
     }
     var list = h('div', { class: 'filelist' }, []);
-    workflow.items.forEach(function (item) {
+    var visibleItems = filteredWorkflowItems(state);
+    visibleItems.forEach(function (item) {
       list.appendChild(h('button', {
         class: item.id === workflow.selectedId ? 'active' : '',
         text: item.name + ' · ' + item.stage,
@@ -1612,6 +1684,12 @@ const CLIENT_SCRIPT = String.raw`
         h('code', { text: selected.kebabName })
       ]));
       if (selected.brief) detail.appendChild(h('p', { class: 'muted', text: selected.brief }));
+      if (selected.chosenCandidatePath) {
+        detail.appendChild(h('div', {
+          class: 'chosen-brief-pill',
+          text: 'Chosen brief: ' + selected.chosenCandidatePath
+        }));
+      }
       var controls = h('div', { class: 'row' }, []);
       if (selected.stage === 'draft') {
         controls.appendChild(h('button', { class: 'accept-button', text: 'Synthesize draft briefs',
@@ -1640,9 +1718,16 @@ const CLIENT_SCRIPT = String.raw`
             });
           };
           candidatePanel.appendChild(yaml);
+          var chosen = selected.chosenCandidatePath === candidate.yamlPath;
+          var chooseButton = h('button', {
+            class: 'accept-button',
+            text: chosen ? 'Chosen brief' : 'Choose brief'
+          });
+          chooseButton.disabled = chosen;
+          chooseButton.addEventListener('click', function () { saveBrief(true, 'Choosing brief…'); });
           candidatePanel.appendChild(h('div', { class: 'row' }, [
             h('button', { text: 'Save YAML', onclick: function () { saveBrief(false, 'Saving brief…'); } }),
-            h('button', { class: 'accept-button', text: (selected.chosenCandidatePath === candidate.yamlPath ? 'Chosen brief' : 'Choose brief'), onclick: function () { saveBrief(true, 'Choosing brief…'); } })
+            chooseButton
           ]));
           detail.appendChild(candidatePanel);
         });
@@ -1656,7 +1741,7 @@ const CLIENT_SCRIPT = String.raw`
       }
       if (selected.run) {
         controls.appendChild(h('button', { text: 'View generated sheet', onclick: function () {
-          activeTab = 'runs'; select(selected.run.briefId, selected.run.runId, null);
+          activeTab = 'sprites'; select(selected.run.briefId, selected.run.runId, null);
         } }));
       }
       if (selected.stage === 'sheet') {
@@ -1690,8 +1775,16 @@ const CLIENT_SCRIPT = String.raw`
       });
       detail.appendChild(controls);
     }
+    wrap.insertBefore(renderRequestPicker(state), wrap.children[wrap.children.length - 1] || null);
     wrap.appendChild(h('div', { class: 'split' }, [list, detail]));
     return wrap;
+  }
+
+  function renderBriefs(state) {
+    return h('div', null, [
+      renderAuthor(state),
+      h('div', { style: { marginTop: '12px' } }, [renderFiles(state)])
+    ]);
   }
 
 
@@ -1699,10 +1792,10 @@ const CLIENT_SCRIPT = String.raw`
   function renderTabs(state) {
     var bar = h('div', { class: 'tabs' }, []);
     var counts = {
-      author: (state.workflow && state.workflow.items) ? state.workflow.items.length : 0,
       backlog: (state.backlog && state.backlog.reports) ? state.backlog.reports.length : 0,
-      files: (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
-      runs: (state.runs || []).length
+      briefs: ((state.workflow && state.workflow.items) ? state.workflow.items.length : 0) +
+        (state.files ? ((state.files.plans || []).length + (state.files.briefs || []).length) : 0),
+      sprites: (state.runs || []).length
     };
     for (var i = 0; i < TABS.length; i++) {
       (function (tab) {
@@ -1718,9 +1811,8 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function renderActiveTab(state) {
-    if (activeTab === 'author') return renderAuthor(state);
-    if (activeTab === 'files') return renderFiles(state);
-    if (activeTab === 'runs') return renderRuns(state);
+    if (activeTab === 'briefs') return renderBriefs(state);
+    if (activeTab === 'sprites') return renderRuns(state);
     return renderBacklog(state);
   }
 
@@ -1740,7 +1832,7 @@ const CLIENT_SCRIPT = String.raw`
       : null;
     lastState = state;
     // The debugger's iframe survives tab changes, but is only exposed from Runs.
-    if (postprocessHost) postprocessHost.hidden = activeTab !== 'runs';
+    if (postprocessHost) postprocessHost.hidden = activeTab !== 'sprites';
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
     if (state.error) {
@@ -1847,6 +1939,7 @@ export function renderHtml(instanceId, mutationToken = '') {
     JSON.stringify(mutationToken),
   )
     .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
+    .replace('/*__REQUEST_FILTER_FNS__*/', () => serializePureModule(requestFilterFns))
     .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
     .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
     .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));

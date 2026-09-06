@@ -55,9 +55,9 @@ test('the client script wires the tab bar and all three read surfaces', () => {
   assert.doesNotMatch(html, /function renderRequests\(/);
 });
 
-test('the Author tab exposes the complete Azure workflow controls and visible refresh', () => {
+test('the Briefs tab exposes the complete Azure workflow controls and visible refresh', () => {
   const html = renderHtml('x');
-  assert.match(html, /id: 'author', label: 'Author'/);
+  assert.match(html, /id: 'briefs', label: 'Briefs'/);
   assert.match(html, /function renderAuthor\(/);
   assert.match(html, /Refresh Azure workflow/);
   assert.match(html, /\/api\/workflow\/request/);
@@ -272,6 +272,20 @@ test('the run cards expose every current judge axis', () => {
   assert.match(html, /if \(!score\) continue;/);
 });
 
+test('the workflow uses the Backlog, Briefs, and Sprites information architecture', () => {
+  const html = renderHtml('x');
+  assert.match(html, /id: 'backlog', label: 'Backlog'/);
+  assert.match(html, /id: 'briefs', label: 'Briefs'/);
+  assert.match(html, /id: 'sprites', label: 'Sprites'/);
+  assert.doesNotMatch(html, /label: 'Author'/);
+  assert.match(html, /text: 'Back to Briefs'/);
+  assert.match(html, /text: 'Force reprocess'/);
+  assert.match(html, /text: 'Judge run'/);
+  assert.match(html, /postprocessHost\.hidden = activeTab !== 'sprites'/);
+  assert.match(html, /function filterWorkflowItems\(/);
+  assert.match(html, /chooseButton\.disabled = chosen/);
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));
@@ -455,7 +469,7 @@ test('opening the embedded Post-process Debugger reveals the persistent host, la
   assert.match(html, /window\.__postprocessReadyMetric/);
 });
 
-test('the persistent #postprocess-host sits outside #app and only displays on Runs', () => {
+test('the persistent #postprocess-host sits outside #app and only displays on Sprites', () => {
   const html = renderHtml('x');
   const appAt = html.indexOf('id="app"');
   const hostAt = html.indexOf('id="postprocess-host"');
@@ -473,6 +487,6 @@ test('the persistent #postprocess-host sits outside #app and only displays on Ru
     html.indexOf('function render(state) {'),
     html.indexOf('var selecting = false;'),
   );
-  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'runs'/);
+  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'sprites'/);
   assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

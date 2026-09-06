@@ -2016,6 +2016,23 @@ const jsonRoutes = [
     path: '/api/workflow/postprocess',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
+        if (body.force === true) {
+          if (typeof body.briefId !== 'string' || typeof body.runId !== 'string') {
+            throw new CanvasError('bad-request', 'briefId and runId are required.');
+          }
+          const result = await entry.client.postprocessRun(body.briefId, body.runId, {
+            force: true,
+            ...(body.reset === true ? { reset: true, mode: 'reset' } : {}),
+          });
+          const summary =
+            result?.summary ?? (await entry.client.fetchRunSummary(body.briefId, body.runId));
+          invalidateRunView(runViewKey(body.briefId, body.runId));
+          entry.selectionVersion += 1;
+          return {
+            workflow: entry.workflow.state,
+            run: toQueueRun(body.briefId, body.runId, normalizeCandidates(summary)),
+          };
+        }
         if (typeof body.itemId !== 'string')
           throw new CanvasError('bad-request', 'itemId is required.');
         await hydrateWorkflow(entry, { force: true });
@@ -2051,6 +2068,20 @@ const jsonRoutes = [
     path: '/api/workflow/judge',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
+        if (body.force === true) {
+          if (typeof body.briefId !== 'string' || typeof body.runId !== 'string') {
+            throw new CanvasError('bad-request', 'briefId and runId are required.');
+          }
+          const result = await entry.client.judgeRun(body.briefId, body.runId, { force: true });
+          const summary =
+            result?.summary ?? (await entry.client.fetchRunSummary(body.briefId, body.runId));
+          invalidateRunView(runViewKey(body.briefId, body.runId));
+          entry.selectionVersion += 1;
+          return {
+            workflow: entry.workflow.state,
+            run: toQueueRun(body.briefId, body.runId, normalizeCandidates(summary)),
+          };
+        }
         if (typeof body.itemId !== 'string')
           throw new CanvasError('bad-request', 'itemId is required.');
         await hydrateWorkflow(entry, { force: true });
