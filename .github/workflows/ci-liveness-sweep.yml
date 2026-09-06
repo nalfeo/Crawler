@@ -184,9 +184,10 @@ jobs:
             );
 
             const { owner, repo } = context.repo;
-            const thresholdMinutes =
-              Number.parseInt(process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES, 10) ||
-              lib.DEFAULT_HARVEST_THRESHOLD_MINUTES;
+            const thresholdMinutes = lib.parsePositiveIntEnv(
+              process.env.HARVEST_LIVENESS_THRESHOLD_MINUTES,
+              lib.DEFAULT_HARVEST_THRESHOLD_MINUTES,
+            );
 
             const now = new Date();
             const harvestRuns = await lib.collectRecentReconcileHarvestRuns({
@@ -269,12 +270,14 @@ jobs:
               core.notice(`stale-session harvest healthy; incident ${result.action}`);
             }
 
-            const dispatchWindowHours =
-              Number.parseInt(process.env.CI_RECOVERY_DISPATCH_WINDOW_HOURS, 10) ||
-              lib.DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS;
-            const perPrDispatchGapHours =
-              Number.parseInt(process.env.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS, 10) ||
-              lib.DEFAULT_PR_DISPATCH_GAP_HOURS;
+            const dispatchWindowHours = lib.parsePositiveIntEnv(
+              process.env.CI_RECOVERY_DISPATCH_WINDOW_HOURS,
+              lib.DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
+            );
+            const perPrDispatchGapHours = lib.parsePositiveIntEnv(
+              process.env.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS,
+              lib.DEFAULT_PR_DISPATCH_GAP_HOURS,
+            );
             const dispatchCutoffMs = now.getTime() - dispatchWindowHours * 60 * 60 * 1000;
             const recoveryRuns = await lib.collectRecentWorkflowDispatchRuns({
               listWorkflowRuns: (params) => github.rest.actions.listWorkflowRuns(params),
@@ -370,6 +373,7 @@ jobs:
 
             const dispatchedPullNumbers = new Set(
               recoveryRuns
+                .filter((run) => String(run.status || '').toLowerCase() !== 'completed')
                 .map((run) => String(run.display_title || '').match(/PR #(\d+)/i)?.[1])
                 .filter(Boolean)
                 .map(Number),
@@ -382,9 +386,10 @@ jobs:
               alreadyDispatchedPullNumbers: dispatchedPullNumbers,
               now,
               gapHours: perPrDispatchGapHours,
-              cap:
-                Number.parseInt(process.env.CI_RECOVERY_LIVENESS_REDISPATCH_CAP, 10) ||
+              cap: lib.parsePositiveIntEnv(
+                process.env.CI_RECOVERY_LIVENESS_REDISPATCH_CAP,
                 lib.DEFAULT_LIVENESS_REDISPATCH_CAP,
+              ),
             });
             const redispatchResult = await lib.dispatchLivenessRedispatches({
               candidates: redispatchCandidates,

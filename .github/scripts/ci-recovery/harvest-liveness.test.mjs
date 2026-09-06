@@ -29,6 +29,7 @@ import {
   selectLivenessRedispatchCandidates,
   protectedLivenessPullNumbers,
   dispatchLivenessRedispatches,
+  parsePositiveIntEnv,
 } from './harvest-liveness.mjs';
 
 const NOW = new Date('2026-07-30T17:00:00Z');
@@ -495,6 +496,46 @@ test('selectLivenessRedispatchCandidates excludes current merge-train ownership 
   );
 });
 
+test('selectLivenessRedispatchCandidates excludes lifecycle quarantine/abandon and opt-out labels', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4241, { labels: [{ name: 'ci-lifecycle-quarantined' }] }),
+      blockedPull(4242, { labels: [{ name: 'ci-lifecycle-abandoned' }] }),
+      blockedPull(4243, { labels: [{ name: 'ci-recovery-opt-out' }] }),
+      blockedPull(4244),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4244],
+    'quarantined, abandoned, and opt-out PRs must mirror the router exclusions and never be dispatched',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes PRs whose automation budget is intentionally exhausted', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4245, action: 'skip-stale-automation-exhausted' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4245), blockedPull(4246)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4246],
+    'a terminal exhausted decision must keep suppressing redispatch even after it ages out of the sampling window',
+  );
+});
+
 test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
   const dispatches = [];
   const result = await dispatchLivenessRedispatches({
@@ -601,6 +642,59 @@ test('dispatchLivenessRedispatches skips merge-train metadata after re-fetch', a
     { number: 4239, reason: 'state-changed' },
   ]);
   assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches continues past a transient hydration failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4247), blockedPull(4248)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => {
+      if (number === 4247) throw new Error('secondary rate limit');
+      return { data: blockedPull(4248) };
+    },
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4248, headSha: 'sha-4248', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4247);
+  assert.equal(result.skipped[0].reason, 'hydration-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('dispatchLivenessRedispatches continues past a transient dispatch failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4249), blockedPull(4250)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({ data: blockedPull(number) }),
+    dispatch: async (request) => {
+      if (request.inputs.pr_number === '4249') throw new Error('workflow dispatch failed');
+      dispatches.push(request);
+    },
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4250, headSha: 'sha-4250', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4249);
+  assert.equal(result.skipped[0].reason, 'dispatch-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('parsePositiveIntEnv rejects unset, non-numeric, zero, and negative overrides', () => {
+  assert.equal(parsePositiveIntEnv(undefined, 3), 3);
+  assert.equal(parsePositiveIntEnv('', 3), 3);
+  assert.equal(parsePositiveIntEnv('3junk', 3), 3);
+  assert.equal(parsePositiveIntEnv('0', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('-1', 3),
+    3,
+    'a negative cap must not silently disable the backstop',
+  );
+  assert.equal(parsePositiveIntEnv('5', 3), 5);
 });
 
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {

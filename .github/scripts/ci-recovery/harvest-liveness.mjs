@@ -50,6 +50,11 @@ const MERGE_TRAIN_LIVENESS_LABELS = new Set([
   'ci-conflict-escalation',
   'ci-recovery-waiting',
   'human-approval-required',
+  // Mirror router.mjs's DISPATCH_BLOCKED_LABEL_NAMES/opt-out exclusions so this
+  // direct backstop never dispatches a PR the canonical router would refuse.
+  'ci-lifecycle-quarantined', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.QUARANTINED]
+  'ci-lifecycle-abandoned', // ci-recovery/pr-lifecycle.mjs PHASE_LABELS[PHASE.ABANDONED]
+  'ci-recovery-opt-out', // router.mjs hasOptOutLabel
 ]);
 
 export const HARVEST_INCIDENT_LABEL = 'ci-incident';
@@ -64,6 +69,21 @@ export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
 export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
 export const DEFAULT_LIVENESS_REDISPATCH_CAP = 3;
+
+/**
+ * Parse an env-var override as a strictly positive integer, falling back to
+ * `fallback` when the value is unset, non-numeric, zero, or negative.
+ *
+ * `Number.parseInt(value, 10) || fallback` looks equivalent but is not:
+ * `-1` parses to a truthy `-1`, so it is accepted rather than falling back,
+ * and a downstream `slice(0, cap)` silently disables the caller (a negative
+ * `cap` clamps to `slice(0, 0)`). Any override must be a positive integer.
+ */
+export function parsePositiveIntEnv(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const PROTECTED_LIVENESS_ACTIONS = new Set([
   'skip-duplicate-fingerprint',
   'skip-merge-train-owned',
@@ -74,6 +94,10 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
   DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF,
   DISPATCH_ACTION.SKIP_ACTIVE_SHEPHERD,
   DISPATCH_ACTION.SKIP_ACTIVE_COPILOT_PROGRESS,
+  // Terminal decision: the PR's automation budget is intentionally exhausted
+  // (dispatch-table.mjs:349-351). Once the decision record ages out of the
+  // sampling window this is the only thing that still remembers it.
+  DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
 ]);
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
@@ -476,7 +500,13 @@ export async function dispatchLivenessRedispatches({
     const number = pullNumber(candidate);
     if (number === null || seen.has(number)) continue;
     seen.add(number);
-    const response = await getPull(number);
+    let response;
+    try {
+      response = await getPull(number);
+    } catch (error) {
+      skipped.push({ number, reason: 'hydration-failed', error: String(error?.message || error) });
+      continue;
+    }
     const pull = response?.data || response;
     const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
     if (
@@ -491,19 +521,24 @@ export async function dispatchLivenessRedispatches({
       skipped.push({ number, reason: 'state-changed' });
       continue;
     }
-    await dispatch({
-      owner,
-      repo,
-      workflow_id: 'ci-recovery.yml',
-      ref,
-      inputs: {
-        operation: 'reconcile',
-        pr_number: String(number),
-        trigger,
-        expected_head_sha: pull.head.sha,
-        expected_base_ref: pull.base.ref,
-      },
-    });
+    try {
+      await dispatch({
+        owner,
+        repo,
+        workflow_id: 'ci-recovery.yml',
+        ref,
+        inputs: {
+          operation: 'reconcile',
+          pr_number: String(number),
+          trigger,
+          expected_head_sha: pull.head.sha,
+          expected_base_ref: pull.base.ref,
+        },
+      });
+    } catch (error) {
+      skipped.push({ number, reason: 'dispatch-failed', error: String(error?.message || error) });
+      continue;
+    }
     dispatched.push({ number, headSha: pull.head.sha, baseRef: pull.base.ref });
   }
   return { dispatched, skipped };
