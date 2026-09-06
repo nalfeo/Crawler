@@ -26,6 +26,7 @@ import {
   reconcileHarvestIncident,
   summarizeDispatchLiveness,
   summarizeHarvestRuns,
+  isLivenessRedispatchEligible,
   selectLivenessRedispatchCandidates,
   protectedLivenessPullNumbers,
   dispatchLivenessRedispatches,
@@ -389,11 +390,48 @@ function blockedPull(number, overrides = {}) {
   };
 }
 
-test('selectLivenessRedispatchCandidates handles the incident fixture deterministically', () => {
+test('liveness eligibility and selection handle the incident fixture deterministically', () => {
+  const quarantinedIncidentPull = blockedPull(4217, {
+    mergeable_state: 'dirty',
+    labels: [
+      { name: 'merge-train-blocked' },
+      { name: 'human-approval-required' },
+      { name: 'ci-lifecycle-quarantined' },
+    ],
+  });
+  const mergeTrainIncidentPull = blockedPull(4214, {
+    mergeable_state: 'dirty',
+    labels: [{ name: 'merge-train' }, { name: 'human-approval-required' }],
+  });
+
+  assert.equal(
+    isLivenessRedispatchEligible(quarantinedIncidentPull, 'nalfeo', 'Crawler'),
+    false,
+    'quarantined PRs are intentionally excluded from the liveness dispatch backlog',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(mergeTrainIncidentPull, 'nalfeo', 'Crawler'),
+    false,
+    'merge-train-owned PRs are intentionally excluded from the liveness dispatch backlog',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler'),
+    true,
+    'discovery payloads may omit state',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler', {
+      requireExplicitOpenState: true,
+    }),
+    false,
+    'hydrated PRs must explicitly remain open before redispatch',
+  );
+
   const candidates = selectLivenessRedispatchCandidates({
     pulls: [
-      blockedPull(4217),
-      blockedPull(4214),
+      quarantinedIncidentPull,
+      mergeTrainIncidentPull,
+      blockedPull(4224),
       blockedPull(4220, { draft: true }),
       blockedPull(4221, { state: 'closed' }),
       blockedPull(4222, { head: { repo: { full_name: 'external/fork' } } }),
@@ -410,8 +448,8 @@ test('selectLivenessRedispatchCandidates handles the incident fixture determinis
 
   assert.deepEqual(
     candidates.map((pull) => pull.number),
-    [4214],
-    'protected, fresh, draft, closed, and fork PRs must not be selected',
+    [4224],
+    'only dispatch-eligible stale PRs enter the liveness backstop; real incident ownership states are excluded',
   );
 });
 
@@ -453,6 +491,37 @@ test('protectedLivenessPullNumbers excludes conflict-order and rebase backoff wa
   assert.deepEqual(
     candidates.map((pull) => pull.number),
     [4227],
+  );
+});
+
+test('protectedLivenessPullNumbers does not fence stale no-op decisions from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4251, action: 'skip-duplicate-fingerprint' },
+    { pr: 4252, action: 'skip-merge-train-owned' },
+    { pr: 4253, action: 'queue-merge-train' },
+    { pr: 4254, action: 'wait-admission' },
+    { pr: 4255, action: 'skip-active-shepherd' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4251),
+      blockedPull(4252),
+      blockedPull(4253),
+      blockedPull(4254),
+      blockedPull(4255),
+      blockedPull(4256),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+    cap: 10,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4251, 4252, 4253, 4254, 4256],
   );
 });
 
@@ -920,6 +989,10 @@ test('CI Liveness Sweep runs the harvest liveness alarm', () => {
   assert.match(ALARM_STEP.with.script, /collectRecentWorkflowDispatchRuns/);
   assert.match(ALARM_STEP.with.script, /summarizeDispatchLiveness/);
   assert.match(ALARM_STEP.with.script, /reconcileDispatchLivenessIncident/);
+  assert.match(
+    ALARM_STEP.with.script,
+    /isLivenessRedispatchEligible\(details\.data, owner, repo\)/,
+  );
   assert.ok(
     SWEEP_STEPS.some((step) => String(step.uses || '').startsWith('actions/checkout')),
     'alarm imports a repo file, so the sweep must check out the repository',

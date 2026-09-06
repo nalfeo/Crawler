@@ -89,10 +89,6 @@ export function parsePositiveIntEnv(value, fallback) {
 }
 
 const PROTECTED_LIVENESS_ACTIONS = new Set([
-  'skip-duplicate-fingerprint',
-  'skip-merge-train-owned',
-  'queue-merge-train',
-  'wait-admission',
   DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT,
   DISPATCH_ACTION.WAIT_CONFLICT_REBASE_PENDING,
   DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF,
@@ -103,6 +99,13 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
   // sampling window this is the only thing that still remembers it.
   DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
 ]);
+
+// Intentionally exclude the no-op / wait states that simply reflect stale
+// backlog policy rather than active ownership: `skip-duplicate-fingerprint`,
+// `skip-merge-train-owned`, `queue-merge-train`, and `wait-admission` are
+// normal reconcile outcomes and must not permanently fence a stale blocked PR
+// from the liveness backstop. The backstop is meant to force a redispatch once
+// a blocked PR has remained stale past the per-PR gap threshold.
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
   const context = await getCopilotIssueAssignmentContext({
@@ -439,6 +442,30 @@ function isStalePull(pull, now, gapMs) {
 }
 
 /**
+ * Return whether a PR may enter the liveness-monitored redispatch backlog.
+ * Only open, non-draft, same-repository blocked PRs without current ownership,
+ * quarantine, or opt-out metadata qualify. Dirty/unstable PRs are intentionally
+ * excluded because CI Recovery cannot dispatch them. List payloads may omit
+ * `state`; hydration callers require the explicit open state.
+ */
+export function isLivenessRedispatchEligible(
+  pull,
+  owner,
+  repo,
+  { requireExplicitOpenState = false } = {},
+) {
+  const state = String(pull?.state || '').toLowerCase();
+  return (
+    pullNumber(pull) !== null &&
+    (state === 'open' || (!requireExplicitOpenState && state === '')) &&
+    pull.draft !== true &&
+    String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
+    isSameRepositoryPull(pull, owner, repo) &&
+    !hasActiveRecoveryMetadata(pull)
+  );
+}
+
+/**
  * Select never-summoned blocked PRs that are safe for the liveness backstop.
  * The caller must still hydrate each selected PR before dispatching.
  */
@@ -459,12 +486,7 @@ export function selectLivenessRedispatchCandidates({
     .filter((pull) => {
       const number = pullNumber(pull);
       return (
-        number !== null &&
-        String(pull?.state || 'open').toLowerCase() === 'open' &&
-        pull.draft !== true &&
-        String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
-        isSameRepositoryPull(pull, owner, repo) &&
-        !hasActiveRecoveryMetadata(pull) &&
+        isLivenessRedispatchEligible(pull, owner, repo) &&
         isStalePull(pull, now, gapMs) &&
         !protectedNumbers.has(number) &&
         !dispatchedNumbers.has(number)
@@ -512,13 +534,8 @@ export async function dispatchLivenessRedispatches({
       continue;
     }
     const pull = response?.data || response;
-    const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
     if (
-      String(pull?.state || '').toLowerCase() !== 'open' ||
-      pull.draft === true ||
-      mergeableState !== 'blocked' ||
-      !isSameRepositoryPull(pull, owner, repo) ||
-      hasActiveRecoveryMetadata(pull) ||
+      !isLivenessRedispatchEligible(pull, owner, repo, { requireExplicitOpenState: true }) ||
       !pull?.head?.sha ||
       !pull?.base?.ref
     ) {
