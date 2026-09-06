@@ -123,7 +123,7 @@ const leftEdge = [
       3,
       1.5,
     ),
-    catalog('welcome-room-call-sheet-var-3', 1, 1, { offsetXFt: 1, offsetYFt: -1 }),
+    catalog('welcome-room-call-sheet-var-3', 0.79, 1, { offsetXFt: 1, offsetYFt: -1 }),
   ]),
   deco('merchant-sign', 0.15, 6.4, [
     catalog('welcome-sign-left-var-6', 2.5, 2.5, { offsetXFt: -0.5 }),
@@ -290,7 +290,7 @@ if (!room) throw new Error('welcome-room not found');
 // Clutter the existing hero furniture so surfaces are not bare.
 const byId = new Map(room.props.map((p) => [p.id, p]));
 byId.get('welcome-desk')?.layers.push(
-  catalog('welcome-room-call-sheet-var-3', 1.25, 1.25, {
+  catalog('welcome-room-call-sheet-var-3', 0.99, 1.25, {
     offsetXFt: -2.5,
     offsetYFt: -1.5,
   }),
@@ -299,7 +299,7 @@ byId
   .get('broker-bookcase')
   ?.layers.push(catalog('purple-potion-bottle-var-4', 1, 1, { offsetXFt: 1, offsetYFt: -1.5 }));
 byId.get('shop-table')?.layers.push(
-  catalog('welcome-room-call-sheet-var-3', 1.25, 1.25, {
+  catalog('welcome-room-call-sheet-var-3', 0.99, 1.25, {
     offsetXFt: -2,
     offsetYFt: -1,
   }),

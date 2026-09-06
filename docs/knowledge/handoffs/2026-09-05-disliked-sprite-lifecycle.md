@@ -362,6 +362,10 @@ sprite-pipeline, sprite-workflow
   negative space 7/10, landmark uniqueness 9/10. Theme, palette/lighting,
   pixel craft, and Crawler POV all remained coherent; no new art was
   commissioned.
+- Exact-head CI additionally caught the call sheet's 48x64 upright aspect in the
+  declared-feet gate. The five replacement layers now declare the actual
+  height-authoritative widths (0.76, 1.14, and 1.43 ft), and the redress source
+  preserves the same aspect instead of regenerating square declarations.
 
 ## PR #3234 generic extraction audit
 
