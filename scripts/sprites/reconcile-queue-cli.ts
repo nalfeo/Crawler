@@ -19,7 +19,7 @@
  *      reconciler REFUSED to push/arm (fail-closed). The workflow must escalate.
  *   31 rejected-lifecycle-deletion — unrelated art may have promoted, but a
  *      durable queue inconsistency blocked lifecycle convergence.
- *   1  any other failure (git/gh error)
+ *   1  a source snapshot was quarantined, or any other git/gh failure.
  */
 
 import path from 'node:path';
@@ -86,8 +86,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 export function reconcileResultExitCode(
-  result: Pick<ReconcileResult, 'rejectedLifecycleDeletions'>,
+  result: Pick<ReconcileResult, 'rejectedLifecycleDeletions' | 'quarantinedSources'>,
 ): number {
+  if ((result.quarantinedSources?.length ?? 0) > 0) return 1;
   return (result.rejectedLifecycleDeletions?.length ?? 0) > 0
     ? REJECTED_LIFECYCLE_DELETION_EXIT_CODE
     : 0;
@@ -122,6 +123,13 @@ export async function main(argv: readonly string[]): Promise<number> {
           `public/assets/generated/entries/${rejection.annotationKey}.json and its PNG together, ` +
           `or drop the "${rejection.annotationKey}" tombstone from the annotations file. Verify ` +
           `with \`npm run sprites:disliked-lifecycle -- --dry-run\`.\n`,
+      );
+    }
+    for (const quarantine of result.quarantinedSources ?? []) {
+      process.stderr.write(
+        `reconcile-queue QUARANTINED source ${quarantine.sourceRef}: ${quarantine.reason}\n` +
+          `  Withheld ${quarantine.paths.length} path(s): ${quarantine.paths.join(', ') || '(none)'}.\n` +
+          `  Other independent sources were still reconciled; repair this source snapshot before retrying.\n`,
       );
     }
     process.stdout.write(`${JSON.stringify(result)}\n`);

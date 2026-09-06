@@ -73,4 +73,18 @@ describe('reconcile-queue-cli parseArgs', () => {
     expect(workflow).toContain("steps.reconcile.outputs.exit_code == '31'");
     expect(workflow).toContain('::error title=Sprite lifecycle convergence refused::');
   });
+
+  it('fails the workflow when a source snapshot is quarantined', () => {
+    expect(
+      reconcileResultExitCode({
+        quarantinedSources: [
+          {
+            sourceRef: 'origin/assets/checkin-broken',
+            reason: 'malformed candidate shard',
+            paths: ['public/assets/generated/entries/broken.json'],
+          },
+        ],
+      }),
+    ).toBe(1);
+  });
 });

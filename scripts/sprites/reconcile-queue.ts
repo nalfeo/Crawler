@@ -185,6 +185,17 @@ export interface ReconcileResult {
    * `assets/queue` to unblock it.
    */
   readonly rejectedLifecycleDeletions?: readonly RejectedLifecycleDeletion[];
+  /**
+   * Source snapshots withheld because their history or candidate shards could
+   * not be interpreted safely. Other independent sources may still promote.
+   */
+  readonly quarantinedSources?: readonly QuarantinedPromotionSource[];
+}
+
+export interface QuarantinedPromotionSource {
+  readonly sourceRef: string;
+  readonly reason: string;
+  readonly paths: readonly string[];
 }
 
 export interface ReconcileDeps {
@@ -1991,6 +2002,7 @@ export async function runReconcile(
     // approval is visible instead of silently dropped.
     const withheld = new Set<string>();
     const rejectedLifecycleDeletions: RejectedLifecycleDeletion[] = [];
+    const quarantinedSources: QuarantinedPromotionSource[] = [];
     /**
      * Deterministic result field for refused lifecycle deletions. Omitted
      * entirely when nothing was refused, so a healthy cycle's JSON is unchanged.
@@ -2004,11 +2016,32 @@ export async function runReconcile(
                 a.annotationKey.localeCompare(b.annotationKey) || a.reason.localeCompare(b.reason),
             ),
           };
+    const quarantinedSourcesField = (): Pick<ReconcileResult, 'quarantinedSources'> =>
+      quarantinedSources.length === 0
+        ? {}
+        : {
+            quarantinedSources: [...quarantinedSources].sort((a, b) =>
+              a.sourceRef.localeCompare(b.sourceRef),
+            ),
+          };
     const keepPromotable = async (
       ref: string,
       candidates: readonly string[],
     ): Promise<string[]> => {
-      const promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      let promotable: string[];
+      try {
+        promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      } catch (error) {
+        if (!(error instanceof ReconcileError)) throw error;
+        const paths = [...candidates].sort();
+        for (const candidate of paths) withheld.add(candidate);
+        quarantinedSources.push({
+          sourceRef: ref,
+          reason: error.message,
+          paths,
+        });
+        return [];
+      }
       const kept = new Set(promotable);
       for (const p of candidates) if (!kept.has(p)) withheld.add(p);
       return promotable;
@@ -2314,6 +2347,7 @@ export async function runReconcile(
         tidiedBranches: tidyUp.deletedBranches,
         withheldPaths: [...withheld].sort(),
         ...refusedDeletionsField(),
+        ...quarantinedSourcesField(),
       };
     }
 
@@ -2366,6 +2400,7 @@ export async function runReconcile(
           tidiedBranches: tidyUp.deletedBranches,
           withheldPaths: [...withheld].sort(),
           ...refusedDeletionsField(),
+          ...quarantinedSourcesField(),
         };
       }
 
@@ -2615,6 +2650,7 @@ export async function runReconcile(
       tidiedBranches: tidyUp.deletedBranches,
       withheldPaths: [...withheld].sort(),
       ...refusedDeletionsField(),
+      ...quarantinedSourcesField(),
     };
   });
 }

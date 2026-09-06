@@ -2017,10 +2017,68 @@ describe('runReconcile (real git)', () => {
     }
     const gh = new FakeGh();
 
-    await expect(runReconcile(liveDir, realDeps(gh))).rejects.toThrow(
-      new RegExp(`Candidate shard.*${brokenKey}.*malformed JSON`, 'u'),
-    );
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.quarantinedSources).toEqual([
+      {
+        sourceRef: 'origin/assets/queue',
+        reason: expect.stringMatching(
+          new RegExp(`Candidate shard.*${brokenKey}.*malformed JSON`, 'u'),
+        ),
+        paths: expect.arrayContaining([
+          `public/assets/generated/${validKey}.png`,
+          `public/assets/generated/entries/${validKey}.json`,
+        ]),
+      },
+    ]);
     expect(gh.prs).toHaveLength(0);
+  });
+
+  it('(d9) quarantines one malformed orphan without blocking a healthy queue source', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const validKey = 'healthy-queue-var-0';
+    const brokenKey = 'broken-orphan-var-0';
+    const brokenBranch = 'assets/checkin-broken-shard';
+    seedQueueWithArt(liveDir, [validKey]);
+    seedQueueWithArt(liveDir, [brokenKey], brokenBranch);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', brokenBranch);
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-orphan-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', `origin/${brokenBranch}`);
+      writeFileSync(
+        path.join(wt, 'public', 'assets', 'generated', 'entries', `${brokenKey}.json`),
+        '{not-json',
+      );
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'orphan malformed shard');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${brokenBranch}`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${validKey}.png`,
+        `public/assets/generated/entries/${validKey}.json`,
+      ]),
+    );
+    expect(result.changedPaths).not.toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${brokenKey}.png`,
+        `public/assets/generated/entries/${brokenKey}.json`,
+      ]),
+    );
+    expect(result.quarantinedSources).toEqual([
+      expect.objectContaining({ sourceRef: `origin/${brokenBranch}` }),
+    ]);
   });
 
   it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {

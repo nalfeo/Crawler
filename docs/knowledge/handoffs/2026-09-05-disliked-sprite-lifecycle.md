@@ -332,7 +332,9 @@ sprite-pipeline, sprite-workflow
   shard reads run in fail-closed batches of eight, avoiding a sequential
   subprocess per asset without creating unbounded runner pressure; malformed
   candidate shards now fail with their exact path rather than silently
-  quarantining every approval behind a success-shaped no-op.
+  quarantining every approval behind a success-shaped no-op. Quarantine is
+  scoped and reported per source snapshot, so one malformed legacy orphan
+  cannot abort healthy queue or sibling-orphan promotion.
   Durable queue inspection uses the same eight-asset bound (sixteen concurrent
   shard/PNG reads) instead of fanning out across the full approval batch.
 
