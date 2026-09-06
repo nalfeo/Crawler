@@ -256,6 +256,13 @@ describe('Terrain-pack render guard', () => {
       `Floor 3 ground should be dominated by its two calm base variants, not a ` +
         `uniform 8-way patchwork; summary=${JSON.stringify(summary)}`,
     ).toBeGreaterThan(0.55);
+
+    const woodlandStampCount = (sourceCounts['floor-6'] ?? 0) + (sourceCounts['floor-7'] ?? 0);
+    expect(
+      woodlandStampCount,
+      `Floor 3 should stamp its dedicated woodland surfaces in the real scene; ` +
+        `summary=${JSON.stringify(summary)}`,
+    ).toBeGreaterThan(0);
   });
 
   it('Floor 3 renders as BRIGHT OUTDOOR ground, not dark cave art', async () => {

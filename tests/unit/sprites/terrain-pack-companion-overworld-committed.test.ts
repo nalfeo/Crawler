@@ -28,7 +28,10 @@ import {
   validatePoolAndDoorImages,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
-import { buildCompanionOverworldPack } from '../../../scripts/sprites/terrain-packs/build-companion-overworld.js';
+import {
+  buildCompanionOverworldPack,
+  WOODLAND_FLOOR_VARIANT_IDS,
+} from '../../../scripts/sprites/terrain-packs/build-companion-overworld.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
 
 const PACK_ID = 'companion-overworld';
@@ -149,6 +152,19 @@ describe(`committed terrain pack — ${PACK_ID}`, () => {
       const detail = `${relPath} rgb=(${r.toFixed(0)}, ${g.toFixed(0)}, ${b.toFixed(0)})`;
       expect(g - b, `${detail} is not warm/green enough`).toBeGreaterThan(20);
       expect(r - b, `${detail} is not warm enough`).toBeGreaterThan(20);
+    }
+  });
+
+  it('ships dedicated woodland floor surfaces for the outdoor circuit', () => {
+    const floorById = new Map(manifest.floorPool.map((variant) => [variant.id, variant]));
+    for (const id of WOODLAND_FLOOR_VARIANT_IDS) {
+      const variant = floorById.get(id);
+      expect(variant, `missing woodland floor variant ${id}`).toBeDefined();
+      const rgb = opaqueMeanRgb(path.join(repoRoot(), 'public', variant!.imagePath));
+      expect(
+        rgb.g - rgb.b,
+        `${id} rgb=(${rgb.r.toFixed(0)}, ${rgb.g.toFixed(0)}, ${rgb.b.toFixed(0)}) is not woodland-green`,
+      ).toBeGreaterThan(35);
     }
   });
 

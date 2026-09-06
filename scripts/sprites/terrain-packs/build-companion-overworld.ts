@@ -11,9 +11,9 @@
  * silhouettes rather than baking a hand-authored atlas.
  *
  * Art brief: a bright, sunlit outdoor arena — grass ground with sparse dirt /
- * clover / pebble punctuation, and mossy sun-lit rock walls. Deliberately much
- * lighter than the underground packs (the Floor 3 manifest also raises ambient
- * light to 0.45).
+ * clover / pebble punctuation, dedicated deep-green woodland / leaf-litter
+ * surfaces, and mossy sun-lit rock walls. Deliberately much lighter than the
+ * underground packs (the Floor 3 manifest also raises ambient light to 0.45).
  *
  * Pool weighting follows the shared-base contract in
  * `src/shared/terrain-pack-variants.ts`: ONE dominant base (weight 10), one
@@ -60,8 +60,9 @@ interface SurfaceSpec {
 
 /**
  * 8 floor-pool palettes. 0 = sunlit grass BASE, 1 = quiet grass (same hue,
- * fewer blades), 2-7 = sparse punctuation (clover, dry grass, dirt scuff,
- * pebbled turf, deep-green shade, bare earth).
+ * fewer blades), 2-5 = sparse punctuation (clover, dry grass, dirt scuff,
+ * pebbled turf), and 6-7 are dedicated woodland surfaces (deep-green canopy
+ * shade and warm leaf litter).
  */
 const FLOOR_PALETTES: readonly SurfaceSpec[] = [
   { palette: { base: [116, 160, 78, 255], speckle: [136, 180, 92, 255], speckleDensity: 0.14 } },
@@ -70,8 +71,8 @@ const FLOOR_PALETTES: readonly SurfaceSpec[] = [
   { palette: { base: [140, 166, 92, 255], speckle: [166, 186, 112, 255], speckleDensity: 0.16 } },
   { palette: { base: [150, 128, 92, 255], speckle: [172, 150, 112, 255], speckleDensity: 0.15 } },
   { palette: { base: [120, 158, 84, 255], speckle: [168, 168, 160, 255], speckleDensity: 0.09 } },
-  { palette: { base: [94, 138, 70, 255], speckle: [112, 156, 82, 255], speckleDensity: 0.12 } },
-  { palette: { base: [158, 134, 96, 255], speckle: [134, 112, 80, 255], speckleDensity: 0.2 } },
+  { palette: { base: [100, 132, 68, 255], speckle: [130, 164, 78, 255], speckleDensity: 0.12 } },
+  { palette: { base: [92, 122, 62, 255], speckle: [144, 150, 76, 255], speckleDensity: 0.2 } },
 ];
 
 /**
@@ -136,6 +137,9 @@ export interface CompanionOverworldBuildResult {
   readonly manifest: TerrainPackDef;
   readonly files: readonly BuildOutputFile[];
 }
+
+/** Floor-pool entries reserved for the dedicated woodland biome surface. */
+export const WOODLAND_FLOOR_VARIANT_IDS = ['floor-6', 'floor-7'] as const;
 
 /** Pure builder: every output PNG + the manifest, computed in memory. */
 export function buildCompanionOverworldPack(): CompanionOverworldBuildResult {
