@@ -3172,6 +3172,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.achievementToast.setText(message).setVisible(true);
+    this.positionAchievementToast();
     this.time.delayedCall(2800, () => {
       if (this.achievementToast?.text === message) {
         this.achievementToast.setVisible(false);

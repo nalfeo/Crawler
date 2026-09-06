@@ -23,9 +23,13 @@ achievement toast moves below active director commentary.
 - `npm run lint -- --quiet`
 - `npx vitest run tests/game/achievement-system.test.ts tests/property/achievement-facts-properties.test.ts tests/integration/achievements-ui-icon-render.test.ts`
 - `npx vitest run tests/integration/achievements-ui-icon-render.test.ts tests/unit/main-game-scene-achievement-toast.test.ts`
-- `npm run verify:fast` — 294 files and 3714 tests passed; fast verification passed.
+- `npm run verify:fast` — fast verification passed.
+- Repass fix: `flashAchievementToast` now repositions the visible toast against
+  already-active director commentary before its timer starts, covering the
+  ordering where the achievement arrives after commentary.
 - Deterministic regression coverage: the achievement-system regression exercises
   empty, partial, and fully occupied equipment state plus a bag-only item; the
-  real `AchievementsUI` integration path captures rendered text bounds and
-  asserts title/criteria/flavor separation; the toast layout helper asserts
-  placement below multiline commentary and restoration after commentary hides.
+  real `AchievementsUI` integration path captures rendered text bounds for a
+  multiline catalog entry at standard (1280x720) and compact (640x360)
+  viewports; the toast layout helper asserts placement below multiline
+  commentary and restoration after commentary hides.

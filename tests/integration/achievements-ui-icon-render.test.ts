@@ -51,6 +51,7 @@ function makeRecordingScene(
   registry: GeneratedSpriteRegistry,
   imageKeys: string[],
   texturesExist: (key: string) => boolean,
+  displaySize: { width: number; height: number } = { width: 1280, height: 720 },
 ): {
   scene: unknown;
   texts: Array<{ text: string; y: number; height: number; destroyed: boolean }>;
@@ -109,7 +110,7 @@ function makeRecordingScene(
         },
       },
       input: { on: () => {}, off: () => {} },
-      scale: { displaySize: { width: 1280, height: 720 }, on: () => {}, off: () => {} },
+      scale: { displaySize, on: () => {}, off: () => {} },
       textures: { exists: texturesExist },
     },
     texts,
@@ -203,40 +204,49 @@ describe('AchievementsUI generated-icon render path', () => {
     expect(imageKeys).not.toContain(textureKey);
   });
 
-  it('keeps title, criteria, and flavor text vertically separated for long content', () => {
-    const achievement = ALL_ACHIEVEMENTS.find((entry) => entry.id === 'floor2-run-fully-outfitted');
-    expect(achievement).toBeDefined();
-    const recording = makeRecordingScene(
-      {
-        version: GENERATED_MANIFEST_VERSION,
-        size: 0,
-        has: () => false,
-        lookup: () => null,
-        variants: () => [],
-        entries: () => [],
-        briefIds: () => [],
-      },
-      [],
-      () => false,
-    );
-    const world = createTestWorld();
-    world.achievements.unlockedIds.add(achievement!.id);
+  it.each([
+    { name: 'standard', displaySize: { width: 1280, height: 720 } },
+    { name: 'compact', displaySize: { width: 640, height: 360 } },
+  ])(
+    'keeps title, multiline criteria, and multiline flavor separated at $name size',
+    ({ displaySize }) => {
+      const achievement = ALL_ACHIEVEMENTS.find((entry) => entry.id === 'room-sweeper');
+      expect(achievement).toBeDefined();
+      const recording = makeRecordingScene(
+        {
+          version: GENERATED_MANIFEST_VERSION,
+          size: 0,
+          has: () => false,
+          lookup: () => null,
+          variants: () => [],
+          entries: () => [],
+          briefIds: () => [],
+        },
+        [],
+        () => false,
+        displaySize,
+      );
+      const world = createTestWorld();
+      world.achievements.unlockedIds.add(achievement!.id);
 
-    const ui = createAchievementsUI(
-      recording.scene as never,
-      { open: () => {}, isOpen: () => false } as never,
-      { height: 720 },
-    );
-    ui.toggle(world);
+      const ui = createAchievementsUI(
+        recording.scene as never,
+        { open: () => {}, isOpen: () => false } as never,
+        { height: displaySize.height },
+      );
+      ui.toggle(world);
 
-    const rendered = recording.texts.filter((text) => !text.destroyed);
-    const title = rendered.find((text) => text.text === achievement!.title);
-    const criteria = rendered.find((text) => text.text === achievement!.unlockCriteria);
-    const flavor = rendered.find((text) => text.text === achievement!.directorFlavor);
-    expect(title).toBeDefined();
-    expect(criteria).toBeDefined();
-    expect(flavor).toBeDefined();
-    expect(criteria!.y).toBeGreaterThanOrEqual(title!.y + title!.height + 4);
-    expect(flavor!.y).toBeGreaterThanOrEqual(criteria!.y + criteria!.height + 6);
-  });
+      const rendered = recording.texts.filter((text) => !text.destroyed);
+      const title = rendered.find((text) => text.text === achievement!.title);
+      const criteria = rendered.find((text) => text.text === achievement!.unlockCriteria);
+      const flavor = rendered.find((text) => text.text === achievement!.directorFlavor);
+      expect(title).toBeDefined();
+      expect(criteria).toBeDefined();
+      expect(flavor).toBeDefined();
+      expect(criteria!.height).toBeGreaterThan(20);
+      expect(flavor!.height).toBeGreaterThan(20);
+      expect(criteria!.y).toBeGreaterThanOrEqual(title!.y + title!.height + 4);
+      expect(flavor!.y).toBeGreaterThanOrEqual(criteria!.y + criteria!.height + 6);
+    },
+  );
 });
