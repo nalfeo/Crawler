@@ -168,7 +168,7 @@ import type { AchievementCatalogRegistry } from '../shared/achievements.js';
  * `tests/headless/floor2-boss-survival-gate.test.ts`. No invulnerability and no
  * seed-specific exception is used; the arena lab keeps its own debug scaling.
  */
-export const FLOOR2_BOSS_HP_SCALE = 4;
+const FLOOR2_BOSS_HP_SCALE = 4;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
