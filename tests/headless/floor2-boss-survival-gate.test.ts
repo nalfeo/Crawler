@@ -67,6 +67,10 @@ const MAX_BOSS_FIGHT_MS = 45_000;
 /**
  * One complete signature-ability cycle per family: the ability becomes eligible
  * after `firstEligibleAfterMs` and resolves after its telegraph.
+ *
+ * Keying by family is unambiguous: the catalog loader rejects a second row for
+ * a family (`duplicate family` in `src/shared/boss-abilities.ts`), so each
+ * family has exactly one signature ability and this map is order-independent.
  */
 const SIGNATURE_CYCLE_MS_BY_FAMILY = new Map<string, number>(
   FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [

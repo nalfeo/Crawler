@@ -7,6 +7,7 @@ import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.j
 import { createTestWorld } from '../helpers/world-factory.js';
 import { EnemyProjectile, FamilyMembership, spawnPlayer } from '../../src/core/index.js';
 import {
+  FLOOR2_BOSS_HP_SCALE,
   findBossDenRoom,
   initializeFloor2Bosses,
   spawnFamilyBoss,
@@ -141,10 +142,10 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     const eid = spawnFamilyBoss(world, 0, 0, 0, asFamilyId('goblins'));
 
     expect(archetype).toBeDefined();
-    // The production scale (4×, issue #4291) is derived from measured headless
+    // The production scale (issue #4291) is derived from measured headless
     // time-to-kill; the observable contract here is that the live spawn never
     // falls back to the arena lab's debug shrink (which produced 7 HP bosses).
-    expect(world.stores.health.max[eid]).toBe(archetype!.hp * 4);
+    expect(world.stores.health.max[eid]).toBe(archetype!.hp * FLOOR2_BOSS_HP_SCALE);
     expect(world.stores.health.current[eid]).toBe(world.stores.health.max[eid]);
     expect(world.stores.health.max[eid]).toBeGreaterThan(archetype!.hp);
   });
