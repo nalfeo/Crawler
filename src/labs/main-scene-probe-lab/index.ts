@@ -3359,7 +3359,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const scene = getScene();
       if (!scene) return null;
       scene.queueDirectorCommentary?.(
-        'A long director callout keeps the achievement notification below its rendered bounds.',
+        'A long director callout keeps the achievement notification\nbelow its rendered bounds.',
       );
       scene.flashAchievementToast?.('🏆 New achievement: Fully Outfitted');
       return scene.getAchievementToastLayout?.() ?? null;

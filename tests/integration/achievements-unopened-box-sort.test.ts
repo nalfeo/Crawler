@@ -43,8 +43,11 @@ function makeRecordingScene(titles: string[]): unknown {
       text: (_x: number, _y: number, text: string, style: { fontSize?: string }) => {
         // Row titles are the only text rendered at 15px that is NOT the reward
         // CTA. The CTA's label is a fixed string, so excluding it keeps this
-        // probe isolated to achievement titles in render order.
-        if (style?.fontSize === '15px' && text !== 'OPEN') titles.push(text);
+        // probe isolated to achievement titles in render order. Consecutive
+        // duplicates are measurement probes that are immediately followed by
+        // the real rendered title.
+        if (style?.fontSize === '15px' && text !== 'OPEN' && titles.at(-1) !== text)
+          titles.push(text);
         return stub;
       },
       particles: () => stub,
@@ -81,6 +84,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: 900 },
     );
     achievementsUI.toggle(world);
 
@@ -100,6 +104,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: 900 },
     );
     achievementsUI.toggle(world);
 
@@ -124,6 +129,7 @@ describe('AchievementsUI row order', () => {
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: 900 },
     );
     achievementsUI.toggle(world);
 
