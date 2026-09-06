@@ -11,6 +11,7 @@ import {
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
   DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
   DEFAULT_PR_DISPATCH_GAP_HOURS,
+  DEFAULT_LIVENESS_REDISPATCH_CAP,
   DISPATCH_LIVENESS_INCIDENT_LABEL,
   DISPATCH_LIVENESS_INCIDENT_MARKER,
   DISPATCH_LIVENESS_INCIDENT_TITLE,
@@ -25,6 +26,9 @@ import {
   reconcileHarvestIncident,
   summarizeDispatchLiveness,
   summarizeHarvestRuns,
+  selectLivenessRedispatchCandidates,
+  protectedLivenessPullNumbers,
+  dispatchLivenessRedispatches,
 } from './harvest-liveness.mjs';
 
 const NOW = new Date('2026-07-30T17:00:00Z');
@@ -363,10 +367,77 @@ test('buildDispatchLivenessIncidentBody includes histogram and never-summoned bl
     workflowRunUrl: 'https://example.test/sweep',
     repository: 'nalfeo/Crawler',
   });
+
   assert.ok(body.startsWith(DISPATCH_LIVENESS_INCIDENT_MARKER));
   assert.match(body, /skip-merge-train-owned/);
   assert.match(body, /#2193/);
   assert.match(body, /https:\/\/github\.com\/nalfeo\/Crawler\/pull\/2193/);
+});
+
+function blockedPull(number, overrides = {}) {
+  return {
+    number,
+    state: 'open',
+    draft: false,
+    mergeable_state: 'blocked',
+    blocked_since: '2026-07-30T10:00:00Z',
+    head: { sha: `sha-${number}`, repo: { full_name: 'nalfeo/Crawler' } },
+    base: { ref: 'main' },
+    ...overrides,
+  };
+}
+
+test('selectLivenessRedispatchCandidates handles the incident fixture deterministically', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4217),
+      blockedPull(4214),
+      blockedPull(4220, { draft: true }),
+      blockedPull(4221, { state: 'closed' }),
+      blockedPull(4222, { head: { repo: { full_name: 'external/fork' } } }),
+      blockedPull(4223, { blocked_since: '2026-07-30T16:59:00Z' }),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedLivenessPullNumbers([
+      { pr: 4217, action: 'skip-merge-train-owned' },
+    ]),
+    now: NOW,
+    cap: DEFAULT_LIVENESS_REDISPATCH_CAP,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4214],
+    'protected, fresh, draft, closed, and fork PRs must not be selected',
+  );
+});
+
+test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4217), blockedPull(4217), blockedPull(4218)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data:
+        number === 4217
+          ? blockedPull(4217, { head: { sha: 'new-head', repo: { full_name: 'nalfeo/Crawler' } } })
+          : blockedPull(4218, { state: 'closed' }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4217, headSha: 'new-head', baseRef: 'main' }]);
+  assert.deepEqual(result.skipped, [{ number: 4218, reason: 'state-changed' }]);
+  assert.equal(dispatches.length, 1);
+  assert.deepEqual(dispatches[0].inputs, {
+    operation: 'reconcile',
+    pr_number: '4217',
+    trigger: 'ci-liveness-sweep',
+    expected_head_sha: 'new-head',
+    expected_base_ref: 'main',
+  });
 });
 
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {

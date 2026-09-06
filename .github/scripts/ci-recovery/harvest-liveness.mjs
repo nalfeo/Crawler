@@ -51,6 +51,14 @@ export const DISPATCH_LIVENESS_INCIDENT_MARKER = '<!-- crawler:ci-dispatch-liven
 export const DEFAULT_HARVEST_THRESHOLD_MINUTES = 60;
 export const DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS = 8;
 export const DEFAULT_PR_DISPATCH_GAP_HOURS = 4;
+export const DEFAULT_LIVENESS_REDISPATCH_CAP = 3;
+const PROTECTED_LIVENESS_ACTIONS = new Set([
+  'skip-duplicate-fingerprint',
+  'skip-merge-train-owned',
+  'queue-merge-train',
+  'wait-admission',
+  'wait-conflict-rebase-pending',
+]);
 
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
   const context = await getCopilotIssueAssignmentContext({
@@ -356,6 +364,120 @@ export function summarizeDispatchLiveness({
       (left, right) => right[1] - left[1],
     ),
   };
+}
+
+function pullNumber(pull) {
+  const number = Number(pull?.number);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function isSameRepositoryPull(pull, owner, repo) {
+  const fullName = String(pull?.head?.repo?.full_name || '').toLowerCase();
+  return fullName === `${owner}/${repo}`.toLowerCase();
+}
+
+function isStalePull(pull, now, gapMs) {
+  const blockedAt = Date.parse(
+    String(pull?.blocked_since || pull?.updated_at || pull?.created_at || ''),
+  );
+  return Number.isFinite(blockedAt) && now.getTime() - blockedAt >= gapMs;
+}
+
+/**
+ * Select never-summoned blocked PRs that are safe for the liveness backstop.
+ * The caller must still hydrate each selected PR before dispatching.
+ */
+export function selectLivenessRedispatchCandidates({
+  pulls,
+  owner = '',
+  repo = '',
+  protectedPullNumbers = new Set(),
+  alreadyDispatchedPullNumbers = new Set(),
+  now = new Date(),
+  gapHours = DEFAULT_PR_DISPATCH_GAP_HOURS,
+  cap = DEFAULT_LIVENESS_REDISPATCH_CAP,
+}) {
+  const gapMs = gapHours * 60 * 60 * 1000;
+  const protectedNumbers = new Set([...protectedPullNumbers].map(Number));
+  const dispatchedNumbers = new Set([...alreadyDispatchedPullNumbers].map(Number));
+  return (pulls || [])
+    .filter((pull) => {
+      const number = pullNumber(pull);
+      return (
+        number !== null &&
+        String(pull?.state || 'open').toLowerCase() === 'open' &&
+        pull.draft !== true &&
+        String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
+        isSameRepositoryPull(pull, owner, repo) &&
+        isStalePull(pull, now, gapMs) &&
+        !protectedNumbers.has(number) &&
+        !dispatchedNumbers.has(number)
+      );
+    })
+    .sort((left, right) => pullNumber(left) - pullNumber(right))
+    .slice(0, Math.max(0, cap));
+}
+
+export function protectedLivenessPullNumbers(decisions) {
+  return new Set(
+    (decisions || [])
+      .filter((record) => PROTECTED_LIVENESS_ACTIONS.has(String(record?.action || '')))
+      .map((record) => Number(record?.pr))
+      .filter((number) => Number.isInteger(number) && number > 0),
+  );
+}
+
+/**
+ * Re-fetch and dispatch selected PRs with TOCTOU guards. A changed head is
+ * intentionally dispatched with its new SHA; ci-recovery then validates that
+ * exact SHA immediately before any mutation.
+ */
+export async function dispatchLivenessRedispatches({
+  candidates,
+  getPull,
+  dispatch,
+  owner,
+  repo,
+  ref = 'main',
+  trigger = 'ci-liveness-sweep',
+}) {
+  const dispatched = [];
+  const skipped = [];
+  const seen = new Set();
+  for (const candidate of candidates || []) {
+    const number = pullNumber(candidate);
+    if (number === null || seen.has(number)) continue;
+    seen.add(number);
+    const response = await getPull(number);
+    const pull = response?.data || response;
+    const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
+    if (
+      String(pull?.state || '').toLowerCase() !== 'open' ||
+      pull.draft === true ||
+      mergeableState !== 'blocked' ||
+      !isSameRepositoryPull(pull, owner, repo) ||
+      !pull?.head?.sha ||
+      String(pull?.base?.ref || '') !== ref
+    ) {
+      skipped.push({ number, reason: 'state-changed' });
+      continue;
+    }
+    await dispatch({
+      owner,
+      repo,
+      workflow_id: 'ci-recovery.yml',
+      ref,
+      inputs: {
+        operation: 'reconcile',
+        pr_number: String(number),
+        trigger,
+        expected_head_sha: pull.head.sha,
+        expected_base_ref: pull.base.ref,
+      },
+    });
+    dispatched.push({ number, headSha: pull.head.sha, baseRef: pull.base.ref });
+  }
+  return { dispatched, skipped };
 }
 
 /**
