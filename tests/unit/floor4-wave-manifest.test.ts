@@ -68,6 +68,7 @@ describe('floor4 wave manifests', () => {
   it('releases waves on the authored cadence', () => {
     const manifests = buildFloor4ActWaveManifests(waves, 404, 1, GATE_COUNT);
 
+    expect(waves.cadence.intervalMs).toBe(9000);
     expect(manifests).toHaveLength(waves.cadence.wavesPerAct);
     expect(manifests.map((manifest) => manifest.releaseAtActMs)).toEqual(
       manifests.map((_, index) => index * waves.cadence.intervalMs),
