@@ -170,6 +170,15 @@
       "kenneySpriteId": "weapon.arrow",
       "kenneyScale": 1.0
     },
+    "arrow": {
+      "proceduralTexture": "arrow",
+      "kenneySpriteId": "weapon.arrow",
+      "kenneyScale": 1.0
+    },
+    "bullet": {
+      "proceduralTexture": "bullet",
+      "kenneyScale": 1.0
+    },
     "enemy_proj": {
       "proceduralTexture": "enemy_proj",
       "kenneySpriteId": "effect.enemy_proj",

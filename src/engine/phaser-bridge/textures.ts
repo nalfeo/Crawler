@@ -20,6 +20,7 @@ const TEX_ENEMY_SLIME = '__cw_enemy_slime';
 const TEX_ENEMY_BOSS = '__cw_enemy_boss';
 const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
+const TEX_ARROW = '__cw_arrow';
 const TEX_BOSS_CHEST = '__cw_boss_chest';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
 const TEX_AOE_PROJ = '__cw_aoe_proj';
@@ -47,6 +48,8 @@ export const PROCEDURAL_TEXTURE_KEYS = {
   boss_chest: TEX_BOSS_CHEST,
   gold: TEX_GOLD,
   build_currency: TEX_BUILD_CURRENCY,
+  bullet: TEX_BULLET,
+  arrow: TEX_ARROW,
   proj: TEX_BULLET,
   enemy_proj: TEX_ENEMY_BULLET,
   aoe_proj: TEX_AOE_PROJ,
@@ -208,6 +211,13 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0xffffff, 1);
   g.fillRoundedRect(0, 0, 4, 10, 2);
   g.generateTexture(TEX_BULLET, 4, 10);
+
+  // Arrow fallback for player bow/crossbow projectiles.
+  g.clear();
+  g.fillStyle(0xd9d9d9, 1);
+  g.fillRect(1, 2, 2, 8);
+  g.fillTriangle(2, 0, 0, 3, 4, 3);
+  g.generateTexture(TEX_ARROW, 4, 10);
 
   // Enemy bullet — orange pill
   g.clear();

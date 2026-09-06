@@ -14,6 +14,8 @@ import {
   Npc,
   Player,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
   SiegeHero,
   SiegeMinion,
@@ -58,6 +60,16 @@ const SPRITE_TEX_WELCOME_SIGN = 3;
 export const SLIME_FULL_SPRITE_WIDTH = 3;
 
 /**
+ * Display-object name prefix for player `Projectile` sprites (issue #4274).
+ * Mirrors `CARRIED_WEAPON_OBJECT_NAME_PREFIX`: naming the sprite lets a
+ * real-scene probe identify the exact texture drawn for a given projectile
+ * eid instead of guessing from nearest on-screen distance, which can be
+ * fooled by a HUD icon or nearby enemy/carried-weapon sprite sitting closer
+ * to the projectile's feet position than its own display object.
+ */
+export const PROJECTILE_OBJECT_NAME_PREFIX = 'projectile:';
+
+/**
  * Structural slice of {@link GameWorld} that {@link resolveRenderKind} reads:
  * the ECS handle (for `hasComponent`) plus the `team.id` and `sprite.textureId`
  * stores. A full `GameWorld` is assignable, so callers pass their world as-is
@@ -68,6 +80,7 @@ export interface RenderKindWorld {
   readonly stores: {
     readonly team: { readonly id: ArrayLike<number> };
     readonly sprite: { readonly textureId: ArrayLike<number> };
+    readonly projectileVisual: { readonly kind: ArrayLike<number> };
   };
 }
 
@@ -106,7 +119,12 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
     return 'aoe_proj';
   }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
-  if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
+  if (hasComponent(world.ecs, eid, Projectile)) {
+    return hasComponent(world.ecs, eid, ProjectileVisual) &&
+      world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
+      ? 'bullet'
+      : 'arrow';
+  }
   if (
     hasComponent(world.ecs, eid, Sprite) &&
     world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN
