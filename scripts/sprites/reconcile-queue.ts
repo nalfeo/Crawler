@@ -857,7 +857,11 @@ async function historicBlobsAtPaths(
  * Fail closed: any git failure drops every path for that source. Promoting when
  * we cannot read the history is exactly the unbounded-regression case this guard
  * prevents, and dropping is non-destructive — the source keeps its bytes and a
- * later cycle promotes them once git answers again.
+ * later cycle promotes them once git answers again. A malformed or unsafe
+ * candidate shard likewise quarantines the complete immutable source snapshot:
+ * without its authored assetPath, the reconciler cannot prove which PNG must be
+ * withheld atomically, so allowing unrelated paths would make the outcome
+ * depend on an untrusted partial interpretation of that snapshot.
  */
 export async function filterPromotablePaths(
   exec: Exec,

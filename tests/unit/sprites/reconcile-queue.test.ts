@@ -1942,6 +1942,42 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
   });
 
+  it('(d8) quarantines the whole source snapshot when one candidate shard is malformed', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const validKey = 'valid-var-0';
+    const brokenKey = 'broken-var-0';
+    seedQueueWithArt(liveDir, [validKey, brokenKey]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-shard-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
+      writeFileSync(
+        path.join(wt, 'public', 'assets', 'generated', 'entries', `${brokenKey}.json`),
+        '{not-json',
+      );
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed shard');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${validKey}.png`,
+        `public/assets/generated/entries/${validKey}.json`,
+      ]),
+    );
+    expect(gh.prs).toHaveLength(0);
+  });
+
   it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);

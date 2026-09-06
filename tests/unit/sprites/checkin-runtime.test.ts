@@ -268,7 +268,7 @@ describe('assets/queue identity inspection', () => {
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
     const contentHash = createHash('sha256').update(pngBytes).digest('hex');
     const entries = Object.fromEntries(
-      ['first-var-0', 'second-var-0'].map((manifestKey) => [
+      Array.from({ length: 10 }, (_, index) => `asset-${index}-var-0`).map((manifestKey) => [
         manifestKey,
         {
           spriteName: manifestKey,
@@ -277,6 +277,8 @@ describe('assets/queue identity inspection', () => {
         },
       ]),
     );
+    let activeShows = 0;
+    let maxActiveShows = 0;
     const exec = vi.fn(async (_command: string, args: readonly string[]) => {
       if (args[0] === 'ls-remote') {
         return { code: 0, stdout: `${'a'.repeat(40)}\trefs/heads/assets/queue\n`, stderr: '' };
@@ -285,6 +287,10 @@ describe('assets/queue identity inspection', () => {
         return { code: 0, stdout: '', stderr: '' };
       }
       if (args[0] === 'show') {
+        activeShows += 1;
+        maxActiveShows = Math.max(maxActiveShows, activeShows);
+        await Promise.resolve();
+        activeShows -= 1;
         const target = args[1] ?? '';
         const manifestKey = /entries\/(.+)\.json$/u.exec(target)?.[1];
         if (manifestKey !== undefined && entries[manifestKey] !== undefined) {
@@ -304,10 +310,10 @@ describe('assets/queue identity inspection', () => {
       manifestEntry,
     }));
 
-    await expect(inspectBatch(assets)).resolves.toEqual([
-      { reconciliation: 'duplicate', branch: 'assets/queue' },
-      { reconciliation: 'duplicate', branch: 'assets/queue' },
-    ]);
+    await expect(inspectBatch(assets)).resolves.toEqual(
+      assets.map(() => ({ reconciliation: 'duplicate', branch: 'assets/queue' })),
+    );
+    expect(maxActiveShows).toBe(16);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'ls-remote')).toHaveLength(1);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'fetch')).toHaveLength(1);
     expect(exec.mock.calls.filter(([, args]) => args[0] === 'update-ref')).toHaveLength(1);

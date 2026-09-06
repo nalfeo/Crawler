@@ -383,11 +383,20 @@ function makeInspectDurableQueueAssets(
     }
 
     try {
-      return await Promise.all(
-        assets.map((asset) =>
-          inspectDurableQueueAssetAtRef(repoRoot, exec, inspectionRef, branch, asset),
-        ),
-      );
+      const inspections: DurableQueueAssetInspection[] = [];
+      const assetReadConcurrency = 8;
+      for (let offset = 0; offset < assets.length; offset += assetReadConcurrency) {
+        inspections.push(
+          ...(await Promise.all(
+            assets
+              .slice(offset, offset + assetReadConcurrency)
+              .map((asset) =>
+                inspectDurableQueueAssetAtRef(repoRoot, exec, inspectionRef, branch, asset),
+              ),
+          )),
+        );
+      }
+      return inspections;
     } finally {
       await exec('git', ['update-ref', '-d', inspectionRef], { cwd: repoRoot });
     }
