@@ -98,7 +98,7 @@ const SHOPKEEPER_DEF: NpcDef = {
       text: "Fetch me a tail. A good one, from the deep rooms, still got some *spring* in it. Then we'll talk about what I can put on you.",
     },
     {
-      text: "Don't clean it. Don't ask. It's not for the shop. It's for the room.",
+      text: "Don't clean it. Don't ask. It's not for the shop—it's for the room, and the room has been lonely.",
     },
   ],
   quests: [

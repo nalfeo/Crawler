@@ -117,7 +117,7 @@
     {
       "id": "floor1-shopkeeper-errand",
       "title": "The Merchant's Disgusting Little Errand",
-      "summary": "The Merchant will not open the shop until you fetch him one very particular souvenir. He says it's not for the shop. He says it's for the room. Don't think about the room.",
+      "summary": "The Merchant will not open the shop until you fetch him one very particular souvenir. He says it's not for the shop—it's for the room, and the room has been lonely. Don't think about the room.",
       "giverNpcId": "shopkeeper",
       "onCompleteGoalFlag": "floor1-shop-quest-complete",
       "template": {
