@@ -11,7 +11,8 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * rows, regardless of catalog order.
  */
 
-function makeGameObjectStub(): unknown {
+function makeGameObjectStub(onDestroy?: () => void): unknown {
+  let destroyed = false;
   const stub: unknown = new Proxy(function () {} as unknown as object, {
     get(_target, prop) {
       if (typeof prop === 'symbol') return undefined;
@@ -19,6 +20,12 @@ function makeGameObjectStub(): unknown {
       if (prop === 'width' || prop === 'height') return 64;
       if (prop === 'x' || prop === 'y' || prop === 'depth') return 0;
       if (prop === 'visible') return true;
+      if (prop === 'destroy')
+        return () => {
+          if (destroyed) return;
+          destroyed = true;
+          onDestroy?.();
+        };
       return () => stub;
     },
     set() {
@@ -31,9 +38,10 @@ function makeGameObjectStub(): unknown {
   return stub;
 }
 
-function makeRecordingScene(titles: string[]): unknown {
+function makeRecordingScene(): { scene: unknown; collectTitles: () => string[] } {
   const stub = makeGameObjectStub();
-  return {
+  const titleEntries: { text: string; destroyed: boolean }[] = [];
+  const scene = {
     cameras: { main: { roundPixels: false } },
     add: {
       container: () => stub,
@@ -44,7 +52,13 @@ function makeRecordingScene(titles: string[]): unknown {
         // Row titles are the only text rendered at 15px that is NOT the reward
         // CTA. The CTA's label is a fixed string, so excluding it keeps this
         // probe isolated to achievement titles in render order.
-        if (style?.fontSize === '15px' && text !== 'OPEN') titles.push(text);
+        if (style?.fontSize === '15px' && text !== 'OPEN') {
+          const entry = { text, destroyed: false };
+          titleEntries.push(entry);
+          return makeGameObjectStub(() => {
+            entry.destroyed = true;
+          });
+        }
         return stub;
       },
       particles: () => stub,
@@ -56,6 +70,9 @@ function makeRecordingScene(titles: string[]): unknown {
     tweens: { add: () => stub },
     time: { delayedCall: () => stub },
   };
+  const collectTitles = (): string[] =>
+    titleEntries.filter((entry) => !entry.destroyed).map((entry) => entry.text);
+  return { scene, collectTitles };
 }
 
 /**
@@ -67,6 +84,8 @@ const FIRST_CATALOG_ID = 'first-bonk';
 const SECOND_CATALOG_ID = 'room-sweeper';
 /** Catalog-adjacent to `first-bonk`, used for the three-way interleave case. */
 const CATALOG_MIDDLE_ID = 'slime-no-more';
+/** Must be tall enough to render three full achievement rows in probe mode. */
+const PROBE_PANEL_HEIGHT = 900;
 
 describe('AchievementsUI row order', () => {
   it('sorts an unopened loot box ahead of an already-claimed one earlier in catalog order', () => {
@@ -76,13 +95,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, SECOND_CATALOG_ID);
     expect(claimAchievementReward(world, FIRST_CATALOG_ID).ok).toBe(true);
 
-    const titles: string[] = [];
-    const scene = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
+    const titles = collectTitles();
 
     expect(titles).toEqual(['Room Sweeper', 'First Bonk']);
 
@@ -95,13 +115,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, FIRST_CATALOG_ID);
     unlockAchievement(world, SECOND_CATALOG_ID);
 
-    const titles: string[] = [];
-    const scene = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
+    const titles = collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper']);
 
@@ -119,13 +140,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, FIRST_CATALOG_ID);
     expect(claimAchievementReward(world, CATALOG_MIDDLE_ID).ok).toBe(true);
 
-    const titles: string[] = [];
-    const scene = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
+      { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
+    const titles = collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper', 'Gel Exit']);
 

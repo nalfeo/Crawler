@@ -1729,10 +1729,14 @@ describe.skipIf(!hasProc)('goobers-run.yml slot deadline cleanup reserve', () =>
 const SIBLING_DISPATCH_GH_STUB = `
 gh() {
   printf 'gh %s\\n' "$*" >> "$STUB_LOG"
-  local previous="" argument="" jq_filter="" fixture_user=""
+  local previous="" argument="" jq_filter="" fixture_user="" fixture_issue=""
   for argument in "$@"; do
     if [ "$previous" = "--jq" ]; then
       jq_filter="$argument"
+    fi
+    if { [ "$previous" = "view" ] || [ "$previous" = "edit" ]; } &&
+       [[ "$argument" =~ ^[0-9]+$ ]]; then
+      fixture_issue="$argument"
     fi
     previous="$argument"
   done
@@ -1807,15 +1811,32 @@ gh() {
       fi
       # The fresh scan now hands raw issue payloads to the canonical selector
       # rather than a bare number list.
-      printf '[{"number":55,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"},"isPullRequest":false}]\\n'
+      if [ -n "\${FRESH_SCAN_FIXTURE_JSON:-}" ]; then
+        printf '%s\\n' "\${FRESH_SCAN_FIXTURE_JSON}"
+      else
+        printf '[{"number":55,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"},"isPullRequest":false}]\\n'
+      fi
+      ;;
+    *"issue edit"*)
+      if [ -n "\${RESERVATION_EDIT_FAIL_ISSUE:-}" ] &&
+         [ "$fixture_issue" = "\${RESERVATION_EDIT_FAIL_ISSUE}" ]; then
+        printf 'HTTP 503: injected reservation mutation failure\\n' >&2
+        return 1
+      fi
+      ;;
+    *"issue view"*"--json labels"*)
+      printf 'goobers/status:in-review\\n'
       ;;
     *state,labels,assignees*)
       # gh issue view for the canonical selector. It reads number/author too,
       # so the payload must carry them or every issue reads as ineligible.
-      if [ "\${ISSUE_FIXTURE_ELIGIBLE:-1}" = "1" ]; then
-        printf '{"number":42,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"}}\\n'
+      if [ -n "\${ISSUE_FIXTURES_JSON:-}" ]; then
+        jq -c --argjson issue "$fixture_issue" '.[] | select(.number == $issue)' \\
+          <<<"\${ISSUE_FIXTURES_JSON}"
+      elif [ "\${ISSUE_FIXTURE_ELIGIBLE:-1}" = "1" ]; then
+        printf '{"number":%s,"state":"OPEN","labels":[{"name":"goobers:approved"}],"assignees":[],"author":{"login":"nalfeo"}}\\n' "\${fixture_issue:-42}"
       else
-        printf '{"number":42,"state":"CLOSED","labels":[],"assignees":[],"author":{"login":"nalfeo"}}\\n'
+        printf '{"number":%s,"state":"CLOSED","labels":[],"assignees":[],"author":{"login":"nalfeo"}}\\n' "\${fixture_issue:-42}"
       fi
       ;;
   esac
@@ -1891,6 +1912,15 @@ function runReserveStep(
   };
 }
 
+function lastAssignmentOutput(output: string): string {
+  return (
+    [...output.matchAll(/^slot_assignments=(.+)$/gm)].at(-1)?.[1] ??
+    (() => {
+      throw new Error(`No slot_assignments output found in:\n${output}`);
+    })()
+  );
+}
+
 const SELF_RUN_ONLY = {
   workflow_runs: [
     { id: 999, status: 'in_progress' },
@@ -1919,6 +1949,107 @@ describe.skipIf(!hasJq)('goobers-run.yml cross-dispatch recovery single-flight',
     expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
     expect(result.output).toContain('recovery_allowed=true');
     expect(result.output).not.toContain('recovery_allowed=false');
+  });
+
+  describe.skipIf(!hasJq)('goobers-run.yml reservation-time intake races', () => {
+    const plannedAssignments = slotAssignments([
+      { lane: 1, slot: 1, issue: '41', cohort: 'legacy-parity' },
+      { lane: 1, slot: 2, issue: '42', cohort: 'legacy-parity' },
+      { lane: 2, slot: 1, issue: '43', cohort: 'legacy-parity' },
+    ]);
+    const issueFixtures = JSON.stringify([
+      {
+        number: 41,
+        state: 'OPEN',
+        labels: [],
+        assignees: [],
+        author: { login: 'untrusted-automation', is_bot: true },
+      },
+      {
+        number: 42,
+        state: 'OPEN',
+        labels: [],
+        assignees: [],
+        author: { login: 'app/github-actions', is_bot: true },
+      },
+      {
+        number: 43,
+        state: 'OPEN',
+        labels: [],
+        assignees: [],
+        author: { login: 'nalfeo', is_bot: false },
+      },
+    ]);
+
+    it('skips a stale untrusted candidate and still reserves valid assignments', () => {
+      const result = runReserveStep(
+        'Reserve explicit slot assignments and comment on Goobers run start',
+        SELF_RUN_ONLY,
+        {
+          RESERVED_ASSIGNMENTS: plannedAssignments,
+          ISSUE_FIXTURES_JSON: issueFixtures,
+        },
+      );
+      const assignments = JSON.parse(lastAssignmentOutput(result.output)) as Array<{
+        lane: unknown;
+        slot: unknown;
+        issue: string;
+        resumePr: string;
+        resumeBranch: string;
+      }>;
+
+      expect(result.status, `stderr:\n${result.stderr}`).toBe(0);
+      expect(result.stderr).toContain('Skipping stale assignment for issue #41');
+      expect(assignments.map((assignment) => assignment.issue)).toEqual(['42', '43']);
+      expect(
+        assignments.every(({ lane, slot }) => typeof lane === 'number' && typeof slot === 'number'),
+      ).toBe(true);
+      expect(
+        assignments.every(({ resumePr, resumeBranch }) => resumePr === '' && resumeBranch === ''),
+      ).toBe(true);
+      expect(result.log).not.toContain('issue edit 41');
+      expect(result.log).toContain('issue edit 42');
+      expect(result.log).toContain('issue edit 43');
+      expect(result.output).toMatch(/^should_run=true$/m);
+    });
+
+    it('publishes every attempted mutation for cleanup when a later reservation fails', () => {
+      const reservation = runReserveStep(
+        'Reserve explicit slot assignments and comment on Goobers run start',
+        SELF_RUN_ONLY,
+        {
+          RESERVED_ASSIGNMENTS: slotAssignments([
+            { lane: 1, slot: 1, issue: '42', cohort: 'legacy-parity' },
+            { lane: 1, slot: 2, issue: '43', cohort: 'legacy-parity' },
+          ]),
+          ISSUE_FIXTURES_JSON: issueFixtures,
+          RESERVATION_EDIT_FAIL_ISSUE: '43',
+        },
+      );
+      const attempted = lastAssignmentOutput(reservation.output);
+
+      expect(reservation.status).not.toBe(0);
+      expect(
+        JSON.parse(attempted).map((assignment: { issue: string }) => assignment.issue),
+      ).toEqual(['42', '43']);
+
+      const cleanup = runReceiptStep(
+        'Release the reservation when no lane ever owned it',
+        'release-unstarted-reservation',
+        [[]],
+        {
+          RESERVED_ASSIGNMENTS: attempted,
+          RUN_RESULT: 'failure',
+        },
+      );
+      expect(cleanup.status, `stderr:\n${cleanup.stderr}`).toBe(0);
+      expect(cleanup.log).toContain(
+        'gh issue edit 42 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+      );
+      expect(cleanup.log).toContain(
+        'gh issue edit 43 --repo nalfeo/Crawler --remove-label goobers/status:in-review',
+      );
+    });
   });
 
   it('refuses recovery designation while a sibling dispatch is live', () => {

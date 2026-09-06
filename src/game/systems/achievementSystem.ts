@@ -1,5 +1,6 @@
 import { query } from 'bitecs';
 import { Player } from '../../core/components.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import type { GameWorld } from '../../core/world.js';
 import {
   ACHIEVEMENT_CATALOG_REGISTRY,
@@ -30,6 +31,7 @@ import {
   resolveLootBoxRewardBundle,
 } from '../lootbox-materials-reward-resolver.js';
 import { floor5Manifest } from '../../shared/floor-manifest.js';
+import { SLOT_REGISTRY } from '../../shared/equipment-slots.js';
 
 /**
  * Pre-computed set of Floor 2 weapon base IDs for category-weighted reward
@@ -242,6 +244,11 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
+  const playerEid = query(world.ecs, [Player])[0];
+  const equipmentState = playerEid === undefined ? undefined : getEquipmentState(world, playerEid);
+  const allEquipmentSlotsOccupied =
+    equipmentState !== undefined &&
+    SLOT_REGISTRY.every((slot) => equipmentState.equipped[slot.id] != null);
   const floor5State = world.floor === 5 ? world.floorExtendedState?.floor5Siege : undefined;
   const floor5ReleaseGate = floor5Manifest.floor5?.releaseGate;
   const floor5CommandPostMaxHealth = floor5State?.structures['command-post'].maxHealth ?? 0;
@@ -319,6 +326,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.floorExtendedState?.familyState?.staircaseUnlocked === true,
       safeRoomDiscovered: floor1Objective?.safeRoomDiscovered === true,
       equipmentUnlocked: world.featureUnlocks.equipment,
+      allEquipmentSlotsOccupied,
       staircaseDiscovered:
         floor1Objective?.staircaseDiscovered === true ||
         world.floorExtendedState?.familyState?.staircaseDiscovered === true,
