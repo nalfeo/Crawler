@@ -335,6 +335,22 @@ onto `assets/queue` by hand, or the same stuck state recurs.
 
 See `docs/knowledge/handoffs/2026-09-01-sprite-reconciler-landed-fix-amnesty.md`.
 
+## Amendment 2026-09-06 — isolate and surface unsafe source snapshots
+
+The reconciler now interprets each immutable source snapshot independently.
+Unreadable history or a malformed/unsafe candidate shard quarantines that
+source's complete contribution, records its ref, reason, and withheld paths,
+and does not abort healthy queue or sibling-orphan promotion. A quarantined
+`assets/queue` snapshot cannot authorize lifecycle deletions in the same cycle;
+deletion authority resumes only when the snapshot is fully interpretable.
+
+CLI exit 32 identifies source quarantine, while exit 33 identifies a cycle that
+also refused lifecycle deletion convergence. The workflow surfaces both
+conditions independently. Candidate shard reads and durable queue inspection
+run in deterministic batches of eight to cap Git subprocess pressure.
+
+See `docs/knowledge/handoffs/2026-09-05-disliked-sprite-lifecycle.md`.
+
 ## References
 
 - Feature ADR (PR1 + scope split):

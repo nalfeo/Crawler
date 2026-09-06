@@ -334,7 +334,10 @@ sprite-pipeline, sprite-workflow
   candidate shards now fail with their exact path rather than silently
   quarantining every approval behind a success-shaped no-op. Quarantine is
   scoped and reported per source snapshot, so one malformed legacy orphan
-  cannot abort healthy queue or sibling-orphan promotion.
+  cannot abort healthy queue or sibling-orphan promotion. A quarantined queue
+  snapshot also cannot authorize lifecycle deletions until its candidate shards
+  are interpretable. Dedicated exit codes 32/33 surface quarantine alone or
+  quarantine combined with lifecycle refusal in the hourly workflow.
   Durable queue inspection uses the same eight-asset bound (sixteen concurrent
   shard/PNG reads) instead of fanning out across the full approval batch.
 

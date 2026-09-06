@@ -5,7 +5,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  COMBINED_RECONCILE_WARNING_EXIT_CODE,
   parseArgs,
+  QUARANTINED_SOURCE_EXIT_CODE,
   reconcileResultExitCode,
   REJECTED_LIFECYCLE_DELETION_EXIT_CODE,
 } from '../../../scripts/sprites/reconcile-queue-cli.js';
@@ -85,6 +87,25 @@ describe('reconcile-queue-cli parseArgs', () => {
           },
         ],
       }),
-    ).toBe(1);
+    ).toBe(QUARANTINED_SOURCE_EXIT_CODE);
+    expect(
+      reconcileResultExitCode({
+        rejectedLifecycleDeletions: [
+          { annotationKey: 'rat-var-0', reason: 'mismatch', paths: ['generated/rat-var-0.png'] },
+        ],
+        quarantinedSources: [
+          {
+            sourceRef: 'origin/assets/checkin-broken',
+            reason: 'malformed candidate shard',
+            paths: ['public/assets/generated/entries/broken.json'],
+          },
+        ],
+      }),
+    ).toBe(COMBINED_RECONCILE_WARNING_EXIT_CODE);
+
+    const workflow = readFileSync('.github/workflows/sprite-queue-reconciler.yml', 'utf8');
+    expect(workflow).toContain("steps.reconcile.outputs.exit_code == '32'");
+    expect(workflow).toContain("steps.reconcile.outputs.exit_code == '33'");
+    expect(workflow).toContain('::error title=Sprite source quarantined::');
   });
 });

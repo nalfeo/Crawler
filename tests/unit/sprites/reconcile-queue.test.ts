@@ -1998,6 +1998,8 @@ describe('runReconcile (real git)', () => {
     cleanups.push(root);
     const validKey = 'valid-var-0';
     const brokenKey = 'broken-var-0';
+    const removedKey = 'retired-var-0';
+    addArtDirectlyToMain(liveDir, [removedKey]);
     seedQueueWithArt(liveDir, [validKey, brokenKey]);
     gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
     const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-shard-'));
@@ -2007,6 +2009,24 @@ describe('runReconcile (real git)', () => {
         path.join(wt, 'public', 'assets', 'generated', 'entries', `${brokenKey}.json`),
         '{not-json',
       );
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${removedKey}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${removedKey}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [removedKey]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: removedKey,
+              conceptId: 'retired',
+              assetPath: `generated/${removedKey}.png`,
+              sourceRun: `generated/runs/${removedKey}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [removedKey],
+            },
+          },
+        },
+      });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed shard');
       const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -2032,6 +2052,15 @@ describe('runReconcile (real git)', () => {
         ]),
       },
     ]);
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${removedKey}.png`,
+        `public/assets/generated/entries/${removedKey}.json`,
+      ]),
+    );
+    expect(
+      gitSync(liveDir, 'show', `origin/main:public/assets/generated/${removedKey}.png`),
+    ).not.toBe('');
     expect(gh.prs).toHaveLength(0);
   });
 

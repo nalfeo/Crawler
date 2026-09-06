@@ -19,7 +19,10 @@
  *      reconciler REFUSED to push/arm (fail-closed). The workflow must escalate.
  *   31 rejected-lifecycle-deletion — unrelated art may have promoted, but a
  *      durable queue inconsistency blocked lifecycle convergence.
- *   1  a source snapshot was quarantined, or any other git/gh failure.
+ *   32 source-quarantined — one source snapshot was withheld while healthy
+ *      independent sources continued.
+ *   33 both lifecycle deletion refusal and source quarantine occurred.
+ *   1  any other git/gh failure.
  */
 
 import path from 'node:path';
@@ -33,6 +36,8 @@ import {
 import { createDefaultReconcileDeps } from './reconcile-queue-runtime.js';
 
 export const REJECTED_LIFECYCLE_DELETION_EXIT_CODE = 31;
+export const QUARANTINED_SOURCE_EXIT_CODE = 32;
+export const COMBINED_RECONCILE_WARNING_EXIT_CODE = 33;
 
 interface ParsedArgs {
   readonly repoRoot: string;
@@ -88,10 +93,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 export function reconcileResultExitCode(
   result: Pick<ReconcileResult, 'rejectedLifecycleDeletions' | 'quarantinedSources'>,
 ): number {
-  if ((result.quarantinedSources?.length ?? 0) > 0) return 1;
-  return (result.rejectedLifecycleDeletions?.length ?? 0) > 0
-    ? REJECTED_LIFECYCLE_DELETION_EXIT_CODE
-    : 0;
+  const hasLifecycleRefusal = (result.rejectedLifecycleDeletions?.length ?? 0) > 0;
+  const hasQuarantine = (result.quarantinedSources?.length ?? 0) > 0;
+  if (hasLifecycleRefusal && hasQuarantine) return COMBINED_RECONCILE_WARNING_EXIT_CODE;
+  if (hasLifecycleRefusal) return REJECTED_LIFECYCLE_DELETION_EXIT_CODE;
+  if (hasQuarantine) return QUARANTINED_SOURCE_EXIT_CODE;
+  return 0;
 }
 
 export async function main(argv: readonly string[]): Promise<number> {

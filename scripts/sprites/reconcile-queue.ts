@@ -2065,6 +2065,9 @@ export async function runReconcile(
       // do not clobber a main-side change the queue never saw (see
       // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
       queueVsMainArt = await keepPromotable(queueRef, parseNameOnly(delta));
+      const queueQuarantined = quarantinedSources.some(
+        (quarantine) => quarantine.sourceRef === queueRef,
+      );
       let queueAnnotations:
         | {
             readonly code: number;
@@ -2109,7 +2112,9 @@ export async function runReconcile(
       ]);
       const deletedPaths = parseNameOnly(deleted);
       for (const deletedPath of deletedPaths) queueDeletedPathSet.add(deletedPath);
-      if (deletedPaths.length > 0) {
+      if (deletedPaths.length > 0 && queueQuarantined) {
+        for (const deletedPath of deletedPaths) withheld.add(deletedPath);
+      } else if (deletedPaths.length > 0) {
         const promotablePathSet = new Set(queueVsMainArt);
         const annotations =
           queueAnnotations ??
