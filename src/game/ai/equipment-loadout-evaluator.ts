@@ -685,6 +685,8 @@ function triggerUptime(ability: AbilityDefinition, fixture: EquipmentEncounterFi
         : 0;
     case 'skill_usage':
       return fixture.skillTriggerRatePerSecond > 0 ? 1 : 0;
+    case 'player_damage':
+      return fixture.incomingHitsPerSecond > 0 ? 1 : 0;
   }
 }
 

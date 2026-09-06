@@ -309,6 +309,14 @@ export function applyDamage(
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
     }
 
+    if (isPlayerTarget && options.origin === 'enemy') {
+      world.abilityTriggerEvents.push({
+        holderEid: target,
+        kind: 'player_damage',
+        amount: dealt,
+      });
+    }
+
     // Floor 3 Companion League: attribute damage-weighted combat XP credit.
     // Only Companion-sourced hits on a non-player Enemy target count — player
     // weapon damage and environment damage never feed Companion XP (R7).

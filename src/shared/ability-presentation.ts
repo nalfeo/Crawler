@@ -298,7 +298,7 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-pulse-shield',
-    cooldownFrames: 1200,
+    cooldownFrames: 600,
   },
   'magic-missile': {
     id: 'magic-missile',

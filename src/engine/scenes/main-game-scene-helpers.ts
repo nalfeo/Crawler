@@ -131,7 +131,7 @@ export function formatAbilityTrigger(abilityId: string): string {
   const triggerText = new Map<string, string>([
     ['fireball', 'Auto: hits the nearest enemy, favoring clusters'],
     ['heal', 'Auto: casts when HP deficit warrants it'],
-    ['pulse-shield', 'Auto: casts at low HP when surrounded'],
+    ['pulse-shield', 'Auto: casts when you take damage'],
   ]);
   return triggerText.get(abilityId) ?? 'Auto trigger';
 }

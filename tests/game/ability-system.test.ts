@@ -323,30 +323,26 @@ describe('abilitySystem', () => {
     expect(world.stores.health.current[lone]).toBe(100);
   });
 
-  it('casts pulse shield only when low health and crowded', () => {
+  it('casts pulse shield on the first qualifying player-damage event and ignores retriggers while cooling down', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
     memorizeSpell(world, player, 'pulse-shield');
-    world.stores.health.current[player] = 40;
-    world.stores.health.max[player] = 100;
+    const state = world.abilityStatesByEntity.get(player)!;
 
-    spawnEnemy(world, 1.5, 0, 10);
-    spawnEnemy(world, -1.25, 0.75, 10);
-
+    queueAbilityTrigger(world, { holderEid: player, kind: 'player_damage', amount: 12 });
     world.frameCount = 100;
     abilitySystem(world);
-    const state = world.abilityStatesByEntity.get(player)!;
-    expect(state.cooldownByAbilityId.has('pulse-shield')).toBe(false);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(100);
 
-    spawnEnemy(world, 0.75, -1, 10);
+    queueAbilityTrigger(world, { holderEid: player, kind: 'player_damage', amount: 8 });
     world.frameCount = 200;
     abilitySystem(world);
-    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(100);
 
-    world.stores.health.current[player] = 85;
-    world.frameCount = 1600;
+    queueAbilityTrigger(world, { holderEid: player, kind: 'player_damage', amount: 4 });
+    world.frameCount = 700;
     abilitySystem(world);
-    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(700);
   });
 
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {
@@ -356,8 +352,6 @@ describe('abilitySystem', () => {
     world.stores.position.y[player] = 12;
     world.featureUnlocks.spells = true;
     memorizeSpell(world, player, 'pulse-shield');
-    world.stores.health.current[player] = 40;
-    world.stores.health.max[player] = 100;
 
     spawnEnemy(world, 11, 12, 10);
     spawnEnemy(world, 12.5, 12, 10);
@@ -369,22 +363,15 @@ describe('abilitySystem', () => {
       wallEnemy,
       set(Size, { radius: 0, halfWidth: 1.875, halfHeight: 1.875, shape: SHAPE_BOX }),
     );
-    // Pin all three enemy weights to the 120 lb knockback baseline so the
-    // ±10% sizeScale jitter in `initializeEnemyAppearance` doesn't perturb
-    // this bit-parity assertion. Slice 2 / ADR 0044: knockbackSystem now
-    // scales displacement by 120/weight — a jittered 108–132 lb weight
-    // would push wallEnemy to 18.11–18.14 ft instead of the exact 18.125.
     for (const e of query(world.ecs, [Enemy])) {
       world.stores.weight.value[e] = 120;
     }
 
+    queueAbilityTrigger(world, { holderEid: player, kind: 'player_damage', amount: 5 });
     world.frameCount = 100;
     abilitySystem(world);
     knockbackSystem(world);
 
-    // Knockback resolves in 0.125 ft substeps (the 1 px-equivalent sweep
-    // resolution), so the enemy slides up against the wall and stops at 18.125 ft,
-    // putting its right edge (18.125 + 3.75 / 2) exactly at the wall plane at 20 ft.
     expect(world.stores.position.x[wallEnemy]).toBeCloseTo(18.125);
     expect(world.stores.position.x[wallEnemy]! + 3.75 / 2).toBeLessThanOrEqual(20);
     expect(world.stores.position.y[wallEnemy]).toBeCloseTo(12);
@@ -452,13 +439,12 @@ describe('abilitySystem', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
     memorizeSpell(world, player, 'pulse-shield');
-    world.stores.health.current[player] = 40;
-    world.stores.health.max[player] = 100;
     spawnEnemy(world, 1.5, 0, 10);
     spawnEnemy(world, -1.5, 0, 10);
     spawnEnemy(world, 0, 1.5, 10);
 
     world.vfxEvents.length = 0;
+    queueAbilityTrigger(world, { holderEid: player, kind: 'player_damage', amount: 5 });
     world.frameCount = 100;
     abilitySystem(world);
 
@@ -466,8 +452,6 @@ describe('abilitySystem', () => {
     expect(waves).toHaveLength(1);
     expect(waves[0]!.x).toBe(0);
     expect(waves[0]!.y).toBe(0);
-    // `radiusFt` is the knockback horizon so the ring visually reaches the
-    // full effect radius. Default tile size 4 ft × radiusTiles 4 = 16 ft.
     expect(waves[0]!.radiusFt).toBeGreaterThan(0);
   });
 
