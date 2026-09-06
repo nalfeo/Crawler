@@ -192,10 +192,20 @@ const SPELL_BROKER_POST_CLAIM_DIALOGUE: readonly string[] = [
   "You know what the worst part is? I *like* them. Both of them. I've liked them for more seasons than he can count, and he used to be able to count. Go on. Kill something.",
 ];
 
+/** Lines shown once the Slime Rat objective is complete but the spellbook has
+ * not yet been claimed. This suppresses the stale intro and advances the Broker
+ * to the next valid progression beat.
+ */
+const SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE: readonly string[] = [
+  "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+];
+
 /** Inputs for {@link selectSpellBrokerDialogue}, derived from world state. */
 interface SpellBrokerDialogueState {
   /** The Spell Broker is still gated behind the Goon's opening quest. */
   readonly locked: boolean;
+  /** The player has completed the Slime Rat objective but not yet claimed the spellbook reward. */
+  readonly bossBattleComplete: boolean;
   /** The player has claimed their spellbook reward. */
   readonly spellbookClaimed: boolean;
   /** The merchant errand has been accepted and the tail-reference beat is now valid. */
@@ -205,10 +215,10 @@ interface SpellBrokerDialogueState {
 /**
  * Pick the Spell Broker's contextual dialogue for the current quest progress.
  *
- * Priority (highest first): locked > post-spellbook claim > merchant-quest gate.
- * Once the merchant errand is active, the Broker can safely use the default
- * authored dialogue. Before then, omit only the tail-reference line so the
- * Broker can still explain the spell quest.
+ * Priority (highest first): locked > post-spellbook claim > post-boss progression >
+ * merchant-quest gate. Once the Slime Rat objective is done, the stale intro must
+ * not replay; instead we advance to the next valid spell-book line. After the
+ * merchant errand begins, the Broker can safely use the default authored dialogue.
  */
 export function selectSpellBrokerDialogue(
   state: SpellBrokerDialogueState,
@@ -218,6 +228,9 @@ export function selectSpellBrokerDialogue(
   }
   if (state.spellbookClaimed) {
     return SPELL_BROKER_POST_CLAIM_DIALOGUE;
+  }
+  if (state.bossBattleComplete) {
+    return SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE;
   }
   if (state.merchantQuestStarted) {
     return null;

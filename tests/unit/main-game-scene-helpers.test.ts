@@ -389,12 +389,22 @@ describe('resolveDialogueLines', () => {
     );
   });
 
+  it('switches to the post-boss progression beat after the Slime Rat objective completes', () => {
+    const world = createTestWorld();
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    const deps = { spellQuestGiver: { isLocked: () => false }, shopkeeperJustReturned: false };
+    expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+  });
+
   it('returns the locked line for a gated spell quest giver', () => {
     const world = createTestWorld();
     const deps = { spellQuestGiver: { isLocked: () => true }, shopkeeperJustReturned: false };
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossBattleComplete: false,
         spellbookClaimed: false,
         merchantQuestStarted: false,
       })!,
@@ -409,6 +419,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: false,
+        bossBattleComplete: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,
@@ -433,6 +444,7 @@ describe('resolveDialogueLines', () => {
     expect(resolveDialogueLines('spell-quest-giver', world, deps)).toEqual([
       ...selectSpellBrokerDialogue({
         locked: true,
+        bossBattleComplete: false,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       })!,

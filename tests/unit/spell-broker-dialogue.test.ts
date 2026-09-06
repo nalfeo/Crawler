@@ -4,6 +4,7 @@ import { selectSpellBrokerDialogue } from '../../src/shared/npc-types.js';
 /** A "nothing started" baseline; spread + override per case. */
 const NONE = {
   locked: false,
+  bossBattleComplete: false,
   spellbookClaimed: false,
   merchantQuestStarted: false,
 } as const;
@@ -27,6 +28,12 @@ describe('selectSpellBrokerDialogue', () => {
     ]);
   });
 
+  it('returns the post-boss progression line once the Slime Rat objective is complete', () => {
+    expect(selectSpellBrokerDialogue({ ...NONE, bossBattleComplete: true })).toEqual([
+      "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+    ]);
+  });
+
   it('returns the post-claim line once the spellbook is claimed', () => {
     expect(selectSpellBrokerDialogue({ ...NONE, spellbookClaimed: true })).toEqual([
       "It's live. It'll fire itself when the conditions are right — stop babysitting it and go fight.",
@@ -34,10 +41,11 @@ describe('selectSpellBrokerDialogue', () => {
     ]);
   });
 
-  it('prioritises the locked line over the post-claim line', () => {
+  it('prioritises the locked line over the post-claim and post-boss lines', () => {
     expect(
       selectSpellBrokerDialogue({
         locked: true,
+        bossBattleComplete: true,
         spellbookClaimed: true,
         merchantQuestStarted: false,
       }),
