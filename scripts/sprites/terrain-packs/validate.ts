@@ -1097,6 +1097,9 @@ export function validateTerrainDepthAndPerspective(
     let exposedWallPixels = 0;
     let accentedExposedWallPixels = 0;
     let accentedInteriorPixels = 0;
+    const exposedEdgePixels = [0, 0, 0, 0];
+    const accentedExposedEdgePixels = [0, 0, 0, 0];
+    const edgeBits = [MASK_BIT.N, MASK_BIT.E, MASK_BIT.S, MASK_BIT.W];
     for (let pixel = 0; pixel < accent.data.length; pixel += 4) {
       const alpha = accent.data[pixel + 3] ?? 0;
       const pixelIndex = pixel / 4;
@@ -1115,15 +1118,24 @@ export function validateTerrainDepthAndPerspective(
           (entry) => entry.frameIndex === frameIndex,
         );
         const maskId = maskEntry?.maskId ?? 0;
-        const nearExposedEdge =
-          (!(maskId & MASK_BIT.N) && localY >= borderMargin && localY < borderMargin + edgeBand) ||
-          (!(maskId & MASK_BIT.E) &&
+        const nearExposedEdges = [
+          !(maskId & MASK_BIT.N) && localY >= borderMargin && localY < borderMargin + edgeBand,
+          !(maskId & MASK_BIT.E) &&
             localX >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
-            localX < manifest.wallAutotile.cellPx - borderMargin) ||
-          (!(maskId & MASK_BIT.S) &&
+            localX < manifest.wallAutotile.cellPx - borderMargin,
+          !(maskId & MASK_BIT.S) &&
             localY >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
-            localY < manifest.wallAutotile.cellPx - borderMargin) ||
-          (!(maskId & MASK_BIT.W) && localX >= borderMargin && localX < borderMargin + edgeBand);
+            localY < manifest.wallAutotile.cellPx - borderMargin,
+          !(maskId & MASK_BIT.W) && localX >= borderMargin && localX < borderMargin + edgeBand,
+        ];
+        for (let edgeIndex = 0; edgeIndex < nearExposedEdges.length; edgeIndex += 1) {
+          if (!nearExposedEdges[edgeIndex] || maskId & edgeBits[edgeIndex]!) continue;
+          exposedEdgePixels[edgeIndex] = (exposedEdgePixels[edgeIndex] ?? 0) + 1;
+          if (alpha !== 0) {
+            accentedExposedEdgePixels[edgeIndex] = (accentedExposedEdgePixels[edgeIndex] ?? 0) + 1;
+          }
+        }
+        const nearExposedEdge = nearExposedEdges.some(Boolean);
         if (nearExposedEdge) {
           exposedWallPixels++;
           if (alpha !== 0) accentedExposedWallPixels++;
@@ -1156,6 +1168,9 @@ export function validateTerrainDepthAndPerspective(
     const exposedEdgeCoverage = accentedExposedWallPixels / Math.max(exposedWallPixels, 1);
     const exposedEdgeShare =
       accentedExposedWallPixels / Math.max(accentedExposedWallPixels + accentedInteriorPixels, 1);
+    const directionalEdgeCoverage = accentedExposedEdgePixels.map(
+      (count, edgeIndex) => count / Math.max(exposedEdgePixels[edgeIndex]!, 1),
+    );
     if (
       coverage < 0.01 ||
       coverage > 0.9 ||
@@ -1165,12 +1180,13 @@ export function validateTerrainDepthAndPerspective(
       visibleOverlay < 0.5 ||
       exposedEdgeCoverage < 0.15 ||
       exposedEdgeCoverage > 0.85 ||
-      exposedEdgeShare > 0.25
+      exposedEdgeShare > 0.25 ||
+      directionalEdgeCoverage.some((coverage) => coverage < 0.08 || coverage > 0.75)
     ) {
       fail(
         issues,
         'terrain-pack-lacks-depth',
-        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}).`,
+        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}, directionalEdgeCoverage=${directionalEdgeCoverage.map((value) => value.toFixed(3)).join('/')}).`,
       );
     }
   }

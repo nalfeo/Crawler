@@ -22,7 +22,7 @@
  * beyond the aggregate cardinal-edge metric.
  */
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   validateManifestSchema,
@@ -749,7 +749,35 @@ describe('validateTerrainDepthAndPerspective', () => {
     expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
   });
 
-  it('keeps the production terrain-pack validation command gated for flat runtime packs', () => {
-    expect(runValidate()).toBe(false);
+  it('keeps the production terrain-pack validation command gated for a pack without depth assets', () => {
+    const tempRoot = mkdtempSync(path.join(repoRoot(), 'files', 'terrain-pack-cli-fixture-'));
+    try {
+      const manifestDir = path.join(tempRoot, 'src', 'shared', 'data', 'terrain-packs');
+      const assetDir = path.join(tempRoot, 'public', 'assets', 'terrain-packs', 'industrial-cave');
+      const sourceManifestPath = path.join(
+        repoRoot(),
+        'src',
+        'shared',
+        'data',
+        'terrain-packs',
+        'industrial-cave.manifest.json',
+      );
+      cpSync(path.dirname(sourceManifestPath), manifestDir, { recursive: true });
+      cpSync(
+        path.join(repoRoot(), 'public', 'assets', 'terrain-packs', 'industrial-cave'),
+        assetDir,
+        { recursive: true },
+      );
+      const manifest = JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as TerrainPackDef;
+      const flatManifest = { ...manifest, wallAccents: undefined };
+      writeFileSync(
+        path.join(manifestDir, 'industrial-cave.manifest.json'),
+        JSON.stringify(flatManifest),
+      );
+
+      expect(runValidate(tempRoot, ['industrial-cave'])).toBe(false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 });

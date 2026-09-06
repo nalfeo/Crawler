@@ -52,13 +52,17 @@ function runBuild(): void {
   applySharedBasePoolRestyle();
 }
 
-export function runValidate(repoRoot = repoRootFromHere()): boolean {
+export function runValidate(repoRoot = repoRootFromHere(), packIds?: readonly string[]): boolean {
   const manifestDir = path.join(repoRoot, 'src', 'shared', 'data', 'terrain-packs');
-  const packs = fs
+  const discoveredPacks = fs
     .readdirSync(manifestDir)
     .filter((fileName) => fileName.endsWith('.manifest.json'))
     .map((fileName) => ({ id: fileName.replace(/\.manifest\.json$/, '') }))
     .sort((left, right) => left.id.localeCompare(right.id));
+  const selectedPackIds = packIds === undefined ? undefined : new Set(packIds);
+  const packs = discoveredPacks.filter(
+    (pack) => selectedPackIds === undefined || selectedPackIds.has(pack.id),
+  );
   const decodedPacks: Array<{
     id: string;
     manifest: TerrainPackDef;
