@@ -95,6 +95,7 @@ import {
   pickGeneratedEnemyTextureKey,
   pickGeneratedNpcTextureKey,
   pickGeneratedHarvestableTextureKey,
+  PROJECTILE_OBJECT_NAME_PREFIX,
   refineEnemyVisualKind,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -1715,6 +1716,15 @@ export function createPhaserBridge(
             baseScaleRegistryRevision: registryRevision,
           };
           visuals.set(eid, visual);
+          // Name bullet/arrow projectile sprites so a real-scene probe can
+          // identify the exact display object for a given eid (issue #4274)
+          // instead of guessing by nearest on-screen distance.
+          if (
+            (visualType === 'bullet' || visualType === 'arrow') &&
+            typeof img.setName === 'function'
+          ) {
+            img.setName(`${PROJECTILE_OBJECT_NAME_PREFIX}${eid}`);
+          }
         }
 
         let img = visual.obj;
