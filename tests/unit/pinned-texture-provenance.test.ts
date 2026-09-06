@@ -24,7 +24,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { TILE_SPRITES } from '../../src/engine/sprites/tile-visuals.js';
+import { getSprite } from '../../src/engine/sprites/registry.js';
 import { TerrainType } from '../../src/shared/map-types.js';
+import setPieces from '../../src/shared/data/set-pieces.json' with { type: 'json' };
 import substrate from '../../src/shared/data/set-piece-substrate.json' with { type: 'json' };
 import {
   isRuntimeEligibleManifestEntry,
@@ -81,6 +83,25 @@ describe('pinned texture-key provenance', () => {
       expect(/-v\d+(-var-\d+)?$/.test(key), `terrain ${terrain} pins versioned "${key}"`).toBe(
         false,
       );
+    }
+  });
+
+  it('every set-piece catalog layer resolves to static or runtime-eligible generated art', () => {
+    for (const setPiece of setPieces.setPieces) {
+      for (const prop of setPiece.props) {
+        for (const layer of prop.layers ?? []) {
+          if (layer.sprite.source !== 'catalog' || !('spriteId' in layer.sprite)) continue;
+          const key = layer.sprite.spriteId;
+          if (typeof key !== 'string') continue;
+          const generatedEntry = loadEntry(key);
+          expect(
+            getSprite(key) !== undefined ||
+              key.startsWith('sprite:') ||
+              (generatedEntry !== undefined && isRuntimeEligibleManifestEntry(generatedEntry)),
+            `set piece "${setPiece.id}" prop "${prop.id}" pins unresolved or runtime-ineligible key "${key}"`,
+          ).toBe(true);
+        }
+      }
     }
   });
 });

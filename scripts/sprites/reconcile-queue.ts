@@ -51,12 +51,14 @@
  * — running in CI (the hourly workflow) is the entire point of PR2.
  */
 
+import { createHash } from 'node:crypto';
 import { parseAssetIssueBody } from './asset-issues.js';
 import {
   ART_SURFACE_ALLOWLIST,
   ASSET_CHECKIN_LABEL,
   ASSET_SURFACE_PATHS,
   type Exec,
+  type ExecResult,
 } from './checkin.js';
 import {
   generatedManifestConceptId,
@@ -643,11 +645,7 @@ async function reEnsureMergeTrainLabel(
 }
 
 /** git args that write to a specific worktree/cwd. */
-async function runGit(
-  exec: Exec,
-  cwd: string,
-  args: readonly string[],
-): Promise<{ stdout: string; stderr: string; code: number }> {
+async function runGit(exec: Exec, cwd: string, args: readonly string[]): Promise<ExecResult> {
   return exec('git', args, { cwd });
 }
 
@@ -913,61 +911,98 @@ export async function filterPromotablePaths(
   const pathSet = new Set(paths);
   const pairs: Array<readonly [string, string]> = [];
   const shardPrefix = 'public/assets/generated/entries/';
+  const pngPrefix = 'public/assets/generated/';
   const shardPaths = paths.filter(
     (candidate) => candidate.startsWith(shardPrefix) && candidate.endsWith('.json'),
   );
+  const pngPaths = paths.filter(
+    (candidate) =>
+      candidate.startsWith(pngPrefix) &&
+      !candidate.startsWith(shardPrefix) &&
+      candidate.endsWith('.png'),
+  );
+  const pairedPngPaths = new Set<string>();
+
+  const readAndValidateShard = async (
+    shardPath: string,
+    expectedPngPath?: string,
+  ): Promise<
+    | { readonly ok: true; readonly pair?: readonly [string, string] }
+    | {
+        readonly ok: false;
+        readonly kind: 'git-failed' | 'invalid-state';
+        readonly reason: string;
+      }
+  > => {
+    const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
+    if (shard.code !== 0) {
+      return {
+        ok: false,
+        kind: 'git-failed',
+        reason: `Unable to read candidate shard "${shardPath}" from ${sourceRef}: ${shard.stderr || shard.stdout || 'git show failed'}`,
+      };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(shard.stdout);
+    } catch {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} is malformed JSON.`,
+      };
+    }
+    const parsedEntry = manifestEntrySchema.safeParse(parsed);
+    if (!parsedEntry.success) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the generated manifest entry schema.`,
+      };
+    }
+    const assetPath = parsedEntry.data.assetPath;
+    if (!isSafeQueueAssetPath(assetPath)) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} has an unsafe assetPath.`,
+      };
+    }
+    const pngPath = `public/assets/${assetPath}`;
+    if (expectedPngPath !== undefined && pngPath !== expectedPngPath) {
+      return { ok: true };
+    }
+    const png = await runGit(exec, repoRoot, ['show', `${sourceRef}:${pngPath}`]);
+    if (png.code !== 0) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} references missing PNG "${pngPath}".`,
+      };
+    }
+    const declaredHash = parsedEntry.data.contentHash;
+    const pngBytes = png.stdoutBytes ?? Buffer.from(png.stdout);
+    const actualHash = createHash('sha256').update(pngBytes).digest('hex');
+    if (declaredHash === undefined || declaredHash !== actualHash) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the SHA-256 of "${pngPath}".`,
+      };
+    }
+    pairedPngPaths.add(pngPath);
+    return {
+      ok: true,
+      pair: pathSet.has(pngPath) ? ([shardPath, pngPath] as const) : undefined,
+    };
+  };
+
   const shardReadConcurrency = 8;
   for (let offset = 0; offset < shardPaths.length; offset += shardReadConcurrency) {
     const reads = await Promise.all(
-      shardPaths.slice(offset, offset + shardReadConcurrency).map(async (shardPath) => {
-        const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
-        if (shard.code !== 0) {
-          return {
-            ok: false,
-            kind: 'git-failed' as const,
-            reason: `Unable to read candidate shard "${shardPath}" from ${sourceRef}: ${shard.stderr || shard.stdout || 'git show failed'}`,
-          };
-        }
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(shard.stdout);
-        } catch {
-          return {
-            ok: false,
-            kind: 'invalid-state' as const,
-            reason: `Candidate shard "${shardPath}" on ${sourceRef} is malformed JSON.`,
-          };
-        }
-        const parsedEntry = manifestEntrySchema.safeParse(parsed);
-        if (!parsedEntry.success) {
-          return {
-            ok: false,
-            kind: 'invalid-state' as const,
-            reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the generated manifest entry schema.`,
-          };
-        }
-        const assetPath = parsedEntry.data.assetPath;
-        if (!isSafeQueueAssetPath(assetPath)) {
-          return {
-            ok: false,
-            kind: 'invalid-state' as const,
-            reason: `Candidate shard "${shardPath}" on ${sourceRef} has an unsafe assetPath.`,
-          };
-        }
-        const pngPath = `public/assets/${assetPath}`;
-        const png = await runGit(exec, repoRoot, ['cat-file', '-e', `${sourceRef}:${pngPath}`]);
-        if (png.code !== 0) {
-          return {
-            ok: false,
-            kind: 'invalid-state' as const,
-            reason: `Candidate shard "${shardPath}" on ${sourceRef} references missing PNG "${pngPath}".`,
-          };
-        }
-        return {
-          ok: true,
-          pair: pathSet.has(pngPath) ? ([shardPath, pngPath] as const) : undefined,
-        } as const;
-      }),
+      shardPaths
+        .slice(offset, offset + shardReadConcurrency)
+        .map((shardPath) => readAndValidateShard(shardPath)),
     );
     const failed = reads.find((read) => !read.ok);
     if (failed !== undefined && !failed.ok) {
@@ -975,6 +1010,55 @@ export async function filterPromotablePaths(
     }
     for (const read of reads) {
       if (read.ok && read.pair !== undefined) pairs.push(read.pair);
+    }
+  }
+
+  const unpairedPngPaths = pngPaths.filter((pngPath) => !pairedPngPaths.has(pngPath));
+  for (let offset = 0; offset < unpairedPngPaths.length; offset += shardReadConcurrency) {
+    const reads = await Promise.all(
+      unpairedPngPaths.slice(offset, offset + shardReadConcurrency).map(async (pngPath) => {
+        const assetPath = pngPath.slice('public/assets/'.length);
+        const matching = await runGit(exec, repoRoot, [
+          'grep',
+          '-l',
+          '-F',
+          assetPath,
+          sourceRef,
+          '--',
+          shardPrefix,
+        ]);
+        if (matching.code !== 0 && matching.code !== 1) {
+          return {
+            ok: false,
+            kind: 'git-failed' as const,
+            reason: `Unable to locate the owner shard for "${pngPath}" on ${sourceRef}: ${matching.stderr || matching.stdout || 'git grep failed'}`,
+          };
+        }
+        const prefix = `${sourceRef}:`;
+        const ownerCandidates = matching.stdout
+          .split(/\r?\n/u)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line));
+        const owners: string[] = [];
+        for (const shardPath of ownerCandidates) {
+          const result = await readAndValidateShard(shardPath, pngPath);
+          if (!result.ok) return result;
+          if (result.pair !== undefined || pairedPngPaths.has(pngPath)) owners.push(shardPath);
+        }
+        if (owners.length !== 1) {
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate PNG "${pngPath}" on ${sourceRef} has ${owners.length} schema-valid owner shards; expected exactly one.`,
+          };
+        }
+        return { ok: true } as const;
+      }),
+    );
+    const failed = reads.find((read) => !read.ok);
+    if (failed !== undefined && !failed.ok) {
+      throw new ReconcileError(failed.kind, failed.reason);
     }
   }
 

@@ -23,6 +23,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -51,7 +52,10 @@ import {
 } from '../../../scripts/sprites/reconcile-queue.js';
 
 const FIXED_NOW = new Date('2026-07-24T12:00:00.000Z');
-const TEST_CONTENT_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+]);
+const TEST_CONTENT_HASH = createHash('sha256').update(PNG_BYTES).digest('hex');
 
 // ---------------------------------------------------------------------------
 // Layer 1: pure-unit trust-boundary guard
@@ -67,6 +71,8 @@ describe('isArtSurfacePath', () => {
   });
 
   describe('filterPromotablePaths', () => {
+    const candidatePng = Buffer.from('candidate-png');
+    const candidateHash = createHash('sha256').update(candidatePng).digest('hex');
     const candidateEntry = (key: string) => ({
       briefId: key,
       spriteName: key,
@@ -77,6 +83,7 @@ describe('isArtSurfacePath', () => {
       anchor: null,
       sensorScore: '1',
       judgeScore: null,
+      contentHash: candidateHash,
     });
 
     it('bounds candidate shard reads to eight concurrent git processes', async () => {
@@ -105,6 +112,14 @@ describe('isArtSurfacePath', () => {
           maxActiveShows = Math.max(maxActiveShows, activeShows);
           await Promise.resolve();
           activeShows -= 1;
+          if (String(args[1]).endsWith('.png')) {
+            return {
+              code: 0,
+              stdout: candidatePng.toString(),
+              stdoutBytes: candidatePng,
+              stderr: '',
+            };
+          }
           const shardPath = String(args[1]).split(':', 2)[1] ?? '';
           const key = shardPath
             .replace('public/assets/generated/entries/', '')
@@ -115,7 +130,6 @@ describe('isArtSurfacePath', () => {
             stderr: '',
           };
         }
-        if (args[0] === 'cat-file') return { code: 0, stdout: '', stderr: '' };
         return { code: 1, stdout: '', stderr: 'unexpected command' };
       };
 
@@ -139,10 +153,10 @@ describe('isArtSurfacePath', () => {
         }
         if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
         if (args[0] === 'show') {
+          if (String(args[1]).endsWith('.png')) {
+            return { code: 1, stdout: '', stderr: 'missing object' };
+          }
           return { code: 0, stdout: JSON.stringify(candidateEntry(key)), stderr: '' };
-        }
-        if (args[0] === 'cat-file') {
-          return { code: 1, stdout: '', stderr: 'missing object' };
         }
         return { code: 1, stdout: '', stderr: 'unexpected command' };
       };
@@ -152,6 +166,50 @@ describe('isArtSurfacePath', () => {
       ).rejects.toMatchObject({
         kind: 'invalid-state',
         message: expect.stringContaining('references missing PNG'),
+      });
+    });
+
+    it.each([
+      ['has no declared hash', undefined],
+      ['has a mismatched hash', 'f'.repeat(64)],
+    ])('rejects a PNG-only change whose owner shard %s', async (_label, contentHash) => {
+      const key = 'png-only-var-0';
+      const pngPath = `public/assets/generated/${key}.png`;
+      const shardPath = `public/assets/generated/entries/${key}.json`;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout: ref === 'source' ? `100644 blob ${'a'.repeat(40)}\t${pngPath}` : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'grep') {
+          return { code: 0, stdout: `source:${shardPath}\n`, stderr: '' };
+        }
+        if (args[0] === 'show' && String(args[1]).endsWith('.json')) {
+          const entry = { ...candidateEntry(key), contentHash };
+          if (contentHash === undefined) delete entry.contentHash;
+          return { code: 0, stdout: JSON.stringify(entry), stderr: '' };
+        }
+        if (args[0] === 'show' && String(args[1]).endsWith('.png')) {
+          return {
+            code: 0,
+            stdout: candidatePng.toString(),
+            stdoutBytes: candidatePng,
+            stderr: '',
+          };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(
+        filterPromotablePaths(exec, '/repo', 'base', 'source', [pngPath]),
+      ).rejects.toMatchObject({
+        kind: 'invalid-state',
+        message: expect.stringContaining('does not match the SHA-256'),
       });
     });
   });
@@ -775,6 +833,8 @@ function makeFakeExec(config: FakeExecConfig): {
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
   const artDelta = config.artDelta ?? ['public/assets/generated/a.png'];
   const stagedNames = config.stagedNames ?? artDelta;
+  const fakePng = Buffer.from('control-flow-png');
+  const fakePngHash = createHash('sha256').update(fakePng).digest('hex');
   let createdPromotePr = false;
   const exec: Exec = (command, args, options) => {
     calls.push({ command, args: [...args], cwd: options?.cwd });
@@ -831,6 +891,26 @@ function makeFakeExec(config: FakeExecConfig): {
       if (joined.includes('log') && args.includes('--raw')) {
         const isBase = joined.includes('origin/main');
         return respond({ stdout: isBase ? (config.baseHistoryRaw ?? '') : '' });
+      }
+      if (args[0] === 'grep') {
+        const assetPath = args[3] ?? '';
+        const key = assetPath.replace(/^generated\//u, '').replace(/\.png$/u, '');
+        return respond({
+          stdout: `origin/assets/queue:public/assets/generated/entries/${key}.json\n`,
+        });
+      }
+      if (args[0] === 'show') {
+        const target = args[1] ?? '';
+        if (target.endsWith('.png')) {
+          return respond({ stdout: fakePng.toString(), stdoutBytes: fakePng });
+        }
+        const key = /entries\/(.+)\.json$/u.exec(target)?.[1] ?? 'a';
+        return respond({
+          stdout: JSON.stringify({
+            ...validShardEntry(key),
+            contentHash: fakePngHash,
+          }),
+        });
       }
       if (args[0] === 'ls-tree') {
         return respond({ stdout: '' });
@@ -1125,9 +1205,7 @@ describe('scanOrphanedCheckinBranches', () => {
 // Layer 3: real git (temp bare origin + live clone, mocked gh)
 // ---------------------------------------------------------------------------
 
-const PNG_BYTES = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-]);
+const PNG_CONTENT_HASH = TEST_CONTENT_HASH;
 
 /** Distinct PNG bytes that SUPERSEDE {@link PNG_BYTES} at the same asset path. */
 const SUPERSEDING_PNG_BYTES = Buffer.from([
@@ -1209,6 +1287,7 @@ function seedQueueWithArt(
   keys: readonly string[],
   queueBranch = 'assets/queue',
   assetPathForKey: (key: string) => string = (key) => `generated/${key}.png`,
+  annotations?: unknown,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-'));
@@ -1228,8 +1307,11 @@ function seedQueueWithArt(
       // One self-contained shard per asset — the sharded source of truth.
       writeJson(shardPath, {
         ...validShardEntry(key, assetPath),
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
+    }
+    if (annotations !== undefined) {
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), annotations);
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue art: ${keys.join(', ')}`);
@@ -1361,7 +1443,7 @@ function addArtDirectlyToMain(
       writeFileSync(pngPath, bytes);
       writeJson(shardPath, {
         ...validShardEntry(key, assetPath),
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: createHash('sha256').update(bytes).digest('hex'),
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -1381,8 +1463,15 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
   try {
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
     const pngPath = path.join(wt, 'public', 'assets', 'generated', `${key}.png`);
+    const shardPath = path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`);
     mkdirSync(path.dirname(pngPath), { recursive: true });
     writeFileSync(pngPath, bytes);
+    const shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, unknown>;
+    writeJson(shardPath, {
+      ...shard,
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+      approvedAt: '2026-09-06T00:00:02.000Z',
+    });
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue edit: ${key}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -1419,8 +1508,8 @@ function reapproveQueueWithOriginalBytesAndFreshShard(
     // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
     // by itself — the atomicity fix must withhold it alongside its paired PNG.
     writeJson(path.join(entriesDir, `${key}.json`), {
-      ...validShardEntry(key, assetPath),
-      contentHash: 'reapproved-' + TEST_CONTENT_HASH,
+      ...validShardEntry(key, assetPath, { approvedAt: '2026-09-06T00:00:01.000Z' }),
+      contentHash: PNG_CONTENT_HASH,
     });
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `re-approve original bytes: ${key}`);
@@ -1712,12 +1801,16 @@ function realGitFakeGhExec(gh: FakeGh): Exec {
   return (command, args, options) => {
     if (command === 'git') {
       try {
-        const stdout = execFileSync('git', args as string[], {
+        const stdoutBytes = execFileSync('git', args as string[], {
           cwd: options?.cwd,
-          encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
         });
-        return Promise.resolve({ stdout, stderr: '', code: 0 });
+        return Promise.resolve({
+          stdout: stdoutBytes.toString(),
+          stdoutBytes,
+          stderr: '',
+          code: 0,
+        });
       } catch (e) {
         const anyErr = e as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number };
         return Promise.resolve({
@@ -1968,7 +2061,7 @@ describe('runReconcile (real git)', () => {
       writeFileSync(path.join(generatedDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(generatedDir, 'entries', 'unrelated-var-0.json'), {
         ...validShardEntry('unrelated-var-0'),
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed deletion audit');
@@ -2238,7 +2331,7 @@ describe('runReconcile (real git)', () => {
         sensorScore: '7/7',
         judgeScore: '4',
         type: 'enemy',
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
     }
     gitSync(liveDir, 'add', '-A');
@@ -2334,7 +2427,7 @@ describe('runReconcile (real git)', () => {
         sensorScore: '7/7',
         judgeScore: '4',
         type: 'enemy',
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
     }
     gitSync(liveDir, 'add', '-A');
@@ -2467,7 +2560,7 @@ describe('runReconcile (real git)', () => {
       writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
         ...validShardEntry('unrelated-var-0'),
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue: half-deleted pair + unrelated art');
@@ -2551,7 +2644,7 @@ describe('runReconcile (real git)', () => {
       writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
       writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
         ...validShardEntry('unrelated-var-0'),
-        contentHash: TEST_CONTENT_HASH,
+        contentHash: PNG_CONTENT_HASH,
       });
       gitSync(wt, 'add', '-A');
       gitSync(wt, 'commit', '--no-verify', '-m', 'queue: stale tombstone + unrelated art');
@@ -3027,7 +3120,7 @@ describe('runReconcile (real git)', () => {
     // No assets/queue branch — only an orphaned assets/checkin-* branch.
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-only', ['orphan-sprite-var-1']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-1'], 'assets/checkin-orphan-only');
     const gh = new FakeGh();
     // No open PRs for the orphan branch.
 
@@ -3051,10 +3144,10 @@ describe('runReconcile (real git)', () => {
     expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
   });
 
-  it('(s) never promotes lifecycle annotations from a legacy orphan branch', async () => {
+  it('(s) never promotes lifecycle annotations from an orphan branch', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-annotations', ['orphan-var-1'], {
+    seedQueueWithArt(liveDir, ['orphan-var-1'], 'assets/checkin-orphan-annotations', undefined, {
       version: 1,
       sprites: {
         'unpaired-deletion': {
@@ -3074,7 +3167,10 @@ describe('runReconcile (real git)', () => {
     const result = await runReconcile(liveDir, realDeps(new FakeGh()));
 
     expect(result.status).toBe('pr-open');
-    expect(result.changedPaths).toEqual(['public/assets/generated/orphan-var-1.png']);
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/orphan-var-1.json',
+      'public/assets/generated/orphan-var-1.png',
+    ]);
     expect(() =>
       gitSync(
         liveDir,
@@ -3084,7 +3180,7 @@ describe('runReconcile (real git)', () => {
     ).toThrow();
   });
 
-  it('(t) filters pre-sharding aggregate manifest from legacy checkin branch — idempotent on re-run', async () => {
+  it('(t) quarantines a pre-sharding PNG-only branch while promoting the healthy queue', async () => {
     // A legacy orphan branch (aggregate manifest, no shards) plus a queue branch.
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
@@ -3094,6 +3190,9 @@ describe('runReconcile (real git)', () => {
 
     const first = await runReconcile(liveDir, realDeps(gh));
     expect(first.status).toBe('pr-open');
+    expect(first.quarantinedSources).toEqual([
+      expect.objectContaining({ sourceRef: 'origin/assets/checkin-legacy-123' }),
+    ]);
 
     // Verify: legacy manifest.json must not have landed in the promote commit.
     const promotedFiles = gitSync(
@@ -3108,7 +3207,7 @@ describe('runReconcile (real git)', () => {
       .split('\n')
       .filter(Boolean);
     expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
-    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(false);
     expect(promotedFiles.some((f) => f.endsWith('queue-sprite-var-1.png'))).toBe(true);
 
     // Re-run: idempotent — same PR reused, no duplicate.
@@ -3306,7 +3405,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-trailer-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-trailer-1');
     const queueSha = remoteSha(liveDir, 'assets/queue')!;
     const orphanSha = remoteSha(liveDir, 'assets/checkin-trailer-1')!;
 
@@ -3329,7 +3428,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-tidy-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-tidy-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -3347,7 +3446,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-converge-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-converge-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -3453,7 +3552,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-cas-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-cas-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -3538,7 +3637,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-revert-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-revert-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -3624,7 +3723,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-race-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-race-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -3704,7 +3803,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
         writeFileSync(path.join(genDir, 'player-walk.png'), PNG_BYTES);
         writeJson(path.join(entriesDir, 'player-walk.json'), {
           ...validShardEntry('player-walk'),
-          contentHash: TEST_CONTENT_HASH,
+          contentHash: PNG_CONTENT_HASH,
         });
         gitSync(goodWt, 'add', '--', 'public/assets/generated');
         gitSync(goodWt, 'commit', '--no-verify', '-m', 'approve player-walk (good)');
@@ -3725,6 +3824,23 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
           path.join(queueWt, 'public', 'assets', 'generated', 'player-walk.png'),
           SUPERSEDING_PNG_BYTES,
         );
+        const queueShardPath = path.join(
+          queueWt,
+          'public',
+          'assets',
+          'generated',
+          'entries',
+          'player-walk.json',
+        );
+        const queueShard = JSON.parse(readFileSync(queueShardPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        writeJson(queueShardPath, {
+          ...queueShard,
+          contentHash: createHash('sha256').update(SUPERSEDING_PNG_BYTES).digest('hex'),
+          approvedAt: '2026-09-06T00:00:03.000Z',
+        });
         gitSync(queueWt, 'add', '--', 'public/assets/generated');
         gitSync(queueWt, 'commit', '--no-verify', '-m', 'approve player-walk (bad)');
         gitSync(queueWt, 'push', 'origin', 'HEAD:refs/heads/assets/queue');
@@ -3749,6 +3865,20 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
           path.join(fixWt, 'public', 'assets', 'generated', 'player-walk.png'),
           PNG_BYTES,
         );
+        const fixShardPath = path.join(
+          fixWt,
+          'public',
+          'assets',
+          'generated',
+          'entries',
+          'player-walk.json',
+        );
+        const fixShard = JSON.parse(readFileSync(fixShardPath, 'utf8')) as Record<string, unknown>;
+        writeJson(fixShardPath, {
+          ...fixShard,
+          contentHash: PNG_CONTENT_HASH,
+          approvedAt: '2026-09-06T00:00:04.000Z',
+        });
         gitSync(fixWt, 'add', '--', 'public/assets/generated');
         gitSync(fixWt, 'commit', '--no-verify', '-m', 'restore player-walk before merge');
         fixedHead = gitSync(fixWt, 'rev-parse', 'HEAD').trim();

@@ -343,7 +343,25 @@ sprite-pipeline, sprite-workflow
   follows the check-in's selected Git remote rather than silently inspecting
   `origin`. Final certification also made candidate shards prove both the full
   generated-entry schema and existence of their authored PNG within the same
-  immutable source snapshot before promotion.
+  immutable source snapshot before promotion. PNG-only changes must resolve to
+  exactly one schema-valid owner shard whose SHA-256 matches the source bytes;
+  unprovable pre-sharding branches are quarantined instead of producing a red
+  promotion PR.
+- Runtime-eligibility certification found five Welcome Room layers still pinned
+  to the now-ineligible `autograph-book-placeholder`. Both shipped layouts and
+  their redress source now use the approved `welcome-room-call-sheet-var-3`,
+  and the pinned-texture provenance gate walks every catalog-backed set-piece
+  layer so another exact placeholder pin cannot silently fall back to a grey
+  rectangle.
+- Real-engine set-piece observation captured the old unloaded layers at
+  `files/welcome-room-before.png` and the replacement call sheets visibly
+  rendering on the merchant table, welcome desk, and wall shelf at
+  `files/welcome-room-after.png`. Composition stayed 12/12 for both
+  `welcome-room` and `welcome-room-v2`. Subjective scorecard: narrative verb
+  9/10, focal drama 8/10, vignette coherence 9/10, composition mode 8/10,
+  negative space 7/10, landmark uniqueness 9/10. Theme, palette/lighting,
+  pixel craft, and Crawler POV all remained coherent; no new art was
+  commissioned.
 
 ## PR #3234 generic extraction audit
 
