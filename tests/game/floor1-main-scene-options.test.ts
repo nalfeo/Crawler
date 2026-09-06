@@ -391,7 +391,8 @@ describe('createFloor1MainSceneOptions', () => {
     expect(world.stores.position.x[player]).toBe(spawn.x);
     expect(world.stores.position.y[player]).toBe(spawn.y);
     expect(world.hideFloorTimer).toBe(true);
-    expect(world.stores.health.max[player]).toBe(100 + manifest.player.hpBonus);
+    expect(world.playerLevel.level).toBe(manifest.player.directStart!.level);
+    expect(world.stores.health.max[player]).toBe(427);
     expect(getActiveWeaponDef(world)?.id).toBeTruthy();
     expect(world.featureUnlocks.inventory).toBe(true);
     expect(world.featureUnlocks.equipment).toBe(true);

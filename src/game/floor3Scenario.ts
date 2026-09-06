@@ -99,6 +99,7 @@ import {
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { FLOOR3_WILD_AGGRO_RANGE_FT } from './systems/floor3WildHostility.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
@@ -1329,6 +1330,8 @@ export function initializeFloor3Scenario(
   }
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
+  } else {
+    applyFloorSkipBaseline(world, playerEid, manifest);
   }
   addComponent(world.ecs, playerEid, Invincible);
   if (manifest.props !== undefined) {

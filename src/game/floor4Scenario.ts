@@ -92,6 +92,7 @@ import {
 import { AI_TYPE } from './enemyAISystem.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
@@ -1531,6 +1532,7 @@ export function initializeFloor4Scenario(
     }
   } else {
     equipFloor4StarterWeapon(world, playerEid, manifest.starterWeapons);
+    applyFloorSkipBaseline(world, playerEid, manifest);
   }
 
   world.featureUnlocks.inventory = true;

@@ -202,10 +202,10 @@ describe('Floor 3 overworld + wild spawns', () => {
     expect(leftAmbient).toEqual(rightAmbient);
   });
 
-  it('makes the Floor 3 Wrangler invincible and unarmed', () => {
+  it('makes the Floor 3 Wrangler invincible and direct-start equipped', () => {
     const { world, playerEid } = createFloor3World(555);
     expect(hasComponent(world.ecs, playerEid, Invincible)).toBe(true);
-    expect(getActiveWeaponDef(world)).toBeUndefined();
+    expect(getActiveWeaponDef(world)?.id).toBeTruthy();
   });
 
   it('places props from the floor3 manifest during scenario initialization', () => {

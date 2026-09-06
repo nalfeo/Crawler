@@ -288,8 +288,8 @@ describe('initializeFloor2Scenario manifest validation', () => {
     expect(world.stores.coreStatPoints.strength[playerEid]).toBe(0);
     expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(8);
     expect(world.stores.coreStatPoints.dexterity[playerEid]).toBe(4);
-    expect(world.stores.health.max[playerEid]).toBe(280);
-    expect(world.stores.health.current[playerEid]).toBe(280);
+    expect(world.stores.health.max[playerEid]).toBe(292);
+    expect(world.stores.health.current[playerEid]).toBe(292);
 
     const equipment = getEquipmentState(world, playerEid);
     const neckInstanceId = equipment?.equipped.neck ?? null;
