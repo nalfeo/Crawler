@@ -30,6 +30,10 @@ function formBody(parts: {
   brief?: string;
   type?: string;
   floor?: string;
+  floorId?: string;
+  familyId?: string;
+  mobRole?: string;
+  injectionOverrides?: string;
   size?: string;
 }): string {
   const lines: string[] = [];
@@ -37,6 +41,12 @@ function formBody(parts: {
   if (parts.brief !== undefined) lines.push('### Brief', parts.brief, '');
   if (parts.type !== undefined) lines.push('### Type (optional)', parts.type, '');
   if (parts.floor !== undefined) lines.push('### Floor (optional)', parts.floor, '');
+  if (parts.floorId !== undefined) lines.push('### Floor Id (optional)', parts.floorId, '');
+  if (parts.familyId !== undefined) lines.push('### Family Id (optional)', parts.familyId, '');
+  if (parts.mobRole !== undefined) lines.push('### Mob Role (optional)', parts.mobRole, '');
+  if (parts.injectionOverrides !== undefined) {
+    lines.push('### Injection Overrides (optional)', parts.injectionOverrides, '');
+  }
   if (parts.size !== undefined) lines.push('### Size (optional)', parts.size, '');
   return lines.join('\n');
 }
@@ -116,6 +126,37 @@ describe('parseAssetRequestIssueBody', () => {
     expect(parsed?.type).toBe('weapon');
   });
 
+  it('parses marker payload with frozen request context', () => {
+    const body = [
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      JSON.stringify({
+        version: 1,
+        name: 'raccoon-bottle-rocketeer',
+        briefSentence: 'A raccoon pyromaniac with a bottle rocket launcher.',
+        type: 'enemy',
+        floorId: 'floor2',
+        familyId: 'raccoon',
+        mobRole: 'elite',
+        injectionOverrides: {
+          palette: { primary: 'rust', accent: 'green' },
+          tags: ['ranged', 'bottle'],
+        },
+      }),
+      '-->',
+    ].join('\n');
+
+    expect(parseAssetRequestIssueBody(body)).toMatchObject({
+      name: 'raccoon-bottle-rocketeer',
+      floorId: 'floor2',
+      familyId: 'raccoon',
+      mobRole: 'elite',
+      injectionOverrides: {
+        palette: { primary: 'rust', accent: 'green' },
+        tags: ['ranged', 'bottle'],
+      },
+    });
+  });
+
   it('rejects marker payload with invalid type field', () => {
     const body = [
       '### Name',
@@ -161,6 +202,24 @@ describe('parseAssetRequestIssueBody', () => {
     }
   });
 
+  it.each([
+    ['array', []],
+    ['string', 'not-an-object'],
+    ['number', 42],
+  ])('rejects marker payloads with %s injection overrides', (_name, injectionOverrides) => {
+    const body = [
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      JSON.stringify({
+        version: 1,
+        name: 'bone-dagger',
+        briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+        injectionOverrides,
+      }),
+      '-->',
+    ].join('\n');
+    expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
+
   it('parses form-rendered type field when valid', () => {
     const body = [
       '### Name',
@@ -175,6 +234,57 @@ describe('parseAssetRequestIssueBody', () => {
     const parsed = parseAssetRequestIssueBody(body);
     expect(parsed?.name).toBe('bone-dagger');
     expect(parsed?.type).toBe('weapon');
+  });
+
+  it('parses form-rendered frozen request context and hashes nested injection overrides', () => {
+    const injectionOverrides = {
+      palette: { primary: 'rust', accent: 'green' },
+      tags: ['ranged', 'glass'],
+    };
+    const parsed = parseAssetRequestIssueBody(
+      formBody({
+        name: 'raccoon-bottle-rocketeer',
+        brief: 'A raccoon pyromaniac with a bottle rocket launcher.',
+        type: 'enemy',
+        floorId: 'floor2',
+        familyId: 'raccoon',
+        mobRole: 'elite',
+        injectionOverrides: JSON.stringify(injectionOverrides),
+      }),
+    );
+
+    expect(parsed).toMatchObject({
+      floorId: 'floor2',
+      familyId: 'raccoon',
+      mobRole: 'elite',
+      injectionOverrides,
+    });
+    expect(parsed?.fingerprint).toBe(
+      fingerprintAssetRequest(
+        'raccoon-bottle-rocketeer',
+        'A raccoon pyromaniac with a bottle rocket launcher.',
+        1,
+        undefined,
+        { floorId: 'floor2', familyId: 'raccoon', mobRole: 'elite', injectionOverrides },
+      ),
+    );
+    expect(parsed?.fingerprint).not.toBe(
+      fingerprintAssetRequest(
+        'raccoon-bottle-rocketeer',
+        'A raccoon pyromaniac with a bottle rocket launcher.',
+        1,
+        undefined,
+        {
+          floorId: 'floor2',
+          familyId: 'raccoon',
+          mobRole: 'elite',
+          injectionOverrides: {
+            ...injectionOverrides,
+            palette: { ...injectionOverrides.palette, primary: 'blue' },
+          },
+        },
+      ),
+    );
   });
 
   it('applies brief-only boss cues when "### Type (optional)" heading supplies enemy type', () => {
@@ -214,6 +324,21 @@ describe('parseAssetRequestIssueBody', () => {
     // Should reject entirely if form has a non-empty invalid type
     expect(parseAssetRequestIssueBody(body)).toBeNull();
   });
+
+  it.each(['{', '[]', '"not-an-object"', 'not-json'])(
+    'rejects form-rendered injection overrides when malformed or non-object: %s',
+    (injectionOverrides) => {
+      expect(
+        parseAssetRequestIssueBody(
+          formBody({
+            name: 'bone-dagger',
+            brief: 'A chipped bone dagger with twine-wrapped handle.',
+            injectionOverrides,
+          }),
+        ),
+      ).toBeNull();
+    },
+  );
 
   it('treats GitHub _No response_ sentinel in floor field as omitted (defaults to floor 1)', () => {
     const body = [
