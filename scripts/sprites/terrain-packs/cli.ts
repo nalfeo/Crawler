@@ -52,8 +52,7 @@ function runBuild(): void {
   applySharedBasePoolRestyle();
 }
 
-function runValidate(): void {
-  const repoRoot = repoRootFromHere();
+export function runValidate(repoRoot = repoRootFromHere()): boolean {
   const manifestDir = path.join(repoRoot, 'src', 'shared', 'data', 'terrain-packs');
   const packs = fs
     .readdirSync(manifestDir)
@@ -249,8 +248,9 @@ function runValidate(): void {
     }
   }
   if (!allOk) {
-    process.exitCode = 1;
+    return false;
   }
+  return true;
 }
 
 const cliEntry = process.argv[1];
@@ -259,7 +259,7 @@ if (cliEntry && import.meta.url === pathToFileURL(cliEntry).href) {
   if (cmd === 'build') {
     runBuild();
   } else if (cmd === 'validate') {
-    runValidate();
+    if (!runValidate()) process.exitCode = 1;
   } else {
     console.error('Usage: cli.ts <build|validate>');
     process.exitCode = 1;

@@ -36,6 +36,7 @@ import {
   validateCrossPackWallSilhouettes,
   validateTerrainDepthAndPerspective,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
+import { runValidate } from '../../../scripts/sprites/terrain-packs/cli.js';
 import { getTerrainPack } from '../../../src/shared/terrain-pack-registry.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import {
@@ -725,5 +726,30 @@ describe('validateTerrainDepthAndPerspective', () => {
     );
     expect(result.ok).toBe(false);
     expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('rejects a varied full-wall texture that has no wall-to-floor layering', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    for (let pixel = 0; pixel < flatAccent.data.length; pixel += 4) {
+      const x = (pixel / 4) % flatAccent.width;
+      const y = Math.floor(pixel / 4 / flatAccent.width);
+      flatAccent.data[pixel] = (x * 5 + y * 3) % 256;
+      flatAccent.data[pixel + 1] = (x * 2 + y * 7) % 256;
+      flatAccent.data[pixel + 2] = (x + y * 11) % 256;
+      flatAccent.data[pixel + 3] = wallAtlas.data[pixel + 3] ?? 0;
+    }
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('keeps the production terrain-pack validation command gated for flat runtime packs', () => {
+    expect(runValidate()).toBe(false);
   });
 });

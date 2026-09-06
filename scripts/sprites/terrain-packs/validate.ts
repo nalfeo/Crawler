@@ -32,6 +32,7 @@ import path from 'node:path';
 import { statSync, readFileSync } from 'node:fs';
 import {
   BLOB47_CANONICAL_MASKS,
+  MASK_BIT,
   edgeConnectionsFromMask,
   isCanonicalBlob47Mask,
 } from '../../../src/shared/terrain-pack-mask.js';
@@ -1093,8 +1094,43 @@ export function validateTerrainDepthAndPerspective(
     let maxLuminance = 0;
     const colors = new Set<string>();
     const verticalBands = new Set<number>();
+    let exposedWallPixels = 0;
+    let accentedExposedWallPixels = 0;
+    let accentedInteriorPixels = 0;
     for (let pixel = 0; pixel < accent.data.length; pixel += 4) {
       const alpha = accent.data[pixel + 3] ?? 0;
+      const pixelIndex = pixel / 4;
+      const pixelX = pixelIndex % accent.width;
+      const pixelY = Math.floor(pixelIndex / accent.width);
+      const wallAlpha = wallAtlas.data[pixel + 3] ?? 0;
+      if (wallAlpha !== 0) {
+        const frameIndex =
+          Math.floor(pixelX / manifest.wallAutotile.cellPx) +
+          Math.floor(pixelY / manifest.wallAutotile.cellPx) * manifest.wallAutotile.gridCols;
+        const localX = pixelX % manifest.wallAutotile.cellPx;
+        const localY = pixelY % manifest.wallAutotile.cellPx;
+        const edgeBand = 12;
+        const borderMargin = 12;
+        const maskEntry = manifest.wallAutotile.masks.find(
+          (entry) => entry.frameIndex === frameIndex,
+        );
+        const maskId = maskEntry?.maskId ?? 0;
+        const nearExposedEdge =
+          (!(maskId & MASK_BIT.N) && localY >= borderMargin && localY < borderMargin + edgeBand) ||
+          (!(maskId & MASK_BIT.E) &&
+            localX >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
+            localX < manifest.wallAutotile.cellPx - borderMargin) ||
+          (!(maskId & MASK_BIT.S) &&
+            localY >= manifest.wallAutotile.cellPx - borderMargin - edgeBand &&
+            localY < manifest.wallAutotile.cellPx - borderMargin) ||
+          (!(maskId & MASK_BIT.W) && localX >= borderMargin && localX < borderMargin + edgeBand);
+        if (nearExposedEdge) {
+          exposedWallPixels++;
+          if (alpha !== 0) accentedExposedWallPixels++;
+        } else if (alpha !== 0) {
+          accentedInteriorPixels++;
+        }
+      }
       if (alpha === 0) continue;
       opaquePixels++;
       const red = accent.data[pixel] ?? 0;
@@ -1117,18 +1153,24 @@ export function validateTerrainDepthAndPerspective(
 
     const coverage = opaquePixels / expectedPixels;
     const visibleOverlay = differingPixels / Math.max(opaquePixels, 1);
+    const exposedEdgeCoverage = accentedExposedWallPixels / Math.max(exposedWallPixels, 1);
+    const exposedEdgeShare =
+      accentedExposedWallPixels / Math.max(accentedExposedWallPixels + accentedInteriorPixels, 1);
     if (
       coverage < 0.01 ||
       coverage > 0.9 ||
       colors.size < 8 ||
       maxLuminance - minLuminance < 24 ||
       verticalBands.size < 3 ||
-      visibleOverlay < 0.5
+      visibleOverlay < 0.5 ||
+      exposedEdgeCoverage < 0.15 ||
+      exposedEdgeCoverage > 0.85 ||
+      exposedEdgeShare > 0.25
     ) {
       fail(
         issues,
         'terrain-pack-lacks-depth',
-        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}).`,
+        `Wall accent '${accentId}' in '${manifest.id}' does not contain a visible, varied vertical overlay (coverage=${coverage.toFixed(3)}, colors=${colors.size}, luminanceRange=${maxLuminance - minLuminance}, bands=${verticalBands.size}, visibleOverlay=${visibleOverlay.toFixed(3)}, exposedEdgeCoverage=${exposedEdgeCoverage.toFixed(3)}, exposedEdgeShare=${exposedEdgeShare.toFixed(3)}).`,
       );
     }
   }
