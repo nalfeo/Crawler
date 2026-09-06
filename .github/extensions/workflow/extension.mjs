@@ -95,6 +95,7 @@ import { loadBacklog } from './lib/workflow-model.mjs';
 import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
 import { workflowErrorStatus } from './lib/workflow-errors.mjs';
+import { readDisplayedRunIds } from './lib/displayed-run-ids.mjs';
 import { createWorkflowStatePoller, runWorkflowStatePoll } from './lib/workflow-state-poller.mjs';
 import {
   addRequest,
@@ -2016,6 +2017,29 @@ const jsonRoutes = [
     path: '/api/workflow/postprocess',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
+        if (body.force === true) {
+          const displayedRun = readDisplayedRunIds(body);
+          if (!displayedRun) {
+            throw new CanvasError('bad-request', 'briefId and runId are required.');
+          }
+          const result = await entry.client.postprocessRun(
+            displayedRun.briefId,
+            displayedRun.runId,
+            {
+              force: true,
+              ...(body.reset === true ? { reset: true, mode: 'reset' } : {}),
+            },
+          );
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(displayedRun.briefId, displayedRun.runId));
+          invalidateRunView(runViewKey(displayedRun.briefId, displayedRun.runId));
+          entry.selectionVersion += 1;
+          return {
+            workflow: entry.workflow.state,
+            run: toQueueRun(displayedRun.briefId, displayedRun.runId, normalizeCandidates(summary)),
+          };
+        }
         if (typeof body.itemId !== 'string')
           throw new CanvasError('bad-request', 'itemId is required.');
         await hydrateWorkflow(entry, { force: true });
@@ -2051,6 +2075,24 @@ const jsonRoutes = [
     path: '/api/workflow/judge',
     handler: (context) =>
       workflowMutationRoute(context, async (entry, body) => {
+        if (body.force === true) {
+          const displayedRun = readDisplayedRunIds(body);
+          if (!displayedRun) {
+            throw new CanvasError('bad-request', 'briefId and runId are required.');
+          }
+          const result = await entry.client.judgeRun(displayedRun.briefId, displayedRun.runId, {
+            force: true,
+          });
+          const summary =
+            result?.summary ??
+            (await entry.client.fetchRunSummary(displayedRun.briefId, displayedRun.runId));
+          invalidateRunView(runViewKey(displayedRun.briefId, displayedRun.runId));
+          entry.selectionVersion += 1;
+          return {
+            workflow: entry.workflow.state,
+            run: toQueueRun(displayedRun.briefId, displayedRun.runId, normalizeCandidates(summary)),
+          };
+        }
         if (typeof body.itemId !== 'string')
           throw new CanvasError('bad-request', 'itemId is required.');
         await hydrateWorkflow(entry, { force: true });

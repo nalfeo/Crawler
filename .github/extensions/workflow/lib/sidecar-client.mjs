@@ -671,21 +671,21 @@ export function createSidecarClient(options) {
     return readResponse(response, 'Failed to tag sprite metadata');
   }
 
-  async function postprocessRun(briefId, runId) {
+  async function postprocessRun(briefId, runId, options = {}) {
     const response = await fetchImpl(runPostprocessUrl(baseUrl, briefId, runId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify(options),
       cache: 'no-store',
     });
     return readResponse(response, 'Failed to postprocess sheet');
   }
 
-  async function judgeRun(briefId, runId) {
+  async function judgeRun(briefId, runId, options = {}) {
     const response = await fetchImpl(runJudgeUrl(baseUrl, briefId, runId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify(options),
       cache: 'no-store',
     });
     return readResponse(response, 'Failed to judge variants');

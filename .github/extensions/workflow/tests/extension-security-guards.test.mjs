@@ -102,6 +102,35 @@ test('invalid Author request input returns the established bad-request error typ
   );
 });
 
+test('displayed-run actions validate route identity and invalidate only that run view', () => {
+  const source = readFileSync(EXTENSION_PATH, 'utf8');
+  for (const [path, clientCall] of [
+    ["path: '/api/workflow/postprocess'", 'postprocessRun'],
+    ["path: '/api/workflow/judge'", 'judgeRun'],
+  ]) {
+    const start = source.indexOf(path);
+    const end = source.indexOf("path: '/api/workflow/", start + path.length);
+    const route = source.slice(start, end < 0 ? source.length : end);
+    assert.match(route, /if \(body\.force === true\)/);
+    assert.match(route, /const displayedRun = readDisplayedRunIds\(body\)/);
+    assert.match(route, /if \(!displayedRun\)/);
+    assert.match(
+      route,
+      new RegExp(
+        `entry\\.client\\.${clientCall}\\(\\s*displayedRun\\.briefId,\\s*displayedRun\\.runId`,
+      ),
+    );
+    assert.match(
+      route,
+      /invalidateRunView\(runViewKey\(displayedRun\.briefId, displayedRun\.runId\)\)/,
+    );
+    assert.doesNotMatch(
+      route.slice(0, route.indexOf('if (typeof body.itemId')),
+      /replaceWorkflowItem/,
+    );
+  }
+});
+
 test('Azure polling pushes an iframe update only when a queued generation completes', () => {
   const source = readFileSync(EXTENSION_PATH, 'utf8');
   assert.match(source, /let changed = false/);
