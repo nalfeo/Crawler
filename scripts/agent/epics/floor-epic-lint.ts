@@ -404,6 +404,13 @@ function additiveFieldTypeErrors(epic: FloorEpic): string[] {
   if (epic.labels !== undefined && !isStringArray(epic.labels)) {
     errors.push('epic.labels must be an array of strings when present.');
   }
+  for (const node of epic.nodes) {
+    if (node.prerequisite_mechanics !== undefined && !isStringArray(node.prerequisite_mechanics)) {
+      errors.push(
+        `node "${node.id}" prerequisite_mechanics must be an array of strings when present.`,
+      );
+    }
+  }
   return errors;
 }
 

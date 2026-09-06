@@ -225,6 +225,20 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-prerequisite-mechanics-unknown');
   });
 
+  it('reports malformed prerequisite mechanics as a schema violation', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      prerequisite_mechanics: 'dual-runner-acceptance' as unknown as ReadonlyArray<string>,
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations).toContainEqual({
+      code: 'schema',
+      message:
+        'node "achievement-qa" prerequisite_mechanics must be an array of strings when present.',
+    });
+  });
+
   it('requires achievement evidence for unlock, reward claiming, and reward outcome', () => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = withNode(epic, 'achievement-qa', (node) => ({
