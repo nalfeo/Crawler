@@ -48,45 +48,6 @@ export const MASK_BIT = {
   NW: 128,
 } as const;
 
-/** Legacy cardinals-first bit weights used before the cr31 migration. */
-const LEGACY_MASK_BIT = {
-  N: 1,
-  E: 2,
-  S: 4,
-  W: 8,
-  NE: 16,
-  SE: 32,
-  SW: 64,
-  NW: 128,
-} as const;
-
-export type MaskDirection = keyof typeof MASK_BIT;
-
-/**
- * Convert a legacy cardinals-first blob47 mask to the canonical cr31 clockwise
- * ordering used by the published blob47 references.
- *
- * This is a one-shot migration utility for tooling and tests; runtime code must
- * use the canonical `MASK_BIT` ordering directly and never carry both schemes in
- * the live path.
- */
-export function ourMaskToCr31Mask(mask: number): number {
-  let out = 0;
-  for (const dir of ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW'] as const) {
-    if (mask & LEGACY_MASK_BIT[dir]) out |= MASK_BIT[dir];
-  }
-  return out;
-}
-
-/** Inverse of `ourMaskToCr31Mask`, for migration validation and tooling. */
-export function cr31ToOurMask(mask: number): number {
-  let out = 0;
-  for (const dir of Object.keys(MASK_BIT) as MaskDirection[]) {
-    if (mask & MASK_BIT[dir]) out |= LEGACY_MASK_BIT[dir];
-  }
-  return out;
-}
-
 /** The four corner (diagonal) directions and their two adjacent cardinals. */
 export const CORNER_ADJACENCY = {
   NE: ['N', 'E'],
@@ -421,18 +382,27 @@ function quadrantStateFromMaskImpl(mask: number, corner: QuadrantCorner): Quadra
  * (`frameIndex === maskId`) is why an edge-Wang atlas needs no `masks` table,
  * unlike `wallAutotile`.
  *
- * Bit order is the SAME as `MASK_BIT` (N=1, NE=2, E=4, SE=8, S=16, SW=32,
- * W=64, NW=128) so the two families can never disagree about what "north"
- * means.
+ * Edge-Wang uses its own compact 4-bit order because renderers use the mask
+ * directly as a 16-frame atlas index. Blob47's cr31 clockwise cardinals are not
+ * compact (S=16, W=64), so sharing those bit weights would select invalid
+ * frames.
  */
 export const EDGE_WANG_FRAME_COUNT = 16;
 
+/** Compact N/E/S/W bit values for 16-frame edge-Wang atlases. */
+export const EDGE_WANG_BIT = {
+  N: 1,
+  E: 2,
+  S: 4,
+  W: 8,
+} as const;
+
 /** The 4 cardinal directions in edge-Wang bit order, with their tile deltas. */
 export const EDGE_WANG_DIRECTIONS = [
-  { dir: 'N', bit: MASK_BIT.N, dx: 0, dy: -1 },
-  { dir: 'E', bit: MASK_BIT.E, dx: 1, dy: 0 },
-  { dir: 'S', bit: MASK_BIT.S, dx: 0, dy: 1 },
-  { dir: 'W', bit: MASK_BIT.W, dx: -1, dy: 0 },
+  { dir: 'N', bit: EDGE_WANG_BIT.N, dx: 0, dy: -1 },
+  { dir: 'E', bit: EDGE_WANG_BIT.E, dx: 1, dy: 0 },
+  { dir: 'S', bit: EDGE_WANG_BIT.S, dx: 0, dy: 1 },
+  { dir: 'W', bit: EDGE_WANG_BIT.W, dx: -1, dy: 0 },
 ] as const satisfies ReadonlyArray<{
   dir: 'N' | 'E' | 'S' | 'W';
   bit: number;
@@ -442,10 +412,10 @@ export const EDGE_WANG_DIRECTIONS = [
 
 /** The opposite direction bit — the edge a neighbour shares with this tile. */
 export const EDGE_WANG_OPPOSITE_BIT: Readonly<Record<'N' | 'E' | 'S' | 'W', number>> = {
-  N: MASK_BIT.S,
-  E: MASK_BIT.W,
-  S: MASK_BIT.N,
-  W: MASK_BIT.E,
+  N: EDGE_WANG_BIT.S,
+  E: EDGE_WANG_BIT.W,
+  S: EDGE_WANG_BIT.N,
+  W: EDGE_WANG_BIT.E,
 };
 
 /**

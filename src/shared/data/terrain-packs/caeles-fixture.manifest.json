@@ -37,87 +37,87 @@
         "frameIndex": 3
       },
       {
-        "maskId": 7,
+        "maskId": 16,
         "frameIndex": 4
       },
       {
-        "maskId": 16,
+        "maskId": 17,
         "frameIndex": 5
       },
       {
-        "maskId": 17,
+        "maskId": 20,
         "frameIndex": 6
       },
       {
-        "maskId": 20,
+        "maskId": 21,
         "frameIndex": 7
       },
       {
-        "maskId": 21,
+        "maskId": 64,
         "frameIndex": 8
       },
       {
-        "maskId": 23,
+        "maskId": 65,
         "frameIndex": 9
       },
       {
-        "maskId": 28,
+        "maskId": 68,
         "frameIndex": 10
       },
       {
-        "maskId": 29,
+        "maskId": 69,
         "frameIndex": 11
       },
       {
-        "maskId": 31,
+        "maskId": 80,
         "frameIndex": 12
       },
       {
-        "maskId": 64,
+        "maskId": 81,
         "frameIndex": 13
       },
       {
-        "maskId": 65,
+        "maskId": 84,
         "frameIndex": 14
       },
       {
-        "maskId": 68,
+        "maskId": 85,
         "frameIndex": 15
       },
       {
-        "maskId": 69,
+        "maskId": 7,
         "frameIndex": 16
       },
       {
-        "maskId": 71,
+        "maskId": 23,
         "frameIndex": 17
       },
       {
-        "maskId": 80,
+        "maskId": 71,
         "frameIndex": 18
       },
       {
-        "maskId": 81,
+        "maskId": 87,
         "frameIndex": 19
       },
       {
-        "maskId": 84,
+        "maskId": 28,
         "frameIndex": 20
       },
       {
-        "maskId": 85,
+        "maskId": 29,
         "frameIndex": 21
       },
       {
-        "maskId": 87,
+        "maskId": 92,
         "frameIndex": 22
       },
       {
-        "maskId": 92,
+        "maskId": 93,
         "frameIndex": 23
       },
       {
-        "maskId": 93,
+        "maskId": 31,
         "frameIndex": 24
       },
       {
@@ -165,15 +165,15 @@
         "frameIndex": 35
       },
       {
-        "maskId": 199,
+        "maskId": 209,
         "frameIndex": 36
       },
       {
-        "maskId": 209,
+        "maskId": 213,
         "frameIndex": 37
       },
       {
-        "maskId": 213,
+        "maskId": 199,
         "frameIndex": 38
       },
       {
@@ -215,25 +215,19 @@
       "id": "floor-0",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-0.png",
       "textureKey": "terrain-pack-caeles-fixture-floor-0",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     },
     {
       "id": "floor-1",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-1.png",
       "textureKey": "terrain-pack-caeles-fixture-floor-1",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     },
     {
       "id": "floor-2",
       "imagePath": "assets/terrain-packs/caeles-fixture/floor-2.png",
       "textureKey": "terrain-pack-caeles-fixture-floor-2",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     }
   ],
   "corridorPool": [
@@ -241,25 +235,19 @@
       "id": "corridor-0",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-0.png",
       "textureKey": "terrain-pack-caeles-fixture-corridor-0",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     },
     {
       "id": "corridor-1",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-1.png",
       "textureKey": "terrain-pack-caeles-fixture-corridor-1",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     },
     {
       "id": "corridor-2",
       "imagePath": "assets/terrain-packs/caeles-fixture/corridor-2.png",
       "textureKey": "terrain-pack-caeles-fixture-corridor-2",
-      "allowedTransforms": [
-        "none"
-      ]
+      "allowedTransforms": ["none"]
     }
   ],
   "wallAccents": [

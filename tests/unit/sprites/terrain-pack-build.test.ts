@@ -351,7 +351,7 @@ describe('validateCompatibleBoundaries — documented seam/edge-consistency chec
     expect(misses.every((m) => m.expected === true)).toBe(true);
     // Confined to the single-arm stubs and straight corridors.
     expect([...new Set(misses.map((m) => m.maskId))].sort((a, b) => a - b)).toEqual([
-      1, 2, 4, 5, 8, 10,
+      1, 4, 16, 17, 64, 68,
     ]);
     // Symmetric across compass directions (the art has no directional bias).
     const perEdge = CELL_EDGES.map((e) => misses.filter((m) => m.edge === e).length);
@@ -370,7 +370,7 @@ describe('validateTerrainPack — VENDORED_MIN_EDGE_PASS_RATE default constant i
    *
    * This suite constructs a deterministic "degraded" atlas by swapping the
    * frameIndex assignments for two pairs of opposite-corner masks in the
-   * manifest (masks 3↔12 and 7↔14; pixel data is unchanged). The swap drops
+   * manifest (masks 5↔80 and 21↔84; pixel data is unchanged). The swap drops
    * the edge-pass rate from 0.957 to 0.8936 (168/188 edges pass), placing it
    * in the 0.85–0.90 window: above the old 0.85 floor but below the new 0.90
    * floor.
@@ -384,8 +384,8 @@ describe('validateTerrainPack — VENDORED_MIN_EDGE_PASS_RATE default constant i
   function swappedManifest(): TerrainPackDef {
     const masks = caeles.manifest.wallAutotile.masks.map((m) => ({ ...m }));
     for (const [a, b] of [
-      [3, 12],
-      [7, 14],
+      [5, 80],
+      [21, 84],
     ] as [number, number][]) {
       const ia = masks.findIndex((m) => m.maskId === a);
       const ib = masks.findIndex((m) => m.maskId === b);

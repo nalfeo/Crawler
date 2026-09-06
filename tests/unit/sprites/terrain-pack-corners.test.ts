@@ -70,9 +70,7 @@ import {
   MASK_BIT,
   QUADRANT_CORNERS,
   cornerIsWallFromMask,
-  cr31ToOurMask,
   normalizeBlob47Mask,
-  ourMaskToCr31Mask,
   quadrantStateFromMask,
 } from '../../../src/shared/terrain-pack-mask.js';
 import { TERRAIN_PACK_CELL_PX } from '../../../src/shared/terrain-pack-types.js';
@@ -111,10 +109,10 @@ function committedAccentPaths(): readonly string[] {
 }
 
 /** The alpha ground truth: the 47 mask silhouettes, laid out on the atlas grid. */
-function composeCanonicalAtlas(): RgbaImage {
+function composeCanonicalAtlas(assignments = buildMaskFrameAssignments()): RgbaImage {
   const kit = generateQuadrantKit();
   const sheet = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
-  for (const { maskId, frameIndex } of buildMaskFrameAssignments()) {
+  for (const { maskId, frameIndex } of assignments) {
     compositeInto(
       sheet,
       composeWallCellOutput(maskId, kit),
@@ -283,7 +281,7 @@ describe('deriveTemplateCellMasks', () => {
    * Indices are in cr31's canonical CLOCKWISE-CYCLE weighting
    * (N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128). This is now the repo's
    * canonical numbering as well, so the published layout matches the runtime mask
-   * IDs directly and the conversion utilities are used only for migration checks.
+   * IDs directly.
    */
   const CAELES_CR31_LAYOUT: readonly (readonly number[])[] = [
     [0, 4, 92, 112, 28, 124, 116, 64],
@@ -293,15 +291,6 @@ describe('deriveTemplateCellMasks', () => {
     [21, 69, 93, 119, 223, 255, 241, 17],
     [5, 68, 71, 193, 7, 199, 197, 65],
   ];
-
-  it('converts legacy cardinals-first masks to the cr31 canonical order bijectively', () => {
-    const legacySet = new Set<number>(BLOB47_CANONICAL_MASKS.map((maskId) => cr31ToOurMask(maskId)));
-    expect(legacySet.size).toBe(BLOB47_CANONICAL_MASKS.length);
-    for (const maskId of BLOB47_CANONICAL_MASKS) {
-      expect(ourMaskToCr31Mask(cr31ToOurMask(maskId))).toBe(maskId);
-      expect(cr31ToOurMask(ourMaskToCr31Mask(maskId))).toBe(maskId);
-    }
-  });
 
   function sliceTemplateCells() {
     const template = decodePng(
@@ -764,7 +753,9 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
       const restyled = decodePng(
         restyleWallAtlas(tempPack).find((f) => f.relPath.endsWith('wall-atlas.png'))!.bytes,
       );
-      const canonical = composeCanonicalAtlas();
+      const canonical = composeCanonicalAtlas(
+        readCommittedPack('industrial-cave').manifest.wallAutotile.masks,
+      );
 
       expect(restyled.width).toBe(canonical.width);
       expect(restyled.height).toBe(canonical.height);
@@ -810,7 +801,9 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
   });
 
   it('every wall accent stays inside the canonical silhouette', () => {
-    const canonical = composeCanonicalAtlas();
+    const canonical = composeCanonicalAtlas(
+      readCommittedPack('industrial-cave').manifest.wallAutotile.masks,
+    );
     for (const accentPath of committedAccentPaths()) {
       const accent = decodePng(readFileSync(accentPath));
       let spill = 0;
@@ -840,7 +833,9 @@ describe('wall-atlas silhouette is derived, not inherited', () => {
       // The canonical silhouette is a pure function of the mask set. A pixel
       // where the canonical alpha is < 255 is outside the fully-opaque wall
       // zone — exactly the zone processWallAccents clips against.
-      const canonical = composeCanonicalAtlas();
+      const canonical = composeCanonicalAtlas(
+        readCommittedPack('industrial-cave').manifest.wallAutotile.masks,
+      );
       let spillIndex = -1;
       for (let i = 3; i < canonical.data.length; i += 4) {
         if (!isFullyOpaqueWallAlpha(canonical.data[i]!)) {
