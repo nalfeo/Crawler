@@ -12,6 +12,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
  */
 
 function makeGameObjectStub(onDestroy?: () => void): unknown {
+  let destroyed = false;
   const stub: unknown = new Proxy(function () {} as unknown as object, {
     get(_target, prop) {
       if (typeof prop === 'symbol') return undefined;
@@ -19,7 +20,12 @@ function makeGameObjectStub(onDestroy?: () => void): unknown {
       if (prop === 'width' || prop === 'height') return 64;
       if (prop === 'x' || prop === 'y' || prop === 'depth') return 0;
       if (prop === 'visible') return true;
-      if (prop === 'destroy') return () => onDestroy?.();
+      if (prop === 'destroy')
+        return () => {
+          if (destroyed) return;
+          destroyed = true;
+          onDestroy?.();
+        };
       return () => stub;
     },
     set() {
@@ -32,7 +38,7 @@ function makeGameObjectStub(onDestroy?: () => void): unknown {
   return stub;
 }
 
-function makeRecordingScene(titles: string[]): { scene: unknown; collectTitles: () => void } {
+function makeRecordingScene(): { scene: unknown; collectTitles: () => string[] } {
   const stub = makeGameObjectStub();
   const titleEntries: { text: string; destroyed: boolean }[] = [];
   const scene = {
@@ -64,10 +70,8 @@ function makeRecordingScene(titles: string[]): { scene: unknown; collectTitles: 
     tweens: { add: () => stub },
     time: { delayedCall: () => stub },
   };
-  const collectTitles = () => {
-    titles.length = 0;
-    titles.push(...titleEntries.filter((entry) => !entry.destroyed).map((entry) => entry.text));
-  };
+  const collectTitles = (): string[] =>
+    titleEntries.filter((entry) => !entry.destroyed).map((entry) => entry.text);
   return { scene, collectTitles };
 }
 
@@ -91,15 +95,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, SECOND_CATALOG_ID);
     expect(claimAchievementReward(world, FIRST_CATALOG_ID).ok).toBe(true);
 
-    const titles: string[] = [];
-    const { scene, collectTitles } = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
       { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
-    collectTitles();
+    const titles = collectTitles();
 
     expect(titles).toEqual(['Room Sweeper', 'First Bonk']);
 
@@ -112,15 +115,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, FIRST_CATALOG_ID);
     unlockAchievement(world, SECOND_CATALOG_ID);
 
-    const titles: string[] = [];
-    const { scene, collectTitles } = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
       { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
-    collectTitles();
+    const titles = collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper']);
 
@@ -138,15 +140,14 @@ describe('AchievementsUI row order', () => {
     unlockAchievement(world, FIRST_CATALOG_ID);
     expect(claimAchievementReward(world, CATALOG_MIDDLE_ID).ok).toBe(true);
 
-    const titles: string[] = [];
-    const { scene, collectTitles } = makeRecordingScene(titles);
+    const { scene, collectTitles } = makeRecordingScene();
     const achievementsUI = createAchievementsUI(
       scene as never,
       { open: () => {}, isOpen: () => false } as never,
       { height: PROBE_PANEL_HEIGHT },
     );
     achievementsUI.toggle(world);
-    collectTitles();
+    const titles = collectTitles();
 
     expect(titles).toEqual(['First Bonk', 'Room Sweeper', 'Gel Exit']);
 
