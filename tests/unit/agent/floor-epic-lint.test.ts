@@ -214,6 +214,17 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
     expect(violations.map((v) => v.code)).toContain('achievement-dependency-missing');
   });
 
+  it('rejects a marked prerequisite mechanic that is not an epic node', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      depends_on: ['dual-runner-acceptance'],
+      prerequisite_mechanics: ['missing-mechanic'],
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-prerequisite-mechanics-unknown');
+  });
+
   it('requires achievement evidence for unlock, reward claiming, and reward outcome', () => {
     const epic = cloneEpic(goodFloorEpic());
     const mutated = withNode(epic, 'achievement-qa', (node) => ({

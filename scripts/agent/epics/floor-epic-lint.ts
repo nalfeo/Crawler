@@ -30,7 +30,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
@@ -306,11 +306,22 @@ function achievementViolations(epic: FloorEpic): FloorEpicViolation[] {
         code: 'achievement-prerequisite-mechanics-missing',
         message: `achievement node "${node.id}" must list its prerequisite mechanic node IDs in prerequisite_mechanics.`,
       });
-    } else if (prerequisiteMechanics.some((mechanicId) => !dependencies.has(mechanicId))) {
-      violations.push({
-        code: 'achievement-dependency-missing',
-        message: `achievement node "${node.id}" must directly depend on every prerequisite mechanic listed in prerequisite_mechanics.`,
-      });
+    } else {
+      const unknownMechanics = prerequisiteMechanics.filter(
+        (mechanicId) => !epic.nodes.some((candidate) => candidate.id === mechanicId),
+      );
+      if (unknownMechanics.length > 0) {
+        violations.push({
+          code: 'achievement-prerequisite-mechanics-unknown',
+          message: `achievement node "${node.id}" lists unknown prerequisite mechanic node IDs: ${unknownMechanics.join(', ')}.`,
+        });
+      }
+      if (prerequisiteMechanics.some((mechanicId) => !dependencies.has(mechanicId))) {
+        violations.push({
+          code: 'achievement-dependency-missing',
+          message: `achievement node "${node.id}" must directly depend on every prerequisite mechanic listed in prerequisite_mechanics.`,
+        });
+      }
     }
     if (dependencies.size === 0) {
       violations.push({
@@ -645,21 +656,14 @@ function main(): void {
   process.exitCode = 1;
 }
 
-// Match canonical filesystem paths first. A few loaders (including tsx) expose
-// the launched script in a different argv slot, so retain a basename fallback
-// only for the known CLI filename rather than relying on URL string formatting.
+// Match the launched source file regardless of whether the loader exposes it
+// as a filesystem path or a file URL. Do not depend on a fixed argv slot:
+// loaders may add their own executable or loader arguments.
 const modulePath = fileURLToPath(import.meta.url);
-const moduleName = basename(modulePath);
-const invokedScriptIndex = process.argv.findIndex(
-  (argument, index) =>
-    index > 0 &&
-    ['floor-epic-lint.ts', 'floor-epic-lint.js', 'floor-epic-lint.mjs'].includes(
-      basename(argument),
-    ),
-);
-const invokedScript = invokedScriptIndex >= 0 ? process.argv[invokedScriptIndex] : undefined;
-const isMain =
-  typeof invokedScript === 'string' &&
-  (resolve(invokedScript) === modulePath ||
-    (basename(invokedScript) === moduleName && invokedScriptIndex === 1));
+const isMain = process.argv.slice(1).some((argument) => {
+  const candidatePath = argument.startsWith('file://')
+    ? fileURLToPath(argument)
+    : resolve(argument);
+  return candidatePath === modulePath;
+});
 if (isMain) main();
