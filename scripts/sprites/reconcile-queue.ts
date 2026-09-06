@@ -898,23 +898,37 @@ export async function filterPromotablePaths(
   const pathSet = new Set(paths);
   const pairs: Array<readonly [string, string]> = [];
   const shardPrefix = 'public/assets/generated/entries/';
-  for (const shardPath of paths) {
-    if (!shardPath.startsWith(shardPrefix) || !shardPath.endsWith('.json')) continue;
-    const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
-    if (shard.code !== 0) return [];
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(shard.stdout);
-    } catch {
-      return [];
+  const shardPaths = paths.filter(
+    (candidate) => candidate.startsWith(shardPrefix) && candidate.endsWith('.json'),
+  );
+  const shardReadConcurrency = 8;
+  for (let offset = 0; offset < shardPaths.length; offset += shardReadConcurrency) {
+    const reads = await Promise.all(
+      shardPaths.slice(offset, offset + shardReadConcurrency).map(async (shardPath) => {
+        const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
+        if (shard.code !== 0) return { ok: false } as const;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(shard.stdout);
+        } catch {
+          return { ok: false } as const;
+        }
+        const assetPath =
+          typeof parsed === 'object' && parsed !== null
+            ? (parsed as { readonly assetPath?: unknown }).assetPath
+            : undefined;
+        if (!isSafeQueueAssetPath(assetPath)) return { ok: false } as const;
+        const pngPath = `public/assets/${assetPath}`;
+        return {
+          ok: true,
+          pair: pathSet.has(pngPath) ? ([shardPath, pngPath] as const) : undefined,
+        } as const;
+      }),
+    );
+    if (reads.some((read) => !read.ok)) return [];
+    for (const read of reads) {
+      if (read.ok && read.pair !== undefined) pairs.push(read.pair);
     }
-    const assetPath =
-      typeof parsed === 'object' && parsed !== null
-        ? (parsed as { readonly assetPath?: unknown }).assetPath
-        : undefined;
-    if (!isSafeQueueAssetPath(assetPath)) return [];
-    const pngPath = `public/assets/${assetPath}`;
-    if (pathSet.has(pngPath)) pairs.push([shardPath, pngPath]);
   }
 
   // Build a set of individually-passing paths, then suppress either half of a

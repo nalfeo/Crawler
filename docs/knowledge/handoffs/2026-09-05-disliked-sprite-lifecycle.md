@@ -328,7 +328,9 @@ sprite-pipeline, sprite-workflow
   any replacement can authorize deletion, preventing cross-concept retirement.
   Shard/PNG promotion atomicity now follows each shard's validated `assetPath`
   rather than deriving the PNG from its manifest key, covering shipped nested
-  keys whose PNG names are flattened or carry placeholder suffixes.
+  keys whose PNG names are flattened or carry placeholder suffixes. Candidate
+  shard reads run in fail-closed batches of eight, avoiding a sequential
+  subprocess per asset without creating unbounded runner pressure.
 
 ## PR #3234 generic extraction audit
 
