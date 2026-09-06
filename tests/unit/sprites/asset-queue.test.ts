@@ -10,6 +10,7 @@ import {
   InvalidAssetRequestMessageError,
   normalizeAssetRequest,
   type BriefPathAssetRequest,
+  type IssueAssetRequest,
 } from '../../../scripts/sprites/queue/types.js';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,21 @@ function makeRequest(overrides: Partial<BriefPathAssetRequest> = {}): BriefPathA
     kind: 'brief-path',
     briefId: 'iron-sword',
     briefPath: 'briefs/weapons/iron-sword.yaml',
+    requestedBy: 'test',
+    requestedAt: '2026-06-10T00:00:00.000Z',
+    priority: 'normal',
+    ...overrides,
+  };
+}
+
+function makeIssueRequest(overrides: Partial<IssueAssetRequest> = {}): IssueAssetRequest {
+  return {
+    kind: 'issue-request',
+    issueNumber: 42,
+    name: 'bone-dagger',
+    briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+    fingerprint: 'abc',
+    claimedAt: '2026-06-10T00:00:00.000Z',
     requestedBy: 'test',
     requestedAt: '2026-06-10T00:00:00.000Z',
     priority: 'normal',
@@ -93,49 +109,19 @@ describe('normalizeAssetRequest', () => {
   });
 
   it('accepts issue-request payloads with idempotency fields', () => {
-    expect(
-      normalizeAssetRequest({
-        kind: 'issue-request',
-        issueNumber: 42,
-        name: 'bone-dagger',
-        briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
-        fingerprint: 'abc',
-        claimedAt: '2026-06-10T00:00:00.000Z',
-        requestedBy: 'test',
-        requestedAt: '2026-06-10T00:00:00.000Z',
-        priority: 'normal',
-      }),
-    ).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
+    expect(normalizeAssetRequest(makeIssueRequest())).toMatchObject({
+      kind: 'issue-request',
+      issueNumber: 42,
+    });
   });
 
   it('accepts issue-request with valid type field', () => {
-    const result = normalizeAssetRequest({
-      kind: 'issue-request',
-      issueNumber: 42,
-      name: 'bone-dagger',
-      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
-      fingerprint: 'abc',
-      claimedAt: '2026-06-10T00:00:00.000Z',
-      requestedBy: 'test',
-      requestedAt: '2026-06-10T00:00:00.000Z',
-      priority: 'normal',
-      type: 'weapon',
-    });
+    const result = normalizeAssetRequest(makeIssueRequest({ type: 'weapon' }));
     expect(result).toMatchObject({ kind: 'issue-request', type: 'weapon' });
   });
 
   it('accepts valid floors and rejects invalid floor payloads', () => {
-    const request = {
-      kind: 'issue-request',
-      issueNumber: 42,
-      name: 'bone-dagger',
-      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
-      fingerprint: 'abc',
-      claimedAt: '2026-06-10T00:00:00.000Z',
-      requestedBy: 'test',
-      requestedAt: '2026-06-10T00:00:00.000Z',
-      priority: 'normal',
-    };
+    const request = makeIssueRequest();
 
     expect(normalizeAssetRequest({ ...request, floor: 12 })).toMatchObject({ floor: 12 });
     expect(normalizeAssetRequest({ ...request, floor: 0 })).toBeNull();
@@ -143,18 +129,7 @@ describe('normalizeAssetRequest', () => {
   });
 
   it('silently omits invalid type field', () => {
-    const result = normalizeAssetRequest({
-      kind: 'issue-request',
-      issueNumber: 42,
-      name: 'bone-dagger',
-      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
-      fingerprint: 'abc',
-      claimedAt: '2026-06-10T00:00:00.000Z',
-      requestedBy: 'test',
-      requestedAt: '2026-06-10T00:00:00.000Z',
-      priority: 'normal',
-      type: 'invalid-type',
-    });
+    const result = normalizeAssetRequest(makeIssueRequest({ type: 'invalid-type' }));
     // Invalid type is silently omitted; request still proceeds without type field
     expect(result).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
     // Only IssueAssetRequest carries `type`; narrow before asserting it was dropped.
@@ -164,19 +139,43 @@ describe('normalizeAssetRequest', () => {
   });
 
   it('normalizes type to lowercase when valid', () => {
-    const result = normalizeAssetRequest({
-      kind: 'issue-request',
-      issueNumber: 42,
-      name: 'bone-dagger',
-      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
-      fingerprint: 'abc',
-      claimedAt: '2026-06-10T00:00:00.000Z',
-      requestedBy: 'test',
-      requestedAt: '2026-06-10T00:00:00.000Z',
-      priority: 'normal',
-      type: 'WEAPON',
-    });
+    const result = normalizeAssetRequest(makeIssueRequest({ type: 'WEAPON' }));
     expect(result).toMatchObject({ type: 'weapon' });
+  });
+
+  it('round-trips frozen issue request context through queue JSON persistence', () => {
+    const persisted = JSON.stringify(
+      makeIssueRequest({
+        floorId: ' floor2 ',
+        familyId: ' ratfolk ',
+        mobRole: 'ELITE' as IssueAssetRequest['mobRole'],
+        injectionOverrides: {
+          palette: { primary: 'rust', accent: 'green' },
+          tags: ['ranged', 'glass'],
+        },
+      }),
+    );
+
+    expect(normalizeAssetRequest(JSON.parse(persisted))).toMatchObject({
+      kind: 'issue-request',
+      floorId: 'floor2',
+      familyId: 'ratfolk',
+      mobRole: 'elite',
+      injectionOverrides: {
+        palette: { primary: 'rust', accent: 'green' },
+        tags: ['ranged', 'glass'],
+      },
+    });
+  });
+
+  it('rejects invalid frozen issue request context payloads', () => {
+    const request = makeIssueRequest();
+
+    expect(normalizeAssetRequest({ ...request, floorId: '' })).toBeNull();
+    expect(normalizeAssetRequest({ ...request, familyId: 42 })).toBeNull();
+    expect(normalizeAssetRequest({ ...request, mobRole: 'champion' })).toBeNull();
+    expect(normalizeAssetRequest({ ...request, injectionOverrides: [] })).toBeNull();
+    expect(normalizeAssetRequest({ ...request, injectionOverrides: 'not-json' })).toBeNull();
   });
 
   it('round-trips an explicit size variant through queue JSON persistence', () => {

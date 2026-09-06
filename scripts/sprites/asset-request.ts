@@ -117,6 +117,7 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           mobRole: parsed.mobRole,
           injectionOverrides: parsed.injectionOverrides,
         });
+        if (!context) return null;
         const fingerprint = fingerprintParsedAssetRequest({
           name: parsed.name,
           briefSentence: parsed.briefSentence,
@@ -310,13 +311,17 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
   }
   if (
     v.floorId !== undefined &&
-    (typeof v.floorId !== 'string' || v.floorId.trim() === '' || v.floorId.trim() === '_No response_')
+    (typeof v.floorId !== 'string' ||
+      v.floorId.trim() === '' ||
+      v.floorId.trim() === '_No response_')
   ) {
     return false;
   }
   if (
     v.familyId !== undefined &&
-    (typeof v.familyId !== 'string' || v.familyId.trim() === '' || v.familyId.trim() === '_No response_')
+    (typeof v.familyId !== 'string' ||
+      v.familyId.trim() === '' ||
+      v.familyId.trim() === '_No response_')
   ) {
     return false;
   }
@@ -449,6 +454,7 @@ function parseIssueFormBody(body: string): {
     if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
   }
   const context = parseRequestContextFromBody(body);
+  if (!context) return null;
   const sizeMatch = body.match(
     /(?:^|\n)###\s+Size(?:\s+variant)?(?:\s+\(optional\))?\s*\n+([^\n]+)/i,
   );
@@ -469,7 +475,7 @@ function parseIssueFormBody(body: string): {
   };
 }
 
-function parseRequestContextFromBody(body: string): AssetRequestContextPayload {
+function parseRequestContextFromBody(body: string): AssetRequestContextPayload | null {
   const floorIdMatch = body.match(/(?:^|\n)###\s+Floor\s+Id(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
   const familyIdMatch = body.match(/(?:^|\n)###\s+Family\s+Id(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
   const mobRoleMatch = body.match(/(?:^|\n)###\s+Mob\s+Role(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
@@ -480,6 +486,7 @@ function parseRequestContextFromBody(body: string): AssetRequestContextPayload {
   const familyId = cleanOptionalText(familyIdMatch?.[1]);
   const mobRole = normalizeMobRole(cleanOptionalText(mobRoleMatch?.[1]));
   const injectionOverrides = parseInjectionOverridesField(injectionOverridesMatch?.[1]);
+  if (injectionOverrides === null) return null;
   return {
     ...(floorId ? { floorId } : {}),
     ...(familyId ? { familyId } : {}),
@@ -488,14 +495,23 @@ function parseRequestContextFromBody(body: string): AssetRequestContextPayload {
   };
 }
 
-function parseRequestContextPayload(value: Partial<AssetRequestContextPayload>): AssetRequestContextPayload {
+function parseRequestContextPayload(
+  value: Partial<AssetRequestContextPayload>,
+): AssetRequestContextPayload | null {
   const floorId = cleanOptionalText(value.floorId);
   const familyId = cleanOptionalText(value.familyId);
   const mobRole = normalizeMobRole(value.mobRole);
-  const injectionOverrides =
-    value.injectionOverrides && typeof value.injectionOverrides === 'object' && !Array.isArray(value.injectionOverrides)
-      ? (value.injectionOverrides as Record<string, unknown>)
-      : undefined;
+  let injectionOverrides: Record<string, unknown> | undefined;
+  if (value.injectionOverrides !== undefined) {
+    if (
+      !value.injectionOverrides ||
+      typeof value.injectionOverrides !== 'object' ||
+      Array.isArray(value.injectionOverrides)
+    ) {
+      return null;
+    }
+    injectionOverrides = value.injectionOverrides;
+  }
   return {
     ...(floorId ? { floorId } : {}),
     ...(familyId ? { familyId } : {}),
@@ -518,21 +534,19 @@ function cleanOptionalText(value: unknown): string | undefined {
   return trimmed;
 }
 
-function parseInjectionOverridesField(value: unknown): Record<string, unknown> | undefined {
+function parseInjectionOverridesField(value: unknown): Record<string, unknown> | undefined | null {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (trimmed === '' || trimmed === '_No response_') return undefined;
-  if (trimmed.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
     }
+  } catch {
+    return null;
   }
-  return undefined;
+  return null;
 }
 
 function serializeRequestContext(context?: AssetRequestContextPayload): string {
@@ -542,7 +556,24 @@ function serializeRequestContext(context?: AssetRequestContextPayload): string {
   if (context.familyId) entries.push(`\nfamilyId:${context.familyId}`);
   if (context.mobRole) entries.push(`\nmobRole:${context.mobRole}`);
   if (context.injectionOverrides && Object.keys(context.injectionOverrides).length > 0) {
-    entries.push(`\ninjectionOverrides:${JSON.stringify(context.injectionOverrides, Object.keys(context.injectionOverrides).sort())}`);
+    entries.push(`\ninjectionOverrides:${stableJsonStringify(context.injectionOverrides)}`);
   }
   return entries.join('');
+}
+
+function stableJsonStringify(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sortJsonValue(entry));
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sortJsonValue(record[key])]),
+    );
+  }
+  return value;
 }

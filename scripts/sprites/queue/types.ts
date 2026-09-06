@@ -105,23 +105,33 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
     ) {
       return null;
     }
-    if ('floorId' in v && v.floorId !== undefined && (typeof v.floorId !== 'string' || v.floorId.trim() === '')) {
+    if (
+      'floorId' in v &&
+      v.floorId !== undefined &&
+      (typeof v.floorId !== 'string' || v.floorId.trim() === '')
+    ) {
       return null;
     }
-    if ('familyId' in v && v.familyId !== undefined && (typeof v.familyId !== 'string' || v.familyId.trim() === '')) {
+    if (
+      'familyId' in v &&
+      v.familyId !== undefined &&
+      (typeof v.familyId !== 'string' || v.familyId.trim() === '')
+    ) {
       return null;
     }
     if (
       'mobRole' in v &&
       v.mobRole !== undefined &&
-      (!['normal', 'elite', 'boss'].includes(String(v.mobRole).toLowerCase()))
+      !['normal', 'elite', 'boss'].includes(String(v.mobRole).toLowerCase())
     ) {
       return null;
     }
     if (
       'injectionOverrides' in v &&
       v.injectionOverrides !== undefined &&
-      (typeof v.injectionOverrides !== 'object' || v.injectionOverrides === null || Array.isArray(v.injectionOverrides))
+      (typeof v.injectionOverrides !== 'object' ||
+        v.injectionOverrides === null ||
+        Array.isArray(v.injectionOverrides))
     ) {
       return null;
     }
@@ -143,12 +153,20 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
       ...(typeof v.floor === 'number' && Number.isInteger(v.floor) && v.floor >= 1 && v.floor <= 20
         ? { floor: v.floor }
         : {}),
-      ...(typeof v.floorId === 'string' && v.floorId.trim() !== '' ? { floorId: v.floorId.trim() } : {}),
-      ...(typeof v.familyId === 'string' && v.familyId.trim() !== '' ? { familyId: v.familyId.trim() } : {}),
-      ...(typeof v.mobRole === 'string' && ['normal', 'elite', 'boss'].includes(v.mobRole.toLowerCase())
+      ...(typeof v.floorId === 'string' && v.floorId.trim() !== ''
+        ? { floorId: v.floorId.trim() }
+        : {}),
+      ...(typeof v.familyId === 'string' && v.familyId.trim() !== ''
+        ? { familyId: v.familyId.trim() }
+        : {}),
+      ...(typeof v.mobRole === 'string' &&
+      ['normal', 'elite', 'boss'].includes(v.mobRole.toLowerCase())
         ? { mobRole: v.mobRole.toLowerCase() as 'normal' | 'elite' | 'boss' }
         : {}),
-      ...(v.injectionOverrides !== undefined && typeof v.injectionOverrides === 'object' && v.injectionOverrides !== null && !Array.isArray(v.injectionOverrides)
+      ...(v.injectionOverrides !== undefined &&
+      typeof v.injectionOverrides === 'object' &&
+      v.injectionOverrides !== null &&
+      !Array.isArray(v.injectionOverrides)
         ? { injectionOverrides: v.injectionOverrides as Record<string, unknown> }
         : {}),
       ...(isSizeVariant(v.sizeVariant) ? { sizeVariant: v.sizeVariant } : {}),
