@@ -60,15 +60,13 @@ function raiseSkillLevel(
   if (def === undefined) {
     throw new Error(`Unknown floor direct-start skill id: ${skillId}`);
   }
-  const threshold = def.usageThresholds[level - 1];
-  if (threshold === undefined) {
-    throw new Error(`Cannot seed skill "${skillId}" to unsupported level ${level}`);
-  }
+  const cappedLevel = Math.min(level, def.usageThresholds.length);
+  const threshold = def.usageThresholds[cappedLevel - 1];
 
   const holderSkills = world.skillStatesByEntity.get(playerEid);
   const state: SkillState | undefined =
     holderSkills?.get(skillId) ?? world.playerSkills.get(skillId);
-  if (state === undefined || state.level >= level) return;
+  if (threshold === undefined || state === undefined || state.level >= cappedLevel) return;
 
   const neededUsage = Math.max(0, threshold - state.usage);
   if (neededUsage <= 0) return;
@@ -80,6 +78,12 @@ function raiseSkillLevel(
   });
 }
 
+/**
+ * Apply a manifest-authored direct-start baseline for floor skips with no player
+ * carryover. Call only from no-carryover scenario initialization; it is a no-op
+ * when the manifest has no `player.directStart`. Floors may equip a starter
+ * weapon before calling this, otherwise the helper picks one deterministically.
+ */
 export function applyFloorSkipBaseline(
   world: GameWorld,
   playerEid: number,

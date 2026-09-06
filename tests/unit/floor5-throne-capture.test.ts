@@ -182,7 +182,7 @@ describe('Floor 5 throne capture interaction', () => {
     expect(hasComponent(world.ecs, actor.eid, Damage)).toBe(true);
     damageSystem(world, collisionSystem(world));
     const healthAfterCollision = world.stores.health.current[playerEid]!;
-    expect(healthAfterCollision).toBeLessThanOrEqual(startingHealth);
+    expect(healthAfterCollision).toBe(startingHealth - 1);
 
     world.floorObjectiveTick?.(world);
     expect(world.stores.health.current[playerEid]).toBe(
