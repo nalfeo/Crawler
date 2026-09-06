@@ -56,7 +56,8 @@
   "props": {
     "biomeTag": "organic",
     "densityMultiplier": 0.9,
-    "allowedCategories": ["rubbish", "light-source", "structural", "organic"]
+    "allowedCategories": ["organic"],
+    "allowedPropIds": ["vine", "moss-patch"]
   },
   "floor3": {
     "biomeRegionCount": 7

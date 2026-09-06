@@ -15,6 +15,7 @@ import {
   DECORATION_INDEX_TO_ID,
   type PropCategory,
 } from '../../src/shared/decorationDefs.js';
+import { floor3Manifest } from '../../src/shared/floor-manifest.js';
 import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../src/shared/map-types.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -210,6 +211,59 @@ describe('prop placer', () => {
     expect(zoneCounts.get('room-only')).toBeGreaterThan(0);
     expect(zoneCounts.get('wall-adjacent')).toBeGreaterThan(0);
     expect(snapshotA).toEqual(snapshotB);
+  });
+
+  /**
+   * `allowedCategories` can only narrow a biome's def set — every `organic`
+   * def is also category `organic`, so category filtering alone cannot keep
+   * Floor 3's bright-overworld brief free of that biome's bone/pustule props.
+   * The explicit ID allowlist is what makes that selectable.
+   */
+  it('places only the explicitly allowlisted prop ids', () => {
+    const world = createTestWorld({ seed: 11 });
+    const floorMap = buildFixtureFloorMap();
+    const eids = placePropsForFloor(
+      world,
+      floorMap,
+      {
+        biomeTag: 'organic',
+        allowedCategories: ['organic'],
+        allowedPropIds: ['vine', 'moss-patch'],
+        densityMultiplier: 1000,
+      },
+      new SeededRandom(11),
+    );
+
+    expect(eids.length).toBeGreaterThan(0);
+    const placedIds = new Set(
+      eids
+        .map((eid) => world.stores.prop.defIdIndex[eid])
+        .filter((index): index is number => index !== undefined)
+        .map((index) => DECORATION_INDEX_TO_ID[index]),
+    );
+    expect([...placedIds].sort()).toEqual(['moss-patch', 'vine']);
+    for (const bannedId of ['skull-pile', 'bone-arch', 'pustule']) {
+      expect(placedIds.has(bannedId), `${bannedId} must not be placed`).toBe(false);
+    }
+  });
+
+  it("keeps Floor 3's shipped manifest free of body-horror props", () => {
+    const config = floor3Manifest.props;
+    expect(config).toBeDefined();
+    const selected = [...DECORATION_DEFS.values()].filter(
+      (d) =>
+        d.biomeTag === config!.biomeTag &&
+        (config!.allowedCategories === undefined ||
+          config!.allowedCategories.includes(d.category)) &&
+        (config!.allowedPropIds === undefined || config!.allowedPropIds.includes(d.id)),
+    );
+    expect(selected.length).toBeGreaterThan(0);
+    for (const bannedId of ['skull-pile', 'bone-arch', 'pustule']) {
+      expect(
+        selected.some((d) => d.id === bannedId),
+        `Floor 3 must not dress with ${bannedId}`,
+      ).toBe(false);
+    }
   });
 
   it('increases placements when densityMultiplier increases', () => {

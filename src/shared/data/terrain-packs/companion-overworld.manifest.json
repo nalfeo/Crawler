@@ -3,8 +3,8 @@
   "name": "Companion League Overworld",
   "provenance": {
     "kind": "authored",
-    "author": "Crawler agent (procedural outdoor terrain pass)",
-    "derivationNote": "Procedurally generated from a bright outdoor grass/dirt palette tuned for the Floor 3 Companion League requirement, then assigned to the deterministic blob47 wall atlas used by the shared terrain renderer."
+    "author": "Crawler agent (deterministic procedural build script)",
+    "derivationNote": "Original procedural art with NO external or generated-image input: rendered deterministically by scripts/sprites/terrain-packs/build-companion-overworld.ts from SeededRandom, and composed onto the canonical 20-quadrant blob47 wall silhouettes via composeWallAtlas (scripts/sprites/terrain-packs/gen/compose-pack.ts). Fully reproducible and byte-identical: run `npm run terrain-packs:build`. Palette is a bright sunlit grass/dirt overworld for the Floor 3 Companion League brief. Pools are weighted 10:8:1x6 (grass base : quiet grass : sparse detail) so ground reads as continuous grassland with occasional punctuation rather than a uniform patchwork."
   },
   "wallAutotile": {
     "imagePath": "assets/terrain-packs/companion-overworld/wall-atlas.png",
@@ -207,84 +207,116 @@
     {
       "id": "floor-0",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-0.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-0"
+      "textureKey": "terrain-pack-companion-overworld-floor-0",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 10
     },
     {
       "id": "floor-1",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-1.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-1"
+      "textureKey": "terrain-pack-companion-overworld-floor-1",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 8
     },
     {
       "id": "floor-2",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-2.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-2"
+      "textureKey": "terrain-pack-companion-overworld-floor-2",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "floor-3",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-3.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-3"
+      "textureKey": "terrain-pack-companion-overworld-floor-3",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "floor-4",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-4.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-4"
+      "textureKey": "terrain-pack-companion-overworld-floor-4",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "floor-5",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-5.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-5"
+      "textureKey": "terrain-pack-companion-overworld-floor-5",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "floor-6",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-6.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-6"
+      "textureKey": "terrain-pack-companion-overworld-floor-6",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "floor-7",
       "imagePath": "assets/terrain-packs/companion-overworld/floor-7.png",
-      "textureKey": "terrain-pack-companion-overworld-floor-7"
+      "textureKey": "terrain-pack-companion-overworld-floor-7",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     }
   ],
   "corridorPool": [
     {
       "id": "corridor-0",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-0.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-0"
+      "textureKey": "terrain-pack-companion-overworld-corridor-0",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 10
     },
     {
       "id": "corridor-1",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-1.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-1"
+      "textureKey": "terrain-pack-companion-overworld-corridor-1",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 8
     },
     {
       "id": "corridor-2",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-2.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-2"
+      "textureKey": "terrain-pack-companion-overworld-corridor-2",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "corridor-3",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-3.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-3"
+      "textureKey": "terrain-pack-companion-overworld-corridor-3",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "corridor-4",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-4.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-4"
+      "textureKey": "terrain-pack-companion-overworld-corridor-4",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "corridor-5",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-5.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-5"
+      "textureKey": "terrain-pack-companion-overworld-corridor-5",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "corridor-6",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-6.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-6"
+      "textureKey": "terrain-pack-companion-overworld-corridor-6",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     },
     {
       "id": "corridor-7",
       "imagePath": "assets/terrain-packs/companion-overworld/corridor-7.png",
-      "textureKey": "terrain-pack-companion-overworld-corridor-7"
+      "textureKey": "terrain-pack-companion-overworld-corridor-7",
+      "allowedTransforms": ["none", "flipV", "flipH", "flipHV"],
+      "weight": 1
     }
   ]
 }

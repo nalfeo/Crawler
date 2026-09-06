@@ -514,6 +514,13 @@ export const floorManifestDefSchema = z
         allowedCategories: z
           .array(z.enum(['rubbish', 'light-source', 'structural', 'organic', 'tech']))
           .optional(),
+        /**
+         * Explicit decoration-ID allowlist. `allowedCategories` can only narrow
+         * a biome's def set, so it cannot express "the vegetation from
+         * `organic`, but not that biome's bone/pustule props" (they share the
+         * `organic` category). Listing IDs here does that precisely.
+         */
+        allowedPropIds: z.array(z.string().min(1)).nonempty().optional(),
       })
       .strict()
       .optional(),
