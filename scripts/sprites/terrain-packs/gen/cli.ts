@@ -297,30 +297,18 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlasBytes = files.find((f) => f.relativePath.endsWith('wall-atlas.png'))!.buffer;
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
-  const emittedPaths = new Set(files.map((file) => toAccentAssetPath(spec.id, file.relativePath)));
-  const accentPathResult = validateEmittedWallAccentPaths(typed, emittedPaths);
-  const topologyResults: ValidationResult[] = [];
-  const depthResults: ValidationResult[] = [];
   const filesByPath = new Map(
     files.map((file) => [toAccentAssetPath(spec.id, file.relativePath), file.buffer]),
   );
+  const accentPathResult = validateEmittedWallAccentPaths(typed, new Set(filesByPath.keys()));
+  const topologyResults: ValidationResult[] = [];
+  const depthResults: ValidationResult[] = [];
   if (accentPathResult.ok) {
     const accentAtlases: RgbaImage[] = [];
     for (const accent of typed.wallAccents ?? []) {
       const accentPath = accent.imagePath.replace(/\\/g, '/');
       const accentPng = filesByPath.get(accentPath);
-      if (!accentPng) {
-        topologyResults.push({
-          ok: false,
-          issues: [
-            {
-              code: 'image-missing',
-              message: `wallAccents[${accent.id}]: imagePath '${accent.imagePath}' was not emitted by composePack`,
-            },
-          ],
-        });
-        continue;
-      }
+      if (!accentPng) throw new Error(`Missing emitted accent image: ${accent.imagePath}`);
       const accentAtlas = decodePng(accentPng);
       accentAtlases.push(accentAtlas);
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
