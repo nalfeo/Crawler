@@ -48,17 +48,19 @@ export const PLAYER_DEPTH = 6;
 export const LIGHTING_OVERLAY_DEPTH = 800;
 
 /**
- * Depth buckets for static scene-dressing props. All values are below
- * entity/VFX layers so props always render beneath game entities.
+ * Depth buckets for static scene-dressing props. Keep the background band below
+ * the entity plane so floor dressing never renders on top of companions while
+ * still staying above the terrain. Foreground occluders may sit on the entity
+ * plane to cover actors when intended.
  *
  * - `back`  — floor decorations painted behind everything (e.g. moss patches).
  * - `mid`   — mid-layer props at ground level (barrels, rubble).
  * - `front` — props that overlap ground entities slightly (chains, sconces).
  */
 export const PROP_DEPTH = {
-  back: 2,
-  mid: 3,
-  front: 4,
+  back: -1,
+  mid: -0.5,
+  front: 0,
 } as const;
 
 /**

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ENTITY_DEPTH,
   PLAYER_DEPTH,
+  PROP_DEPTH,
   TERRAIN_DEPTH,
   WORLD_VFX_DEPTH,
   setPieceZToDepth,
@@ -9,6 +10,17 @@ import {
 import { PROP_KIND_Z } from '../../src/shared/set-piece-types.js';
 
 describe('setPieceZToDepth', () => {
+  it('keeps static prop dressing below the entity plane while staying above terrain', () => {
+    expect(PROP_DEPTH.back).toBeGreaterThan(TERRAIN_DEPTH);
+    expect(PROP_DEPTH.mid).toBeGreaterThan(TERRAIN_DEPTH);
+    expect(PROP_DEPTH.front).toBeGreaterThan(TERRAIN_DEPTH);
+    expect(PROP_DEPTH.back).toBeLessThan(ENTITY_DEPTH);
+    expect(PROP_DEPTH.mid).toBeLessThan(ENTITY_DEPTH);
+    expect(PROP_DEPTH.front).toBeLessThanOrEqual(ENTITY_DEPTH);
+    expect(PROP_DEPTH.back).toBeLessThan(PROP_DEPTH.mid);
+    expect(PROP_DEPTH.mid).toBeLessThan(PROP_DEPTH.front);
+  });
+
   it('keeps low-z background props above terrain but below entities', () => {
     for (const z of [PROP_KIND_Z.floor, 6, 8, 9, PROP_KIND_Z.wall]) {
       const depth = setPieceZToDepth(z);
