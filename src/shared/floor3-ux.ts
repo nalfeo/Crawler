@@ -46,9 +46,9 @@ function describeSpecies(species: PetSpeciesDef): string {
 }
 
 const FLOOR3_STARTER_PLACEHOLDER_SPRITES = [
-  'mob-goliath',
-  'mob-mage-lord',
-  'mob-directors-proxy',
+  'goblin-boss-var-0',
+  'llama-boss-var-0',
+  'panda-boss-var-0',
 ] as const;
 
 export function floor3StarterPlaceholderSpriteId(speciesId: string, index: number): string {

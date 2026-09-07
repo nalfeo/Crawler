@@ -110,10 +110,9 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       const starterContent = await mainSceneProbe.getModalPickerContent(page);
       expect(starterContent?.kind).toBe('floor3-starter');
       expect(starterContent?.options).toHaveLength(4);
-      const starterSpriteIds = starterContent!.options.map((option) => option.spriteId);
-      expect(starterSpriteIds.every((spriteId) => spriteId !== null)).toBe(true);
-      for (const spriteId of starterSpriteIds) {
-        expect(spriteId).toMatch(/^mob-(goliath|mage-lord|directors-proxy)$/);
+      for (const option of starterContent!.options) {
+        expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
+        expect(option.renderedSpriteId).toBe(option.spriteId);
       }
 
       await page.keyboard.press('Enter');

@@ -51,6 +51,8 @@ export interface ModalPickerContentSnapshot {
     readonly description: string | null;
     readonly disabled: boolean;
     readonly spriteId: string | null;
+    /** Texture key of the image actually created for this option, if any. */
+    readonly renderedSpriteId: string | null;
   }>;
 }
 
@@ -424,7 +426,8 @@ export function createModalPickerUI(
       const isDisabled = Boolean(option.disabled);
       const rowY = cursorY;
       const labelX = panelX + PANEL_PADDING + 10 + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
-      const descriptionX = panelX + PANEL_PADDING + ENTRY_TEXT_INDENT + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
+      const descriptionX =
+        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
       const label = crispText(
         labelX,
         rowY + LABEL_TOP,
@@ -439,7 +442,11 @@ export function createModalPickerUI(
       );
       const sprite =
         option.spriteId && scene.textures.exists(option.spriteId)
-          ? scene.add.image(panelX + PANEL_PADDING + 12 + OPTION_ICON_SIZE / 2, rowY + 18, option.spriteId)
+          ? scene.add.image(
+              panelX + PANEL_PADDING + 12 + OPTION_ICON_SIZE / 2,
+              rowY + 18,
+              option.spriteId,
+            )
           : undefined;
       if (sprite) {
         sprite.setDisplaySize(OPTION_ICON_SIZE, OPTION_ICON_SIZE);
@@ -657,12 +664,13 @@ export function createModalPickerUI(
         title: state.title,
         subtitle: state.subtitle ?? null,
         body: state.body ?? null,
-        options: state.options.map((option) => ({
+        options: state.options.map((option, index) => ({
           id: option.id,
           label: option.label,
           description: option.description ?? null,
           disabled: option.disabled === true,
           spriteId: option.spriteId ?? null,
+          renderedSpriteId: entries[index]?.sprite?.texture.key ?? null,
         })),
       };
     },

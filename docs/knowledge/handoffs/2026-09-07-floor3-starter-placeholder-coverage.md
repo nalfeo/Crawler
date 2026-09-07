@@ -18,12 +18,12 @@ hud-ux, mobile-ux, sprite-pipeline
 
 ## What Was Done
 
-Added the missing real-UI regression coverage for the Floor 3 starter picker: the shipped MainGameScene modal path is now asserted to open the `floor3-starter` picker and every offered option resolves to a valid existing Floor 2 boss-mob sprite instead of a missing/generic placeholder. Observed in the live scene via `npx vitest run --project e2e tests/e2e/main-game-scene-floor3-party-ux.test.ts`: before the fix, the scene path lacked this rendering assertion; after the fix, the modal opens and all four starter options render valid mob textures without placeholder IDs.
+Added the missing real-UI regression coverage for the Floor 3 starter picker: the shipped MainGameScene modal path is now asserted to open the `floor3-starter` picker and every offered option resolves to a valid existing Floor 2 boss-mob sprite instead of a missing/generic placeholder. The temporary mapping uses committed `goblin-boss-var-0`, `llama-boss-var-0`, and `panda-boss-var-0` textures, and the modal probe reports the actual texture key of each created Phaser image. Observed in the live scene via `npx vitest run --project e2e tests/e2e/main-game-scene-floor3-party-ux.test.ts`: before the fix, the scene path lacked this rendering assertion and the first attempted keys were not loaded; after the fix, the modal opens and all four starter options create images using valid boss textures.
 
 ## Key Decisions Made
 
 - Kept the workaround isolated to the temporary Floor 3 starter presentation layer only.
-- Used the real scene modal snapshot as the proof gate so the regression test covers the shipped renderer, not just the pure model.
+- Used the real scene modal snapshot as the proof gate, including the renderer-created image texture key, so the regression test covers the shipped renderer rather than only the pure model or requested IDs.
 - Treated the Floor 2 boss sprite fallback as a deterministic temporary placeholder, not a gameplay-affecting roster change.
 
 ## What's Next / Blockers
@@ -34,7 +34,7 @@ No blockers. The companion-league art work remains intentionally separate from t
 
 ### Lessons Learned
 
-The underlying model logic was already correct; the missing piece was proving the real scene path renders the placeholder textures rather than only unit-testing the pure builder.
+The underlying model logic was deterministic, but requested sprite IDs alone did not prove that `textures.exists()` passed; exposing the created image texture key caught and corrected the invalid `mob-*` keys.
 
 ### Mistakes Made
 

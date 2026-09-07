@@ -70,7 +70,7 @@ describe('floor3 UX surface #2 — starter picker', () => {
       floor3StarterPlaceholderSpriteId(SECOND_SPECIES, 1),
     ]);
     for (const option of model.options) {
-      expect(option.spriteId).toMatch(/^mob-(goliath|mage-lord|directors-proxy)$/);
+      expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
     }
   });
 
