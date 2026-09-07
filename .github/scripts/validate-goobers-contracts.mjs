@@ -122,7 +122,9 @@ export function summarySemanticErrors(summary) {
     return [`summary must be non-empty with the ordered sections: ${expected}`];
   }
 
-  const lines = normalized.split('\n');
+  // Blank separator lines between sections are tolerated; agents commonly emit
+  // them when escaping the block into a JSON string.
+  const lines = normalized.split('\n').filter((line) => line.trim().length > 0);
   if (lines.length !== GOOBERS_SUMMARY_FIELDS.length) {
     return [
       `summary must have exactly ${GOOBERS_SUMMARY_FIELDS.length} labelled lines (${expected}); got ${lines.length}`,

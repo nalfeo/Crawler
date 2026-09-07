@@ -445,6 +445,19 @@ describe('crawler.goobers.summary/v1 close-out summary contract', () => {
     expect(summarySemanticErrors(undefined)).not.toHaveLength(0);
   });
 
+  it('tolerates blank separator lines between sections', () => {
+    expect(summarySemanticErrors(goobersSummaryV1.example.split('\n').join('\n\n'))).toEqual([]);
+  });
+
+  it('names the specific violation rather than one generic message', () => {
+    expect(
+      summarySemanticErrors(
+        ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+      ),
+    ).toEqual(['summary section "Systems" is empty']);
+    expect(summarySemanticErrors(undefined)[0]).toContain('must be a string');
+  });
+
   it('leaves crawler.goobers.output/v1 summary semantics unchanged for in-flight v1 payloads', () => {
     expect(
       isOutputValid({
