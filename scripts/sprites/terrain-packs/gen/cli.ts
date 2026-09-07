@@ -300,41 +300,14 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   );
   if (accentPathResult.ok) {
     const accentAtlases: RgbaImage[] = [];
-    let missingEmittedAccent = false;
     for (const accent of typed.wallAccents ?? []) {
       const accentPath = accent.imagePath.replace(/\\/g, '/');
-      const accentPng = filesByPath.get(accentPath);
-      if (!accentPng) {
-        missingEmittedAccent = true;
-        topologyResults.push({
-          ok: false,
-          issues: [
-            {
-              code: 'accent-image-missing',
-              message: `wallAccents[${accent.id}] image '${accent.imagePath}' was not emitted by composePack`,
-            },
-          ],
-        });
-        continue;
-      }
+      const accentPng = filesByPath.get(accentPath)!;
       const accentAtlas = decodePng(accentPng);
       accentAtlases.push(accentAtlas);
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
     }
-    if (missingEmittedAccent) {
-      depthResults.push({
-        ok: false,
-        issues: [
-          {
-            code: 'wall-accent-depth-skipped-incomplete-set',
-            message:
-              'Skipped wall-accent depth check because one or more declared accent images were not emitted by composePack.',
-          },
-        ],
-      });
-    } else {
-      depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
-    }
+    depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
   } else {
     depthResults.push({
       ok: false,

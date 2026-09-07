@@ -60,7 +60,9 @@ describe('terrain bake — Floor 1 command budget', () => {
   it('stays under the stamp + total command budget', () => {
     // Recorded after Floor 1 wall-accent overlays: 42,717 stamps / 87 fills /
     // 0 clears over 33,600 tiles (still down from 56,967 / 87 / 23,881 before
-    // the underdraw/clear-path optimization). Budgets carry a small
+    // the underdraw/clear-path optimization). The increase is expected because
+    // each wall tile now stamps an accent overlay layer on top of wall-atlas.
+    // Budgets carry a small
     // margin so unrelated generator retunes do not fail the perf gate, but
     // are tight enough that reintroducing per-tile clears or the redundant
     // wall underdraw would blow them.
