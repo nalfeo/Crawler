@@ -2254,10 +2254,12 @@ jobs:
           report_run() {
             local slot="$1" slot_root="$2" events_file="$3"
             local run_id="" events_input="/dev/null"
-            local assignment="" issue_number="" resume_pr="" run_phase="" display_status=""
-            local pr_number="" pr_url="" pr_resolution_error="" pr_stage_succeeded=""
+            local assignment="" issue_number="" resume_pr="" run_phase="" run_outcome="" display_status=""
+            local pr_number="" pr_url="" pr_resolution_error="" pr_stage_succeeded="" pr_details=""
+            local pr_validated_open=false
             local journal_pr_url="" run_ids="" delivery_outcome="" failure_code=""
             local no_work_disposition="" terminal_stage="" elapsed_seconds="0" stage_error=""
+            local prior_stage_failure=false unpushed_diff_size=0
             local source_line_count=0 valid_line_count=0
             local marker="" body="" existing_comment_id="" lookup_status=0
 
@@ -2363,7 +2365,19 @@ jobs:
               pr_resolution_error="Goobers reported non-numeric PR identifier '${pr_number}' for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and the issue timeline."
               pr_number=""
             elif [ -n "$pr_number" ]; then
-              pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
+              if ! pr_details="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" \
+                --json state,headRefName,headRepository 2>&1)"; then
+                pr_resolution_error="Goobers could not validate PR #${pr_number} for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and retry this workflow."
+                pr_number=""
+              elif [ "$(jq -r '.state' <<<"$pr_details")" = "OPEN" ] &&
+                [ "$(jq -r '.headRepository.nameWithOwner // ""' <<<"$pr_details")" = "$GITHUB_REPOSITORY" ] &&
+                [[ "$(jq -r '.headRefName' <<<"$pr_details")" == goobers/crawler/* ]]; then
+                pr_validated_open=true
+                pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"
+              else
+                pr_resolution_error="Goobers could not validate an open same-repository Goobers PR for issue #${issue_number}. Inspect artifact '${ARTIFACT_NAME}' and retry this workflow."
+                pr_number=""
+              fi
             elif [ "$pr_stage_succeeded" = "true" ] || [ -n "${resume_pr}" ]; then
               pr_resolution_error="Goobers completed a PR-producing run for issue #${issue_number}, but no PR number could be recovered from the journal, resume metadata, or issue timeline. Inspect artifact '${ARTIFACT_NAME}'."
             fi
@@ -2379,6 +2393,10 @@ jobs:
               completed) display_status="success" ;;
               failed|aborted|escalated) display_status="$run_phase" ;;
               *) display_status="$JOB_STATUS" ;;
+            esac
+            case "$run_phase" in
+              completed) run_outcome="success" ;;
+              *) run_outcome="failure" ;;
             esac
 
             terminal_stage="$(
@@ -2398,6 +2416,22 @@ jobs:
               ' "$events_input" | tail -n 1
             )"
             [ -n "$stage_error" ] || stage_error=""
+            if jq -s -e '
+              any(.[]; .type == "error" or
+                (.type == "stage.finished" and
+                  (.status == "failed" or .status == "failure")))
+            ' "$events_input" >/dev/null 2>&1; then
+              prior_stage_failure=true
+            fi
+            unpushed_diff_size="$(
+              jq -s -r '
+                [.[] | select(
+                  .type == "artifact.recorded" and
+                  .stage == "implement" and
+                  .name == "implement/unpushed-diff.patch"
+                ) | (.ref.size // 0) | numbers] | max // 0
+              ' "$events_input"
+            )"
             if [[ "${GOOBERS_JOB_START_EPOCH:-}" =~ ^[0-9]+$ ]]; then
               elapsed_seconds=$(( $(date +%s) - GOOBERS_JOB_START_EPOCH ))
               [ "$elapsed_seconds" -ge 0 ] || elapsed_seconds=0
@@ -2413,7 +2447,11 @@ jobs:
                 | .outputs.disposition // empty
               ' "$events_input" | tail -n 1
             )"
-            if [ -n "$pr_resolution_error" ]; then
+            if jq -s -e 'any(.[]; (.runner.errorClass? // "") == "timeout")' \
+              "$events_input" >/dev/null 2>&1; then
+              delivery_outcome="timeout"
+              failure_code="run-timeout"
+            elif [ -n "$pr_resolution_error" ]; then
               delivery_outcome="blocked"
               failure_code="pr-resolution"
             elif jq -s -e '
@@ -2429,9 +2467,12 @@ jobs:
             elif [ "$run_phase" = "aborted" ] || [ "$JOB_STATUS" = "cancelled" ]; then
               delivery_outcome="aborted"
               failure_code="run-aborted"
-            elif [ -n "$pr_number" ]; then
+            elif [ "$pr_validated_open" = "true" ]; then
               delivery_outcome="pr-opened"
-            elif [ "$no_work_disposition" = "completed-existing-work" ] && [ -z "$stage_error" ]; then
+            elif [ "$no_work_disposition" = "completed-existing-work" ] &&
+              [ "$run_outcome" = "success" ] &&
+              [ "$prior_stage_failure" = "false" ] &&
+              [ "$unpushed_diff_size" -eq 0 ]; then
               delivery_outcome="issue-completed"
             elif [ -n "$no_work_disposition" ]; then
               delivery_outcome="no-work"
@@ -2470,7 +2511,7 @@ jobs:
               if [ -n "$pr_url" ]; then
                 echo "- Pull request: #${pr_number} — ${pr_url}"
               fi
-              echo "- Journal artifact: \`${ARTIFACT_NAME}\` on the run's Artifacts section"
+              echo "- Journal artifact: [\`${ARTIFACT_NAME}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
             } > "$body"
 
             existing_comment_id="$(find_issue_comment_id "$marker")"

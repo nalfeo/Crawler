@@ -1401,7 +1401,9 @@ ${queryScript}
     // The result comment points at the guaranteed artifact by name; verbose
     // diagnostics stay in that artifact rather than in the issue comment.
     const comment = steps.find((step) => step.name === 'Comment on Goobers run result');
-    expect(comment?.run).toContain('Journal artifact: \\`${ARTIFACT_NAME}\\`');
+    expect(comment?.run).toContain(
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
+    );
   });
 
   it('names every artifact per attempt so a re-run cannot collide with itself', () => {
@@ -2031,7 +2033,9 @@ ${queryScript}
     // line. The compact report points at the artifact instead.
     expect(script).not.toContain('terminal_summary');
     expect(script).not.toContain('gsub("[\\r\\n]+"; " ")');
-    expect(script).toContain('Journal artifact: \\`${ARTIFACT_NAME}\\`');
+    expect(script).toContain(
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
+    );
   });
 
   it('resolves the receipt comment through the reader both guards use', () => {
@@ -2313,7 +2317,9 @@ ${queryScript}
     expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');
     expect(script).toContain('if ! [[ "$issue_number" =~ ^[0-9]+$ ]]');
     expect(script).toContain('delivery_outcome="no-work"');
-    expect(script).toContain('Journal artifact: \\`${ARTIFACT_NAME}\\`');
+    expect(script).toContain(
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
+    );
     expect(script).toContain('gh issue comment "$issue_number"');
   });
 
