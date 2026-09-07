@@ -1,6 +1,6 @@
-import { addComponent, entityExists } from 'bitecs';
+import { addComponent, entityExists, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { EffectiveStats } from '../../src/core/components.js';
+import { Companion, EffectiveStats, Team } from '../../src/core/components.js';
 import {
   spawnEnemy,
   spawnEnemyProjectile,
@@ -10,6 +10,7 @@ import {
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
+import { TeamId } from '../../src/shared/constants.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -24,6 +25,34 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
 
     expect(world.stores.health.current[player]).toBeLessThan(100);
     expect(entityExists(world.ecs, projectile)).toBe(false);
+  });
+
+  it('never resolves a hit on the player from a Companion-owned projectile', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const rivalCompanion = spawnEnemy(world, 10, 10, 50);
+    addComponent(world.ecs, rivalCompanion, set(Team, { id: TeamId.ENEMY }));
+    addComponent(
+      world.ecs,
+      rivalCompanion,
+      set(Companion, {
+        speciesToken: 0,
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.ENEMY,
+        knockedOut: 0,
+      }),
+    );
+    // A rival Companion's shot crossing the player en route to another
+    // Companion must never resolve as a hit on the player (Floor 3's Wrangler
+    // is a contractually invulnerable non-combatant caught in crossfire).
+    const projectile = spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7, rivalCompanion);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(100);
+    expect(entityExists(world.ecs, projectile)).toBe(true);
   });
 
   it('destroys an enemy projectile without damage when the player is in a safe space', () => {

@@ -11,6 +11,10 @@ import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { getActiveWeaponDef, setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { isEnemyHostileToPlayer } from '../../src/core/enemy-targeting.js';
+import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { movementSystem } from '../../src/core/systems/movementSystem.js';
+import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import {
   companionAISystem,
@@ -72,13 +76,17 @@ describe('companionCombatSystem', () => {
     const world = createTestWorld({ floor: 3 });
     world.floorId = 'floor3';
     spawnPlayer(world, 20, 0);
+    // `ember-slinger` (Sparktick) is the real shipped `aiType: "ranged"`
+    // Floor 3 species (enemies.floor3.json) — using it here (rather than
+    // fabricating ranged behavior on the melee `ember-charger` archetype)
+    // keeps this unit test aligned with the production species wiring.
     const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.RANGED, 0.1, 48, 10);
     addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
     addComponent(
       world.ecs,
       companion,
       set(Companion, {
-        speciesToken: speciesTokenForId('ember-charger'),
+        speciesToken: speciesTokenForId('ember-slinger'),
         form: 0,
         level: 1,
         xp: 0,
@@ -98,6 +106,140 @@ describe('companionCombatSystem', () => {
     expect(projectile).toBeDefined();
     expect(world.stores.health.current[trash]).toBe(100);
     expect(world.stores.projectileVisual.kind[projectile!]).toBe(ProjectileVisualKind.BULLET);
+    // resolveRenderKind is the function the real PhaserBridge consults for
+    // texture selection — asserting on it (rather than just the tag) proves
+    // this projectile actually renders as a bullet, not the hostile
+    // enemy-projectile asset.
+    expect(resolveRenderKind(world, projectile!)).toBe('bullet');
+  });
+
+  it('applies the strong Temperament matchup multiplier through a ranged companion projectile hit', () => {
+    const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
+    spawnPlayer(world, 20, 0);
+    const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        // ember beats stone for 2x (AFFINITY_RING super-effective neighbor).
+        speciesToken: speciesTokenForId('ember-slinger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    const rival = spawnBehaviorEnemy(world, 3, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, rival, set(Team, { id: TeamId.ENEMY }));
+    addComponent(
+      world.ecs,
+      rival,
+      set(Companion, {
+        speciesToken: speciesTokenForId('stone-charger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.ENEMY,
+        knockedOut: 0,
+      }),
+    );
+
+    companionAISystem(world);
+    companionCombatSystem(world);
+
+    for (let i = 0; i < 30 && world.stores.health.current[rival] === 100; i++) {
+      movementSystem(world);
+      const collision = collisionSystem(world);
+      damageSystem(world, collision);
+      world.elapsedMs += 16.67;
+    }
+
+    // BASE_DAMAGE(10) * medium(1) * playerCompanionDamageMultiplier(3) * 2x
+    // strong-matchup Temperament multiplier.
+    expect(world.stores.health.current[rival]).toBe(40);
+  });
+
+  it('applies the resisted Temperament matchup multiplier through a ranged companion projectile hit', () => {
+    const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
+    spawnPlayer(world, 20, 0);
+    const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        // ember is resisted (0.5x) by gloom (AFFINITY_RING previous neighbor).
+        speciesToken: speciesTokenForId('ember-slinger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    const rival = spawnBehaviorEnemy(world, 3, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, rival, set(Team, { id: TeamId.ENEMY }));
+    addComponent(
+      world.ecs,
+      rival,
+      set(Companion, {
+        speciesToken: speciesTokenForId('gloom-charger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.ENEMY,
+        knockedOut: 0,
+      }),
+    );
+
+    companionAISystem(world);
+    companionCombatSystem(world);
+
+    for (let i = 0; i < 30 && world.stores.health.current[rival] === 100; i++) {
+      movementSystem(world);
+      const collision = collisionSystem(world);
+      damageSystem(world, collision);
+      world.elapsedMs += 16.67;
+    }
+
+    // BASE_DAMAGE(10) * medium(1) * playerCompanionDamageMultiplier(3) * 0.5x
+    // resisted-matchup Temperament multiplier.
+    expect(world.stores.health.current[rival]).toBe(85);
+  });
+
+  it('lands an instant hit instead of dropping the attack when a ranged companion is point-blank on its target', () => {
+    const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
+    spawnPlayer(world, 20, 0);
+    const companion = spawnBehaviorEnemy(world, 4, 4, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        speciesToken: speciesTokenForId('ember-slinger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    // Zero-distance target: `normalize(0, 0)` has no direction to fire a
+    // projectile along, so this must fall through to the instant melee-style
+    // hit rather than silently consuming the cooldown with no effect.
+    const trash = spawnBehaviorEnemy(world, 4, 4, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, trash, set(Team, { id: TeamId.ENEMY }));
+
+    companionAISystem(world);
+    companionCombatSystem(world);
+
+    expect(query(world.ecs, [EnemyProjectile, Projectile]).length).toBe(0);
+    expect(world.stores.health.current[trash]).toBeLessThan(100);
   });
 
   it('lets player companions engage Floor 3 wild mobs only while they are hostile', () => {

@@ -117,6 +117,24 @@ describe('resolveRenderKind — one branch per render kind', () => {
   });
 });
 
+describe('resolveRenderKind — enemy projectile visual identity', () => {
+  it('resolves "bullet" for a companion-owned EnemyProjectile tagged BULLET', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, EnemyProjectile);
+    addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.BULLET }));
+    expect(resolveRenderKind(world, eid)).toBe('bullet');
+  });
+
+  it('stays "enemy_proj" for an EnemyProjectile with the default ARROW visual', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, EnemyProjectile);
+    addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.ARROW }));
+    expect(resolveRenderKind(world, eid)).toBe('enemy_proj');
+  });
+});
+
 describe('resolveRenderKind — team-split area damage', () => {
   it('resolves "enemy_aoe" when AreaDamage carries the ENEMY team', () => {
     const world = createTestWorld();

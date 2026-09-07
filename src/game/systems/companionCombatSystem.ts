@@ -8,6 +8,7 @@ import {
   ProjectileVisualKind,
   Team,
 } from '../../core/components.js';
+import { tagDamageMeta } from '../../core/damage-meta.js';
 import { spawnEnemyProjectile } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { STAT_BAND_SCALE, stylePersona } from '../../shared/data/floor3/styles.js';
@@ -108,8 +109,24 @@ export function companionCombatSystem(
       const sourceX = world.stores.position.x[eid] ?? 0;
       const sourceY = world.stores.position.y[eid] ?? 0;
       const dir = normalize(dx, dy);
-      if (dir.length > 0) {
-        spawnEnemyProjectile(
+      const targetX = world.stores.position.x[target] ?? 0;
+      const targetY = world.stores.position.y[target] ?? 0;
+      // A ranged shot only becomes a real flying projectile when there is
+      // both (a) a direction to fire along — a point-blank target (dir.length
+      // === 0, e.g. the AI catch-up fix walking a companion on top of its
+      // target) has none — and (b) an unobstructed line of sight, since
+      // Studio arenas can hold a companion and its locked rival within
+      // Euclidean attack range but on opposite sides of a wall/ring boundary
+      // while their positioning AI orbits at that range. Either case falls
+      // through to the instant melee-style hit below instead of silently
+      // dropping the attack forever: a companion that cannot draw a clean
+      // shot must still be able to land a hit, and the cooldown is only ever
+      // committed once an attack (projectile OR instant hit) actually
+      // resolves.
+      const hasLineOfSight =
+        world.floorMap?.hasLineOfSight(sourceX, sourceY, targetX, targetY) ?? true;
+      if (dir.length > 0 && hasLineOfSight) {
+        const projectileEid = spawnEnemyProjectile(
           world,
           sourceX,
           sourceY,
@@ -119,9 +136,21 @@ export function companionCombatSystem(
           eid,
           ProjectileVisualKind.BULLET,
         );
+        // spawnEnemyProjectile already tags fail-closed enemy/unscaled damage
+        // meta; re-tag with the Floor 3 Temperament pair so damageSystem's
+        // delayed `applyProjectileHit` replays the same matchup multiplier
+        // the instant melee path below applies immediately.
+        tagDamageMeta(world, projectileEid, {
+          origin: 'enemy',
+          affinity: 'unscaled',
+          scaleWithPrimary: false,
+          canCrit: false,
+          attackerTemperament: species.affinity,
+          defenderTemperament: defender?.affinity,
+        });
+        attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
+        continue;
       }
-      attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
-      continue;
     }
 
     applyDamage(
