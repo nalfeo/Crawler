@@ -50,6 +50,9 @@ export interface ModalPickerContentSnapshot {
     readonly label: string;
     readonly description: string | null;
     readonly disabled: boolean;
+    readonly spriteId: string | null;
+    /** Texture key of the image actually created for this option, if any. */
+    readonly renderedSpriteId: string | null;
   }>;
 }
 
@@ -69,6 +72,7 @@ export interface ModalPickerLayoutSnapshot {
 interface RenderEntry<TId extends string = string> {
   readonly option: ModalPickerOption<TId>;
   readonly row: Phaser.GameObjects.Rectangle;
+  readonly sprite?: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly description: Phaser.GameObjects.Text;
 }
@@ -108,6 +112,7 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   color: '#64748b',
 };
 const ENTRY_TEXT_INDENT = 26;
+const OPTION_ICON_SIZE = 26;
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
   fontSize: '13px',
@@ -240,6 +245,7 @@ export function createModalPickerUI(
   const clearEntries = (): void => {
     for (const entry of entries) {
       entry.row.destroy();
+      entry.sprite?.destroy();
       entry.label.destroy();
       entry.description.destroy();
     }
@@ -329,6 +335,7 @@ export function createModalPickerUI(
     }
     for (const entry of entries) {
       entry.row.setPosition(snap(entry.row.x + dx), snap(entry.row.y + dy));
+      entry.sprite?.setPosition(snap(entry.sprite.x + dx), snap(entry.sprite.y + dy));
       entry.label.setPosition(snap(entry.label.x + dx), snap(entry.label.y + dy));
       entry.description.setPosition(snap(entry.description.x + dx), snap(entry.description.y + dy));
       entry.label.setResolution(effectiveResolution);
@@ -418,18 +425,34 @@ export function createModalPickerUI(
       const isSelected = state.selectedIndex === index;
       const isDisabled = Boolean(option.disabled);
       const rowY = cursorY;
+      const labelX = panelX + PANEL_PADDING + 10 + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
+      const descriptionX =
+        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
       const label = crispText(
-        panelX + PANEL_PADDING + 10,
+        labelX,
         rowY + LABEL_TOP,
         `${isSelected ? '▶ ' : '  '}${option.label}`,
         isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
       );
       const description = crispText(
-        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT,
+        descriptionX,
         rowY + DESCRIPTION_TOP,
         option.description ?? (isDisabled ? 'Unavailable' : ''),
         DESCRIPTION_STYLE,
       );
+      const sprite =
+        option.spriteId && scene.textures.exists(option.spriteId)
+          ? scene.add.image(
+              panelX + PANEL_PADDING + 12 + OPTION_ICON_SIZE / 2,
+              rowY + 18,
+              option.spriteId,
+            )
+          : undefined;
+      if (sprite) {
+        sprite.setDisplaySize(OPTION_ICON_SIZE, OPTION_ICON_SIZE);
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setAlpha(isDisabled ? 0.5 : 1);
+      }
       const textContentHeight = Math.max(
         LABEL_TOP + label.height,
         DESCRIPTION_TOP + description.height,
@@ -494,8 +517,8 @@ export function createModalPickerUI(
 
       description.setAlpha(isDisabled ? 0.5 : 0.8);
 
-      entries.push({ option, row, label, description });
-      overlay.add([row, label, description]);
+      entries.push({ option, row, sprite, label, description });
+      overlay.add([row, ...(sprite ? [sprite] : []), label, description]);
       cursorY += rowHeight + ROW_GAP;
     }
 
@@ -641,11 +664,13 @@ export function createModalPickerUI(
         title: state.title,
         subtitle: state.subtitle ?? null,
         body: state.body ?? null,
-        options: state.options.map((option) => ({
+        options: state.options.map((option, index) => ({
           id: option.id,
           label: option.label,
           description: option.description ?? null,
           disabled: option.disabled === true,
+          spriteId: option.spriteId ?? null,
+          renderedSpriteId: entries[index]?.sprite?.texture.key ?? null,
         })),
       };
     },

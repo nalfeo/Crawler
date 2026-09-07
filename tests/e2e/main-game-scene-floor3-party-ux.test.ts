@@ -107,6 +107,14 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         'Floor 3 starter-companion modal after intro',
       );
 
+      const starterContent = await mainSceneProbe.getModalPickerContent(page);
+      expect(starterContent?.kind).toBe('floor3-starter');
+      expect(starterContent?.options).toHaveLength(4);
+      for (const option of starterContent!.options) {
+        expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
+        expect(option.renderedSpriteId).toBe(option.spriteId);
+      }
+
       await page.keyboard.press('Enter');
       await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'playing', {
         timeoutMs: 10_000,

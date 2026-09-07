@@ -20,6 +20,7 @@ import type {
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
   Floor3LeagueHudProbeState,
+  Floor3CompanionPropDepthProbe,
   FloatingTextProbe,
   FloorSummaryProbeState,
   ItemIconRenderInfo,
@@ -338,6 +339,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
   getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
+  primeFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor3CompanionPropDepthProbe()),
+  getFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3CompanionPropDepthProbe()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
