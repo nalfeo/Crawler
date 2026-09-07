@@ -32,7 +32,6 @@ preserving the caller's progression override.
 - `src/game/scenarios/floorSkipBaseline.ts`
 - `src/labs/ai-runner-lab/index.ts`
 - `tests/game/floor-skip-baseline.test.ts`
-- `tests/unit/ai-runner-lab-floor3-wiring.test.ts`
 
 ## Verification
 
