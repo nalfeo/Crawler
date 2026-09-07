@@ -47,10 +47,17 @@ describe('AI runner lab Floor 3 wiring', () => {
       'utf-8',
     );
 
-    const configureWorld = source.slice(
-      source.indexOf('configureWorld: (world: GameWorld, playerEid: number) => {'),
-      source.indexOf('inputCaptureOverride: aiInputProvider'),
+    const composeSceneOptionsIndex = source.indexOf('const composeSceneOptions:');
+    const configureWorldIndex = source.indexOf(
+      'configureWorld: (world: GameWorld, playerEid: number) => {',
+      composeSceneOptionsIndex,
     );
+    const configureWorld = source.slice(
+      configureWorldIndex,
+      source.indexOf('inputCaptureOverride: aiInputProvider', configureWorldIndex),
+    );
+    expect(composeSceneOptionsIndex).toBeGreaterThan(-1);
+    expect(configureWorldIndex).toBeGreaterThan(composeSceneOptionsIndex);
     const startLevelIndex = configureWorld.indexOf(
       'applyStartPlayerLevel(world, configuredStartPlayerLevel);',
     );
