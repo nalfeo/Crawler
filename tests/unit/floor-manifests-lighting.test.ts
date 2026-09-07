@@ -37,4 +37,10 @@ describe('floor manifest lighting defaults', () => {
     expect(manifest.enemyPackId).toBe('floor3-wild');
     expect(manifest.floor3?.biomeRegionCount).toBe(7);
   });
+
+  it('floor3 manifest pins daylight ambient for outdoor terrain', () => {
+    const raw = JSON.parse(readFileSync(join(floorsDir, 'floor3.manifest.json'), 'utf-8'));
+    const manifest = floorManifestDefSchema.parse(raw);
+    expect(manifest.lighting.ambient).toBe(0.45);
+  });
 });
