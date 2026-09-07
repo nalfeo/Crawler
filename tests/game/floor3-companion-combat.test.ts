@@ -1,6 +1,12 @@
-import { addComponent, set } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Companion, Team } from '../../src/core/components.js';
+import {
+  Companion,
+  EnemyProjectile,
+  Projectile,
+  ProjectileVisualKind,
+  Team,
+} from '../../src/core/components.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { getActiveWeaponDef, setActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -60,6 +66,38 @@ describe('companionCombatSystem', () => {
     expect(world.combatEvents).toContainEqual(
       expect.objectContaining({ type: 'hit', sourceEid: companion, targetEid: trash }),
     );
+  });
+
+  it('fires a visible projectile for ranged Floor 3 companions without applying instant damage', () => {
+    const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
+    spawnPlayer(world, 20, 0);
+    const companion = spawnBehaviorEnemy(world, 0, 0, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        speciesToken: speciesTokenForId('ember-charger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    const trash = spawnBehaviorEnemy(world, 5, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, trash, set(Team, { id: TeamId.ENEMY }));
+
+    companionAISystem(world);
+    companionCombatSystem(world);
+
+    const projectiles = query(world.ecs, [EnemyProjectile, Projectile]);
+    expect(projectiles.length).toBe(1);
+    const projectile = projectiles[0];
+    expect(projectile).toBeDefined();
+    expect(world.stores.health.current[trash]).toBe(100);
+    expect(world.stores.projectileVisual.kind[projectile!]).toBe(ProjectileVisualKind.BULLET);
   });
 
   it('lets player companions engage Floor 3 wild mobs only while they are hostile', () => {

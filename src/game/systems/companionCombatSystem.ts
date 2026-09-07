@@ -1,11 +1,20 @@
 import { hasComponent, query } from 'bitecs';
 import { applyDamage } from '../../core/apply-damage.js';
-import { Companion, DeathTimer, Enemy, Position, Team } from '../../core/components.js';
+import {
+  Companion,
+  DeathTimer,
+  Enemy,
+  Position,
+  ProjectileVisualKind,
+  Team,
+} from '../../core/components.js';
+import { spawnEnemyProjectile } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { STAT_BAND_SCALE, stylePersona } from '../../shared/data/floor3/styles.js';
 import { speciesForToken } from '../../shared/data/floor3/species.js';
-import { TeamId } from '../../shared/constants.js';
+import { TeamId, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
+import { normalize } from '../../shared/vec.js';
 import { getCompanionAIDecision } from './companionAISystem.js';
 
 const MELEE_RANGE_FT = 3;
@@ -73,7 +82,8 @@ export function companionCombatSystem(
     if (species === undefined) continue;
     const persona = stylePersona(species.fightingStyle);
     const storedAttackRange = world.stores.enemyBehavior.attackRange[eid] ?? 0;
-    const attackRange = storedAttackRange > 0 ? storedAttackRange : MELEE_RANGE_FT;
+    const rangedAttack = storedAttackRange > 0;
+    const attackRange = rangedAttack ? storedAttackRange : MELEE_RANGE_FT;
     const dx = (world.stores.position.x[target] ?? 0) - (world.stores.position.x[eid] ?? 0);
     const dy = (world.stores.position.y[target] ?? 0) - (world.stores.position.y[eid] ?? 0);
     if (dx * dx + dy * dy > attackRange * attackRange) continue;
@@ -91,10 +101,33 @@ export function companionCombatSystem(
       world.floorId === 'floor3' && (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER
         ? playerCompanionDamageMultiplier
         : 1;
+    const projectileDamage =
+      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier;
+
+    if (rangedAttack) {
+      const sourceX = world.stores.position.x[eid] ?? 0;
+      const sourceY = world.stores.position.y[eid] ?? 0;
+      const dir = normalize(dx, dy);
+      if (dir.length > 0) {
+        spawnEnemyProjectile(
+          world,
+          sourceX,
+          sourceY,
+          dir.x * ENEMY_PROJECTILE.SPEED,
+          dir.y * ENEMY_PROJECTILE.SPEED,
+          projectileDamage,
+          eid,
+          ProjectileVisualKind.BULLET,
+        );
+      }
+      attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
+      continue;
+    }
+
     applyDamage(
       world,
       target,
-      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier,
+      projectileDamage,
       world.stores.position.x[target] ?? 0,
       world.stores.position.y[target] ?? 0,
       {
