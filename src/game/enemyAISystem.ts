@@ -9,6 +9,7 @@ import {
   EnemyProjectile,
   Player,
   Position,
+  Team,
   Velocity,
 } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
@@ -42,6 +43,7 @@ import {
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
 import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import tuning from '../shared/data/tuning.json';
 
 export const AI_TYPE = {
   CHASE: 0,
@@ -289,7 +291,46 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // above base, so this is a pure raise-up-toward-player of the base speed.
   const decision = getFamilyAIDecision(world, eid);
   const rampSpeed = decision?.effectiveSpeed;
-  const rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  let rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  const companionDecision = getCompanionAIDecision(world, eid);
+  if (
+    world.floorId === 'floor3' &&
+    companionDecision?.kind === 'follow' &&
+    hasComponent(world.ecs, eid, Companion) &&
+    hasComponent(world.ecs, eid, Team) &&
+    (world.stores.team.id[eid] ?? 0) === TeamId.PLAYER &&
+    (world.stores.companion.ownerTeam[eid] ?? 0) === TeamId.PLAYER
+  ) {
+    const players = query(world.ecs, [Player, Position]);
+    const playerEid = players[0];
+    const playerSpeed =
+      playerEid === undefined
+        ? 0
+        : Math.hypot(
+            world.stores.velocity.x[playerEid] ?? 0,
+            world.stores.velocity.y[playerEid] ?? 0,
+          );
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const distance = Math.hypot(
+      (world.stores.position.x[playerEid ?? eid] ?? x) - x,
+      (world.stores.position.y[playerEid ?? eid] ?? y) - y,
+    );
+    const leash = tuning.factionRelations.friendlyLeashTiles;
+    const baseline = Math.max(
+      base,
+      playerSpeed * tuning.floor3Companion.followSpeedPlayerMultiplier,
+    );
+    const cap = Math.max(
+      baseline,
+      base * tuning.floor3Companion.followSpeedMaxMultiplier,
+      playerSpeed * tuning.floor3Companion.followSpeedMaxMultiplier,
+    );
+    rampedBase = Math.min(
+      cap,
+      baseline + Math.max(0, distance - leash) * tuning.floor3Companion.followSpeedRampPerFt,
+    );
+  }
   // Then compose active status effects on top — the single seam every enemy
   // speed read (wander, slime-leap prep/pounce, and the speed cap) derives
   // from. Because the slow multiplies the ramped base, status slows genuinely

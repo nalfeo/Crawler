@@ -122,6 +122,83 @@ describe('companionAISystem', () => {
     expect(world.stores.position.y[companion]).toBeGreaterThan(0);
   });
 
+  it('ramps Floor 3 player-owned follow speed with distance and caps it', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor3';
+    spawnPlayer(world, 0, 0);
+    const companion = spawnCompanion(world, 12, 0);
+
+    companionAISystem(world);
+    enemyAISystem(world);
+    const nearSpeed = Math.hypot(
+      world.stores.velocity.x[companion] ?? 0,
+      world.stores.velocity.y[companion] ?? 0,
+    );
+
+    world.stores.position.x[companion] = 24;
+    companionAISystem(world);
+    enemyAISystem(world);
+    const farSpeed = Math.hypot(
+      world.stores.velocity.x[companion] ?? 0,
+      world.stores.velocity.y[companion] ?? 0,
+    );
+
+    expect(farSpeed).toBeGreaterThan(nearSpeed);
+
+    world.stores.position.x[companion] = 1_000;
+    companionAISystem(world);
+    enemyAISystem(world);
+    const cappedSpeed = Math.hypot(
+      world.stores.velocity.x[companion] ?? 0,
+      world.stores.velocity.y[companion] ?? 0,
+    );
+    expect(cappedSpeed).toBeLessThanOrEqual(
+      Math.max(
+        0.1 * tuning.floor3Companion.followSpeedMaxMultiplier,
+        tuning.floor3Companion.followSpeedMaxMultiplier,
+      ),
+    );
+  });
+
+  it('returns an out-of-leash Floor 3 companion to the leash within 180 frames', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor3';
+    spawnPlayer(world, 0, 0);
+    const companion = spawnCompanion(world, 24, 0);
+
+    for (let frame = 0; frame < 180; frame += 1) {
+      companionAISystem(world);
+      enemyAISystem(world);
+      movementSystem(world);
+      world.frameCount += 1;
+    }
+
+    expect(
+      Math.hypot(world.stores.position.x[companion] ?? 0, world.stores.position.y[companion] ?? 0),
+    ).toBeLessThanOrEqual(tuning.factionRelations.friendlyLeashTiles);
+  });
+
+  it('does not apply the follow-speed ramp to Floor 4 or NPC companions', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor4';
+    spawnPlayer(world, 0, 0);
+    const companion = spawnCompanion(world, 1_000, 0);
+
+    companionAISystem(world);
+    enemyAISystem(world);
+    expect(
+      Math.hypot(world.stores.velocity.x[companion] ?? 0, world.stores.velocity.y[companion] ?? 0),
+    ).toBeLessThanOrEqual(0.100001);
+
+    world.floorId = 'floor3';
+    const npc = spawnCompanion(world, 1_000, 10, TeamId.NEUTRAL);
+    companionAISystem(world);
+    enemyAISystem(world);
+    expect(
+      Math.hypot(world.stores.velocity.x[npc] ?? 0, world.stores.velocity.y[npc] ?? 0),
+    ).toBeLessThanOrEqual(0.100001);
+  });
+
   // #4206 — "Companions need to stay near the player! Right now they wander
   // away." Root cause: chaining self-anchored engagements (each individually
   // bounded to `rivalRangeSq` of the companion's OWN position, which is
