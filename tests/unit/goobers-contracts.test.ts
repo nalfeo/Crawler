@@ -32,6 +32,11 @@ let prStateCommentV1: {
   encodedStateRequiredFields: string[];
   bulletFields: string[];
 };
+let goobersSummaryCommentV1: {
+  requiredFields: string[];
+  format: string;
+  example: string;
+};
 let invocationSemanticErrors: (payload: Invocation) => string[];
 let outputSemanticErrors: (payload: Output) => string[];
 let validateInvocation: Ajv.ValidateFunction;
@@ -44,6 +49,7 @@ beforeAll(async () => {
   invocationV1 = schemaModule.invocationV1;
   outputV1 = schemaModule.outputV1;
   prStateCommentV1 = schemaModule.prStateCommentV1;
+  goobersSummaryCommentV1 = schemaModule.goobersSummaryCommentV1;
 
   const validatorModule = await import(
     path.join(REPO_ROOT, '.github/scripts/validate-goobers-contracts.mjs')
@@ -66,6 +72,13 @@ function isOutputValid(payload: Output): boolean {
   const schemaOk = Boolean(validateOutput(payload));
   return schemaOk && outputSemanticErrors(payload).length === 0;
 }
+
+const structuredSummary = [
+  'Description: Fixes the invalid Goobers summary contract so the issue-close-out output explains the change in plain language.',
+  'Systems: Goobers workflow, validation schema, issue-close-out generation path',
+  'Verification: node .github/scripts/validate-goobers-contracts.mjs; npx vitest run tests/unit/goobers-contracts.test.ts',
+  'Risk: Low — this only alters the human-facing contract, not game runtime or automation behavior.',
+].join('\n');
 
 describe('crawler.goobers.invocation/v1 schema', () => {
   it('validates a reconcile operation with required fields', () => {
@@ -217,7 +230,7 @@ describe('crawler.goobers.output/v1 schema', () => {
           hardGate: 'All tests pass',
           blockedBy: null,
         },
-        summary: 'Feature implemented and reviewed',
+        summary: structuredSummary,
         error: null,
       }),
     ).toBe(true);
@@ -230,7 +243,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'plan',
         status: 'unknown-status',
         outputs: {},
-        summary: 'Test',
+        summary: structuredSummary,
       }),
     ).toBe(false);
   });
@@ -242,7 +255,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'not-a-real-task',
         status: 'success',
         outputs: {},
-        summary: 'Test',
+        summary: structuredSummary,
       }),
     ).toBe(false);
   });
@@ -254,7 +267,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'failure',
         outputs: {},
-        summary: 'Operation failed',
+        summary: structuredSummary,
       }),
     ).toBe(false);
 
@@ -264,7 +277,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'failure',
         outputs: {},
-        summary: 'Operation failed',
+        summary: structuredSummary,
         error: { code: 'TEST_FAILURE', message: 'Unit tests failed in src/core/' },
       }),
     ).toBe(true);
@@ -277,7 +290,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'plan',
         status: 'blocked',
         outputs: { blockedBy: '441,442' },
-        summary: 'Blocked by open issues',
+        summary: structuredSummary,
         error: { code: 'REQUIREMENTS_MISMATCH', message: 'Cannot proceed without fixing #441' },
       }),
     ).toBe(true);
@@ -290,7 +303,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'failure',
         outputs: {},
-        summary: 'Operation failed',
+        summary: structuredSummary,
         error: { code: 'TEST_FAILURE' },
       }),
     ).toBe(false);
@@ -303,7 +316,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'plan',
         status: 'success',
         outputs: { appleEstimate: 5 },
-        summary: 'Done',
+        summary: structuredSummary,
       }),
     ).toBe(true);
 
@@ -314,7 +327,7 @@ describe('crawler.goobers.output/v1 schema', () => {
           task: 'plan',
           status: 'success',
           outputs: { appleEstimate: invalidEstimate },
-          summary: 'Done',
+          summary: structuredSummary,
         }),
       ).toBe(false);
     }
@@ -327,7 +340,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'plan',
         status: 'success',
         outputs: { verdict: 'maybe' },
-        summary: 'Done',
+        summary: structuredSummary,
       }),
     ).toBe(false);
   });
@@ -339,7 +352,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'plan',
         status: 'success',
         outputs: { verdict: 'recommended', appleEstimate: 3 },
-        summary: 'Done',
+        summary: structuredSummary,
         error: null,
       }),
     ).toBe(true);
@@ -352,7 +365,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'no-work',
         outputs: {},
-        summary: 'No changes detected; nothing to do',
+        summary: structuredSummary,
       }),
     ).toBe(true);
   });
@@ -364,7 +377,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'no-work',
         outputs: { disposition: 'completed-existing-work' },
-        summary: 'Linked merged PR already satisfies every acceptance criterion',
+        summary: structuredSummary,
       }),
     ).toBe(true);
 
@@ -374,7 +387,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'success',
         outputs: { disposition: 'completed-existing-work' },
-        summary: 'Implementation finished',
+        summary: structuredSummary,
       }),
     ).toBe(false);
   });
@@ -386,7 +399,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'implement',
         status: 'success',
         outputs: { verdict: 'recommended', appleEstimate: 3 },
-        summary: 'Implementation finished',
+        summary: structuredSummary,
       }),
     ).toBe(false);
   });
@@ -398,9 +411,44 @@ describe('crawler.goobers.output/v1 schema', () => {
         task: 'push-branch',
         status: 'success',
         outputs: { hardGate: 'push must succeed' },
-        summary: 'Pushed branch',
+        summary: structuredSummary,
       }),
     ).toBe(false);
+  });
+
+  it('requires description, systems, verification, and risk sections in the human summary', () => {
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: {},
+        summary: structuredSummary,
+      }),
+    ).toBe(true);
+
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: {},
+        summary: 'Implemented the fix.',
+      }),
+    ).toBe(false);
+  });
+
+  it('exposes the canonical structured summary fields in the schema contract', () => {
+    expect(goobersSummaryCommentV1.requiredFields).toEqual([
+      'Description',
+      'Systems',
+      'Verification',
+      'Risk',
+    ]);
+    expect(goobersSummaryCommentV1.example).toContain('Description:');
+    expect(goobersSummaryCommentV1.example).toContain('Systems:');
+    expect(goobersSummaryCommentV1.example).toContain('Verification:');
+    expect(goobersSummaryCommentV1.example).toContain('Risk:');
   });
 });
 

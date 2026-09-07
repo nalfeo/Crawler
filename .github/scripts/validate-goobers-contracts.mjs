@@ -98,12 +98,30 @@ export function invocationSemanticErrors(payload) {
 
 const PLANNING_TASK = 'plan';
 const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
+const GOOBERS_SUMMARY_FIELDS = ['Description', 'Systems', 'Verification', 'Risk'];
+
+export function isStructuredGoobersSummary(summary) {
+  if (typeof summary !== 'string') {
+    return false;
+  }
+
+  const normalized = summary.replace(/\r\n/g, '\n').trim();
+  if (!normalized || normalized.split('\n').length < 2) {
+    return false;
+  }
+
+  return GOOBERS_SUMMARY_FIELDS.every((field) => {
+    const labelPattern = new RegExp(`(?:^|\\n)(?:[-*]\\s*)?${field}:`, 'i');
+    return labelPattern.test(normalized);
+  });
+}
 
 export function outputSemanticErrors(payload) {
   const errors = [];
   const status = payload?.status;
   const task = payload?.task;
   const outputs = payload?.outputs || {};
+  const summary = payload?.summary;
   const hasError = payload?.error !== undefined && payload?.error !== null;
   if ((status === 'failure' || status === 'blocked') && !hasError) {
     errors.push('error is required when status is failure or blocked');
@@ -144,6 +162,11 @@ export function outputSemanticErrors(payload) {
     !['clean', 'divergence'].includes(outputs.parityStatus)
   ) {
     errors.push("outputs.parityStatus must be either 'clean' or 'divergence'");
+  }
+  if (typeof summary === 'string' && !isStructuredGoobersSummary(summary)) {
+    errors.push(
+      `summary must be a structured block with required sections: ${GOOBERS_SUMMARY_FIELDS.join(', ')}`,
+    );
   }
 
   return errors;
@@ -449,7 +472,12 @@ function outputFixtures() {
           hardGate: 'all checks green',
           blockedBy: null,
         },
-        summary: 'Completed successfully',
+        summary: [
+          'Description: Completes the Goobers contract validation and closes the summary gap in the final issue comment.',
+          'Systems: Goobers output schema, issue-close-out validation, shared workflow contract',
+          'Verification: node .github/scripts/validate-goobers-contracts.mjs',
+          'Risk: Low — this changes the contract and comment format only.',
+        ].join('\n'),
       },
     },
     {
@@ -465,7 +493,12 @@ function outputFixtures() {
           hardGate: 'CI contract gate',
           blockedBy: '441,442',
         },
-        summary: 'Blocked by upstream issues',
+        summary: [
+          'Description: The issue is blocked pending a maintainer decision on the Goobers summary format.',
+          'Systems: Goobers workflow, issue-close-out summary output, maintainer approval gate',
+          'Verification: workflow contract review and issue-blocking checks',
+          'Risk: High — the change cannot ship without the human decision noted above.',
+        ].join('\n'),
         error: {
           code: 'REQUIREMENTS_MISMATCH',
           message: 'Blocked by upstream requirements',
@@ -480,7 +513,12 @@ function outputFixtures() {
         task: 'implement',
         status: 'failure',
         outputs: {},
-        summary: 'Failed',
+        summary: [
+          'Description: The validation failed while checking the Goobers summary output.',
+          'Systems: Goobers output schema',
+          'Verification: contract validation',
+          'Risk: Medium — downstream automation may not proceed until fixed.',
+        ].join('\n'),
       },
     },
     {
@@ -491,7 +529,12 @@ function outputFixtures() {
         task: 'implement',
         status: 'success',
         outputs: {},
-        summary: 'Done',
+        summary: [
+          'Description: The fix shipped successfully.',
+          'Systems: Goobers contract validation',
+          'Verification: local contract checks',
+          'Risk: Low — no gameplay behavior changed.',
+        ].join('\n'),
         error: {
           code: 'TEST_FAILURE',
           message: 'unexpected',
@@ -508,7 +551,12 @@ function outputFixtures() {
         outputs: {
           appleEstimate: 6,
         },
-        summary: 'Invalid apple estimate',
+        summary: [
+          'Description: The plan is invalid.',
+          'Systems: Goobers output contract',
+          'Verification: schema validation',
+          'Risk: Low — a rejected plan can be revisited immediately.',
+        ].join('\n'),
       },
     },
     {
@@ -524,7 +572,12 @@ function outputFixtures() {
           verdict: 'recommended',
           appleEstimate: 3,
         },
-        summary: 'Implementation finished',
+        summary: [
+          'Description: The implementation is complete.',
+          'Systems: Goobers task runner',
+          'Verification: targeted checks',
+          'Risk: Low — no production code changed.',
+        ].join('\n'),
       },
     },
     {
@@ -537,7 +590,12 @@ function outputFixtures() {
         outputs: {
           hardGate: 'push must succeed',
         },
-        summary: 'Pushed branch',
+        summary: [
+          'Description: The push succeeded.',
+          'Systems: branch publisher',
+          'Verification: branch push workflow',
+          'Risk: Low — execution is already complete.',
+        ].join('\n'),
       },
     },
   ];
