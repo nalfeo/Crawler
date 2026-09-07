@@ -703,6 +703,10 @@ describe('Goobers lifecycle ownership', () => {
     expect(gates['pr-opened-gate'].branches.pass).toBe('close-out');
     expect(gates['pr-opened-gate'].branches.fail).toBe('close-out');
     expect(tasks['close-out'].inputs.status).toBe('in-review');
+    expect(tasks['close-out'].inputsFrom.summary).toBe('implement.summary');
+    expect(tasks['close-out'].run.script).toContain('isStructuredGoobersSummary');
+    expect(tasks['park-needs-human'].inputsFrom.summary).toBe('implement.summary');
+    expect(tasks['needs-remediation'].inputsFrom.summary).toBe('implement.summary');
   });
 
   it('resolves closing issues within this repository and bounded', () => {

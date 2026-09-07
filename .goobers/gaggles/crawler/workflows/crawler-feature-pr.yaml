@@ -294,9 +294,22 @@ spec:
       type: deterministic
       goal: Mark the source issue as awaiting review and link the PR.
       run:
-        command: ['goobers', 'issue-close-out']
+        script: |
+          set -eu
+          export GOOBERS_SUMMARY="${GOOBERS_INPUT_SUMMARY:-}"
+          node --input-type=module <<'NODE'
+          import { isStructuredGoobersSummary } from './.github/scripts/validate-goobers-contracts.mjs';
+
+          if (!isStructuredGoobersSummary(process.env.GOOBERS_SUMMARY)) {
+            console.error('implement.summary must be a non-empty ordered Description/Systems/Verification/Risk block');
+            process.exit(1);
+          }
+          NODE
+          goobers issue-close-out
       inputs:
         status: 'in-review'
+      inputsFrom:
+        summary: implement.summary
         resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write
@@ -306,9 +319,22 @@ spec:
       type: deterministic
       goal: Park an issue that requires a maintainer product decision.
       run:
-        command: ['goobers', 'issue-close-out']
+        script: |
+          set -eu
+          export GOOBERS_SUMMARY="${GOOBERS_INPUT_SUMMARY:-}"
+          node --input-type=module <<'NODE'
+          import { isStructuredGoobersSummary } from './.github/scripts/validate-goobers-contracts.mjs';
+
+          if (!isStructuredGoobersSummary(process.env.GOOBERS_SUMMARY)) {
+            console.error('implement.summary must be a non-empty ordered Description/Systems/Verification/Risk block');
+            process.exit(1);
+          }
+          NODE
+          goobers issue-close-out
       inputs:
         status: 'needs-human'
+      inputsFrom:
+        summary: implement.summary
         resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write
@@ -319,9 +345,22 @@ spec:
       type: deterministic
       goal: Mark an issue that requires remediation and human escalation.
       run:
-        command: ['goobers', 'issue-close-out']
+        script: |
+          set -eu
+          export GOOBERS_SUMMARY="${GOOBERS_INPUT_SUMMARY:-}"
+          node --input-type=module <<'NODE'
+          import { isStructuredGoobersSummary } from './.github/scripts/validate-goobers-contracts.mjs';
+
+          if (!isStructuredGoobersSummary(process.env.GOOBERS_SUMMARY)) {
+            console.error('implement.summary must be a non-empty ordered Description/Systems/Verification/Risk block');
+            process.exit(1);
+          }
+          NODE
+          goobers issue-close-out
       inputs:
         status: 'needs-remediation'
+      inputsFrom:
+        summary: implement.summary
         resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write

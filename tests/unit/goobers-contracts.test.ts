@@ -438,6 +438,35 @@ describe('crawler.goobers.output/v1 schema', () => {
     ).toBe(false);
   });
 
+  it('rejects empty or out-of-order required sections', () => {
+    const emptySection = structuredSummary.replace(/^Systems:.*$/m, 'Systems:');
+    const outOfOrder = [
+      'Systems: Goobers workflow',
+      'Description: Explains the change',
+      'Verification: Contract tests',
+      'Risk: Low',
+    ].join('\n');
+
+    expect(
+      outputSemanticErrors({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: {},
+        summary: emptySection,
+      }),
+    ).not.toHaveLength(0);
+    expect(
+      outputSemanticErrors({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: {},
+        summary: outOfOrder,
+      }),
+    ).not.toHaveLength(0);
+  });
+
   it('exposes the canonical structured summary fields in the schema contract', () => {
     expect(goobersSummaryCommentV1.requiredFields).toEqual([
       'Description',

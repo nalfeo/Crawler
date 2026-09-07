@@ -106,14 +106,22 @@ export function isStructuredGoobersSummary(summary) {
   }
 
   const normalized = summary.replace(/\r\n/g, '\n').trim();
-  if (!normalized || normalized.split('\n').length < 2) {
+  if (!normalized) {
     return false;
   }
 
-  return GOOBERS_SUMMARY_FIELDS.every((field) => {
-    const labelPattern = new RegExp(`(?:^|\\n)(?:[-*]\\s*)?${field}:`, 'i');
-    return labelPattern.test(normalized);
+  const sections = normalized.split('\n').map((line) => {
+    const match = line.match(/^(?:[-*]\s*)?([A-Za-z]+):\s*(.*)$/);
+    return match ? { field: match[1].toLowerCase(), value: match[2].trim() } : null;
   });
+
+  return (
+    sections.length === GOOBERS_SUMMARY_FIELDS.length &&
+    sections.every(
+      (section, index) =>
+        section?.field === GOOBERS_SUMMARY_FIELDS[index].toLowerCase() && section.value.length > 0,
+    )
+  );
 }
 
 export function outputSemanticErrors(payload) {

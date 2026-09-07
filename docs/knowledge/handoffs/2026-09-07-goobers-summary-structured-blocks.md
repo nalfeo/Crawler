@@ -6,7 +6,7 @@
 
 ## Persona
 
-Producer
+QA Engineer
 
 ## Systems touched
 
@@ -14,19 +14,19 @@ ci-policy,mcp-tooling,docs-tooling
 
 ## Apples
 
-1🍎 exact
+3🍎 estimated
 
 ## What Was Done
 
-Updated the Goobers contract to require a structured human-readable summary block on final issue/PR output instead of a one-line summary. The schema now defines the canonical `Description`, `Systems`, `Verification`, and `Risk` sections, and the semantic validator rejects summaries missing any of them. I also expanded the unit suite to lock in the richer format and the schema script fixtures to reflect the real contract shape.
+Wired the Goobers `implement.summary` output into all three issue close-out branches (`in-review`, `needs-human`, and `needs-remediation`). Each branch now validates the exact summary input with the shared semantic validator before `goobers issue-close-out` can post it. The validator requires exactly four ordered, non-empty sections: `Description`, `Systems`, `Verification`, and `Risk`.
 
-Observed in `node .github/scripts/validate-goobers-contracts.mjs` and `npx vitest run tests/unit/goobers-contracts.test.ts` — before: one-line summaries were accepted; after: outputs must contain the required structured sections and the validation gate stays green.
+Observed in the deterministic workflow contract test and `node .github/scripts/validate-goobers-contracts.mjs` — before: the close-out task had no summary source or emission guard; after: all terminal close-out branches consume and validate `implement.summary`, while the schema and output keys remain valid. Unit coverage includes empty-section and out-of-order regressions.
 
 ## Key Decisions Made
 
 - Defaulted to a brief, structured bullet-block summary instead of a freeform sentence so the final comment is both readable and machine-checkable.
 - Kept the machine-readable output compact while raising the human-facing summary quality to match the issue acceptance criteria.
-- Reused the existing contract validator rather than introducing a separate ad hoc rule path, so the same gate enforces the output everywhere.
+- Reused the existing contract validator rather than introducing a separate ad hoc rule path, so the same semantic rule validates both Goobers output and the final comment input.
 
 ## What's Next / Blockers
 
