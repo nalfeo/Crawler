@@ -209,6 +209,12 @@ function validateEmittedWallAccentPaths(
   return { ok: issues.length === 0, issues };
 }
 
+function toAccentAssetPath(specId: string, relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^public\//, '');
+  if (normalized.startsWith('assets/terrain-packs/')) return normalized;
+  return `assets/terrain-packs/${specId}/${normalized.replace(/^\/+/, '')}`;
+}
+
 async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolean> {
   console.log(`\n[${spec.id}] building${options.fromSource ? ' (from committed source)' : ''}`);
 
@@ -291,18 +297,30 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlasBytes = files.find((f) => f.relativePath.endsWith('wall-atlas.png'))!.buffer;
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
-  const emittedPaths = new Set(files.map((file) => file.relativePath.replace(/\\/g, '/')));
+  const emittedPaths = new Set(files.map((file) => toAccentAssetPath(spec.id, file.relativePath)));
   const accentPathResult = validateEmittedWallAccentPaths(typed, emittedPaths);
   const topologyResults: ValidationResult[] = [];
   const depthResults: ValidationResult[] = [];
   const filesByPath = new Map(
-    files.map((file) => [file.relativePath.replace(/\\/g, '/'), file.buffer]),
+    files.map((file) => [toAccentAssetPath(spec.id, file.relativePath), file.buffer]),
   );
   if (accentPathResult.ok) {
     const accentAtlases: RgbaImage[] = [];
     for (const accent of typed.wallAccents ?? []) {
       const accentPath = accent.imagePath.replace(/\\/g, '/');
-      const accentPng = filesByPath.get(accentPath)!;
+      const accentPng = filesByPath.get(accentPath);
+      if (!accentPng) {
+        topologyResults.push({
+          ok: false,
+          issues: [
+            {
+              code: 'image-missing',
+              message: `wallAccents[${accent.id}]: imagePath '${accent.imagePath}' was not emitted by composePack`,
+            },
+          ],
+        });
+        continue;
+      }
       const accentAtlas = decodePng(accentPng);
       accentAtlases.push(accentAtlas);
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
