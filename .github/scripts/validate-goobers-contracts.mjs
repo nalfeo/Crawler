@@ -101,49 +101,61 @@ const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
 const GOOBERS_SUMMARY_FIELDS = ['Description', 'Systems', 'Verification', 'Risk'];
 
 /**
- * Returns true when `summary` satisfies `crawler.goobers.summary/v1`: exactly
- * four lines (optionally bulleted) labelled Description, Systems, Verification,
- * and Risk, in that order, each with non-empty text. Non-strings return false.
+ * Error-list form of `crawler.goobers.summary/v1`: empty when `summary` is
+ * exactly four lines (optionally bulleted) labelled Description, Systems,
+ * Verification, and Risk, in that order, each with non-empty text. Otherwise it
+ * names the specific problem (non-string, wrong line count, unlabelled line,
+ * empty section, or wrong order).
  *
  * This is intentionally a separate contract from `crawler.goobers.output/v1`,
  * whose `summary` field keeps its original "non-empty string" v1 semantics so
  * in-flight v1 outputs stay valid.
  */
-export function isStructuredGoobersSummary(summary) {
+export function summarySemanticErrors(summary) {
+  const expected = GOOBERS_SUMMARY_FIELDS.join(', ');
   if (typeof summary !== 'string') {
-    return false;
+    return [`summary must be a string with the ordered sections: ${expected}`];
   }
 
   const normalized = summary.replace(/\r\n/g, '\n').trim();
   if (!normalized) {
-    return false;
+    return [`summary must be non-empty with the ordered sections: ${expected}`];
   }
 
-  const sections = normalized.split('\n').map((line) => {
+  const lines = normalized.split('\n');
+  if (lines.length !== GOOBERS_SUMMARY_FIELDS.length) {
+    return [
+      `summary must have exactly ${GOOBERS_SUMMARY_FIELDS.length} labelled lines (${expected}); got ${lines.length}`,
+    ];
+  }
+
+  const errors = [];
+  lines.forEach((line, index) => {
+    const expectedField = GOOBERS_SUMMARY_FIELDS[index];
     const match = line.match(/^(?:[-*]\s*)?([A-Za-z]+):\s*(.*)$/);
-    return match ? { field: match[1].toLowerCase(), value: match[2].trim() } : null;
+    if (!match) {
+      errors.push(`summary line ${index + 1} must start with "${expectedField}:"`);
+      return;
+    }
+    if (match[1].toLowerCase() !== expectedField.toLowerCase()) {
+      errors.push(
+        `summary sections are out of order: line ${index + 1} is "${match[1]}", expected "${expectedField}" (${expected})`,
+      );
+      return;
+    }
+    if (match[2].trim().length === 0) {
+      errors.push(`summary section "${expectedField}" is empty`);
+    }
   });
 
-  return (
-    sections.length === GOOBERS_SUMMARY_FIELDS.length &&
-    sections.every(
-      (section, index) =>
-        section?.field === GOOBERS_SUMMARY_FIELDS[index].toLowerCase() && section.value.length > 0,
-    )
-  );
+  return errors;
 }
 
 /**
- * Error-list form of `isStructuredGoobersSummary()`: empty when the summary
- * satisfies `crawler.goobers.summary/v1`, otherwise one message naming the
- * required ordered sections.
+ * Predicate form of {@link summarySemanticErrors}.
  */
-export function summarySemanticErrors(summary) {
-  return isStructuredGoobersSummary(summary)
-    ? []
-    : [
-        `summary must be an ordered block with non-empty sections: ${GOOBERS_SUMMARY_FIELDS.join(', ')}`,
-      ];
+export function isStructuredGoobersSummary(summary) {
+  return summarySemanticErrors(summary).length === 0;
 }
 
 export function outputSemanticErrors(payload) {
