@@ -42,4 +42,4 @@ The first pass validated the deterministic model alone and missed the renderer-s
 
 ### Opportunities for Future Improvement
 
-When the full Companion League art lands, replace the temporary `mob-*` placeholder mapping with the real sprite IDs behind a single helper and remove the startup workaround in one change.
+When the full Companion League art lands, replace the temporary placeholder mapping — `FLOOR3_STARTER_PLACEHOLDER_SPRITES` / `floor3StarterPlaceholderSpriteId` / `starterSpeciesOption` in `src/shared/floor3-ux.ts`, consumed only by `buildFloor3StarterPickerModel` — with the real sprite IDs and remove the workaround in one change.

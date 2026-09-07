@@ -33,7 +33,7 @@ The starter-picker presentation had no deterministic sprite fallback and could r
 
 ## Observe Before Done
 
-The change is wired through the real `MainGameScene` + `ModalPickerUI` path used by the Floor 3 starter modal, and the starter UITest coverage asserts each offered choice carries a valid `mob-*` sprite ID unique to the temporary presentation layer.
+The change is wired through the real `MainGameScene` + `ModalPickerUI` path used by the Floor 3 starter modal, and the starter UI test coverage asserts each offered choice carries — and actually renders — one of the existing Floor 2 boss textures `goblin-boss-var-0`, `llama-boss-var-0`, or `panda-boss-var-0`. The mapping is confined to the starter picker; the poach picker stays sprite-free.
 
 ## Validation
 

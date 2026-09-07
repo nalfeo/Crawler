@@ -51,7 +51,7 @@ const FLOOR3_STARTER_PLACEHOLDER_SPRITES = [
   'panda-boss-var-0',
 ] as const;
 
-export function floor3StarterPlaceholderSpriteId(speciesId: string, index: number): string {
+function floor3StarterPlaceholderSpriteId(speciesId: string, index: number): string {
   const hash = [...speciesId].reduce((acc, char) => acc * 31 + char.charCodeAt(0), 0);
   const spriteIndex = Math.abs(hash + index * 17) % FLOOR3_STARTER_PLACEHOLDER_SPRITES.length;
   return FLOOR3_STARTER_PLACEHOLDER_SPRITES[spriteIndex] ?? FLOOR3_STARTER_PLACEHOLDER_SPRITES[0];
@@ -64,7 +64,6 @@ function speciesOption(speciesId: string, index: number, level: number): ModalPi
       id: speciesId,
       label: `Option ${index + 1}`,
       description: speciesId,
-      spriteId: floor3StarterPlaceholderSpriteId(speciesId, index),
     };
   }
   const form = formForLevel(species, level);

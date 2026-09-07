@@ -3,7 +3,6 @@ import {
   buildFloor3IntroModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
-  floor3StarterPlaceholderSpriteId,
 } from '../../src/shared/floor3-ux.js';
 import {
   formForLevel,
@@ -65,13 +64,15 @@ describe('floor3 UX surface #2 — starter picker', () => {
 
   it('uses a deterministic Floor 2 boss-mob sprite placeholder for every starter option', () => {
     const model = buildFloor3StarterPickerModel([FIRST_SPECIES, SECOND_SPECIES]);
-    expect(model.options.map((option) => option.spriteId)).toEqual([
-      floor3StarterPlaceholderSpriteId(FIRST_SPECIES, 0),
-      floor3StarterPlaceholderSpriteId(SECOND_SPECIES, 1),
-    ]);
     for (const option of model.options) {
       expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
     }
+    // Same offer, same placeholder assignment on every call.
+    expect(model.options.map((option) => option.spriteId)).toEqual(
+      buildFloor3StarterPickerModel([FIRST_SPECIES, SECOND_SPECIES]).options.map(
+        (option) => option.spriteId,
+      ),
+    );
   });
 
   it('degrades to a labelled placeholder row for an unknown species id', () => {
@@ -80,7 +81,7 @@ describe('floor3 UX surface #2 — starter picker', () => {
       id: 'not-a-species',
       label: 'Option 1',
       description: 'not-a-species',
-      spriteId: floor3StarterPlaceholderSpriteId('not-a-species', 0),
+      spriteId: expect.stringMatching(/^(goblin|llama|panda)-boss-var-0$/) as unknown as string,
     });
   });
 
@@ -117,6 +118,19 @@ describe('floor3 UX surface #3 — poach picker', () => {
     const species = getPetSpecies(FIRST_SPECIES)!;
     expect(model.options[0]?.label).toBe(formForLevel(species, 12).name);
     expect(model.options[0]?.description).toContain('Lv 12');
+  });
+
+  it('keeps the temporary starter placeholder art out of the poach picker', () => {
+    const model = buildFloor3PoachPickerModel({
+      candidates: [
+        { speciesId: FIRST_SPECIES, level: 12 },
+        { speciesId: 'not-a-species', level: 12 },
+      ],
+      slotsRemaining: 4,
+    });
+    for (const option of model.options) {
+      expect(option.spriteId).toBeUndefined();
+    }
   });
 
   it("renders each candidate at its own level, not the first candidate's", () => {
