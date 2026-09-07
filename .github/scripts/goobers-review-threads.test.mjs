@@ -87,11 +87,13 @@ test('(c) a trusted marker naming a reachable ancestor SHA resolves directly, no
     headSha: HEAD_SHA,
     reachableCommitShas: [RECENT_ANCESTOR_SHA],
   });
-  assert.deepEqual(decisions, [{
-    threadId: 't2',
-    action: 'resolve',
-    reachableCommitShas: [RECENT_ANCESTOR_SHA],
-  }]);
+  assert.deepEqual(decisions, [
+    {
+      threadId: 't2',
+      action: 'resolve',
+      reachableCommitShas: [RECENT_ANCESTOR_SHA],
+    },
+  ]);
 });
 
 test('(d) a trusted marker naming an unreachable, non-head SHA yields no decision', () => {
@@ -218,6 +220,36 @@ test('follow-up backlog threads emit a resolve decision with the created/reused 
     { sourceIssueNumber, issueNumber: 456, action: 'created' },
   ]);
   assert.match(decisions[0].markerBody, /issue #456 for #123/);
+});
+
+test('follow-up backlog threads without a complete positive issue mapping are skipped', () => {
+  const sourceIssueNumber = 123;
+  const threads = [
+    {
+      id: 't-followup-missing-map',
+      isResolved: false,
+      isOutdated: false,
+      comments: {
+        nodes: [
+          {
+            id: 't-followup-missing-map-root',
+            body: `Please file a follow-up backlog issue for #${sourceIssueNumber} without assigning Copilot.`,
+            author: { login: 'copilot-pull-request-reviewer' },
+            authorAssociation: 'MEMBER',
+            url: threadUrl('778'),
+          },
+        ],
+      },
+    },
+  ];
+  const decisions = decideReviewThreadActions({
+    threads,
+    headSha: HEAD_SHA,
+    closingIssues: [{ number: sourceIssueNumber, repository: { nameWithOwner: 'nalfeo/Crawler' } }],
+    repository: 'nalfeo/Crawler',
+    followUpIssueMapping: [],
+  });
+  assert.deepEqual(decisions, []);
 });
 
 test('a non-outdated unresolved thread with no marker is left alone', () => {

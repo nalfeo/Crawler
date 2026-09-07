@@ -94,8 +94,15 @@ function normalizeIssueMappingEntries(sourceIssueNumbers = [], issueMapping = []
   const normalized = [];
   const seen = new Set();
   for (const entry of Array.isArray(issueMapping) ? issueMapping : []) {
-    const sourceIssueNumber = Number(entry?.sourceIssueNumber ?? entry?.source ?? entry?.source_issue_number);
-    const issueNumber = Number(entry?.issueNumber ?? entry?.followUpIssueNumber ?? entry?.followupIssueNumber ?? entry?.number);
+    const sourceIssueNumber = Number(
+      entry?.sourceIssueNumber ?? entry?.source ?? entry?.source_issue_number,
+    );
+    const issueNumber = Number(
+      entry?.issueNumber ??
+        entry?.followUpIssueNumber ??
+        entry?.followupIssueNumber ??
+        entry?.number,
+    );
     const action = String(entry?.action || entry?.kind || 'created').toLowerCase();
     if (!Number.isInteger(sourceIssueNumber) || !Number.isInteger(issueNumber)) continue;
     if (!sourceIssueNumbers.includes(sourceIssueNumber)) continue;
@@ -108,15 +115,6 @@ function normalizeIssueMappingEntries(sourceIssueNumbers = [], issueMapping = []
       action: action === 'reused' ? 'reused' : 'created',
     });
   }
-  for (const sourceIssueNumber of sourceIssueNumbers) {
-    if (!normalized.some((entry) => entry.sourceIssueNumber === sourceIssueNumber)) {
-      normalized.push({
-        sourceIssueNumber,
-        issueNumber: null,
-        action: 'created',
-      });
-    }
-  }
   return normalized;
 }
 
@@ -125,9 +123,8 @@ function buildFollowupBacklogMarkerBody({ head, sourceIssueNumbers, issueMapping
   const followupList = mapping
     .filter((entry) => Number.isInteger(entry?.issueNumber) && entry.issueNumber > 0)
     .map((entry) => `#${entry.issueNumber}`);
-  const resolvedList = followupList.length > 0 ? followupList : sourceIssueNumbers.map((n) => `#${n}`);
   const sourceList = sourceIssueNumbers.map((n) => `#${n}`).join(', ');
-  const followupListText = resolvedList.join(', ');
+  const followupListText = followupList.join(', ');
   return `✅ Addressed in ${head}: filed unassigned follow-up backlog issue ${followupListText} for ${sourceList}.`;
 }
 
@@ -140,7 +137,11 @@ export function decideReviewThreadActions({
   followUpIssueMapping = [],
 } = {}) {
   const head = String(headSha ?? '').toLowerCase();
-  const reachable = new Set((Array.isArray(reachableCommitShas) ? reachableCommitShas : []).map((sha) => String(sha).toLowerCase()));
+  const reachable = new Set(
+    (Array.isArray(reachableCommitShas) ? reachableCommitShas : []).map((sha) =>
+      String(sha).toLowerCase(),
+    ),
+  );
   const decisions = [];
 
   // Phase 1: outdated, unresolved threads with no trusted marker get a
@@ -191,7 +192,9 @@ export function decideReviewThreadActions({
   const allClosingIssues = Array.isArray(closingIssues) ? closingIssues : [];
   const localClosingIssues = repositoryName
     ? allClosingIssues.filter(
-        (issue) => String(issue?.repository?.nameWithOwner || '').toLowerCase() === repositoryName.toLowerCase(),
+        (issue) =>
+          String(issue?.repository?.nameWithOwner || '').toLowerCase() ===
+          repositoryName.toLowerCase(),
       )
     : allClosingIssues;
 
@@ -210,6 +213,17 @@ export function decideReviewThreadActions({
         sourceIssueNumbers,
         Array.isArray(followUpIssueMapping) ? followUpIssueMapping : [],
       );
+      const hasCompleteIssueMapping =
+        issueMapping.length > 0 &&
+        sourceIssueNumbers.every((sourceIssueNumber) =>
+          issueMapping.some(
+            (entry) =>
+              entry.sourceIssueNumber === sourceIssueNumber &&
+              Number.isInteger(entry.issueNumber) &&
+              entry.issueNumber > 0,
+          ),
+        );
+      if (!hasCompleteIssueMapping) continue;
       const backlogDecision = {
         threadId: thread.id,
         action: 'resolve',

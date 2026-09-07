@@ -2465,107 +2465,111 @@ const localClosingIssues = closingIssues.filter(
     String(issue?.repository?.nameWithOwner || '').toLowerCase() === repository.toLowerCase(),
 );
 const closingIssueByNumber = new Map(localClosingIssues.map((issue) => [issue.number, issue]));
-for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
-  const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
-    thread,
-    localClosingIssues,
-    repository,
-  );
-  if (sourceIssueNumbers.length === 0) continue;
+if (!legacyReviewThreadWritesEnabled()) {
+  await dispatchReviewThreadsGoobersOnce();
+} else {
+  for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
+    const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      localClosingIssues,
+      repository,
+    );
+    if (sourceIssueNumbers.length === 0) continue;
 
-  const root = thread.comments?.nodes?.[0];
-  const replyCommentId = reviewThreadReplyCommentId(root?.url);
-  if (!replyCommentId) {
-    process.stdout.write(`skip followup-backlog thread=${thread.id} reason=no-reply-target\n`);
-    continue;
-  }
-  if (!live) {
-    process.stdout.write(`would-file followup-backlog thread=${thread.id}\n`);
-    continue;
-  }
-
-  const followupIssues = [];
-  try {
-    for (const sourceIssueNumber of sourceIssueNumbers) {
-      const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
-      if (!sourceIssue) continue;
-      const { issue: followupIssue, action } = await getOrCreateFollowupBacklogIssue({
-        sourceIssue,
-        thread,
-      });
-      followupIssues.push({ sourceIssueNumber, followupIssue });
-      process.stdout.write(
-        `${action} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
-      );
+    const root = thread.comments?.nodes?.[0];
+    const replyCommentId = reviewThreadReplyCommentId(root?.url);
+    if (!replyCommentId) {
+      process.stdout.write(`skip followup-backlog thread=${thread.id} reason=no-reply-target\n`);
+      continue;
     }
-  } catch (issueErr) {
-    const safeMsg = String(issueErr?.message || issueErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(
-      `followup-backlog-issue-failed thread=${thread.id} status=${issueErr?.status ?? 'n/a'} err=${safeMsg}\n`,
-    );
-    continue;
-  }
-  if (followupIssues.length === 0) continue;
-  const sourceList = followupIssues
-    .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
-    .join(', ');
-  const followupList = followupIssues
-    .map(({ followupIssue }) => `#${followupIssue.number}`)
-    .join(', ');
-  const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
-  try {
-    await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
-    await request(
-      pat,
-      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
-      {
-        method: 'POST',
-        body: { body: markerBody },
-      },
-    );
-  } catch (replyErr) {
-    const safeMsg = String(replyErr?.message || replyErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(
-      `followup-backlog-reply-failed thread=${thread.id} status=${replyErr?.status ?? 'n/a'} err=${safeMsg}\n`,
-    );
-    continue;
-  }
-  try {
-    await assertExpectedMetadataUnchanged('resolve-thread');
-    await graphql(
-      pat,
-      `
-        mutation ($threadId: ID!) {
-          resolveReviewThread(input: { threadId: $threadId }) {
-            thread {
-              isResolved
+    if (!live) {
+      process.stdout.write(`would-file followup-backlog thread=${thread.id}\n`);
+      continue;
+    }
+
+    const followupIssues = [];
+    try {
+      for (const sourceIssueNumber of sourceIssueNumbers) {
+        const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
+        if (!sourceIssue) continue;
+        const { issue: followupIssue, action } = await getOrCreateFollowupBacklogIssue({
+          sourceIssue,
+          thread,
+        });
+        followupIssues.push({ sourceIssueNumber, followupIssue });
+        process.stdout.write(
+          `${action} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
+        );
+      }
+    } catch (issueErr) {
+      const safeMsg = String(issueErr?.message || issueErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `followup-backlog-issue-failed thread=${thread.id} status=${issueErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      continue;
+    }
+    if (followupIssues.length === 0) continue;
+    const sourceList = followupIssues
+      .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
+      .join(', ');
+    const followupList = followupIssues
+      .map(({ followupIssue }) => `#${followupIssue.number}`)
+      .join(', ');
+    const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
+    try {
+      await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
+      await request(
+        pat,
+        `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+        {
+          method: 'POST',
+          body: { body: markerBody },
+        },
+      );
+    } catch (replyErr) {
+      const safeMsg = String(replyErr?.message || replyErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `followup-backlog-reply-failed thread=${thread.id} status=${replyErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      continue;
+    }
+    try {
+      await assertExpectedMetadataUnchanged('resolve-thread');
+      await graphql(
+        pat,
+        `
+          mutation ($threadId: ID!) {
+            resolveReviewThread(input: { threadId: $threadId }) {
+              thread {
+                isResolved
+              }
             }
           }
-        }
-      `,
-      { threadId: thread.id },
-    );
-  } catch (resolveErr) {
-    const safeMsg = String(resolveErr?.message || resolveErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
-    continue;
+        `,
+        { threadId: thread.id },
+      );
+    } catch (resolveErr) {
+      const safeMsg = String(resolveErr?.message || resolveErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
+      continue;
+    }
+    if (!thread.comments) thread.comments = { nodes: [] };
+    thread.comments.nodes.push({
+      id: `reconciler-followup-backlog-marker:${thread.id}`,
+      body: markerBody,
+      url: '',
+      author: { login: '' },
+      authorAssociation: 'OWNER',
+    });
+    thread.isResolved = true;
+    process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
   }
-  if (!thread.comments) thread.comments = { nodes: [] };
-  thread.comments.nodes.push({
-    id: `reconciler-followup-backlog-marker:${thread.id}`,
-    body: markerBody,
-    url: '',
-    author: { login: '' },
-    authorAssociation: 'OWNER',
-  });
-  thread.isResolved = true;
-  process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
 }
 
 // Detect threads whose last trusted comment carries a ✅ Addressed marker that

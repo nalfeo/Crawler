@@ -34,6 +34,7 @@ concurrency:
 permissions:
   actions: read
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
@@ -149,8 +150,6 @@ jobs:
                 });
                 if (compare?.data?.status === 'identical' || compare?.data?.status === 'ahead') {
                   reachableCommitShas.add(markerSha);
-                } else {
-                  definitivelyMissingMarkerShas.add(markerSha);
                 }
               } catch (error) {
                 if (error?.status === 404) {
@@ -165,12 +164,101 @@ jobs:
               }
             }
 
+            function followupBacklogMarker({ sourceIssueNumber, threadId }) {
+              return `<!-- crawler-ci-followup-backlog:v1 sourceIssue=${sourceIssueNumber} pr=${prNumber} thread=${String(threadId || '').replace(/\s+/g, '-')} -->`;
+            }
+
+            function issueHasFollowupBacklogMarker(issue, sourceIssueNumber) {
+              const body = String(issue?.body || '');
+              return (
+                body.includes('<!-- crawler-ci-followup-backlog:v1') &&
+                new RegExp(`\\bsourceIssue=${sourceIssueNumber}\\b`).test(body)
+              );
+            }
+
+            function followupBacklogIssueTitle(sourceIssue) {
+              const sourceTitle = String(sourceIssue?.title || '').trim();
+              const suffix = sourceTitle ? `: ${sourceTitle}` : '';
+              return `Follow up from #${sourceIssue.number}${suffix}`.slice(0, 256);
+            }
+
+            function followupBacklogIssueBody({ sourceIssue, thread }) {
+              return [
+                followupBacklogMarker({ sourceIssueNumber: sourceIssue.number, threadId: thread.id }),
+                '',
+                `Track the follow-up backlog work requested by #${sourceIssue.number} and required before ${pr.html_url} can close that source issue.`,
+                '',
+                '- Keep this issue unassigned to Copilot unless a maintainer explicitly re-scopes it.',
+                `- Source PR: #${pr.number}`,
+                `- Source review thread: ${thread.comments?.nodes?.[0]?.url || thread.id}`,
+              ].join('\n');
+            }
+
+            const repositoryName = `${context.repo.owner}/${context.repo.repo}`;
+            const localClosingIssues = closingIssues.filter(
+              (issue) =>
+                String(issue?.repository?.nameWithOwner || '').toLowerCase() ===
+                repositoryName.toLowerCase(),
+            );
+            const closingIssueByNumber = new Map(
+              localClosingIssues.map((issue) => [issue.number, issue]),
+            );
+            const openAutomationIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'automation',
+              per_page: 100,
+            });
+            const followUpIssueMapping = [];
+            const mappingSeen = new Set();
+            for (const thread of candidateThreads) {
+              const sourceIssueNumbers = github_.reviewThreadFollowupBacklogIssueNumbers(
+                thread,
+                localClosingIssues,
+                repositoryName,
+              );
+              if (sourceIssueNumbers.length === 0) continue;
+              for (const sourceIssueNumber of sourceIssueNumbers) {
+                const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
+                if (!sourceIssue) continue;
+                let followupIssue = openAutomationIssues.find(
+                  (issue) =>
+                    !issue.pull_request && issueHasFollowupBacklogMarker(issue, sourceIssueNumber),
+                );
+                let action = 'reused';
+                if (!followupIssue) {
+                  followupIssue = (
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: followupBacklogIssueTitle(sourceIssue),
+                      body: followupBacklogIssueBody({ sourceIssue, thread }),
+                      labels: ['automation'],
+                      assignees: [],
+                    })
+                  ).data;
+                  openAutomationIssues.push(followupIssue);
+                  action = 'created';
+                }
+                const key = `${sourceIssueNumber}:${followupIssue.number}`;
+                if (mappingSeen.has(key)) continue;
+                mappingSeen.add(key);
+                followUpIssueMapping.push({
+                  sourceIssueNumber,
+                  issueNumber: followupIssue.number,
+                  action,
+                });
+              }
+            }
+
             const input = {
               threads: review.threads,
               headSha,
               closingIssues,
-              repository: `${context.repo.owner}/${context.repo.repo}`,
+              repository: repositoryName,
               reachableCommitShas: [...reachableCommitShas],
+              followUpIssueMapping,
             };
             fs.mkdirSync('.goobers-review-threads', { recursive: true });
             fs.writeFileSync(
@@ -394,22 +482,104 @@ jobs:
                 const issueMapping = Array.isArray(decision.followUpIssueMapping || decision.issueMapping)
                   ? decision.followUpIssueMapping || decision.issueMapping
                   : [];
-                const markerBody = decision.markerBody || `✅ Addressed in ${headNow}: filed unassigned follow-up backlog issue ${issueMapping.map((entry) => entry.issueNumber ? `#${entry.issueNumber}` : '').filter(Boolean).join(', ') || 'n/a'} for ${issueMapping.map((entry) => `#${entry.sourceIssueNumber}`).join(', ') || 'n/a'}.`;
-                if (issueMapping.length === 0) {
-                  core.info(`skip follow-up-backlog thread=${decision.threadId} reason=no-issue-mapping`);
+                const normalizedMapping = issueMapping
+                  .map((entry) => ({
+                    sourceIssueNumber: Number(entry?.sourceIssueNumber),
+                    issueNumber: Number(entry?.issueNumber),
+                    action: String(entry?.action || 'created').toLowerCase() === 'reused'
+                      ? 'reused'
+                      : 'created',
+                  }))
+                  .filter(
+                    (entry) =>
+                      Number.isInteger(entry.sourceIssueNumber) &&
+                      entry.sourceIssueNumber > 0 &&
+                      Number.isInteger(entry.issueNumber) &&
+                      entry.issueNumber > 0,
+                  );
+                const sourceIssueNumbers = [
+                  ...new Set(
+                    (Array.isArray(decision.sourceIssueNumbers) ? decision.sourceIssueNumbers : [])
+                      .map((value) => Number(value))
+                      .filter((value) => Number.isInteger(value) && value > 0),
+                  ),
+                ];
+                const hasCompleteIssueMapping =
+                  normalizedMapping.length > 0 &&
+                  sourceIssueNumbers.length > 0 &&
+                  sourceIssueNumbers.every((sourceIssueNumber) =>
+                    normalizedMapping.some((entry) => entry.sourceIssueNumber === sourceIssueNumber),
+                  );
+                if (!hasCompleteIssueMapping) {
+                  core.info(
+                    `skip follow-up-backlog thread=${decision.threadId} reason=incomplete-issue-mapping`,
+                  );
                   continue;
                 }
-                try {
-                  await github.rest.pulls.createReplyForReviewComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: prNumber,
-                    comment_id: Number(decision.replyCommentId),
-                    body: markerBody,
-                  });
-                  core.info(`posted follow-up-backlog marker thread=${decision.threadId}`);
-                } catch (error) {
-                  core.warning(`follow-up-backlog-reply-failed thread=${decision.threadId} err=${error.message}`);
+                const markerBody = decision.markerBody || `✅ Addressed in ${headNow}: filed unassigned follow-up backlog issue ${normalizedMapping.map((entry) => `#${entry.issueNumber}`).join(', ')} for ${sourceIssueNumbers.map((entry) => `#${entry}`).join(', ')}.`;
+                const reachableCommitShas = new Set(
+                  Array.isArray(decision.reachableCommitShas) ? decision.reachableCommitShas : [],
+                );
+                const trustedFollowupMarkerPresent = (() => {
+                  const latest = state_.effectiveLatestThreadComment(thread);
+                  if (!latest) return false;
+                  const markerSha = state_.extractAddressedMarkerSha(latest.body);
+                  if (markerSha !== headNow) return false;
+                  const trusted =
+                    state_.TRUSTED_ASSOCIATIONS.has(
+                      String(latest.authorAssociation || '').toUpperCase(),
+                    ) ||
+                    state_.TRUSTED_BOT_LOGINS.has(String(latest.author?.login || '').toLowerCase());
+                  if (!trusted) return false;
+                  return normalizedMapping.every((entry) =>
+                    String(latest.body || '').includes(`#${entry.issueNumber}`),
+                  );
+                })();
+                if (!trustedFollowupMarkerPresent) {
+                  try {
+                    await github.rest.pulls.createReplyForReviewComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: prNumber,
+                      comment_id: Number(decision.replyCommentId),
+                      body: markerBody,
+                    });
+                    core.info(`posted follow-up-backlog marker thread=${decision.threadId}`);
+                  } catch (error) {
+                    core.warning(`follow-up-backlog-reply-failed thread=${decision.threadId} err=${error.message}`);
+                    continue;
+                  }
+                } else {
+                  core.info(`reuse existing follow-up-backlog marker thread=${decision.threadId}`);
+                }
+                const reviewAfterFollowupMarker = await currentThreads();
+                thread = reviewAfterFollowupMarker.threads.find(
+                  (candidate) => candidate.id === decision.threadId,
+                );
+                if (!thread || thread.isResolved) {
+                  core.info(`skip follow-up-backlog thread=${decision.threadId} reason=already-resolved-or-missing`);
+                  continue;
+                }
+                const latest = state_.effectiveLatestThreadComment(thread);
+                const markerSha = state_.extractAddressedMarkerSha(latest?.body);
+                const markerTrusted =
+                  latest &&
+                  (state_.TRUSTED_ASSOCIATIONS.has(
+                    String(latest.authorAssociation || '').toUpperCase(),
+                  ) ||
+                    state_.TRUSTED_BOT_LOGINS.has(String(latest.author?.login || '').toLowerCase()));
+                const markerHasMappedIssues = normalizedMapping.every((entry) =>
+                  String(latest?.body || '').includes(`#${entry.issueNumber}`),
+                );
+                if (
+                  markerSha !== headNow ||
+                  !markerTrusted ||
+                  !markerHasMappedIssues ||
+                  !state_.shouldResolveThread(thread, headNow, reachableCommitShas)
+                ) {
+                  core.info(
+                    `skip follow-up-backlog thread=${decision.threadId} reason=live-thread-not-resolvable`,
+                  );
                   continue;
                 }
                 try {
