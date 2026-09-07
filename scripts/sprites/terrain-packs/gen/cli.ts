@@ -23,7 +23,6 @@ import {
   validateCompatibleBoundaries,
   validateWallAutotileImagePath,
   validatePoolAndDoorImages,
-  validateWallAccentImagePaths,
   validateWallAccentTopology,
   validateTerrainDepthAndPerspective,
   validateGenManifestSchema,
@@ -178,6 +177,38 @@ function reportValidation(label: string, results: readonly ValidationResult[]): 
   return false;
 }
 
+function validateEmittedWallAccentPaths(
+  manifest: TerrainPackDef,
+  emittedPaths: ReadonlySet<string>,
+): ValidationResult {
+  const issues: ValidationResult['issues'] = [];
+  for (const accent of manifest.wallAccents ?? []) {
+    const context = `wallAccents[${accent.id}]`;
+    const normalized = accent.imagePath.replace(/\\/g, '/');
+    if (normalized.includes('..')) {
+      issues.push({
+        code: 'path-traversal',
+        message: `${context}: imagePath contains '..' (path traversal prevented): ${accent.imagePath}`,
+      });
+      continue;
+    }
+    if (!normalized.startsWith('assets/terrain-packs/')) {
+      issues.push({
+        code: 'path-not-in-allowed-root',
+        message: `${context}: imagePath '${accent.imagePath}' must start with 'assets/terrain-packs/'`,
+      });
+      continue;
+    }
+    if (!emittedPaths.has(normalized)) {
+      issues.push({
+        code: 'image-missing',
+        message: `${context}: imagePath '${accent.imagePath}' was not emitted by composePack`,
+      });
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
 async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolean> {
   console.log(`\n[${spec.id}] building${options.fromSource ? ' (from committed source)' : ''}`);
 
@@ -260,7 +291,8 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlasBytes = files.find((f) => f.relativePath.endsWith('wall-atlas.png'))!.buffer;
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
-  const accentPathResult = validateWallAccentImagePaths(typed, { repoRoot: REPO_ROOT });
+  const emittedPaths = new Set(files.map((file) => file.relativePath.replace(/\\/g, '/')));
+  const accentPathResult = validateEmittedWallAccentPaths(typed, emittedPaths);
   const topologyResults: ValidationResult[] = [];
   const depthResults: ValidationResult[] = [];
   const filesByPath = new Map(
