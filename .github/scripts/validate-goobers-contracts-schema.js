@@ -135,7 +135,7 @@ export const goobersSummaryV1 = {
   contract: 'crawler.goobers.summary/v1',
   description:
     'Human-readable Goobers summary emitted on the final issue/PR status comment; it must be a brief structured block with Description, Systems, Verification, and Risk sections.',
-  requiredFields: ['Description', 'Systems', 'Verification', 'Risk'],
+  requiredFields: Object.freeze(['Description', 'Systems', 'Verification', 'Risk']),
   format:
     'Markdown block with one short label prefix per line or bullet, in order: ' +
     'Description, Systems, Verification, Risk. Single-sentence summaries are rejected.',

@@ -26,7 +26,7 @@ Observed in the deterministic workflow contract test and `node .github/scripts/v
 
 ## Key Decisions Made
 
-- Defaulted to a brief, structured bullet-block summary instead of a freeform sentence so the final comment is both readable and machine-checkable.
+- Defaulted to an ordered four-line labelled block (`Description`, `Systems`, `Verification`, `Risk`) instead of a freeform sentence so the final comment is both readable and machine-checkable.
 - Kept the machine-readable output compact while raising the human-facing summary quality to match the issue acceptance criteria.
 - Reused the existing contract validator, but expressed the new rule as its own `crawler.goobers.summary/v1` contract rather than tightening `crawler.goobers.output/v1`, to honor the v1 compatibility policy in `.goobers/README.md`.
 - Enforced the block at the production point (coder instructions + contract fixtures) instead of inside the credentialed close-out stage, keeping branch-authored code out of any stage holding `github:issues:write`.
