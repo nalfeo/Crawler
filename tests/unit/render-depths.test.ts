@@ -16,7 +16,8 @@ describe('setPieceZToDepth', () => {
     expect(PROP_DEPTH.front).toBeGreaterThan(TERRAIN_DEPTH);
     expect(PROP_DEPTH.back).toBeLessThan(ENTITY_DEPTH);
     expect(PROP_DEPTH.mid).toBeLessThan(ENTITY_DEPTH);
-    expect(PROP_DEPTH.front).toBeLessThanOrEqual(ENTITY_DEPTH);
+    expect(PROP_DEPTH.front).toBeGreaterThan(ENTITY_DEPTH);
+    expect(PROP_DEPTH.front).toBeLessThan(PLAYER_DEPTH);
     expect(PROP_DEPTH.back).toBeLessThan(PROP_DEPTH.mid);
     expect(PROP_DEPTH.mid).toBeLessThan(PROP_DEPTH.front);
   });

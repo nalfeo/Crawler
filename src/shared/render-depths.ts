@@ -50,8 +50,8 @@ export const LIGHTING_OVERLAY_DEPTH = 800;
 /**
  * Depth buckets for static scene-dressing props. Keep the background band below
  * the entity plane so floor dressing never renders on top of companions while
- * still staying above the terrain. Foreground occluders may sit on the entity
- * plane to cover actors when intended.
+ * still staying above the terrain. Foreground occluders sit strictly above the
+ * entity plane so their ordering never depends on Phaser's stable sort tie-breaks.
  *
  * - `back`  — floor decorations painted behind everything (e.g. moss patches).
  * - `mid`   — mid-layer props at ground level (barrels, rubble).
@@ -60,7 +60,7 @@ export const LIGHTING_OVERLAY_DEPTH = 800;
 export const PROP_DEPTH = {
   back: -1,
   mid: -0.5,
-  front: 0,
+  front: 1,
 } as const;
 
 /**

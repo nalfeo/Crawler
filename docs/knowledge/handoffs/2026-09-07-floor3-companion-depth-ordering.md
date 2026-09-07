@@ -18,12 +18,12 @@ mapgen, vfx
 
 ## What Was Done
 
-Adjusted the shared prop depth buckets so background floor dressing sits below the entity plane instead of covering companions in Floor 3, while keeping foreground occluders on the entity plane when intended. Observed in deterministic render-depth regression coverage: before, `PROP_DEPTH` used positive values above `ENTITY_DEPTH`; after, the values sit below the entity plane and the companion-depth test passes.
+Adjusted the shared prop depth buckets so background floor dressing sits below the entity plane instead of covering companions in Floor 3, while keeping foreground occluders strictly above the entity plane so occlusion never depends on Phaser's stable sort tie-breaks. Added deterministic render-depth unit coverage and a real `MainGameScene` Floor 3 e2e probe that resolves the starter Companion, overlaps it with spawned background/foreground props, captures the rendered canvas, and asserts the actual Phaser display depths satisfy `background < companion < foreground < player`.
 
 ## Key Decisions Made
 
 - `PROP_DEPTH` is a shared scene-depth contract, not a set-piece-only value; background dressing must stay below `ENTITY_DEPTH` to avoid burying companions.
-- The foreground occluder band remains available at `front: 0` so authored props can still read as covering actors without reintroducing the background bug.
+- The foreground occluder band remains available at `front: 1`, strictly above `ENTITY_DEPTH` and below `PLAYER_DEPTH`, so authored props can cover actors without making ordering insertion-dependent.
 
 ## What's Next / Blockers
 
@@ -41,4 +41,4 @@ None significant.
 
 ### Opportunities for Future Improvement
 
-Add a scene-specific visual regression if a future Floor 3 art pass changes the prop stack again; this would codify the companion-over-background issue into a stronger end-to-end guard.
+The real-scene Floor 3 e2e now covers the companion/background overlap; future art passes should extend that probe rather than adding constants-only assertions.
