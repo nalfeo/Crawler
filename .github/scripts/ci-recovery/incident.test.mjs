@@ -383,6 +383,13 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
                 suggestedActors: {
                   nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
                 },
+                issue: {
+                  id: 'ISSUE_202',
+                  state: 'OPEN',
+                  author: { login: 'github-actions[bot]' },
+                  labels: { nodes: [{ name: 'ci-incident' }] },
+                  assignees: { nodes: [] },
+                },
               },
             },
           },
@@ -390,7 +397,11 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
       }
       return {
         body: {
-          data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+          data: {
+            replaceActorsForAssignable: {
+              assignable: { assignees: { nodes: [{ login: 'copilot-swe-agent' }] } },
+            },
+          },
         },
       };
     },
@@ -439,6 +450,13 @@ for (const [label, overrides] of [
                   suggestedActors: {
                     nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
                   },
+                  issue: {
+                    id: 'ISSUE_303',
+                    state: 'OPEN',
+                    author: { login: 'github-actions[bot]' },
+                    labels: { nodes: [{ name: 'ci-incident' }] },
+                    assignees: { nodes: [] },
+                  },
                 },
               },
             },
@@ -446,7 +464,11 @@ for (const [label, overrides] of [
         }
         return {
           body: {
-            data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot-swe-agent' }] } },
+              },
+            },
           },
         };
       },
@@ -471,3 +493,76 @@ for (const [label, overrides] of [
     );
   });
 }
+
+test('refreshing an incident preserves a live Goobers claim and stands down instead of assigning', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues/101`]: () => ({
+      body: {
+        number: 101,
+        node_id: 'ISSUE_101',
+        labels: [{ name: 'ci-incident' }, { name: 'goobers/status:in-review' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/101`]: (url, parsed) => ({
+      body: {
+        number: 101,
+        node_id: 'ISSUE_101',
+        labels: (parsed?.labels || []).map((name) => ({ name })),
+      },
+    }),
+    [`POST /graphql`]: (url, parsed) => {
+      const doc = String(parsed?.query ?? '');
+      if (doc.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
+                },
+                issue: {
+                  id: 'ISSUE_101',
+                  state: 'OPEN',
+                  author: { login: 'github-actions[bot]' },
+                  labels: {
+                    nodes: [{ name: 'ci-incident' }, { name: 'goobers/status:in-review' }],
+                  },
+                  assignees: { nodes: [] },
+                },
+              },
+            },
+          },
+        };
+      }
+      return { body: { data: {} } };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(
+    port,
+    pushRun({ conclusion: 'failure', status: 'completed' }),
+  );
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /updated incident issue=#101 owner=goobers/);
+  const patch = mutatingCalls.find(
+    (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/101`,
+  );
+  assert.ok(
+    patch.body.labels.includes('goobers/status:in-review'),
+    'refreshing the incident must not erase the ownership label the fence reads',
+  );
+  assert.ok(patch.body.labels.includes('ci-incident'));
+  const assignMutation = mutatingCalls.find(
+    (call) =>
+      call.url === '/graphql' &&
+      String(call.body?.query || '').includes('replaceActorsForAssignable'),
+  );
+  assert.equal(assignMutation, undefined, 'Copilot must not be assigned over a live Goobers claim');
+});

@@ -1,5 +1,6 @@
 import {
   GITHUB_ACTIONS_LOGIN,
+  IssueClaimedByGoobersError,
   isCopilotLogin,
   runIssueIntake,
 } from '../ci-recovery/issue-intake-lib.mjs';
@@ -107,6 +108,12 @@ async function intakeWithRollback({
       issue,
     });
   } catch (intakeError) {
+    // A Goobers claim is an expected ownership handoff, not an intake failure.
+    // The issue is now owned by the other single writer, so it must stay open
+    // and untouched instead of being rolled back and closed.
+    if (intakeError instanceof IssueClaimedByGoobersError) {
+      return { claimedByGoobers: true, assignee: null, comment: null };
+    }
     try {
       await closeCreatedIssue({
         requestFn,
@@ -185,6 +192,9 @@ export async function runNightlyAgentIssue({
       repo,
       issue: existing,
     });
+    if (intake.claimedByGoobers) {
+      return { status: 'claimed-by-goobers', issue: existing, intake };
+    }
     return { status: 'resumed', issue: existing, intake };
   }
 
@@ -241,6 +251,10 @@ export async function runNightlyAgentIssue({
     repo,
     issue,
   });
+
+  if (intake.claimedByGoobers) {
+    return { status: 'claimed-by-goobers', issue, intake };
+  }
 
   return { status: 'created', issue, intake };
 }

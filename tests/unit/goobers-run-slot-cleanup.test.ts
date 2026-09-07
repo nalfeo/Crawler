@@ -1827,6 +1827,9 @@ gh() {
     *"issue view"*"--json labels"*)
       printf 'goobers/status:in-review\\n'
       ;;
+    *"issue view"*"--json assignees"*)
+      printf '0\\n'
+      ;;
     *state,labels,assignees*)
       # gh issue view for the canonical selector. It reads number/author too,
       # so the payload must carry them or every issue reads as ineligible.
@@ -2195,6 +2198,7 @@ gh() {
   done
   case "$*" in
     *'issue view'*'--json labels'*) printf 'goobers/status:in-review\\n' ;;
+    *'issue view'*'--json assignees'*) printf '0\\n' ;;
     *comments?per_page*|*comments*)
       if [ "\${COMMENTS_FIXTURE_FAILS:-}" = "1" ]; then
         printf 'HTTP 403: rate limit exceeded\\n' >&2

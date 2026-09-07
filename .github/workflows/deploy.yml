@@ -950,6 +950,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/baseline-regression.json
         run: node .github/scripts/baseline-regression-issue.mjs
 
@@ -961,6 +962,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           BASELINE_REGRESSION_RESULT: ${{ runner.temp }}/leg-win-rate-floor.json
         run: node .github/scripts/baseline-regression-issue.mjs
 
