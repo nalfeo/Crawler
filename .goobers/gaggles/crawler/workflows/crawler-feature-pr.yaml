@@ -308,9 +308,9 @@ spec:
           goobers issue-close-out
       inputs:
         status: 'in-review'
+        resultFile: 'issue-close-out-result.json'
       inputsFrom:
         summary: implement.summary
-        resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write
       policyActions:
@@ -333,9 +333,9 @@ spec:
           goobers issue-close-out
       inputs:
         status: 'needs-human'
+        resultFile: 'issue-close-out-result.json'
       inputsFrom:
         summary: implement.summary
-        resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write
       policyActions:
@@ -359,9 +359,9 @@ spec:
           goobers issue-close-out
       inputs:
         status: 'needs-remediation'
+        resultFile: 'issue-close-out-result.json'
       inputsFrom:
         summary: implement.summary
-        resultFile: 'issue-close-out-result.json'
       capabilities:
         - github:issues:write
       policyActions:
