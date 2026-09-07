@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 
 import { graphql, paginate, request } from './ci-recovery/github.mjs';
-import { runIssueIntake } from './ci-recovery/issue-intake-lib.mjs';
+import { IssueClaimedByGoobersError, runIssueIntake } from './ci-recovery/issue-intake-lib.mjs';
 import { BASELINE_RECURRENCE_MARKER } from './ci-recovery/markers.mjs';
 
 export const BASELINE_REGRESSION_LABELS = Object.freeze(['bug', 'automation', 'ai']);
@@ -58,6 +58,30 @@ function recurrenceComment(body, signatures) {
     '',
     ...bodyForSignatures(body, signatures).split('\n'),
   ].join('\n');
+}
+
+// Refreshing a managed issue must never drop a label this script does not own.
+// `goobers/status:in-review` is the live ownership claim the intake fence reads,
+// so replacing the label set outright would erase an active Goobers claim and
+// let intake assign Copilot on top of it.
+function labelsPreserving(issue) {
+  const existing = (issue?.labels || [])
+    .map((label) => (typeof label === 'string' ? label : label?.name))
+    .filter((name) => typeof name === 'string' && name.length > 0);
+  return [...new Set([...existing, ...BASELINE_REGRESSION_LABELS])];
+}
+
+// A Goobers claim is an expected ownership handoff, not an intake failure: the
+// issue stays open and unassigned for the other single writer.
+async function intakeOrStandDown(intakeFn, args) {
+  try {
+    return await intakeFn(args);
+  } catch (error) {
+    if (error instanceof IssueClaimedByGoobersError) {
+      return { assignee: null, claimedByGoobers: true };
+    }
+    throw error;
+  }
 }
 
 function isCopilotAssignee(issue) {
@@ -171,7 +195,7 @@ export async function fileBaselineRegressionIssue({
       if (existing && isCopilotAssignee(existing)) {
         outcomes.push({ action, issueNumber });
       } else {
-        const intake = await intakeFn({
+        const intake = await intakeOrStandDown(intakeFn, {
           graphql: graphqlFn,
           paginate: paginateFn,
           request: requestFn,
@@ -180,7 +204,12 @@ export async function fileBaselineRegressionIssue({
           repo,
           issue: existing || issue,
         });
-        outcomes.push({ action, issueNumber, assignee: intake.assignee });
+        outcomes.push({
+          action,
+          issueNumber,
+          assignee: intake.assignee,
+          ...(intake.claimedByGoobers ? { claimedByGoobers: true } : {}),
+        });
       }
     }
     return outcomes;
@@ -209,7 +238,7 @@ export async function fileBaselineRegressionIssue({
         body: {
           title,
           body,
-          labels: BASELINE_REGRESSION_LABELS,
+          labels: labelsPreserving(existing),
         },
       },
     );
@@ -240,7 +269,7 @@ export async function fileBaselineRegressionIssue({
       },
     });
   }
-  const intake = await intakeFn({
+  const intake = await intakeOrStandDown(intakeFn, {
     graphql: graphqlFn,
     paginate: paginateFn,
     request: requestFn,
@@ -249,7 +278,14 @@ export async function fileBaselineRegressionIssue({
     repo,
     issue,
   });
-  return [{ action, issueNumber: issue.number, assignee: intake.assignee }];
+  return [
+    {
+      action,
+      issueNumber: issue.number,
+      assignee: intake.assignee,
+      ...(intake.claimedByGoobers ? { claimedByGoobers: true } : {}),
+    },
+  ];
 }
 
 async function main() {
@@ -276,7 +312,11 @@ async function main() {
     decision,
   });
   for (const issue of outcome) {
-    const assignment = issue.assignee ? `; assigned @${issue.assignee}` : '';
+    const assignment = issue.claimedByGoobers
+      ? '; left for the Goobers intake workflow'
+      : issue.assignee
+        ? `; assigned @${issue.assignee}`
+        : '';
     process.stdout.write(
       `${issue.action} release regression issue #${issue.issueNumber}${assignment}\n`,
     );

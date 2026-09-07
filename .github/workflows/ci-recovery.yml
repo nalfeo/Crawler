@@ -47,6 +47,10 @@ on:
 
 concurrency:
   group: crawler-ci-pr-${{ inputs.pr_number }}
+  # Keep a dispatched reconciliation queued until the per-PR lane can run.
+  # Without an explicit false value, a burst of router/sweep dispatches can
+  # cancel the pending harvest before it ever creates a job.
+  cancel-in-progress: false
   queue: max
 
 permissions:

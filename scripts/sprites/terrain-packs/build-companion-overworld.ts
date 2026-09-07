@@ -39,6 +39,7 @@ import { composeWallAtlas } from './gen/compose-pack.js';
 import { createImage, encodePng, type RgbaImage } from './png-buffer.js';
 import { renderSpeckledSurface, type SurfacePalette } from './procedural-surfaces.js';
 import { deriveAllowedTransforms } from './transform-eligibility.js';
+import { buildWallReliefAtlases } from './wall-relief.js';
 
 export const COMPANION_OVERWORLD_PACK_ID = 'companion-overworld' as const;
 
@@ -95,9 +96,9 @@ const CORRIDOR_PALETTES: readonly SurfaceSpec[] = [
  * shading, so this stays a flat, bright material tile.
  */
 const WALL_PALETTE: SurfacePalette = {
-  base: [138, 142, 116, 255],
-  speckle: [112, 132, 88, 255],
-  speckleDensity: 0.22,
+  base: [150, 154, 116, 255],
+  speckle: [86, 116, 72, 255],
+  speckleDensity: 0.28,
 };
 
 /**
@@ -159,6 +160,15 @@ export function buildCompanionOverworldPack(): CompanionOverworldBuildResult {
   // Durable rebuild input (same convention as industrial-cave/floor1). Not
   // referenced by the manifest — it is a build input, not a runtime asset.
   files.push({ relativePath: `${PACK_DIR}/wall-material.png`, buffer: encodePng(wallTile) });
+  const wallAccents = buildWallReliefAtlases(wallTile, atlas).map(({ id, image }) => {
+    const relPath = `${PACK_DIR}/accent-${id}.png`;
+    files.push({ relativePath: relPath, buffer: encodePng(image) });
+    return {
+      id,
+      imagePath: relPath,
+      textureKey: `terrain-pack-${COMPANION_OVERWORLD_PACK_ID}-accent-${id}`,
+    };
+  });
 
   // --- Floor / corridor pools ----------------------------------------------
   function buildPool(kind: 'floor' | 'corridor', specs: readonly SurfaceSpec[]) {
@@ -205,7 +215,9 @@ export function buildCompanionOverworldPack(): CompanionOverworldBuildResult {
         'SeededRandom, and composed onto the canonical 20-quadrant blob47 wall silhouettes via ' +
         'composeWallAtlas (scripts/sprites/terrain-packs/gen/compose-pack.ts). Fully ' +
         'reproducible and byte-identical: run `npm run terrain-packs:build`. Palette is a ' +
-        'bright sunlit grass/dirt overworld for the Floor 3 Companion League brief. Pools are ' +
+        'bright sunlit grass/dirt overworld for the Floor 3 Companion League brief. Four ' +
+        'deterministic mask-aware raised-face overlays add visible wall ledges and recessed ' +
+        'courses instead of a flat top-down rock stamp. Pools are ' +
         'weighted 10:8:1x6 (grass base : quiet grass : sparse detail) so ground reads as ' +
         'continuous grassland with occasional punctuation rather than a uniform patchwork.',
     },
@@ -217,6 +229,7 @@ export function buildCompanionOverworldPack(): CompanionOverworldBuildResult {
       gridRows: ATLAS_GRID_ROWS,
       masks: masks.map(({ maskId, frameIndex }) => ({ maskId, frameIndex })),
     },
+    wallAccents,
     floorPool,
     corridorPool,
   };

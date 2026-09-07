@@ -367,8 +367,10 @@ jobs:
               return 1
             fi
           }
-          find_open_goobers_pr() {
+          find_open_implementation_pr() {
             local issue_number="$1"
+            local goobers_only="${2:-false}"
+            local excluded_pr="${3:-}"
             local candidates=""
             local details=""
             local unreadable_candidate=false
@@ -385,6 +387,7 @@ jobs:
 
             while read -r candidate; do
               [ -n "$candidate" ] || continue
+              [ "$candidate" != "$excluded_pr" ] || continue
               if ! details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRepository 2>&1)"; then
                 echo "::warning::Could not inspect same-repository PR #${candidate} for issue #${issue_number}: ${details}" >&2
                 unreadable_candidate=true
@@ -393,7 +396,9 @@ jobs:
               state="$(jq -r '.state' <<<"$details")"
               branch="$(jq -r '.headRefName' <<<"$details")"
               repository="$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")"
-              if [ "$state" = "OPEN" ] && [ "$repository" = "$GITHUB_REPOSITORY" ] && [[ "$branch" == goobers/crawler/* ]]; then
+              if [ "$state" = "OPEN" ] &&
+                 [ "$repository" = "$GITHUB_REPOSITORY" ] &&
+                 { [ "$goobers_only" != "true" ] || [[ "$branch" == goobers/crawler/* ]]; }; then
                 printf '%s\n' "$candidate"
                 return 0
               fi
@@ -404,6 +409,12 @@ jobs:
               return 2
             fi
             return 0
+          }
+          find_open_goobers_pr() {
+            find_open_implementation_pr "$1" true
+          }
+          find_open_same_repo_pr() {
+            find_open_implementation_pr "$1" false "${2:-}"
           }
           ASSIGNMENTS='[]'
           INTAKE_COHORT=""
@@ -490,9 +501,14 @@ jobs:
             if [ "$lookup_status" -ne 0 ]; then
               exit "$lookup_status"
             fi
-            if [ -n "${event_pr}" ]; then
+            implementation_pr="$(find_open_same_repo_pr "$ISSUE_NUMBER" "${event_pr}")" || exit $?
+            if [ -n "${implementation_pr}" ]; then
+              echo "::notice::Issue #${ISSUE_NUMBER} already has competing same-repository implementation PR #${implementation_pr}; refusing duplicate Goobers intake."
+              ISSUE_NUMBER=""
+            elif [ -n "${event_pr}" ]; then
               INTAKE_COHORT="resume"
-            else
+            fi
+            if [ -n "${ISSUE_NUMBER}" ] && [ -z "${event_pr}" ]; then
               decision="$(decide_issue "${ISSUE_NUMBER}")"
               if [ "$(jq -r '.eligible' <<<"${decision}")" = "true" ]; then
                 INTAKE_COHORT="$(jq -r '.cohort' <<<"${decision}")"
@@ -579,6 +595,12 @@ jobs:
             lookup_status=0
             pr_number="$(find_open_goobers_pr "$ISSUE_NUMBER")" || lookup_status=$?
             [ "$lookup_status" = "0" ] || exit "$lookup_status"
+            implementation_pr="$(find_open_same_repo_pr "$ISSUE_NUMBER" "${pr_number}")" || exit $?
+            if [ -n "${implementation_pr}" ]; then
+              echo "::notice::Issue #${ISSUE_NUMBER} already has competing same-repository implementation PR #${implementation_pr}; refusing duplicate Goobers intake."
+              echo "should_run=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
             if [ -n "${pr_number}" ]; then
               INTAKE_COHORT="resume"
               RESUME_PR="${pr_number}"
@@ -611,7 +633,8 @@ jobs:
               else
                 echo "Resuming open Goobers PR #${pr_number} on branch '${RESUME_BRANCH}'."
               fi
-            elif [ -z "${INTAKE_COHORT}" ]; then
+            fi
+            if [ -z "${pr_number}" ] && [ -z "${INTAKE_COHORT}" ]; then
               decision="$(decide_issue "${ISSUE_NUMBER}")"
               INTAKE_COHORT="$(jq -r '.cohort // ""' <<<"${decision}")"
               if [ "$(jq -r '.eligible' <<<"${decision}")" != "true" ]; then
@@ -638,6 +661,11 @@ jobs:
               continue
             fi
             [ "$lease_status" = "0" ] || exit 1
+            implementation_pr="$(find_open_same_repo_pr "$candidate_issue")" || exit $?
+            if [ -n "${implementation_pr}" ]; then
+              echo "::notice::Fresh intake skipped issue #${candidate_issue}: open same-repository implementation PR #${implementation_pr} already represents it."
+              continue
+            fi
             if ! blocked_by="$(find_open_dependency_blockers "${candidate_issue}")"; then
               echo "::error::Could not read the dependency blockers of issue #${candidate_issue}, so this dispatch cannot reserve it safely. Retry with: gh workflow run goobers-run.yml" >&2
               exit 1
@@ -670,10 +698,33 @@ jobs:
         run: |
           set -euo pipefail
           VALIDATED_ASSIGNMENTS='[]'
+          # Only entries whose reservation actually held are launched. An entry
+          # that is validated but then loses the post-reservation ownership
+          # recheck has its claim released, so it must never reach the run job.
+          LAUNCHABLE_ASSIGNMENTS='[]'
           ATTEMPTED_ASSIGNMENTS='[]'
           publish_reservation_outputs() {
             echo "should_run=$1" >> "${GITHUB_OUTPUT}"
             echo "slot_assignments=$2" >> "${GITHUB_OUTPUT}"
+          }
+          find_open_competing_pr() {
+            local issue_number="$1" allowed_pr="${2:-}" candidates="" details=""
+            candidates="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/timeline" |
+                jq -r --arg repo_url "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                  '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null and .source.issue.repository_url == $repo_url) | .source.issue.number'
+            )" || return 1
+            while read -r candidate; do
+              [ -n "$candidate" ] || continue
+              [ "$candidate" != "$allowed_pr" ] || continue
+              details="$(gh pr view "$candidate" --repo "$GITHUB_REPOSITORY" --json state,headRepository)" ||
+                return 1
+              if [ "$(jq -r '.state' <<<"$details")" = "OPEN" ] &&
+                 [ "$(jq -r '.headRepository.nameWithOwner // ""' <<<"$details")" = "$GITHUB_REPOSITORY" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+              fi
+            done <<<"$candidates"
           }
           # If validation fails before any mutation, cleanup must see an empty
           # set rather than the planner's larger, entirely unreserved set.
@@ -685,6 +736,7 @@ jobs:
           while IFS= read -r assignment; do
             issue_number="$(jq -r '.issue' <<<"$assignment")"
             cohort="$(jq -r '.cohort' <<<"$assignment")"
+            resume_pr="$(jq -r '.resumePr // ""' <<<"$assignment")"
             lane="$(jq -r '.lane' <<<"$assignment")"
             slot="$(jq -r '.slot' <<<"$assignment")"
             if ! [[ "$issue_number" =~ ^[0-9]+$ ]]; then
@@ -723,6 +775,14 @@ jobs:
               echo "::warning::Skipping stale assignment for issue #${issue_number} at lane ${lane} slot ${slot}: it became blocked by ${blocked_by}. Unrelated valid assignments will still launch." >&2
               continue
             fi
+            competing_pr="$(find_open_competing_pr "$issue_number" "$resume_pr")" || {
+              echo "::error::Could not revalidate same-repository PRs for issue #${issue_number}; no reservation was mutated. Retry: gh workflow run goobers-run.yml" >&2
+              exit 1
+            }
+            if [ -n "$competing_pr" ]; then
+              echo "::warning::Skipping stale assignment for issue #${issue_number}: competing same-repository implementation PR #${competing_pr} appeared before reservation."
+              continue
+            fi
             VALIDATED_ASSIGNMENTS="$(jq -c --argjson assignment "$assignment" '. + [$assignment]' <<<"$VALIDATED_ASSIGNMENTS")"
           done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
@@ -734,6 +794,7 @@ jobs:
           while IFS= read -r assignment; do
             issue_number="$(jq -r '.issue' <<<"$assignment")"
             cohort="$(jq -r '.cohort' <<<"$assignment")"
+            resume_pr="$(jq -r '.resumePr // ""' <<<"$assignment")"
             lane="$(jq -r '.lane' <<<"$assignment")"
             slot="$(jq -r '.slot' <<<"$assignment")"
 
@@ -754,7 +815,28 @@ jobs:
               fi
               sleep 3
             done
+            competing_pr="$(find_open_competing_pr "$issue_number" "$resume_pr")" || {
+              echo "::error::Could not recheck same-repository PRs for issue #${issue_number} after reservation; preserving the claim and refusing to launch. Retry after verifying ownership." >&2
+              exit 1
+            }
+            if [ -n "$competing_pr" ]; then
+              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --remove-label 'goobers/status:in-review'
+              echo "::warning::Competing same-repository implementation PR #${competing_pr} appeared while Goobers was reserving issue #${issue_number}; released the claim and refused to launch duplicate work."
+              continue
+            fi
+            if assignees="$(gh issue view "$issue_number" --repo "$GITHUB_REPOSITORY" --json assignees --jq '.assignees | length')" &&
+               [ "$assignees" -gt 0 ]; then
+              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --remove-label 'goobers/status:in-review'
+              echo "::warning::Issue #${issue_number} gained an assignee while Goobers was reserving it; released the claim and refused to launch duplicate work."
+              continue
+            elif [ -z "${assignees:-}" ]; then
+              echo "::error::Could not recheck assignees for issue #${issue_number} after reservation; preserving the claim and refusing to launch. Retry after verifying ownership." >&2
+              exit 1
+            fi
             echo "Reserved issue #${issue_number} for lane ${lane} slot ${slot} and confirmed goobers/status:in-review."
+            LAUNCHABLE_ASSIGNMENTS="$(jq -c --argjson assignment "$assignment" '. + [$assignment]' <<<"$LAUNCHABLE_ASSIGNMENTS")"
 
             marker="<!-- crawler-goobers-run-start:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
             find_issue_comment_id() {
@@ -780,7 +862,12 @@ jobs:
 
             gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
           done < <(jq -c '.[]' <<<"$VALIDATED_ASSIGNMENTS")
-          publish_reservation_outputs true "${VALIDATED_ASSIGNMENTS}"
+          if [ "$(jq 'length' <<<"$LAUNCHABLE_ASSIGNMENTS")" -eq 0 ]; then
+            echo "::notice::Every reserved Goobers assignment lost its claim before launch; no lane will start."
+            publish_reservation_outputs false "${ATTEMPTED_ASSIGNMENTS}"
+            exit 0
+          fi
+          publish_reservation_outputs true "${LAUNCHABLE_ASSIGNMENTS}"
 
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers
