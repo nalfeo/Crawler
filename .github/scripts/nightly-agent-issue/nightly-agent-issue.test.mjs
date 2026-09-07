@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { IssueClaimedByGoobersError } from '../ci-recovery/issue-intake-lib.mjs';
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import { runNightlyAgentIssue } from './nightly-agent-issue.mjs';
 
@@ -193,6 +194,21 @@ test('closes a newly created issue and preserves the intake error', async () => 
   assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
   assert.deepEqual(close.options.body, { state: 'closed', state_reason: 'not_planned' });
   assert.equal(harness.openIssues.length, 0);
+});
+
+test('leaves a Goobers-claimed issue open instead of rolling it back', async () => {
+  const harness = createHarness({ intakeErrors: [new IssueClaimedByGoobersError(1203)] });
+
+  const result = await runWithHarness(harness);
+
+  assert.equal(result.status, 'claimed-by-goobers');
+  assert.equal(result.issue.number, 1203);
+  assert.equal(result.intake.claimedByGoobers, true);
+  assert.equal(
+    harness.calls.find((call) => call.kind === 'request' && call.options.body?.state === 'closed'),
+    undefined,
+  );
+  assert.equal(harness.openIssues.length, 1);
 });
 
 test('wraps both errors in an AggregateError when the rollback close also fails', async () => {

@@ -6,7 +6,11 @@ const result = await runNightlyVelocityIssue({
   repository: process.env.GITHUB_REPOSITORY || '',
 });
 
-if (result.status === 'existing') {
+if (result.status === 'claimed-by-goobers') {
+  process.stdout.write(
+    `stood down: issue #${result.issue.number} is owned by the Goobers intake workflow; left open and unassigned\n`,
+  );
+} else if (result.status === 'existing') {
   process.stdout.write(`no-op: issue #${result.issue.number} is already open\n`);
 } else if (result.status === 'resumed') {
   process.stdout.write(

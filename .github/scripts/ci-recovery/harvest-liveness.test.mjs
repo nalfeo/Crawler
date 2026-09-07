@@ -5,6 +5,7 @@ import test from 'node:test';
 import YAML from 'yaml';
 
 import {
+  assignCopilotToIncident,
   buildDispatchLivenessIncidentBody,
   collectRecentWorkflowDispatchRuns,
   collectRecentReconcileHarvestRuns,
@@ -792,7 +793,7 @@ test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the 
   assert.doesNotMatch(body, /\$\{\{ github\.repository \}\}/);
 });
 
-function fakeApi({ existing = [] } = {}) {
+function fakeApi({ existing = [], issueLabels = [], issueAssignees = [] } = {}) {
   const calls = [];
   const graphqlCalls = [];
   return {
@@ -808,7 +809,9 @@ function fakeApi({ existing = [] } = {}) {
             issue: {
               id: 'ISSUE_4242',
               state: 'OPEN',
-              assignees: { nodes: [] },
+              author: { login: 'github-actions[bot]' },
+              labels: { nodes: issueLabels.map((name) => ({ name })) },
+              assignees: { nodes: issueAssignees },
             },
           },
         };
@@ -831,6 +834,26 @@ function fakeApi({ existing = [] } = {}) {
 
 const STALLED = { stalled: true, reason: 'no-successful-run-in-window' };
 const HEALTHY = { stalled: false, reason: 'healthy' };
+
+test('harvest incident assignment loses the race to an active Goobers claim', async () => {
+  const api = fakeApi({
+    issueLabels: ['goobers/status:in-review'],
+    issueAssignees: [{ id: 'USER_1', login: 'nalfeo' }],
+  });
+  const result = await assignCopilotToIncident({
+    graphql: api.graphql,
+    token: 'assignment-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issueNumber: 4242,
+  });
+
+  assert.equal(result, null);
+  assert.equal(
+    api.graphqlCalls.filter((call) => call.query.includes('replaceActorsForAssignable')).length,
+    0,
+  );
+});
 
 test('reconcileHarvestIncident still creates the issue when Copilot assignment is unavailable', async () => {
   let graphqlCallCount = 0;

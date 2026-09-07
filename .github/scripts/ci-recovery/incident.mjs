@@ -7,6 +7,14 @@ import {
   shouldSkipRepoIncidentWorkflowRun,
 } from './state.mjs';
 import { parseEnabledFlag } from '../merge-train/state.mjs';
+import {
+  assertCopilotIssueAssignmentAllowed,
+  buildIssueActorIds,
+  getCopilotIssueAssignmentContext,
+  IssueClaimedByGoobersError,
+  isCopilotLogin,
+  replaceIssueAssignees,
+} from './issue-intake-lib.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -220,14 +228,26 @@ const body = [
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');
 
+const managedLabels = [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])];
+
 let issue;
 if (existing) {
+  // Refreshing an incident must never drop a label this script does not
+  // manage. `goobers/status:in-review` in particular is the live ownership
+  // claim the assignment fence below reads, so a blind label replacement
+  // would erase the claim and let this run assign Copilot on top of active
+  // Goobers work. Read the current labels rather than the (possibly stale)
+  // listing payload so a claim added since the listing is preserved too.
+  const current = (await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`)).data;
+  const preserved = (current?.labels || [])
+    .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
+    .filter((name) => typeof name === 'string' && name.length > 0);
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
       body: {
         body,
-        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: [...new Set([...preserved, ...managedLabels])],
       },
     })
   ).data;
@@ -238,60 +258,43 @@ if (existing) {
       body: {
         title,
         body,
-        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: managedLabels,
       },
     })
   ).data;
 }
 
-const actors = await graphql(
+const assignmentContext = await getCopilotIssueAssignmentContext({
+  graphql,
   token,
-  `
-    query ($owner: String!, $repo: String!) {
-      repository(owner: $owner, name: $repo) {
-        suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-          nodes {
-            login
-            __typename
-            ... on Bot {
-              id
-            }
-            ... on User {
-              id
-            }
-          }
-        }
-      }
-    }
-  `,
-  { owner, repo },
-);
-const copilot = (actors.repository?.suggestedActors?.nodes || []).find(
-  (actor) =>
-    String(actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
-    String(actor.login || '').toLowerCase() === 'copilot',
-);
-if (!copilot?.id) {
-  throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
+  owner,
+  repo,
+  issueNumber: issue.number,
+});
+// A Goobers claim is an expected ownership handoff, not a failure: the incident
+// issue stays open and recorded, and the other single writer keeps the work.
+try {
+  assertCopilotIssueAssignmentAllowed({ issue, assignmentContext });
+} catch (error) {
+  if (error instanceof IssueClaimedByGoobersError) {
+    process.stdout.write(
+      `${existing ? 'updated' : 'created'} incident issue=#${issue.number} owner=goobers (no Copilot assignment)\n`,
+    );
+    process.exit(0);
+  }
+  throw error;
 }
-
-await graphql(
+const assignedLogins = await replaceIssueAssignees({
+  graphql,
   token,
-  `
-    mutation ($assignableId: ID!, $actorIds: [ID!]!) {
-      replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
-        assignable {
-          ... on Issue {
-            assignees(first: 20) {
-              nodes {
-                login
-              }
-            }
-          }
-        }
-      }
-    }
-  `,
-  { assignableId: issue.node_id, actorIds: [copilot.id] },
-);
+  assignableId: assignmentContext.issueId,
+  actorIds: buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: true,
+  }),
+});
+if (!assignedLogins.some(isCopilotLogin)) {
+  throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
+}
 process.stdout.write(`${existing ? 'updated' : 'created'} incident issue=#${issue.number}\n`);
