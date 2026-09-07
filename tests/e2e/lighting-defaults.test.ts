@@ -130,7 +130,7 @@ describe('shipped lighting defaults', () => {
     expect(config.stepPx).toBe(4);
   });
 
-  it('boots the real Floor 3 scene with its authored daylight ambient', async () => {
+  it('boots the real Floor 3 scene with its authored daylight ambient and no player torch', async () => {
     await loadMainSceneProbeLab(page, { floor: 'floor3' });
 
     await page.waitForFunction(
@@ -145,7 +145,8 @@ describe('shipped lighting defaults', () => {
 
     // This assertion crosses the shipped floor3 bootstrap into the live
     // MainGameScene, rather than only checking the manifest in isolation.
-    expect(config.ambient).toBe(0.45);
+    expect(config.ambient).toBe(0.8);
+    expect(config.sourceIntensity).toBe(0);
     expect(config.stepPx).toBe(4);
   });
 });
