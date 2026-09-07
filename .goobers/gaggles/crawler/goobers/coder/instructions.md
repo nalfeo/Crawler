@@ -61,3 +61,18 @@ decision or blocker rather than committing an incomplete change. Final responses
 must be raw JSON only: no Markdown fences, no prose before or after. Keep
 `outputs` scalar-only; encode lists as comma-separated strings or put structured
 details in committed files/artifacts and reference their paths.
+
+`summary` is the text the deterministic close-out stage posts on the issue, so
+it must explain the change to a human rather than restate the task name. Emit it
+as a four-line block (`crawler.goobers.summary/v1`), in this order, each line
+non-empty:
+
+```
+Description: what changed, in plain language
+Systems: the high-level components the change touches
+Verification: the checks that were run
+Risk: the residual risk and why it is acceptable
+```
+
+Escape the newlines as `\n` inside the JSON string. Single-sentence summaries
+such as "Implemented the fix." are rejected.

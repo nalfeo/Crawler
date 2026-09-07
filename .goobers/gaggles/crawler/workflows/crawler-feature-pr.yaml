@@ -294,10 +294,19 @@ spec:
       type: deterministic
       goal: Mark the source issue as awaiting review and link the PR.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'in-review'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: implement.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -306,10 +315,19 @@ spec:
       type: deterministic
       goal: Park an issue that requires a maintainer product decision.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'needs-human'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: implement.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -319,10 +337,19 @@ spec:
       type: deterministic
       goal: Mark an issue that requires remediation and human escalation.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'needs-remediation'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: implement.summary
       capabilities:
         - github:issues:write
       policyActions:

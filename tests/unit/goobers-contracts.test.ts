@@ -32,8 +32,15 @@ let prStateCommentV1: {
   encodedStateRequiredFields: string[];
   bulletFields: string[];
 };
+let goobersSummaryV1: {
+  contract: string;
+  requiredFields: string[];
+  format: string;
+  example: string;
+};
 let invocationSemanticErrors: (payload: Invocation) => string[];
 let outputSemanticErrors: (payload: Output) => string[];
+let summarySemanticErrors: (summary: unknown) => string[];
 let validateInvocation: Ajv.ValidateFunction;
 let validateOutput: Ajv.ValidateFunction;
 
@@ -44,12 +51,14 @@ beforeAll(async () => {
   invocationV1 = schemaModule.invocationV1;
   outputV1 = schemaModule.outputV1;
   prStateCommentV1 = schemaModule.prStateCommentV1;
+  goobersSummaryV1 = schemaModule.goobersSummaryV1;
 
   const validatorModule = await import(
     path.join(REPO_ROOT, '.github/scripts/validate-goobers-contracts.mjs')
   );
   invocationSemanticErrors = validatorModule.invocationSemanticErrors;
   outputSemanticErrors = validatorModule.outputSemanticErrors;
+  summarySemanticErrors = validatorModule.summarySemanticErrors;
 
   const AjvCtor = require('ajv');
   const ajv = new AjvCtor({ allErrors: true, strict: false });
@@ -401,6 +410,64 @@ describe('crawler.goobers.output/v1 schema', () => {
         summary: 'Pushed branch',
       }),
     ).toBe(false);
+  });
+});
+
+describe('crawler.goobers.summary/v1 close-out summary contract', () => {
+  it('accepts the canonical structured block from the schema contract', () => {
+    expect(goobersSummaryV1.contract).toBe('crawler.goobers.summary/v1');
+    expect(goobersSummaryV1.requiredFields).toEqual([
+      'Description',
+      'Systems',
+      'Verification',
+      'Risk',
+    ]);
+    expect(summarySemanticErrors(goobersSummaryV1.example)).toEqual([]);
+  });
+
+  it('rejects one-line summaries, empty sections, and out-of-order sections', () => {
+    expect(summarySemanticErrors('Implemented the fix.')).not.toHaveLength(0);
+    expect(
+      summarySemanticErrors(
+        ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+      ),
+    ).not.toHaveLength(0);
+    expect(
+      summarySemanticErrors(
+        [
+          'Systems: Goobers workflow',
+          'Description: Fixes it',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
+      ),
+    ).not.toHaveLength(0);
+    expect(summarySemanticErrors(undefined)).not.toHaveLength(0);
+  });
+
+  it('tolerates blank separator lines between sections', () => {
+    expect(summarySemanticErrors(goobersSummaryV1.example.split('\n').join('\n\n'))).toEqual([]);
+  });
+
+  it('names the specific violation rather than one generic message', () => {
+    expect(
+      summarySemanticErrors(
+        ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+      ),
+    ).toEqual(['summary section "Systems" is empty']);
+    expect(summarySemanticErrors(undefined)[0]).toContain('must be a string');
+  });
+
+  it('leaves crawler.goobers.output/v1 summary semantics unchanged for in-flight v1 payloads', () => {
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: {},
+        summary: 'Feature implemented and reviewed',
+      }),
+    ).toBe(true);
   });
 });
 
