@@ -1518,11 +1518,6 @@ export function initializeFloor4Scenario(
       value: manifest.player.pickupRangeBonus,
     });
   }
-  if (!options?.playerCarryover && hasComponent(world.ecs, playerEid, Health)) {
-    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-  }
-
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
     initializePlayerWeaponSkills(world, playerEid);
@@ -1533,6 +1528,14 @@ export function initializeFloor4Scenario(
   } else {
     equipFloor4StarterWeapon(world, playerEid, manifest.starterWeapons);
     applyFloorSkipBaseline(world, playerEid, manifest);
+    // Apply the manifest HP bonus after the baseline: applyFloorSkipBaseline
+    // calls initializeBaseStats for a fresh direct-start player, which
+    // reseeds Health.current/max from derived max HP and would otherwise
+    // silently discard this bonus (see review thread on PR #4392).
+    if (hasComponent(world.ecs, playerEid, Health)) {
+      const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+      setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+    }
   }
 
   world.featureUnlocks.inventory = true;

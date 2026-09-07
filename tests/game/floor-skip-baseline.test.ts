@@ -8,6 +8,7 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { capturePlayerCarryover } from '../../src/game/playerCarryover.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
+import { applyFloorSkipBaseline } from '../../src/game/scenarios/floorSkipBaseline.js';
 import { applyStartPlayerLevel } from '../../src/game/scenarios/playerLevelProgression.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -43,7 +44,19 @@ describe('floor skip direct-start baselines', () => {
         (abilityState?.ownedActiveAbilityIds?.length ?? 0) +
           (abilityState?.passiveAbilityIds.length ?? 0),
       ).toBeGreaterThan(0);
+      // Real progression bookkeeping (skill state, ability grants, milestone
+      // log) must survive the synthetic seed.
       expect(world.milestoneGrantLog.length).toBeGreaterThan(0);
+      // But the seed is silent: it must not leave behind stale runtime-only
+      // presentation events (level-up floaters, milestone VFX) or queue a
+      // skill-triggered ability to auto-activate on the first real frame
+      // (PR #4392 review fix). Floor welcome banners (e.g. Floor 5's
+      // "Hostile Takeover" announcement) are legitimate floor-level
+      // presentation, not baseline-seeding noise, so `announcements` is
+      // checked separately below for a floor with no such banner.
+      expect(world.floaterEvents).toHaveLength(0);
+      expect(world.vfxEvents).toHaveLength(0);
+      expect(world.abilityTriggerEvents).toHaveLength(0);
 
       const equipmentState = getEquipmentState(world, player)!;
       const equippedItemIds = Object.values(equipmentState.equipped)
@@ -51,6 +64,25 @@ describe('floor skip direct-start baselines', () => {
         .map((instanceId) => resolveEquipmentInstance(world, equipmentState, instanceId)?.def.id);
       for (const itemId of baseline.equipmentItemIds) {
         expect(equippedItemIds).toContain(itemId);
+      }
+
+      if (manifest.player.hpBonus > 0) {
+        // The manifest HP bonus must survive applyFloorSkipBaseline's
+        // initializeBaseStats call, which otherwise reseeds Health.max from
+        // the derived base value and silently discards a bonus applied
+        // before it (PR #4392 review fix). Assert against the
+        // baseline-derived max HP (computed independently, with the bonus
+        // zeroed) plus the bonus, rather than a hardcoded absolute number,
+        // so this targets the specific ordering regression instead of
+        // pinning the whole stat-derivation pipeline's output.
+        const baselineOnlyWorld = createTestWorld({ seed: 7 });
+        const baselineOnlyPlayer = spawnPlayer(baselineOnlyWorld, 0, 0);
+        applyFloorSkipBaseline(baselineOnlyWorld, baselineOnlyPlayer, {
+          ...manifest,
+          player: { ...manifest.player, hpBonus: 0 },
+        });
+        const baselineOnlyMaxHp = baselineOnlyWorld.stores.health.max[baselineOnlyPlayer]!;
+        expect(world.stores.health.max[player]).toBe(baselineOnlyMaxHp + manifest.player.hpBonus);
       }
     });
   }
@@ -71,5 +103,21 @@ describe('floor skip direct-start baselines', () => {
     expect(world.playerLevel.level).toBeLessThan(
       getFloorManifest('floor3')!.player.directStart!.level,
     );
+  });
+
+  it('seeds the floor6 pistol baseline without any stale transient queue', () => {
+    // Floor 6 has no floor-level welcome banner, so `announcements` (unlike
+    // the per-floor loop above) can be asserted empty here too, matching the
+    // exact "Floor 6 start" example from the PR #4392 review thread.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+
+    getScenarioDefinition('floor6').configureWorld(world, player);
+
+    expect(world.milestoneGrantLog.length).toBeGreaterThan(0);
+    expect(world.floaterEvents).toHaveLength(0);
+    expect(world.vfxEvents).toHaveLength(0);
+    expect(world.announcements).toHaveLength(0);
+    expect(world.abilityTriggerEvents).toHaveLength(0);
   });
 });

@@ -392,8 +392,11 @@ describe('createFloor1MainSceneOptions', () => {
     expect(world.stores.position.y[player]).toBe(spawn.y);
     expect(world.hideFloorTimer).toBe(true);
     expect(world.playerLevel.level).toBe(manifest.player.directStart!.level);
-    // Direct-start baseline: Floor 4 level/stat allocation plus skill/equipment passives.
-    expect(world.stores.health.max[player]).toBe(427);
+    // Direct-start baseline: Floor 4 level/stat allocation plus skill/equipment
+    // passives, plus the manifest's +60 direct-start HP bonus applied after
+    // the baseline (PR #4392 review fix — the bonus must not be discarded by
+    // applyFloorSkipBaseline's initializeBaseStats reseed).
+    expect(world.stores.health.max[player]).toBe(487);
     expect(getActiveWeaponDef(world)?.id).toBeTruthy();
     expect(world.featureUnlocks.inventory).toBe(true);
     expect(world.featureUnlocks.equipment).toBe(true);

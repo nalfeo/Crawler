@@ -1324,14 +1324,23 @@ export function initializeFloor3Scenario(
       value: manifest.player.pickupRangeBonus,
     });
   }
-  if (!options?.playerCarryover && hasComponent(world.ecs, playerEid, Health)) {
-    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-  }
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
   } else {
-    applyFloorSkipBaseline(world, playerEid, manifest);
+    // Floor 3's Wrangler is an intentional non-combatant (the starter
+    // Companion fights instead — see `floor3NonCombatantSystem`), so suppress
+    // applyFloorSkipBaseline's deterministic starter-weapon fallback: Floor 3
+    // never pre-equips a starter weapon the way Floors 4/5/6 do, and without
+    // this the fallback would arm the Wrangler on every direct-start skip.
+    applyFloorSkipBaseline(world, playerEid, manifest, { suppressStarterWeapon: true });
+    // Apply the manifest HP bonus after the baseline: applyFloorSkipBaseline
+    // calls initializeBaseStats for a fresh direct-start player, which
+    // reseeds Health.current/max from derived max HP and would otherwise
+    // silently discard this bonus (see review thread on PR #4392).
+    if (hasComponent(world.ecs, playerEid, Health)) {
+      const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+      setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+    }
   }
   addComponent(world.ecs, playerEid, Invincible);
   if (manifest.props !== undefined) {

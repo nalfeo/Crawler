@@ -3423,17 +3423,20 @@ export function initializeFloor5Scenario(
       value: manifest.player.pickupRangeBonus,
     });
   }
-  if (!options?.playerCarryover && hasComponent(world.ecs, playerEid, Health)) {
-    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-  }
-
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
     initializePlayerWeaponSkills(world, playerEid);
   } else {
     equipFloor5StarterWeapon(world, playerEid, manifest.starterWeapons);
     applyFloorSkipBaseline(world, playerEid, manifest);
+    // Apply the manifest HP bonus after the baseline: applyFloorSkipBaseline
+    // calls initializeBaseStats for a fresh direct-start player, which
+    // reseeds Health.current/max from derived max HP and would otherwise
+    // silently discard this bonus (see review thread on PR #4392).
+    if (hasComponent(world.ecs, playerEid, Health)) {
+      const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+      setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+    }
   }
 
   for (const questId of FLOOR5_SLICE3_QUEST_IDS) {
