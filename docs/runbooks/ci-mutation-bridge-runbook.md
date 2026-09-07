@@ -330,16 +330,13 @@ drill record.
 
 Phase 2 transfers **only** the pre-PR implementation claim. Merge-train
 promotion, auto-rebase, and CI Recovery state mutations remain legacy-owned and
-fully operational. Phase 3 review-thread reply/resolve (Lane A) is now
-migratable via `LIFECYCLE_OWNER_REVIEW_THREADS` for generic outdated-marker and
-trusted-marker resolution. Follow-up-backlog thread replies/resolves remain
-legacy-owned until a later contract can pass the created/reused follow-up issue
-mapping into Goobers. The hosted wrapper conservatively passes an empty
-reachable-commit-SHA set rather than reproducing reconcile.mjs's full
-stale-marker lineage/near-typo-promotion logic — a documented limitation, not
-a silent gap. Lanes B (CI Recovery reconciliation), C (merge-train admission),
-and D (merge-train promotion) remain legacy-owned; each moves independently in
-a later Phase 3 slice via its own lane selector. Phase 4 removal of any legacy
+fully operational. Phase 3 review-thread reply/resolve (Lane A) is migratable
+via `LIFECYCLE_OWNER_REVIEW_THREADS` for generic outdated-marker resolution,
+reachable-ancestor lineage, near-typo promotion, and follow-up-backlog
+reply/resolve with the created/reused issue mapping carried in the Goobers
+contract. Lanes B (CI Recovery reconciliation), C (merge-train admission), and
+D (merge-train promotion) remain legacy-owned; each moves independently in a
+later Phase 3 slice via its own lane selector. Phase 4 removal of any legacy
 lane is gated on `npm run check:legacy-decommission` reporting `ready`, which no
 lane can reach until it is migrated, soaked, and drilled.
 

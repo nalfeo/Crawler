@@ -57,9 +57,12 @@ test('goobers-review-threads.yml re-validates state immediately before every mut
   assert.match(reviewThreads, /reason=paired-marker-not-posted/);
   assert.match(
     reviewThreads,
-    /state_\.shouldResolveThread\(thread, headNow, emptyReachableCommitShas\)/,
+    /state_\.shouldResolveThread\(thread, headNow, reachableCommitShas\)/,
   );
   assert.match(reviewThreads, /posted-marker-not-yet-visible/);
+  assert.match(reviewThreads, /reason=incomplete-issue-mapping/);
+  assert.match(reviewThreads, /reuse existing follow-up-backlog marker thread=/);
+  assert.match(reviewThreads, /reviewAfterFollowupMarker = await currentThreads\(\)/);
 });
 
 test('goobers-review-threads.yml requests least-privilege permissions', () => {
@@ -69,6 +72,6 @@ test('goobers-review-threads.yml requests least-privilege permissions', () => {
   );
   assert.match(permissionsBlock, /actions: read/);
   assert.match(permissionsBlock, /contents: read/);
+  assert.match(permissionsBlock, /issues: write/);
   assert.match(permissionsBlock, /pull-requests: write/);
-  assert.doesNotMatch(permissionsBlock, /issues: write/);
 });
