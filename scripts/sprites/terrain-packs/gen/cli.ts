@@ -263,11 +263,14 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const accentPathResult = validateWallAccentImagePaths(typed, { repoRoot: REPO_ROOT });
   const topologyResults: ValidationResult[] = [];
   const depthResults: ValidationResult[] = [];
-  const filesByPath = new Map(files.map((file) => [file.relativePath, file.buffer]));
+  const filesByPath = new Map(
+    files.map((file) => [file.relativePath.replace(/\\/g, '/'), file.buffer]),
+  );
   if (accentPathResult.ok) {
     const accentAtlases: RgbaImage[] = [];
     for (const accent of typed.wallAccents ?? []) {
-      const accentPng = filesByPath.get(accent.imagePath);
+      const accentPath = accent.imagePath.replace(/\\/g, '/');
+      const accentPng = filesByPath.get(accentPath);
       if (!accentPng) {
         topologyResults.push({
           ok: false,
@@ -292,7 +295,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
         {
           code: 'wall-accent-checks-skipped',
           message:
-            'Skipped wall-accent topology/depth checks because one or more wall accent image paths failed validation.',
+            'Skipped wall-accent topology/depth checks because wall-accent image-path validation failed (see wallAccents[*] path issues in this report).',
         },
       ],
     });
