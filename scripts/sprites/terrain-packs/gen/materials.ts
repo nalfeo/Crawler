@@ -9,8 +9,9 @@
  * Prompt rules learned the hard way and encoded here:
  *  - always say "seamless tileable" AND "no border/frame/vignette" — generators
  *    love to add a decorative edge that destroys tiling;
- *  - always say "top-down orthographic, flat even lighting, no cast shadows" —
- *    baked directional light makes neighbouring cells disagree;
+ *  - request raised surface structure while keeping lighting even; directional
+ *    wall-face lighting is applied by the deterministic compositor so seams
+ *    still agree;
  *  - always say "no objects, no props, no text" — a barrel baked into the
  *    material repeats across the whole floor.
  */
@@ -51,8 +52,8 @@ const ACCENT_FLOOR_TILE: MaterialTileOptions = {
 };
 
 const SHARED_STYLE =
-  'seamless tileable texture, top-down orthographic view, flat even lighting, ' +
-  'no cast shadows, no directional highlight, no border, no frame, no vignette, ' +
+  'seamless tileable pixel-art texture, top-down orthographic view with chunky ' +
+  'readable surface relief, even ambient lighting, no cast shadows, no border, no frame, no vignette, ' +
   'no objects, no props, no characters, no text, no watermark, ' +
   'edge-to-edge repeating pattern, muted desaturated palette, dark fantasy dungeon crawler game texture';
 
@@ -75,26 +76,26 @@ export const FLOOR1_DUNGEON_SPEC: PackGenSpec = {
   name: 'Floor 1 Dungeon',
   includeSpecialFloorPools: true,
   wall: {
-    cacheKey: 'floor1-dungeon-wall',
+    cacheKey: 'floor1-dungeon-wall-depth-v2',
     prompt:
       'Ancient mortared dungeon masonry wall of rough-cut grey granite blocks with ' +
-      'crumbling pale mortar joints and faint moss in the cracks. ' +
+      'crumbling pale mortar joints, chipped raised block faces, deep recessed seams, and faint moss in the cracks. ' +
       SHARED_STYLE,
     tile: WALL_TILE,
   },
   floor: {
-    cacheKey: 'floor1-dungeon-floor',
+    cacheKey: 'floor1-dungeon-floor-depth-v2',
     prompt:
       'Worn dungeon flagstone floor of irregular grey-brown paving slabs with ' +
-      'grit-filled seams, small chips and scuff marks. ' +
+      'grit-filled recessed seams, bevelled slab edges, small chips and scuff marks. ' +
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
   corridor: {
-    cacheKey: 'floor1-dungeon-corridor',
+    cacheKey: 'floor1-dungeon-corridor-depth-v2',
     prompt:
       'Narrow dungeon corridor floor of tightly fitted cold grey stone slabs, ' +
-      'darker and damper than a room floor, with a faint worn walking path. ' +
+      'darker and damper than a room floor, with shallow side gutters and a raised worn walking path. ' +
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
@@ -104,26 +105,26 @@ export const FLOOR1_CAVE_SPEC: PackGenSpec = {
   id: 'floor1-cave',
   name: 'Floor 1 Cave',
   wall: {
-    cacheKey: 'floor1-cave-wall',
+    cacheKey: 'floor1-cave-wall-depth-v2',
     prompt:
       'Rough natural cave rock wall, jagged unhewn limestone with mineral veining, ' +
-      'pitted and uneven, damp dark stone. ' +
+      'pitted and uneven, with large projecting ledges, deep crevices and damp dark stone. ' +
       SHARED_STYLE,
     tile: WALL_TILE,
   },
   floor: {
-    cacheKey: 'floor1-cave-floor',
+    cacheKey: 'floor1-cave-floor-depth-v2',
     prompt:
       'Damp cave floor of packed earth, loose gravel and scattered small stones, ' +
-      'brown and grey, uneven natural ground. ' +
+      'brown and grey, uneven natural ground with shallow depressions and raised stone edges. ' +
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },
   corridor: {
-    cacheKey: 'floor1-cave-corridor',
+    cacheKey: 'floor1-cave-corridor-depth-v2',
     prompt:
       'Narrow cave passage floor of wet bedrock and fine gravel, darker and ' +
-      'smoother than open cave ground. ' +
+      'smoother than open cave ground, with worn raised bedrock shelves along the passage. ' +
       SHARED_STYLE,
     tile: FLOOR_TILE,
   },

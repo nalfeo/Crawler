@@ -203,6 +203,28 @@
       }
     ]
   },
+  "wallAccents": [
+    {
+      "id": "raised-course",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/accent-raised-course.png",
+      "textureKey": "terrain-pack-floor1-dungeon-accent-raised-course"
+    },
+    {
+      "id": "recessed-seam",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/accent-recessed-seam.png",
+      "textureKey": "terrain-pack-floor1-dungeon-accent-recessed-seam"
+    },
+    {
+      "id": "broken-ledge",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/accent-broken-ledge.png",
+      "textureKey": "terrain-pack-floor1-dungeon-accent-broken-ledge"
+    },
+    {
+      "id": "inset-face",
+      "imagePath": "assets/terrain-packs/floor1-dungeon/accent-inset-face.png",
+      "textureKey": "terrain-pack-floor1-dungeon-accent-inset-face"
+    }
+  ],
   "floorPool": [
     {
       "id": "floor-0",

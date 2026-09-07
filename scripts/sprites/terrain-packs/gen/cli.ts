@@ -23,6 +23,8 @@ import {
   validateCompatibleBoundaries,
   validateWallAutotileImagePath,
   validatePoolAndDoorImages,
+  validateWallAccentTopology,
+  validateTerrainDepthAndPerspective,
   validateGenManifestSchema,
   type ValidationResult,
 } from '../validate.js';
@@ -175,6 +177,44 @@ function reportValidation(label: string, results: readonly ValidationResult[]): 
   return false;
 }
 
+function validateEmittedWallAccentPaths(
+  manifest: TerrainPackDef,
+  emittedPaths: ReadonlySet<string>,
+): ValidationResult {
+  const issues: ValidationResult['issues'] = [];
+  for (const accent of manifest.wallAccents ?? []) {
+    const context = `wallAccents[${accent.id}]`;
+    const normalized = accent.imagePath.replace(/\\/g, '/');
+    if (normalized.includes('..')) {
+      issues.push({
+        code: 'path-traversal',
+        message: `${context}: imagePath contains '..' (path traversal prevented): ${accent.imagePath}`,
+      });
+      continue;
+    }
+    if (!normalized.startsWith('assets/terrain-packs/')) {
+      issues.push({
+        code: 'path-not-in-allowed-root',
+        message: `${context}: imagePath '${accent.imagePath}' must start with 'assets/terrain-packs/'`,
+      });
+      continue;
+    }
+    if (!emittedPaths.has(normalized)) {
+      issues.push({
+        code: 'image-missing',
+        message: `${context}: imagePath '${accent.imagePath}' was not emitted by composePack`,
+      });
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+function toAccentAssetPath(specId: string, relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^public\//, '');
+  if (normalized.startsWith('assets/terrain-packs/')) return normalized;
+  return `assets/terrain-packs/${specId}/${normalized.replace(/^\/+/, '')}`;
+}
+
 async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolean> {
   console.log(`\n[${spec.id}] building${options.fromSource ? ' (from committed source)' : ''}`);
 
@@ -257,6 +297,24 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlasBytes = files.find((f) => f.relativePath.endsWith('wall-atlas.png'))!.buffer;
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
+  const filesByPath = new Map(
+    files.map((file) => [toAccentAssetPath(spec.id, file.relativePath), file.buffer]),
+  );
+  const accentPathResult = validateEmittedWallAccentPaths(typed, new Set(filesByPath.keys()));
+  const topologyResults: ValidationResult[] = [];
+  const depthResults: ValidationResult[] = [];
+  if (accentPathResult.ok) {
+    const accentAtlases: RgbaImage[] = [];
+    for (const accent of typed.wallAccents ?? []) {
+      const accentPath = accent.imagePath.replace(/\\/g, '/');
+      const accentPng = filesByPath.get(accentPath);
+      if (!accentPng) throw new Error(`Missing emitted accent image: ${accent.imagePath}`);
+      const accentAtlas = decodePng(accentPng);
+      accentAtlases.push(accentAtlas);
+      topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
+    }
+    depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
+  }
   return reportValidation(spec.id, [
     // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
     // registered in RUNTIME_TERRAIN_PACK_IDS, but validateManifestSchema also
@@ -268,6 +326,9 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     validateCompatibleBoundaries(typed, atlas, { minEdgePassRate: 1.0 }),
     validateWallAutotileImagePath(typed, { repoRoot: REPO_ROOT }),
     validatePoolAndDoorImages(typed, { repoRoot: REPO_ROOT }),
+    accentPathResult,
+    ...topologyResults,
+    ...depthResults,
   ]);
 }
 
