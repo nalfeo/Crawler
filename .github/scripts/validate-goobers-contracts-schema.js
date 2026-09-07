@@ -239,7 +239,9 @@ export const outputV1 = {
     summary: {
       type: 'string',
       minLength: 1,
-      description: 'One-line summary for humans',
+      description:
+        'Human-readable summary; any non-empty string is valid under v1. Terminal close-out ' +
+        'summaries should additionally follow crawler.goobers.summary/v1.',
     },
     error: {
       oneOf: [

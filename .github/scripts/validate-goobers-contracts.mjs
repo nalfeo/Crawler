@@ -101,10 +101,13 @@ const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
 const GOOBERS_SUMMARY_FIELDS = ['Description', 'Systems', 'Verification', 'Risk'];
 
 /**
- * Semantic shape of `crawler.goobers.summary/v1`, the human-readable close-out
- * summary contract. It is intentionally a separate contract from
- * `crawler.goobers.output/v1`, whose `summary` field keeps its original
- * "non-empty string" v1 semantics so in-flight v1 outputs stay valid.
+ * Returns true when `summary` satisfies `crawler.goobers.summary/v1`: exactly
+ * four lines (optionally bulleted) labelled Description, Systems, Verification,
+ * and Risk, in that order, each with non-empty text. Non-strings return false.
+ *
+ * This is intentionally a separate contract from `crawler.goobers.output/v1`,
+ * whose `summary` field keeps its original "non-empty string" v1 semantics so
+ * in-flight v1 outputs stay valid.
  */
 export function isStructuredGoobersSummary(summary) {
   if (typeof summary !== 'string') {
@@ -130,6 +133,11 @@ export function isStructuredGoobersSummary(summary) {
   );
 }
 
+/**
+ * Error-list form of `isStructuredGoobersSummary()`: empty when the summary
+ * satisfies `crawler.goobers.summary/v1`, otherwise one message naming the
+ * required ordered sections.
+ */
 export function summarySemanticErrors(summary) {
   return isStructuredGoobersSummary(summary)
     ? []
