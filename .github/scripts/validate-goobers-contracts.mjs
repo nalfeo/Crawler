@@ -15,7 +15,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'yaml';
-import { invocationV1, outputV1 } from './validate-goobers-contracts-schema.js';
+import { invocationV1, outputV1, goobersSummaryV1 } from './validate-goobers-contracts-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -100,6 +100,12 @@ const PLANNING_TASK = 'plan';
 const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
 const GOOBERS_SUMMARY_FIELDS = ['Description', 'Systems', 'Verification', 'Risk'];
 
+/**
+ * Semantic shape of `crawler.goobers.summary/v1`, the human-readable close-out
+ * summary contract. It is intentionally a separate contract from
+ * `crawler.goobers.output/v1`, whose `summary` field keeps its original
+ * "non-empty string" v1 semantics so in-flight v1 outputs stay valid.
+ */
 export function isStructuredGoobersSummary(summary) {
   if (typeof summary !== 'string') {
     return false;
@@ -124,12 +130,19 @@ export function isStructuredGoobersSummary(summary) {
   );
 }
 
+export function summarySemanticErrors(summary) {
+  return isStructuredGoobersSummary(summary)
+    ? []
+    : [
+        `summary must be an ordered block with non-empty sections: ${GOOBERS_SUMMARY_FIELDS.join(', ')}`,
+      ];
+}
+
 export function outputSemanticErrors(payload) {
   const errors = [];
   const status = payload?.status;
   const task = payload?.task;
   const outputs = payload?.outputs || {};
-  const summary = payload?.summary;
   const hasError = payload?.error !== undefined && payload?.error !== null;
   if ((status === 'failure' || status === 'blocked') && !hasError) {
     errors.push('error is required when status is failure or blocked');
@@ -170,11 +183,6 @@ export function outputSemanticErrors(payload) {
     !['clean', 'divergence'].includes(outputs.parityStatus)
   ) {
     errors.push("outputs.parityStatus must be either 'clean' or 'divergence'");
-  }
-  if (typeof summary === 'string' && !isStructuredGoobersSummary(summary)) {
-    errors.push(
-      `summary must be a structured block with required sections: ${GOOBERS_SUMMARY_FIELDS.join(', ')}`,
-    );
   }
 
   return errors;
@@ -480,12 +488,7 @@ function outputFixtures() {
           hardGate: 'all checks green',
           blockedBy: null,
         },
-        summary: [
-          'Description: Completes the Goobers contract validation and closes the summary gap in the final issue comment.',
-          'Systems: Goobers output schema, issue-close-out validation, shared workflow contract',
-          'Verification: node .github/scripts/validate-goobers-contracts.mjs',
-          'Risk: Low — this changes the contract and comment format only.',
-        ].join('\n'),
+        summary: 'Completed successfully',
       },
     },
     {
@@ -501,12 +504,7 @@ function outputFixtures() {
           hardGate: 'CI contract gate',
           blockedBy: '441,442',
         },
-        summary: [
-          'Description: The issue is blocked pending a maintainer decision on the Goobers summary format.',
-          'Systems: Goobers workflow, issue-close-out summary output, maintainer approval gate',
-          'Verification: workflow contract review and issue-blocking checks',
-          'Risk: High — the change cannot ship without the human decision noted above.',
-        ].join('\n'),
+        summary: 'Blocked by upstream issues',
         error: {
           code: 'REQUIREMENTS_MISMATCH',
           message: 'Blocked by upstream requirements',
@@ -521,12 +519,7 @@ function outputFixtures() {
         task: 'implement',
         status: 'failure',
         outputs: {},
-        summary: [
-          'Description: The validation failed while checking the Goobers summary output.',
-          'Systems: Goobers output schema',
-          'Verification: contract validation',
-          'Risk: Medium — downstream automation may not proceed until fixed.',
-        ].join('\n'),
+        summary: 'Failed',
       },
     },
     {
@@ -537,12 +530,7 @@ function outputFixtures() {
         task: 'implement',
         status: 'success',
         outputs: {},
-        summary: [
-          'Description: The fix shipped successfully.',
-          'Systems: Goobers contract validation',
-          'Verification: local contract checks',
-          'Risk: Low — no gameplay behavior changed.',
-        ].join('\n'),
+        summary: 'Done',
         error: {
           code: 'TEST_FAILURE',
           message: 'unexpected',
@@ -559,12 +547,7 @@ function outputFixtures() {
         outputs: {
           appleEstimate: 6,
         },
-        summary: [
-          'Description: The plan is invalid.',
-          'Systems: Goobers output contract',
-          'Verification: schema validation',
-          'Risk: Low — a rejected plan can be revisited immediately.',
-        ].join('\n'),
+        summary: 'Invalid apple estimate',
       },
     },
     {
@@ -580,12 +563,7 @@ function outputFixtures() {
           verdict: 'recommended',
           appleEstimate: 3,
         },
-        summary: [
-          'Description: The implementation is complete.',
-          'Systems: Goobers task runner',
-          'Verification: targeted checks',
-          'Risk: Low — no production code changed.',
-        ].join('\n'),
+        summary: 'Implementation finished',
       },
     },
     {
@@ -598,15 +576,60 @@ function outputFixtures() {
         outputs: {
           hardGate: 'push must succeed',
         },
-        summary: [
-          'Description: The push succeeded.',
-          'Systems: branch publisher',
-          'Verification: branch push workflow',
-          'Risk: Low — execution is already complete.',
-        ].join('\n'),
+        summary: 'Pushed branch',
       },
     },
   ];
+}
+
+function summaryFixtures() {
+  return [
+    {
+      name: 'structured close-out summary',
+      shouldPass: true,
+      summary: goobersSummaryV1.example,
+    },
+    {
+      name: 'single-sentence summary is rejected',
+      shouldPass: false,
+      summary: 'Implemented the fix.',
+    },
+    {
+      name: 'summary with an empty required section is rejected',
+      shouldPass: false,
+      summary: ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+    },
+    {
+      name: 'summary with out-of-order sections is rejected',
+      shouldPass: false,
+      summary: [
+        'Systems: Goobers workflow',
+        'Description: Fixes it',
+        'Verification: tests',
+        'Risk: Low',
+      ].join('\n'),
+    },
+  ];
+}
+
+function validateSummaryFixtures(fixtures) {
+  return fixtures.map((fixture) => {
+    const errors = summarySemanticErrors(fixture.summary);
+    const passed = errors.length === 0;
+    if (fixture.shouldPass === passed) {
+      return { status: 'pass', name: fixture.name, errors: [] };
+    }
+    return {
+      status: 'fail',
+      name: fixture.name,
+      errors: [
+        `Expected ${fixture.shouldPass ? 'valid' : 'invalid'} summary but got ${
+          passed ? 'valid' : 'invalid'
+        }`,
+        ...errors,
+      ],
+    };
+  });
 }
 
 /**
@@ -661,8 +684,14 @@ async function main() {
     await realProducerInvocations(),
     invocationSemanticErrors,
   );
+  const summaryResults = validateSummaryFixtures(summaryFixtures());
 
-  for (const result of [...invocationResults, ...outputResults, ...producerResults]) {
+  for (const result of [
+    ...invocationResults,
+    ...outputResults,
+    ...producerResults,
+    ...summaryResults,
+  ]) {
     if (result.status === 'pass') {
       console.log(`✅ fixture: ${result.name}`);
       continue;
@@ -677,10 +706,17 @@ async function main() {
   console.log('\n=== Summary ===');
   const passed = workflowResults.filter((r) => r.status === 'pass').length;
   const failed = workflowResults.filter((r) => r.status === 'fail').length;
-  const fixturePassed = [...invocationResults, ...outputResults, ...producerResults].filter(
-    (r) => r.status === 'pass',
-  ).length;
-  const fixtureTotal = invocationResults.length + outputResults.length + producerResults.length;
+  const fixturePassed = [
+    ...invocationResults,
+    ...outputResults,
+    ...producerResults,
+    ...summaryResults,
+  ].filter((r) => r.status === 'pass').length;
+  const fixtureTotal =
+    invocationResults.length +
+    outputResults.length +
+    producerResults.length +
+    summaryResults.length;
 
   console.log(`Workflow schemas passed: ${passed}/${REQUIRED_WORKFLOWS.length}`);
   console.log(`Failed: ${failed}`);

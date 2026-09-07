@@ -122,7 +122,17 @@ export const invocationV1 = {
    */
 };
 
-export const goobersSummaryCommentV1 = {
+/**
+ * `crawler.goobers.summary/v1` — the human-readable close-out summary contract.
+ *
+ * This is a separate contract from `crawler.goobers.output/v1`, whose `summary`
+ * field keeps its original "non-empty string" v1 semantics so in-flight v1
+ * outputs stay valid. The structured shape below is required of the summary the
+ * coder emits for the terminal issue close-out comment, and is enforced by
+ * `summarySemanticErrors()` in validate-goobers-contracts.mjs.
+ */
+export const goobersSummaryV1 = {
+  contract: 'crawler.goobers.summary/v1',
   description:
     'Human-readable Goobers summary emitted on the final issue/PR status comment; it must be a brief structured block with Description, Systems, Verification, and Risk sections.',
   requiredFields: ['Description', 'Systems', 'Verification', 'Risk'],
@@ -229,9 +239,7 @@ export const outputV1 = {
     summary: {
       type: 'string',
       minLength: 1,
-      description:
-        'Short human-readable summary block with Description, Systems, Verification, and Risk sections; ' +
-        'single-sentence one-liners are rejected by semantic validation.',
+      description: 'One-line summary for humans',
     },
     error: {
       oneOf: [
@@ -318,5 +326,5 @@ export default {
   invocationV1,
   outputV1,
   prStateCommentV1,
-  goobersSummaryCommentV1,
+  goobersSummaryV1,
 };
