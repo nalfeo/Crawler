@@ -20,6 +20,7 @@ import type {
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
   Floor3LeagueHudProbeState,
+  Floor3RangedCompanionProbeResult,
   Floor3CompanionPropDepthProbe,
   FloatingTextProbe,
   FloorSummaryProbeState,
@@ -351,6 +352,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.fireActiveWeaponForProjectileProbe()),
   getProjectileRenderInfo: (page: Page): Promise<ProjectileRenderInfo[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getProjectileRenderInfo()),
+  spawnFloor3RangedCompanionProbe: (page: Page): Promise<Floor3RangedCompanionProbeResult | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.spawnFloor3RangedCompanionProbe()),
+  getEntityHealth: (page: Page, eid: number): Promise<number | null> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getEntityHealth(id), eid),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>

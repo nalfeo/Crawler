@@ -1,11 +1,21 @@
 import { hasComponent, query } from 'bitecs';
 import { applyDamage } from '../../core/apply-damage.js';
-import { Companion, DeathTimer, Enemy, Position, Team } from '../../core/components.js';
+import {
+  Companion,
+  DeathTimer,
+  Enemy,
+  Position,
+  ProjectileVisualKind,
+  Team,
+} from '../../core/components.js';
+import { tagDamageMeta } from '../../core/damage-meta.js';
+import { spawnEnemyProjectile } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { STAT_BAND_SCALE, stylePersona } from '../../shared/data/floor3/styles.js';
 import { speciesForToken } from '../../shared/data/floor3/species.js';
-import { TeamId } from '../../shared/constants.js';
+import { TeamId, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
+import { normalize } from '../../shared/vec.js';
 import { getCompanionAIDecision } from './companionAISystem.js';
 
 const MELEE_RANGE_FT = 3;
@@ -73,7 +83,8 @@ export function companionCombatSystem(
     if (species === undefined) continue;
     const persona = stylePersona(species.fightingStyle);
     const storedAttackRange = world.stores.enemyBehavior.attackRange[eid] ?? 0;
-    const attackRange = storedAttackRange > 0 ? storedAttackRange : MELEE_RANGE_FT;
+    const rangedAttack = storedAttackRange > 0;
+    const attackRange = rangedAttack ? storedAttackRange : MELEE_RANGE_FT;
     const dx = (world.stores.position.x[target] ?? 0) - (world.stores.position.x[eid] ?? 0);
     const dy = (world.stores.position.y[target] ?? 0) - (world.stores.position.y[eid] ?? 0);
     if (dx * dx + dy * dy > attackRange * attackRange) continue;
@@ -91,10 +102,61 @@ export function companionCombatSystem(
       world.floorId === 'floor3' && (world.stores.team.id[eid] ?? -1) === TeamId.PLAYER
         ? playerCompanionDamageMultiplier
         : 1;
+    const projectileDamage =
+      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier;
+
+    if (rangedAttack) {
+      const sourceX = world.stores.position.x[eid] ?? 0;
+      const sourceY = world.stores.position.y[eid] ?? 0;
+      const dir = normalize(dx, dy);
+      const targetX = world.stores.position.x[target] ?? 0;
+      const targetY = world.stores.position.y[target] ?? 0;
+      // A ranged shot only becomes a real flying projectile when there is
+      // both (a) a direction to fire along — a point-blank target (dir.length
+      // === 0, e.g. the AI catch-up fix walking a companion on top of its
+      // target) has none — and (b) an unobstructed line of sight, since
+      // Studio arenas can hold a companion and its locked rival within
+      // Euclidean attack range but on opposite sides of a wall/ring boundary
+      // while their positioning AI orbits at that range. Either case falls
+      // through to the instant melee-style hit below instead of silently
+      // dropping the attack forever: a companion that cannot draw a clean
+      // shot must still be able to land a hit, and the cooldown is only ever
+      // committed once an attack (projectile OR instant hit) actually
+      // resolves.
+      const hasLineOfSight =
+        world.floorMap?.hasLineOfSight(sourceX, sourceY, targetX, targetY) ?? true;
+      if (dir.length > 0 && hasLineOfSight) {
+        const projectileEid = spawnEnemyProjectile(
+          world,
+          sourceX,
+          sourceY,
+          dir.x * ENEMY_PROJECTILE.SPEED,
+          dir.y * ENEMY_PROJECTILE.SPEED,
+          projectileDamage,
+          eid,
+          ProjectileVisualKind.BULLET,
+        );
+        // spawnEnemyProjectile already tags fail-closed enemy/unscaled damage
+        // meta; re-tag with the Floor 3 Temperament pair so damageSystem's
+        // delayed `applyProjectileHit` replays the same matchup multiplier
+        // the instant melee path below applies immediately.
+        tagDamageMeta(world, projectileEid, {
+          origin: 'enemy',
+          affinity: 'unscaled',
+          scaleWithPrimary: false,
+          canCrit: false,
+          attackerTemperament: species.affinity,
+          defenderTemperament: defender?.affinity,
+        });
+        attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
+        continue;
+      }
+    }
+
     applyDamage(
       world,
       target,
-      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier,
+      projectileDamage,
       world.stores.position.x[target] ?? 0,
       world.stores.position.y[target] ?? 0,
       {

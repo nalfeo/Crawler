@@ -677,6 +677,15 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       scaleWithPrimary: new Uint8Array(maxEntities),
       canCrit: new Uint8Array(maxEntities),
       fromActiveAbility: new Uint8Array(maxEntities),
+      /**
+       * Floor 3 Companion League Temperament (see `DamageOptions.attackerTemperament`
+       * / `defenderTemperament` in `core/apply-damage.ts`), encoded so a delayed
+       * damage-bearing entity (e.g. a companion's ranged projectile) can replay
+       * the matchup multiplier at impact time instead of always resolving
+       * neutral. 0 = none (fail-closed); 1..7 = `AFFINITY_RING` index + 1.
+       */
+      attackerTemperament: new Uint8Array(maxEntities),
+      defenderTemperament: new Uint8Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.

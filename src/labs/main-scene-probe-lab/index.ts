@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { entityExists, query, removeEntity } from 'bitecs';
+import { addComponent, entityExists, query, removeEntity, set } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -43,6 +43,7 @@ import {
   Position,
   Projectile,
   Prop,
+  Team,
 } from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
 import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
@@ -51,7 +52,10 @@ import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decoratio
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objects.js';
-import { spawnEnemy } from '../../core/spawners/combatants.js';
+import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
+import { AI_TYPE } from '../../game/enemyAISystem.js';
+import { speciesTokenForId } from '../../shared/data/floor3/species.js';
+import { TeamId } from '../../shared/constants.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
 import type { VfxEvent } from '../../shared/vfx-events.js';
 import {
@@ -882,6 +886,12 @@ export interface ProjectileRenderInfo {
   readonly foundNamedObject: boolean;
 }
 
+/** Result of {@link MainSceneProbeApi.spawnFloor3RangedCompanionProbe}. */
+export interface Floor3RangedCompanionProbeResult {
+  readonly companionEid: number;
+  readonly targetEid: number;
+}
+
 /**
  * Display-list state of the player's persistent carried main-hand weapon.
  * The carried sprite is named `carried-weapon:<eid>` by the render bridge, so
@@ -1460,6 +1470,23 @@ export interface MainSceneProbeApi {
    * bullets while bow/crossbow shots keep the arrow texture.
    */
   getProjectileRenderInfo(): ProjectileRenderInfo[];
+  /**
+   * Spawns a real Floor-3 `ember-slinger` Companion (the shipped
+   * `aiType: "ranged"` species, `enemies.floor3.json`) at the player's
+   * position on the Player team, plus a nearby Enemy-team target, then
+   * unpauses the sim (issue #4426 review). Unlike
+   * `fireActiveWeaponForProjectileProbe` this does NOT force-call the combat
+   * system directly — it only places the two entities and lets the real,
+   * scenario-wired `companionCombatSystem` (run every frame through the
+   * shipped Floor 3 bootstrap, same as in the live game) decide when to
+   * fire, so the projectile spawn, its render texture, and the eventual
+   * damage/cleanup are all observed through the REAL booted scene rather
+   * than a direct system call. Returns `null` off Floor 3 (the system is a
+   * floor3-only gate) or with no live player entity.
+   */
+  spawnFloor3RangedCompanionProbe(): Floor3RangedCompanionProbeResult | null;
+  /** Current `Health.current` for any live entity, or null if it has none. */
+  getEntityHealth(eid: number): number | null;
   /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
@@ -3337,6 +3364,63 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         });
       }
       return infos;
+    },
+
+    spawnFloor3RangedCompanionProbe: (): Floor3RangedCompanionProbeResult | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world || world.floorId !== 'floor3') {
+        return null;
+      }
+      // Bypass the (RNG-seeded) starter-Companion offer entirely, the same
+      // way `primeStatusAuraEnemy` bypasses other Floor 3 loadout gates for
+      // probe determinism — this proves the SHIPPED `companionCombatSystem`
+      // wiring, render bridge, and damage/cleanup pipeline in the real
+      // booted scene without depending on which starter species the random
+      // offer would have picked.
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const player = playerEidOf(scene);
+      if (player < 0) {
+        return null;
+      }
+      for (const eid of query(world.ecs, [Projectile])) {
+        removeEntity(world.ecs, eid);
+      }
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      // `ember-slinger` (Sparktick) is the real shipped `aiType: "ranged"`
+      // Floor 3 species (enemies.floor3.json) — matches the unit-test choice
+      // in tests/game/floor3-companion-combat.test.ts.
+      const companionEid = spawnBehaviorEnemy(world, px, py, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+      addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
+      addComponent(
+        world.ecs,
+        companionEid,
+        set(Companion, {
+          speciesToken: speciesTokenForId('ember-slinger'),
+          form: 0,
+          level: 1,
+          xp: 0,
+          ownerTeam: TeamId.PLAYER,
+          knockedOut: 0,
+        }),
+      );
+      const targetEid = spawnBehaviorEnemy(world, px + 5, py, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+      addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
+      scene.setSimulationPaused(false);
+      return { companionEid, targetEid };
+    },
+
+    getEntityHealth: (eid: number): number | null => {
+      const world = getScene()?.world;
+      if (!world || !entityExists(world.ecs, eid)) {
+        return null;
+      }
+      return world.stores.health.current[eid] ?? null;
     },
 
     getHarvestableRenderSummary: (): HarvestableRenderSummary => {
