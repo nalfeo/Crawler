@@ -25,7 +25,7 @@ spec:
   readiness:
     maxConcurrentRuns: 1
   runControls:
-    maxRepasses: 6
+    maxRepasses: 2
   start: query-backlog
   tasks:
     - name: query-backlog
@@ -236,9 +236,6 @@ spec:
       contextFrom:
         - hydrate-requirements
         - materialize-plan
-        - implement
-        - review
-        - local-ci
       goal: >-
         Implement the claimed Crawler feature according to the producer plan,
         run focused checks, and commit the change. On a repass, address the
@@ -251,7 +248,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: review
+      next: push-branch
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -363,9 +360,9 @@ spec:
         retry:
           maxAttempts: 2
           backoffSeconds: 30
-      maxRepasses: 6
+      maxRepasses: 2
       branches:
-        pass: push-branch
+        pass: open-pr
         needs-changes: implement
         fail: park-needs-human
         escalate: needs-remediation
@@ -374,7 +371,7 @@ spec:
       automated:
         check: failure-class
       branches:
-        pass: open-pr
+        pass: review
         fail: implement
         infra: local-ci
         escalate: needs-remediation
