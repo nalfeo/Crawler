@@ -290,9 +290,9 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
       ok: false,
       issues: [
         {
-          code: 'terrain-pack-depth-skipped',
+          code: 'wall-accent-checks-skipped',
           message:
-            'Skipped wall-accent topology/depth checks because wall accent image paths failed validation; fix the path issues above and re-run.',
+            'Skipped wall-accent topology/depth checks because one or more wall accent image paths failed validation.',
         },
       ],
     });
