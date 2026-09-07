@@ -1910,7 +1910,7 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
   );
 });
 
-test('exhausted state cleans up a fence left attached by a partial release instead of redispatching', async (t) => {
+test('residual fence from a partial exhausted release is cleaned up as an orphaned artifact and the run skips without redispatch', async (t) => {
   // Production-path coverage for the PR #4392 incident shape: a prior exhausted
   // release persisted the terminal owner:none/idle state but crashed before it
   // removed the repository fence (and its PR attachment).  The next reconcile
