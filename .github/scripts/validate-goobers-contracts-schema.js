@@ -122,6 +122,31 @@ export const invocationV1 = {
    */
 };
 
+/**
+ * `crawler.goobers.summary/v1` — the human-readable close-out summary contract.
+ *
+ * This is a separate contract from `crawler.goobers.output/v1`, whose `summary`
+ * field keeps its original "non-empty string" v1 semantics so in-flight v1
+ * outputs stay valid. The structured shape below is required of the summary the
+ * coder emits for the terminal issue close-out comment, and is enforced by
+ * `summarySemanticErrors()` in validate-goobers-contracts.mjs.
+ */
+export const goobersSummaryV1 = {
+  contract: 'crawler.goobers.summary/v1',
+  description:
+    'Human-readable Goobers summary emitted on the final issue/PR status comment; it must be a brief structured block with Description, Systems, Verification, and Risk sections.',
+  requiredFields: Object.freeze(['Description', 'Systems', 'Verification', 'Risk']),
+  format:
+    'Markdown block with one short label prefix per line or bullet, in order: ' +
+    'Description, Systems, Verification, Risk. Single-sentence summaries are rejected.',
+  example: [
+    'Description: Fixes the Goobers summary so it states the change in plain language.',
+    'Systems: Goobers workflow, validation schema, issue-close-out output contract',
+    'Verification: node .github/scripts/validate-goobers-contracts.mjs; npx vitest run tests/unit/goobers-contracts.test.ts',
+    'Risk: Low — this is contract-only work and does not change game logic or runtime behavior.',
+  ].join('\n'),
+};
+
 export const outputV1 = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'crawler.goobers.output/v1',
@@ -180,7 +205,8 @@ export const outputV1 = {
         },
         idempotencyKey: {
           type: ['string', 'null'],
-          description: 'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
+          description:
+            'Deterministic key that collapses duplicate shadow-mode replays to one decision artifact',
         },
         parityStatus: {
           type: ['string', 'null'],
@@ -213,7 +239,9 @@ export const outputV1 = {
     summary: {
       type: 'string',
       minLength: 1,
-      description: 'One-line summary for humans',
+      description:
+        'Human-readable summary; any non-empty string is valid under v1. Terminal close-out ' +
+        'summaries should additionally follow crawler.goobers.summary/v1.',
     },
     error: {
       oneOf: [
@@ -300,4 +328,5 @@ export default {
   invocationV1,
   outputV1,
   prStateCommentV1,
+  goobersSummaryV1,
 };
