@@ -444,6 +444,8 @@ async function fileGitHubIssue(
   const lines = [
     description ?? 'A player submitted post-run feedback from the dev build.',
     '',
+    'Involved: @nalfeo',
+    '',
     `Run bundle: ${persisted.blobUrl}`,
     `Run ID: \`${persisted.runId}\``,
     ...(persisted.screenshotUrl
