@@ -62,9 +62,8 @@ describe('terrain bake — Floor 1 command budget', () => {
     // 0 clears over 33,600 tiles (still down from 56,967 / 87 / 23,881 before
     // the underdraw/clear-path optimization). The increase is expected because
     // each wall tile now stamps an accent overlay layer on top of wall-atlas.
-    // Budgets carry a small margin so unrelated generator retunes do not fail
-    // the perf gate, but are tight enough that reintroducing per-tile clears
-    // or the redundant wall underdraw would blow them.
+    // This threshold is intentionally tight: any additional overlay churn should
+    // trip the gate for explicit review instead of being silently absorbed.
     expect(rt.stampCount).toBeLessThanOrEqual(43_000);
     expect(rt.stampCount + rt.fillCount + rt.clearCount).toBeLessThanOrEqual(43_100);
   });

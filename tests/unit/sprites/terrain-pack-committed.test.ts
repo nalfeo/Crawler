@@ -723,6 +723,10 @@ describe('validateTerrainDepthAndPerspective', () => {
         pack.wallAutotile.masks,
       ).atlas;
       const rebuiltAccents = buildWallReliefAtlases(wallMaterial, rebuiltAtlas);
+      expect(
+        pack.wallAccents?.length ?? 0,
+        `${id} declares at least one wall accent`,
+      ).toBeGreaterThan(0);
       for (const declared of pack.wallAccents ?? []) {
         const rebuilt = rebuiltAccents.find((accent) => accent.id === declared.id)?.image;
         expect(rebuilt, `${id} missing rebuilt accent ${declared.id}`).toBeDefined();
