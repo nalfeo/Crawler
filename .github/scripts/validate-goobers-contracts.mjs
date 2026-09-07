@@ -15,7 +15,7 @@ import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'yaml';
-import { invocationV1, outputV1 } from './validate-goobers-contracts-schema.js';
+import { invocationV1, outputV1, goobersSummaryV1 } from './validate-goobers-contracts-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -98,6 +98,67 @@ export function invocationSemanticErrors(payload) {
 
 const PLANNING_TASK = 'plan';
 const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
+const GOOBERS_SUMMARY_FIELDS = goobersSummaryV1.requiredFields;
+
+/**
+ * Error-list form of `crawler.goobers.summary/v1`: empty when `summary` is
+ * exactly four lines (optionally bulleted) labelled Description, Systems,
+ * Verification, and Risk, in that order, each with non-empty text. Otherwise it
+ * names the specific problem (non-string, wrong line count, unlabelled line,
+ * empty section, or wrong order).
+ *
+ * This is intentionally a separate contract from `crawler.goobers.output/v1`,
+ * whose `summary` field keeps its original "non-empty string" v1 semantics so
+ * in-flight v1 outputs stay valid.
+ */
+export function summarySemanticErrors(summary) {
+  const expected = GOOBERS_SUMMARY_FIELDS.join(', ');
+  if (typeof summary !== 'string') {
+    return [`summary must be a string with the ordered sections: ${expected}`];
+  }
+
+  const normalized = summary.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [`summary must be non-empty with the ordered sections: ${expected}`];
+  }
+
+  // Blank separator lines between sections are tolerated; agents commonly emit
+  // them when escaping the block into a JSON string.
+  const lines = normalized.split('\n').filter((line) => line.trim().length > 0);
+  if (lines.length !== GOOBERS_SUMMARY_FIELDS.length) {
+    return [
+      `summary must have exactly ${GOOBERS_SUMMARY_FIELDS.length} labelled lines (${expected}); got ${lines.length}`,
+    ];
+  }
+
+  const errors = [];
+  lines.forEach((line, index) => {
+    const expectedField = GOOBERS_SUMMARY_FIELDS[index];
+    const match = line.match(/^(?:[-*]\s*)?([A-Za-z]+):\s*(.*)$/);
+    if (!match) {
+      errors.push(`summary line ${index + 1} must start with "${expectedField}:"`);
+      return;
+    }
+    if (match[1].toLowerCase() !== expectedField.toLowerCase()) {
+      errors.push(
+        `summary sections are out of order: line ${index + 1} is "${match[1]}", expected "${expectedField}" (${expected})`,
+      );
+      return;
+    }
+    if (match[2].trim().length === 0) {
+      errors.push(`summary section "${expectedField}" is empty`);
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * Predicate form of {@link summarySemanticErrors}.
+ */
+export function isStructuredGoobersSummary(summary) {
+  return summarySemanticErrors(summary).length === 0;
+}
 
 export function outputSemanticErrors(payload) {
   const errors = [];
@@ -543,6 +604,56 @@ function outputFixtures() {
   ];
 }
 
+function summaryFixtures() {
+  return [
+    {
+      name: 'structured close-out summary',
+      shouldPass: true,
+      summary: goobersSummaryV1.example,
+    },
+    {
+      name: 'single-sentence summary is rejected',
+      shouldPass: false,
+      summary: 'Implemented the fix.',
+    },
+    {
+      name: 'summary with an empty required section is rejected',
+      shouldPass: false,
+      summary: ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+    },
+    {
+      name: 'summary with out-of-order sections is rejected',
+      shouldPass: false,
+      summary: [
+        'Systems: Goobers workflow',
+        'Description: Fixes it',
+        'Verification: tests',
+        'Risk: Low',
+      ].join('\n'),
+    },
+  ];
+}
+
+function validateSummaryFixtures(fixtures) {
+  return fixtures.map((fixture) => {
+    const errors = summarySemanticErrors(fixture.summary);
+    const passed = errors.length === 0;
+    if (fixture.shouldPass === passed) {
+      return { status: 'pass', name: fixture.name, errors: [] };
+    }
+    return {
+      status: 'fail',
+      name: fixture.name,
+      errors: [
+        `Expected ${fixture.shouldPass ? 'valid' : 'invalid'} summary but got ${
+          passed ? 'valid' : 'invalid'
+        }`,
+        ...errors,
+      ],
+    };
+  });
+}
+
 /**
  * Main validation routine
  */
@@ -595,8 +706,14 @@ async function main() {
     await realProducerInvocations(),
     invocationSemanticErrors,
   );
+  const summaryResults = validateSummaryFixtures(summaryFixtures());
 
-  for (const result of [...invocationResults, ...outputResults, ...producerResults]) {
+  for (const result of [
+    ...invocationResults,
+    ...outputResults,
+    ...producerResults,
+    ...summaryResults,
+  ]) {
     if (result.status === 'pass') {
       console.log(`✅ fixture: ${result.name}`);
       continue;
@@ -611,10 +728,17 @@ async function main() {
   console.log('\n=== Summary ===');
   const passed = workflowResults.filter((r) => r.status === 'pass').length;
   const failed = workflowResults.filter((r) => r.status === 'fail').length;
-  const fixturePassed = [...invocationResults, ...outputResults, ...producerResults].filter(
-    (r) => r.status === 'pass',
-  ).length;
-  const fixtureTotal = invocationResults.length + outputResults.length + producerResults.length;
+  const fixturePassed = [
+    ...invocationResults,
+    ...outputResults,
+    ...producerResults,
+    ...summaryResults,
+  ].filter((r) => r.status === 'pass').length;
+  const fixtureTotal =
+    invocationResults.length +
+    outputResults.length +
+    producerResults.length +
+    summaryResults.length;
 
   console.log(`Workflow schemas passed: ${passed}/${REQUIRED_WORKFLOWS.length}`);
   console.log(`Failed: ${failed}`);
