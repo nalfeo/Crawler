@@ -87,6 +87,10 @@ jobs:
               process.env.GITHUB_WORKSPACE,
               '.github/scripts/ci-recovery/github.mjs',
             )));
+            const state_ = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/ci-recovery/state.mjs',
+            )));
 
             const pr = (await github.rest.pulls.get({
               owner: context.repo.owner,
@@ -102,18 +106,71 @@ jobs:
               prNumber,
               (query, variables) => github.graphql(query, variables),
             );
+            const closingIssues = await github_.listClosingIssues(
+              process.env.GOOBERS_GITHUB_TOKEN || github.token,
+              context.repo.owner,
+              context.repo.repo,
+              prNumber,
+            );
 
-            // Conservative: empty reachableCommitShas. Reproducing reconcile.mjs's
-            // full stale-marker near-typo/lineage-compare logic (reconcile.mjs
-            // ~2199-2293) is out of scope for this Lane-A slice; reconcile.mjs's
-            // own early-exit path (R06/R07) makes this exact same conservative
-            // choice for the identical reason (the compare API call is
-            // unreachable from that path). Documented limitation, not a silent
-            // gap -- see docs/knowledge/handoffs for the Phase 3 Lane A handoff.
+            function isNearHexTypo(leftSha, rightSha) {
+              if (leftSha.length !== 40 || rightSha.length !== 40) return false;
+              const diffIndexes = [];
+              for (let index = 0; index < leftSha.length; index += 1) {
+                if (leftSha[index] !== rightSha[index]) {
+                  diffIndexes.push(index);
+                  if (diffIndexes.length > 2) return false;
+                }
+              }
+              if (diffIndexes.length === 1) return true;
+              if (diffIndexes.length === 2) return diffIndexes[1] - diffIndexes[0] === 1;
+              return false;
+            }
+
+            const markerShasNeedingLineageCheck = new Set();
+            const candidateThreads = review.threads.filter((candidate) => !candidate.isResolved);
+            for (const thread of candidateThreads) {
+              const last = state_.effectiveLatestThreadComment(thread);
+              const markerSha = state_.extractAddressedMarkerSha(last?.body);
+              if (markerSha && !headSha.startsWith(markerSha)) {
+                markerShasNeedingLineageCheck.add(markerSha);
+              }
+            }
+
+            const reachableCommitShas = new Set();
+            const definitivelyMissingMarkerShas = new Set();
+            for (const markerSha of markerShasNeedingLineageCheck) {
+              try {
+                const compare = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base: markerSha,
+                  head: headSha,
+                });
+                if (compare?.data?.status === 'identical' || compare?.data?.status === 'ahead') {
+                  reachableCommitShas.add(markerSha);
+                } else {
+                  definitivelyMissingMarkerShas.add(markerSha);
+                }
+              } catch (error) {
+                if (error?.status === 404) {
+                  definitivelyMissingMarkerShas.add(markerSha);
+                }
+              }
+            }
+            for (const sha of [...definitivelyMissingMarkerShas]) {
+              if (headSha.startsWith(sha.slice(0, 7)) && isNearHexTypo(sha, headSha)) {
+                reachableCommitShas.add(sha);
+                definitivelyMissingMarkerShas.delete(sha);
+              }
+            }
+
             const input = {
               threads: review.threads,
               headSha,
-              reachableCommitShas: [],
+              closingIssues,
+              repository: `${context.repo.owner}/${context.repo.repo}`,
+              reachableCommitShas: [...reachableCommitShas],
             };
             fs.mkdirSync('.goobers-review-threads', { recursive: true });
             fs.writeFileSync(
@@ -279,7 +336,6 @@ jobs:
               return String(current.head.sha || '').toLowerCase();
             }
 
-            const emptyReachableCommitShas = new Set();
             const postedOutdatedMarkers = new Set();
             let reviewAfterPostedMarkers = null;
             let reviewAfterPostedMarkersCount = 0;
@@ -334,6 +390,46 @@ jobs:
                 continue;
               }
 
+              if (decision.kind === 'follow-up-backlog') {
+                const issueMapping = Array.isArray(decision.followUpIssueMapping || decision.issueMapping)
+                  ? decision.followUpIssueMapping || decision.issueMapping
+                  : [];
+                const markerBody = decision.markerBody || `✅ Addressed in ${headNow}: filed unassigned follow-up backlog issue ${issueMapping.map((entry) => entry.issueNumber ? `#${entry.issueNumber}` : '').filter(Boolean).join(', ') || 'n/a'} for ${issueMapping.map((entry) => `#${entry.sourceIssueNumber}`).join(', ') || 'n/a'}.`;
+                if (issueMapping.length === 0) {
+                  core.info(`skip follow-up-backlog thread=${decision.threadId} reason=no-issue-mapping`);
+                  continue;
+                }
+                try {
+                  await github.rest.pulls.createReplyForReviewComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                    comment_id: Number(decision.replyCommentId),
+                    body: markerBody,
+                  });
+                  core.info(`posted follow-up-backlog marker thread=${decision.threadId}`);
+                } catch (error) {
+                  core.warning(`follow-up-backlog-reply-failed thread=${decision.threadId} err=${error.message}`);
+                  continue;
+                }
+                try {
+                  await github.graphql(
+                    `
+                      mutation ($threadId: ID!) {
+                        resolveReviewThread(input: { threadId: $threadId }) {
+                          thread { isResolved }
+                        }
+                      }
+                    `,
+                    { threadId: decision.threadId },
+                  );
+                  core.info(`resolved follow-up-backlog thread=${decision.threadId}`);
+                } catch (error) {
+                  core.warning(`follow-up-backlog-resolve-failed thread=${decision.threadId} err=${error.message}`);
+                }
+                continue;
+              }
+
               if (decision.action === 'resolve') {
                 if (decision.requiresPostedMarker && !postedOutdatedMarkers.has(decision.threadId)) {
                   core.info(`skip resolve thread=${decision.threadId} reason=paired-marker-not-posted`);
@@ -358,11 +454,13 @@ jobs:
                 // The decision artifact is advisory only. Re-run the shared
                 // resolver predicate against the live thread immediately before
                 // resolving so a reviewer reply, failed/skipped marker post, or
-                // other contention keeps the thread open. For same-pass
-                // post+resolve decisions, requiresPostedMarker has already
-                // proved this run posted the marker; this live-state check then
-                // proves the marker actually landed and is still latest.
-                if (!state_.shouldResolveThread(thread, headNow, emptyReachableCommitShas)) {
+                // other contention keeps the thread open. We carry the lineage
+                // set on the decision itself so this path matches the legacy
+                // compare/near-typo logic rather than silently dropping it.
+                const reachableCommitShas = new Set(
+                  Array.isArray(decision.reachableCommitShas) ? decision.reachableCommitShas : [],
+                );
+                if (!state_.shouldResolveThread(thread, headNow, reachableCommitShas)) {
                   const pairedSamePass = postedOutdatedMarkers.has(decision.threadId);
                   core.info(
                     `skip resolve thread=${decision.threadId} reason=${

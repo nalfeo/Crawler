@@ -57,7 +57,7 @@ test('goobers-review-threads.yml re-validates state immediately before every mut
   assert.match(reviewThreads, /reason=paired-marker-not-posted/);
   assert.match(
     reviewThreads,
-    /state_\.shouldResolveThread\(thread, headNow, emptyReachableCommitShas\)/,
+    /state_\.shouldResolveThread\(thread, headNow, reachableCommitShas\)/,
   );
   assert.match(reviewThreads, /posted-marker-not-yet-visible/);
 });

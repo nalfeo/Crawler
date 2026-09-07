@@ -87,7 +87,11 @@ test('(c) a trusted marker naming a reachable ancestor SHA resolves directly, no
     headSha: HEAD_SHA,
     reachableCommitShas: [RECENT_ANCESTOR_SHA],
   });
-  assert.deepEqual(decisions, [{ threadId: 't2', action: 'resolve' }]);
+  assert.deepEqual(decisions, [{
+    threadId: 't2',
+    action: 'resolve',
+    reachableCommitShas: [RECENT_ANCESTOR_SHA],
+  }]);
 });
 
 test('(d) a trusted marker naming an unreachable, non-head SHA yields no decision', () => {
@@ -178,6 +182,42 @@ test('threads with no reply target (no matching discussion url) are skipped in p
   ];
   const decisions = decideReviewThreadActions({ threads, headSha: HEAD_SHA });
   assert.deepEqual(decisions, []);
+});
+
+test('follow-up backlog threads emit a resolve decision with the created/reused issue mapping', () => {
+  const sourceIssueNumber = 123;
+  const threads = [
+    {
+      id: 't-followup',
+      isResolved: false,
+      isOutdated: false,
+      comments: {
+        nodes: [
+          {
+            id: 't-followup-root',
+            body: `Please file a follow-up backlog issue for #${sourceIssueNumber} without assigning Copilot.`,
+            author: { login: 'copilot-pull-request-reviewer' },
+            authorAssociation: 'MEMBER',
+            url: threadUrl('777'),
+          },
+        ],
+      },
+    },
+  ];
+  const decisions = decideReviewThreadActions({
+    threads,
+    headSha: HEAD_SHA,
+    closingIssues: [{ number: sourceIssueNumber, repository: { nameWithOwner: 'nalfeo/Crawler' } }],
+    repository: 'nalfeo/Crawler',
+    followUpIssueMapping: [{ sourceIssueNumber, issueNumber: 456, action: 'created' }],
+  });
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0].kind, 'follow-up-backlog');
+  assert.equal(decisions[0].action, 'resolve');
+  assert.deepEqual(decisions[0].issueMapping, [
+    { sourceIssueNumber, issueNumber: 456, action: 'created' },
+  ]);
+  assert.match(decisions[0].markerBody, /issue #456 for #123/);
 });
 
 test('a non-outdated unresolved thread with no marker is left alone', () => {
