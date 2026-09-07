@@ -105,35 +105,16 @@ function restoreTransientQueue<T>(queue: T[], snapshot: readonly T[]): void {
   queue.splice(0, queue.length, ...snapshot);
 }
 
-/** Options for {@link applyFloorSkipBaseline}. */
-export interface FloorSkipBaselineOptions {
-  /**
-   * Skip the deterministic starter-weapon fallback entirely. Floor 3's
-   * Wrangler is an intentional non-combatant — the starter Companion fights
-   * instead, and `floor3NonCombatantSystem` force-clears any *active* weapon
-   * every frame. But that clear happens on the first system tick, one frame
-   * too late for the behavior-tree AI: its engagement-radius/kiting planning
-   * reads `getActiveWeaponDef` on the very first decision, sees an armed
-   * player, and mis-plans standoff movement for the rest of the run (the
-   * fallback would otherwise arm the Wrangler on every direct-start skip,
-   * since Floor 3 never pre-equips a starter weapon the way Floors 4/5/6 do).
-   * Pass `true` only from Floor 3's scenario init.
-   */
-  suppressStarterWeapon?: boolean;
-}
-
 /**
  * Apply a manifest-authored direct-start baseline for floor skips with no player
  * carryover. Call only from no-carryover scenario initialization; it is a no-op
  * when the manifest has no `player.directStart`. Floors may equip a starter
- * weapon before calling this, otherwise the helper picks one deterministically
- * unless `options.suppressStarterWeapon` opts out entirely.
+ * weapon before calling this, otherwise the helper picks one deterministically.
  */
 export function applyFloorSkipBaseline(
   world: GameWorld,
   playerEid: number,
   manifest: FloorManifestDef,
-  options?: FloorSkipBaselineOptions,
 ): void {
   const baseline = manifest.player.directStart;
   if (baseline === undefined) {
@@ -143,9 +124,7 @@ export function applyFloorSkipBaseline(
   if (!hasComponent(world.ecs, playerEid, BaseStats)) {
     initializeBaseStats(world, playerEid);
   }
-  if (!options?.suppressStarterWeapon) {
-    equipDirectStartWeapon(world, manifest);
-  }
+  equipDirectStartWeapon(world, manifest);
   initializePlayerWeaponSkills(world, playerEid);
   applyStartPlayerLevel(world, baseline.level);
 

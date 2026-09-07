@@ -41,8 +41,7 @@
       "level": 8,
       "weaponSkillLevel": 7,
       "skillLevels": {
-        "iron-skin": 5,
-        "sprint": 5
+        "iron-skin": 5
       },
       "equipmentItemIds": ["merchants-stained-charm"]
     }

@@ -83,6 +83,7 @@ function step(world: GameWorld, frames: number): void {
 describe('floor3 reward track through the shared runtime pipeline', () => {
   it('moves the persistent player track when a rival Companion is defeated', () => {
     const { world, playerEid } = createPipelineWorld(3131);
+    const baselineXp = world.playerLevel.xp;
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
 
@@ -100,9 +101,9 @@ describe('floor3 reward track through the shared runtime pipeline', () => {
       form: 1,
     });
 
-    // Baseline: nothing has paid the player yet.
+    // Baseline progression is seeded, but nothing has paid the player yet.
     step(world, 2);
-    expect(world.playerLevel.xp).toBe(0);
+    expect(world.playerLevel.xp).toBe(baselineXp);
     expect(world.playerGold).toBe(0);
 
     // Defeat the rival the way combat does — drop it to 0 HP and let the
@@ -112,7 +113,7 @@ describe('floor3 reward track through the shared runtime pipeline', () => {
 
     expect(world.stores.companion.knockedOut[rival]).toBe(1);
     expect(world.stores.companion.defeatRewarded[rival]).toBe(1);
-    expect(world.playerLevel.xp).toBeGreaterThan(0);
-    expect(world.lootLedger.xpCollected).toBe(world.playerLevel.xp);
+    expect(world.playerLevel.xp).toBeGreaterThan(baselineXp);
+    expect(world.lootLedger.xpCollected).toBe(world.playerLevel.xp - baselineXp);
   });
 });

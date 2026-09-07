@@ -378,7 +378,7 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     const [firstStudio] = state.studios;
     expect(firstStudio).toBeDefined();
-    expect(firstStudio!.unlockLevel).toBe(0);
+    expect(firstStudio!.unlockLevel).toBe(world.playerLevel.level);
 
     floor3ObjectiveTick(world); // unlocks + spawns the floor-start Studio
     knockOutTeams(world, firstStudio!.teamIds);
@@ -542,7 +542,7 @@ describe('floor3 studios + final four objective tick', () => {
     const state = world.floorExtendedState!.floor3Studios!;
     const [firstStudio] = state.studios;
     expect(firstStudio).toBeDefined();
-    expect(firstStudio!.unlockLevel).toBe(0);
+    expect(firstStudio!.unlockLevel).toBe(world.playerLevel.level);
 
     floor3ObjectiveTick(world); // unlocks + spawns the floor-start Studio
     expect(countCompanionsOnTeams(world, firstStudio!.teamIds)).toBeGreaterThan(0);

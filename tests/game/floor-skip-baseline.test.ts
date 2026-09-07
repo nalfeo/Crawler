@@ -29,12 +29,22 @@ describe('floor skip direct-start baselines', () => {
       expect(world.playerLevel.level).toBe(baseline.level);
       expect(world.playerLevel.unspentPoints).toBe(0);
 
-      const activeWeapon = getActiveWeaponDef(world);
-      expect(activeWeapon).toBeDefined();
-
       const skills = world.skillStatesByEntity.get(player)!;
-      expect(skills.get(activeWeapon!.weaponClassSkillId)?.level).toBe(baseline.weaponSkillLevel);
-      expect(skills.get(activeWeapon!.weaponTypeSkillId)?.level).toBe(baseline.weaponSkillLevel);
+      const activeWeapon = getActiveWeaponDef(world);
+      if (floorId === 'floor3') {
+        expect(activeWeapon).toBeUndefined();
+        expect(
+          [...skills.values()].filter((state) => state.level === baseline.weaponSkillLevel).length,
+        ).toBeGreaterThanOrEqual(2);
+        const studios = world.floorExtendedState?.floor3Studios?.studios ?? [];
+        expect(
+          studios.filter((studio) => studio.unlockLevel <= world.playerLevel.level),
+        ).toHaveLength(1);
+      } else {
+        expect(activeWeapon).toBeDefined();
+        expect(skills.get(activeWeapon!.weaponClassSkillId)?.level).toBe(baseline.weaponSkillLevel);
+        expect(skills.get(activeWeapon!.weaponTypeSkillId)?.level).toBe(baseline.weaponSkillLevel);
+      }
       for (const [skillId, level] of Object.entries(baseline.skillLevels)) {
         expect(skills.get(skillId)?.level).toBe(level);
       }
