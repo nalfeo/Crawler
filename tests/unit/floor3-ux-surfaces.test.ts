@@ -3,6 +3,7 @@ import {
   buildFloor3IntroModel,
   buildFloor3PoachPickerModel,
   buildFloor3StarterPickerModel,
+  floor3StarterPlaceholderSpriteId,
 } from '../../src/shared/floor3-ux.js';
 import {
   formForLevel,
@@ -62,12 +63,24 @@ describe('floor3 UX surface #2 — starter picker', () => {
     expect(model.options.map((option) => option.id)).toEqual([SECOND_SPECIES, FIRST_SPECIES]);
   });
 
+  it('uses a deterministic Floor 2 boss-mob sprite placeholder for every starter option', () => {
+    const model = buildFloor3StarterPickerModel([FIRST_SPECIES, SECOND_SPECIES]);
+    expect(model.options.map((option) => option.spriteId)).toEqual([
+      floor3StarterPlaceholderSpriteId(FIRST_SPECIES, 0),
+      floor3StarterPlaceholderSpriteId(SECOND_SPECIES, 1),
+    ]);
+    for (const option of model.options) {
+      expect(option.spriteId).toMatch(/^mob-(goliath|mage-lord|directors-proxy)$/);
+    }
+  });
+
   it('degrades to a labelled placeholder row for an unknown species id', () => {
     const model = buildFloor3StarterPickerModel(['not-a-species']);
     expect(model.options[0]).toEqual({
       id: 'not-a-species',
       label: 'Option 1',
       description: 'not-a-species',
+      spriteId: floor3StarterPlaceholderSpriteId('not-a-species', 0),
     });
   });
 

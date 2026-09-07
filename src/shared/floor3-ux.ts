@@ -45,10 +45,27 @@ function describeSpecies(species: PetSpeciesDef): string {
   return `${capitalize(species.affinity)} · ${capitalize(species.fightingStyle)} · ${species.innateAbilityName}`;
 }
 
+const FLOOR3_STARTER_PLACEHOLDER_SPRITES = [
+  'mob-goliath',
+  'mob-mage-lord',
+  'mob-directors-proxy',
+] as const;
+
+export function floor3StarterPlaceholderSpriteId(speciesId: string, index: number): string {
+  const hash = [...speciesId].reduce((acc, char) => acc * 31 + char.charCodeAt(0), 0);
+  const spriteIndex = Math.abs(hash + index * 17) % FLOOR3_STARTER_PLACEHOLDER_SPRITES.length;
+  return FLOOR3_STARTER_PLACEHOLDER_SPRITES[spriteIndex] ?? FLOOR3_STARTER_PLACEHOLDER_SPRITES[0];
+}
+
 function speciesOption(speciesId: string, index: number, level: number): ModalPickerOption {
   const species = getPetSpecies(speciesId);
   if (!species) {
-    return { id: speciesId, label: `Option ${index + 1}`, description: speciesId };
+    return {
+      id: speciesId,
+      label: `Option ${index + 1}`,
+      description: speciesId,
+      spriteId: floor3StarterPlaceholderSpriteId(speciesId, index),
+    };
   }
   const form = formForLevel(species, level);
   const levelSuffix = level > 1 ? ` · Lv ${level}` : '';
@@ -56,6 +73,14 @@ function speciesOption(speciesId: string, index: number, level: number): ModalPi
     id: speciesId,
     label: form.name,
     description: `${describeSpecies(species)}${levelSuffix}`,
+  };
+}
+
+function starterSpeciesOption(speciesId: string, index: number, level: number): ModalPickerOption {
+  const base = speciesOption(speciesId, index, level);
+  return {
+    ...base,
+    spriteId: floor3StarterPlaceholderSpriteId(speciesId, index),
   };
 }
 
@@ -87,7 +112,7 @@ export function buildFloor3StarterPickerModel(
     title: 'Professor Thistle: Choose your starter Companion',
     subtitle: 'Floor 3 is paused until you confirm a starter.',
     body: 'Pick the Companion Professor Thistle signs to your roster for the Companion League.',
-    options: offerSpeciesIds.map((speciesId, index) => speciesOption(speciesId, index, 1)),
+    options: offerSpeciesIds.map((speciesId, index) => starterSpeciesOption(speciesId, index, 1)),
     allowCancel: true,
     ...(offerSpeciesIds[0] !== undefined ? { initialSelectedId: offerSpeciesIds[0] } : {}),
   };
