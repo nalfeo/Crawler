@@ -707,12 +707,21 @@ describe('Goobers lifecycle ownership', () => {
     expect(tasks['close-out'].inputsFrom.summary).toBe('implement.summary');
     expect(tasks['close-out'].inputsFrom.resultFile).toBeUndefined();
     expect(tasks['close-out'].run.script).toContain('isStructuredGoobersSummary');
+    expect(tasks['close-out'].run.script).toContain(
+      'GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out',
+    );
     expect(tasks['park-needs-human'].inputs.resultFile).toBe('issue-close-out-result.json');
     expect(tasks['park-needs-human'].inputsFrom.summary).toBe('implement.summary');
     expect(tasks['park-needs-human'].inputsFrom.resultFile).toBeUndefined();
+    expect(tasks['park-needs-human'].run.script).toContain(
+      'GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out',
+    );
     expect(tasks['needs-remediation'].inputs.resultFile).toBe('issue-close-out-result.json');
     expect(tasks['needs-remediation'].inputsFrom.summary).toBe('implement.summary');
     expect(tasks['needs-remediation'].inputsFrom.resultFile).toBeUndefined();
+    expect(tasks['needs-remediation'].run.script).toContain(
+      'GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out',
+    );
   });
 
   it('resolves closing issues within this repository and bounded', () => {

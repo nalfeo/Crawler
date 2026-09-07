@@ -18,9 +18,9 @@ ci-policy,mcp-tooling,docs-tooling
 
 ## What Was Done
 
-Wired the Goobers `implement.summary` output into all three issue close-out branches (`in-review`, `needs-human`, and `needs-remediation`). Each branch now validates the exact summary input with the shared semantic validator before `goobers issue-close-out` can post it. The validator requires exactly four ordered, non-empty sections: `Description`, `Systems`, `Verification`, and `Risk`.
+Wired the Goobers `implement.summary` output into all three issue close-out branches (`in-review`, `needs-human`, and `needs-remediation`). Each branch now validates the exact summary input with the shared semantic validator and explicitly passes the validated block to `goobers issue-close-out` through its `GOOBERS_INPUT_SUMMARY` contract before it can post. The validator requires exactly four ordered, non-empty sections: `Description`, `Systems`, `Verification`, and `Risk`.
 
-Observed in the deterministic workflow contract test and `node .github/scripts/validate-goobers-contracts.mjs` — before: the close-out task had no summary source or emission guard; after: all terminal close-out branches consume and validate `implement.summary`, while the schema and output keys remain valid. Unit coverage includes empty-section and out-of-order regressions.
+Observed in the deterministic workflow contract test and `node .github/scripts/validate-goobers-contracts.mjs` — before: the close-out task had no summary source or emission guard; after: all terminal close-out branches consume, validate, and pass `implement.summary` to the real comment producer, while the schema and output keys remain valid. Unit coverage includes empty-section, out-of-order, and producer-input wiring regressions.
 
 ## Key Decisions Made
 

@@ -305,7 +305,7 @@ spec:
             process.exit(1);
           }
           NODE
-          goobers issue-close-out
+          GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out
       inputs:
         status: 'in-review'
         resultFile: 'issue-close-out-result.json'
@@ -330,7 +330,7 @@ spec:
             process.exit(1);
           }
           NODE
-          goobers issue-close-out
+          GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out
       inputs:
         status: 'needs-human'
         resultFile: 'issue-close-out-result.json'
@@ -356,7 +356,7 @@ spec:
             process.exit(1);
           }
           NODE
-          goobers issue-close-out
+          GOOBERS_INPUT_SUMMARY="${GOOBERS_SUMMARY}" goobers issue-close-out
       inputs:
         status: 'needs-remediation'
         resultFile: 'issue-close-out-result.json'
