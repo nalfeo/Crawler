@@ -397,9 +397,11 @@ test('every direct issue creator treats a Goobers claim as a stand-down, not a f
     '.github/workflows/nightly-mutation.yml',
   ]) {
     const source = readFileSync(path.resolve(file), 'utf8');
+    // The identifier alone would also match a file that merely rethrows it, so
+    // require the recognition shape every stand-down path uses.
     assert.match(
       source,
-      /IssueClaimedByGoobersError/,
+      /instanceof (intake\.)?IssueClaimedByGoobersError/,
       `${file} must not roll back or fail when Goobers owns the issue`,
     );
   }

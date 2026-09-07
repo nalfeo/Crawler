@@ -92,6 +92,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          # Read from `process.env` by the shared intake library's ownership
+          # fence, not by this step's script directly.
           LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
         with:
           github-token: ${{ secrets.CRAWLER_CI_PAT }}
