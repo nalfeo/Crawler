@@ -6,29 +6,35 @@ ci-policy
 
 ## Summary
 
-**Verdict:** recommended. **Estimate:** 3 apples.
+**Verdict:** recommended. **Estimate:** 2 apples.
 
-The PR #4392 incident exposed a partial-release edge case: a recovery run can
-persist the terminal `stale-automation-exhausted` state before a later fence
-cleanup mutation completes. On the next reconcile, the state owner is already
-`none`, so the ordinary duplicate-dispatch guard no longer matches; the
-reconciler could dispatch the same blocker task again while the owner fence
-remained attached.
+The PR #4392 incident looked like a partial-release edge case: a recovery run can
+persist the terminal `stale-automation-exhausted` state before the fence cleanup
+mutation completes, leaving the owner fence attached while the state owner is
+already `none`.
 
-The terminal decision table now treats an exact, current exhausted state with
-an attached fence as cleanup work. It reuses the existing release path, keeping
-the blocker active if that cleanup mutation fails and converging to the
-existing no-redispatch exhausted state after success.
+An initial attempt added an alternative to the terminal decision table (`R34`)
+for `labelExists && owner === 'none' && status === 'idle'`. Post-diff review
+showed that alternative is unreachable from the real reconciler: `reconcile.mjs`
+classifies exactly that state as an `orphanedOwnershipArtifact` **before**
+`selectTerminalAction` runs, removes the residual fence by node id, and sets
+`labelExists = false`, after which the pre-existing `GC-EXHAUSTED-SKIP` row
+already selects the no-redispatch action. The dead guard was therefore removed.
+
+What remains is the coverage gap that hid this: the exhausted-plus-residual-fence
+shape was only exercised at the decision-table level. It is now covered by a
+production-path `runScript` subprocess test that drives the real reconciler.
 
 ## Verification
 
-- Targeted CI recovery state/reconcile tests.
+- `node --test .github/scripts/ci-recovery/reconcile.test.mjs` (194 tests, all pass).
 - `bash scripts/agent/verify-fast.sh`.
-- `npm run verify:pr-prereqs`.
 
 ## Hard-gate evidence
 
-The deterministic reconcile decision fixture proves that a second pass over the
-same exhausted progress key selects release/cleanup rather than dispatch, while
-the existing exhausted-state fixture proves the following pass selects the
-terminal no-redispatch action.
+The new subprocess test asserts, against the real reconciler, that a persisted
+exhausted state with a residual repository fence (also attached to the PR) is
+cleaned up by node id (`orphaned-fence-cleanup pr=#42 status=idle`) and then
+converges on `skip pr=#42 reason=stale-automation-exhausted`, posting no new
+task comment. It passes with no change to `dispatch-table.mjs`, confirming the
+production path was already correct.
