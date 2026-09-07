@@ -33,7 +33,15 @@ Observed in the deterministic workflow contract test and `node .github/scripts/v
 
 ## What's Next / Blockers
 
-None. The change is scoped to the Goobers contract and regression tests only.
+Residual gap: the structured block is enforced at the production point (coder
+instructions) and by the contract fixtures/unit tests, not by a stage inside the
+running workflow. Runtime enforcement was deliberately not added inside the three
+close-out stages because they hold `github:issues:write`, and a capability-free
+pre-review stage was rejected as well because `implement` is required to hand
+straight to the review gate (the previous `checkpoint-branch` stage between them
+was removed on purpose and `goobers-run-workflow.test.ts` pins that shape). If
+the pinned runtime later grows an output-validation hook for agentic task
+results, `summarySemanticErrors()` should be attached there.
 
 ## Retrospective
 
