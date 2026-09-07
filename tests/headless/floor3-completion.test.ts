@@ -25,22 +25,32 @@ import { runHeadless } from '../../src/game/ai/headless-runner.js';
  * `playerCompanionDamageMultiplier` notes and `companionCombatSystem.ts`).
  * Floors 1 and 2 are untouched by that change.
  *
- * Seed 3539 is the one committed deterministic seed that reaches victory
- * under the current tuning (an unmodified probe of this seed died at frame
- * 1,907 before the Floor-3-only companion buff/density tuning landed).
- * Passing this one seed proves possibility only — it is NOT a win-rate or
- * broad-balance claim (epic non-goals), and other seeds are not asserted
- * here.
+ * Seed 3540 is the committed deterministic seed that reaches victory under
+ * the current tuning. Seed 3539 (used previously) stopped completing once
+ * `enemyAISystem`'s Floor-3 follow-catch-up fix (#4373) landed: it was only
+ * surviving because RANGED/SUPPORT party Companions previously lagged behind
+ * at their authored 34-38ft combat standoff and rarely reached real fights in
+ * time to take damage (confirmed by direct instrumentation — under the old
+ * behavior a party Companion sat at full HP through frame 18,750+, whereas
+ * once catch-up is fixed the same seed's two RANGED Companions engage a
+ * Studio fight around frame 2,700 and are both knocked out by frame 3,365,
+ * triggering `_isPartyWiped`). That was the exact bug #4373 asked to fix —
+ * Companions passively avoiding combat instead of following the player in —
+ * so the fix is correct and seed 3539's tuned survival depended on the bug.
+ * Seed 3540 reaches the real victory/exit outcome under the corrected
+ * behavior with no other change. Passing one seed proves possibility only —
+ * it is NOT a win-rate or broad-balance claim (epic non-goals), and other
+ * seeds are not asserted here.
  */
 describe('floor3 production completion (real headless pipeline, no mutation)', () => {
   it(
     'completes Floor 3 via real BehaviorTreeAI combat: exits the entrance, clears all ' +
       '6 Studios, wins all 4 Final Four rounds, keeps a Companion, and reaches/confirms the exit',
     async () => {
-      const stats = await runHeadless(new BehaviorTreeAI({ seed: 3539 }), {
-        seed: 3539,
+      const stats = await runHeadless(new BehaviorTreeAI({ seed: 3540 }), {
+        seed: 3540,
         floorId: 'floor3',
-        // Above the seed's observed completion frame (44,493) with headroom;
+        // Above the seed's observed completion frame (26,895) with headroom;
         // no stopWhen/onFinish hook touches the world — the run either
         // reaches the real victory/exit outcome on its own or it doesn't.
         maxFrames: 54000,

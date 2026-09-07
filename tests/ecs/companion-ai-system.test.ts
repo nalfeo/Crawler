@@ -24,8 +24,10 @@ function spawnCompanion(
   x: number,
   y: number,
   teamId: TeamIdValue = TeamId.PLAYER,
+  aiType: number = AI_TYPE.CHASE,
+  attackRange = 0,
 ): number {
-  const eid = spawnBehaviorEnemy(world, x, y, 100, AI_TYPE.CHASE, 0.1, 999, 0);
+  const eid = spawnBehaviorEnemy(world, x, y, 100, aiType, 0.1, 999, attackRange);
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(
     world.ecs,
@@ -122,7 +124,7 @@ describe('companionAISystem', () => {
     expect(world.stores.position.y[companion]).toBeGreaterThan(0);
   });
 
-  it('ramps Floor 3 player-owned follow speed with distance and caps it', () => {
+  it('ramps Floor 3 player-owned follow speed with distance while the player is stationary', () => {
     const world = createTestWorld();
     world.floorId = 'floor3';
     spawnPlayer(world, 0, 0);
@@ -145,19 +147,72 @@ describe('companionAISystem', () => {
 
     expect(farSpeed).toBeGreaterThan(nearSpeed);
 
-    world.stores.position.x[companion] = 1_000;
+    // Stationary player (spawnPlayer's default zero velocity): the cap
+    // collapses to `base * followSpeedMaxMultiplier` because the
+    // `playerSpeed * followSpeedMaxMultiplier` term is also zero, so this
+    // exercises the authored-speed side of the cap, not
+    // `followSpeedPlayerMultiplier`. Stay within the companion's 999ft
+    // aggroRange (see `spawnCompanion`) so the legacy-chase aggro gate never
+    // masks the ramp/cap math under test.
+    world.stores.position.x[companion] = 500;
     companionAISystem(world);
     enemyAISystem(world);
     const cappedSpeed = Math.hypot(
       world.stores.velocity.x[companion] ?? 0,
       world.stores.velocity.y[companion] ?? 0,
     );
-    expect(cappedSpeed).toBeLessThanOrEqual(
-      Math.max(
-        0.1 * tuning.floor3Companion.followSpeedMaxMultiplier,
-        tuning.floor3Companion.followSpeedMaxMultiplier,
-      ),
+    const expectedCap = 0.1 * tuning.floor3Companion.followSpeedMaxMultiplier;
+    expect(cappedSpeed).toBeCloseTo(expectedCap, 5);
+  });
+
+  it('ramps the follow-speed baseline and cap off a moving player via followSpeedPlayerMultiplier', () => {
+    const world = createTestWorld();
+    world.floorId = 'floor3';
+    const playerEid = spawnPlayer(world, 0, 0);
+    const companion = spawnCompanion(world, 12, 0);
+    world.stores.velocity.x[playerEid] = 1;
+    world.stores.velocity.y[playerEid] = 0;
+
+    const base = 0.1;
+    const playerSpeed = 1;
+    const leash = tuning.factionRelations.friendlyLeashTiles;
+    const baseline = Math.max(
+      base,
+      playerSpeed * tuning.floor3Companion.followSpeedPlayerMultiplier,
     );
+    const cap = Math.max(
+      baseline,
+      base * tuning.floor3Companion.followSpeedMaxMultiplier,
+      playerSpeed * tuning.floor3Companion.followSpeedMaxMultiplier,
+    );
+
+    // At 12ft (6ft beyond the leash), the `playerSpeed * followSpeedPlayerMultiplier`
+    // term (1.25) dominates the authored companion speed (0.1), and the
+    // per-foot ramp has already added a further 0.06 on top of that baseline.
+    companionAISystem(world);
+    enemyAISystem(world);
+    const nearSpeed = Math.hypot(
+      world.stores.velocity.x[companion] ?? 0,
+      world.stores.velocity.y[companion] ?? 0,
+    );
+    const expectedNearSpeed = Math.min(
+      cap,
+      baseline + Math.max(0, 12 - leash) * tuning.floor3Companion.followSpeedRampPerFt,
+    );
+    expect(nearSpeed).toBeCloseTo(expectedNearSpeed, 5);
+
+    // Cap: far enough (but still within the companion's 999ft aggroRange —
+    // see `spawnCompanion`) that the per-foot ramp exceeds the cap, which is
+    // now driven by `playerSpeed * followSpeedMaxMultiplier` (2.5), the
+    // largest of the three cap terms.
+    world.stores.position.x[companion] = 500;
+    companionAISystem(world);
+    enemyAISystem(world);
+    const cappedSpeed = Math.hypot(
+      world.stores.velocity.x[companion] ?? 0,
+      world.stores.velocity.y[companion] ?? 0,
+    );
+    expect(cappedSpeed).toBeCloseTo(cap, 5);
   });
 
   it('returns an out-of-leash Floor 3 companion to the leash within 180 frames', () => {
@@ -177,6 +232,62 @@ describe('companionAISystem', () => {
       Math.hypot(world.stores.position.x[companion] ?? 0, world.stores.position.y[companion] ?? 0),
     ).toBeLessThanOrEqual(tuning.factionRelations.friendlyLeashTiles);
   });
+
+  it.each([
+    ['RANGED', AI_TYPE.RANGED],
+    ['SUPPORT', AI_TYPE.SUPPORT],
+  ])(
+    'closes distance to the player for an out-of-leash %s companion instead of holding standoff',
+    (_label, aiType) => {
+      const world = createTestWorld();
+      world.floorId = 'floor3';
+      spawnPlayer(world, 0, 0);
+      // Real Floor 3 slingers/bursters (RANGED) and kindlers (SUPPORT) are
+      // stamped with a positive attackRange (see floor3Scenario.ts), which is
+      // exactly what makes their authored movement kite/hold standoff instead
+      // of closing distance — a companion following the player must not do
+      // that (#4373 follow-up review).
+      const companion = spawnCompanion(world, 24, 0, TeamId.PLAYER, aiType, 8);
+
+      companionAISystem(world);
+      expect(getCompanionAIDecision(world, companion)?.kind).toBe('follow');
+      enemyAISystem(world);
+      movementSystem(world);
+
+      const distanceAfterOneFrame = Math.hypot(
+        world.stores.position.x[companion] ?? 0,
+        world.stores.position.y[companion] ?? 0,
+      );
+      expect(distanceAfterOneFrame).toBeLessThan(24);
+    },
+  );
+
+  it.each([
+    ['RANGED', AI_TYPE.RANGED],
+    ['SUPPORT', AI_TYPE.SUPPORT],
+  ])(
+    'still returns an out-of-leash %s companion to the leash within 180 frames',
+    (_label, aiType) => {
+      const world = createTestWorld();
+      world.floorId = 'floor3';
+      spawnPlayer(world, 0, 0);
+      const companion = spawnCompanion(world, 24, 0, TeamId.PLAYER, aiType, 8);
+
+      for (let frame = 0; frame < 180; frame += 1) {
+        companionAISystem(world);
+        enemyAISystem(world);
+        movementSystem(world);
+        world.frameCount += 1;
+      }
+
+      expect(
+        Math.hypot(
+          world.stores.position.x[companion] ?? 0,
+          world.stores.position.y[companion] ?? 0,
+        ),
+      ).toBeLessThanOrEqual(tuning.factionRelations.friendlyLeashTiles);
+    },
+  );
 
   it('does not apply the follow-speed ramp to Floor 4 or NPC companions', () => {
     const world = createTestWorld();
