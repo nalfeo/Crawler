@@ -56,7 +56,7 @@ const bossVariantConfigSchema = z
   })
   .strict();
 
-export const floorConfigSchema = z
+export const _floorConfigSchema = z
   .object({
     protagonist: z.string().min(1),
     starterWeapons: z.array(z.string().min(1)).min(1),
@@ -135,14 +135,14 @@ export const floorConfigSchema = z
   })
   .strict();
 
-export type FloorConfig = z.infer<typeof floorConfigSchema>;
+export type FloorConfig = z.infer<typeof _floorConfigSchema>;
 
 /**
  * Derive FloorConfig from the manifest and enemy pack.
  * @param floorId - The floor identifier (e.g., "floor1")
  * @returns Floor configuration, or null if the floor is not found
  */
-export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null {
+function loadFloorConfigFromManifest(floorId: string): FloorConfig | null {
   const manifest = getFloorManifest(floorId);
   if (!manifest) {
     return null;
@@ -164,7 +164,7 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
   const ratArchetype = enemyPack.archetypes.find((a) => a.id === 'rat')!;
   const slimeArchetype = enemyPack.archetypes.find((a) => a.id === 'slime')!;
 
-  return floorConfigSchema.parse({
+  return _floorConfigSchema.parse({
     protagonist: manifest.protagonist,
     starterWeapons: manifest.starterWeapons,
     timer: manifest.timer,
@@ -220,7 +220,7 @@ export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null
  * @param floorId - The floor identifier (e.g., "floor1")
  * @throws If the floor is not found
  */
-export function getFloorConfig(floorId: string): FloorConfig {
+function getFloorConfig(floorId: string): FloorConfig {
   const config = loadFloorConfigFromManifest(floorId);
   if (!config) {
     throw new Error(`Floor configuration not found: ${floorId}`);
@@ -234,9 +234,13 @@ export type Floor1Config = FloorConfig;
 /**
  * @deprecated Use getFloorConfig("floor1") instead
  */
-export function loadFloor1ConfigFromManifest(): FloorConfig {
+function loadFloor1ConfigFromManifest(): FloorConfig {
   return getFloorConfig('floor1');
 }
+
+export const _loadFloorConfigFromManifest = loadFloorConfigFromManifest;
+export const _getFloorConfig = getFloorConfig;
+export const _loadFloor1ConfigFromManifest = loadFloor1ConfigFromManifest;
 
 /**
  * @deprecated Use getFloorConfig("floor1") instead
