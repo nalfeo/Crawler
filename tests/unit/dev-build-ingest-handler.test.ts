@@ -159,7 +159,9 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry', 'reported-issue']);
+    const issue = JSON.parse(String(requestInit.body)) as { body: string; labels: string[] };
+    expect(issue.labels).toEqual(['telemetry', 'reported-issue']);
+    expect(issue.body).toContain('Involved: @nalfeo');
   });
 
   it('keeps survey feedback telemetry-only', async () => {
@@ -178,7 +180,9 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+    const issue = JSON.parse(String(requestInit.body)) as { body: string; labels: string[] };
+    expect(issue.labels).toEqual(['telemetry']);
+    expect(issue.body).toContain('Involved: @nalfeo');
   });
 
   it('appends survey submissions to the existing runId without rewriting the bundle', async () => {

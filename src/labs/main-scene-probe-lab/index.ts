@@ -39,6 +39,7 @@ import {
   Harvestable,
   Health,
   Homing,
+  PartySlot,
   Position,
   Projectile,
   Prop,
@@ -50,7 +51,7 @@ import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
-import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
+import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objects.js';
 import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
 import { AI_TYPE } from '../../game/enemyAISystem.js';
 import { speciesTokenForId } from '../../shared/data/floor3/species.js';
@@ -122,6 +123,7 @@ import type {
   ModalPickerLayoutSnapshot,
 } from '../../engine/ModalPickerUI.js';
 import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
+import { PROP_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState, forceActivateAbility } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
@@ -848,6 +850,23 @@ export interface PropRenderSize {
   readonly displayHeightPx: number;
 }
 
+export interface Floor3CompanionPropDepthProbe {
+  readonly companionEid: number;
+  readonly backPropEid: number;
+  readonly frontPropEid: number;
+  readonly companionDepth: number | null;
+  readonly backPropDepth: number | null;
+  readonly frontPropDepth: number | null;
+  readonly companionDisplayIndex: number | null;
+  readonly backPropDisplayIndex: number | null;
+  readonly frontPropDisplayIndex: number | null;
+  readonly companionCameraPosition: ProbePoint | null;
+  readonly backPropCameraPosition: ProbePoint | null;
+  readonly frontPropCameraPosition: ProbePoint | null;
+  readonly backgroundOverlapsCompanion: boolean;
+  readonly foregroundOverlapsCompanion: boolean;
+}
+
 /**
  * Real-render-bridge state of one live `Projectile` entity (issue #4274).
  * The render bridge names bullet/arrow display objects
@@ -1419,6 +1438,9 @@ export interface MainSceneProbeApi {
    * display list, keyed by texture (`DecorationDef.spriteId`).
    */
   getPropRenderSizes(): PropRenderSize[];
+  /** Arrange/read a Floor-3 companion overlapped by real background/front Prop renders. */
+  primeFloor3CompanionPropDepthProbe(): Floor3CompanionPropDepthProbe | null;
+  getFloor3CompanionPropDepthProbe(): Floor3CompanionPropDepthProbe | null;
   /**
    * Equip a static weapon def into the player's main hand through the shipped
    * equip path, so the carried-weapon render can be observed for a chosen
@@ -1678,6 +1700,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   const game = new Phaser.Game(config);
   let primedNpcEid: number | null = null;
   let projectileProbeTargetEid: number | null = null;
+  let floor3DepthProbe: { companionEid: number; backPropEid: number; frontPropEid: number } | null =
+    null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -1715,6 +1739,106 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return null;
     }
     return { x: floorMap.widthFt, y: floorMap.heightFt };
+  };
+
+  const findDisplayObjectAt = (
+    phaserScene: Phaser.Scene,
+    x: number,
+    y: number,
+    predicate: (obj: Phaser.GameObjects.GameObject) => boolean,
+  ): (Phaser.GameObjects.GameObject & { x: number; y: number; depth: number }) | null => {
+    for (const obj of phaserScene.children.list) {
+      const maybePositioned = obj as Phaser.GameObjects.GameObject & {
+        x?: unknown;
+        y?: unknown;
+        depth?: unknown;
+      };
+      if (
+        typeof maybePositioned.x === 'number' &&
+        typeof maybePositioned.y === 'number' &&
+        typeof maybePositioned.depth === 'number' &&
+        Math.abs(maybePositioned.x - x) < 0.5 &&
+        Math.abs(maybePositioned.y - y) < 0.5 &&
+        predicate(obj)
+      ) {
+        return maybePositioned as Phaser.GameObjects.GameObject & {
+          x: number;
+          y: number;
+          depth: number;
+        };
+      }
+    }
+    return null;
+  };
+
+  const objectCameraPosition = (
+    phaserScene: Phaser.Scene,
+    obj: (Phaser.GameObjects.GameObject & { x: number; y: number }) | null,
+  ): ProbePoint | null => {
+    const cam = phaserScene.cameras?.main;
+    if (!cam || !obj) return null;
+    return {
+      x: (obj.x - cam.scrollX) * cam.zoom,
+      y: (obj.y - cam.scrollY) * cam.zoom,
+    };
+  };
+
+  const readFloor3CompanionPropDepthProbe = (): Floor3CompanionPropDepthProbe | null => {
+    const world = getScene()?.world;
+    const phaserScene = getPhaserScene();
+    const probe = floor3DepthProbe;
+    if (!world || !phaserScene || probe === null) {
+      return null;
+    }
+
+    const x = ftToPx(world.stores.position.x[probe.companionEid] ?? 0);
+    const y = ftToPx(world.stores.position.y[probe.companionEid] ?? 0);
+    const backSpriteId = getDecorationDef('cave-rubble')?.spriteId;
+    const frontSpriteId = getDecorationDef('void-tendril')?.spriteId;
+    const companion = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image || obj instanceof Phaser.GameObjects.Sprite) &&
+        obj.texture?.key !== backSpriteId &&
+        obj.texture?.key !== frontSpriteId,
+    );
+    const backProp = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image && obj.texture?.key === backSpriteId) ||
+        (obj instanceof Phaser.GameObjects.Rectangle && obj.depth === PROP_DEPTH.back),
+    );
+    const frontProp = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image && obj.texture?.key === frontSpriteId) ||
+        (obj instanceof Phaser.GameObjects.Rectangle && obj.depth === PROP_DEPTH.front),
+    );
+    const displayIndex = (obj: Phaser.GameObjects.GameObject | null): number | null =>
+      obj === null ? null : phaserScene.children.getIndex(obj);
+
+    return {
+      companionEid: probe.companionEid,
+      backPropEid: probe.backPropEid,
+      frontPropEid: probe.frontPropEid,
+      companionDepth: companion?.depth ?? null,
+      backPropDepth: backProp?.depth ?? null,
+      frontPropDepth: frontProp?.depth ?? null,
+      companionDisplayIndex: displayIndex(companion),
+      backPropDisplayIndex: displayIndex(backProp),
+      frontPropDisplayIndex: displayIndex(frontProp),
+      companionCameraPosition: objectCameraPosition(phaserScene, companion),
+      backPropCameraPosition: objectCameraPosition(phaserScene, backProp),
+      frontPropCameraPosition: objectCameraPosition(phaserScene, frontProp),
+      backgroundOverlapsCompanion: companion !== null && backProp !== null,
+      foregroundOverlapsCompanion: companion !== null && frontProp !== null,
+    };
   };
 
   const getRewardOpeningState = (): RewardOpeningProbeState => {
@@ -3347,6 +3471,55 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
       return { nodeEntities, spriteImages, byDef };
     },
+
+    primeFloor3CompanionPropDepthProbe: (): Floor3CompanionPropDepthProbe | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      if (!scene || !world || playerEid < 0 || world.floorId !== 'floor3') {
+        return null;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+
+      if (floor3DepthProbe !== null) {
+        for (const eid of [floor3DepthProbe.backPropEid, floor3DepthProbe.frontPropEid]) {
+          if (entityExists(world.ecs, eid)) {
+            clearEntityStores(world, eid);
+            removeEntity(world.ecs, eid);
+          }
+        }
+      }
+
+      const companionEid = query(world.ecs, [Companion, PartySlot, Position])[0];
+      if (companionEid === undefined) {
+        floor3DepthProbe = null;
+        return null;
+      }
+
+      const x = (world.stores.position.x[playerEid] ?? 0) + 6;
+      const y = world.stores.position.y[playerEid] ?? 0;
+      world.stores.position.x[companionEid] = x;
+      world.stores.position.y[companionEid] = y;
+      world.stores.velocity.x[companionEid] = 0;
+      world.stores.velocity.y[companionEid] = 0;
+
+      const backPropEid = spawnProp(world, x, y, 'cave-rubble');
+      const frontPropEid = spawnProp(world, x, y, 'void-tendril');
+      if (backPropEid < 0 || frontPropEid < 0) {
+        floor3DepthProbe = null;
+        return null;
+      }
+
+      floor3DepthProbe = { companionEid, backPropEid, frontPropEid };
+      return readFloor3CompanionPropDepthProbe();
+    },
+
+    getFloor3CompanionPropDepthProbe: (): Floor3CompanionPropDepthProbe | null =>
+      readFloor3CompanionPropDepthProbe(),
 
     getPropRenderSizes: (): PropRenderSize[] => {
       const world = getScene()?.world;
