@@ -633,6 +633,21 @@ export function buildHarvestIncidentBody({
     ? `${summary.lastSuccessAt} (${summary.minutesSinceSuccess}m ago)`
     : 'none in sampled window';
 
+  // Incident #4404: a stale harvest with no failure streak is a *dispatch* gap,
+  // not a harvest crash -- nothing ran at all. Triage starts at the scheduled
+  // sweep, not at the PAT bucket, so say so before the rate-limit playbook.
+  const silentDispatchGap =
+    summary.lastSuccessAt !== null && summary.consecutiveFailures === 0
+      ? [
+          '## Likely cause: no harvest was dispatched',
+          '',
+          'No harvest run failed since the last success — the reconciler simply did not run. `ci-liveness-sweep.yml` is the only dispatcher during a quiet window, and GitHub routinely delays or drops its `schedule` triggers. Confirm by listing that workflow: a gap in its run history that matches the gap above means the backstop never fired.',
+          '',
+          'Recovery: dispatch `ci-liveness-sweep.yml` (or `ci-recovery-router.yml`) manually; the sections below apply only if harvest runs are actually failing.',
+          '',
+        ]
+      : [];
+
   return [
     HARVEST_INCIDENT_MARKER,
     '',
@@ -652,6 +667,7 @@ export function buildHarvestIncidentBody({
     ...(summary.lastFailureUrl ? [`- Most recent non-success run: ${summary.lastFailureUrl}`] : []),
     ...(workflowRunUrl ? [`- Detected by: ${workflowRunUrl}`] : []),
     '',
+    ...silentDispatchGap,
     '## First thing to check: the shared user-PAT rate-limit bucket',
     '',
     '`CRAWLER_CI_PAT` is a classic user PAT. GitHub enforces its 5,000 req/hr core budget at the *user* level, shared across every token that user owns, and returns `403 API rate limit exceeded for user ID <id>` on every REST call once exhausted.',

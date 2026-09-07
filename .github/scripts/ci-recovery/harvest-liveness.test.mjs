@@ -91,38 +91,70 @@ test('summarizeHarvestRuns counts cancelled and timed-out runs as failures', () 
   assert.equal(summary.lastSuccessAt, '2026-07-30T16:40:00.000Z');
 });
 
-test('the 2026-09-07 cancellation burst cannot masquerade as a healthy harvest', () => {
+// Incident #4404 (2026-09-07): the harvester did not fail, it was never
+// dispatched. The last reconcile run succeeded at 03:29:58 and the next one did
+// not start until 04:52:55, because the scheduled CI Liveness Sweep -- the only
+// quiet-window dispatcher -- did not fire between 01:09 and 04:52. So the
+// sampled window is full of completed runs, every non-success run predates the
+// last success, and `consecutiveFailures` is 0.
+test('a silent dispatch gap with zero failures still trips the harvest threshold', () => {
   const summary = summarizeHarvestRuns(
     [
+      run({ updated_at: '2026-09-07T03:29:58Z', html_url: 'https://example.test/34079815898' }),
       run({
-        id: 34075081544,
-        conclusion: 'cancelled',
-        updated_at: '2026-09-07T02:05:15Z',
-        display_title: 'CI Recovery (reconcile) for PR #4394',
-      }),
-      run({
-        id: 34074704677,
-        conclusion: 'cancelled',
-        updated_at: '2026-09-07T02:05:15Z',
-        display_title: 'CI Recovery (reconcile) for PR #4394',
-      }),
-      run({
-        id: 34073228341,
         conclusion: 'cancelled',
         updated_at: '2026-09-07T02:05:18Z',
-        display_title: 'CI Recovery (reconcile) for PR #4394',
+        html_url: 'https://example.test/34073228341',
       }),
+      run({ updated_at: '2026-09-07T01:41:00Z' }),
     ],
-    new Date('2026-09-07T03:29:58Z'),
+    new Date('2026-09-07T04:52:52Z'),
   );
 
   assert.equal(summary.completedCount, 3);
-  assert.equal(summary.lastSuccessAt, null);
-  assert.equal(summary.consecutiveFailures, 3);
-  assert.equal(
-    evaluateHarvestLiveness({ summary, backlogCount: 6 }).reason,
-    'no-successful-run-in-window',
+  assert.equal(summary.lastSuccessAt, '2026-09-07T03:29:58.000Z');
+  assert.equal(summary.minutesSinceSuccess, 82);
+  // The cancelled run predates the last success, so it is not a failure streak.
+  assert.equal(summary.consecutiveFailures, 0);
+  assert.deepEqual(evaluateHarvestLiveness({ summary, backlogCount: 6 }), {
+    stalled: true,
+    reason: 'last-success-older-than-threshold',
+  });
+});
+
+test('a silent dispatch gap incident names the scheduled sweep as the first cause', () => {
+  const summary = summarizeHarvestRuns(
+    [run({ updated_at: '2026-09-07T03:29:58Z' })],
+    new Date('2026-09-07T04:52:52Z'),
   );
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'last-success-older-than-threshold',
+  });
+
+  assert.match(body, /No harvest run failed/);
+  assert.match(body, /ci-liveness-sweep\.yml/);
+});
+
+test('a failing-harvest incident does not claim a silent dispatch gap', () => {
+  const summary = summarizeHarvestRuns(
+    [
+      run({ conclusion: 'failure', updated_at: '2026-09-07T04:40:00Z' }),
+      run({ updated_at: '2026-09-07T03:29:58Z' }),
+    ],
+    new Date('2026-09-07T04:52:52Z'),
+  );
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'last-success-older-than-threshold',
+  });
+
+  assert.equal(summary.consecutiveFailures, 1);
+  assert.doesNotMatch(body, /No harvest run failed/);
 });
 
 test('summarizeHarvestRuns tolerates empty and malformed input', () => {
