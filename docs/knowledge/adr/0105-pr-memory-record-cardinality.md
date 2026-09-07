@@ -1,6 +1,9 @@
 # ADR 0105: One coordinating handoff and Apple record per PR
 
-- Status: Accepted
+## Status
+
+Accepted
+
 - Date: 2026-09-07
 - Issue: #4397
 - Apples: 3
