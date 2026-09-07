@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
 import {
+  Companion,
   Damage,
   DeathTimer,
   Enemy,
@@ -369,12 +370,18 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
     // Enemy projectile hits player
     if (hasComponent(world.ecs, a, EnemyProjectile) && hasComponent(world.ecs, b, Player)) {
       if (sameTeam(world, projectileSource(world, a), b)) continue;
+      // A Floor 3 Companion projectile (rival-vs-rival friendly fire crossing
+      // the player en route to its real target) must never resolve as a hit
+      // on the player — Floor 3's Wrangler is a contractually invulnerable
+      // non-combatant, only ever caught in the crossfire between Companions.
+      if (hasComponent(world.ecs, projectileSource(world, a), Companion)) continue;
       applyEnemyProjectileHit(world, a, b, hitTimestamps);
       continue;
     }
 
     if (hasComponent(world.ecs, b, EnemyProjectile) && hasComponent(world.ecs, a, Player)) {
       if (sameTeam(world, projectileSource(world, b), a)) continue;
+      if (hasComponent(world.ecs, projectileSource(world, b), Companion)) continue;
       applyEnemyProjectileHit(world, b, a, hitTimestamps);
       continue;
     }

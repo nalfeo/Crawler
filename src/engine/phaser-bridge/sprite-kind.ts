@@ -118,7 +118,12 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
     }
     return 'aoe_proj';
   }
-  if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
+  if (hasComponent(world.ecs, eid, EnemyProjectile)) {
+    return hasComponent(world.ecs, eid, ProjectileVisual) &&
+      world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
+      ? 'bullet'
+      : 'enemy_proj';
+  }
   if (hasComponent(world.ecs, eid, Projectile)) {
     return hasComponent(world.ecs, eid, ProjectileVisual) &&
       world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
