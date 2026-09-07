@@ -37,6 +37,8 @@ against losing the mention.
 ## Verification
 
 - `npx vitest run --project unit tests/unit/dev-build-ingest-handler.test.ts tests/unit/dev-ingest-workflow-parity.test.ts` — passed (20/20).
+- `npm run verify:fast` — passed.
+- `npm run verify:pr-prereqs` — passed.
 
 ## Unresolved issues
 
