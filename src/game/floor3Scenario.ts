@@ -99,7 +99,9 @@ import {
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { FLOOR3_WILD_AGGRO_RANGE_FT } from './systems/floor3WildHostility.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { AI_TYPE } from './enemyAISystem.js';
+import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
@@ -819,6 +821,20 @@ function spawnFloor3StudioRoster(world: GameWorld, studio: Floor3EncounterState)
   studio.pendingSpawns = [];
 }
 
+/**
+ * Convert Floor 3's floor-local Studio progression thresholds into absolute
+ * player levels after direct-start or carryover progression has been restored.
+ */
+function rebaseFloor3StudioUnlockLevels(world: GameWorld): void {
+  const studios = world.floorExtendedState?.floor3Studios?.studios;
+  if (studios === undefined) return;
+
+  const startingLevel = Math.max(1, Math.floor(world.playerLevel.level));
+  for (const studio of studios) {
+    studio.unlockLevel = startingLevel + Math.max(0, studio.unlockLevel - 1);
+  }
+}
+
 /** Pops the exit staircase at the player's spawn point (spec R6 win path). */
 function popFloor3ExitStairs(world: GameWorld): void {
   const studiosState = world.floorExtendedState?.floor3Studios;
@@ -1229,6 +1245,8 @@ export function initializeFloor3Scenario(
     readonly floorMapOverride?: FloorMap;
   },
 ): void {
+  const isDefaultDirectStart =
+    options?.playerCarryover === undefined && world.playerLevel.level <= 1;
   const manifest = getFloorManifest('floor3');
   if (!manifest) {
     throw new Error('Missing floor3 manifest');
@@ -1323,12 +1341,24 @@ export function initializeFloor3Scenario(
       value: manifest.player.pickupRangeBonus,
     });
   }
-  if (!options?.playerCarryover && hasComponent(world.ecs, playerEid, Health)) {
-    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-  }
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
+  } else {
+    applyFloorSkipBaseline(world, playerEid, manifest);
+    // Seed weapon skills through the normal baseline path, then enforce the
+    // Wrangler's non-combatant contract before the headless AI's first poll.
+    floor3NonCombatantSystem(world);
+    // Apply the manifest HP bonus after the baseline: applyFloorSkipBaseline
+    // calls initializeBaseStats for a fresh direct-start player, which
+    // reseeds Health.current/max from derived max HP and would otherwise
+    // silently discard this bonus (see review thread on PR #4392).
+    if (hasComponent(world.ecs, playerEid, Health)) {
+      const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+      setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+    }
+  }
+  if (isDefaultDirectStart) {
+    rebaseFloor3StudioUnlockLevels(world);
   }
   addComponent(world.ecs, playerEid, Invincible);
   if (manifest.props !== undefined) {
