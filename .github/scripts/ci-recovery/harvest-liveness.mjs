@@ -34,6 +34,7 @@
 import { DECISION_LOG_MARKER } from './decision-log.mjs';
 import { DISPATCH_ACTION } from './dispatch-table.mjs';
 import {
+  assertCopilotIssueAssignmentAllowed,
   buildIssueActorIds,
   getCopilotIssueAssignmentContext,
   isCopilotLogin,
@@ -123,6 +124,10 @@ export async function assignCopilotToIncident({ graphql, token, owner, repo, iss
     if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
       throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
     }
+    assertCopilotIssueAssignmentAllowed({
+      issue: { number: issueNumber },
+      assignmentContext: context,
+    });
 
     const actorIds = buildIssueActorIds({
       assignees: context.assignees,

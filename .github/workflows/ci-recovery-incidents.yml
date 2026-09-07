@@ -49,6 +49,7 @@ jobs:
       - name: Deduplicate incident and assign Copilot
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
           # Same exact rollout flag ci.yml/security-review.yml gate their
           # fast-path shortcuts on. Without it, incident.mjs's own fast-path

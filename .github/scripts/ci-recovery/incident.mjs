@@ -7,6 +7,13 @@ import {
   shouldSkipRepoIncidentWorkflowRun,
 } from './state.mjs';
 import { parseEnabledFlag } from '../merge-train/state.mjs';
+import {
+  assertCopilotIssueAssignmentAllowed,
+  buildIssueActorIds,
+  getCopilotIssueAssignmentContext,
+  isCopilotLogin,
+  replaceIssueAssignees,
+} from './issue-intake-lib.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -244,54 +251,25 @@ if (existing) {
   ).data;
 }
 
-const actors = await graphql(
+const assignmentContext = await getCopilotIssueAssignmentContext({
+  graphql,
   token,
-  `
-    query ($owner: String!, $repo: String!) {
-      repository(owner: $owner, name: $repo) {
-        suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-          nodes {
-            login
-            __typename
-            ... on Bot {
-              id
-            }
-            ... on User {
-              id
-            }
-          }
-        }
-      }
-    }
-  `,
-  { owner, repo },
-);
-const copilot = (actors.repository?.suggestedActors?.nodes || []).find(
-  (actor) =>
-    String(actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
-    String(actor.login || '').toLowerCase() === 'copilot',
-);
-if (!copilot?.id) {
-  throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
+  owner,
+  repo,
+  issueNumber: issue.number,
+});
+assertCopilotIssueAssignmentAllowed({ issue, assignmentContext });
+const assignedLogins = await replaceIssueAssignees({
+  graphql,
+  token,
+  assignableId: assignmentContext.issueId,
+  actorIds: buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: true,
+  }),
+});
+if (!assignedLogins.some(isCopilotLogin)) {
+  throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
 }
-
-await graphql(
-  token,
-  `
-    mutation ($assignableId: ID!, $actorIds: [ID!]!) {
-      replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
-        assignable {
-          ... on Issue {
-            assignees(first: 20) {
-              nodes {
-                login
-              }
-            }
-          }
-        }
-      }
-    }
-  `,
-  { assignableId: issue.node_id, actorIds: [copilot.id] },
-);
 process.stdout.write(`${existing ? 'updated' : 'created'} incident issue=#${issue.number}\n`);

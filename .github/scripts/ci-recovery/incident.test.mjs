@@ -383,6 +383,13 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
                 suggestedActors: {
                   nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
                 },
+                issue: {
+                  id: 'ISSUE_202',
+                  state: 'OPEN',
+                  author: { login: 'github-actions[bot]' },
+                  labels: { nodes: [{ name: 'ci-incident' }] },
+                  assignees: { nodes: [] },
+                },
               },
             },
           },
@@ -390,7 +397,11 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
       }
       return {
         body: {
-          data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+          data: {
+            replaceActorsForAssignable: {
+              assignable: { assignees: { nodes: [{ login: 'copilot-swe-agent' }] } },
+            },
+          },
         },
       };
     },
@@ -439,6 +450,13 @@ for (const [label, overrides] of [
                   suggestedActors: {
                     nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
                   },
+                  issue: {
+                    id: 'ISSUE_303',
+                    state: 'OPEN',
+                    author: { login: 'github-actions[bot]' },
+                    labels: { nodes: [{ name: 'ci-incident' }] },
+                    assignees: { nodes: [] },
+                  },
                 },
               },
             },
@@ -446,7 +464,11 @@ for (const [label, overrides] of [
         }
         return {
           body: {
-            data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot-swe-agent' }] } },
+              },
+            },
           },
         };
       },
