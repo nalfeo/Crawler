@@ -9,7 +9,7 @@ Updated the canonical policy and guard documentation and added ADR 0105.
 
 ## Systems touched
 
-agent-tooling, memory-governance
+ci-policy, agent-memory
 
 ## Files touched
 

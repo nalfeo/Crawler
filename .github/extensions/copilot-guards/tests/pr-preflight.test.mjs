@@ -49,6 +49,18 @@ test('checkHandoff allows trivial diffs without handoff', () => {
   assert.equal(checkHandoff(['docs/foo.md', 'README.md'], []), null);
 });
 
+test('checkHandoff rejects two newly-added handoffs in docs-only diffs', () => {
+  const result = checkHandoff(
+    [
+      'docs/foo.md',
+      'docs/knowledge/handoffs/2026-06-04-first.md',
+      'docs/knowledge/handoffs/2026-06-05-second.md',
+    ],
+    ['docs/knowledge/handoffs/2026-06-04-first.md', 'docs/knowledge/handoffs/2026-06-05-second.md'],
+  );
+  assert.match(result, /exactly one/);
+});
+
 test('checkHandoff allows md-only diffs outside docs/ without handoff', () => {
   assert.equal(
     checkHandoff(['.github/copilot-instructions.md', '.specify/specs/foo.md'], []),

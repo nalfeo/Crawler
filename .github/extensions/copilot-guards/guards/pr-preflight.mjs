@@ -59,12 +59,12 @@ const TRIVIAL_PATH_RE =
   /^(docs[\\/]|README\.md$|CHANGELOG\.md$|\.github[\\/](workflows|dependabot)|package(-lock)?\.json$|pnpm-lock\.yaml$|yarn\.lock$|(?!src[\\/]).+\.(md|txt)$)/;
 
 function checkHandoff(files, addedFiles) {
-  const allTrivial = files.length > 0 && files.every((f) => TRIVIAL_PATH_RE.test(f));
-  if (allTrivial) return null;
   const newHandoffs = addedFiles.filter((f) => HANDOFF_DATED_RE.test(f));
   if (newHandoffs.length > 1) {
     return `Branch adds ${newHandoffs.length} handoff files. Add exactly one \`docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md\` per PR; later turns must update the existing handoff instead of adding another.`;
   }
+  const allTrivial = files.length > 0 && files.every((f) => TRIVIAL_PATH_RE.test(f));
+  if (allTrivial) return null;
   if (newHandoffs.length === 1) return null;
   return `No new handoff file added in this branch. Per docs/agent-os/policies/memory-policy.md, every session that touches code/config writes a handoff. Create a new \`docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md\` containing: summary, files touched, verification run, unresolved issues, recommended next steps. Editing an existing handoff does not count. Skipped automatically for docs-only / dependency-only diffs.`;
 }
