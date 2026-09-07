@@ -308,17 +308,6 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
     }
     depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
-  } else {
-    depthResults.push({
-      ok: false,
-      issues: [
-        {
-          code: 'wall-accent-topology-depth-skipped-invalid-path',
-          message:
-            'Skipped wall-accent topology/depth checks because wall-accent image-path validation failed (see wallAccents[*] path issues in this report).',
-        },
-      ],
-    });
   }
   return reportValidation(spec.id, [
     // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
