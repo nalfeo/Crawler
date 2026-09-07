@@ -1045,3 +1045,9 @@ test('CI Liveness Sweep still runs on a schedule', () => {
 test('CI Recovery workflow exposes operation in run-name for liveness filtering', () => {
   assert.match(String(RECOVERY_WORKFLOW['run-name'] || ''), /inputs\.operation/);
 });
+
+test('CI Recovery keeps queued harvests instead of cancelling pending runs', () => {
+  assert.equal(RECOVERY_WORKFLOW.concurrency?.['cancel-in-progress'], false);
+  assert.equal(RECOVERY_WORKFLOW.concurrency?.queue, 'max');
+  assert.match(String(RECOVERY_WORKFLOW.concurrency?.group || ''), /inputs\.pr_number/);
+});
