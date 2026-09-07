@@ -90,6 +90,9 @@ jobs:
       - name: Create baseline update issue for copilot
         if: steps.detect-changes.outputs.changed == 'true'
         uses: actions/github-script@v7
+        env:
+          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
         with:
           github-token: ${{ secrets.CRAWLER_CI_PAT }}
           script: |
@@ -137,41 +140,53 @@ jobs:
               })).data;
             }
 
-            const actors = await github.graphql(`
-              query($owner: String!, $repo: String!) {
-                repository(owner: $owner, name: $repo) {
-                  suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-                    nodes {
-                      login
-                      __typename
-                      ... on Bot { id }
-                      ... on User { id }
-                    }
-                  }
-                }
-              }
-            `, { owner: context.repo.owner, repo: context.repo.repo });
-            const copilot = actors.repository.suggestedActors.nodes.find(
-              actor => ['copilot', 'copilot-swe-agent'].includes((actor.login || '').toLowerCase())
+            // Assignment goes through the shared ownership fence so this
+            // workflow cannot claim an issue Goobers already owns or reserved.
+            const { pathToFileURL } = require('node:url');
+            const intake = await import(
+              pathToFileURL(
+                `${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-recovery/issue-intake-lib.mjs`,
+              ).href
             );
-            if (!copilot?.id) {
-              throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
-            }
-            await github.graphql(`
-              mutation($assignableId: ID!, $actorIds: [ID!]!) {
-                replaceActorsForAssignable(input: {
-                  assignableId: $assignableId,
-                  actorIds: $actorIds
-                }) {
-                  assignable {
-                    ... on Issue { assignees(first: 20) { nodes { login } } }
-                  }
-                }
-              }
-            `, {
-              assignableId: issue.node_id,
-              actorIds: [copilot.id]
+            const gh = await import(
+              pathToFileURL(
+                `${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-recovery/github.mjs`,
+              ).href
+            );
+            const token = process.env.CRAWLER_CI_PAT || '';
+            const assignmentContext = await intake.getCopilotIssueAssignmentContext({
+              graphql: gh.graphql,
+              token,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issueNumber: issue.number,
             });
+            try {
+              intake.assertCopilotIssueAssignmentAllowed({ issue, assignmentContext });
+            } catch (error) {
+              // A Goobers claim is an expected ownership handoff: leave the
+              // issue open and unassigned rather than failing this run.
+              if (error instanceof intake.IssueClaimedByGoobersError) {
+                core.info(
+                  `Upserted issue #${issue.number}; the Goobers intake workflow owns it, so Copilot was not assigned`,
+                );
+                return;
+              }
+              throw error;
+            }
+            const assignedLogins = await intake.replaceIssueAssignees({
+              graphql: gh.graphql,
+              token,
+              assignableId: assignmentContext.issueId,
+              actorIds: intake.buildIssueActorIds({
+                assignees: assignmentContext.assignees,
+                copilotActorId: assignmentContext.copilot.id,
+                includeCopilot: true,
+              }),
+            });
+            if (!assignedLogins.some(intake.isCopilotLogin)) {
+              throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
+            }
             core.info(`Upserted issue #${issue.number} and assigned Copilot`);
 
       - name: Aggregate report

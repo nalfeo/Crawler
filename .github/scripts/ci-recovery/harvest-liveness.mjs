@@ -36,6 +36,7 @@ import { DISPATCH_ACTION } from './dispatch-table.mjs';
 import {
   assertCopilotIssueAssignmentAllowed,
   buildIssueActorIds,
+  IssueClaimedByGoobersError,
   getCopilotIssueAssignmentContext,
   isCopilotLogin,
   replaceIssueAssignees,
@@ -145,6 +146,12 @@ export async function assignCopilotToIncident({ graphql, token, owner, repo, iss
     }
     return context.copilot.login;
   } catch (err) {
+    // A Goobers claim is an expected ownership handoff, so report it as a
+    // stand-down rather than an assignment failure.
+    if (err instanceof IssueClaimedByGoobersError) {
+      process.stdout.write(`copilot-assignment-stood-down issue=#${issueNumber} owner=goobers\n`);
+      return null;
+    }
     const rawMsg = String(err?.message || err);
     const safeMsg = (token ? rawMsg.replaceAll(token, '***') : rawMsg)
       .replace(/[\r\n]/g, ' ')

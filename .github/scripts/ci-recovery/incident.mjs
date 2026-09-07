@@ -11,6 +11,7 @@ import {
   assertCopilotIssueAssignmentAllowed,
   buildIssueActorIds,
   getCopilotIssueAssignmentContext,
+  IssueClaimedByGoobersError,
   isCopilotLogin,
   replaceIssueAssignees,
 } from './issue-intake-lib.mjs';
@@ -227,14 +228,26 @@ const body = [
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');
 
+const managedLabels = [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])];
+
 let issue;
 if (existing) {
+  // Refreshing an incident must never drop a label this script does not
+  // manage. `goobers/status:in-review` in particular is the live ownership
+  // claim the assignment fence below reads, so a blind label replacement
+  // would erase the claim and let this run assign Copilot on top of active
+  // Goobers work. Read the current labels rather than the (possibly stale)
+  // listing payload so a claim added since the listing is preserved too.
+  const current = (await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`)).data;
+  const preserved = (current?.labels || [])
+    .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
+    .filter((name) => typeof name === 'string' && name.length > 0);
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
       body: {
         body,
-        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: [...new Set([...preserved, ...managedLabels])],
       },
     })
   ).data;
@@ -245,7 +258,7 @@ if (existing) {
       body: {
         title,
         body,
-        labels: [label, ...(needsAdminIntervention ? [adminInterventionLabel] : [])],
+        labels: managedLabels,
       },
     })
   ).data;
@@ -258,7 +271,19 @@ const assignmentContext = await getCopilotIssueAssignmentContext({
   repo,
   issueNumber: issue.number,
 });
-assertCopilotIssueAssignmentAllowed({ issue, assignmentContext });
+// A Goobers claim is an expected ownership handoff, not a failure: the incident
+// issue stays open and recorded, and the other single writer keeps the work.
+try {
+  assertCopilotIssueAssignmentAllowed({ issue, assignmentContext });
+} catch (error) {
+  if (error instanceof IssueClaimedByGoobersError) {
+    process.stdout.write(
+      `${existing ? 'updated' : 'created'} incident issue=#${issue.number} owner=goobers (no Copilot assignment)\n`,
+    );
+    process.exit(0);
+  }
+  throw error;
+}
 const assignedLogins = await replaceIssueAssignees({
   graphql,
   token,

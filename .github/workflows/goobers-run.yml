@@ -698,6 +698,10 @@ jobs:
         run: |
           set -euo pipefail
           VALIDATED_ASSIGNMENTS='[]'
+          # Only entries whose reservation actually held are launched. An entry
+          # that is validated but then loses the post-reservation ownership
+          # recheck has its claim released, so it must never reach the run job.
+          LAUNCHABLE_ASSIGNMENTS='[]'
           ATTEMPTED_ASSIGNMENTS='[]'
           publish_reservation_outputs() {
             echo "should_run=$1" >> "${GITHUB_OUTPUT}"
@@ -790,6 +794,7 @@ jobs:
           while IFS= read -r assignment; do
             issue_number="$(jq -r '.issue' <<<"$assignment")"
             cohort="$(jq -r '.cohort' <<<"$assignment")"
+            resume_pr="$(jq -r '.resumePr // ""' <<<"$assignment")"
             lane="$(jq -r '.lane' <<<"$assignment")"
             slot="$(jq -r '.slot' <<<"$assignment")"
 
@@ -831,6 +836,7 @@ jobs:
               exit 1
             fi
             echo "Reserved issue #${issue_number} for lane ${lane} slot ${slot} and confirmed goobers/status:in-review."
+            LAUNCHABLE_ASSIGNMENTS="$(jq -c --argjson assignment "$assignment" '. + [$assignment]' <<<"$LAUNCHABLE_ASSIGNMENTS")"
 
             marker="<!-- crawler-goobers-run-start:v1 run-id=${GITHUB_RUN_ID} workflow=${GOOBERS_WORKFLOW} -->"
             find_issue_comment_id() {
@@ -856,7 +862,12 @@ jobs:
 
             gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
           done < <(jq -c '.[]' <<<"$VALIDATED_ASSIGNMENTS")
-          publish_reservation_outputs true "${VALIDATED_ASSIGNMENTS}"
+          if [ "$(jq 'length' <<<"$LAUNCHABLE_ASSIGNMENTS")" -eq 0 ]; then
+            echo "::notice::Every reserved Goobers assignment lost its claim before launch; no lane will start."
+            publish_reservation_outputs false "${ATTEMPTED_ASSIGNMENTS}"
+            exit 0
+          fi
+          publish_reservation_outputs true "${LAUNCHABLE_ASSIGNMENTS}"
 
   run:
     name: Run ${{ inputs.workflow || 'crawler-feature-pr' }} via Goobers

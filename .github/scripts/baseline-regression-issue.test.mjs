@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { BASELINE_RECURRENCE_MARKER } from './ci-recovery/markers.mjs';
+import { IssueClaimedByGoobersError } from './ci-recovery/issue-intake-lib.mjs';
 import {
   BASELINE_REGRESSION_LABELS,
   fileBaselineRegressionIssue,
@@ -465,4 +466,62 @@ test('rejects non-regression and incomplete decisions before making API calls', 
     );
     assert.equal(h.calls.length, 0);
   }
+});
+
+test('refreshing an open marker match preserves labels this script does not own', async () => {
+  const h = harness([
+    {
+      number: 7,
+      node_id: 'ISSUE_7',
+      state: 'open',
+      body: decision().issue.body,
+      labels: [{ name: 'bug' }, { name: 'goobers/status:in-review' }],
+      updated_at: '2026-08-12T00:00:00Z',
+    },
+  ]);
+
+  await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: decision(),
+  });
+
+  const patch = h.calls.find(
+    (call) => call[0] === 'request' && call[3]?.method === 'PATCH' && call[3].body?.labels,
+  );
+  // Erasing the ownership label here would let the intake fence below conclude
+  // nobody owns the issue and assign Copilot on top of live Goobers work.
+  assert.ok(patch[3].body.labels.includes('goobers/status:in-review'));
+  for (const label of BASELINE_REGRESSION_LABELS) {
+    assert.ok(patch[3].body.labels.includes(label));
+  }
+});
+
+test('a Goobers claim stands the release-regression filer down instead of failing it', async () => {
+  const h = harness();
+  h.intakeFn = async (args) => {
+    throw new IssueClaimedByGoobersError(args.issue.number);
+  };
+
+  const result = await fileBaselineRegressionIssue({
+    requestFn: h.requestFn,
+    paginateFn: h.paginateFn,
+    intakeFn: h.intakeFn,
+    graphqlFn: async () => ({}),
+    mutationToken: 'github-token',
+    intakeToken: 'pat-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    decision: decision(),
+  });
+
+  assert.deepEqual(result, [
+    { action: 'created', issueNumber: 42, assignee: null, claimedByGoobers: true },
+  ]);
 });

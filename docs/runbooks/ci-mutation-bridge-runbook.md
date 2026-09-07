@@ -64,6 +64,20 @@ refuses intake when the issue is cross-referenced by any open PR whose head is i
 this repository; branch naming is not ownership evidence. PR-lifecycle workflows
 remain outside both fences.
 
+Two invariants keep that fence honest:
+
+- **Refreshing a managed issue never replaces its label set.** An automation
+  workflow that re-files an existing issue (release regression, CI incident)
+  unions its own labels with the issue's current labels, so a
+  `goobers/status:in-review` claim added after the issue was created survives the
+  refresh and is still visible to the fence.
+- **A refused assignment is a stand-down, not a failure.** Every direct issue
+  creator treats `IssueClaimedByGoobersError` as a successful hand-off: the issue
+  stays open and unassigned, nothing is rolled back or closed, and the job exits
+  green. Only Goobers' own reservation recheck releases the claim, and an
+  assignment it releases is dropped from the published slot set so no lane
+  launches on it.
+
 ## Fail directions (deliberately opposite)
 
 - **Claim lane fails closed against dual writers, not against automation.**
