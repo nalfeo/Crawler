@@ -47,22 +47,8 @@ describe('AI runner lab Floor 3 wiring', () => {
       'utf-8',
     );
 
-    const composeSceneOptionsIndex = source.indexOf('const composeSceneOptions:');
-    const configureWorldIndex = source.indexOf(
-      'configureWorld: (world: GameWorld, playerEid: number) => {',
-      composeSceneOptionsIndex,
+    expect(source).toMatch(
+      /const composeSceneOptions:[\s\S]*?configureWorld: \(world: GameWorld, playerEid: number\) => \{\s*(?:\/\/[^\n]*\n\s*)*applyStartPlayerLevel\(world, configuredStartPlayerLevel\);\s*base\.configureWorld\(world, playerEid\);\s*const scenarioPreset = getAiRunnerScenarioPreset\(selectedScenarioPresetId\);\s*scenarioPreset\?\.configureWorld\?\.\(world, playerEid\);/,
     );
-    const configureWorld = source.slice(
-      configureWorldIndex,
-      source.indexOf('inputCaptureOverride: aiInputProvider', configureWorldIndex),
-    );
-    expect(composeSceneOptionsIndex).toBeGreaterThan(-1);
-    expect(configureWorldIndex).toBeGreaterThan(composeSceneOptionsIndex);
-    const startLevelIndex = configureWorld.indexOf(
-      'applyStartPlayerLevel(world, configuredStartPlayerLevel);',
-    );
-    const scenarioIndex = configureWorld.indexOf('base.configureWorld(world, playerEid);');
-    expect(startLevelIndex).toBeGreaterThan(-1);
-    expect(scenarioIndex).toBeGreaterThan(startLevelIndex);
   });
 });
