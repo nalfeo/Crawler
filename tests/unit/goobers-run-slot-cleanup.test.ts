@@ -379,8 +379,9 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
     }
     // Per-run status again: the sibling failure must not be reported on the
     // healthy run's issue.
-    expect(harness.log).toContain('finished with **success**');
-    expect(harness.log).toContain('finished with **failure**');
+    expect(harness.log).toContain('Goobers delivery outcome: **pr-opened**');
+    expect(harness.log).toContain('Goobers delivery outcome: **blocked**');
+    expect(harness.log).toContain('Goobers delivery outcome: **issue-completed**');
   });
 });
 
@@ -740,11 +741,10 @@ describe.skipIf(!hasJq)('goobers-run.yml journal text cannot own a comment line'
     });
 
     expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
-    // The message text is still reported — this is sanitation, not redaction.
-    expect(harness.log).toContain('build broke');
-    expect(harness.log).toContain('crawler-goobers-reservation-disposed:v1');
-    // ...but never as a line of its own, which is the only form the lease
-    // grammar accepts. Trimmed exactly as the lease library trims.
+    // The message text is retained in the uploaded journal artifact, but is
+    // deliberately absent from the compact terminal issue comment.
+    expect(harness.log).not.toContain('build broke');
+    expect(harness.log).not.toContain('crawler-goobers-reservation-disposed:v1');
     const marker = '<!-- crawler-goobers-reservation-disposed:v1 run-id=999 attempt=1 issue=42 -->';
     const ownsALine = harness.log
       .split('\n')
