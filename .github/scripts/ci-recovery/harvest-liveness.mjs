@@ -637,7 +637,7 @@ export function buildHarvestIncidentBody({
   // not a harvest crash -- nothing ran at all. Triage starts at the scheduled
   // sweep, not at the PAT bucket, so say so before the rate-limit playbook.
   const silentDispatchGap =
-    summary.lastSuccessAt !== null && summary.consecutiveFailures === 0
+    reason === 'last-success-older-than-threshold' && summary.consecutiveFailures === 0
       ? [
           '## Likely cause: no harvest was dispatched',
           '',

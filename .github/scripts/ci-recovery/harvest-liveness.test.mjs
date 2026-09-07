@@ -1117,3 +1117,16 @@ test('CI Recovery keeps queued harvests instead of cancelling pending runs', () 
   assert.equal(RECOVERY_WORKFLOW.concurrency?.queue, 'max');
   assert.match(String(RECOVERY_WORKFLOW.concurrency?.group || ''), /inputs\.pr_number/);
 });
+
+test('an unrelated harvest incident reason never claims a silent dispatch gap', () => {
+  const summary = summarizeHarvestRuns([], new Date('2026-09-07T04:52:52Z'));
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'no-completed-runs-in-window',
+  });
+
+  assert.equal(summary.consecutiveFailures, 0);
+  assert.doesNotMatch(body, /No harvest run failed/);
+});
