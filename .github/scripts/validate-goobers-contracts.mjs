@@ -98,7 +98,7 @@ export function invocationSemanticErrors(payload) {
 
 const PLANNING_TASK = 'plan';
 const GATE_TASKS = new Set(['plan', 'local-gate', 'pr-opened-gate', 'review']);
-const GOOBERS_SUMMARY_FIELDS = ['Description', 'Systems', 'Verification', 'Risk'];
+const GOOBERS_SUMMARY_FIELDS = goobersSummaryV1.requiredFields;
 
 /**
  * Error-list form of `crawler.goobers.summary/v1`: empty when `summary` is
