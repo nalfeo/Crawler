@@ -422,12 +422,16 @@ export function buildTerminalDecisionTable() {
       id: 'R34',
       dClass: 'D4',
       action: DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_EXHAUSTED,
-      description: 'duplicate dispatch reaches the stale-retry ceiling: file incident and release',
+      description:
+        'duplicate dispatch reaches the stale-retry ceiling, or an exhausted release left its fence attached: file incident and release',
       guard: (ctx) =>
         ctx.blockersPresent &&
         ctx.labelExists &&
-        ctx.isDuplicateDispatch &&
-        ctx.stallAction === 'release',
+        ((ctx.isDuplicateDispatch && ctx.stallAction === 'release') ||
+          (ctx.owner === 'none' &&
+            ctx.status === 'idle' &&
+            ctx.stateTrigger === 'stale-automation-exhausted' &&
+            ctx.stateProgressKey === ctx.currentProgressKey)),
     },
     {
       id: 'GC-DUPLICATE-WAIT',

@@ -26,6 +26,7 @@ import {
   validateWallAccentTopology,
   validateTerrainDepthAndPerspective,
   validateGenManifestSchema,
+  type ValidationIssue,
   type ValidationResult,
 } from '../validate.js';
 import type { TerrainPackDef } from '../../../../src/shared/terrain-pack-types.js';
@@ -181,7 +182,7 @@ function validateEmittedWallAccentPaths(
   manifest: TerrainPackDef,
   emittedPaths: ReadonlySet<string>,
 ): ValidationResult {
-  const issues: ValidationResult['issues'] = [];
+  const issues: ValidationIssue[] = [];
   for (const accent of manifest.wallAccents ?? []) {
     const context = `wallAccents[${accent.id}]`;
     const normalized = accent.imagePath.replace(/\\/g, '/');

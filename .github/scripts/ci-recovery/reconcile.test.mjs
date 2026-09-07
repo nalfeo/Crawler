@@ -1910,6 +1910,43 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
   );
 });
 
+test('exhausted state cleans up a fence left attached by a partial release instead of redispatching', () => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+
+  const row = selectTerminalAction({
+    blockersPresent: true,
+    admissionWaitingCount: 0,
+    live: true,
+    mergeTrainEnabled: true,
+    labelExists: true,
+    owner: 'none',
+    status: 'idle',
+    stateTrigger: 'stale-automation-exhausted',
+    stateProgressKey: progressKey,
+    currentProgressKey: progressKey,
+    isDuplicateDispatch: false,
+    stallAction: 'new',
+    automationProgressRecent: false,
+  });
+
+  assert.equal(
+    row.action,
+    DISPATCH_ACTION.RELEASE_STALE_AUTOMATION_EXHAUSTED,
+    'a persisted exhausted state must clean up a leftover fence, not dispatch the same task',
+  );
+});
+
 test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhausted matches selectTerminalAction, not a parallel inline code path', async (t) => {
   // This test exists specifically to satisfy the "terminal selection is
   // actually wired into reconcile.mjs rather than existing only in tests"
