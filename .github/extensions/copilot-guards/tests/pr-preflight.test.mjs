@@ -2,12 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   checkHandoff,
+  checkAppleRecord,
   checkForbiddenPaths,
   checkCrossSystemAdr,
   checkMainSync,
   checkIndexMdNotModified,
   evaluatePreflightChecks,
   HANDOFF_DATED_RE,
+  APPLE_RECORD_RE,
   TRIVIAL_PATH_RE,
 } from '../guards/pr-preflight.mjs';
 
@@ -16,6 +18,13 @@ test('HANDOFF_DATED_RE matches required form', () => {
   assert.match('docs\\knowledge\\handoffs\\2025-12-31-final.md', HANDOFF_DATED_RE);
   assert.doesNotMatch('docs/knowledge/handoffs/no-date.md', HANDOFF_DATED_RE);
   assert.doesNotMatch('docs/knowledge/handoffs/2026-06-04.md', HANDOFF_DATED_RE);
+});
+
+test('APPLE_RECORD_RE matches required form', () => {
+  assert.match('docs/knowledge/metrics/apples/2026-06-04-enforcement-hooks.json', APPLE_RECORD_RE);
+  assert.match('docs\\knowledge\\metrics\\apples\\2025-12-31-final.json', APPLE_RECORD_RE);
+  assert.doesNotMatch('docs/knowledge/metrics/apples/no-date.json', APPLE_RECORD_RE);
+  assert.doesNotMatch('docs/knowledge/metrics/apples/2026-06-04-final.md', APPLE_RECORD_RE);
 });
 
 test('TRIVIAL_PATH_RE classifies docs-only diffs', () => {
@@ -63,6 +72,43 @@ test('checkHandoff passes when a NEW handoff is added', () => {
     ),
     null,
   );
+});
+
+test('checkHandoff rejects two newly-added handoffs', () => {
+  const result = checkHandoff(
+    ['src/core/foo.ts'],
+    ['docs/knowledge/handoffs/2026-06-04-first.md', 'docs/knowledge/handoffs/2026-06-05-second.md'],
+  );
+  assert.match(result, /exactly one/);
+  assert.match(result, /update the existing handoff/);
+});
+
+test('checkHandoff counts only newly-added handoffs', () => {
+  assert.equal(
+    checkHandoff(
+      ['src/core/foo.ts', 'docs/knowledge/handoffs/2026-01-01-existing.md'],
+      ['docs/knowledge/handoffs/2026-01-01-existing.md'],
+    ),
+    null,
+  );
+});
+
+test('checkAppleRecord accepts one record or no record for the 1–2 Apple exception', () => {
+  assert.equal(checkAppleRecord([]), null);
+  assert.equal(checkAppleRecord(['docs/knowledge/metrics/apples/2026-06-04-test.json']), null);
+});
+
+test('checkAppleRecord rejects two newly-added records', () => {
+  const result = checkAppleRecord([
+    'docs/knowledge/metrics/apples/2026-06-04-first.json',
+    'docs/knowledge/metrics/apples/2026-06-05-second.json',
+  ]);
+  assert.match(result, /at most one/);
+  assert.match(result, /update the existing record/);
+});
+
+test('checkAppleRecord counts only newly-added records', () => {
+  assert.equal(checkAppleRecord(['docs/knowledge/metrics/apples/2026-01-01-existing.json']), null);
 });
 
 test('checkHandoff rejects merely-edited existing handoff', () => {
@@ -189,6 +235,22 @@ test('preflight preserves sync warning alongside an unrelated deny', () => {
   assert.equal(result.decision, 'deny');
   assert.match(result.reason, /No new handoff/);
   assert.equal(result.additionalContext, 'sync deferred');
+});
+
+test('preflight reports handoff and Apple cardinality denials together', () => {
+  const result = evaluatePreflightChecks({
+    files: ['src/core/foo.ts'],
+    addedFiles: [
+      'docs/knowledge/handoffs/2026-06-04-first.md',
+      'docs/knowledge/handoffs/2026-06-05-second.md',
+      'docs/knowledge/metrics/apples/2026-06-04-first.json',
+      'docs/knowledge/metrics/apples/2026-06-05-second.json',
+    ],
+    cwd: '/repo',
+  });
+  assert.equal(result.decision, 'deny');
+  assert.match(result.reason, /exactly one.*handoff/);
+  assert.match(result.reason, /Apple estimate records.*at most one/);
 });
 
 test('preflight allows a sync warning when no hard findings exist', () => {

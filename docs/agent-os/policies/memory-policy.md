@@ -18,6 +18,13 @@ Every implementation session (merge-intent code change) writes a handoff file be
 - Naming: `YYYY-MM-DD-<slug>.md`
 - Minimum contents: summary of work completed, files touched, verification run, unresolved issues, and recommended next steps
 - Rule: no implementation session ends silently; investigation/repro sessions without merge-intent fixes may skip handoff paperwork
+- A non-trivial implementation PR adds exactly one dated handoff file. Multi-turn
+  work updates that handoff instead of adding another; `docs/knowledge/handoffs/INDEX.md`
+  remains owned by the docs automation workflow. Docs-only and dependency-only
+  diffs retain the handoff exemption.
+
+The PR preflight guard counts branch-added handoffs, so an edited existing
+handoff remains a valid continuation while a second added handoff is rejected.
 
 ## ADR Threshold
 
