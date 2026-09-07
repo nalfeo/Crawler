@@ -64,7 +64,13 @@
     "playerCompanionHpMultiplier": 3,
     "_playerCompanionHpMultiplier_note": "Floor-3-ONLY HP multiplier applied only to the player's own recruited party Companions (TeamId.PLAYER) at recruit time, on top of the shared species/form statScale every Companion (wild, Studio, Final Four) already uses. Compensates for the party's structural numbers disadvantage (1 starter vs a multi-Companion Studio/Final-Four roster) without touching wild/rival Companion stats. Human-authorized Floor-3-only companion buff (session 2026-09-03); tune via floor3-companion-lab, not a broad win-rate sweep.",
     "playerCompanionDamageMultiplier": 3,
-    "_playerCompanionDamageMultiplier_note": "Floor-3-ONLY outgoing-damage multiplier applied only to the player's own recruited party Companions (TeamId.PLAYER) in companionCombatSystem, leaving wild/Studio/Final-Four Companion damage (and all other floors) untouched. Same rationale/authorization as playerCompanionHpMultiplier: offsets being outnumbered, not a general balance claim."
+    "_playerCompanionDamageMultiplier_note": "Floor-3-ONLY outgoing-damage multiplier applied only to the player's own recruited party Companions (TeamId.PLAYER) in companionCombatSystem, leaving wild/Studio/Final-Four Companion damage (and all other floors) untouched. Same rationale/authorization as playerCompanionHpMultiplier: offsets being outnumbered, not a general balance claim.",
+    "followSpeedPlayerMultiplier": 1.25,
+    "_followSpeedPlayerMultiplier_note": "Floor-3-ONLY minimum follow speed as a multiplier of the current player speed. The authored companion speed remains the floor when the player is stationary.",
+    "followSpeedRampPerFt": 0.01,
+    "_followSpeedRampPerFt_note": "Floor-3-ONLY speed added per foot beyond the friendly leash while a player-owned Companion follows. This deterministic ramp closes larger gaps without changing combat targeting.",
+    "followSpeedMaxMultiplier": 2.5,
+    "_followSpeedMaxMultiplier_note": "Floor-3-ONLY upper cap for player-owned Companion follow speed, applied to both authored companion speed and current player speed."
   },
   "floor": {
     "minDurationS": 120,
