@@ -540,14 +540,18 @@ export const floorManifestDefSchema = z
       .optional(),
     /**
      * Per-floor lighting defaults. Only `ambient` (the base light level applied
-     * to visible tiles outside any light source) is authored per floor; all
-     * other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
+     * to visible tiles outside any light source) is authored per floor by
+     * default; `sourceIntensity` may override the player's torch intensity for a
+     * specific floor when a scene needs the player light disabled or reduced.
+     * All other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
      * Floor 1 ships 0.2; deeper/darker floors can ship lower values.
      */
     lighting: z
       .object({
         /** Base ambient light level in [0,1] applied to visible tiles. */
         ambient: z.number().min(0).max(1),
+        /** Optional override for the player's torch intensity. */
+        sourceIntensity: z.number().min(0).max(2).optional(),
       })
       .strict(),
     /**

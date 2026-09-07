@@ -59,7 +59,8 @@
     "bossChests": false
   },
   "lighting": {
-    "ambient": 0.45
+    "ambient": 0.8,
+    "sourceIntensity": 0
   },
   "props": {
     "biomeTag": "organic",
