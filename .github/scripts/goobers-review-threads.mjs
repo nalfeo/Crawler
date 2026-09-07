@@ -32,6 +32,7 @@ import {
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
 } from './ci-recovery/state.mjs';
+import { reviewThreadFollowupBacklogIssueNumbers } from './ci-recovery/issue-intake-lib.mjs';
 
 /** Mirrors reconcile.mjs's `shouldAutoPostOutdatedMarker`/early-exit trusted-marker
  *  check: true only when the thread's effective latest comment carries a valid
@@ -77,18 +78,70 @@ function cloneThreadWithSyntheticMarker(thread, markerBody) {
  * @param {string} params.headSha - Current PR head SHA.
  * @param {Array<string>} [params.reachableCommitShas] - SHAs proven to be
  *   ancestors of headSha (see reconcile.mjs's `reachableMarkerShas`
- *   computation). Pass an empty array to conservatively skip lineage checks,
- *   the same conservative choice reconcile.mjs's own early-exit path makes.
+ *   computation). When provided, the decision layer honors lineage for stale
+ *   markers instead of treating the set as unavailable.
+ * @param {Array<object>} [params.closingIssues] - same-repo closing issues for
+ *   follow-up-backlog classification.
+ * @param {string} [params.repository] - repo in `owner/repo` form.
+ * @param {Array<object>} [params.followUpIssueMapping] - optional known issue
+ *   mapping for source issue numbers to created/reused follow-up issues.
  * @returns {Array<{threadId: string, action: 'post-outdated-marker'|'resolve',
- *   replyCommentId?: string, markerBody?: string, requiresPostedMarker?: boolean}>}
+ *   replyCommentId?: string, markerBody?: string, requiresPostedMarker?: boolean,
+ *   kind?: string, sourceIssueNumbers?: number[], followUpIssueMapping?: Array<{
+ *     sourceIssueNumber: number, issueNumber: number, action: 'created'|'reused' }>}>}
  */
+function normalizeIssueMappingEntries(sourceIssueNumbers = [], issueMapping = []) {
+  const normalized = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(issueMapping) ? issueMapping : []) {
+    const sourceIssueNumber = Number(
+      entry?.sourceIssueNumber ?? entry?.source ?? entry?.source_issue_number,
+    );
+    const issueNumber = Number(
+      entry?.issueNumber ??
+        entry?.followUpIssueNumber ??
+        entry?.followupIssueNumber ??
+        entry?.number,
+    );
+    const action = String(entry?.action || entry?.kind || 'created').toLowerCase();
+    if (!Number.isInteger(sourceIssueNumber) || !Number.isInteger(issueNumber)) continue;
+    if (!sourceIssueNumbers.includes(sourceIssueNumber)) continue;
+    const key = `${sourceIssueNumber}:${issueNumber}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push({
+      sourceIssueNumber,
+      issueNumber,
+      action: action === 'reused' ? 'reused' : 'created',
+    });
+  }
+  return normalized;
+}
+
+function buildFollowupBacklogMarkerBody({ head, sourceIssueNumbers, issueMapping }) {
+  const mapping = Array.isArray(issueMapping) ? issueMapping : [];
+  const followupList = mapping
+    .filter((entry) => Number.isInteger(entry?.issueNumber) && entry.issueNumber > 0)
+    .map((entry) => `#${entry.issueNumber}`);
+  const sourceList = sourceIssueNumbers.map((n) => `#${n}`).join(', ');
+  const followupListText = followupList.join(', ');
+  return `✅ Addressed in ${head}: filed unassigned follow-up backlog issue ${followupListText} for ${sourceList}.`;
+}
+
 export function decideReviewThreadActions({
   threads = [],
   headSha,
   reachableCommitShas = [],
+  closingIssues = [],
+  repository = '',
+  followUpIssueMapping = [],
 } = {}) {
   const head = String(headSha ?? '').toLowerCase();
-  const reachable = new Set(reachableCommitShas);
+  const reachable = new Set(
+    (Array.isArray(reachableCommitShas) ? reachableCommitShas : []).map((sha) =>
+      String(sha).toLowerCase(),
+    ),
+  );
   const decisions = [];
 
   // Phase 1: outdated, unresolved threads with no trusted marker get a
@@ -132,14 +185,71 @@ export function decideReviewThreadActions({
 
   // Phase 2: resolve any unresolved thread (from the post-phase-1 working set)
   // whose trusted marker names the current head or a reachable ancestor SHA.
+  // Follow-up backlog threads are special-cased before the generic resolver: they
+  // require a created/reused issue mapping in the decision contract as well as a
+  // file/reply/resolve mutation sequence that is fenced against stale live state.
+  const repositoryName = String(repository || '').trim();
+  const allClosingIssues = Array.isArray(closingIssues) ? closingIssues : [];
+  const localClosingIssues = repositoryName
+    ? allClosingIssues.filter(
+        (issue) =>
+          String(issue?.repository?.nameWithOwner || '').toLowerCase() ===
+          repositoryName.toLowerCase(),
+      )
+    : allClosingIssues;
+
   for (const thread of workingThreads) {
     if (thread.isResolved) continue;
+    const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      localClosingIssues,
+      repositoryName,
+    );
+    if (sourceIssueNumbers.length > 0) {
+      const root = thread.comments?.nodes?.[0];
+      const replyCommentId = reviewThreadReplyCommentId(root?.url);
+      if (!replyCommentId) continue;
+      const issueMapping = normalizeIssueMappingEntries(
+        sourceIssueNumbers,
+        Array.isArray(followUpIssueMapping) ? followUpIssueMapping : [],
+      );
+      const hasCompleteIssueMapping =
+        issueMapping.length > 0 &&
+        sourceIssueNumbers.every((sourceIssueNumber) =>
+          issueMapping.some(
+            (entry) =>
+              entry.sourceIssueNumber === sourceIssueNumber &&
+              Number.isInteger(entry.issueNumber) &&
+              entry.issueNumber > 0,
+          ),
+        );
+      if (!hasCompleteIssueMapping) continue;
+      const backlogDecision = {
+        threadId: thread.id,
+        action: 'resolve',
+        kind: 'follow-up-backlog',
+        replyCommentId,
+        sourceIssueNumbers,
+        followUpIssueMapping: issueMapping,
+        issueMapping,
+        reachableCommitShas: [...reachable],
+        markerBody: buildFollowupBacklogMarkerBody({
+          head,
+          sourceIssueNumbers,
+          issueMapping,
+        }),
+      };
+      decisions.push(backlogDecision);
+      continue;
+    }
     if (!shouldResolveThread(thread, head, reachable)) continue;
-    decisions.push({
+    const resolveDecision = {
       threadId: thread.id,
       action: 'resolve',
+      reachableCommitShas: [...reachable],
       ...(syntheticMarkerThreadIds.has(thread.id) ? { requiresPostedMarker: true } : {}),
-    });
+    };
+    decisions.push(resolveDecision);
   }
 
   return decisions;

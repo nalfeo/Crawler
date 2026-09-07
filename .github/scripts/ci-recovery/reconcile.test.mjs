@@ -6731,7 +6731,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migrated review-threads lane', async (t) => {
+test('live reconcile keeps follow-up backlog writes off legacy and dispatches migrated review-threads lane', async (t) => {
   const sourceIssueNumber = 3120;
   const followupReviewCommentId = '3810312490';
   const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
@@ -6819,21 +6819,25 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
 
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, {
+  const { code, stdout } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
     LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
   });
 
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // With the lane migrated, this test intentionally leaves the thread unresolved
+  // so legacy can dispatch Goobers and stop writing. Reconcile may continue down
+  // its normal blocker path; this test validates write/dispatch ownership only.
+  void code;
 
   const issueCreateCall = mutatingCalls.find(
     (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
   );
-  assert.ok(issueCreateCall, 'expected a follow-up backlog issue to be created');
-  assert.match(issueCreateCall.body.body, /crawler-ci-followup-backlog:v1 sourceIssue=3120/);
-  assert.deepEqual(issueCreateCall.body.assignees, []);
-  assert.ok(issueCreateCall.body.labels.includes('automation'));
+  assert.equal(
+    issueCreateCall,
+    undefined,
+    'legacy must not create follow-up backlog issues on migrated lane',
+  );
 
   const replyCall = mutatingCalls.find(
     (call) =>
@@ -6841,9 +6845,11 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
       call.url ===
         `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`,
   );
-  assert.ok(replyCall, 'expected a marker reply on the exact review-thread comment');
-  assert.match(replyCall.body.body, new RegExp(`✅ Addressed in ${HEAD_SHA}`));
-  assert.match(replyCall.body.body, /#4001/);
+  assert.equal(
+    replyCall,
+    undefined,
+    'legacy must not post follow-up backlog marker replies on migrated lane',
+  );
 
   const resolveCall = mutatingCalls.find(
     (call) =>
@@ -6851,9 +6857,16 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
       String(call.body?.query || '').includes('resolveReviewThread') &&
       call.body?.variables?.threadId === threadId,
   );
-  assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
+  assert.equal(
+    resolveCall,
+    undefined,
+    'legacy must not resolve follow-up backlog threads on migrated lane',
+  );
   assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
-  assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+  assert.doesNotMatch(
+    stdout,
+    /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/,
+  );
   const reviewThreadsDispatchCalls = mutatingCalls.filter(
     (call) =>
       call.method === 'POST' &&
@@ -6861,9 +6874,10 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
   );
   assert.equal(
     reviewThreadsDispatchCalls.length,
-    0,
-    'follow-up backlog repair needs issue context that Goobers does not receive yet',
+    1,
+    'follow-up backlog handling must dispatch goobers-review-threads exactly once on migrated lane',
   );
+  assert.equal(reviewThreadsDispatchCalls[0].body?.inputs?.pr_number, String(PR_NUM));
 });
 
 test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {
