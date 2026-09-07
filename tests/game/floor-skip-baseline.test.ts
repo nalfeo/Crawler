@@ -115,6 +115,18 @@ describe('floor skip direct-start baselines', () => {
     );
   });
 
+  it('does not spend stat points supplied by an explicit higher start level', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    applyStartPlayerLevel(world, 20);
+    const explicitStartPoints = world.playerLevel.unspentPoints;
+
+    getScenarioDefinition('floor3').configureWorld(world, player);
+
+    expect(world.playerLevel.level).toBe(20);
+    expect(world.playerLevel.unspentPoints).toBe(explicitStartPoints);
+  });
+
   it('seeds the floor6 pistol baseline without any stale transient queue', () => {
     // Floor 6 has no floor-level welcome banner, so `announcements` (unlike
     // the per-floor loop above) can be asserted empty here too, matching the

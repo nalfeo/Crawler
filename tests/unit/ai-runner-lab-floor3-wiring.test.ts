@@ -40,4 +40,18 @@ describe('AI runner lab Floor 3 wiring', () => {
       /const destinationFloorId = nextFloorOptions\.floorId \?\? currentFloor/,
     );
   });
+
+  it('applies explicit start levels before scenario direct-start baselines', () => {
+    const source = readFileSync(
+      new URL('../../src/labs/ai-runner-lab/index.ts', import.meta.url),
+      'utf-8',
+    );
+
+    const startLevelIndex = source.indexOf(
+      'applyStartPlayerLevel(world, configuredStartPlayerLevel);',
+    );
+    const scenarioIndex = source.indexOf('base.configureWorld(world, playerEid);', startLevelIndex);
+    expect(startLevelIndex).toBeGreaterThan(-1);
+    expect(scenarioIndex).toBeGreaterThan(startLevelIndex);
+  });
 });

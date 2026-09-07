@@ -1251,10 +1251,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   ) => ReturnType<typeof createFloorMainSceneOptions> = (base) => ({
     ...base,
     configureWorld: (world: GameWorld, playerEid: number) => {
+      // Match the production headless runner: scenarios must observe explicit
+      // start-level overrides while applying their direct-start baselines.
+      applyStartPlayerLevel(world, configuredStartPlayerLevel);
       base.configureWorld(world, playerEid);
       const scenarioPreset = getAiRunnerScenarioPreset(selectedScenarioPresetId);
       scenarioPreset?.configureWorld?.(world, playerEid);
-      applyStartPlayerLevel(world, configuredStartPlayerLevel);
     },
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,

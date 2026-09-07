@@ -126,9 +126,14 @@ export function applyFloorSkipBaseline(
   }
   equipDirectStartWeapon(world, manifest);
   initializePlayerWeaponSkills(world, playerEid);
+  const preexistingUnspentPoints = world.playerLevel.unspentPoints;
   applyStartPlayerLevel(world, baseline.level);
 
-  const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
+  const baselineUnspentPoints = Math.max(
+    0,
+    world.playerLevel.unspentPoints - preexistingUnspentPoints,
+  );
+  const allocations = computeAutoStatAllocation(world, playerEid, baselineUnspentPoints);
   if (Object.keys(allocations).length > 0) {
     spendPoints(world, allocations);
   }
