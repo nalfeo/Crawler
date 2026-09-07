@@ -294,7 +294,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
         ok: false,
         issues: [
           {
-            code: 'wall-accent-checks-skipped',
+            code: 'wall-accent-depth-skipped-incomplete-set',
             message:
               'Skipped wall-accent depth check because one or more declared accent images were not emitted by composePack.',
           },
@@ -308,7 +308,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
       ok: false,
       issues: [
         {
-          code: 'wall-accent-checks-skipped',
+          code: 'wall-accent-topology-depth-skipped-invalid-path',
           message:
             'Skipped wall-accent topology/depth checks because wall-accent image-path validation failed (see wallAccents[*] path issues in this report).',
         },
