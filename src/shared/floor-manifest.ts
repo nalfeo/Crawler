@@ -458,6 +458,20 @@ export const floorManifestDefSchema = z
         moveSpeedBonus: z.number().nonnegative(),
         /** Additional pickup range. */
         pickupRangeBonus: z.number().nonnegative(),
+        /** Optional cold-start baseline used when entering this floor without carryover. */
+        directStart: z
+          .object({
+            /** Player character level to seed before the floor starts. */
+            level: z.number().int().positive(),
+            /** Skill level for the selected starter weapon's class and type skills. */
+            weaponSkillLevel: z.number().int().min(0).max(20).default(0),
+            /** Additional skill levels keyed by skill id. */
+            skillLevels: z.record(z.string(), z.number().int().min(0).max(20)).default({}),
+            /** Static equipment item ids to force-equip for the skipped-floor baseline. */
+            equipmentItemIds: z.array(z.string().min(1)).default([]),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
     /** Camera configuration. */

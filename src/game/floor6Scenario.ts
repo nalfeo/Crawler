@@ -62,6 +62,7 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { initializePlayerWeaponSkills } from './floorScenario.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { acceptQuest } from '../core/systems/questSystem.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
@@ -222,6 +223,7 @@ export function initializeFloor6Scenario(
     initializePlayerWeaponSkills(world, playerEid);
   } else {
     equipFloor6StarterWeapon(world, playerEid);
+    applyFloorSkipBaseline(world, playerEid, floor6Manifest);
   }
 
   world.featureUnlocks.inventory = true;
