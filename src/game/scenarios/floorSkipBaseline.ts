@@ -129,7 +129,7 @@ export function applyFloorSkipBaseline(
   const preexistingLevel = Math.max(1, world.playerLevel.level);
   applyStartPlayerLevel(world, baseline.level);
 
-  const baselineLevelsGained = world.playerLevel.level - preexistingLevel;
+  const baselineLevelsGained = Math.max(0, world.playerLevel.level - preexistingLevel);
   const baselineUnspentPoints = baselineLevelsGained * world.playerLevel.pointsPerLevel;
   const allocations = computeAutoStatAllocation(world, playerEid, baselineUnspentPoints);
   if (Object.keys(allocations).length > 0) {
