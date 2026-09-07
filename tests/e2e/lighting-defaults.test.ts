@@ -26,7 +26,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
-import { loadMainSceneProbeLab } from './helpers/main-scene-probe.js';
+import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
+import { parsePng, readPixel } from './helpers/pixels.js';
 
 interface LightingConfigShape {
   stepPx: number;
@@ -54,6 +55,33 @@ interface LightingDebugWindow {
       getPerf: () => LightingPerfShape;
     };
   };
+}
+
+async function sampleCenterTerrain(
+  page: Page,
+): Promise<{ luminance: number; litFraction: number }> {
+  const canvas = page.locator('canvas').first();
+  const png = parsePng(await canvas.screenshot());
+  const cx = Math.floor(png.width / 2);
+  const cy = Math.floor(png.height / 2);
+  const halfW = Math.floor(png.width * 0.16);
+  const halfH = Math.floor(png.height * 0.16);
+  const playerExclusionPx = 56;
+  let luminance = 0;
+  let lit = 0;
+  let samples = 0;
+  for (let y = cy - halfH; y <= cy + halfH; y += 4) {
+    for (let x = cx - halfW; x <= cx + halfW; x += 4) {
+      if (Math.abs(x - cx) < playerExclusionPx && Math.abs(y - cy) < playerExclusionPx) continue;
+      const px = readPixel(png, x, y);
+      const luma = 0.299 * px.r + 0.587 * px.g + 0.114 * px.b;
+      luminance += luma;
+      if (luma > 24) lit += 1;
+      samples += 1;
+    }
+  }
+  if (samples === 0) throw new Error('lighting terrain sample window was empty');
+  return { luminance: luminance / samples, litFraction: lit / samples };
 }
 
 describe('shipped lighting defaults', () => {
@@ -131,7 +159,14 @@ describe('shipped lighting defaults', () => {
   });
 
   it('boots the real Floor 3 scene with its authored daylight ambient and no player torch', async () => {
+    await loadMainSceneProbeLab(page, { floor: 'floor3', ambient: 0 });
+    await mainSceneProbe.resolveLoadout(page);
+    await page.waitForTimeout(300);
+    const darkControl = await sampleCenterTerrain(page);
+
     await loadMainSceneProbeLab(page, { floor: 'floor3' });
+    await mainSceneProbe.resolveLoadout(page);
+    await page.waitForTimeout(300);
 
     await page.waitForFunction(
       () => Boolean((window as unknown as LightingDebugWindow).__floor1Debug?.lighting),
@@ -148,5 +183,17 @@ describe('shipped lighting defaults', () => {
     expect(config.ambient).toBe(0.8);
     expect(config.sourceIntensity).toBe(0);
     expect(config.stepPx).toBe(4);
+
+    const daylight = await sampleCenterTerrain(page);
+    expect(
+      daylight.luminance,
+      `Floor 3 daylight ambient must visibly brighten the outdoor terrain; ` +
+        `daylight=${JSON.stringify(daylight)} dark=${JSON.stringify(darkControl)}`,
+    ).toBeGreaterThan(darkControl.luminance + 20);
+    expect(
+      daylight.litFraction,
+      `Floor 3 outdoor terrain should remain readable without the player torch; ` +
+        `daylight=${JSON.stringify(daylight)} dark=${JSON.stringify(darkControl)}`,
+    ).toBeGreaterThan(0.6);
   });
 });

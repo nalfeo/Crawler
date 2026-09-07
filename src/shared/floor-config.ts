@@ -56,7 +56,7 @@ const bossVariantConfigSchema = z
   })
   .strict();
 
-const floorConfigSchema = z
+export const floorConfigSchema = z
   .object({
     protagonist: z.string().min(1),
     starterWeapons: z.array(z.string().min(1)).min(1),
@@ -128,6 +128,8 @@ const floorConfigSchema = z
       .object({
         /** Base ambient light level in [0,1] applied to visible tiles. */
         ambient: z.number().min(0).max(1),
+        /** Optional override for the player's torch intensity. */
+        sourceIntensity: z.number().min(0).max(2).optional(),
       })
       .strict(),
   })

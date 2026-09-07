@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  floorConfigSchema,
   floor1Config,
   getFloorConfig,
   loadFloorConfigFromManifest,
@@ -125,6 +126,19 @@ describe('loadFloorConfigFromManifest', () => {
     const config = loadFloorConfigFromManifest('floor1');
     expect(config).not.toBeNull();
     expect(config!.protagonist).toBe('Rhea Vale');
+  });
+
+  it('accepts lighting source intensity overrides in derived config payloads', () => {
+    const config = loadFloorConfigFromManifest('floor1');
+    expect(config).not.toBeNull();
+
+    const parsed = floorConfigSchema.parse({
+      ...config,
+      lighting: { ambient: 0.8, sourceIntensity: 0 },
+    });
+
+    expect(parsed.lighting.ambient).toBe(0.8);
+    expect(parsed.lighting.sourceIntensity).toBe(0);
   });
 });
 
