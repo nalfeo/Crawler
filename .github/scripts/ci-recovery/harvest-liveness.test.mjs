@@ -91,6 +91,40 @@ test('summarizeHarvestRuns counts cancelled and timed-out runs as failures', () 
   assert.equal(summary.lastSuccessAt, '2026-07-30T16:40:00.000Z');
 });
 
+test('the 2026-09-07 cancellation burst cannot masquerade as a healthy harvest', () => {
+  const summary = summarizeHarvestRuns(
+    [
+      run({
+        id: 34075081544,
+        conclusion: 'cancelled',
+        updated_at: '2026-09-07T02:05:15Z',
+        display_title: 'CI Recovery (reconcile) for PR #4394',
+      }),
+      run({
+        id: 34074704677,
+        conclusion: 'cancelled',
+        updated_at: '2026-09-07T02:05:15Z',
+        display_title: 'CI Recovery (reconcile) for PR #4394',
+      }),
+      run({
+        id: 34073228341,
+        conclusion: 'cancelled',
+        updated_at: '2026-09-07T02:05:18Z',
+        display_title: 'CI Recovery (reconcile) for PR #4394',
+      }),
+    ],
+    new Date('2026-09-07T03:29:58Z'),
+  );
+
+  assert.equal(summary.completedCount, 3);
+  assert.equal(summary.lastSuccessAt, null);
+  assert.equal(summary.consecutiveFailures, 3);
+  assert.equal(
+    evaluateHarvestLiveness({ summary, backlogCount: 6 }).reason,
+    'no-successful-run-in-window',
+  );
+});
+
 test('summarizeHarvestRuns tolerates empty and malformed input', () => {
   assert.equal(summarizeHarvestRuns([], NOW).completedCount, 0);
   assert.equal(summarizeHarvestRuns(undefined, NOW).completedCount, 0);
