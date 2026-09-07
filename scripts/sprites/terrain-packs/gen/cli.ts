@@ -263,15 +263,39 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const accentPathResult = validateWallAccentImagePaths(typed, { repoRoot: REPO_ROOT });
   const topologyResults: ValidationResult[] = [];
   const depthResults: ValidationResult[] = [];
+  const filesByPath = new Map(files.map((file) => [file.relativePath, file.buffer]));
   if (accentPathResult.ok) {
     const accentAtlases: RgbaImage[] = [];
     for (const accent of typed.wallAccents ?? []) {
-      const accentAbsPath = path.join(REPO_ROOT, 'public', accent.imagePath.replace(/\\/g, '/'));
-      const accentAtlas = decodePng(fs.readFileSync(accentAbsPath));
+      const accentPng = filesByPath.get(accent.imagePath);
+      if (!accentPng) {
+        topologyResults.push({
+          ok: false,
+          issues: [
+            {
+              code: 'accent-image-missing',
+              message: `wallAccents[${accent.id}] image '${accent.imagePath}' was not emitted by composePack`,
+            },
+          ],
+        });
+        continue;
+      }
+      const accentAtlas = decodePng(accentPng);
       accentAtlases.push(accentAtlas);
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
     }
     depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
+  } else {
+    depthResults.push({
+      ok: false,
+      issues: [
+        {
+          code: 'terrain-pack-depth-skipped',
+          message:
+            'Skipped wall-accent topology/depth checks because wall accent image paths failed validation; fix the path issues above and re-run.',
+        },
+      ],
+    });
   }
   return reportValidation(spec.id, [
     // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
