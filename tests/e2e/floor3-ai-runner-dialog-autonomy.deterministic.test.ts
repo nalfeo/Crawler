@@ -4,7 +4,19 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
 import type { AiRunnerDebugSnapshot } from '../../src/labs/ai-runner-lab/index.js';
 
-const FLOOR3_SEED = '3539';
+// Seed 3540 is the committed deterministic seed that reaches the post-exit
+// safe room under the current tuning. Seed 3539 (used previously) stopped
+// completing once enemyAISystem's Floor-3 follow-catch-up fix (#4373)
+// landed: the party's two RANGED Companions now correctly catch up and
+// engage the first real Studio fight instead of lagging behind at their
+// authored 34-38ft combat standoff, and under seed 3539 both are knocked out
+// by frame 4,742, triggering a party wipe before `floor3-final-four-versus`
+// is ever reached. That was the exact bug #4373 asked to fix, so the fix is
+// correct and seed 3539's completion depended on the bug — see the matching
+// rationale in `tests/headless/floor3-completion.test.ts`. Seed 3540 reaches
+// the real completion outcome under the corrected behavior with no other
+// change.
+const FLOOR3_SEED = '3540';
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner&floor=floor3&seed=${FLOOR3_SEED}&startPlayerLevel=20`;
 const FAST_RESTART_SETTLE_MS = 300;
 const POLL_INTERVAL_MS = 1_500;

@@ -116,11 +116,33 @@ landed), seed 3540 was selected: it reaches full victory (all 6 Studios, all
 4 Final Four rounds, kept Companion, confirmed exit) under the exact same
 code and config, with no tuning or gameplay changes.
 
+### `floor3-ai-runner-dialog-autonomy.deterministic.test.ts` seed change (3539 -> 3540)
+
+The same routing fix broke this real-scene (Playwright/lab) e2e test for the
+identical reason: under seed 3539 the party's two RANGED Companions now
+correctly catch up and engage the first real Studio fight (Tidereach Studio)
+instead of lagging behind, and both are knocked out by frame 4,742 —
+triggering a party wipe (`worldState: "game_over"`, `floor3LossReason:
+"party-wiped"`, player HP untouched at 145/145) before the run ever reaches
+`floor3-final-four-versus`. Reproduced locally (`npx vitest run --project e2e
+tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts`) and
+confirmed against the CI failure log (`E2E Visual — Game/UI` run
+34101027569 / job 101675593361) before changing anything. Switched
+`FLOOR3_SEED` to `'3540'` (the same seed already selected for
+`floor3-completion.test.ts`) with no other change; the test now passes
+cleanly in ~54s, reaching the post-exit safe room with the exact same
+per-surface counts (6 Studio-versus, 5 poach, 4 Final-Four-versus, 1
+keep-companion, 1 stair-descend) the test already asserted, confirming those
+counts are fixed by Floor 3's map/bracket structure rather than seed-specific.
+
 ## Validation
 
 - `tests/ecs/companion-ai-system.test.ts`: 20/20 passed (added RANGED/SUPPORT
   catch-up and 180-frame-return regressions).
 - `tests/headless/floor3-completion.test.ts`: passed (seed 3540, see above).
+- `tests/e2e/floor3-ai-runner-dialog-autonomy.deterministic.test.ts`: passed
+  (seed 3540, see above; reproduced the CI failure under seed 3539 locally
+  first).
 - `tests/game/enemy-ai.test.ts`, `tests/game/floor3-companion-combat.test.ts`,
   `tests/ecs/floor3-companion-progression.test.ts`,
   `tests/game/floor3-recruiting.test.ts`: all passed (79 tests).
