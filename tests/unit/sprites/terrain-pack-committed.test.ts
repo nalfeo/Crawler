@@ -45,6 +45,9 @@ import {
   processWallAccents,
   restyleWallAtlas,
 } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
+import { composeWallAtlas } from '../../../scripts/sprites/terrain-packs/gen/compose-pack.js';
+import { wallCornerStyleForPack } from '../../../scripts/sprites/terrain-packs/wall-corner-style.js';
+import { buildWallReliefAtlases } from '../../../scripts/sprites/terrain-packs/wall-relief.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
 import { createImage, fillRect } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 
@@ -690,28 +693,66 @@ describe('validateTerrainDepthAndPerspective', () => {
     expect(result.issues).toHaveLength(0);
   });
 
-  it('Floor 1 (floor1-dungeon, floor1-cave) fails the depth check for flat top-down tiles', () => {
+  it('Floor 1 (floor1-dungeon, floor1-cave) passes the depth check with regenerated wall relief', () => {
     for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
       const pack = getTerrainPack(id);
+      const accentAtlases = pack.wallAccents!.map((accent) =>
+        decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+      );
       const result = validateTerrainDepthAndPerspective(
         pack,
         decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
-        [],
+        accentAtlases,
       );
-      expect(result.ok).toBe(false);
-      expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+      expect(result.ok).toBe(true);
+      expect(result.issues).toHaveLength(0);
     }
   });
 
-  it('Floor 3 (companion-overworld) fails the depth check for flat top-down tiles', () => {
+  it('Floor 1 wall accents are a byte-exact fixed point from tracked wall material + masks', () => {
+    for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
+      const pack = getTerrainPack(id);
+      const wallMaterial = decodePng(
+        readFileSync(
+          path.join(repoRoot(), 'public', 'assets', 'terrain-packs', id, 'wall-material.png'),
+        ),
+      );
+      const rebuiltAtlas = composeWallAtlas(
+        wallMaterial,
+        wallCornerStyleForPack(id),
+        pack.wallAutotile.masks,
+      ).atlas;
+      const rebuiltAccents = buildWallReliefAtlases(wallMaterial, rebuiltAtlas);
+      expect(
+        pack.wallAccents?.length ?? 0,
+        `${id} declares at least one wall accent`,
+      ).toBeGreaterThan(0);
+      for (const declared of pack.wallAccents ?? []) {
+        const rebuilt = rebuiltAccents.find((accent) => accent.id === declared.id)?.image;
+        expect(rebuilt, `${id} missing rebuilt accent ${declared.id}`).toBeDefined();
+        const committed = decodePng(
+          readFileSync(path.join(repoRoot(), 'public', declared.imagePath)),
+        );
+        expect(
+          Buffer.compare(Buffer.from(rebuilt!.data), Buffer.from(committed.data)),
+          `${declared.imagePath} differs from fixed-point rebuild output`,
+        ).toBe(0);
+      }
+    }
+  });
+
+  it('Floor 3 (companion-overworld) passes the depth check with regenerated wall relief', () => {
     const pack = getTerrainPack('companion-overworld');
+    const accentAtlases = pack.wallAccents!.map((accent) =>
+      decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+    );
     const result = validateTerrainDepthAndPerspective(
       pack,
       decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
-      [],
+      accentAtlases,
     );
-    expect(result.ok).toBe(false);
-    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toHaveLength(0);
   });
 
   it('rejects a declared accent whose pixels are a flat fill', () => {
