@@ -262,16 +262,17 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const typed = manifest as TerrainPackDef;
   const accentPathResult = validateWallAccentImagePaths(typed, { repoRoot: REPO_ROOT });
   const topologyResults: ValidationResult[] = [];
-  const accentAtlases: RgbaImage[] = [];
+  const depthResults: ValidationResult[] = [];
   if (accentPathResult.ok) {
+    const accentAtlases: RgbaImage[] = [];
     for (const accent of typed.wallAccents ?? []) {
       const accentAbsPath = path.join(REPO_ROOT, 'public', accent.imagePath.replace(/\\/g, '/'));
       const accentAtlas = decodePng(fs.readFileSync(accentAbsPath));
       accentAtlases.push(accentAtlas);
       topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
     }
+    depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
   }
-  const depthResult = validateTerrainDepthAndPerspective(typed, atlas, accentAtlases);
   return reportValidation(spec.id, [
     // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
     // registered in RUNTIME_TERRAIN_PACK_IDS, but validateManifestSchema also
@@ -285,7 +286,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     validatePoolAndDoorImages(typed, { repoRoot: REPO_ROOT }),
     accentPathResult,
     ...topologyResults,
-    depthResult,
+    ...depthResults,
   ]);
 }
 
