@@ -148,7 +148,7 @@ test('pipeline controls are colocated and step images preserve natural aspect ra
   const html = renderHtml('x');
   assert.match(html, /\.ba img \{ width: auto; height: auto; max-width: 160px; max-height: 160px;/);
   assert.match(html, /meta\.moduleId === 'background-removal'.*makeTuningPanel/s);
-  assert.match(html, /\[label, wrap, makeAuthoringPanel\(state\)\]/);
+  assert.match(html, /\[label, zoomRow, wrap, makeAuthoringPanel\(state\)\]/);
   assert.match(html, /text: meta\.skipped \? 'Run step' : 'Skip step'/);
   assert.match(html, /disabledModules: Array\.from\(currentDisabledModules\)/);
 });
@@ -212,4 +212,37 @@ test('the final output image is clickable and draws the anchor marker', () => {
   assert.match(html, /function redrawAnchorMarker\(/);
   assert.match(html, /finalImageClickToAnchor\(/);
   assert.match(html, /anchorMarkerPercent\(/);
+});
+
+test('the final output preview has a usable, pixel-crisp zoom control that never persists', () => {
+  const html = renderHtml('x');
+  // A dedicated range control (distinct from the live upscaleFactor knob,
+  // which mutates the preview pipeline output rather than just its on-screen
+  // display size) magnifies ONLY the rendered <img>, 1x..8x.
+  assert.match(html, /id: 'postprocess-final-zoom', min: '1', max: '8', step: '1'/);
+  assert.match(html, /for: 'postprocess-final-zoom'/);
+  assert.match(html, /function applyFinalZoom\(/);
+  assert.match(html, /function clampFinalZoom\(/);
+  // `.final img` already carries `image-rendering: pixelated`, so scaling the
+  // element's box (rather than swapping in a blurrily-interpolated bitmap)
+  // keeps zoomed pixel art crisp.
+  assert.match(
+    html,
+    /\.final img \{ max-width: 160px; max-height: 160px; image-rendering: pixelated;/,
+  );
+  // Confirm the persist payload (the actual "Apply changes" / "Reset to
+  // defaults" request body) has no zoom field — it is a pure client-side
+  // preview affordance, never sent to the server or treated as an override.
+  const bodyLiteral = html.slice(
+    html.indexOf('var body = {'),
+    html.indexOf('/api/persist-postprocess'),
+  );
+  assert.doesNotMatch(bodyLiteral, /currentFinalZoom|zoom/);
+  // Zoom is orthogonal to authoring/persist state: it must not be reset by the
+  // "fresh authoring slate" seeding block, nor treated as a persisted override.
+  const seedBlock = html.slice(
+    html.indexOf('fresh render always starts'),
+    html.indexOf('var appliedFacing ='),
+  );
+  assert.doesNotMatch(seedBlock, /currentFinalZoom/);
 });

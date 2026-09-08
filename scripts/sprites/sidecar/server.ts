@@ -442,6 +442,15 @@ interface RunPostprocessBody {
   readonly weaponAnchor?: unknown;
   readonly facing?: unknown;
   readonly variantIndexes?: unknown;
+  /**
+   * Force-recovery escape hatch: bypasses the persisted-grid carry-forward
+   * guard (adopts the current raw-sheet grid) and clears operator-disabled
+   * modules back to only the brief-required set. For a stuck/corrupted run
+   * whose stored options or grid are themselves the blocker.
+   */
+  readonly force?: unknown;
+  /** Reset persisted anchors/facing/options in the same request as `force`. */
+  readonly reset?: unknown;
 }
 
 interface RunManualAnchorBody {
@@ -1901,6 +1910,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           ? { manualWeaponAnchor: persistedWeaponAnchor }
           : {}),
         ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
+        ...(body.force === true ? { allowGridDrift: true } : {}),
+        ...(body.force === true ? { forceRecovery: true } : {}),
+        ...(body.reset === true ? { optionsMode: 'reset' as const } : {}),
         ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
       });
@@ -3064,12 +3076,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: 'yamlPath must be a repo-relative path inside the repo',
       };
     }
-    // Restrict edits to brief YAML files so this endpoint can never overwrite
-    // arbitrary repo files.
+    // Restrict edits to authored briefs and synthesized candidates so this
+    // endpoint can never overwrite arbitrary repo files. The synthesized
+    // candidate namespace is durable workflow state and is intentionally
+    // outside briefs/ until the operator promotes a candidate.
     const relPosix = toRepoRelativePath(deps.repoRoot, abs);
-    if (!relPosix.startsWith('briefs/') || !relPosix.endsWith('.yaml')) {
+    const editableYaml =
+      relPosix.endsWith('.yaml') &&
+      (relPosix.startsWith('briefs/') || relPosix.startsWith('generated/brief-candidates/'));
+    if (!editableYaml) {
       reply.code(400);
-      return { error: 'bad-request', message: 'yamlPath must be a briefs/**/*.yaml file' };
+      return {
+        error: 'bad-request',
+        message: 'yamlPath must be a briefs/**/*.yaml or generated/brief-candidates/**/*.yaml file',
+      };
     }
     // Validate BEFORE persisting durably: write the candidate text, then run it
     // through the full brief loader (YAML parse + per-type defaults merge + Zod
@@ -3643,7 +3663,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           message: error instanceof Error ? error.message : String(error),
         };
       }
-      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, options);
+      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, options, loaded.palette);
       return {
         finalPng: traced.finalPng.toString('base64'),
         steps: traced.steps.map((step) => ({

@@ -2,7 +2,7 @@
  * Post-processing pipeline modules.
  *
  * Each module is a pure function:
- *   (image, brief, palette, params) => RgbaImage
+ *   (image, brief, params) => RgbaImage
  *
  * Modules are the pluggable processing units that compose into pipelines
  * via templates. They accumulate trace steps via a provided callback.
@@ -27,6 +27,7 @@ import {
   BACKGROUND_B_COLOR_TOLERANCE_SQ,
   BACKGROUND_B_FRINGE_TOLERANCE_SQ,
 } from './postprocess-constants.js';
+import { recoverPixelArtMesh } from './proper-pixel-art.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -46,7 +47,7 @@ function normalizeTolerance(userValue: number | undefined, defaultValue: number)
  */
 export interface ModuleContext {
   readonly brief: Brief;
-  readonly palette: PaletteColors;
+  readonly palette?: PaletteColors;
   readonly pushStep: (id: string, label: string, image: RgbaImage) => void;
   readonly backgroundSource?: RgbaImage;
   readonly shouldRunEnclosedBackgroundCleanup?: boolean;
@@ -234,8 +235,26 @@ export const postprocessModules: Record<string, ModuleHandler> = {
       return image;
     }
 
-    const result = quantizeToPalette(image, ctx.palette);
+    const result = quantizeToPalette(image, ctx.palette ?? ctx.brief.palette.colors ?? []);
     ctx.pushStep('palette-quantize', 'Palette quantize (strict)', result);
+    return result;
+  },
+
+  'pixel-grid': (image, _params, ctx) => {
+    if (!ctx.brief.postprocessing?.meshRecovery) {
+      ctx.pushStep('pixel-grid-skipped', 'Pixel-art mesh recovery (skipped)', image);
+      return image;
+    }
+
+    const explicitPixelWidth = ctx.brief.postprocessing?.pixelWidth;
+    const result = recoverPixelArtMesh(image, explicitPixelWidth);
+    const mode =
+      explicitPixelWidth === undefined ? 'auto-detected mesh' : `${explicitPixelWidth}px mesh`;
+    ctx.pushStep(
+      'pixel-grid',
+      `Pixel-art mesh recovery (${mode}; ${result.width}x${result.height} native grid)`,
+      result,
+    );
     return result;
   },
 

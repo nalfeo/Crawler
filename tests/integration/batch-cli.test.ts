@@ -75,7 +75,7 @@ minVariations: 0
 postprocessing:
   trimAndFit: false
   minDimension: 64
-  paletteMode: strict
+  paletteMode: none
 judge:
   # Intentionally disabled: this batch test covers deterministic summary/cache
   # behavior without any vision-judge calls.

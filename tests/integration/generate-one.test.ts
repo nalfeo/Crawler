@@ -77,7 +77,7 @@ minVariations: 0
 postprocessing:
   trimAndFit: false
   minDimension: 64
-  paletteMode: strict
+  paletteMode: none
 `.trim();
 
 /**
@@ -108,7 +108,7 @@ minVariations: 0
 postprocessing:
   trimAndFit: false
   minDimension: 64
-  paletteMode: strict
+  paletteMode: none
 `.trim();
 
 /** Build a valid, ELIGIBLE (real, high-quality, typed) generated-manifest entry. */

@@ -191,8 +191,8 @@ a signal to update the per-type default instead.
    (favoring this brief's `type`), send them plus the prompt to the configured
    image provider, get back a 4×4 sheet PNG.
 4. Slice the sheet into 16 native-resolution variants.
-5. Post-process each variant: background removal, palette quantisation,
-   nearest-neighbor downscale to `size`.
+5. Post-process each variant: background removal, optional native pixel-mesh
+   recovery for strict briefs, then nearest-neighbor resize to `size`.
 6. Score each post-processed variant with the universal + type-specific
    sensors using the brief's thresholds.
 7. Write everything to `generated/<name>/` — raw sheet, per-variant PNG,

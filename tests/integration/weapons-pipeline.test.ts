@@ -53,7 +53,7 @@ const SWORD_BRIEF: Brief = {
   variations: [],
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
-  postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+  postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'none' },
   frameSequence: { enabled: false, frameCount: 3, frameRate: 8, loop: true },
 };
 
@@ -61,7 +61,7 @@ function runAllSensors(
   rawPng: Buffer,
   brief: Brief,
 ): { passed: string[]; failed: { sensor: string; reason: string }[] } {
-  const processed = postprocess(rawPng, brief, PALETTE);
+  const processed = postprocess(rawPng, brief);
   const decoded = decodeSprite(processed);
   const results = [
     ...universalSensors(decoded, brief, PALETTE),

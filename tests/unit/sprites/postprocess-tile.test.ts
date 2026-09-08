@@ -1,17 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
-import {
-  briefSchema,
-  type Brief,
-  type PaletteColors,
-} from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 import { postprocess } from '../../../scripts/sprites/postprocess.js';
-
-const PALETTE: PaletteColors = [
-  [0, 0, 0],
-  [32, 96, 144],
-  [255, 255, 255],
-];
 
 function makeTileBrief(): Brief {
   return briefSchema.parse({
@@ -71,7 +61,7 @@ function alphaAt(png: PNG, x: number, y: number): number {
 
 describe('tile postprocess', () => {
   it('slices transparent cell padding and resizes tiles exactly edge-to-edge', () => {
-    const out = PNG.sync.read(postprocess(makeBufferedTileFixture(), makeTileBrief(), PALETTE));
+    const out = PNG.sync.read(postprocess(makeBufferedTileFixture(), makeTileBrief()));
 
     expect(out.width).toBe(256);
     expect(out.height).toBe(256);
@@ -86,7 +76,7 @@ describe('tile postprocess', () => {
   });
 
   it('keeps opaque tile corners instead of applying mob-style background removal', () => {
-    const out = PNG.sync.read(postprocess(makeOpaqueCornerTileFixture(), makeTileBrief(), PALETTE));
+    const out = PNG.sync.read(postprocess(makeOpaqueCornerTileFixture(), makeTileBrief()));
 
     expect(out.width).toBe(256);
     expect(out.height).toBe(256);

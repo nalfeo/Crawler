@@ -602,6 +602,18 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install sprite post-processing dependencies
+        run: |
+          python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt
+          python -m pip check
+
+      - name: Validate sprite post-processing adapter
+        run: python -m py_compile scripts/sprites/proper-pixel-art-bridge.py
+
       - name: Sprite pipeline tests
         run: npx vitest run --project sprites --reporter=verbose
 

@@ -287,6 +287,29 @@ test('the workflow uses the Backlog, Briefs, and Sprites information architectur
   assert.match(html, /chooseButton\.disabled = chosen/);
 });
 
+test('variant thumbnails preserve the source sprite aspect ratio instead of squashing to a square', () => {
+  const html = renderHtml('x');
+  assert.match(
+    html,
+    /\.card \.thumb \{ max-width: 100%; width: auto; height: auto; max-height: 160px;/,
+  );
+  assert.match(html, /object-fit: contain/);
+  assert.doesNotMatch(html, /\.card \.thumb \{ width: 96px; height: 96px;/);
+});
+
+test('Force reprocess requires confirmation before discarding post-process customizations', () => {
+  const html = renderHtml('x');
+  assert.match(
+    html,
+    /text: 'Force reprocess',\s*title: 'Re-slice the stored sheet, clear stale post-process settings, and regenerate variants',\s*onclick: function \(\) \{\s*if \(!window\.confirm\(/,
+  );
+  // The (non-destructive) Judge run action must NOT require confirmation.
+  const judgeStart = html.indexOf("text: 'Judge run'");
+  assert.ok(judgeStart >= 0);
+  const judgeBlock = html.slice(judgeStart, judgeStart + 200);
+  assert.doesNotMatch(judgeBlock, /window\.confirm/);
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));

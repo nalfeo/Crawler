@@ -80,6 +80,48 @@ describe('merge-train candidate validation sharding', () => {
     }
   });
 
+  it('provisions the candidate Python sprite adapter after materialization and fails closed', () => {
+    const spriteJob = loadWorkflow().jobs['sprite-tests'];
+    const steps = spriteJob?.steps ?? [];
+    const materializeIndex = steps.findIndex(
+      (step) => step.name === 'Materialize immutable candidate',
+    );
+    const setupPythonIndex = steps.findIndex((step) => step.uses === 'actions/setup-python@v5');
+    const provisionIndex = steps.findIndex(
+      (step) => step.name === 'Provision candidate sprite post-processing runtime',
+    );
+    const testIndex = steps.findIndex((step) => step.name === 'Run complete sprite-suite shard');
+    const provision = steps[provisionIndex]?.run ?? '';
+
+    expect(spriteJob?.['timeout-minutes']).toBeGreaterThanOrEqual(10);
+    expect(steps[setupPythonIndex]?.with?.['python-version']).toBe('3.12.10');
+    expect(provision).toContain('set -euo pipefail');
+    expect(provision).toContain(
+      `if [[ ! -e "$requirements" && ! -e "$bridge" ]]; then
+  echo "Candidate does not include the sprite post-processing runtime; skipping Python provisioning."
+  exit 0
+fi`,
+    );
+    expect(provision).toContain(
+      `if [[ ! -f "$requirements" || ! -f "$bridge" ]]; then
+  echo "::error::Candidate must include both $requirements and $bridge."
+  exit 1
+fi`,
+    );
+    expect(provision).toContain(
+      'python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt',
+    );
+    expect(provision).toContain('python -m pip check');
+    expect(provision).toContain('python -m py_compile scripts/sprites/proper-pixel-art-bridge.py');
+    expect(provision).not.toMatch(/\|\|\s*true|continue-on-error/u);
+    expect(materializeIndex).toBeGreaterThan(-1);
+    expect(setupPythonIndex).toBeGreaterThan(-1);
+    expect(provisionIndex).toBeGreaterThan(-1);
+    expect(materializeIndex).toBeLessThan(setupPythonIndex);
+    expect(setupPythonIndex).toBeLessThan(provisionIndex);
+    expect(provisionIndex).toBeLessThan(testIndex);
+  });
+
   it('keeps candidate execution read-only and the trusted publisher checkout-free', () => {
     const doc = loadWorkflow();
     expect(doc.permissions).toEqual({ contents: 'read' });
