@@ -1,8 +1,11 @@
 # ADR: Floor 6 construction interaction + render parity
 
-- Date: 2026-09-08
-- Status: Accepted
-- Related issue: #4452
+## Status
+
+Accepted
+
+**Date:** 2026-09-08
+**Related issue:** #4452
 
 ## Context
 
