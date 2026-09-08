@@ -107,7 +107,8 @@ const STYLES = `
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .card { border: 1px solid rgba(148,163,184,0.25); border-radius: 8px; padding: 10px; background: #0b1220;
     display: flex; flex-direction: column; gap: 6px; }
-  .card .thumb { width: 96px; height: 96px; image-rendering: pixelated; align-self: center;
+  .card .thumb { max-width: 100%; width: auto; height: auto; max-height: 160px;
+    image-rendering: pixelated; align-self: center; object-fit: contain;
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; }
@@ -769,7 +770,11 @@ const CLIENT_SCRIPT = String.raw`
     toolbar.appendChild(h('button', {
       type: 'button',
       text: 'Force reprocess',
+      title: 'Re-slice the stored sheet, clear stale post-process settings, and regenerate variants',
       onclick: function () {
+        if (!window.confirm('Force reprocess will discard all post-process customizations for this sprite sheet and restore every setting to its default. Continue?')) {
+          return;
+        }
         workflowPost('/api/workflow/postprocess', {
           briefId: sel.briefId, runId: sel.runId, force: true, reset: true
         }, 'Reprocessing displayed run…');

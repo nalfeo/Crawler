@@ -75,7 +75,7 @@ minVariations: 0
 postprocessing:
   trimAndFit: false
   minDimension: 64
-  paletteMode: strict
+  paletteMode: none
 judge:
   enabled: true
   maxVariants: 16
@@ -110,8 +110,8 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
  * Each variant stamps a unique 32×32 block centred on a different sampling
  * point along the opaque blade silhouette.  The block colour [0,0,0] is
  * palette-entry 0 (strict quantization keeps it black) and is distinct from
- * the base blade colour [192,192,200], so the processed PNG hashes differ
- * across all four variants — essential for the JudgeCache tests.
+ * the base blade colour [192,192,200], so the nearest-neighbor-resized PNG
+ * hashes differ across all four variants — essential for the JudgeCache tests.
  */
 function perturbedGoodSword(index: number): Buffer {
   // Sampling points: source (ox*32+16, oy*32+16) — all verified opaque

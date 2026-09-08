@@ -57,6 +57,22 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     }
   });
 
+  it('force reprocess resets persisted options and adopts the current raw-sheet grid', async () => {
+    const seed = await setup();
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: { force: true, reset: true, mode: 'reset' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.status).toBe('completed');
+    expect(body.summary.candidates).toHaveLength(4);
+    expect(body.summary.postprocessOverrides?.appliedMode).toBe('reset');
+  });
+
   it('rejects a non-string body.sheet with 400', async () => {
     const seed = await setup();
     const res = await app!.inject({

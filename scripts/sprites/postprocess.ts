@@ -1,8 +1,8 @@
 /**
  * Sprite post-processor.
  *
- * Pure, deterministic transformation from a raw generated PNG to the
- * game-ready PNG that gets handed to sensors and (eventually) the engine.
+ * Deterministic transformation from a raw generated PNG to the game-ready PNG
+ * that gets handed to sensors and (eventually) the engine.
  *
  * Steps, in this exact order:
  *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels,
@@ -10,20 +10,21 @@
  *   2. Transparent trim: crop to the opaque bounding box, then re-pad with a
  *      small proportional transparent margin (~6% of the larger subject
  *      dimension, min 1px) on each edge so the subject stays off the frame edge.
- *   3. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
- *   4. Background re-removal: re-key against the original background colours to
+ *   3. Pixel-art mesh recovery (strict mode only), before resizing.
+ *   4. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
+ *   5. Background re-removal: re-key against the original background colours to
  *      clear pink fringe that nearest-neighbor stretching re-exposes.
- *   5. Speckle cleanup, palette quantize (strict only), alpha hard-threshold,
+ *   6. Speckle cleanup, alpha hard-threshold,
  *      and optional trim-and-fit.
  *
- * Purity contract:
+ * Determinism contract:
  *   - No clocks (no Date.now, no performance.now).
  *   - No randomness (no Math.random; if you need ties broken, break them
  *     deterministically on index).
- *   - No environment reads (no process.env).
  *   - No network access or environment-driven behavior.
- *   - Pipeline templates are loaded from disk via a cached resolver; image
- *     processing itself remains pure for a given raw PNG + brief + palette.
+ *   - The strict-mode mesh-recovery stage invokes the pinned local Python
+ *     adapter; it has no network access and receives all image data via stdin.
+ *   - Pipeline templates are loaded from disk via a cached resolver.
  *
  * Note on signature: the spec writes `(rawPng, brief) => Buffer`, but the brief
  * carries a palette *id*, not the resolved color list. To keep this function
