@@ -701,7 +701,7 @@ describe('Goobers lifecycle ownership', () => {
     // can never outlive PR publication.
     expect(tasks['open-pr'].next).toBe('pr-opened-gate');
     expect(gates['pr-opened-gate'].branches.pass).toBe('close-out');
-    expect(gates['pr-opened-gate'].branches.fail).toBe('close-out');
+    expect(gates['pr-opened-gate'].branches.fail).toBe('needs-remediation');
     expect(tasks['close-out'].inputs.status).toBe('in-review');
     for (const name of ['close-out', 'park-needs-human', 'needs-remediation']) {
       const task = tasks[name];
