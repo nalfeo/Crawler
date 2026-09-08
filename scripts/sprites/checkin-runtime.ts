@@ -23,18 +23,26 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   ASSET_CHECKIN_LABEL,
   CheckinError,
+  reconcileQueuedContent,
   type CheckinAsset,
   type CheckinManifest,
   type CheckinRunnerDeps,
+  type DurableQueueAssetIdentity,
+  type DurableQueueAssetInspection,
   type Exec,
   type ExecResult,
   type QueuedAssetCheckin,
 } from './checkin.js';
 import { parseAssetIssueBody } from './asset-issues.js';
-import { composeManifestFromShards, shardPathForKey } from './generated-shards.js';
+import {
+  assertSafeManifestKey,
+  composeManifestFromShards,
+  shardPathForKey,
+} from './generated-shards.js';
 
 export const realExec: Exec = (command, args, options) =>
   new Promise<ExecResult>((resolve) => {
@@ -44,6 +52,7 @@ export const realExec: Exec = (command, args, options) =>
       {
         cwd: options?.cwd,
         maxBuffer: 16 * 1024 * 1024,
+        encoding: null,
         // Default to the parent env so existing callers are unchanged; a caller
         // may override to inject a non-interactive git env.
         env: options?.env,
@@ -52,6 +61,7 @@ export const realExec: Exec = (command, args, options) =>
         timeout: options?.timeoutMs,
       },
       (error, stdout, stderr) => {
+        const stdoutBytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
         // A killed-on-timeout child reports `error.killed === true` (often with a
         // null exit code); normalize that to a non-zero code with a clear stderr
         // so callers see a failure instead of a spurious success.
@@ -67,7 +77,8 @@ export const realExec: Exec = (command, args, options) =>
             ? `command timed out after ${options.timeoutMs}ms: ${command} ${args.join(' ')}`
             : '';
         resolve({
-          stdout: String(stdout),
+          stdout: stdoutBytes.toString(),
+          stdoutBytes,
           stderr: timeoutNote ? `${timeoutNote}\n${String(stderr)}` : String(stderr),
           code,
         });
@@ -264,6 +275,146 @@ function makeListQueuedAssets(
   };
 }
 
+const CHECKIN_SUBPROCESS_TIMEOUT_MS = 120_000;
+
+function nonInteractiveCheckinEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: '',
+    GCM_INTERACTIVE: 'never',
+    GIT_OPTIONAL_LOCKS: '0',
+    LC_ALL: 'C',
+    LANG: 'C',
+  };
+}
+
+function assertSafeDurableQueueAsset(asset: DurableQueueAssetIdentity): void {
+  assertSafeManifestKey(asset.manifestKey);
+  if (
+    !asset.assetPath.startsWith('generated/') ||
+    asset.assetPath.includes('\\') ||
+    asset.assetPath
+      .split('/')
+      .some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`Unsafe generated asset path: "${asset.assetPath}"`);
+  }
+}
+
+async function inspectDurableQueueAssetAtRef(
+  repoRoot: string,
+  exec: Exec,
+  inspectionRef: string,
+  branch: string,
+  asset: DurableQueueAssetIdentity,
+): Promise<DurableQueueAssetInspection> {
+  const shardPath = `public/assets/generated/entries/${asset.manifestKey}.json`;
+  const pngPath = `public/assets/${asset.assetPath}`;
+  const [shard, png] = await Promise.all([
+    exec('git', ['show', `${inspectionRef}:${shardPath}`], { cwd: repoRoot }),
+    exec('git', ['show', `${inspectionRef}:${pngPath}`], { cwd: repoRoot }),
+  ]);
+  if (shard.code !== 0 && png.code !== 0) return { reconciliation: 'new', branch };
+  if (shard.code !== 0 || png.code !== 0) return { reconciliation: 'ambiguous', branch };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(shard.stdout);
+  } catch {
+    return { reconciliation: 'ambiguous', branch };
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { reconciliation: 'ambiguous', branch };
+  }
+  const queuedSpriteName = (parsed as { spriteName?: unknown }).spriteName;
+  const queuedAssetPath = (parsed as { assetPath?: unknown }).assetPath;
+  const queuedHash = (parsed as { contentHash?: unknown }).contentHash;
+  if (queuedSpriteName !== asset.manifestKey || queuedAssetPath !== asset.assetPath) {
+    return { reconciliation: 'content-conflict', branch };
+  }
+  if (asset.manifestEntry !== undefined && !isDeepStrictEqual(parsed, asset.manifestEntry)) {
+    return { reconciliation: 'content-conflict', branch };
+  }
+  if (typeof queuedHash !== 'string' || png.stdoutBytes === undefined) {
+    return { reconciliation: 'ambiguous', branch };
+  }
+  const actualQueuedHash = createHash('sha256').update(png.stdoutBytes).digest('hex');
+  if (actualQueuedHash !== queuedHash) {
+    return { reconciliation: 'ambiguous', branch };
+  }
+  return {
+    reconciliation: reconcileQueuedContent({ contentHash: queuedHash }, asset.contentHash),
+    branch,
+  };
+}
+
+function makeInspectDurableQueueAssets(
+  repoRoot: string,
+  exec: Exec,
+): NonNullable<CheckinRunnerDeps['inspectDurableQueueAssets']> {
+  return async (assets, remote = 'origin'): Promise<readonly DurableQueueAssetInspection[]> => {
+    for (const asset of assets) assertSafeDurableQueueAsset(asset);
+    const branch = 'assets/queue';
+    const listed = await exec('git', ['ls-remote', '--heads', remote, `refs/heads/${branch}`], {
+      cwd: repoRoot,
+    });
+    if (listed.code !== 0) {
+      throw new CheckinError(
+        'git-failed',
+        `Failed to inspect ${branch}: ${listed.stderr || listed.stdout || 'git ls-remote failed'}`,
+      );
+    }
+    if (listed.stdout.trim() === '') {
+      return assets.map(() => ({ reconciliation: 'new' as const, branch }));
+    }
+
+    const inspectionRef = `refs/queue-inspect/${randomUUID()}`;
+    const fetched = await exec(
+      'git',
+      ['fetch', '--no-tags', remote, `+refs/heads/${branch}:${inspectionRef}`],
+      { cwd: repoRoot },
+    );
+    if (fetched.code !== 0) {
+      throw new CheckinError(
+        'git-failed',
+        `Failed to fetch ${branch}: ${fetched.stderr || fetched.stdout || 'git fetch failed'}`,
+      );
+    }
+
+    try {
+      const inspections: DurableQueueAssetInspection[] = [];
+      const assetReadConcurrency = 8;
+      for (let offset = 0; offset < assets.length; offset += assetReadConcurrency) {
+        inspections.push(
+          ...(await Promise.all(
+            assets
+              .slice(offset, offset + assetReadConcurrency)
+              .map((asset) =>
+                inspectDurableQueueAssetAtRef(repoRoot, exec, inspectionRef, branch, asset),
+              ),
+          )),
+        );
+      }
+      return inspections;
+    } finally {
+      await exec('git', ['update-ref', '-d', inspectionRef], { cwd: repoRoot });
+    }
+  };
+}
+
+function makeInspectDurableQueueAsset(
+  inspectBatch: NonNullable<CheckinRunnerDeps['inspectDurableQueueAssets']>,
+): NonNullable<CheckinRunnerDeps['inspectDurableQueueAsset']> {
+  return async (asset, remote = 'origin'): Promise<DurableQueueAssetInspection> => {
+    const [inspection] = await inspectBatch([asset], remote);
+    if (inspection === undefined) {
+      throw new CheckinError('git-failed', 'Canonical assets/queue inspection returned no result.');
+    }
+    return inspection;
+  };
+}
+
 /**
  * How long (ms) before an unrenewed lock is considered abandoned/crashed.
  * Must be comfortably longer than LOCK_HEARTBEAT_MS.
@@ -404,9 +555,20 @@ export function makeCheckinFileLock(repoRoot: string): <T>(fn: () => Promise<T>)
 export function createDefaultCheckinDeps(
   repoRoot: string,
   env: NodeJS.ProcessEnv = process.env,
+  execOverride?: Exec,
 ): CheckinRunnerDeps {
+  const subprocessEnv = nonInteractiveCheckinEnv(env);
+  const exec: Exec =
+    execOverride ??
+    ((command, args, options) =>
+      realExec(command, args, {
+        ...options,
+        env: options?.env ?? subprocessEnv,
+        timeoutMs: options?.timeoutMs ?? CHECKIN_SUBPROCESS_TIMEOUT_MS,
+      }));
+  const inspectDurableQueueAssets = makeInspectDurableQueueAssets(repoRoot, exec);
   return {
-    exec: realExec,
+    exec,
     copyArtSurface,
     makeTempDir: () => Promise.resolve(mkdtempSync(path.join(tmpdir(), 'asset-checkin-'))),
     removeDir: (dir) => {
@@ -415,6 +577,8 @@ export function createDefaultCheckinDeps(
     },
     readManifest: makeReadManifest(repoRoot),
     listQueuedAssets: makeListQueuedAssets(repoRoot),
+    inspectDurableQueueAsset: makeInspectDurableQueueAsset(inspectDurableQueueAssets),
+    inspectDurableQueueAssets,
     withCrossProcessLock: makeCheckinFileLock(repoRoot),
     env,
   };

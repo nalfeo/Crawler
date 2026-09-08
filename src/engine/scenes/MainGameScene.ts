@@ -1227,8 +1227,13 @@ export class MainGameScene extends Phaser.Scene {
   create(): void {
     markGame('game:create-start');
     const worldSeed = this.options.worldSeed ?? 42;
+    const generatedSpriteRegistry =
+      (this.game.registry.get(GENERATED_SPRITE_REGISTRY_KEY) as
+        | GeneratedSpriteRegistry
+        | undefined) ?? null;
     this.world = createGameWorld({
       seed: worldSeed,
+      generatedSpriteRegistry,
       generatedEquipmentRunKey:
         this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed),
     });

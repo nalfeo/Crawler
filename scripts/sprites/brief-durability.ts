@@ -18,7 +18,14 @@
  * `sidecar/workflow-state.ts`, which is intentionally pure (key derivation only).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { workflowBriefKey } from './sidecar/workflow-state.js';
 import type { RunStore } from './store/types.js';
@@ -89,13 +96,33 @@ export async function materializeBriefFromStore(
   repoRoot: string,
   absPath: string,
 ): Promise<boolean> {
-  if (existsSync(absPath)) return true;
   const rel = toRepoRelativePath(repoRoot, absPath);
   if (!isRepoConfined(rel)) return false;
+  const segments = rel.split('/');
+  let cursor = repoRoot;
+  for (const segment of segments) {
+    cursor = path.join(cursor, segment);
+    try {
+      if (lstatSync(cursor).isSymbolicLink()) {
+        throw new Error(`Refusing to materialize through symbolic link: ${cursor}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  if (existsSync(absPath)) return true;
   const key = workflowBriefKey(rel);
   if (!(await store.has(key))) return false;
   const bytes = await store.get(key);
-  mkdirSync(path.dirname(absPath), { recursive: true });
-  writeFileSync(absPath, bytes);
+  const parent = path.dirname(absPath);
+  mkdirSync(parent, { recursive: true });
+  const realRoot = realpathSync(repoRoot);
+  const realParent = realpathSync(parent);
+  if (!isRepoConfined(toRepoRelativePath(realRoot, realParent))) {
+    throw new Error(`Refusing to materialize outside repository root: ${absPath}`);
+  }
+  // Exclusive creation also refuses a dangling symlink inserted after the
+  // lstat walk instead of following it outside the repository.
+  writeFileSync(absPath, bytes, { flag: 'wx' });
   return true;
 }

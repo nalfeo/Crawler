@@ -428,8 +428,10 @@ export interface GameWorld {
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
   /**
-   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
-   * recycled entities without consulting or mutating gameplay state.
+   * Monotonic spawn identity per EID. Deterministic sprite variant selection
+   * includes it so recycled entities cannot inherit appearance or weapon-anchor
+   * state; because authored weapon anchors feed projectile origins, this value
+   * is simulation-load-bearing and must be assigned identically in every runtime.
    */
   entityRenderGeneration: Uint32Array;
   /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
@@ -1005,6 +1007,13 @@ export interface CreateWorldOptions {
   floor?: number;
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
+  /**
+   * Accepted generated-sprite variants available at spawn time. The visual
+   * runtime injects the manifest-backed registry; default Node headless runs
+   * load the same committed shard tree. Explicit `null` is reserved for tests
+   * that intentionally exercise the no-registry path.
+   */
+  generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Explicit immutable run identity required before generated equipment can be created. */
   generatedEquipmentRunKey?: string;
   /** Frozen-content generation policy; omitted to use the v1 contract policy. */
@@ -1176,7 +1185,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     enemyProjectileArchetypeKeys: new Map(),
-    generatedSpriteRegistry: null,
+    generatedSpriteRegistry: options.generatedSpriteRegistry ?? null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),
     questEvents: [],

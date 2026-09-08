@@ -23,7 +23,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -31,22 +32,30 @@ import { planAssetCheckin } from '../../../scripts/sprites/checkin.js';
 import type { Exec, ExecResult } from '../../../scripts/sprites/checkin.js';
 import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
 import {
+  assertLifecycleDeletionMatchesShard,
   assertArtSurfaceModes,
   assertArtSurfaceOnly,
   computeClosingIssueNumbers,
+  filterPromotablePaths,
+  findLifecycleOrphanCollisions,
   findLandedPromotion,
   formatSourceTrailers,
   isArtSurfacePath,
+  partitionLifecycleDeletions,
   parseSourceTrailers,
   ReconcileError,
   runReconcile,
   scanOrphanedCheckinBranches,
+  selectAuthorizedLifecycleDeletions,
   tidyUpLandedPromotion,
   type ReconcileDeps,
 } from '../../../scripts/sprites/reconcile-queue.js';
 
 const FIXED_NOW = new Date('2026-07-24T12:00:00.000Z');
-const TEST_CONTENT_HASH = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+]);
+const TEST_CONTENT_HASH = createHash('sha256').update(PNG_BYTES).digest('hex');
 
 // ---------------------------------------------------------------------------
 // Layer 1: pure-unit trust-boundary guard
@@ -59,6 +68,150 @@ describe('isArtSurfacePath', () => {
     expect(isArtSurfacePath('public/assets/generated/skull-mace-var-2.png')).toBe(true);
     expect(isArtSurfacePath('public/assets/generated/nested/deep.png')).toBe(true);
     expect(isArtSurfacePath('briefs/enemies/panda-boba-sniper.yaml')).toBe(true);
+  });
+
+  describe('filterPromotablePaths', () => {
+    const candidatePng = Buffer.from('candidate-png');
+    const candidateHash = createHash('sha256').update(candidatePng).digest('hex');
+    const candidateEntry = (key: string) => ({
+      briefId: key,
+      spriteName: key,
+      assetPath: `generated/${key}.png`,
+      approvedAt: '2026-09-06T00:00:00.000Z',
+      sourceRun: `generated/runs/${key}/run-0`,
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '1',
+      judgeScore: null,
+      contentHash: candidateHash,
+    });
+
+    it('bounds candidate shard reads to eight concurrent git processes', async () => {
+      const keys = Array.from({ length: 10 }, (_, index) => `asset-${index}-var-0`);
+      const paths = keys.flatMap((key) => [
+        `public/assets/generated/entries/${key}.json`,
+        `public/assets/generated/${key}.png`,
+      ]);
+      let activeShows = 0;
+      let maxActiveShows = 0;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout:
+              ref === 'source'
+                ? paths.map((candidate) => `100644 blob ${'a'.repeat(40)}\t${candidate}`).join('\n')
+                : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'show') {
+          activeShows += 1;
+          maxActiveShows = Math.max(maxActiveShows, activeShows);
+          await Promise.resolve();
+          activeShows -= 1;
+          if (String(args[1]).endsWith('.png')) {
+            return {
+              code: 0,
+              stdout: candidatePng.toString(),
+              stdoutBytes: candidatePng,
+              stderr: '',
+            };
+          }
+          const shardPath = String(args[1]).split(':', 2)[1] ?? '';
+          const key = shardPath
+            .replace('public/assets/generated/entries/', '')
+            .replace(/\.json$/u, '');
+          return {
+            code: 0,
+            stdout: JSON.stringify(candidateEntry(key)),
+            stderr: '',
+          };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(filterPromotablePaths(exec, '/repo', 'base', 'source', paths)).resolves.toEqual(
+        paths,
+      );
+      expect(maxActiveShows).toBe(8);
+    });
+
+    it('rejects a candidate shard whose authored PNG is absent from the source snapshot', async () => {
+      const key = 'missing-png-var-0';
+      const shardPath = `public/assets/generated/entries/${key}.json`;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout: ref === 'source' ? `100644 blob ${'a'.repeat(40)}\t${shardPath}` : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'show') {
+          if (String(args[1]).endsWith('.png')) {
+            return { code: 1, stdout: '', stderr: 'missing object' };
+          }
+          return { code: 0, stdout: JSON.stringify(candidateEntry(key)), stderr: '' };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(
+        filterPromotablePaths(exec, '/repo', 'base', 'source', [shardPath]),
+      ).rejects.toMatchObject({
+        kind: 'invalid-state',
+        message: expect.stringContaining('references missing PNG'),
+      });
+    });
+
+    it.each([
+      ['has no declared hash', undefined],
+      ['has a mismatched hash', 'f'.repeat(64)],
+    ])('rejects a PNG-only change whose owner shard %s', async (_label, contentHash) => {
+      const key = 'png-only-var-0';
+      const pngPath = `public/assets/generated/${key}.png`;
+      const shardPath = `public/assets/generated/entries/${key}.json`;
+      const exec: Exec = async (_command, args) => {
+        if (args.includes('ls-tree')) {
+          const ref = args[args.indexOf('ls-tree') + 2];
+          return {
+            code: 0,
+            stdout: ref === 'source' ? `100644 blob ${'a'.repeat(40)}\t${pngPath}` : '',
+            stderr: '',
+          };
+        }
+        if (args.includes('log')) return { code: 0, stdout: '', stderr: '' };
+        if (args[0] === 'grep') {
+          return { code: 0, stdout: `source:${shardPath}\n`, stderr: '' };
+        }
+        if (args[0] === 'show' && String(args[1]).endsWith('.json')) {
+          const entry = { ...candidateEntry(key), contentHash };
+          if (contentHash === undefined) delete entry.contentHash;
+          return { code: 0, stdout: JSON.stringify(entry), stderr: '' };
+        }
+        if (args[0] === 'show' && String(args[1]).endsWith('.png')) {
+          return {
+            code: 0,
+            stdout: candidatePng.toString(),
+            stdoutBytes: candidatePng,
+            stderr: '',
+          };
+        }
+        return { code: 1, stdout: '', stderr: 'unexpected command' };
+      };
+
+      await expect(
+        filterPromotablePaths(exec, '/repo', 'base', 'source', [pngPath]),
+      ).rejects.toMatchObject({
+        kind: 'invalid-state',
+        message: expect.stringContaining('does not match the SHA-256'),
+      });
+    });
   });
 
   it('rejects paths outside the art surface', () => {
@@ -107,6 +260,259 @@ describe('assertArtSurfaceOnly', () => {
       expect((err as ReconcileError).kind).toBe('untrusted-diff');
       expect((err as ReconcileError).message).toContain('src/core/combat/damage.ts');
     }
+  });
+});
+
+describe('selectAuthorizedLifecycleDeletions', () => {
+  const annotations = JSON.stringify({
+    version: 1,
+    sprites: {
+      'queue-goon-var-3': {
+        disliked: true,
+        tombstone: {
+          manifestKey: 'queue-goon-var-3',
+          conceptId: 'queue-goon',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
+          variantIndex: 3,
+          annotationKeys: ['queue-goon-v2-var-3'],
+        },
+      },
+    },
+  });
+
+  it('authorizes only a complete tombstoned shard and PNG pair', () => {
+    expect(
+      selectAuthorizedLifecycleDeletions(
+        [
+          'public/assets/generated/entries/queue-goon-var-3.json',
+          'public/assets/generated/queue-goon-var-3.png',
+          'public/assets/generated/unrelated.png',
+        ],
+        annotations,
+      ),
+    ).toEqual([
+      {
+        tombstone: {
+          manifestKey: 'queue-goon-var-3',
+          conceptId: 'queue-goon',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
+          variantIndex: 3,
+          annotationKeys: ['queue-goon-v2-var-3'],
+        },
+        paths: [
+          'public/assets/generated/entries/queue-goon-var-3.json',
+          'public/assets/generated/queue-goon-var-3.png',
+        ],
+      },
+    ]);
+  });
+
+  it('rejects an incomplete tombstoned deletion', () => {
+    expect(() =>
+      selectAuthorizedLifecycleDeletions(
+        ['public/assets/generated/entries/queue-goon-var-3.json'],
+        annotations,
+      ),
+    ).toThrow(/shard and PNG must be deleted together/);
+  });
+
+  it('rejects a well-formed tombstone whose provenance differs from the main shard', () => {
+    const deletion = selectAuthorizedLifecycleDeletions(
+      [
+        'public/assets/generated/entries/queue-goon-var-3.json',
+        'public/assets/generated/queue-goon-var-3.png',
+      ],
+      annotations,
+    )[0]!;
+
+    expect(() =>
+      assertLifecycleDeletionMatchesShard(
+        deletion,
+        JSON.stringify({
+          spriteName: 'queue-goon-var-3',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/a-different-run',
+          variantIndex: 3,
+        }),
+      ),
+    ).toThrow(/does not match the current main shard/);
+  });
+
+  it('rejects a tombstone whose concept differs from the main shard', () => {
+    const deletion = selectAuthorizedLifecycleDeletions(
+      [
+        'public/assets/generated/entries/queue-goon-var-3.json',
+        'public/assets/generated/queue-goon-var-3.png',
+      ],
+      annotations,
+    )[0]!;
+
+    expect(() =>
+      assertLifecycleDeletionMatchesShard(
+        deletion,
+        JSON.stringify({
+          briefId: 'unrelated-bat',
+          spriteName: 'queue-goon-var-3',
+          assetPath: 'generated/queue-goon-var-3.png',
+          sourceRun: 'generated/runs/queue-goon-v2/run-a',
+          variantIndex: 3,
+        }),
+      ),
+    ).toThrow(/does not match the current main shard/);
+  });
+});
+
+/**
+ * A single bad tombstone used to throw straight out of `runReconcile`, so one
+ * corrupt lifecycle record aborted the whole hourly cycle and every unrelated,
+ * perfectly valid promotion with it. Refusal must stay absolute per deletion,
+ * but scoped to that deletion.
+ */
+describe('partitionLifecycleDeletions (per-tombstone fail-closed)', () => {
+  const tombstone = (key: string, overrides: Record<string, unknown> = {}) => ({
+    disliked: true,
+    tombstone: {
+      manifestKey: key,
+      conceptId: 'queue-goon',
+      assetPath: `generated/${key}.png`,
+      sourceRun: `generated/runs/${key}/run-0`,
+      variantIndex: 0,
+      annotationKeys: [key],
+      ...overrides,
+    },
+  });
+  const pathsFor = (key: string): string[] => [
+    `public/assets/generated/entries/${key}.json`,
+    `public/assets/generated/${key}.png`,
+  ];
+
+  it('withholds a half-deleted pair by its exact deleted path and still authorizes the healthy one', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'partial-var-1': tombstone('partial-var-1'),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), 'public/assets/generated/entries/partial-var-1.json'],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toEqual([
+      {
+        annotationKey: 'partial-var-1',
+        reason: expect.stringContaining('shard and PNG must be deleted together'),
+        paths: ['public/assets/generated/entries/partial-var-1.json'],
+      },
+    ]);
+  });
+
+  it('withholds a malformed tombstone without discarding an unrelated valid deletion', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'broken-var-1': tombstone('broken-var-1', { variantIndex: 'not-a-number' }),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), ...pathsFor('broken-var-1')],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.annotationKey).toBe('broken-var-1');
+    expect(rejected[0]?.reason).toMatch(/Invalid disliked-sprite tombstone/);
+    expect(rejected[0]?.paths).toEqual(pathsFor('broken-var-1').sort());
+  });
+
+  it('withholds a tombstone missing the persisted lifecycle identity fields', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        'good-var-0': tombstone('good-var-0'),
+        'broken-var-1': tombstone('broken-var-1', {
+          conceptId: undefined,
+          annotationKeys: undefined,
+        }),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      [...pathsFor('good-var-0'), ...pathsFor('broken-var-1')],
+      document,
+    );
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['good-var-0']);
+    expect(rejected).toEqual([
+      {
+        annotationKey: 'broken-var-1',
+        reason: 'Invalid disliked-sprite tombstone "broken-var-1" on assets/queue.',
+        paths: pathsFor('broken-var-1').sort(),
+      },
+    ]);
+  });
+
+  it('ignores malformed historical tombstones unrelated to the current deletion set', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: {
+        historical: tombstone('historical', { variantIndex: 'not-a-number' }),
+        current: tombstone('current'),
+      },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(pathsFor('current'), document);
+
+    expect(authorized.map((item) => item.tombstone.manifestKey)).toEqual(['current']);
+    expect(rejected).toEqual([]);
+  });
+
+  it('detects orphan overlays that would resurrect an authorized deletion', () => {
+    const deletion = {
+      tombstone: {
+        manifestKey: 'rat-var-0',
+        conceptId: 'rat',
+        assetPath: 'generated/rat-var-0.png',
+        sourceRun: 'generated/runs/rat/run-0',
+        variantIndex: 0,
+        annotationKeys: ['rat-var-0'],
+      },
+      paths: pathsFor('rat-var-0') as [string, string],
+    } as const;
+
+    expect(
+      findLifecycleOrphanCollisions([deletion], new Set(['public/assets/generated/rat-var-0.png'])),
+    ).toEqual([deletion]);
+    expect(findLifecycleOrphanCollisions([deletion], new Set(pathsFor('bat-var-0')))).toEqual([]);
+  });
+
+  it('never authorizes a traversal asset path', () => {
+    const document = JSON.stringify({
+      version: 1,
+      sprites: { evil: tombstone('evil', { assetPath: 'generated/../../etc/passwd' }) },
+    });
+
+    const { authorized, rejected } = partitionLifecycleDeletions(
+      ['public/assets/generated/entries/evil.json'],
+      document,
+    );
+
+    expect(authorized).toEqual([]);
+    expect(rejected[0]?.annotationKey).toBe('evil');
+    // The traversal path is never named as a withheld path — only the safe one.
+    expect(rejected[0]?.paths).toEqual(['public/assets/generated/entries/evil.json']);
+  });
+
+  it('still throws on an unparseable annotations document', () => {
+    expect(() => partitionLifecycleDeletions([], 'not json')).toThrow(/invalid JSON/);
   });
 });
 
@@ -427,6 +833,8 @@ function makeFakeExec(config: FakeExecConfig): {
   const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
   const artDelta = config.artDelta ?? ['public/assets/generated/a.png'];
   const stagedNames = config.stagedNames ?? artDelta;
+  const fakePng = Buffer.from('control-flow-png');
+  const fakePngHash = createHash('sha256').update(fakePng).digest('hex');
   let createdPromotePr = false;
   const exec: Exec = (command, args, options) => {
     calls.push({ command, args: [...args], cwd: options?.cwd });
@@ -483,6 +891,26 @@ function makeFakeExec(config: FakeExecConfig): {
       if (joined.includes('log') && args.includes('--raw')) {
         const isBase = joined.includes('origin/main');
         return respond({ stdout: isBase ? (config.baseHistoryRaw ?? '') : '' });
+      }
+      if (args[0] === 'grep') {
+        const assetPath = args[3] ?? '';
+        const key = assetPath.replace(/^generated\//u, '').replace(/\.png$/u, '');
+        return respond({
+          stdout: `origin/assets/queue:public/assets/generated/entries/${key}.json\n`,
+        });
+      }
+      if (args[0] === 'show') {
+        const target = args[1] ?? '';
+        if (target.endsWith('.png')) {
+          return respond({ stdout: fakePng.toString(), stdoutBytes: fakePng });
+        }
+        const key = /entries\/(.+)\.json$/u.exec(target)?.[1] ?? 'a';
+        return respond({
+          stdout: JSON.stringify({
+            ...validShardEntry(key),
+            contentHash: fakePngHash,
+          }),
+        });
       }
       if (args[0] === 'ls-tree') {
         return respond({ stdout: '' });
@@ -777,9 +1205,7 @@ describe('scanOrphanedCheckinBranches', () => {
 // Layer 3: real git (temp bare origin + live clone, mocked gh)
 // ---------------------------------------------------------------------------
 
-const PNG_BYTES = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-]);
+const PNG_CONTENT_HASH = TEST_CONTENT_HASH;
 
 /** Distinct PNG bytes that SUPERSEDE {@link PNG_BYTES} at the same asset path. */
 const SUPERSEDING_PNG_BYTES = Buffer.from([
@@ -805,6 +1231,25 @@ function catalogPath(repo: string): string {
 function writeJson(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function validShardEntry(
+  key: string,
+  assetPath = `generated/${key}.png`,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    briefId: key,
+    spriteName: key,
+    assetPath,
+    approvedAt: '2026-09-06T00:00:00.000Z',
+    sourceRun: `generated/runs/${key}/run-0`,
+    variantIndex: 0,
+    anchor: null,
+    sensorScore: '7/7',
+    judgeScore: null,
+    ...overrides,
+  };
 }
 
 interface Repos {
@@ -841,6 +1286,8 @@ function seedQueueWithArt(
   liveDir: string,
   keys: readonly string[],
   queueBranch = 'assets/queue',
+  assetPathForKey: (key: string) => string = (key) => `generated/${key}.png`,
+  annotations?: unknown,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-'));
@@ -851,13 +1298,20 @@ function seedQueueWithArt(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+      const assetPath = assetPathForKey(key);
+      const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
+      const shardPath = path.join(entriesDir, `${key}.json`);
+      mkdirSync(path.dirname(pngPath), { recursive: true });
+      mkdirSync(path.dirname(shardPath), { recursive: true });
+      writeFileSync(pngPath, PNG_BYTES);
       // One self-contained shard per asset — the sharded source of truth.
-      writeJson(path.join(entriesDir, `${key}.json`), {
-        assetPath: `generated/${key}.png`,
-        spriteName: key,
-        contentHash: TEST_CONTENT_HASH,
+      writeJson(shardPath, {
+        ...validShardEntry(key, assetPath),
+        contentHash: PNG_CONTENT_HASH,
       });
+    }
+    if (annotations !== undefined) {
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), annotations);
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue art: ${keys.join(', ')}`);
@@ -939,6 +1393,30 @@ function seedQueueWithAnnotations(
   }
 }
 
+function seedQueueWithRawAnnotations(liveDir: string, raw: string): void {
+  gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+  const wt = mkdtempSync(path.join(tmpdir(), 'rq-seed-raw-annotations-'));
+  try {
+    gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+    const annotationPath = path.join(
+      wt,
+      'public',
+      'assets',
+      'generated',
+      'sprite-editor-annotations.json',
+    );
+    mkdirSync(path.dirname(annotationPath), { recursive: true });
+    writeFileSync(annotationPath, raw);
+    gitSync(wt, 'add', '--', 'public/assets/generated/sprite-editor-annotations.json');
+    gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed sprite annotations');
+    const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+    gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+    rmSync(wt, { recursive: true, force: true });
+  }
+}
+
 /**
  * Push an art commit DIRECTLY onto origin/main (simulates the legacy asset-PR
  * flow that lands art without going through the queue branch).
@@ -947,6 +1425,7 @@ function addArtDirectlyToMain(
   liveDir: string,
   keys: readonly string[],
   bytes: Buffer = PNG_BYTES,
+  assetPathForKey: (key: string) => string = (key) => `generated/${key}.png`,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-main-'));
@@ -956,11 +1435,15 @@ function addArtDirectlyToMain(
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
     for (const key of keys) {
-      writeFileSync(path.join(genDir, `${key}.png`), bytes);
-      writeJson(path.join(entriesDir, `${key}.json`), {
-        assetPath: `generated/${key}.png`,
-        spriteName: key,
-        contentHash: TEST_CONTENT_HASH,
+      const assetPath = assetPathForKey(key);
+      const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
+      const shardPath = path.join(entriesDir, `${key}.json`);
+      mkdirSync(path.dirname(pngPath), { recursive: true });
+      mkdirSync(path.dirname(shardPath), { recursive: true });
+      writeFileSync(pngPath, bytes);
+      writeJson(shardPath, {
+        ...validShardEntry(key, assetPath),
+        contentHash: createHash('sha256').update(bytes).digest('hex'),
       });
     }
     gitSync(wt, 'add', '--', 'public/assets/generated');
@@ -979,7 +1462,16 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-edit-'));
   try {
     gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
-    writeFileSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`), bytes);
+    const pngPath = path.join(wt, 'public', 'assets', 'generated', `${key}.png`);
+    const shardPath = path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`);
+    mkdirSync(path.dirname(pngPath), { recursive: true });
+    writeFileSync(pngPath, bytes);
+    const shard = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, unknown>;
+    writeJson(shardPath, {
+      ...shard,
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+      approvedAt: '2026-09-06T00:00:02.000Z',
+    });
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `queue edit: ${key}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -996,7 +1488,11 @@ function editQueuedArt(liveDir: string, key: string, bytes: Buffer): void {
  * A→B→A re-approval where the user approves the same pixels again after main
  * has moved to a different version.
  */
-function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: string): void {
+function reapproveQueueWithOriginalBytesAndFreshShard(
+  liveDir: string,
+  key: string,
+  assetPath = `generated/${key}.png`,
+): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-reapprove-'));
   try {
@@ -1004,14 +1500,16 @@ function reapproveQueueWithOriginalBytesAndFreshShard(liveDir: string, key: stri
     const genDir = path.join(wt, 'public', 'assets', 'generated');
     const entriesDir = path.join(genDir, 'entries');
     mkdirSync(entriesDir, { recursive: true });
+    const pngPath = path.join(wt, 'public', 'assets', ...assetPath.split('/'));
+    mkdirSync(path.dirname(pngPath), { recursive: true });
+    mkdirSync(path.dirname(path.join(entriesDir, `${key}.json`)), { recursive: true });
     // PNG goes back to original bytes (A→B→A).
-    writeFileSync(path.join(genDir, `${key}.png`), PNG_BYTES);
+    writeFileSync(pngPath, PNG_BYTES);
     // Shard is re-stamped with a NEW blob (new contentHash), so it is not stale
     // by itself — the atomicity fix must withhold it alongside its paired PNG.
     writeJson(path.join(entriesDir, `${key}.json`), {
-      assetPath: `generated/${key}.png`,
-      spriteName: key,
-      contentHash: 'reapproved-' + TEST_CONTENT_HASH,
+      ...validShardEntry(key, assetPath, { approvedAt: '2026-09-06T00:00:01.000Z' }),
+      contentHash: PNG_CONTENT_HASH,
     });
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `re-approve original bytes: ${key}`);
@@ -1060,6 +1558,7 @@ function seedLegacyCheckinBranch(
   liveDir: string,
   branchName: string,
   keys: readonly string[],
+  annotations?: unknown,
 ): void {
   gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
   const wt = mkdtempSync(path.join(tmpdir(), 'rq-legacy-'));
@@ -1072,6 +1571,9 @@ function seedLegacyCheckinBranch(
     }
     // Simulate the pre-shard aggregate manifest.json (no entries/ shards).
     writeJson(path.join(genDir, 'manifest.json'), { version: 1, assets: keys });
+    if (annotations !== undefined) {
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), annotations);
+    }
     gitSync(wt, 'add', '--', 'public/assets/generated');
     gitSync(wt, 'commit', '--no-verify', '-m', `legacy checkin: ${keys.join(', ')}`);
     const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
@@ -1299,12 +1801,16 @@ function realGitFakeGhExec(gh: FakeGh): Exec {
   return (command, args, options) => {
     if (command === 'git') {
       try {
-        const stdout = execFileSync('git', args as string[], {
+        const stdoutBytes = execFileSync('git', args as string[], {
           cwd: options?.cwd,
-          encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
         });
-        return Promise.resolve({ stdout, stderr: '', code: 0 });
+        return Promise.resolve({
+          stdout: stdoutBytes.toString(),
+          stdoutBytes,
+          stderr: '',
+          code: 0,
+        });
       } catch (e) {
         const anyErr = e as { stdout?: Buffer | string; stderr?: Buffer | string; status?: number };
         return Promise.resolve({
@@ -1468,6 +1974,789 @@ describe('runReconcile (real git)', () => {
     ).toEqual({ version: 1, sprites: annotations });
   });
 
+  it('(c2) withholds an annotation-only candidate with invalid JSON', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithRawAnnotations(liveDir, '{not-json');
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual([
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    expect(gh.prs).toHaveLength(0);
+  });
+
+  it('(c2) reports the exact malformed tombstone that withholds annotation promotion', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithRawAnnotations(
+      liveDir,
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          'broken-var-0': {
+            favorite: false,
+            disliked: true,
+            comment: '',
+            tombstone: {
+              manifestKey: 'different-key',
+              assetPath: 'generated/broken-var-0.png',
+              sourceRun: 'generated/runs/broken/run-0',
+              variantIndex: 0,
+            },
+          },
+        },
+      }),
+    );
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual([
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      {
+        annotationKey: 'broken-var-0',
+        reason: 'Invalid disliked-sprite tombstone "broken-var-0" on assets/queue.',
+        paths: [],
+      },
+    ]);
+    expect(gh.prs).toHaveLength(0);
+  });
+
+  it('(c2) atomically withholds malformed annotations and their deletion set', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-lifecycle-delete-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const generatedDir = path.join(wt, 'public', 'assets', 'generated');
+      rmSync(path.join(generatedDir, `${key}.png`));
+      rmSync(path.join(generatedDir, 'entries', `${key}.json`));
+      writeFileSync(
+        path.join(generatedDir, 'sprite-editor-annotations.json'),
+        JSON.stringify({
+          version: 1,
+          sprites: {
+            historical: {
+              disliked: true,
+              tombstone: {
+                manifestKey: 'historical',
+                assetPath: 'generated/historical.png',
+                sourceRun: 'generated/runs/historical/run-0',
+                variantIndex: 'invalid',
+              },
+            },
+          },
+        }),
+      );
+      writeFileSync(path.join(generatedDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(generatedDir, 'entries', 'unrelated-var-0.json'), {
+        ...validShardEntry('unrelated-var-0'),
+        contentHash: PNG_CONTENT_HASH,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed deletion audit');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    expect(result.withheldPaths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      `public/assets/generated/${key}.png`,
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toContain(key);
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).not.toBe('');
+  });
+
+  it('(d6) atomically withholds nested PNG and shard together on A-to-B-to-A reapproval', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'equipment/weapons/skull-mace-var-2';
+    seedQueueWithArt(liveDir, [key]);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES);
+    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain(`public/assets/generated/${key}.png`);
+    expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
+  });
+
+  it('(d7) pairs a nested shard with its authored flattened PNG path', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'equipment/accessory/lucky-feather';
+    const assetPath = 'generated/equipment-accessory-lucky-feather.png';
+    const assetPathForKey = () => assetPath;
+    seedQueueWithArt(liveDir, [key], 'assets/queue', assetPathForKey);
+    const gh = new FakeGh();
+
+    const first = await runReconcile(liveDir, realDeps(gh));
+    expect(first.status).toBe('pr-open');
+    simulateSquashMerge(liveDir, gh, first.prNumber!);
+    addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES, assetPathForKey);
+    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key, assetPath);
+
+    const second = await runReconcile(liveDir, realDeps(gh));
+    expect(second.status).toBe('noop');
+    expect(second.withheldPaths).toContain(`public/assets/${assetPath}`);
+    expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(gh.prs.filter((pullRequest) => pullRequest.state === 'open')).toHaveLength(0);
+  });
+
+  it('(d8) quarantines the whole source snapshot when one candidate shard is malformed', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const validKey = 'valid-var-0';
+    const brokenKey = 'broken-var-0';
+    const removedKey = 'retired-var-0';
+    addArtDirectlyToMain(liveDir, [removedKey]);
+    seedQueueWithArt(liveDir, [validKey, brokenKey]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-shard-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/assets/queue');
+      writeFileSync(
+        path.join(wt, 'public', 'assets', 'generated', 'entries', `${brokenKey}.json`),
+        '{not-json',
+      );
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${removedKey}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${removedKey}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [removedKey]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: removedKey,
+              conceptId: 'retired',
+              assetPath: `generated/${removedKey}.png`,
+              sourceRun: `generated/runs/${removedKey}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [removedKey],
+            },
+          },
+        },
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue malformed shard');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('noop');
+    expect(result.quarantinedSources).toEqual([
+      {
+        sourceRef: 'origin/assets/queue',
+        reason: expect.stringMatching(
+          new RegExp(`Candidate shard.*${brokenKey}.*malformed JSON`, 'u'),
+        ),
+        paths: expect.arrayContaining([
+          `public/assets/generated/${validKey}.png`,
+          `public/assets/generated/entries/${validKey}.json`,
+        ]),
+      },
+    ]);
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${removedKey}.png`,
+        `public/assets/generated/entries/${removedKey}.json`,
+      ]),
+    );
+    expect(
+      gitSync(liveDir, 'show', `origin/main:public/assets/generated/${removedKey}.png`),
+    ).not.toBe('');
+    expect(gh.prs).toHaveLength(0);
+  });
+
+  it('(d9) quarantines one malformed orphan without blocking a healthy queue source', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const validKey = 'healthy-queue-var-0';
+    const brokenKey = 'broken-orphan-var-0';
+    const brokenBranch = 'assets/checkin-broken-shard';
+    seedQueueWithArt(liveDir, [validKey]);
+    seedQueueWithArt(liveDir, [brokenKey], brokenBranch);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', brokenBranch);
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-malformed-orphan-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', `origin/${brokenBranch}`);
+      writeFileSync(
+        path.join(wt, 'public', 'assets', 'generated', 'entries', `${brokenKey}.json`),
+        '{not-json',
+      );
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'orphan malformed shard');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/${brokenBranch}`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+    const gh = new FakeGh();
+
+    const result = await runReconcile(liveDir, realDeps(gh));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${validKey}.png`,
+        `public/assets/generated/entries/${validKey}.json`,
+      ]),
+    );
+    expect(result.changedPaths).not.toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/${brokenKey}.png`,
+        `public/assets/generated/entries/${brokenKey}.json`,
+      ]),
+    );
+    expect(result.quarantinedSources).toEqual([
+      expect.objectContaining({ sourceRef: `origin/${brokenBranch}` }),
+    ]);
+  });
+
+  it('(c3) promotes only tombstone-authorized lifecycle shard and PNG deletions', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    const replacementKey = 'queue-goon-var-4';
+    addArtDirectlyToMain(liveDir, [key, replacementKey]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-delete-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              replacementKey,
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue lifecycle deletion');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const queueSha = gitSync(liveDir, 'ls-remote', '--heads', 'origin', 'assets/queue')
+      .trim()
+      .split(/\s+/)[0]!;
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      `public/assets/generated/${key}.png`,
+      'public/assets/generated/sprite-editor-annotations.json',
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(() =>
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toThrow();
+    expect(() =>
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).toThrow();
+    const body = execFileSync('git', ['log', '-1', '--format=%B', result.promoteCommit!], {
+      cwd: liveDir,
+      encoding: 'utf8',
+    });
+    expect(parseSourceTrailers(body).queueSha).toBe(queueSha);
+  });
+
+  it('(c3) refuses stripping the replacement from a persisted lifecycle tombstone', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'pull', '--ff-only', 'origin', 'main');
+    writeJson(
+      path.join(liveDir, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'),
+      {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              replacementKey: 'queue-goon-var-4',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      },
+    );
+    gitSync(liveDir, 'add', '-A');
+    gitSync(liveDir, 'commit', '--no-verify', '-m', 'persist named replacement tombstone');
+    gitSync(liveDir, 'push', 'origin', 'main');
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-no-replacement-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      rmSync(path.join(wt, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(wt, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      writeJson(path.join(wt, 'public', 'assets', 'generated', 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue untrusted replacement-free deletion');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/entries/${key}.json`,
+        `public/assets/generated/${key}.png`,
+        'public/assets/generated/sprite-editor-annotations.json',
+      ]),
+    );
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      expect.objectContaining({
+        annotationKey: key,
+        reason: expect.stringContaining('is not an unchanged historical tombstone on main'),
+      }),
+    ]);
+  });
+
+  it('(c3) withholds cleanup when its accepted replacement is absent from the promotion tree', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const removedKey = 'queue-goon-var-0';
+    const replacementKey = 'queue-goon-var-1';
+    addArtDirectlyToMain(liveDir, [removedKey, replacementKey]);
+    gitSync(liveDir, 'pull', '--ff-only', 'origin', 'main');
+    for (const key of [removedKey, replacementKey]) {
+      writeJson(path.join(liveDir, 'public', 'assets', 'generated', 'entries', `${key}.json`), {
+        briefId: 'queue-goon',
+        spriteName: key,
+        assetPath: `generated/${key}.png`,
+        approvedAt: '2026-09-05T00:00:00.000Z',
+        sourceRun: `generated/runs/${key}/run-0`,
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+        type: 'enemy',
+        contentHash: PNG_CONTENT_HASH,
+      });
+    }
+    gitSync(liveDir, 'add', '-A');
+    gitSync(liveDir, 'commit', '-m', 'complete lifecycle shard metadata');
+    gitSync(liveDir, 'push', 'origin', 'main');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const queueWt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-replacement-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', queueWt, '--detach', 'origin/main');
+      const generatedDir = path.join(queueWt, 'public', 'assets', 'generated');
+      rmSync(path.join(generatedDir, `${removedKey}.png`));
+      rmSync(path.join(generatedDir, 'entries', `${removedKey}.json`));
+      writeJson(path.join(generatedDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [removedKey]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: removedKey,
+              conceptId: 'queue-goon',
+              replacementKey,
+              assetPath: `generated/${removedKey}.png`,
+              sourceRun: `generated/runs/${removedKey}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [removedKey],
+            },
+          },
+        },
+      });
+      gitSync(queueWt, 'add', '-A');
+      gitSync(queueWt, 'commit', '--no-verify', '-m', 'queue replacement cleanup');
+      const sha = gitSync(queueWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', queueWt);
+      rmSync(queueWt, { recursive: true, force: true });
+    }
+
+    const mainWt = mkdtempSync(path.join(tmpdir(), 'rq-remove-replacement-'));
+    try {
+      gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+      gitSync(liveDir, 'worktree', 'add', mainWt, '--detach', 'origin/main');
+      rmSync(path.join(mainWt, 'public', 'assets', 'generated', `${replacementKey}.png`));
+      rmSync(
+        path.join(mainWt, 'public', 'assets', 'generated', 'entries', `${replacementKey}.json`),
+      );
+      gitSync(mainWt, 'add', '-A');
+      gitSync(mainWt, 'commit', '--no-verify', '-m', 'remove replacement from main');
+      const sha = gitSync(mainWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/main`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', mainWt);
+      rmSync(mainWt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('noop');
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/entries/${removedKey}.json`,
+        `public/assets/generated/${removedKey}.png`,
+        `public/assets/generated/entries/${replacementKey}.json`,
+        `public/assets/generated/${replacementKey}.png`,
+        'public/assets/generated/sprite-editor-annotations.json',
+      ]),
+    );
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      expect.objectContaining({
+        annotationKey: removedKey,
+        reason: expect.stringContaining(`no promotable replacement shard for "${replacementKey}"`),
+      }),
+    ]);
+  });
+
+  it('(c3b) withholds cleanup when an orphan overlay makes its replacement unusable', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const removedKey = 'queue-goon-var-0';
+    const replacementKey = 'queue-goon-var-1';
+    addArtDirectlyToMain(liveDir, [removedKey, replacementKey]);
+    gitSync(liveDir, 'pull', '--ff-only', 'origin', 'main');
+    for (const key of [removedKey, replacementKey]) {
+      writeJson(path.join(liveDir, 'public', 'assets', 'generated', 'entries', `${key}.json`), {
+        briefId: 'queue-goon',
+        spriteName: key,
+        assetPath: `generated/${key}.png`,
+        approvedAt: '2026-09-05T00:00:00.000Z',
+        sourceRun: `generated/runs/${key}/run-0`,
+        variantIndex: 0,
+        anchor: null,
+        sensorScore: '7/7',
+        judgeScore: '4',
+        type: 'enemy',
+        contentHash: PNG_CONTENT_HASH,
+      });
+    }
+    gitSync(liveDir, 'add', '-A');
+    gitSync(liveDir, 'commit', '-m', 'complete orphan-overlay lifecycle metadata');
+    gitSync(liveDir, 'push', 'origin', 'main');
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const queueWt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-orphan-queue-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', queueWt, '--detach', 'origin/main');
+      const generatedDir = path.join(queueWt, 'public', 'assets', 'generated');
+      rmSync(path.join(generatedDir, `${removedKey}.png`));
+      rmSync(path.join(generatedDir, 'entries', `${removedKey}.json`));
+      writeJson(path.join(generatedDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [removedKey]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: removedKey,
+              conceptId: 'queue-goon',
+              replacementKey,
+              assetPath: `generated/${removedKey}.png`,
+              sourceRun: `generated/runs/${removedKey}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [removedKey],
+            },
+          },
+        },
+      });
+      gitSync(queueWt, 'add', '-A');
+      gitSync(queueWt, 'commit', '--no-verify', '-m', 'queue lifecycle deletion');
+      const sha = gitSync(queueWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', queueWt);
+      rmSync(queueWt, { recursive: true, force: true });
+    }
+
+    const orphanWt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-orphan-overlay-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', orphanWt, '--detach', 'origin/main');
+      const shardPath = path.join(
+        orphanWt,
+        'public',
+        'assets',
+        'generated',
+        'entries',
+        `${replacementKey}.json`,
+      );
+      const replacement = JSON.parse(readFileSync(shardPath, 'utf8')) as Record<string, unknown>;
+      writeJson(shardPath, { ...replacement, disliked: true });
+      gitSync(orphanWt, 'add', '-A');
+      gitSync(orphanWt, 'commit', '--no-verify', '-m', 'orphan dislikes replacement');
+      const sha = gitSync(orphanWt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/checkin-disliked-replacement`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', orphanWt);
+      rmSync(orphanWt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      expect.objectContaining({
+        annotationKey: removedKey,
+        reason: expect.stringContaining(`unusable replacement "${replacementKey}"`),
+      }),
+    ]);
+    expect(result.withheldPaths).toEqual(
+      expect.arrayContaining([
+        `public/assets/generated/entries/${removedKey}.json`,
+        `public/assets/generated/${removedKey}.png`,
+        'public/assets/generated/sprite-editor-annotations.json',
+      ]),
+    );
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(
+        liveDir,
+        'show',
+        `origin/assets/promote:public/assets/generated/entries/${removedKey}.json`,
+      ),
+    ).toContain(`"spriteName": "${removedKey}"`);
+    expect(
+      gitSync(
+        liveDir,
+        'show',
+        `origin/assets/promote:public/assets/generated/entries/${replacementKey}.json`,
+      ),
+    ).toContain('"disliked": true');
+  });
+
+  /**
+   * Regression (B2, partial pair): a half-deleted lifecycle pair on the queue
+   * used to throw out of `runReconcile`, so the hourly cycle promoted NOTHING —
+   * unrelated approved art included. The bad deletion must be refused on its
+   * own, reported deterministically, and the unrelated art must still land.
+   */
+  it('(c4) refuses a half-deleted lifecycle pair and still promotes unrelated art', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-partial-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const genDir = path.join(wt, 'public', 'assets', 'generated');
+      // Only the shard is deleted; the PNG stays. The pair is incomplete.
+      rmSync(path.join(genDir, 'entries', `${key}.json`));
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              sourceRun: `generated/runs/${key}/run-0`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      // Unrelated, perfectly valid new art in the same queue commit.
+      writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
+        ...validShardEntry('unrelated-var-0'),
+        contentHash: PNG_CONTENT_HASH,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue: half-deleted pair + unrelated art');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    // The cycle still runs and lands the unrelated asset.
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    // The refusal is surfaced, names the key, and names the withheld path.
+    expect(result.rejectedLifecycleDeletions).toEqual([
+      {
+        annotationKey: key,
+        reason: expect.stringContaining('shard and PNG must be deleted together'),
+        paths: [`public/assets/generated/entries/${key}.json`],
+      },
+    ]);
+    // Fail-closed, atomically: the deletion AND the annotations document that
+    // authorizes it are both withheld, so `main` never gains a dangling
+    // tombstone whose art is still present.
+    expect(result.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+    expect(result.withheldPaths).toContain(
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    // Shard still present on the promotion: the deletion was never applied.
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/entries/${key}.json`),
+    ).toContain(key);
+    expect(() =>
+      gitSync(
+        liveDir,
+        'show',
+        'origin/assets/promote:public/assets/generated/sprite-editor-annotations.json',
+      ),
+    ).toThrow();
+  });
+
+  /**
+   * Regression (B2, shard mismatch): a tombstone whose provenance no longer
+   * matches `main`'s shard is stale. Refusing it must not abort the cycle.
+   */
+  it('(c5) refuses a stale shard-mismatched deletion and still promotes unrelated art', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'queue-goon-var-3';
+    addArtDirectlyToMain(liveDir, [key]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const wt = mkdtempSync(path.join(tmpdir(), 'rq-lifecycle-stale-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', wt, '--detach', 'origin/main');
+      const genDir = path.join(wt, 'public', 'assets', 'generated');
+      rmSync(path.join(genDir, `${key}.png`));
+      rmSync(path.join(genDir, 'entries', `${key}.json`));
+      writeJson(path.join(genDir, 'sprite-editor-annotations.json'), {
+        version: 1,
+        sprites: {
+          [key]: {
+            disliked: true,
+            tombstone: {
+              manifestKey: key,
+              conceptId: 'queue-goon',
+              assetPath: `generated/${key}.png`,
+              // main's shard says `run-0`; this tombstone describes different art.
+              sourceRun: `generated/runs/${key}/a-different-run`,
+              variantIndex: 0,
+              annotationKeys: [key],
+            },
+          },
+        },
+      });
+      writeFileSync(path.join(genDir, 'unrelated-var-0.png'), PNG_BYTES);
+      writeJson(path.join(genDir, 'entries', 'unrelated-var-0.json'), {
+        ...validShardEntry('unrelated-var-0'),
+        contentHash: PNG_CONTENT_HASH,
+      });
+      gitSync(wt, 'add', '-A');
+      gitSync(wt, 'commit', '--no-verify', '-m', 'queue: stale tombstone + unrelated art');
+      const sha = gitSync(wt, 'rev-parse', 'HEAD').trim();
+      gitSync(liveDir, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', wt);
+      rmSync(wt, { recursive: true, force: true });
+    }
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/unrelated-var-0.json',
+      'public/assets/generated/unrelated-var-0.png',
+    ]);
+    expect(result.rejectedLifecycleDeletions).toHaveLength(1);
+    expect(result.rejectedLifecycleDeletions?.[0]?.annotationKey).toBe(key);
+    expect(result.rejectedLifecycleDeletions?.[0]?.reason).toMatch(
+      /does not match the current main shard/,
+    );
+    expect(result.rejectedLifecycleDeletions?.[0]?.paths).toEqual([
+      `public/assets/generated/entries/${key}.json`,
+      `public/assets/generated/${key}.png`,
+    ]);
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'assets/promote');
+    expect(
+      gitSync(liveDir, 'show', `origin/assets/promote:public/assets/generated/${key}.png`),
+    ).not.toBe('');
+  });
+
   it('(d) returns to a no-op after the promote PR squash-merges into main', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
@@ -1555,36 +2844,39 @@ describe('runReconcile (real git)', () => {
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
-  it('(d5) ATOMIC: withholds PNG AND shard together on A→B→A re-approval', async () => {
-    // The A→B→A split-brain bug: main previously carried PNG blob A; later
-    // moved to blob B; source is re-approved back to blob A with a freshly-
-    // stamped shard. Without atomicity the stale PNG is withheld but the new
-    // shard blob passes — `check:asset-integrity` would then fail because the
-    // promoted shard's `contentHash` describes A while main still holds B.
-    const { root, liveDir } = setupRepos();
-    cleanups.push(root);
-    seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    const gh = new FakeGh();
+  it.each(['skull-mace-var-2', 'equipment/weapon/moon-scythe'])(
+    '(d5) ATOMIC: withholds PNG AND shard together on A→B→A re-approval for %s',
+    async (key) => {
+      // The A→B→A split-brain bug: main previously carried PNG blob A; later
+      // moved to blob B; source is re-approved back to blob A with a freshly-
+      // stamped shard. Without atomicity the stale PNG is withheld but the new
+      // shard blob passes — `check:asset-integrity` would then fail because the
+      // promoted shard's `contentHash` describes A while main still holds B.
+      const { root, liveDir } = setupRepos();
+      cleanups.push(root);
+      seedQueueWithArt(liveDir, [key]);
+      const gh = new FakeGh();
 
-    // Phase 1: original bytes (A) land on main.
-    const first = await runReconcile(liveDir, realDeps(gh));
-    expect(first.status).toBe('pr-open');
-    simulateSquashMerge(liveDir, gh, first.prNumber!);
+      // Phase 1: original bytes (A) land on main.
+      const first = await runReconcile(liveDir, realDeps(gh));
+      expect(first.status).toBe('pr-open');
+      simulateSquashMerge(liveDir, gh, first.prNumber!);
 
-    // Phase 2: main moves on to blob B via an independent flow.
-    addArtDirectlyToMain(liveDir, ['skull-mace-var-2'], SUPERSEDING_PNG_BYTES);
+      // Phase 2: main moves on to blob B via an independent flow.
+      addArtDirectlyToMain(liveDir, [key], SUPERSEDING_PNG_BYTES);
 
-    // Phase 3: queue is re-approved back to blob A with a FRESH shard blob.
-    reapproveQueueWithOriginalBytesAndFreshShard(liveDir, 'skull-mace-var-2');
+      // Phase 3: queue is re-approved back to blob A with a FRESH shard blob.
+      reapproveQueueWithOriginalBytesAndFreshShard(liveDir, key);
 
-    const second = await runReconcile(liveDir, realDeps(gh));
-    // Both the PNG (stale) and its paired shard (fresh but atomically linked)
-    // must be withheld — no partial promotion that breaks asset integrity.
-    expect(second.status).toBe('noop');
-    expect(second.withheldPaths).toContain('public/assets/generated/skull-mace-var-2.png');
-    expect(second.withheldPaths).toContain('public/assets/generated/entries/skull-mace-var-2.json');
-    expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
-  });
+      const second = await runReconcile(liveDir, realDeps(gh));
+      // Both the PNG (stale) and its paired shard (fresh but atomically linked)
+      // must be withheld — no partial promotion that breaks asset integrity.
+      expect(second.status).toBe('noop');
+      expect(second.withheldPaths).toContain(`public/assets/generated/${key}.png`);
+      expect(second.withheldPaths).toContain(`public/assets/generated/entries/${key}.json`);
+      expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
+    },
+  );
 
   it('(e) reuses an already-open promote PR without creating a duplicate', async () => {
     const { root, liveDir } = setupRepos();
@@ -1908,7 +3200,7 @@ describe('runReconcile (real git)', () => {
     // No assets/queue branch — only an orphaned assets/checkin-* branch.
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-orphan-only', ['orphan-sprite-var-1']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-1'], 'assets/checkin-orphan-only');
     const gh = new FakeGh();
     // No open PRs for the orphan branch.
 
@@ -1932,7 +3224,43 @@ describe('runReconcile (real git)', () => {
     expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
   });
 
-  it('(t) filters pre-sharding aggregate manifest from legacy checkin branch — idempotent on re-run', async () => {
+  it('(s) never promotes lifecycle annotations from an orphan branch', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    seedQueueWithArt(liveDir, ['orphan-var-1'], 'assets/checkin-orphan-annotations', undefined, {
+      version: 1,
+      sprites: {
+        'unpaired-deletion': {
+          disliked: true,
+          tombstone: {
+            manifestKey: 'unpaired-deletion',
+            conceptId: 'unpaired-deletion',
+            assetPath: 'generated/unpaired-deletion.png',
+            sourceRun: 'generated/runs/unpaired-deletion/run-0',
+            variantIndex: 0,
+            annotationKeys: ['unpaired-deletion'],
+          },
+        },
+      },
+    });
+
+    const result = await runReconcile(liveDir, realDeps(new FakeGh()));
+
+    expect(result.status).toBe('pr-open');
+    expect(result.changedPaths).toEqual([
+      'public/assets/generated/entries/orphan-var-1.json',
+      'public/assets/generated/orphan-var-1.png',
+    ]);
+    expect(() =>
+      gitSync(
+        liveDir,
+        'show',
+        'origin/assets/promote:public/assets/generated/sprite-editor-annotations.json',
+      ),
+    ).toThrow();
+  });
+
+  it('(t) quarantines a pre-sharding PNG-only branch while promoting the healthy queue', async () => {
     // A legacy orphan branch (aggregate manifest, no shards) plus a queue branch.
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
@@ -1942,6 +3270,9 @@ describe('runReconcile (real git)', () => {
 
     const first = await runReconcile(liveDir, realDeps(gh));
     expect(first.status).toBe('pr-open');
+    expect(first.quarantinedSources).toEqual([
+      expect.objectContaining({ sourceRef: 'origin/assets/checkin-legacy-123' }),
+    ]);
 
     // Verify: legacy manifest.json must not have landed in the promote commit.
     const promotedFiles = gitSync(
@@ -1956,7 +3287,7 @@ describe('runReconcile (real git)', () => {
       .split('\n')
       .filter(Boolean);
     expect(promotedFiles.some((f) => f === 'public/assets/generated/manifest.json')).toBe(false);
-    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(true);
+    expect(promotedFiles.some((f) => f.endsWith('legacy-sprite-var-1.png'))).toBe(false);
     expect(promotedFiles.some((f) => f.endsWith('queue-sprite-var-1.png'))).toBe(true);
 
     // Re-run: idempotent — same PR reused, no duplicate.
@@ -1972,7 +3303,7 @@ describe('runReconcile (real git)', () => {
 // These cover the convergence fix: a promotion records the EXACT source tips it
 // harvested, and once that promotion MERGES the next cycle retires precisely
 // those snapshots under a compare-and-swap lease. Without the tidy-up the
-// reconciler oscillates — `--diff-filter=AM` only asks "does this source differ
+// reconciler oscillates — the path delta asks "does this source differ
 // from main", so whichever source currently disagrees with main always re-wins
 // the overlay and a promotion PR is opened every hour forever.
 // ---------------------------------------------------------------------------
@@ -2154,7 +3485,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-trailer-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-trailer-1');
     const queueSha = remoteSha(liveDir, 'assets/queue')!;
     const orphanSha = remoteSha(liveDir, 'assets/checkin-trailer-1')!;
 
@@ -2177,7 +3508,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-tidy-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-tidy-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -2195,7 +3526,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-converge-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-converge-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -2212,11 +3543,96 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     expect(gh.prs.filter((p) => p.state === 'open')).toHaveLength(0);
   });
 
+  it('never resets a queue snapshot while a lifecycle deletion is still pending on main', async () => {
+    const { root, liveDir } = setupRepos();
+    cleanups.push(root);
+    const key = 'pending-deletion-var-0';
+    addArtDirectlyToMain(liveDir, [key]);
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const annotationsWorktree = mkdtempSync(path.join(tmpdir(), 'rq-main-tombstone-'));
+    try {
+      gitSync(liveDir, 'worktree', 'add', annotationsWorktree, '--detach', 'origin/main');
+      writeJson(
+        path.join(
+          annotationsWorktree,
+          'public',
+          'assets',
+          'generated',
+          'sprite-editor-annotations.json',
+        ),
+        {
+          version: 1,
+          sprites: {
+            [key]: {
+              disliked: true,
+              tombstone: {
+                manifestKey: key,
+                conceptId: 'pending-deletion',
+                assetPath: `generated/${key}.png`,
+                sourceRun: `generated/runs/${key}/run-0`,
+                variantIndex: 0,
+                annotationKeys: [key],
+              },
+            },
+          },
+        },
+      );
+      gitSync(annotationsWorktree, 'add', '--', 'public/assets/generated');
+      gitSync(annotationsWorktree, 'commit', '--no-verify', '-m', 'main: retain tombstone');
+      gitSync(annotationsWorktree, 'push', 'origin', 'HEAD:refs/heads/main');
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', annotationsWorktree);
+      rmSync(annotationsWorktree, { recursive: true, force: true });
+    }
+
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const queueWorktree = mkdtempSync(path.join(tmpdir(), 'rq-pending-delete-'));
+    let queueSha: string;
+    try {
+      gitSync(liveDir, 'worktree', 'add', queueWorktree, '--detach', 'origin/main');
+      rmSync(path.join(queueWorktree, 'public', 'assets', 'generated', `${key}.png`));
+      rmSync(path.join(queueWorktree, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+      gitSync(queueWorktree, 'add', '-A');
+      gitSync(queueWorktree, 'commit', '--no-verify', '-m', 'queue: pending lifecycle deletion');
+      queueSha = gitSync(queueWorktree, 'rev-parse', 'HEAD').trim();
+      gitSync(queueWorktree, 'push', 'origin', 'HEAD:refs/heads/assets/queue');
+    } finally {
+      gitSync(liveDir, 'worktree', 'remove', '--force', queueWorktree);
+      rmSync(queueWorktree, { recursive: true, force: true });
+    }
+
+    const mainSha = remoteSha(liveDir, 'main')!;
+    gitSync(liveDir, 'fetch', '--no-tags', 'origin', 'main');
+    const mainTree = gitSync(liveDir, 'rev-parse', 'origin/main^{tree}').trim();
+    const promotionHead = gitSync(
+      liveDir,
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Reconcile Test',
+      'commit-tree',
+      mainTree,
+      '-p',
+      mainSha,
+      '-m',
+      `chore(assets): reconcile queued sprite edits\n\nQueue-Source: ${queueSha}`,
+    ).trim();
+    const gh = new FakeGh();
+    const prNumber = gh.seedMerged('assets/promote', 'main', promotionHead, '2026-09-06T00:00:00Z');
+    gitSync(liveDir, 'push', 'origin', `${promotionHead}:refs/pull/${prNumber}/head`);
+
+    const tidy = await tidyUpLandedPromotion(realGitFakeGhExec(gh), liveDir, TIDY_OPTIONS);
+
+    expect(tidy.queueReset).toBe(false);
+    expect(remoteSha(liveDir, 'assets/queue')).toBe(queueSha);
+  });
+
   it('CAS MISS: never discards art that landed on a source after the harvest', async () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-cas-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-cas-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -2301,7 +3717,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-revert-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-revert-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -2387,7 +3803,7 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
     const { root, liveDir } = setupRepos();
     cleanups.push(root);
     seedQueueWithArt(liveDir, ['skull-mace-var-2']);
-    seedLegacyCheckinBranch(liveDir, 'assets/checkin-race-1', ['orphan-sprite-var-9']);
+    seedQueueWithArt(liveDir, ['orphan-sprite-var-9'], 'assets/checkin-race-1');
 
     const gh = new FakeGh();
     const first = await runReconcile(liveDir, realDeps(gh));
@@ -2466,9 +3882,8 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
         mkdirSync(entriesDir, { recursive: true });
         writeFileSync(path.join(genDir, 'player-walk.png'), PNG_BYTES);
         writeJson(path.join(entriesDir, 'player-walk.json'), {
-          assetPath: 'generated/player-walk.png',
-          spriteName: 'player-walk',
-          contentHash: TEST_CONTENT_HASH,
+          ...validShardEntry('player-walk'),
+          contentHash: PNG_CONTENT_HASH,
         });
         gitSync(goodWt, 'add', '--', 'public/assets/generated');
         gitSync(goodWt, 'commit', '--no-verify', '-m', 'approve player-walk (good)');
@@ -2489,6 +3904,23 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
           path.join(queueWt, 'public', 'assets', 'generated', 'player-walk.png'),
           SUPERSEDING_PNG_BYTES,
         );
+        const queueShardPath = path.join(
+          queueWt,
+          'public',
+          'assets',
+          'generated',
+          'entries',
+          'player-walk.json',
+        );
+        const queueShard = JSON.parse(readFileSync(queueShardPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        writeJson(queueShardPath, {
+          ...queueShard,
+          contentHash: createHash('sha256').update(SUPERSEDING_PNG_BYTES).digest('hex'),
+          approvedAt: '2026-09-06T00:00:03.000Z',
+        });
         gitSync(queueWt, 'add', '--', 'public/assets/generated');
         gitSync(queueWt, 'commit', '--no-verify', '-m', 'approve player-walk (bad)');
         gitSync(queueWt, 'push', 'origin', 'HEAD:refs/heads/assets/queue');
@@ -2513,6 +3945,20 @@ describe('findLandedPromotion / tidyUpLandedPromotion (real git)', () => {
           path.join(fixWt, 'public', 'assets', 'generated', 'player-walk.png'),
           PNG_BYTES,
         );
+        const fixShardPath = path.join(
+          fixWt,
+          'public',
+          'assets',
+          'generated',
+          'entries',
+          'player-walk.json',
+        );
+        const fixShard = JSON.parse(readFileSync(fixShardPath, 'utf8')) as Record<string, unknown>;
+        writeJson(fixShardPath, {
+          ...fixShard,
+          contentHash: PNG_CONTENT_HASH,
+          approvedAt: '2026-09-06T00:00:04.000Z',
+        });
         gitSync(fixWt, 'add', '--', 'public/assets/generated');
         gitSync(fixWt, 'commit', '--no-verify', '-m', 'restore player-walk before merge');
         fixedHead = gitSync(fixWt, 'rev-parse', 'HEAD').trim();

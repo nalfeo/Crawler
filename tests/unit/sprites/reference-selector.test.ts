@@ -43,7 +43,7 @@ function names(selected: readonly ManifestEntry[]): string[] {
 describe('referenceSelectorSeed', () => {
   it('is stable for a brief name and namespaced by version', () => {
     expect(referenceSelectorSeed('lamp-v1')).toBe(referenceSelectorSeed('lamp-v1'));
-    expect(SELECTOR_VERSION).toBe('v1');
+    expect(SELECTOR_VERSION).toBe('v2');
   });
 
   it('differs across brief names', () => {
@@ -191,6 +191,45 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual([good.spriteName]);
   });
 
+  it('excludes manifest-disliked sprites without an annotation overlay', () => {
+    const disliked = entry({ briefId: 'bad-reference', type: 'item', disliked: true });
+    const good = entry({ briefId: 'good-reference', type: 'item' });
+    const result = selectReferences({
+      candidates: [disliked, good],
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+    });
+    expect(names(result.selected)).toEqual([good.spriteName]);
+  });
+
+  it('excludes every variant of a concept implicated by an unresolvable dislike', () => {
+    // A stale annotation key names `bad-reference` but pins to no exact entry.
+    // It grants NO deletion authority, but reference selection fails safe and
+    // drops the whole concept — including a differently-keyed alias variant.
+    const stale = entry({
+      briefId: 'bad-reference',
+      type: 'item',
+      spriteName: 'bad-reference-var-2',
+    });
+    const alias = entry({
+      briefId: 'bad-reference-v2',
+      type: 'item',
+      spriteName: 'bad-reference-v2-var-9',
+    });
+    const good = entry({ briefId: 'good-reference', type: 'item' });
+    const result = selectReferences({
+      candidates: [stale, alias, good],
+      briefName: 'subject-v1',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+      dislikedConceptIds: new Set(['bad-reference']),
+    });
+    expect(names(result.selected)).toEqual([good.spriteName]);
+  });
+
   it('excludes placeholders (all three placeholder signals)', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'good-v1', type: 'item' }),
@@ -223,7 +262,7 @@ describe('selectReferences — eligibility filtering', () => {
     expect(names(result.selected)).toEqual(['good-v1-var-0']);
   });
 
-  it('excludes the brief itself by EXACT briefId but allows other variants of the concept', () => {
+  it('excludes the target brief and every same-normalized-concept alias', () => {
     const candidates: ManifestEntry[] = [
       entry({ briefId: 'lamp-v2', type: 'item', spriteName: 'lamp-v2-var-0' }),
       entry({ briefId: 'lamp-v1', type: 'item', spriteName: 'lamp-v1-var-0' }),
@@ -235,8 +274,93 @@ describe('selectReferences — eligibility filtering', () => {
       count: 3,
       seed: SEED,
     });
-    // … excludes v2's own approved variant but CAN reference v1.
-    expect(names(result.selected)).toEqual(['lamp-v1-var-0']);
+    expect(names(result.selected)).toEqual([]);
+  });
+
+  it('keeps explicit design-name remaps distinct while excluding legacy npc aliases', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'npc-welcome-goon', type: 'character' }),
+      entry({ briefId: 'welcome-goon-v2', type: 'character' }),
+      entry({ briefId: 'angry-roomba-v2', type: 'character' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'welcome-goon-v3',
+      briefType: 'character',
+      count: 3,
+      seed: SEED,
+    });
+    expect(names(result.selected)).toEqual(['angry-roomba-v2-var-0']);
+  });
+
+  /**
+   * Regression (certification finding #4): adopting the shared manifest concept
+   * helper resolved an icon-batch row to the CELL's concept (`fireball`), which
+   * is correct for runtime selection but silently DROPPED the brief-lineage
+   * self-exclusion. Regenerating the batch would then be handed its own previous
+   * cells as style references — the model copying last week's output.
+   */
+  it('excludes an icon batch\u2019s own previous cells when that batch is regenerated', () => {
+    const candidates: ManifestEntry[] = [
+      // Cells of the batch being regenerated: distinct cell concepts, one brief.
+      entry({
+        briefId: 'ability-icons',
+        type: 'icon',
+        spriteName: 'icon-fireball',
+      }),
+      entry({
+        briefId: 'ability-icons',
+        type: 'icon',
+        spriteName: 'icon-frostbite',
+      }),
+      // An unrelated icon batch stays eligible.
+      entry({ briefId: 'achv-icons', type: 'icon', spriteName: 'icon-first-bonk' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      briefName: 'ability-icons',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['icon-first-bonk']);
+  });
+
+  it('applies the same lineage self-exclusion across a batch version bump', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'ability-icons-v1', type: 'icon', spriteName: 'icon-fireball' }),
+      entry({ briefId: 'achv-icons', type: 'icon', spriteName: 'icon-first-bonk' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      // v2 of the same batch: `-vN` lineage normalizes to the same concept.
+      briefName: 'ability-icons-v2',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['icon-first-bonk']);
+  });
+
+  it('still excludes a NON-icon entry by its own concept (lineage check is a no-op there)', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'lamp-v1', type: 'item', spriteName: 'lamp-v1-var-0' }),
+      entry({ briefId: 'chair-v1', type: 'item', spriteName: 'chair-v1-var-0' }),
+    ];
+
+    const result = selectReferences({
+      candidates,
+      briefName: 'lamp-v3',
+      briefType: 'item',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(names(result.selected)).toEqual(['chair-v1-var-0']);
   });
 
   it('excludes entries whose assetPath is not under generated/', () => {
@@ -377,6 +501,85 @@ describe('selectReferences — concept collapse + quality weighting', () => {
     // One concept → exactly one reference, and it's the best-scoring variant.
     expect(names(result.selected)).toEqual(['torch-v1-var-1']);
     expect(result.eligibleCount).toBe(1);
+  });
+
+  /**
+   * Regression: the collapse key MUST be the same normalized concept id used by
+   * the dislike/self exclusions. When it was a second, hand-rolled "strip -vN"
+   * normalizer, an explicit design remap (`angry-roomba-v2` → `angry-roomba-mk2`)
+   * grouped under `angry-roomba` while the exclusion matched `angry-roomba-mk2`,
+   * so the two aliases of ONE design could both reach a 3-ref set.
+   */
+  it('collapses design-remap aliases of one concept into a single reference', () => {
+    const candidates: ManifestEntry[] = [
+      entry({
+        briefId: 'angry-roomba-v2',
+        type: 'enemy',
+        spriteName: 'angry-roomba-v2-var-1',
+        judgeScore: '3',
+      }),
+      entry({
+        briefId: 'angry-roomba-mk2',
+        type: 'enemy',
+        spriteName: 'angry-roomba-mk2-var-0',
+        judgeScore: '5',
+      }),
+      entry({ briefId: 'other-goon', type: 'enemy', spriteName: 'other-goon-var-0' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'enemy',
+      count: 3,
+      seed: SEED,
+    });
+    expect(result.eligibleCount).toBe(2);
+    expect(new Set(names(result.selected))).toEqual(
+      new Set(['angry-roomba-mk2-var-0', 'other-goon-var-0']),
+    );
+  });
+
+  it('keeps distinct icon-batch cells as distinct concepts', () => {
+    const candidates: ManifestEntry[] = [
+      entry({
+        briefId: 'ability-icons-batch-01',
+        type: 'icon',
+        spriteName: 'ability-icon-magic-missile',
+      }),
+      entry({
+        briefId: 'ability-icons-batch-01',
+        type: 'icon',
+        spriteName: 'ability-icon-frost-nova',
+      }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-icon',
+      briefType: 'icon',
+      count: 3,
+      seed: SEED,
+    });
+
+    expect(new Set(names(result.selected))).toEqual(
+      new Set(['ability-icon-magic-missile', 'ability-icon-frost-nova']),
+    );
+    expect(result.eligibleCount).toBe(2);
+  });
+
+  it('excludes a remapped alias when the disliked concept names its canonical id', () => {
+    const candidates: ManifestEntry[] = [
+      entry({ briefId: 'angry-roomba-v2', type: 'enemy', spriteName: 'angry-roomba-v2-var-1' }),
+      entry({ briefId: 'other-goon', type: 'enemy', spriteName: 'other-goon-var-0' }),
+    ];
+    const result = selectReferences({
+      candidates,
+      briefName: 'subject-v1',
+      briefType: 'enemy',
+      count: 3,
+      seed: SEED,
+      dislikedConceptIds: new Set(['angry-roomba-mk2']),
+    });
+    expect(names(result.selected)).toEqual(['other-goon-var-0']);
   });
 
   it('yields distinct concepts across a 3-ref set', () => {

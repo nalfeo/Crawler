@@ -23,8 +23,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
-import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
+import {
+  buildServer as buildProductionServer,
+  isRestorableBriefPath,
+  listRuns,
+  safeJoin,
+} from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
+import {
+  ensureRunDurable,
+  parseSourceRun,
+  RunDurabilityError,
+} from '../../../scripts/sprites/run-durability.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type {
@@ -38,6 +48,8 @@ import {
   type CheckinRunnerDeps,
   type QueuedAssetCheckin,
 } from '../../../scripts/sprites/checkin.js';
+import { makeCheckinFileLock } from '../../../scripts/sprites/checkin-runtime.js';
+import { QueueCommitError } from '../../../scripts/sprites/queue-commit.js';
 import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
 import {
   writeShard,
@@ -45,6 +57,15 @@ import {
   shardPathForKey,
 } from '../../../scripts/sprites/generated-shards.js';
 import type { FastifyInstance } from 'fastify';
+
+type SidecarTestDeps = Parameters<typeof buildProductionServer>[0];
+
+function buildServer(deps: SidecarTestDeps): FastifyInstance {
+  return buildProductionServer({
+    ...deps,
+    ensureApprovalRunDurable: deps.ensureApprovalRunDurable ?? (() => Promise.resolve()),
+  });
+}
 
 function writeMinimalRun(
   runsDir: string,
@@ -1471,6 +1492,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
   function makeCheckinDeps(
     queued: Map<string, QueuedAssetCheckin>,
     onExec?: (command: string, args: readonly string[]) => Promise<void> | void,
+    changedPaths = `public/assets/generated/${briefId}-var-1.png\n`,
   ): CheckinRunnerDeps & { readonly exec: ReturnType<typeof vi.fn> } {
     let tempIndex = 0;
     const exec = vi.fn(
@@ -1486,7 +1508,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         if (command === 'git' && args[0] === 'diff') {
           return {
             code: 0,
-            stdout: `public/assets/generated/${briefId}-var-1.png\n`,
+            stdout: changedPaths,
             stderr: '',
           };
         }
@@ -1526,6 +1548,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       copyArtSurface: async () => undefined,
       removeDir: async () => undefined,
       listQueuedAssets: async () => new Map(queued),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       readManifest: () =>
         Promise.resolve(
           composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
@@ -1613,6 +1639,360 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
       assetCount: 1,
     });
+  });
+
+  it('returns an exact queued acceptance without filing unrelated changed assets', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    const unrelatedKey = 'unrelated-var-0';
+    writeShard(generatedDir, unrelatedKey, {
+      briefId: 'unrelated',
+      spriteName: unrelatedKey,
+      assetPath: `generated/${unrelatedKey}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/unrelated/run-0',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    writeFileSync(path.join(generatedDir, `${unrelatedKey}.png`), Buffer.from('UNRELATED'));
+
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+          branch: 'assets/checkin-existing',
+          contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+        },
+      ],
+    ]);
+    const checkinDeps = makeCheckinDeps(
+      queued,
+      undefined,
+      [
+        `public/assets/generated/${briefId}-var-1.png`,
+        `public/assets/generated/${unrelatedKey}.png`,
+        '',
+      ].join('\n'),
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+      assetCount: 1,
+    });
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+    expect(existsSync(path.join(generatedDir, `${unrelatedKey}.png`))).toBe(true);
+  });
+
+  it('returns an exact assets/queue acceptance without filing unrelated changed assets', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    const unrelatedKey = 'unrelated-var-0';
+    writeShard(generatedDir, unrelatedKey, {
+      briefId: 'unrelated',
+      spriteName: unrelatedKey,
+      assetPath: `generated/${unrelatedKey}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: 'generated/runs/unrelated/run-0',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    writeFileSync(path.join(generatedDir, `${unrelatedKey}.png`), Buffer.from('UNRELATED'));
+
+    const checkinDeps = makeCheckinDeps(
+      new Map<string, QueuedAssetCheckin>(),
+      undefined,
+      [
+        `public/assets/generated/${briefId}-var-1.png`,
+        `public/assets/generated/${unrelatedKey}.png`,
+        '',
+      ].join('\n'),
+    );
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'duplicate' as const,
+      branch: 'assets/queue',
+    }));
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: { ...checkinDeps, inspectDurableQueueAsset },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      queueBranch: 'assets/queue',
+      assetCount: 1,
+    });
+    expect(res.json().issueUrl).toBeUndefined();
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith({
+      manifestKey: `${briefId}-var-1`,
+      assetPath: `generated/${briefId}-var-1.png`,
+      contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+    });
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+    expect(existsSync(path.join(generatedDir, `${unrelatedKey}.png`))).toBe(true);
+  });
+
+  it('returns a structured refusal when accept cannot prove run durability', async () => {
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      ensureApprovalRunDurable: () =>
+        Promise.reject(new RunDurabilityError('required durable provenance is missing')),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'not-durable',
+      message: 'required durable provenance is missing',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('runs the accept route through the disliked-asset lifecycle transaction', async () => {
+    await app.close();
+    const generatedDir = path.join(publicAssetsDir, 'generated');
+    // A previously accepted, now-disliked variant of the SAME concept, plus an
+    // untouched disliked variant of an unrelated concept.
+    const shard = (key: string, variantIndex: number, brief: string) => ({
+      briefId: brief,
+      spriteName: key,
+      assetPath: `generated/${key}.png`,
+      approvedAt: '2026-01-01T00:00:00.000Z',
+      sourceRun: `generated/runs/${brief}/run-${variantIndex}`,
+      variantIndex,
+      anchor: null,
+      sensorScore: '7/7',
+      judgeScore: '5',
+    });
+    mkdirSync(path.join(generatedDir, 'entries'), { recursive: true });
+    for (const [key, variantIndex, brief] of [
+      [`${briefId}-var-0`, 0, briefId],
+      ['bat-var-0', 0, 'bat'],
+      ['bat-var-1', 1, 'bat'],
+    ] as const) {
+      writeFileSync(
+        path.join(generatedDir, 'entries', `${key}.json`),
+        JSON.stringify(shard(key, variantIndex, brief)),
+      );
+      writeFileSync(path.join(generatedDir, `${key}.png`), Buffer.from('OLD'));
+    }
+    writeFileSync(
+      path.join(generatedDir, 'sprite-editor-annotations.json'),
+      JSON.stringify({
+        version: 1,
+        sprites: {
+          [`${briefId}-var-0`]: { disliked: true },
+          'bat-var-0': { disliked: true },
+        },
+      }),
+    );
+
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/77',
+          branch: 'assets/checkin-legacy',
+          contentHash: createHash('sha256').update(Buffer.from('PNG-01')).digest('hex'),
+        },
+      ],
+    ]);
+    const publishedRemovals: string[] = [];
+    let stagedChecks = 0;
+    const checkinDeps = makeCheckinDeps(queued, () => {
+      throw new Error('legacy check-in must not run after lifecycle queue publication');
+    });
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+      // The destructive half of an acceptance publishes to `assets/queue`;
+      // capture it here instead of reaching a real git remote.
+      queueCommitDeps: {
+        exec: async (_command, args) => {
+          if (args[0] === 'diff' && args.includes('--cached')) {
+            const code = stagedChecks === 0 ? 1 : 0;
+            stagedChecks += 1;
+            return { code, stdout: '', stderr: '' };
+          }
+          if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+            return { code: 0, stdout: 'queue-commit-sha\n', stderr: '' };
+          }
+          return { code: 0, stdout: '', stderr: '' };
+        },
+        copyArtSurface: async () => undefined,
+        removeArtSurface: async (_worktree, removals) => {
+          for (const removal of removals) publishedRemovals.push(removal.manifestKey);
+        },
+        mergeSpriteAnnotations: async () => undefined,
+        makeTempDir: async () => mkdtempSync(path.join(tmpdir(), 'accept-queue-')),
+        removeDir: async () => undefined,
+        withCrossProcessLock: (run) => run(),
+        env: {},
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: false,
+      queueBranch: 'assets/queue',
+    });
+    expect(res.json().issueUrl).toBeUndefined();
+    expect(res.statusCode).toBe(200);
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+    // The deletion was carried to the durable queue, not left local-only.
+    expect(publishedRemovals).toEqual([`${briefId}-var-0`]);
+    // Accepting the replacement retired the disliked variant of ITS concept…
+    expect(existsSync(path.join(generatedDir, 'entries', `${briefId}-var-0.json`))).toBe(false);
+    expect(existsSync(path.join(generatedDir, `${briefId}-var-0.png`))).toBe(false);
+    const annotations = JSON.parse(
+      readFileSync(path.join(generatedDir, 'sprite-editor-annotations.json'), 'utf8'),
+    ) as {
+      sprites: Record<string, { tombstone?: { manifestKey?: string; replacementKey?: string } }>;
+    };
+    expect(annotations.sprites[`${briefId}-var-0`]?.tombstone?.manifestKey).toBe(
+      `${briefId}-var-0`,
+    );
+    expect(annotations.sprites[`${briefId}-var-0`]?.tombstone?.replacementKey).toBe(
+      `${briefId}-var-1`,
+    );
+    // …and left the unrelated concept alone (deferred to the repo-wide sweeper).
+    expect(existsSync(path.join(generatedDir, 'entries', 'bat-var-0.json'))).toBe(true);
+    expect(annotations.sprites['bat-var-0']?.tombstone).toBeUndefined();
+
+    const retried = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      queueBranch: 'assets/queue',
+    });
+    expect(retried.json().issueUrl).toBeUndefined();
+    expect(checkinDeps.exec).not.toHaveBeenCalled();
+
+    // A later accepted variant in the same normalized concept is not a retry
+    // of the replacement recorded above. It must keep the ordinary check-in
+    // path instead of being rerouted by concept-wide tombstone history.
+    const runDir = path.join(runsDir, briefId, runId);
+    writeFileSync(path.join(runDir, 'processed', '02.png'), Buffer.from('PNG-02'));
+    const summaryPath = path.join(runDir, 'summary.json');
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as {
+      candidates: Array<Record<string, unknown>>;
+    };
+    summary.candidates.push({
+      index: 2,
+      score: 7,
+      outOf: 7,
+      passed: true,
+      combinedPassed: true,
+      derivedAnchor: null,
+      judgeScorecard: { passed: true, minScore: 4 },
+    });
+    writeFileSync(summaryPath, JSON.stringify(summary));
+
+    await app.close();
+    const laterCheckinDeps = makeCheckinDeps(new Map<string, QueuedAssetCheckin>());
+    let lifecycleQueueAttempts = 0;
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: laterCheckinDeps,
+      queueCommitDeps: {
+        exec: async () => {
+          lifecycleQueueAttempts += 1;
+          throw new Error('later variant must not use the lifecycle queue');
+        },
+        copyArtSurface: async () => undefined,
+        removeArtSurface: async () => undefined,
+        mergeSpriteAnnotations: async () => undefined,
+        makeTempDir: async () => mkdtempSync(path.join(tmpdir(), 'accept-queue-later-')),
+        removeDir: async () => undefined,
+        withCrossProcessLock: (run) => run(),
+        env: {},
+      },
+    });
+    const later = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 2 },
+    });
+    expect(later.statusCode).toBe(200);
+    expect(later.json()).toMatchObject({
+      state: 'queued',
+      existing: false,
+      variantIndex: 2,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+    });
+    expect(lifecycleQueueAttempts).toBe(0);
+    expect(
+      laterCheckinDeps.exec.mock.calls.some(
+        ([command, args]) => command === 'gh' && args[0] === 'issue' && args[1] === 'create',
+      ),
+    ).toBe(true);
   });
 
   it('reconciles a lost-response retry through the durable queued issue', async () => {
@@ -1812,6 +2192,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       // reconciliation read (before approveVariant ever runs).
       listQueuedAssets: () =>
         Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom')),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       env: {},
     };
     app = buildServer({
@@ -1837,6 +2221,51 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(
       existsSync(shardPathForKey(path.join(publicAssetsDir, 'generated'), `${briefId}-var-1`)),
     ).toBe(false);
+  });
+
+  it('maps durable queue state conflicts before accept mutation', async () => {
+    await app.close();
+    const checkinDeps = makeCheckinDeps(new Map<string, QueuedAssetCheckin>());
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        ...checkinDeps,
+        inspectDurableQueueAsset: () =>
+          Promise.reject(new QueueCommitError('queue-frozen', 'queue maintenance in progress')),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: 'queue-frozen',
+      message: 'queue maintenance in progress',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('maps approval lock contention as a retryable conflict', async () => {
+    const res = await makeCheckinFileLock(root)(() =>
+      app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/approve`,
+        payload: { variantIndex: 1 },
+      }),
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'checkin-locked' });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
   });
 
   it('maps a queue-list failure from the POST-nothing-to-checkin retry reconciliation to the same structured body, not a generic 500', async () => {
@@ -1867,6 +2296,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
         return Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom'));
       },
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
       readManifest: () =>
         Promise.resolve(
           composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
@@ -1893,8 +2326,87 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
 
     expect(res.statusCode).toBe(502);
-    expect(res.json()).toMatchObject({ error: 'gh-failed' });
+    expect(res.json()).toMatchObject({
+      error: 'gh-failed',
+      message: expect.stringContaining('local acceptance and lifecycle changes were rolled back'),
+    });
     expect(listCalls).toBe(3);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(
+      existsSync(path.join(publicAssetsDir, 'generated', 'entries', `${briefId}-var-1.json`)),
+    ).toBe(false);
+  });
+
+  it('rolls back acceptance when the POST-nothing-to-checkin retry finds conflicting queued content', async () => {
+    await app.close();
+    let listCalls = 0;
+    const checkinDeps: CheckinRunnerDeps = {
+      exec: vi.fn(async (command: string, args: readonly string[]) => {
+        if (command === 'git' && args[0] === 'diff') return { code: 0, stdout: '', stderr: '' };
+        return { code: 0, stdout: '', stderr: '' };
+      }),
+      makeTempDir: async () => {
+        const dir = path.join(root, 'checkin-worktree-post-conflict');
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: () => {
+        listCalls += 1;
+        if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
+        return Promise.resolve(
+          new Map<string, QueuedAssetCheckin>([
+            [
+              `generated/${briefId}-var-1.png`,
+              {
+                issueUrl: 'https://github.com/nalfeo/Crawler/issues/61',
+                branch: 'assets/conflicting-batch',
+                contentHash: 'f'.repeat(64),
+              },
+            ],
+          ]),
+        );
+      },
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({
+      error: 'content-conflict',
+      message: expect.stringContaining('local acceptance and lifecycle changes were rolled back'),
+    });
+    expect(listCalls).toBe(3);
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(
+      existsSync(path.join(publicAssetsDir, 'generated', 'entries', `${briefId}-var-1.json`)),
+    ).toBe(false);
   });
 
   it('derives assetCount for an EXISTING issue from the full parsed batch, not just this asset', async () => {
@@ -2049,6 +2561,29 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(res.json().error).toBe('ci-refused');
     // No asset should have been written.
     expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}.png`))).toBe(false);
+  });
+
+  it('refuses a local-only run when durable provenance cannot be established', async () => {
+    await app.close();
+    app = buildProductionServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { SPRITES_RUN_STORE: 'local' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('no durable run store is configured');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
   });
 
   it('rejects a hostile browser Origin on /approve (CSRF guard) but allows the trusted gallery origin', async () => {
@@ -2354,6 +2889,725 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
   });
 });
 
+/**
+ * Store-backed approval parity (certification finding #2).
+ *
+ * When the run store is remote, `/approve` and `/accept` rematerialize the run
+ * into an OS temp directory. Three things about that temp directory used to
+ * silently degrade the resulting manifest entry compared to the identical
+ * approval from a local run dir:
+ *
+ *   1. the manual (operator-authored) anchor sidecar was never downloaded, so a
+ *      hand-placed anchor silently fell back to the derived one;
+ *   2. the brief was not on disk, so `type` was written as `null` and the row
+ *      dropped out of every type-aware surface;
+ *   3. `sourceRun` was derived from the temp path, which cannot be made
+ *      repo-relative, so it degraded to a synthetic
+ *      `generated/runs/<brief>/external-<tmp>` pointer that no durability check
+ *      can ever resolve back to the run in the store.
+ *
+ * None of the three failed loudly, which is why they need pinned tests.
+ */
+describe('store-backed /approve hydration parity', () => {
+  let root: string;
+  let storeRoot: string;
+  let publicAssetsDir: string;
+  let manifestPath: string;
+  let app: FastifyInstance;
+  let backingStore: LocalRunStore;
+  let listCalls: { prefix: string; authoritative: boolean }[];
+  const briefId = 'iron-sword';
+  const runId = '2026-06-08T12-00-00-deadbeef';
+  const briefRelPath = 'briefs/draft/iron-sword.yaml';
+
+  /** A remote-flavoured store double over a local directory. */
+  function remoteStore(): NonNullable<Parameters<typeof buildServer>[0]['store']> {
+    return {
+      backend: 'azure-blob',
+      put: async (key, data) => backingStore.put(key, data),
+      get: async (key) => backingStore.get(key),
+      has: async (key) => backingStore.has(key),
+      list: async (prefix, options) => {
+        listCalls.push({ prefix, authoritative: options?.authoritative === true });
+        return backingStore.list(prefix);
+      },
+      remove: async (key) => backingStore.remove(key),
+      resolve: (key) => backingStore.resolve(key),
+    };
+  }
+
+  async function seedStoreRun(
+    options: { readonly hardBlocked?: boolean; readonly withManualAnchor?: boolean } = {},
+  ): Promise<void> {
+    const prefix = `${briefId}/${runId}`;
+    await backingStore.put(
+      `${prefix}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: briefId,
+          runId,
+          promptHash: 'deadbeef',
+          briefPath: briefRelPath,
+          candidates: [
+            {
+              index: 1,
+              score: 7,
+              outOf: 7,
+              passed: true,
+              combinedPassed: true,
+              derivedAnchor: { x: 8, y: 13 },
+              judgeScorecard:
+                options.hardBlocked === true
+                  ? {
+                      passed: false,
+                      minScore: 2,
+                      hardBlocked: true,
+                      hardBlockInstruction: 'regenerate with a clearer silhouette',
+                    }
+                  : { passed: true, minScore: 4 },
+            },
+          ],
+          chosen: { index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true },
+        }),
+      ),
+    );
+    await backingStore.put(`${prefix}/processed/01.png`, Buffer.from('PNG-01'));
+    await backingStore.put(`${prefix}/sheet-00.png`, Buffer.from('SHEET'));
+    await backingStore.put(`${prefix}/provenance/prompt.json`, Buffer.from('{}'));
+    await backingStore.put(
+      `${prefix}/processed/01.anchor.json`,
+      Buffer.from(JSON.stringify({ x: 8, y: 13, source: 'derived' })),
+    );
+    if (options.withManualAnchor !== false) {
+      await backingStore.put(
+        `${prefix}/processed/01.manual-anchor.json`,
+        Buffer.from(JSON.stringify({ x: 3, y: 4, variantIndex: 1, source: 'manual' })),
+      );
+    }
+    // The brief itself lives ONLY in the store's brief mirror — exactly the
+    // state of any worktree that did not generate this run.
+    await backingStore.put(
+      workflowBriefKey(briefRelPath),
+      Buffer.from(`name: ${briefId}\ntype: weapon\nprompt: a sword\n`),
+    );
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-approve-hydrate-'));
+    storeRoot = path.join(root, 'store');
+    publicAssetsDir = path.join(root, 'public', 'assets');
+    manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    backingStore = new LocalRunStore(storeRoot);
+    listCalls = [];
+    const store = remoteStore();
+    app = buildServer({
+      repoRoot: root,
+      // Deliberately absent locally: the ONLY copy of the run is in the store.
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store,
+      ensureApprovalRunDurable: async (runDir, approvalBriefId, approvalRunId) => {
+        await ensureRunDurable({
+          durable: store,
+          briefId: approvalBriefId,
+          runId: approvalRunId,
+          localRunDir: runDir,
+        });
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('preserves the manual anchor sidecar, the brief type, and the durable sourceRun', async () => {
+    await seedStoreRun();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // 1. Manual anchor outranks the derived sidecar, same as a local approval.
+    expect(body.anchor).toEqual({ x: 3, y: 4, source: 'manual' });
+    expect(body.effectiveAnchorSource).toBe('manual');
+    // 2. The brief was restored from the store mirror, so `type` is real.
+    expect(body.type).toBe('weapon');
+    // 3. sourceRun is the durable store identity, NOT a temp-dir derivation.
+    expect(body.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
+    expect(body.sourceRun).not.toContain('external-');
+    expect(body.sourceRun).not.toContain(tmpdir().replace(/\\/g, '/'));
+    expect(existsSync(path.join(root, ...briefRelPath.split('/')))).toBe(true);
+    expect(listCalls[0]).toEqual({
+      prefix: `${briefId}/${runId}/`,
+      authoritative: true,
+    });
+  });
+
+  it('writes a sourceRun that parses back to the exact store coordinates', async () => {
+    await seedStoreRun();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The round-trip that `ensureRunDurable` depends on: the published pointer
+    // must resolve to the run that actually exists in the durable store.
+    expect(parseSourceRun(res.json().sourceRun)).toEqual({ briefId, runId });
+  });
+
+  it('does not allocate a hydration temp directory for a reserved sourceRun brief id', async () => {
+    await backingStore.put(
+      `runs/${runId}/summary.json`,
+      Buffer.from(JSON.stringify({ brief: 'runs', runId })),
+    );
+    const before = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/runs/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('not-durable');
+    expect(res.json().message).toContain('reserved');
+    const after = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+    expect(after).toEqual(before);
+  });
+
+  it('refuses a remote run whose durable provenance is incomplete', async () => {
+    await seedStoreRun();
+    await backingStore.remove(`${briefId}/${runId}/provenance/prompt.json`);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('required artifacts are missing');
+    expect(res.json().message).toContain('provenance/prompt.json');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(existsSync(path.join(root, ...briefRelPath.split('/')))).toBe(false);
+  });
+
+  it('refuses a remote run whose summary identity disagrees with its store coordinates', async () => {
+    await seedStoreRun();
+    await backingStore.put(
+      `${briefId}/${runId}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: 'rat',
+          runId: 'other-run',
+          candidates: [{ index: 1, passed: true, combinedPassed: true }],
+        }),
+      ),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toMatchObject({ error: 'not-durable' });
+    expect(res.json().message).toContain('summary provenance must match exactly');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', 'rat-var-1.png'))).toBe(false);
+  });
+
+  it('aborts approval when restoring a mirrored brief fails transiently', async () => {
+    await seedStoreRun();
+    await app.close();
+    const store = remoteStore();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        ...store,
+        get: async (key) => {
+          if (key === workflowBriefKey(briefRelPath)) {
+            throw new Error('transient brief-store failure');
+          }
+          return store.get(key);
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json().message).toContain('transient brief-store failure');
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('still approves (with the derived anchor) when no manual anchor was authored', async () => {
+    await seedStoreRun({ withManualAnchor: false });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().anchor).toEqual({ x: 8, y: 13, source: 'derived' });
+  });
+
+  /**
+   * Explicit hard-block override (certification finding #3). The route now
+   * plumbs a STRICT boolean through to `approveVariant`, so the sidecar can do
+   * what the CLI's `--allow-hard-blocked` already could — without weakening the
+   * default, and without coercing a stray string into an override.
+   */
+  it('refuses a hard-blocked variant by default with 422', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('hard-blocked');
+  });
+
+  it('approves a hard-blocked variant with an explicit allowHardBlocked: true', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The override is RECORDED, not silently laundered: `check:manifest-hard-blocked`
+    // needs `hardBlocked:false` + the explicit human-override marker.
+    expect(res.json().judgeScorecard).toMatchObject({
+      hardBlocked: false,
+      humanHardBlockOverride: true,
+    });
+  });
+
+  it('honours an explicit allowHardBlocked: false exactly like the default', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: false },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('hard-blocked');
+  });
+
+  it.each([['true'], [1], [null], [{}]])(
+    'rejects a non-boolean allowHardBlocked (%p) with 400 instead of coercing it',
+    async (value) => {
+      await seedStoreRun({ hardBlocked: true });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/approve`,
+        headers: { 'content-type': 'application/json' },
+        payload: { variantIndex: 1, allowHardBlocked: value },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('bad-request');
+      expect(res.json().message).toContain('allowHardBlocked');
+    },
+  );
+
+  it('keeps the CI refusal ahead of the override — allowHardBlocked cannot unlock CI', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+      store: remoteStore(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('ci-refused');
+  });
+
+  it('keeps the CSRF origin guard ahead of the override', async () => {
+    await seedStoreRun({ hardBlocked: true });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json', origin: 'https://evil.example' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('forbidden-origin');
+  });
+
+  /**
+   * The brief restore materializes bytes from the run store onto DISK, and a
+   * store-resident `summary.json` is only semi-trusted. Repo confinement alone
+   * is not enough — a crafted `briefPath` plus a matching mirror blob would be
+   * an arbitrary-file-create primitive. It must apply the same "YAML under
+   * briefs/" restriction the brief-edit route already applies.
+   */
+  it('refuses to materialize a non-brief path from a hostile store summary', async () => {
+    await seedStoreRun();
+    const hostileRel = '.github/workflows/pwned.yml';
+    // Repo-confined and relative — it passes `resolveRepoPath` — but it is not a brief.
+    await backingStore.put(
+      `${briefId}/${runId}/summary.json`,
+      Buffer.from(
+        JSON.stringify({
+          brief: briefId,
+          runId,
+          promptHash: 'deadbeef',
+          briefPath: hostileRel,
+          candidates: [{ index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true }],
+          chosen: { index: 1, score: 7, outOf: 7, passed: true, combinedPassed: true },
+        }),
+      ),
+    );
+    await backingStore.put(workflowBriefKey(hostileRel), Buffer.from('name: pwned\n'));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The approval proceeds (type simply stays unresolved) but NOTHING was written.
+    expect(existsSync(path.join(root, '.github', 'workflows', 'pwned.yml'))).toBe(false);
+    expect(existsSync(path.join(root, '.github', 'workflows'))).toBe(false);
+  });
+
+  it('accepts only briefs/**.yaml|.yml as a restorable brief path', () => {
+    expect(isRestorableBriefPath('briefs/draft/iron-sword.yaml')).toBe(true);
+    expect(isRestorableBriefPath('briefs/iron-sword.yml')).toBe(true);
+    expect(isRestorableBriefPath('.github/workflows/pwned.yml')).toBe(false);
+    expect(isRestorableBriefPath('src/main.ts')).toBe(false);
+    expect(isRestorableBriefPath('briefs/notes.md')).toBe(false);
+    expect(isRestorableBriefPath('not-briefs/x.yaml')).toBe(false);
+  });
+
+  // ── /accept: the SAME contract, since it is the other human acceptance route ──
+
+  /** Minimal check-in deps: enough for `runAssetCheckin` to file one issue. */
+  function acceptCheckinDeps(): CheckinRunnerDeps {
+    let tempIndex = 0;
+    return {
+      exec: async (command: string, args: readonly string[]) => {
+        if (command === 'git' && args[0] === 'diff') {
+          return {
+            code: 0,
+            stdout: `public/assets/generated/${briefId}-var-1.png\n`,
+            stderr: '',
+          };
+        }
+        if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { code: 0, stdout: 'https://github.com/nalfeo/Crawler/issues/99\n', stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      },
+      makeTempDir: async () => {
+        const worktree = path.join(root, `accept-worktree-${tempIndex++}`);
+        mkdirSync(worktree, { recursive: true });
+        return worktree;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      inspectDurableQueueAsset: async () => ({
+        reconciliation: 'new',
+        branch: 'assets/queue',
+      }),
+      readManifest: () =>
+        Promise.resolve(
+          composeManifestFromShards(path.dirname(manifestPath)) as unknown as {
+            entries: Record<string, { briefId?: string; sourceRun?: string }>;
+          },
+        ),
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+  }
+
+  function rebuildWithCheckinDeps(): void {
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: acceptCheckinDeps(),
+    });
+  }
+
+  it('/accept fails closed before mutation when canonical queue inspection is unavailable', async () => {
+    await app.close();
+    const { inspectDurableQueueAsset: _omitted, ...incompleteDeps } = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: incompleteDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'accept-failed',
+      message: 'Canonical assets/queue inspection is unavailable.',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('/accept fails closed before mutation when legacy queue inspection is unavailable', async () => {
+    await app.close();
+    const { listQueuedAssets: _omitted, ...incompleteDeps } = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: incompleteDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'accept-failed',
+      message: 'Legacy asset-checkin inspection is unavailable.',
+    });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('/accept preserves the manual anchor, brief type, and durable sourceRun too', async () => {
+    await app.close();
+    await seedStoreRun();
+    rebuildWithCheckinDeps();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // /accept returns the check-in envelope, so assert on what it actually wrote.
+    const entry = composeManifestFromShards(path.dirname(manifestPath)).entries[
+      `${briefId}-var-1`
+    ] as unknown as {
+      anchor: unknown;
+      type: unknown;
+      sourceRun: string;
+    };
+    expect(entry.anchor).toEqual({ x: 3, y: 4, source: 'manual' });
+    expect(entry.type).toBe('weapon');
+    expect(entry.sourceRun).toBe(`generated/runs/${briefId}/${runId}`);
+  });
+
+  it('/accept rolls the approval back when publication fails instead of reporting a half-accepted state', async () => {
+    await app.close();
+    await seedStoreRun();
+    const deps = acceptCheckinDeps();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: {
+        ...deps,
+        exec: async (command, args, options) => {
+          if (command === 'git' && args[0] === 'push') {
+            return { code: 1, stdout: '', stderr: 'remote rejected' };
+          }
+          return deps.exec(command, args, options);
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[`${briefId}-var-1`]).toBe(
+      undefined,
+    );
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('/accept refuses a hard-blocked variant by default and honours an explicit override', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    rebuildWithCheckinDeps();
+
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().error).toBe('hard-blocked');
+
+    const overridden = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(overridden.statusCode).toBe(200);
+    const entry = composeManifestFromShards(path.dirname(manifestPath)).entries[
+      `${briefId}-var-1`
+    ] as unknown as { judgeScorecard: { hardBlocked: boolean; humanHardBlockOverride: boolean } };
+    expect(entry.judgeScorecard).toMatchObject({
+      hardBlocked: false,
+      humanHardBlockOverride: true,
+    });
+  });
+
+  it('/accept rejects a non-boolean allowHardBlocked before touching the queue', async () => {
+    await app.close();
+    await seedStoreRun();
+    let listed = false;
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: remoteStore(),
+      checkinDeps: {
+        ...acceptCheckinDeps(),
+        listQueuedAssets: async () => {
+          listed = true;
+          return new Map<string, QueuedAssetCheckin>();
+        },
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: 'yes' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('allowHardBlocked');
+    expect(listed).toBe(false);
+  });
+
+  it('/accept keeps its CI refusal and browser-origin refusal ahead of the override', async () => {
+    await app.close();
+    await seedStoreRun({ hardBlocked: true });
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'no-local-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+      store: remoteStore(),
+      checkinDeps: acceptCheckinDeps(),
+    });
+
+    const fromBrowser = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      headers: { origin: 'http://127.0.0.1:5173' },
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(fromBrowser.statusCode).toBe(403);
+    expect(fromBrowser.json().error).toBe('forbidden-origin');
+
+    const fromCi = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1, allowHardBlocked: true },
+    });
+    expect(fromCi.statusCode).toBe(403);
+    expect(fromCi.json().error).toBe('ci-refused');
+  });
+});
+
 describe('DELETE /api/manifest/:variantId', () => {
   let root: string;
   let runsDir: string;
@@ -2364,7 +3618,10 @@ describe('DELETE /api/manifest/:variantId', () => {
   const briefId = 'iron-sword';
 
   /** Write an approved variant as its per-asset manifest shard. */
-  function writeApprovedManifest(variantId: string = `${briefId}-var-1`): void {
+  function writeApprovedManifest(
+    variantId: string = `${briefId}-var-1`,
+    contentHash?: string,
+  ): void {
     const generatedDir = path.join(publicAssetsDir, 'generated');
     writeShard(generatedDir, variantId, {
       briefId,
@@ -2378,6 +3635,7 @@ describe('DELETE /api/manifest/:variantId', () => {
       sensorScore: '7/7',
       judgeScore: '4',
       type: null,
+      ...(contentHash === undefined ? {} : { contentHash }),
     } as never);
   }
 
@@ -2405,6 +3663,11 @@ describe('DELETE /api/manifest/:variantId', () => {
       // Stub out the durable queue check so tests don't exec `gh issue list`.
       checkinDeps: {
         listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
       } as unknown as CheckinRunnerDeps,
     });
   });
@@ -2516,6 +3779,11 @@ describe('DELETE /api/manifest/:variantId', () => {
               ],
             ]),
           ),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
       } as unknown as CheckinRunnerDeps,
     });
 
@@ -2532,6 +3800,166 @@ describe('DELETE /api/manifest/:variantId', () => {
     // Manifest entry must NOT have been removed.
     const manifest = composeManifestFromShards(path.dirname(manifestPath));
     expect(manifest.entries[variantId]).toBeDefined();
+  });
+
+  it('returns 409 when the variant exists only on canonical assets/queue', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'duplicate' as const,
+      branch: 'assets/queue',
+    }));
+    const withCrossProcessLock = vi.fn(<T>(run: () => Promise<T>) => run());
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset,
+        withCrossProcessLock,
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'queued-conflict' });
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith({
+      manifestKey: variantId,
+      assetPath,
+      manifestEntry: expect.objectContaining({ spriteName: variantId, assetPath }),
+    });
+    expect(withCrossProcessLock).toHaveBeenCalledOnce();
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
+  });
+
+  it('reads the manifest entry only after acquiring the cross-process unapproval lock', async () => {
+    const variantId = `${briefId}-var-1`;
+    const initialHash = 'a'.repeat(64);
+    const lockedHash = 'b'.repeat(64);
+    writeApprovedManifest(variantId, initialHash);
+    writeAsset(variantId);
+    const inspectDurableQueueAsset = vi.fn(async () => ({
+      reconciliation: 'new' as const,
+      branch: 'assets/queue',
+    }));
+    const withCrossProcessLock = vi.fn(async <T>(run: () => Promise<T>) => {
+      writeApprovedManifest(variantId, lockedHash);
+      return run();
+    });
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      catalogPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset,
+        withCrossProcessLock,
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(inspectDurableQueueAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifestKey: variantId,
+        contentHash: lockedHash,
+        manifestEntry: expect.objectContaining({ contentHash: lockedHash }),
+      }),
+    );
+  });
+
+  it('fails closed before unapproval when legacy queue inspection is unavailable', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+        withCrossProcessLock: <T>(run: () => Promise<T>) => run(),
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'unapprove-queue-check-failed',
+      message: 'Legacy asset-checkin inspection is unavailable.',
+    });
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
+  });
+
+  it('fails closed before unapproval when the cross-process lock is unavailable', async () => {
+    const variantId = `${briefId}-var-1`;
+    const assetPath = `generated/${variantId}.png`;
+    writeApprovedManifest(variantId);
+    writeAsset(variantId);
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: {
+        listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+        inspectDurableQueueAsset: async () => ({
+          reconciliation: 'new',
+          branch: 'assets/queue',
+        }),
+      } as unknown as CheckinRunnerDeps,
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/manifest/${variantId}`,
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({
+      error: 'unapprove-queue-check-failed',
+      message: 'Cross-process check-in lock is unavailable.',
+    });
+    expect(composeManifestFromShards(path.dirname(manifestPath)).entries[variantId]).toBeDefined();
+    expect(existsSync(path.join(publicAssetsDir, assetPath))).toBe(true);
   });
 });
 

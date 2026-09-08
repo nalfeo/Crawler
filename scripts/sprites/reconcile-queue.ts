@@ -51,13 +51,21 @@
  * — running in CI (the hourly workflow) is the entire point of PR2.
  */
 
+import { createHash } from 'node:crypto';
 import { parseAssetIssueBody } from './asset-issues.js';
 import {
   ART_SURFACE_ALLOWLIST,
   ASSET_CHECKIN_LABEL,
   ASSET_SURFACE_PATHS,
   type Exec,
+  type ExecResult,
 } from './checkin.js';
+import {
+  generatedManifestConceptId,
+  isRuntimeEligibleManifestEntry,
+  manifestEntrySchema,
+} from '../../src/shared/generated-assets.js';
+import { assertSafeManifestKey } from './generated-shards.js';
 
 /** How the reconcile cycle resolved. */
 export type ReconcileStatus = 'noop' | 'pr-open';
@@ -69,6 +77,65 @@ export class ReconcileError extends Error {
   ) {
     super(message);
     this.name = 'ReconcileError';
+  }
+}
+
+interface SpriteAnnotationsValidation {
+  readonly valid: boolean;
+  readonly rejections: readonly RejectedLifecycleDeletion[];
+}
+
+function validateSpriteAnnotationsDocument(raw: string): SpriteAnnotationsValidation {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { sprites?: unknown }).sprites === 'object' &&
+      (parsed as { sprites?: unknown }).sprites !== null &&
+      !Array.isArray((parsed as { sprites?: unknown }).sprites)
+    ) {
+      const sprites = (parsed as { sprites: Record<string, unknown> }).sprites;
+      const rejections: RejectedLifecycleDeletion[] = [];
+      for (const [annotationKey, rawAnnotation] of Object.entries(sprites).sort(([a], [b]) =>
+        a.localeCompare(b),
+      )) {
+        if (typeof rawAnnotation !== 'object' || rawAnnotation === null) continue;
+        const tombstone = (rawAnnotation as { tombstone?: unknown }).tombstone;
+        if (tombstone === undefined) continue;
+        if (!isLifecycleDeletionTombstone(annotationKey, tombstone)) {
+          rejections.push({
+            annotationKey,
+            reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
+            paths: [],
+          });
+        }
+      }
+      return { valid: rejections.length === 0, rejections };
+    }
+    return {
+      valid: false,
+      rejections: [
+        {
+          annotationKey: '<annotations-document>',
+          reason: `${ANNOTATIONS_PATH} must contain an object-valued "sprites" map on assets/queue.`,
+          paths: [],
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      rejections: [
+        {
+          annotationKey: '<annotations-document>',
+          reason: `${ANNOTATIONS_PATH} is invalid JSON on assets/queue: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          paths: [],
+        },
+      ],
+    };
   }
 }
 
@@ -110,6 +177,27 @@ export interface ReconcileResult {
    * workflow log rather than silently dropped.
    */
   readonly withheldPaths?: readonly string[];
+  /**
+   * Queue-side lifecycle deletions this cycle REFUSED (malformed tombstone,
+   * half-deleted shard/PNG pair, or a tombstone that no longer matches the
+   * shard on `main`). Deterministically ordered. A non-empty list means the
+   * whole lifecycle transaction — every deletion AND the annotations document —
+   * was withheld this cycle while unrelated art still promoted, so `main` can
+   * never gain a tombstone whose art is still present. Repair the named key on
+   * `assets/queue` to unblock it.
+   */
+  readonly rejectedLifecycleDeletions?: readonly RejectedLifecycleDeletion[];
+  /**
+   * Source snapshots withheld because their history or candidate shards could
+   * not be interpreted safely. Other independent sources may still promote.
+   */
+  readonly quarantinedSources?: readonly QuarantinedPromotionSource[];
+}
+
+export interface QuarantinedPromotionSource {
+  readonly sourceRef: string;
+  readonly reason: string;
+  readonly paths: readonly string[];
 }
 
 export interface ReconcileDeps {
@@ -149,6 +237,352 @@ export interface ReconcileOptions {
 
 const DEFAULT_REMOTE = 'origin';
 const DEFAULT_QUEUE_BRANCH = 'assets/queue';
+const ANNOTATIONS_PATH = 'public/assets/generated/sprite-editor-annotations.json';
+
+interface LifecycleDeletionTombstone {
+  readonly manifestKey: string;
+  readonly conceptId: string;
+  readonly replacementKey?: string;
+  readonly assetPath: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
+  readonly annotationKeys: readonly string[];
+}
+
+export interface AuthorizedLifecycleDeletion {
+  readonly tombstone: LifecycleDeletionTombstone;
+  readonly paths: readonly [string, string];
+}
+
+type LifecycleShardIdentity = Pick<
+  LifecycleDeletionTombstone,
+  'manifestKey' | 'assetPath' | 'sourceRun' | 'variantIndex'
+> &
+  Partial<Pick<LifecycleDeletionTombstone, 'conceptId'>>;
+
+/** A queue-side lifecycle deletion this cycle REFUSES to promote. */
+export interface RejectedLifecycleDeletion {
+  /** Annotation key (== tombstone `manifestKey`) whose deletion was refused. */
+  readonly annotationKey: string;
+  /** Deterministic, human-actionable reason. */
+  readonly reason: string;
+  /**
+   * The exact queue-side deleted paths withheld because of this rejection,
+   * sorted. Empty when the tombstone was too malformed to name a path.
+   */
+  readonly paths: readonly string[];
+}
+
+export interface LifecycleDeletionPartition {
+  readonly authorized: readonly AuthorizedLifecycleDeletion[];
+  readonly rejected: readonly RejectedLifecycleDeletion[];
+}
+
+export function findLifecycleOrphanCollisions(
+  deletions: readonly AuthorizedLifecycleDeletion[],
+  orphanedPaths: ReadonlySet<string>,
+): readonly AuthorizedLifecycleDeletion[] {
+  return deletions.filter((deletion) =>
+    deletion.paths.some((deletionPath) => orphanedPaths.has(deletionPath)),
+  );
+}
+
+/** True for a `generated/`-relative asset path with no traversal segments. */
+function isSafeQueueAssetPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.startsWith('generated/') &&
+    !value.includes('\\') &&
+    !value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')
+  );
+}
+
+export function isLifecycleDeletionTombstone(
+  annotationKey: string,
+  value: unknown,
+): value is LifecycleDeletionTombstone {
+  if (typeof value !== 'object' || value === null) return false;
+  const tombstone = value as Partial<LifecycleDeletionTombstone>;
+  return (
+    tombstone.manifestKey === annotationKey &&
+    typeof tombstone.conceptId === 'string' &&
+    tombstone.conceptId.trim() !== '' &&
+    isSafeQueueAssetPath(tombstone.assetPath) &&
+    typeof tombstone.sourceRun === 'string' &&
+    tombstone.sourceRun.trim() !== '' &&
+    (tombstone.replacementKey === undefined ||
+      (typeof tombstone.replacementKey === 'string' && tombstone.replacementKey.trim() !== '')) &&
+    typeof tombstone.variantIndex === 'number' &&
+    Number.isInteger(tombstone.variantIndex) &&
+    tombstone.variantIndex >= 0 &&
+    Array.isArray(tombstone.annotationKeys) &&
+    tombstone.annotationKeys.length > 0 &&
+    tombstone.annotationKeys.every((key) => typeof key === 'string' && key.length > 0)
+  );
+}
+
+async function describeUnavailableLifecycleReplacement(
+  deletion: AuthorizedLifecycleDeletion,
+  deletedPaths: ReadonlySet<string>,
+  promotablePaths: ReadonlySet<string>,
+  finalOverlayRefsByPath: ReadonlyMap<string, string>,
+  queueRef: string,
+  baseRef: string,
+  exec: Exec,
+  repoRoot: string,
+): Promise<string | null> {
+  const { replacementKey, conceptId } = deletion.tombstone;
+  if (replacementKey === undefined) {
+    // Historical pre-hardening tombstones intentionally carry no replacement
+    // key. Bind that compatibility exception to the exact tombstone already on
+    // main so a new queue writer cannot mint its own replacement-free deletion.
+    const persisted = await runGit(exec, repoRoot, ['show', `${baseRef}:${ANNOTATIONS_PATH}`]);
+    if (persisted.code === 0) {
+      try {
+        const document = JSON.parse(persisted.stdout) as {
+          sprites?: Record<string, { tombstone?: Partial<LifecycleDeletionTombstone> }>;
+        };
+        const base = document.sprites?.[deletion.tombstone.manifestKey]?.tombstone;
+        if (
+          base?.replacementKey === undefined &&
+          base?.manifestKey === deletion.tombstone.manifestKey &&
+          base.conceptId === deletion.tombstone.conceptId &&
+          base.assetPath === deletion.tombstone.assetPath &&
+          base.sourceRun === deletion.tombstone.sourceRun &&
+          base.variantIndex === deletion.tombstone.variantIndex &&
+          Array.isArray(base.annotationKeys) &&
+          base.annotationKeys.length === deletion.tombstone.annotationKeys.length &&
+          base.annotationKeys.every(
+            (key, index) => key === deletion.tombstone.annotationKeys[index],
+          )
+        ) {
+          return null;
+        }
+      } catch {
+        // Report the same fail-closed lifecycle error for unreadable base data.
+      }
+    }
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no accepted replacement and is not an unchanged historical tombstone on main.`;
+  }
+  if (conceptId === undefined || conceptId === '') {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" names replacement "${replacementKey}" without a concept id.`;
+  }
+  try {
+    assertSafeManifestKey(replacementKey);
+  } catch {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" names unsafe replacement key "${replacementKey}".`;
+  }
+
+  const replacementShardPath = `public/assets/generated/entries/${replacementKey}.json`;
+  if (deletedPaths.has(replacementShardPath)) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
+  }
+  const shardRef =
+    finalOverlayRefsByPath.get(replacementShardPath) ??
+    (promotablePaths.has(replacementShardPath) ? queueRef : baseRef);
+  const shard = await runGit(exec, repoRoot, ['show', `${shardRef}:${replacementShardPath}`]);
+  if (shard.code !== 0 || shard.stdout.trim() === '') {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no promotable replacement shard for "${replacementKey}".`;
+  }
+
+  let rawEntry: unknown;
+  try {
+    rawEntry = JSON.parse(shard.stdout);
+  } catch {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has malformed replacement shard "${replacementKey}".`;
+  }
+  const parsed = manifestEntrySchema.safeParse(rawEntry);
+  if (!parsed.success || parsed.data.spriteName !== replacementKey) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has invalid replacement shard "${replacementKey}".`;
+  }
+  if (
+    generatedManifestConceptId(parsed.data, replacementKey) !== conceptId ||
+    !isRuntimeEligibleManifestEntry(parsed.data) ||
+    !isSafeQueueAssetPath(parsed.data.assetPath)
+  ) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has unusable replacement "${replacementKey}".`;
+  }
+
+  const replacementAssetPath = `public/assets/${parsed.data.assetPath}`;
+  if (deletedPaths.has(replacementAssetPath)) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" would also delete replacement "${replacementKey}".`;
+  }
+  const assetRef =
+    finalOverlayRefsByPath.get(replacementAssetPath) ??
+    (promotablePaths.has(replacementAssetPath) ? queueRef : baseRef);
+  const asset = await runGit(exec, repoRoot, [
+    'cat-file',
+    '-e',
+    `${assetRef}:${replacementAssetPath}`,
+  ]);
+  if (asset.code !== 0) {
+    return `Lifecycle deletion for "${deletion.tombstone.manifestKey}" has no promotable replacement PNG for "${replacementKey}".`;
+  }
+  return null;
+}
+
+/**
+ * Partition queue-side deletions into the complete shard+PNG pairs a tracked
+ * lifecycle tombstone authorizes, and the ones this cycle refuses.
+ *
+ * PER-TOMBSTONE, never all-or-nothing: one malformed or half-deleted tombstone
+ * used to throw straight out of `runReconcile`, aborting the whole hourly cycle
+ * so unrelated, perfectly valid art never promoted. Refusal is still absolute —
+ * a rejected deletion is NEVER applied — it just no longer takes the rest of the
+ * queue down with it. Unrelated queue deletions (no tombstone) remain ignored.
+ */
+export function partitionLifecycleDeletions(
+  deletedPaths: readonly string[],
+  annotationsJson: string,
+): LifecycleDeletionPartition {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(annotationsJson);
+  } catch (error) {
+    throw new ReconcileError(
+      'invalid-state',
+      `${ANNOTATIONS_PATH} is invalid JSON on assets/queue: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { sprites?: unknown }).sprites !== 'object' ||
+    (parsed as { sprites?: unknown }).sprites === null ||
+    Array.isArray((parsed as { sprites?: unknown }).sprites)
+  ) {
+    throw new ReconcileError(
+      'invalid-state',
+      `${ANNOTATIONS_PATH} must contain an object-valued "sprites" map on assets/queue.`,
+    );
+  }
+  const sprites = (parsed as { sprites: Record<string, unknown> }).sprites;
+  const deleted = new Set(deletedPaths);
+  const authorized: AuthorizedLifecycleDeletion[] = [];
+  const rejected: RejectedLifecycleDeletion[] = [];
+  for (const [annotationKey, rawAnnotation] of Object.entries(sprites).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const tombstone =
+      typeof rawAnnotation === 'object' && rawAnnotation !== null
+        ? (rawAnnotation as { tombstone?: unknown }).tombstone
+        : undefined;
+    if (typeof tombstone !== 'object' || tombstone === null) continue;
+    const value =
+      typeof tombstone === 'object' && tombstone !== null
+        ? (tombstone as Partial<LifecycleDeletionTombstone>)
+        : {};
+    const shardPath = `public/assets/generated/entries/${annotationKey}.json`;
+    if (!isLifecycleDeletionTombstone(annotationKey, tombstone)) {
+      // Withhold exactly the deleted paths this broken tombstone could name.
+      // An unnameable path cannot be promoted anyway: only AUTHORIZED pairs are
+      // ever `git rm`-ed, so refusing here is already fail-closed.
+      const candidatePaths = [
+        shardPath,
+        ...(isSafeQueueAssetPath(value.assetPath) ? [`public/assets/${value.assetPath}`] : []),
+      ].filter((candidate) => deleted.has(candidate));
+      if (candidatePaths.length === 0) continue;
+      rejected.push({
+        annotationKey,
+        reason: `Invalid disliked-sprite tombstone "${annotationKey}" on assets/queue.`,
+        paths: [...new Set(candidatePaths)].sort(),
+      });
+      continue;
+    }
+    const validTombstone = tombstone;
+    const assetPath = `public/assets/${validTombstone.assetPath}`;
+    const shardDeleted = deleted.has(shardPath);
+    const assetDeleted = deleted.has(assetPath);
+    if (shardDeleted !== assetDeleted) {
+      rejected.push({
+        annotationKey,
+        reason: `Lifecycle deletion for "${annotationKey}" is incomplete on assets/queue: shard and PNG must be deleted together.`,
+        paths: [shardDeleted ? shardPath : assetPath],
+      });
+      continue;
+    }
+    if (shardDeleted) {
+      authorized.push({
+        tombstone: {
+          manifestKey: validTombstone.manifestKey,
+          conceptId: validTombstone.conceptId,
+          ...(validTombstone.replacementKey !== undefined
+            ? { replacementKey: validTombstone.replacementKey }
+            : {}),
+          assetPath: validTombstone.assetPath,
+          sourceRun: validTombstone.sourceRun,
+          variantIndex: validTombstone.variantIndex,
+          annotationKeys: validTombstone.annotationKeys,
+        },
+        paths: [shardPath, assetPath],
+      });
+    }
+  }
+  return { authorized, rejected };
+}
+
+/**
+ * Select only complete shard+PNG deletion pairs authorized by a tracked
+ * lifecycle tombstone. Unrelated queue deletions remain ignored.
+ *
+ * Throwing wrapper over {@link partitionLifecycleDeletions} for callers that
+ * genuinely want an all-or-nothing answer.
+ */
+export function selectAuthorizedLifecycleDeletions(
+  deletedPaths: readonly string[],
+  annotationsJson: string,
+): readonly AuthorizedLifecycleDeletion[] {
+  const { authorized, rejected } = partitionLifecycleDeletions(deletedPaths, annotationsJson);
+  const first = rejected[0];
+  if (first !== undefined) throw new ReconcileError('invalid-state', first.reason);
+  return authorized;
+}
+
+/** Require a persisted tombstone to describe the exact asset currently on main. */
+export function assertLifecycleDeletionMatchesShard(
+  deletion: {
+    readonly tombstone: LifecycleShardIdentity;
+    readonly paths: readonly [string, string];
+  },
+  shardJson: string | null,
+): void {
+  let entry: {
+    readonly briefId?: unknown;
+    readonly spriteName?: unknown;
+    readonly assetPath?: unknown;
+    readonly sourceRun?: unknown;
+    readonly variantIndex?: unknown;
+    readonly type?: unknown;
+  };
+  try {
+    entry = shardJson === null ? {} : (JSON.parse(shardJson) as typeof entry);
+  } catch {
+    entry = {};
+  }
+  const tombstone = deletion.tombstone;
+  if (
+    entry.spriteName !== tombstone.manifestKey ||
+    entry.assetPath !== tombstone.assetPath ||
+    entry.sourceRun !== tombstone.sourceRun ||
+    entry.variantIndex !== tombstone.variantIndex ||
+    (tombstone.conceptId !== undefined &&
+      generatedManifestConceptId(
+        {
+          briefId: typeof entry.briefId === 'string' ? entry.briefId : '',
+          spriteName: typeof entry.spriteName === 'string' ? entry.spriteName : '',
+          type: entry.type === 'icon' ? 'icon' : null,
+        },
+        tombstone.manifestKey,
+      ) !== tombstone.conceptId)
+  ) {
+    throw new ReconcileError(
+      'invalid-state',
+      `Lifecycle tombstone for "${tombstone.manifestKey}" does not match the current main shard; refusing stale deletion.`,
+    );
+  }
+}
 const DEFAULT_PROMOTE_BRANCH = 'assets/promote';
 const DEFAULT_BASE_BRANCH = 'main';
 
@@ -241,11 +675,7 @@ async function reEnsureMergeTrainLabel(
 }
 
 /** git args that write to a specific worktree/cwd. */
-async function runGit(
-  exec: Exec,
-  cwd: string,
-  args: readonly string[],
-): Promise<{ stdout: string; stderr: string; code: number }> {
+async function runGit(exec: Exec, cwd: string, args: readonly string[]): Promise<ExecResult> {
   return exec('git', args, { cwd });
 }
 
@@ -347,7 +777,12 @@ function parseNameOnly(stdout: string): string[] {
  * that predate the shard migration (e.g. the aggregate `manifest.json`).
  * Shard files live under `entries/` and are safe to harvest; those are NOT matched.
  */
-function isLegacyAggregateManifestPath(p: string): boolean {
+/**
+ * Root-level generated JSON is derived or control state, never an independently
+ * promotable legacy-orphan asset. This includes aggregate manifests and the
+ * lifecycle annotations document; only assets/queue may author the latter.
+ */
+function isGeneratedRootJsonPath(p: string): boolean {
   return /^public\/assets\/generated\/[^/]+\.json$/.test(p);
 }
 
@@ -458,10 +893,11 @@ async function historicBlobsAtPaths(
  * real approvals still land, and repeat edits of an asset the reconciler itself
  * promoted keep landing (main's current bytes came from the source's history).
  *
- * Fail closed: any git failure drops every path for that source. Promoting when
- * we cannot read the history is exactly the unbounded-regression case this guard
- * prevents, and dropping is non-destructive — the source keeps its bytes and a
- * later cycle promotes them once git answers again.
+ * Fail closed and visibly: any git failure or malformed/unsafe candidate shard
+ * throws a path-specific error before promotion. Without trustworthy history
+ * and authored asset paths, the reconciler cannot prove which PNG must be
+ * withheld atomically; returning a success-shaped empty set would silently park
+ * every approval on that immutable source snapshot.
  */
 export async function filterPromotablePaths(
   exec: Exec,
@@ -481,7 +917,10 @@ export async function filterPromotablePaths(
     baseHistory === null ||
     sourceHistory === null
   ) {
-    return [];
+    throw new ReconcileError(
+      'git-failed',
+      `Unable to inspect promotion history for source ${sourceRef} against ${baseRef}.`,
+    );
   }
 
   const perPathOk = (p: string): boolean => {
@@ -496,32 +935,173 @@ export async function filterPromotablePaths(
     return sourceHistory.get(p)?.has(baseSha) === true;
   };
 
-  // Atomic PNG+shard grouping: a PNG at `public/assets/generated/<key>.png` and
-  // its shard at `public/assets/generated/entries/<key>.json` must be accepted or
-  // withheld together. Without this, a stale PNG (whose bytes main already
-  // carried) would be withheld while a freshly-stamped shard (a new blob, never
-  // seen by main) passes — landing a shard whose `contentHash` describes the
-  // withheld PNG while main still holds the superseding bytes.
-  const pngFromShard = (p: string): string | undefined => {
-    const m = /^(public\/assets\/generated\/entries\/)([^/]+)\.json$/.exec(p);
-    return m ? `public/assets/generated/${m[2]}.png` : undefined;
-  };
-  const shardFromPng = (p: string): string | undefined => {
-    const m = /^public\/assets\/generated\/([^/]+)\.png$/.exec(p);
-    return m ? `public/assets/generated/entries/${m[1]}.json` : undefined;
+  // Atomic PNG+shard grouping must follow each shard's authored assetPath, not
+  // derive a PNG path from the manifest key. Nested equipment keys can point to
+  // flattened or suffixed PNG names.
+  const pathSet = new Set(paths);
+  const pairs: Array<readonly [string, string]> = [];
+  const shardPrefix = 'public/assets/generated/entries/';
+  const pngPrefix = 'public/assets/generated/';
+  const shardPaths = paths.filter(
+    (candidate) => candidate.startsWith(shardPrefix) && candidate.endsWith('.json'),
+  );
+  const pngPaths = paths.filter(
+    (candidate) =>
+      candidate.startsWith(pngPrefix) &&
+      !candidate.startsWith(shardPrefix) &&
+      candidate.endsWith('.png'),
+  );
+  const pairedPngPaths = new Set<string>();
+
+  const readAndValidateShard = async (
+    shardPath: string,
+    expectedPngPath?: string,
+  ): Promise<
+    | { readonly ok: true; readonly pair?: readonly [string, string] }
+    | {
+        readonly ok: false;
+        readonly kind: 'git-failed' | 'invalid-state';
+        readonly reason: string;
+      }
+  > => {
+    const shard = await runGit(exec, repoRoot, ['show', `${sourceRef}:${shardPath}`]);
+    if (shard.code !== 0) {
+      return {
+        ok: false,
+        kind: 'git-failed',
+        reason: `Unable to read candidate shard "${shardPath}" from ${sourceRef}: ${shard.stderr || shard.stdout || 'git show failed'}`,
+      };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(shard.stdout);
+    } catch {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} is malformed JSON.`,
+      };
+    }
+    const parsedEntry = manifestEntrySchema.safeParse(parsed);
+    if (!parsedEntry.success) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the generated manifest entry schema.`,
+      };
+    }
+    const assetPath = parsedEntry.data.assetPath;
+    if (!isSafeQueueAssetPath(assetPath)) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} has an unsafe assetPath.`,
+      };
+    }
+    const pngPath = `public/assets/${assetPath}`;
+    if (expectedPngPath !== undefined && pngPath !== expectedPngPath) {
+      return { ok: true };
+    }
+    const png = await runGit(exec, repoRoot, ['show', `${sourceRef}:${pngPath}`]);
+    if (png.code !== 0) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} references missing PNG "${pngPath}".`,
+      };
+    }
+    const declaredHash = parsedEntry.data.contentHash;
+    const pngBytes = png.stdoutBytes ?? Buffer.from(png.stdout);
+    const actualHash = createHash('sha256').update(pngBytes).digest('hex');
+    if (declaredHash === undefined || declaredHash !== actualHash) {
+      return {
+        ok: false,
+        kind: 'invalid-state',
+        reason: `Candidate shard "${shardPath}" on ${sourceRef} does not match the SHA-256 of "${pngPath}".`,
+      };
+    }
+    pairedPngPaths.add(pngPath);
+    return {
+      ok: true,
+      pair: pathSet.has(pngPath) ? ([shardPath, pngPath] as const) : undefined,
+    };
   };
 
-  // Build a set of individually-passing paths, then suppress any whose paired
-  // counterpart failed.
-  const passingSet = new Set(paths.filter(perPathOk));
-  const withheldByPair = new Set<string>();
-  for (const p of passingSet) {
-    const counterpart = p.endsWith('.json') ? pngFromShard(p) : shardFromPng(p);
-    if (counterpart !== undefined && !passingSet.has(counterpart) && paths.includes(counterpart)) {
-      withheldByPair.add(p);
+  const shardReadConcurrency = 8;
+  for (let offset = 0; offset < shardPaths.length; offset += shardReadConcurrency) {
+    const reads = await Promise.all(
+      shardPaths
+        .slice(offset, offset + shardReadConcurrency)
+        .map((shardPath) => readAndValidateShard(shardPath)),
+    );
+    const failed = reads.find((read) => !read.ok);
+    if (failed !== undefined && !failed.ok) {
+      throw new ReconcileError(failed.kind, failed.reason);
+    }
+    for (const read of reads) {
+      if (read.ok && read.pair !== undefined) pairs.push(read.pair);
     }
   }
-  return [...passingSet].filter((p) => !withheldByPair.has(p));
+
+  const unpairedPngPaths = pngPaths.filter((pngPath) => !pairedPngPaths.has(pngPath));
+  for (let offset = 0; offset < unpairedPngPaths.length; offset += shardReadConcurrency) {
+    const reads = await Promise.all(
+      unpairedPngPaths.slice(offset, offset + shardReadConcurrency).map(async (pngPath) => {
+        const assetPath = pngPath.slice('public/assets/'.length);
+        const matching = await runGit(exec, repoRoot, [
+          'grep',
+          '-l',
+          '-F',
+          assetPath,
+          sourceRef,
+          '--',
+          shardPrefix,
+        ]);
+        if (matching.code !== 0 && matching.code !== 1) {
+          return {
+            ok: false,
+            kind: 'git-failed' as const,
+            reason: `Unable to locate the owner shard for "${pngPath}" on ${sourceRef}: ${matching.stderr || matching.stdout || 'git grep failed'}`,
+          };
+        }
+        const prefix = `${sourceRef}:`;
+        const ownerCandidates = matching.stdout
+          .split(/\r?\n/u)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line));
+        const owners: string[] = [];
+        for (const shardPath of ownerCandidates) {
+          const result = await readAndValidateShard(shardPath, pngPath);
+          if (!result.ok) return result;
+          if (result.pair !== undefined || pairedPngPaths.has(pngPath)) owners.push(shardPath);
+        }
+        if (owners.length !== 1) {
+          return {
+            ok: false,
+            kind: 'invalid-state' as const,
+            reason: `Candidate PNG "${pngPath}" on ${sourceRef} has ${owners.length} schema-valid owner shards; expected exactly one.`,
+          };
+        }
+        return { ok: true } as const;
+      }),
+    );
+    const failed = reads.find((read) => !read.ok);
+    if (failed !== undefined && !failed.ok) {
+      throw new ReconcileError(failed.kind, failed.reason);
+    }
+  }
+
+  // Build a set of individually-passing paths, then suppress either half of a
+  // changed logical pair when its counterpart failed.
+  const passingSet = new Set(paths.filter(perPathOk));
+  for (const [shardPath, pngPath] of pairs) {
+    if (passingSet.has(shardPath) !== passingSet.has(pngPath)) {
+      passingSet.delete(shardPath);
+      passingSet.delete(pngPath);
+    }
+  }
+  return [...passingSet];
 }
 
 /** Destination tree-entry modes the reconciler will allow onto `main`. */
@@ -786,7 +1366,7 @@ export async function computeClosingIssueNumbers(
  * currently AGREES with `main` drops out of its own AM set, so the other source
  * always wins the overlay — and `main` flips between the two, every hour,
  * forever. Observed live on
- * `public/assets/generated/entries/gnome-boss-var-7.json`, where `assets/queue`
+ * `public/assets/generated/entries/<key>.json`, where `assets/queue`
  * and `assets/checkin-20260801-181522-7be968` held one blob while `main` and
  * `assets/checkin-20260731-204023-b1e0cb` held another; PRs #2704 and #2706
  * (one hour apart) carried an identical 100-file set with exactly inverse
@@ -1051,6 +1631,11 @@ export async function findLandedPromotion(
  * retirement: a superseded source contributes no promotable path, so it produces
  * a `noop` cycle whether or not it is ever retired.
  *
+ * Source-authored deletions are checked separately against the source branch's
+ * merge base. A deletion remains a contribution while `base` still carries the
+ * path; ignoring it would let tidy-up erase the only durable record of an
+ * approved lifecycle removal. Paths already absent from `base` are converged.
+ *
  * LANDED-FIX AMNESTY (`landedRef`): the repo squash-merges, so when a bad path a
  * source harvested gets corrected by a FOLLOW-UP commit on the promotion branch
  * itself, before merge, the squash commit that lands on `main` is byte-identical
@@ -1081,10 +1666,33 @@ async function sourceAddsNothingToBase(
   baseRef: string,
   sourceRef: string,
   options?: {
-    readonly dropLegacyAggregateManifestPaths?: boolean;
+    readonly dropGeneratedRootJsonPaths?: boolean;
     readonly landedRef?: string;
   },
 ): Promise<boolean> {
+  const mergeBase = await runGit(exec, repoRoot, ['merge-base', baseRef, sourceRef]);
+  if (mergeBase.code !== 0 || !OBJECT_ID_PATTERN.test(mergeBase.stdout.trim())) return false;
+  const sourceDeletionDelta = await runGit(exec, repoRoot, [
+    'diff',
+    '--no-renames',
+    '--name-only',
+    '--diff-filter=D',
+    mergeBase.stdout.trim(),
+    sourceRef,
+    '--',
+    ...ART_SURFACE_ALLOWLIST,
+  ]);
+  if (sourceDeletionDelta.code !== 0) return false;
+  let sourceDeletedPaths = parseNameOnly(sourceDeletionDelta.stdout);
+  if (options?.dropGeneratedRootJsonPaths === true) {
+    sourceDeletedPaths = sourceDeletedPaths.filter((p) => !isGeneratedRootJsonPath(p));
+  }
+  if (sourceDeletedPaths.length > 0) {
+    const baseBlobs = await blobsAtPaths(exec, repoRoot, baseRef, sourceDeletedPaths);
+    if (baseBlobs === null) return false;
+    if (sourceDeletedPaths.some((deletedPath) => baseBlobs.has(deletedPath))) return false;
+  }
+
   const delta = await runGit(exec, repoRoot, [
     'diff',
     '--no-renames',
@@ -1097,8 +1705,8 @@ async function sourceAddsNothingToBase(
   ]);
   if (delta.code !== 0) return false;
   let paths = parseNameOnly(delta.stdout);
-  if (options?.dropLegacyAggregateManifestPaths === true) {
-    paths = paths.filter((p) => !isLegacyAggregateManifestPath(p));
+  if (options?.dropGeneratedRootJsonPaths === true) {
+    paths = paths.filter((p) => !isGeneratedRootJsonPath(p));
   }
   if (paths.length === 0) return true;
   if (options?.landedRef === undefined) return false;
@@ -1201,7 +1809,7 @@ export async function tidyUpLandedPromotion(
   const retirable = async (
     branch: string,
     expectedSha: string,
-    options?: { readonly dropLegacyAggregateManifestPaths?: boolean },
+    options?: { readonly dropGeneratedRootJsonPaths?: boolean },
   ): Promise<boolean> => {
     const currentTip = await remoteBranchSha(exec, repoRoot, remote, branch);
     // Already gone, or advanced past the harvested snapshot → never retire.
@@ -1241,7 +1849,7 @@ export async function tidyUpLandedPromotion(
 
   const deletedBranches: string[] = [];
   for (const orphan of landed.sources.orphans) {
-    if (!(await retirable(orphan.branch, orphan.sha, { dropLegacyAggregateManifestPaths: true })))
+    if (!(await retirable(orphan.branch, orphan.sha, { dropGeneratedRootJsonPaths: true })))
       continue;
     // Abort the whole sweep (not just this branch) the moment the base moves.
     if (!(await baseUnchanged())) break;
@@ -1505,11 +2113,11 @@ export async function runReconcile(
     //    the merge-base of main and queue is still pre-squash, so a three-dot
     //    diff would still show the already-landed art forever (PR reopens in a
     //    loop). Two-dot correctly reports "queue's art already in main" ⇒ noop.
-    //    --diff-filter=AM limits to Added/Modified paths: files present on main
-    //    but ABSENT from queue (D = deleted-in-queue) are skipped deliberately —
-    //    they are art that reached main via an independent flow (e.g. the legacy
-    //    asset-PR) that queue never saw; promoting a D would revert them, which
-    //    is a data-loss bug. We only promote what queue positively contributes.
+    //    Added/Modified paths remain the normal contribution surface. Files
+    //    present on main but absent from queue (D = deleted-in-queue) are ignored
+    //    unless a tracked lifecycle tombstone authorizes the exact shard+PNG pair
+    //    and matches the current main shard. This keeps independent-flow art safe
+    //    while allowing explicit disliked-sprite transactions to converge.
     //    --no-renames is REQUIRED: git's rename heuristic would otherwise pair a
     //    file deleted-in-queue (a main-only asset, our intended D) with a
     //    content-identical file added-in-queue (genuinely-new queue art, our
@@ -1520,17 +2128,55 @@ export async function runReconcile(
     // the result (and therefore in the workflow log) so a genuinely-blocked
     // approval is visible instead of silently dropped.
     const withheld = new Set<string>();
+    const rejectedLifecycleDeletions: RejectedLifecycleDeletion[] = [];
+    const quarantinedSources: QuarantinedPromotionSource[] = [];
+    /**
+     * Deterministic result field for refused lifecycle deletions. Omitted
+     * entirely when nothing was refused, so a healthy cycle's JSON is unchanged.
+     */
+    const refusedDeletionsField = (): Pick<ReconcileResult, 'rejectedLifecycleDeletions'> =>
+      rejectedLifecycleDeletions.length === 0
+        ? {}
+        : {
+            rejectedLifecycleDeletions: [...rejectedLifecycleDeletions].sort(
+              (a, b) =>
+                a.annotationKey.localeCompare(b.annotationKey) || a.reason.localeCompare(b.reason),
+            ),
+          };
+    const quarantinedSourcesField = (): Pick<ReconcileResult, 'quarantinedSources'> =>
+      quarantinedSources.length === 0
+        ? {}
+        : {
+            quarantinedSources: [...quarantinedSources].sort((a, b) =>
+              a.sourceRef.localeCompare(b.sourceRef),
+            ),
+          };
     const keepPromotable = async (
       ref: string,
       candidates: readonly string[],
     ): Promise<string[]> => {
-      const promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      let promotable: string[];
+      try {
+        promotable = await filterPromotablePaths(deps.exec, repoRoot, baseRef, ref, candidates);
+      } catch (error) {
+        if (!(error instanceof ReconcileError)) throw error;
+        const paths = [...candidates].sort();
+        for (const candidate of paths) withheld.add(candidate);
+        quarantinedSources.push({
+          sourceRef: ref,
+          reason: error.message,
+          paths,
+        });
+        return [];
+      }
       const kept = new Set(promotable);
       for (const p of candidates) if (!kept.has(p)) withheld.add(p);
       return promotable;
     };
 
     let queueVsMainArt: readonly string[] = [];
+    let queueLifecycleDeletions: readonly AuthorizedLifecycleDeletion[] = [];
+    const queueDeletedPathSet = new Set<string>();
     if (queueRef !== null) {
       const delta = await mustGit(deps.exec, repoRoot, [
         'diff',
@@ -1546,6 +2192,179 @@ export async function runReconcile(
       // do not clobber a main-side change the queue never saw (see
       // `filterPromotablePaths`) — that ping-pong reopened this PR every hour.
       queueVsMainArt = await keepPromotable(queueRef, parseNameOnly(delta));
+      const queueQuarantined = quarantinedSources.some(
+        (quarantine) => quarantine.sourceRef === queueRef,
+      );
+      let queueAnnotations:
+        | {
+            readonly code: number;
+            readonly stdout: string;
+          }
+        | undefined;
+      let queueAnnotationValidation: SpriteAnnotationsValidation | undefined;
+      if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+        queueAnnotations = await runGit(deps.exec, repoRoot, [
+          'show',
+          `${queueRef}:${ANNOTATIONS_PATH}`,
+        ]);
+        queueAnnotationValidation =
+          queueAnnotations.code === 0
+            ? validateSpriteAnnotationsDocument(queueAnnotations.stdout)
+            : {
+                valid: false,
+                rejections: [
+                  {
+                    annotationKey: '<annotations-document>',
+                    reason: `Unable to read ${ANNOTATIONS_PATH} from assets/queue.`,
+                    paths: [],
+                  },
+                ],
+              };
+        if (!queueAnnotationValidation.valid) {
+          rejectedLifecycleDeletions.push(...queueAnnotationValidation.rejections);
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
+        }
+      }
+
+      const deleted = await mustGit(deps.exec, repoRoot, [
+        'diff',
+        '--no-renames',
+        '--name-only',
+        '--diff-filter=D',
+        baseRef,
+        queueRef,
+        '--',
+        'public/assets/generated/',
+      ]);
+      const deletedPaths = parseNameOnly(deleted);
+      for (const deletedPath of deletedPaths) queueDeletedPathSet.add(deletedPath);
+      if (deletedPaths.length > 0 && queueQuarantined) {
+        for (const deletedPath of deletedPaths) withheld.add(deletedPath);
+      } else if (deletedPaths.length > 0) {
+        const promotablePathSet = new Set(queueVsMainArt);
+        const annotations =
+          queueAnnotations ??
+          (await runGit(deps.exec, repoRoot, ['show', `${queueRef}:${ANNOTATIONS_PATH}`]));
+        if (queueAnnotationValidation === undefined) {
+          queueAnnotationValidation =
+            annotations.code === 0
+              ? validateSpriteAnnotationsDocument(annotations.stdout)
+              : {
+                  valid: false,
+                  rejections: [
+                    {
+                      annotationKey: '<annotations-document>',
+                      reason: `Unable to read ${ANNOTATIONS_PATH} from assets/queue.`,
+                      paths: [],
+                    },
+                  ],
+                };
+          if (!queueAnnotationValidation.valid) {
+            rejectedLifecycleDeletions.push(...queueAnnotationValidation.rejections);
+          }
+        }
+        let candidates: readonly AuthorizedLifecycleDeletion[] = [];
+        if (annotations.code === 0 && queueAnnotationValidation.valid) {
+          // Per-tombstone partition: a single broken tombstone is refused on
+          // its own instead of throwing the whole hourly cycle away.
+          const partition = partitionLifecycleDeletions(deletedPaths, annotations.stdout);
+          candidates = partition.authorized;
+          rejectedLifecycleDeletions.push(...partition.rejected);
+        } else {
+          // No structurally valid audit means no queue-side deletion has
+          // authority. Withhold the complete deletion set and annotation update
+          // as one fail-closed transaction.
+          for (const deletedPath of deletedPaths) withheld.add(deletedPath);
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
+        }
+        const annotationWillLand = queueVsMainArt.includes(ANNOTATIONS_PATH);
+        let baseAnnotations = '';
+        if (!annotationWillLand && candidates.length > 0) {
+          const current = await runGit(deps.exec, repoRoot, [
+            'show',
+            `${baseRef}:${ANNOTATIONS_PATH}`,
+          ]);
+          if (current.code === 0) baseAnnotations = current.stdout;
+        }
+        let baseAuthorized = new Set<string>();
+        if (baseAnnotations !== '') {
+          try {
+            // Only the AUTHORIZED half matters here: a tombstone already broken
+            // on `main` cannot corroborate anything, and must not abort the run.
+            baseAuthorized = new Set(
+              partitionLifecycleDeletions(
+                candidates.flatMap((candidate) => candidate.paths),
+                baseAnnotations,
+              ).authorized.map((candidate) => candidate.tombstone.manifestKey),
+            );
+          } catch {
+            baseAuthorized = new Set<string>();
+          }
+        }
+        const accepted: AuthorizedLifecycleDeletion[] = [];
+        for (const candidate of candidates) {
+          if (!annotationWillLand && !baseAuthorized.has(candidate.tombstone.manifestKey)) {
+            for (const deletionPath of candidate.paths) withheld.add(deletionPath);
+            continue;
+          }
+          const shard = await runGit(deps.exec, repoRoot, [
+            'show',
+            `${baseRef}:${candidate.paths[0]}`,
+          ]);
+          try {
+            assertLifecycleDeletionMatchesShard(candidate, shard.code === 0 ? shard.stdout : null);
+          } catch (error) {
+            rejectedLifecycleDeletions.push({
+              annotationKey: candidate.tombstone.manifestKey,
+              reason: error instanceof Error ? error.message : String(error),
+              paths: [...candidate.paths].sort(),
+            });
+            continue;
+          }
+          const replacementFailure = await describeUnavailableLifecycleReplacement(
+            candidate,
+            queueDeletedPathSet,
+            promotablePathSet,
+            new Map(),
+            queueRef,
+            baseRef,
+            deps.exec,
+            repoRoot,
+          );
+          if (replacementFailure !== null) {
+            rejectedLifecycleDeletions.push({
+              annotationKey: candidate.tombstone.manifestKey,
+              reason: replacementFailure,
+              paths: [...candidate.paths].sort(),
+            });
+            continue;
+          }
+          accepted.push(candidate);
+        }
+        queueLifecycleDeletions = accepted;
+
+        if (rejectedLifecycleDeletions.length > 0) {
+          // FAIL CLOSED, ATOMICALLY. The annotations document and the art
+          // deletions it authorizes are ONE transaction: landing the tombstones
+          // without their deletions (or vice-versa) leaves `main` dangling and
+          // red under the lifecycle closure gate. So when ANY deletion in this
+          // cycle is refused, withhold every lifecycle deletion AND the
+          // annotations file, and let unrelated art keep promoting.
+          for (const deletion of candidates) {
+            for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+          }
+          for (const rejection of rejectedLifecycleDeletions) {
+            for (const deletionPath of rejection.paths) withheld.add(deletionPath);
+          }
+          queueLifecycleDeletions = [];
+          if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+            queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+            withheld.add(ANNOTATIONS_PATH);
+          }
+        }
+      }
     }
 
     // 3b. Compute art deltas for each orphaned branch (two-dot AM only, art
@@ -1570,7 +2389,7 @@ export async function runReconcile(
       ]);
       if (orphanDelta.code !== 0) continue;
       const candidates = parseNameOnly(orphanDelta.stdout).filter(
-        (p) => !isLegacyAggregateManifestPath(p),
+        (p) => !isGeneratedRootJsonPath(p),
       );
       // Same convergence guard as the queue delta: an orphan branch that has sat
       // unmerged for weeks holds art `main` has long since superseded (and a
@@ -1580,7 +2399,76 @@ export async function runReconcile(
       if (paths.length > 0) orphanedPathsByBranch.push({ branch, ref, paths });
     }
 
-    if (queueVsMainArt.length === 0 && orphanedPathsByBranch.length === 0) {
+    const orphanedPaths = new Set(orphanedPathsByBranch.flatMap(({ paths }) => paths));
+    const lifecycleOrphanCollisions = findLifecycleOrphanCollisions(
+      queueLifecycleDeletions,
+      orphanedPaths,
+    );
+    if (lifecycleOrphanCollisions.length > 0) {
+      for (const deletion of queueLifecycleDeletions) {
+        for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+      }
+      for (const collision of lifecycleOrphanCollisions) {
+        rejectedLifecycleDeletions.push({
+          annotationKey: collision.tombstone.manifestKey,
+          reason: `Lifecycle deletion for "${collision.tombstone.manifestKey}" conflicts with art on an orphaned check-in branch.`,
+          paths: [...collision.paths].sort(),
+        });
+      }
+      queueLifecycleDeletions = [];
+      if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+        queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+        withheld.add(ANNOTATIONS_PATH);
+      }
+    }
+
+    if (queueLifecycleDeletions.length > 0 && queueRef !== null) {
+      // Orphan branches overlay the queue in-order below, so validate named
+      // replacements against that final composed tree rather than the queue/base
+      // snapshot alone. A later orphan may replace an otherwise-good shard with
+      // disliked or malformed metadata without touching the variant being deleted.
+      const finalOverlayRefsByPath = new Map<string, string>();
+      for (const { ref, paths } of orphanedPathsByBranch) {
+        for (const overlayPath of paths) finalOverlayRefsByPath.set(overlayPath, ref);
+      }
+      const postOverlayRejections: RejectedLifecycleDeletion[] = [];
+      for (const deletion of queueLifecycleDeletions) {
+        const replacementFailure = await describeUnavailableLifecycleReplacement(
+          deletion,
+          queueDeletedPathSet,
+          new Set(queueVsMainArt),
+          finalOverlayRefsByPath,
+          queueRef,
+          baseRef,
+          deps.exec,
+          repoRoot,
+        );
+        if (replacementFailure !== null) {
+          postOverlayRejections.push({
+            annotationKey: deletion.tombstone.manifestKey,
+            reason: replacementFailure,
+            paths: [...deletion.paths].sort(),
+          });
+        }
+      }
+      if (postOverlayRejections.length > 0) {
+        for (const deletion of queueLifecycleDeletions) {
+          for (const deletionPath of deletion.paths) withheld.add(deletionPath);
+        }
+        rejectedLifecycleDeletions.push(...postOverlayRejections);
+        queueLifecycleDeletions = [];
+        if (queueVsMainArt.includes(ANNOTATIONS_PATH)) {
+          queueVsMainArt = queueVsMainArt.filter((candidate) => candidate !== ANNOTATIONS_PATH);
+          withheld.add(ANNOTATIONS_PATH);
+        }
+      }
+    }
+
+    if (
+      queueVsMainArt.length === 0 &&
+      queueLifecycleDeletions.length === 0 &&
+      orphanedPathsByBranch.length === 0
+    ) {
       // Queue's art surface already matches main and no orphaned branches
       // contribute new art. This noop path does NOT reset assets/queue; any
       // safe retirement already happened in the leased tidy-up step above.
@@ -1590,6 +2478,8 @@ export async function runReconcile(
         tidiedQueue: tidyUp.queueReset,
         tidiedBranches: tidyUp.deletedBranches,
         withheldPaths: [...withheld].sort(),
+        ...refusedDeletionsField(),
+        ...quarantinedSourcesField(),
       };
     }
 
@@ -1604,14 +2494,21 @@ export async function runReconcile(
       await mustGit(deps.exec, repoRoot, ['worktree', 'add', worktree, '--detach', baseRef]);
 
       // Overlay ONLY the art surface from the queue tip. `git checkout <ref> --
-      // <specific-paths>` takes exactly those paths from queue (all of which the
-      // --diff-filter=AM above guarantees exist in queueRef — no D/deleted paths
-      // are in the list), leaving everything else in main's worktree untouched.
+      // <specific-paths>` takes exactly the AM paths from queue, leaving
+      // everything else in main's worktree untouched. Separately authorized
+      // lifecycle deletions are applied immediately afterward.
       // This prevents reverting art that reached main via an independent flow
       // (e.g. the legacy asset-PR) without ever being committed to the queue.
       if (queueVsMainArt.length > 0 && queueRef !== null) {
         await mustGit(deps.exec, worktree, ['checkout', queueRef, '--', ...queueVsMainArt]);
         await mustGit(deps.exec, worktree, ['add', '--', ...queueVsMainArt]);
+      }
+      if (queueLifecycleDeletions.length > 0) {
+        await mustGit(deps.exec, worktree, [
+          'rm',
+          '--',
+          ...queueLifecycleDeletions.flatMap((deletion) => deletion.paths),
+        ]);
       }
 
       // Also overlay art from orphaned checkin branches. Each branch contributes
@@ -1633,6 +2530,9 @@ export async function runReconcile(
           promoteBranch,
           tidiedQueue: tidyUp.queueReset,
           tidiedBranches: tidyUp.deletedBranches,
+          withheldPaths: [...withheld].sort(),
+          ...refusedDeletionsField(),
+          ...quarantinedSourcesField(),
         };
       }
 
@@ -1673,7 +2573,7 @@ export async function runReconcile(
       // promotion merges (see the trailer documentation above).
       const harvestedSources: PromotionSources = {
         queueSha:
-          queueVsMainArt.length > 0 && queueRef !== null
+          (queueVsMainArt.length > 0 || queueLifecycleDeletions.length > 0) && queueRef !== null
             ? (await mustGit(deps.exec, repoRoot, ['rev-parse', queueRef])).trim()
             : null,
         orphans: await Promise.all(
@@ -1881,6 +2781,8 @@ export async function runReconcile(
       tidiedQueue: tidyUp.queueReset,
       tidiedBranches: tidyUp.deletedBranches,
       withheldPaths: [...withheld].sort(),
+      ...refusedDeletionsField(),
+      ...quarantinedSourcesField(),
     };
   });
 }

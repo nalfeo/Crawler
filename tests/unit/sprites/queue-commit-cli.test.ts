@@ -51,6 +51,10 @@ describe('queue-commit-cli parseArgs', () => {
       favorite: false,
       disliked: true,
       comment: 'Needs a stronger silhouette.',
+      sourceRun: 'generated/runs/foo/run-1',
+      variantIndex: 1,
+      tombstone: { manifestKey: 'foo-var-1' },
+      reconciliation: { outcome: 'unmatched', annotationKey: 'legacy-foo-var-1' },
     };
     const parsed = parseArgs([
       ...BASE,

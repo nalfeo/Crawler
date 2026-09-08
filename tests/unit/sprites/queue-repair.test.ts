@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +23,6 @@ const RECOVERY_GROUP_KEYS = [
   'welcome-room-crate-stack-var-3',
   'welcome-room-desk-var-0',
   'welcome-room-exit-sign-var-0',
-  'welcome-room-floor-plate-cable-run-var-4',
   'welcome-room-kitchenette-var-0',
   'welcome-room-lounge-stool-var-1',
   'welcome-room-show-poster-var-0',
@@ -53,6 +52,8 @@ function asset(repo: string, key: string): void {
   writeJson(path.join(generated, 'entries', `${key}.json`), {
     assetPath: `generated/${key}.png`,
     spriteName: key,
+    sourceRun: `generated/runs/${key}/run-0`,
+    variantIndex: 0,
     contentHash: createHash('sha256').update(bytes).digest('hex'),
   });
 }
@@ -143,6 +144,152 @@ function corruptQueue(live: string): void {
     writeFileSync(path.join(queue, 'public/assets/generated/unrelated.png'), PNG_A);
     git(queue, 'add', '-A');
     git(queue, 'commit', '-m', 'corrupt whole-surface prune');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function addQueueAsset(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-later-asset-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    asset(queue, key);
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later valid queue asset');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function replaceSelectedQueueAsset(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-selected-asset-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xff]);
+    const generated = path.join(queue, 'public', 'assets', 'generated');
+    mkdirSync(path.join(generated, 'entries'), { recursive: true });
+    writeFileSync(path.join(generated, `${key}.png`), bytes);
+    writeJson(path.join(generated, 'entries', `${key}.json`), {
+      assetPath: `generated/${key}.png`,
+      spriteName: key,
+      sourceRun: `generated/runs/${key}/later-run`,
+      variantIndex: 0,
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+    });
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later selected queue asset edit');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function addQueueAnnotation(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-later-annotation-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    const annotationsPath = path.join(
+      queue,
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    const document = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+      version: 1;
+      sprites: Record<string, unknown>;
+    };
+    document.sprites[key] = { favorite: true, disliked: false, comment: 'later queue edit' };
+    writeJson(annotationsPath, document);
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'later queue annotation');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function queueTombstonedDeletion(live: string, key: string): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-lifecycle-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    rmSync(path.join(queue, 'public', 'assets', 'generated', `${key}.png`));
+    rmSync(path.join(queue, 'public', 'assets', 'generated', 'entries', `${key}.json`));
+    writeJson(path.join(queue, 'public/assets/generated/sprite-editor-annotations.json'), {
+      version: 1,
+      sprites: {
+        [key]: {
+          favorite: false,
+          disliked: true,
+          comment: 'pending lifecycle deletion',
+          tombstone: {
+            manifestKey: key,
+            conceptId: key,
+            assetPath: `generated/${key}.png`,
+            sourceRun: `generated/runs/${key}/run-0`,
+            variantIndex: 0,
+            annotationKeys: [key],
+          },
+        },
+      },
+    });
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'queue tombstoned lifecycle deletion');
+    const sha = git(queue, 'rev-parse', 'HEAD').trim();
+    git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
+  } finally {
+    try {
+      git(live, 'worktree', 'remove', '--force', queue);
+    } catch {
+      // Test cleanup.
+    }
+    rmSync(queue, { recursive: true, force: true });
+  }
+}
+
+function replaceQueueAnnotations(live: string, raw: string | null): void {
+  const queue = mkdtempSync(path.join(tmpdir(), 'queue-recovery-annotations-'));
+  try {
+    git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+    git(live, 'worktree', 'add', queue, '--detach', 'FETCH_HEAD');
+    const annotationsPath = path.join(
+      queue,
+      'public/assets/generated/sprite-editor-annotations.json',
+    );
+    if (raw === null) {
+      rmSync(annotationsPath);
+    } else {
+      writeFileSync(annotationsPath, raw);
+    }
+    git(queue, 'add', '-A');
+    git(queue, 'commit', '-m', 'corrupt queue annotations');
     const sha = git(queue, 'rev-parse', 'HEAD').trim();
     git(live, 'push', 'origin', `${sha}:refs/heads/assets/queue`);
   } finally {
@@ -445,6 +592,187 @@ describe('runQueueRepair (real git)', () => {
         expect(queueAnnotations.sprites[key]).toEqual(sourceAnnotations.sprites[key]);
       }
       expect(git(live, 'ls-remote', 'origin', result.backupRef!)).toContain(audit.queueSha);
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can resurrect a pending tombstone-authorized deletion',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      queueTombstonedDeletion(live, 'alpha');
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('would resurrect pending lifecycle deletion(s): alpha'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(() =>
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
+      ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can discard a later complete queue asset',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAsset(live, 'later-approved-var-0');
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('would discard later queue write(s)'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/later-approved-var-0.png'),
+      ).not.toBe('');
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can overwrite a later edit to a selected asset',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      replaceSelectedQueueAsset(live, RECOVERY_GROUP_KEYS[0]);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('later queue edit(s) to selected path(s)'),
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can discard a later unrelated queue annotation',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAnnotation(live, 'later-annotation');
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining(
+          'would discard later queue annotation(s): later-annotation',
+        ),
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair before it can overwrite a later edit to a selected annotation',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      corruptQueue(live);
+      addQueueAnnotation(live, RECOVERY_ANNOTATION_KEYS[0]!);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('later queue annotation edit(s)'),
+      });
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it(
+    'refuses repair when pending queue deletions have malformed annotation structure',
+    async () => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      queueTombstonedDeletion(live, 'alpha');
+      replaceQueueAnnotations(live, JSON.stringify({ version: 1, sprites: [] }));
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('must contain an object-valued "sprites" map'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(() =>
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
+      ).toThrow();
+    },
+    GIT_TIMEOUT_MS,
+  );
+
+  it.each([
+    ['empty', ''],
+    ['missing', null],
+  ] as const)(
+    'refuses repair when pending queue deletions have an %s annotations document',
+    async (_case, annotations) => {
+      const { root, source, sourceSha, live } = setup();
+      cleanups.push(root);
+      queueTombstonedDeletion(live, 'alpha');
+      replaceQueueAnnotations(live, annotations);
+
+      await expect(
+        runQueueRepair(live, freshDeps(live, sourceSha), {
+          mode: 'audit',
+          policy: SELECTIVE_RECOVERY_POLICY,
+          remote: 'origin',
+          sourceRemote: source,
+        }),
+      ).rejects.toMatchObject({
+        kind: 'source-invalid',
+        message: expect.stringContaining('Cannot validate pending lifecycle deletions'),
+      });
+
+      git(live, 'fetch', '--no-tags', 'origin', 'assets/queue');
+      expect(() =>
+        git(live, 'show', 'origin/assets/queue:public/assets/generated/alpha.png'),
+      ).toThrow();
     },
     GIT_TIMEOUT_MS,
   );

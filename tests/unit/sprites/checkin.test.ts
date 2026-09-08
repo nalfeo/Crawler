@@ -164,6 +164,7 @@ describe('runAssetCheckin', () => {
       }
       return {};
     });
+
     const queued = new Map([
       [
         'generated/skull-mace-var-2.png',
@@ -194,6 +195,164 @@ describe('runAssetCheckin', () => {
     expect(prepared.plan.assets.map((entry) => entry.assetPath)).toEqual([
       'generated/iron-sword-var-1.png',
     ]);
+  });
+
+  it('dedupes an asset already published to the canonical assets/queue branch', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    const inspected: unknown[] = [];
+    const inspectDurableQueueAsset = async (asset: unknown) => {
+      inspected.push(asset);
+      return {
+        reconciliation: 'duplicate' as const,
+        branch: 'assets/queue',
+      };
+    };
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        inspectDurableQueueAsset,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'hash-a',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'nothing-to-checkin',
+      message: 'All approved art is already represented by the durable asset queue.',
+    });
+    expect(inspected).toEqual([
+      {
+        manifestKey: 'skull-mace-var-2',
+        assetPath: 'generated/skull-mace-var-2.png',
+        contentHash: 'hash-a',
+        manifestEntry: {
+          assetPath: 'generated/skull-mace-var-2.png',
+          contentHash: 'hash-a',
+        },
+      },
+    ]);
+  });
+
+  it('fails closed when assets/queue has different content at the same path', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        inspectDurableQueueAsset: () =>
+          Promise.resolve({
+            reconciliation: 'content-conflict',
+            branch: 'assets/queue',
+          }),
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'new-hash',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'content-conflict',
+      message: expect.stringContaining('branch assets/queue'),
+    });
+  });
+
+  it('does not let a legacy duplicate hide an assets/queue content conflict', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    const queued = new Map([
+      [
+        'generated/skull-mace-var-2.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+          branch: 'assets/queued',
+          contentHash: 'new-hash',
+        },
+      ],
+    ]);
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        listQueuedAssets: () => Promise.resolve(queued),
+        inspectDurableQueueAsset: () =>
+          Promise.resolve({
+            reconciliation: 'content-conflict',
+            branch: 'assets/queue',
+          }),
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'new-hash',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'content-conflict',
+      message: expect.stringContaining('branch assets/queue'),
+    });
+  });
+
+  it('fails closed when assets/queue cannot verify the current content identity', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+
+    await expect(
+      prepareAssetCheckin('/repo', {
+        ...baseDeps(),
+        exec,
+        inspectDurableQueueAsset: () =>
+          Promise.resolve({
+            reconciliation: 'ambiguous',
+            branch: 'assets/queue',
+          }),
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'new-hash',
+              },
+            },
+          }),
+      }),
+    ).rejects.toMatchObject({
+      kind: 'ambiguous-queued-content',
+      message: expect.stringContaining('branch assets/queue'),
+    });
   });
 
   it('throws a typed content-conflict when the queued hash differs from the current content (mismatch)', async () => {
@@ -297,6 +456,116 @@ describe('runAssetCheckin', () => {
     ).rejects.toMatchObject({ kind: 'ambiguous-queued-content' });
   });
 
+  it('dedupes an asset already committed to the durable assets/queue branch, even with no open issue', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/skull-mace-var-2.png\n' +
+            'public/assets/generated/iron-sword-var-1.png\n',
+        };
+      }
+      return {};
+    });
+
+    const prepared = await prepareAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'skull-mace-var-2': {
+              assetPath: 'generated/skull-mace-var-2.png',
+              contentHash: 'hash-a',
+            },
+            'iron-sword-var-1': {
+              assetPath: 'generated/iron-sword-var-1.png',
+              contentHash: 'hash-b',
+            },
+          },
+        }),
+      inspectDurableQueueAsset: (queryAsset) =>
+        Promise.resolve(
+          queryAsset.manifestKey === 'skull-mace-var-2'
+            ? { reconciliation: 'duplicate' as const, branch: 'assets/queue' }
+            : { reconciliation: 'new' as const, branch: 'assets/queue' },
+        ),
+    });
+
+    expect(prepared.changedAssetCount).toBe(2);
+    expect(prepared.plan.assets.map((entry) => entry.assetPath)).toEqual([
+      'generated/iron-sword-var-1.png',
+    ]);
+    expect(calls.some((call) => call.command === 'gh' && call.args[0] === 'issue')).toBe(false);
+  });
+
+  it('inspects the durable queue on the selected remote', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      return {};
+    });
+    let inspectedRemote: string | undefined;
+
+    await prepareAssetCheckin(
+      '/repo',
+      {
+        ...baseDeps(),
+        exec,
+        readManifest: () =>
+          Promise.resolve({
+            entries: {
+              'skull-mace-var-2': {
+                assetPath: 'generated/skull-mace-var-2.png',
+                contentHash: 'hash-a',
+              },
+            },
+          }),
+        inspectDurableQueueAssets: (_assets, remote) => {
+          inspectedRemote = remote;
+          return Promise.resolve([{ reconciliation: 'new', branch: 'assets/queue' }]);
+        },
+      },
+      { remote: 'upstream' },
+    );
+
+    expect(inspectedRemote).toBe('upstream');
+  });
+
+  it.each([
+    ['content-conflict' as const, 'content-conflict'],
+    ['ambiguous' as const, 'ambiguous-queued-content'],
+  ])(
+    'fails closed with %s against the durable assets/queue branch',
+    async (reconciliation, kind) => {
+      const { exec } = makeFakeExec((command, args) => {
+        if (command === 'git' && args[0] === 'diff') {
+          return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+        }
+        return {};
+      });
+
+      await expect(
+        prepareAssetCheckin('/repo', {
+          ...baseDeps(),
+          exec,
+          readManifest: () =>
+            Promise.resolve({
+              entries: {
+                'skull-mace-var-2': {
+                  assetPath: 'generated/skull-mace-var-2.png',
+                  contentHash: 'hash-a',
+                },
+              },
+            }),
+          inspectDurableQueueAsset: () =>
+            Promise.resolve({ reconciliation, branch: 'assets/queue' }),
+        }),
+      ).rejects.toMatchObject({ kind });
+    },
+  );
+
   it('does not create another issue when every changed asset is already queued with matching content', async () => {
     const { exec, calls } = makeFakeExec((command, args) => {
       if (command === 'git' && args[0] === 'diff') {
@@ -334,7 +603,7 @@ describe('runAssetCheckin', () => {
       }),
     ).rejects.toMatchObject({
       kind: 'nothing-to-checkin',
-      message: 'All approved art is already represented by an open asset-checkin issue.',
+      message: 'All approved art is already represented by the durable asset queue.',
     });
     expect(calls.some((call) => call.command === 'gh' && call.args[0] === 'issue')).toBe(false);
   });
@@ -672,17 +941,31 @@ describe('detectApprovedAssets', () => {
     expect(assets.map((a) => a.assetPath)).toEqual(['generated/new-mace-var-1.png']);
   });
 
-  it('de-duplicates a PNG that appears in both diff and ls-files', async () => {
-    const { exec } = makeFakeExec((command, args) => {
+  it('excludes deleted PNGs so a lifecycle removal is never checked in as an approval', async () => {
+    // The disliked-asset lifecycle deletes retired PNGs from the working tree.
+    // `git diff --name-only` would otherwise report them as "changed", and the
+    // check-in issue would claim an asset that no longer exists — which
+    // `asset-pr` consolidation later checks back out of the source branch,
+    // resurrecting deleted art without its manifest shard.
+    const { exec, calls } = makeFakeExec((command, args) => {
       if (command === 'git' && args[0] === 'diff') {
-        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
-      }
-      if (command === 'git' && args[0] === 'ls-files') {
-        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
+        // The fake honours the filter the way git does: nothing deleted is
+        // reported once `--diff-filter=d` is present.
+        return args.includes('--diff-filter=d')
+          ? { stdout: 'public/assets/generated/kept-var-1.png\n' }
+          : {
+              stdout:
+                'public/assets/generated/kept-var-1.png\n' +
+                'public/assets/generated/retired-var-0.png\n',
+            };
       }
       return {};
     });
+
     const assets = await detectApprovedAssets(exec, '/repo', 'origin', 'main', {});
-    expect(assets.map((a) => a.assetPath)).toEqual(['generated/dup-var-1.png']);
+
+    expect(assets.map((a) => a.assetPath)).toEqual(['generated/kept-var-1.png']);
+    const diffCall = calls.find((call) => call.command === 'git' && call.args[0] === 'diff');
+    expect(diffCall?.args).toContain('--diff-filter=d');
   });
 });
