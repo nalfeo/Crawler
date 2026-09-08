@@ -20,12 +20,26 @@ the attached evidence before making further changes.
 An open approved issue is work to perform. Do not return `no-work` merely
 because existing tests pass or related tuning already exists. `no-work` is
 valid only when repository evidence proves the claimed issue was already
-completed (for example, a linked merged pull request satisfies every acceptance
-criterion); cite that evidence in the summary and set
-`outputs.disposition` to `completed-existing-work` so recovery can retire the
-issue from scheduled selection. Otherwise implement the missing acceptance
-criteria, or return `blocked` with the specific external decision that prevents
-implementation.
+completed, and only after you have actually begun implementation or performed
+a deep investigation of the real code paths the issue describes -- reading the
+relevant source/tests and tracing how they behave, not inferring completion
+from the issue title or a keyword search. Concluding "already implemented"
+from the issue text alone, without having opened and read the implementation
+it claims already exists, is not sufficient and must not be reported as
+`completed-existing-work`.
+
+When that investigation confirms the claim (for example, a linked merged
+pull request satisfies every acceptance criterion), cite the concrete
+evidence you personally inspected in the summary, set `outputs.disposition`
+to `completed-existing-work`, and set `outputs.evidenceRef` to a specific,
+checkable pointer to what you inspected -- a merged PR/commit reference (e.g.
+`PR #1234` or a commit SHA) or a repository path with a line range (e.g.
+`src/foo/bar.ts:120-160`). `outputs.evidenceRef` is required whenever
+`outputs.disposition` is `completed-existing-work`; the deterministic
+disposition gate rejects the claim and restores the issue for retry if it is
+missing, regardless of how clean the rest of the run looks. Otherwise
+implement the missing acceptance criteria, or return `blocked` with the
+specific external decision that prevents implementation.
 
 On any repass, read every attached review verdict or local-gate artifact and
 address all listed findings in one pass. Do not return `success` until fixable

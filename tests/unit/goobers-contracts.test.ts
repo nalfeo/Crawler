@@ -372,7 +372,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         contractVersion: 'v1',
         task: 'implement',
         status: 'no-work',
-        outputs: { disposition: 'completed-existing-work' },
+        outputs: { disposition: 'completed-existing-work', evidenceRef: 'PR #1234' },
         summary: 'Linked merged PR already satisfies every acceptance criterion',
       }),
     ).toBe(true);
@@ -382,7 +382,51 @@ describe('crawler.goobers.output/v1 schema', () => {
         contractVersion: 'v1',
         task: 'implement',
         status: 'success',
+        outputs: { disposition: 'completed-existing-work', evidenceRef: 'PR #1234' },
+        summary: 'Implementation finished',
+      }),
+    ).toBe(false);
+  });
+
+  it('requires a non-empty evidenceRef whenever disposition is completed-existing-work', () => {
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
         outputs: { disposition: 'completed-existing-work' },
+        summary: 'Already implemented',
+      }),
+    ).toBe(false);
+
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work', evidenceRef: '' },
+        summary: 'Already implemented',
+      }),
+    ).toBe(false);
+
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work', evidenceRef: '   ' },
+        summary: 'Already implemented',
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects evidenceRef when no completed-existing-work disposition is present', () => {
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: { evidenceRef: 'src/foo/bar.ts:120-160' },
         summary: 'Implementation finished',
       }),
     ).toBe(false);
