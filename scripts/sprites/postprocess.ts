@@ -1,8 +1,8 @@
 /**
  * Sprite post-processor.
  *
- * Pure, deterministic transformation from a raw generated PNG to the
- * game-ready PNG that gets handed to sensors and (eventually) the engine.
+ * Deterministic transformation from a raw generated PNG to the game-ready PNG
+ * that gets handed to sensors and (eventually) the engine.
  *
  * Steps, in this exact order:
  *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels,
@@ -10,30 +10,26 @@
  *   2. Transparent trim: crop to the opaque bounding box, then re-pad with a
  *      small proportional transparent margin (~6% of the larger subject
  *      dimension, min 1px) on each edge so the subject stays off the frame edge.
- *   3. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
- *   4. Background re-removal: re-key against the original background colours to
+ *   3. Strict palette quantization and optional pixel-art mesh recovery, before resizing.
+ *   4. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
+ *   5. Background re-removal: re-key against the original background colours to
  *      clear pink fringe that nearest-neighbor stretching re-exposes.
- *   5. Speckle cleanup, palette quantize (strict only), alpha hard-threshold,
+ *   6. Speckle cleanup, alpha hard-threshold,
  *      and optional trim-and-fit.
  *
- * Purity contract:
+ * Determinism contract:
  *   - No clocks (no Date.now, no performance.now).
  *   - No randomness (no Math.random; if you need ties broken, break them
  *     deterministically on index).
- *   - No environment reads (no process.env).
  *   - No network access or environment-driven behavior.
- *   - Pipeline templates are loaded from disk via a cached resolver; image
- *     processing itself remains pure for a given raw PNG + brief + palette.
+ *   - The opt-in mesh-recovery stage invokes the pinned local Python
+ *     adapter; it has no network access and receives all image data via stdin.
+ *   - Pipeline templates are loaded from disk via a cached resolver.
  *
- * Note on signature: the spec writes `(rawPng, brief) => Buffer`, but the brief
- * carries a palette *id*, not the resolved color list. To keep this function
- * pure (no disk reads to resolve the id), we accept the resolved palette as a
- * third argument. Callers (a Phase-2 driver) load the palette JSON once and
- * pass the colors in.
  */
 
 import { PNG } from 'pngjs';
-import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
+import type { Brief, PaletteColors } from './brief-schema.js';
 import { getPipelineForType, getActiveModules } from './template-pipeline.js';
 import { postprocessModules } from './postprocess-modules.js';
 import {
@@ -96,10 +92,10 @@ export interface PostprocessOptions {
 export function postprocess(
   rawPng: Buffer,
   brief: Brief,
-  palette: PaletteColors,
   options: PostprocessOptions = {},
+  palette: PaletteColors = brief.palette.colors ?? [],
 ): Buffer {
-  return postprocessWithTrace(rawPng, brief, palette, options).finalPng;
+  return postprocessWithTrace(rawPng, brief, options, palette).finalPng;
 }
 
 export interface PostprocessStepTrace {
@@ -148,9 +144,9 @@ export function normalizeDisabledModules(value: unknown, brief: Brief): string[]
  * every frame is cropped to the SAME bbox + margin before resizing. Callers
  * must supply `sharedCropRect` via {@link computeFrameSequenceUnionCropRect}.
  *
- * `trim-and-fit` is still disabled because it re-trims AFTER resize using an
- * independent per-frame bbox, which would reintroduce different centering
- * offsets per pose even after the initial crop is uniform.
+ * `pixel-grid` and `trim-and-fit` are disabled because both derive geometry
+ * independently per frame. Either could reintroduce different scale or
+ * centering offsets per pose after the initial shared crop.
  *
  * Returns `[]` for non-frame-sequence briefs (no behavior change) and filters
  * to only modules actually active for this brief's type.
@@ -160,19 +156,15 @@ export function frameSequenceDisabledModules(brief: Brief): string[] {
   const activeNames = new Set(
     getActiveModules(getPipelineForType(brief.type), brief.type).map(({ name }) => name),
   );
-  return ['trim-and-fit'].filter((name) => activeNames.has(name));
+  return ['pixel-grid', 'trim-and-fit'].filter((name) => activeNames.has(name));
 }
 
 export function postprocessWithTrace(
   rawPng: Buffer,
   brief: Brief,
-  palette: PaletteColors,
   options: PostprocessOptions = {},
+  palette: PaletteColors = brief.palette.colors ?? [],
 ): PostprocessTrace {
-  if (palette.length === 0) {
-    throw new Error('postprocess: palette must contain at least one color');
-  }
-
   const steps: PostprocessStepTrace[] = [];
 
   let image = decodePng(rawPng);
@@ -349,6 +341,42 @@ function decodePng(buffer: Buffer): RgbaImage {
     height: png.height,
     data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.byteLength),
   };
+}
+
+/**
+ * Deterministically map every opaque pixel to its nearest palette entry.
+ * Equal-distance ties retain the first palette entry.
+ */
+export function quantizeToPalette(
+  image: RgbaImage,
+  palette: ReadonlyArray<readonly [number, number, number]>,
+): RgbaImage {
+  if (palette.length === 0) {
+    throw new Error('quantizeToPalette: palette must be non-empty');
+  }
+  const dst = new Uint8Array(image.data);
+  for (let i = 0; i < dst.length; i += 4) {
+    if (dst[i + 3] === 0) continue;
+    const r = dst[i] ?? 0;
+    const g = dst[i + 1] ?? 0;
+    const b = dst[i + 2] ?? 0;
+    let nearest = palette[0]!;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const color of palette) {
+      const distance =
+        (r - color[0]) * (r - color[0]) +
+        (g - color[1]) * (g - color[1]) +
+        (b - color[2]) * (b - color[2]);
+      if (distance < nearestDistance) {
+        nearest = color;
+        nearestDistance = distance;
+      }
+    }
+    dst[i] = nearest[0];
+    dst[i + 1] = nearest[1];
+    dst[i + 2] = nearest[2];
+  }
+  return { width: image.width, height: image.height, data: dst };
 }
 
 function encodePng(image: RgbaImage): Buffer {
@@ -826,63 +854,6 @@ export function fitWithinNearest(
     fittedWidth,
     fittedHeight,
   };
-}
-
-/**
- * Snap every opaque pixel's RGB to the nearest palette entry by Euclidean
- * distance. Transparent pixels (alpha === 0) are left untouched in RGB and
- * keep alpha 0.
- *
- * Tie-breaking: the *first* palette entry at minimum distance wins. This
- * makes quantization deterministic regardless of palette order beyond ties.
- *
- * Exported for direct unit testing.
- */
-export function quantizeToPalette(image: RgbaImage, palette: PaletteColors): RgbaImage {
-  if (palette.length === 0) {
-    throw new Error('quantizeToPalette: palette must be non-empty');
-  }
-  const { width, height, data: src } = image;
-  const dst = new Uint8Array(src.length);
-  for (let i = 0; i < src.length; i += 4) {
-    const a = src[i + 3] ?? 0;
-    if (a === 0) {
-      // preserve transparent pixels, including their RGB (avoids leaking
-      // bg color into anything that later inspects raw RGB)
-      dst[i] = src[i] ?? 0;
-      dst[i + 1] = src[i + 1] ?? 0;
-      dst[i + 2] = src[i + 2] ?? 0;
-      dst[i + 3] = 0;
-      continue;
-    }
-    const r = src[i] ?? 0;
-    const g = src[i + 1] ?? 0;
-    const b = src[i + 2] ?? 0;
-    const nearest = nearestPaletteEntry(r, g, b, palette);
-    dst[i] = nearest[0];
-    dst[i + 1] = nearest[1];
-    dst[i + 2] = nearest[2];
-    dst[i + 3] = a;
-  }
-  return { width, height, data: dst };
-}
-
-function nearestPaletteEntry(r: number, g: number, b: number, palette: PaletteColors): RgbTriple {
-  let bestIdx = 0;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < palette.length; i++) {
-    const c = palette[i] as RgbTriple;
-    const dr = r - c[0];
-    const dg = g - c[1];
-    const db = b - c[2];
-    const dist = dr * dr + dg * dg + db * db;
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
-      if (dist === 0) break; // exact match; no need to continue
-    }
-  }
-  return palette[bestIdx] as RgbTriple;
 }
 
 /**

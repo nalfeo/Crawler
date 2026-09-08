@@ -248,6 +248,7 @@ docs_only=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
+    scripts/sprites/proper-pixel-art-requirements.txt) docs_only=false; break ;;
     src/*) docs_only=false; break ;;
     docs/*) ;;
     .specify/specs/*) ;;
@@ -463,7 +464,7 @@ done <<<"$changed"
 sprite_pipeline_touched="$sprites_touched"
 
 # dependencies_touched: at least one changed file is a dependency manifest
-# (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json), the
+# (Node lock/manifests or the sprite pipeline's pinned Python requirements), the
 # dependency-allowlist security script, the lock-integrity guard, the shared
 # dependency setup action, or ci.yml (which hosts the cold-install and
 # lock-integrity wiring). security-review.yml is covered by the
@@ -474,6 +475,8 @@ while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     package.json | package-lock.json | yarn.lock | npm-shrinkwrap.json)
+      dependencies_touched=true; break ;;
+    scripts/sprites/proper-pixel-art-requirements.txt)
       dependencies_touched=true; break ;;
     scripts/agent/security/check-deps.ts)
       dependencies_touched=true; break ;;

@@ -42,9 +42,10 @@
 # one of the four with a PALE rim (~21px, luma 136 = palette step [132,136,142])
 # rather than a dark one. The slicer cuts at the CENTRE of a detected background
 # band (scripts/sprites/slice-sheet.ts), so half the gutter lands inside each
-# cell and a strict palette quantize maps it to the nearest ramp step instead of
-# removing it. The other three briefs omitted the paragraph and sliced fine, so
-# v2 omits it everywhere and lets the default tile scaffolding do the cutting.
+# cell. Under the former palette-quantization implementation, strict mode mapped
+# it to the nearest ramp step instead of removing it. The other three briefs
+# never carried that paragraph and sliced fine, so v2 omits it everywhere and
+# lets the default tile scaffolding do the cutting.
 #
 # GEOMETRY unchanged from v1: `type: tile` => 'stretch' + `trimAndFit: false`, so
 # the shipped PNG is exactly 256x256 by construction and the drawn box IS the
@@ -63,14 +64,14 @@
 # with NEAR-BLACK gutters (dark column bands at x 0-8, 249-263, 504-519, 760-774,
 # 1016-1023), and `sliceSheet` cuts at the CENTRE of a detected band
 # (scripts/sprites/slice-sheet.ts), so ~7px of black gutter is baked into every
-# cell on every side. The `tile` postprocess pipeline is
-# transparent-trim -> resize -> speckle -> palette-quantize -> alpha-threshold
-# with NO background-removal module at all, so nothing keys that gutter out; it
-# just gets quantized to the darkest ramp step. That also explains v1 `scuffed`:
-# its brief was the only one demanding a bright magenta gutter, and magenta is
-# not keyed out either, so it quantized to [132,136,142] — luma 136, exactly its
-# measured pale rim. Magenta is therefore NOT the fix here (it is the fix for
-# types whose pipeline includes background removal; see repair-tile-matte.ts).
+# cell on every side. The historical `tile` postprocess pipeline had NO
+# background-removal module, so nothing keyed that gutter out before its former
+# palette-quantize stage mapped it to the darkest ramp step. That also explains
+# v1 `scuffed`: its brief was the only one demanding a bright magenta gutter,
+# and magenta was not keyed out either, so it mapped to [132,136,142] — luma 136,
+# exactly its measured pale rim. Magenta is therefore NOT the fix here (it is
+# the fix for types whose pipeline includes background removal; see
+# repair-tile-matte.ts).
 # The fix is to have no gutter to bake in: one crop per sheet. 1024 -> 256 is an
 # exact 4:1 integer decimation by resize-nearest, so nothing is softened, and no
 # post-crop-and-rescale is performed anywhere.

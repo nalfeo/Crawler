@@ -127,7 +127,7 @@ function expectSensorOk(processed: Buffer, brief: Brief, sensor: string): void {
 
 describe('postprocess resize fit', () => {
   it('fits non-square sprites into target size without stretching', () => {
-    const out = PNG.sync.read(postprocess(makeWideFixture(), makeBrief(), PALETTE));
+    const out = PNG.sync.read(postprocess(makeWideFixture(), makeBrief()));
     expect(out.width).toBe(6);
     expect(out.height).toBe(6);
 
@@ -142,7 +142,7 @@ describe('postprocess resize fit', () => {
   });
 
   it('centers an off-center subject inside the output frame', () => {
-    const out = PNG.sync.read(postprocess(makeOffCenterFixture(), makeBrief(), PALETTE));
+    const out = PNG.sync.read(postprocess(makeOffCenterFixture(), makeBrief()));
     expect(out.width).toBe(6);
     expect(out.height).toBe(6);
 
@@ -158,7 +158,7 @@ describe('postprocess resize fit', () => {
 
   it('scales double-wide briefs width-first even when output becomes taller', () => {
     const brief = makeBrief({ width: 12, height: 6 }, { x: 6, y: 3 });
-    const processed = postprocess(makeTallFixture(), brief, PALETTE);
+    const processed = postprocess(makeTallFixture(), brief);
     const out = PNG.sync.read(processed);
 
     expect(out.width).toBe(12);
@@ -172,7 +172,7 @@ describe('postprocess resize fit', () => {
 
   it('scales tall briefs height-first even when output becomes wider', () => {
     const brief = makeBrief({ width: 6, height: 12 }, { x: 3, y: 6 });
-    const processed = postprocess(makeWideFixture(), brief, PALETTE);
+    const processed = postprocess(makeWideFixture(), brief);
     const out = PNG.sync.read(processed);
 
     expect(out.height).toBe(12);
@@ -186,7 +186,7 @@ describe('postprocess resize fit', () => {
 
   it('scales large square briefs to keep strong 128x128 occupancy', () => {
     const brief = makeBrief({ width: 128, height: 128 }, { x: 64, y: 64 });
-    const processed = postprocess(makeWideFixture(), brief, PALETTE);
+    const processed = postprocess(makeWideFixture(), brief);
     const out = PNG.sync.read(processed);
 
     expect(out.width).toBeGreaterThanOrEqual(128);
@@ -207,7 +207,7 @@ describe('postprocess resize fit', () => {
     // fittedHeight≈427 which expands the canvas beyond the 256 box.
     // dimensionsExact accepts any size ≥ brief.size for cover strategy.
     const brief = makeBrief({ width: 256, height: 256 }, { x: 128, y: 128 });
-    const processed = postprocess(makeTallFixture(), brief, PALETTE);
+    const processed = postprocess(makeTallFixture(), brief);
     const out = PNG.sync.read(processed);
 
     // Width is locked to the requested 256 (dominant axis).

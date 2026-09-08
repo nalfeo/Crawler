@@ -180,8 +180,8 @@ ${hasSheet ? '' : `<p class="empty">No sheet loaded yet.</p>`}
       </div>
       <div>
         <label>Zoom</label><br/>
-        <input type="range" id="zoom-slider" min="1" max="8" step="1" value="4"/>
-        <span id="zoom-label">4×</span>
+        <input type="range" id="zoom-slider" min="1" max="8" step="1" value="1"/>
+        <span id="zoom-label">1×</span>
       </div>
       <button class="btn" id="pause-btn">⏸ Pause</button>
       <span id="frame-counter">Frame 0 / ${totalFrames}</span>
@@ -237,7 +237,7 @@ ${
       strip.appendChild(wrap);
     }
 
-    let zoom = 4, fps = FRAME_RATE, paused = false, frame = 0, last = 0, raf;
+    let zoom = 1, fps = FRAME_RATE, paused = false, frame = 0, last = 0, raf;
     const animCanvas = document.getElementById('anim-canvas');
     const fpsSlider = document.getElementById('fps-slider');
     const zoomSlider = document.getElementById('zoom-slider');

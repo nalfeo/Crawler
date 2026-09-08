@@ -77,7 +77,7 @@ minVariations: 0
 postprocessing:
   trimAndFit: false
   minDimension: 64
-  paletteMode: strict
+  paletteMode: none
 `.trim();
 
 /**

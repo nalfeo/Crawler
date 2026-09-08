@@ -149,7 +149,10 @@ await joinSession({
                 sheetPath: input.sheetPath,
                 name: input.name ?? entry.state.name,
               };
-              return { ok: true, url: entry.url };
+              // A canvas action changes server-side state. Return a unique URL
+              // so the iframe reloads and renders that state instead of retaining
+              // its previous document at the same URL.
+              return { ok: true, url: `${entry.url}?reload=${Date.now()}` };
             } catch (e) {
               return { ok: false, error: e.message };
             }
