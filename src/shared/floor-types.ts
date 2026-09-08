@@ -785,6 +785,18 @@ export interface Floor5SiegeWaveManifestEntry {
   readonly count: number;
 }
 
+export interface Floor5SiegeWaveAccounting {
+  readonly manifestIndex: number;
+  readonly waveId: string;
+  readonly team: Floor5SiegeTeam;
+  readonly scheduled: number;
+  physicalReleased: number;
+  debtCleared: number;
+  firstReleaseFrame: number | null;
+  lastReleaseFrame: number | null;
+  maxReleaseDelayFrames: number;
+}
+
 export interface Floor5SiegeLaneTelemetry {
   waveCyclesCompleted: number;
   checkpointContests: number;
@@ -793,6 +805,9 @@ export interface Floor5SiegeLaneTelemetry {
   pathStalls: number;
   spawned: Record<Floor5SiegeTeam, number>;
   spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+  activeCap: number;
+  liveMinionPeak: Record<Floor5SiegeTeam, number>;
+  waveAccounting: Floor5SiegeWaveAccounting[];
 }
 
 export type Floor5RatingsRamState =
@@ -1213,6 +1228,7 @@ export interface Floor5SiegeRunStats {
     readonly maxFrameCostMs: number;
     readonly observedFrameCostMs: number | null;
     readonly stallBackstopFrames: number;
+    readonly maxReleaseDelayFrames: number;
     readonly cleanSweepMinCommandPostHealthPct: number;
     readonly commandPostHealthPct: number;
     readonly ramSurvivedBreach: boolean;

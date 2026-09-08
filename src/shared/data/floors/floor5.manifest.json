@@ -184,6 +184,7 @@
       "maxPathStalls": 0,
       "maxFrameCostMs": 16.67,
       "stallBackstopFrames": 1200,
+      "maxReleaseDelayFrames": 0,
       "cleanSweepMinCommandPostHealthPct": 0.8
     },
     "rngStreams": ["waves", "heroes", "tasks", "dressing", "rewards"]
