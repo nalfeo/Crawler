@@ -374,7 +374,7 @@ describe('scoreCandidate', () => {
     expect(paletteResult?.ok).toBe(true);
   });
 
-  it('treats palette-membership as pass-through when strict mode uses pixel-grid conversion', () => {
+  it('rejects off-palette opaque pixels when paletteMode is strict', () => {
     const processed = buildProcessedFixture(16, 16, rectPixels(6, 6, 9, 9));
     const png = PNG.sync.read(processed);
     const idx = (7 * png.width + 7) * 4;
@@ -387,7 +387,7 @@ describe('scoreCandidate', () => {
     });
     const card = scoreCandidate(mutated, brief, PALETTE);
     const paletteResult = card.breakdown.find((r) => r.sensor === 'palette-membership');
-    expect(paletteResult?.ok).toBe(true);
+    expect(paletteResult?.ok).toBe(false);
   });
 
   it('swaps to anchor-derivable when sensors.anchor.derive=true and surfaces the anchor', () => {

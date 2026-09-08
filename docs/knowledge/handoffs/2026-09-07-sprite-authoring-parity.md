@@ -20,8 +20,8 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
 
 - Re-audited the exact PR #3234 head after PR #4310 landed and current `main`
   was integrated. Ported the previously deferred pinned `proper-pixel-art`
-  mesh-recovery bridge and made strict postprocessing use `pixel-grid` before
-  resize instead of palette quantization.
+  mesh-recovery bridge as an explicit postprocessing option while preserving
+  strict palette quantization and color-lock scoring.
 - Provisioned Python 3.12 plus pinned mesh-recovery dependencies in sprite CI,
   restored source-sheet force/reset recovery, allowed guarded edits to durable
   synthesized candidate YAML, and added readable required facial-feature
@@ -61,8 +61,8 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
 
 ## Key Decisions Made
 
-- Keep `paletteMode: strict` as the durable brief field while changing its
-  implementation contract to pinned pixel-mesh recovery, avoiding migration of
+- Keep `paletteMode: strict` as the durable palette-quantization and color-lock
+  contract; mesh recovery is an independent opt-in, avoiding migration of
   existing briefs.
 - Port only source improvements that preserve current lifecycle and route
   validation. Do not wholesale transplant PR #3234's older Workflow request

@@ -57,8 +57,14 @@ modules:
       maxOpaqueNeighbors: 8
       dropEdgeOrphans: true
 
+  palette-quantize:
+    description: Map opaque pixels to the brief palette when paletteMode is strict.
+    type: palette-quantize
+    enabled: true
+    params: {}
+
   pixel-grid:
-    description: Recover the source pixel mesh without palette quantization (if strict).
+    description: Recover the source pixel mesh when meshRecovery is enabled.
     type: pixel-grid
     enabled: true
     params: {}
@@ -81,6 +87,7 @@ pipeline:
   - background-removal
   - enclosed-regions
   - transparent-trim
+  - palette-quantize
   - pixel-grid
   - resize
   - background-rekey

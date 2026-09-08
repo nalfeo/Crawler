@@ -10,7 +10,7 @@
  *   2. Transparent trim: crop to the opaque bounding box, then re-pad with a
  *      small proportional transparent margin (~6% of the larger subject
  *      dimension, min 1px) on each edge so the subject stays off the frame edge.
- *   3. Pixel-art mesh recovery (strict mode only), before resizing.
+ *   3. Strict palette quantization and optional pixel-art mesh recovery, before resizing.
  *   4. Resample: nearest-neighbor fit to brief.size (tiles stretch exactly).
  *   5. Background re-removal: re-key against the original background colours to
  *      clear pink fringe that nearest-neighbor stretching re-exposes.
@@ -22,14 +22,14 @@
  *   - No randomness (no Math.random; if you need ties broken, break them
  *     deterministically on index).
  *   - No network access or environment-driven behavior.
- *   - The strict-mode mesh-recovery stage invokes the pinned local Python
+ *   - The opt-in mesh-recovery stage invokes the pinned local Python
  *     adapter; it has no network access and receives all image data via stdin.
  *   - Pipeline templates are loaded from disk via a cached resolver.
  *
  */
 
 import { PNG } from 'pngjs';
-import type { Brief } from './brief-schema.js';
+import type { Brief, PaletteColors } from './brief-schema.js';
 import { getPipelineForType, getActiveModules } from './template-pipeline.js';
 import { postprocessModules } from './postprocess-modules.js';
 import {
@@ -93,8 +93,9 @@ export function postprocess(
   rawPng: Buffer,
   brief: Brief,
   options: PostprocessOptions = {},
+  palette: PaletteColors = brief.palette.colors ?? [],
 ): Buffer {
-  return postprocessWithTrace(rawPng, brief, options).finalPng;
+  return postprocessWithTrace(rawPng, brief, options, palette).finalPng;
 }
 
 export interface PostprocessStepTrace {
@@ -162,6 +163,7 @@ export function postprocessWithTrace(
   rawPng: Buffer,
   brief: Brief,
   options: PostprocessOptions = {},
+  palette: PaletteColors = brief.palette.colors ?? [],
 ): PostprocessTrace {
   const steps: PostprocessStepTrace[] = [];
 
@@ -240,6 +242,7 @@ export function postprocessWithTrace(
 
     image = handler(image, moduleParams, {
       brief,
+      palette,
       pushStep: (id: string, label: string, stepImage: RgbaImage): void => {
         steps.push({
           id,
@@ -338,6 +341,42 @@ function decodePng(buffer: Buffer): RgbaImage {
     height: png.height,
     data: new Uint8Array(png.data.buffer, png.data.byteOffset, png.data.byteLength),
   };
+}
+
+/**
+ * Deterministically map every opaque pixel to its nearest palette entry.
+ * Equal-distance ties retain the first palette entry.
+ */
+export function quantizeToPalette(
+  image: RgbaImage,
+  palette: ReadonlyArray<readonly [number, number, number]>,
+): RgbaImage {
+  if (palette.length === 0) {
+    throw new Error('quantizeToPalette: palette must be non-empty');
+  }
+  const dst = new Uint8Array(image.data);
+  for (let i = 0; i < dst.length; i += 4) {
+    if (dst[i + 3] === 0) continue;
+    const r = dst[i] ?? 0;
+    const g = dst[i + 1] ?? 0;
+    const b = dst[i + 2] ?? 0;
+    let nearest = palette[0]!;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const color of palette) {
+      const distance =
+        (r - color[0]) * (r - color[0]) +
+        (g - color[1]) * (g - color[1]) +
+        (b - color[2]) * (b - color[2]);
+      if (distance < nearestDistance) {
+        nearest = color;
+        nearestDistance = distance;
+      }
+    }
+    dst[i] = nearest[0];
+    dst[i + 1] = nearest[1];
+    dst[i + 2] = nearest[2];
+  }
+  return { width: image.width, height: image.height, data: dst };
 }
 
 function encodePng(image: RgbaImage): Buffer {

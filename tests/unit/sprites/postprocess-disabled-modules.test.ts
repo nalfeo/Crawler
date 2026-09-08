@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PNG } from 'pngjs';
 import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 import {
@@ -11,6 +11,14 @@ import {
   type OpaqueRect,
   type RgbaImage,
 } from '../../../scripts/sprites/postprocess.js';
+
+vi.mock('../../../scripts/sprites/proper-pixel-art.js', () => ({
+  recoverPixelArtMesh: vi.fn((image: RgbaImage) => ({
+    width: 4,
+    height: 4,
+    data: image.data.slice(0, 4 * 4 * 4),
+  })),
+}));
 
 function makeTileBrief(): Brief {
   return briefSchema.parse({
@@ -91,6 +99,46 @@ function makePngWithBlock(
   return PNG.sync.write(png);
 }
 
+function makePixelGridFixture(): Buffer {
+  const png = new PNG({ width: 16, height: 16 });
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) {
+      const index = (y * png.width + x) * 4;
+      png.data[index] = Math.floor(x / 4) % 2 === 0 ? 0 : 160;
+      png.data[index + 1] = Math.floor(y / 4) % 2 === 0 ? 0 : 192;
+      png.data[index + 2] = 192;
+      png.data[index + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+function makeMeshRecoveryBrief(): Brief {
+  return briefSchema.parse({
+    type: 'prop',
+    name: 'mesh-recovery-test',
+    size: { width: 32, height: 32 },
+    palette: {
+      id: 'test-palette',
+      colors: [
+        [0, 0, 192],
+        [160, 192, 192],
+      ],
+    },
+    anchor: { x: 16, y: 31 },
+    tags: ['test'],
+    prompt: 'test prop',
+    references: [{ path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' }],
+    postprocessing: {
+      paletteMode: 'strict',
+      meshRecovery: true,
+      pixelWidth: 4,
+      trimAndFit: false,
+      minDimension: 32,
+    },
+  });
+}
+
 describe('postprocess disabled modules', () => {
   it('canonicalizes requested modules in effective pipeline order', () => {
     expect(
@@ -111,12 +159,33 @@ describe('postprocess disabled modules', () => {
     const traced = postprocessWithTrace(makeFixture(), makeTileBrief(), {
       disabledModules: ['resize'],
     });
+
     const skipped = traced.steps.find((step) => step.moduleId === 'resize');
     const final = PNG.sync.read(traced.finalPng);
 
     expect(skipped).toMatchObject({ moduleId: 'resize', skipped: true });
     expect(PNG.sync.read(skipped!.png)).toMatchObject({ width: 24, height: 36 });
     expect(final).toMatchObject({ width: 24, height: 36 });
+  });
+
+  it('runs strict mesh recovery before resize and preserves the requested final dimensions', () => {
+    const traced = postprocessWithTrace(makePixelGridFixture(), makeMeshRecoveryBrief(), {
+      disabledModules: [
+        'background-removal',
+        'enclosed-regions',
+        'background-rekey',
+        'speckle-cleanup',
+      ],
+    });
+    const moduleIds = traced.steps.map((step) => step.moduleId);
+
+    expect(moduleIds.indexOf('palette-quantize')).toBeLessThan(moduleIds.indexOf('pixel-grid'));
+    expect(moduleIds.indexOf('pixel-grid')).toBeLessThan(moduleIds.indexOf('resize'));
+    expect(traced.steps.find((step) => step.moduleId === 'pixel-grid')).toMatchObject({
+      id: 'pixel-grid',
+      skipped: false,
+    });
+    expect(PNG.sync.read(traced.finalPng)).toMatchObject({ width: 32, height: 32 });
   });
 
   describe('frameSequenceDisabledModules', () => {

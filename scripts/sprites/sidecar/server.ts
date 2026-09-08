@@ -3663,7 +3663,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           message: error instanceof Error ? error.message : String(error),
         };
       }
-      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, options);
+      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, options, loaded.palette);
       return {
         finalPng: traced.finalPng.toString('base64'),
         steps: traced.steps.map((step) => ({

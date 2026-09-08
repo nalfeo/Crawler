@@ -8,12 +8,13 @@
  * via templates. They accumulate trace steps via a provided callback.
  */
 
-import type { Brief } from './brief-schema.js';
+import type { Brief, PaletteColors } from './brief-schema.js';
 import {
   removeBackgroundB,
   removeEnclosedBackgroundRegions,
   removeReintroducedBackground,
   removeIsolatedNearWhiteSpeckles,
+  quantizeToPalette,
   hardThresholdAlpha,
   trimTransparentEdges,
   fitWithinNearest,
@@ -46,6 +47,7 @@ function normalizeTolerance(userValue: number | undefined, defaultValue: number)
  */
 export interface ModuleContext {
   readonly brief: Brief;
+  readonly palette?: PaletteColors;
   readonly pushStep: (id: string, label: string, image: RgbaImage) => void;
   readonly backgroundSource?: RgbaImage;
   readonly shouldRunEnclosedBackgroundCleanup?: boolean;
@@ -227,8 +229,19 @@ export const postprocessModules: Record<string, ModuleHandler> = {
     return result;
   },
 
-  'pixel-grid': (image, _params, ctx) => {
+  'palette-quantize': (image, _params, ctx) => {
     if (ctx.brief.postprocessing?.paletteMode !== 'strict') {
+      ctx.pushStep('palette-quantize-skipped', 'Palette quantize (skipped)', image);
+      return image;
+    }
+
+    const result = quantizeToPalette(image, ctx.palette ?? ctx.brief.palette.colors ?? []);
+    ctx.pushStep('palette-quantize', 'Palette quantize (strict)', result);
+    return result;
+  },
+
+  'pixel-grid': (image, _params, ctx) => {
+    if (!ctx.brief.postprocessing?.meshRecovery) {
       ctx.pushStep('pixel-grid-skipped', 'Pixel-art mesh recovery (skipped)', image);
       return image;
     }

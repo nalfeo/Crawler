@@ -422,11 +422,12 @@ export const briefSchema = z
       .object({
         trimAndFit: z.boolean().default(false),
         minDimension: z.number().int().min(8).max(256).default(256),
-        // `strict` is retained as a durable brief contract, but now means
-        // upstream pixel-art mesh recovery rather than palette quantization.
+        // `strict` remains the exact output color-lock contract.
         paletteMode: z.enum(['none', 'strict']).default('none'),
-        // Omit for upstream mesh auto-detection. This is only a human override
-        // when source art has a known pixel width and detection is unreliable.
+        // Opt into source-pixel mesh recovery independently of palette locking.
+        meshRecovery: z.boolean().optional(),
+        // Omit for mesh auto-detection. This is only a human override when
+        // source art has a known pixel width and detection is unreliable.
         pixelWidth: z.number().int().min(1).max(64).optional(),
       })
       .strict()

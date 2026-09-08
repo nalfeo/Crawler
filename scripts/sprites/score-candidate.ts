@@ -8,6 +8,7 @@ import {
   opaqueBboxFitsWithOptions,
   interiorTransparencyHoles,
   opaqueRatio,
+  paletteMembership,
   type RgbaImage,
   type SensorResult,
 } from './sensors/common.js';
@@ -168,13 +169,14 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
 }
 
 function resolvePaletteMembership(
-  _image: RgbaImage,
-  _brief: Brief,
-  _palette: PaletteColors,
+  image: RgbaImage,
+  brief: Brief,
+  palette: PaletteColors,
 ): SensorResult {
-  // Strict processing now reduces a source-pixel grid using sampled medoids;
-  // palette membership is no longer its contract.
-  return { ok: true, sensor: 'palette-membership' };
+  if (brief.postprocessing?.paletteMode !== 'strict') {
+    return { ok: true, sensor: 'palette-membership' };
+  }
+  return paletteMembership(image, palette);
 }
 
 function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {

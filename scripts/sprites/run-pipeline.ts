@@ -102,7 +102,7 @@ export async function postprocessScoreAndStoreVariant(
   let processed: Buffer;
   let scorecard: ReturnType<typeof scoreCandidate>;
   try {
-    traced = postprocessWithTrace(raw, brief, args.options ?? {});
+    traced = postprocessWithTrace(raw, brief, args.options ?? {}, palette);
     manualAnchorForVariant =
       args.manualAnchor &&
       (args.manualAnchor.applyToAllVariants === true || args.manualAnchor.variantIndex === index)
