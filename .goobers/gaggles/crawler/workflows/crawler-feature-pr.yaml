@@ -24,6 +24,7 @@ spec:
   # recovery/manual dispatch.
   readiness:
     maxConcurrentRuns: 1
+  # Keep automatic repasses bounded below the former six-pass ceiling.
   runControls:
     maxRepasses: 2
   start: query-backlog
@@ -248,7 +249,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: push-branch
+      next: local-ci
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -263,7 +264,7 @@ spec:
         - repo:push
       policyActions:
         - push-repository-branch
-      next: local-ci
+      next: open-pr
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
@@ -360,9 +361,10 @@ spec:
         retry:
           maxAttempts: 2
           backoffSeconds: 30
+      # Keep automatic reviewer repasses bounded below the former six-pass ceiling.
       maxRepasses: 2
       branches:
-        pass: open-pr
+        pass: push-branch
         needs-changes: implement
         fail: park-needs-human
         escalate: needs-remediation

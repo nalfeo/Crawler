@@ -1255,11 +1255,20 @@ ${queryScript}
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     // Canonical implementation repasses consume only the latest requirements and
     // materialized plan; the local gate runs before any reviewer pass.
-    expect(implement?.next).toBe('push-branch');
-    expect(tasks.get('push-branch')?.next).toBe('local-ci');
+    expect([
+      implement?.next,
+      tasks.get('local-ci')?.next,
+      localGate?.branches?.pass,
+      review?.branches?.pass,
+      tasks.get('push-branch')?.next,
+    ]).toEqual(['local-ci', 'local-gate', 'review', 'push-branch', 'open-pr']);
     expect(tasks.get('local-ci')?.next).toBe('local-gate');
     expect(localGate?.branches?.pass).toBe('review');
-    expect(review?.branches?.pass).toBe('open-pr');
+    expect(localGate?.branches?.fail).toBe('implement');
+    expect(localGate?.branches?.infra).toBe('local-ci');
+    expect(review?.branches?.['needs-changes']).toBe('implement');
+    expect(review?.branches?.fail).toBe('park-needs-human');
+    expect(review?.branches?.escalate).toBe('needs-remediation');
     expect(tasks.get('checkpoint-branch')).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });
