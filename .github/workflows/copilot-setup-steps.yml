@@ -27,6 +27,15 @@ jobs:
       - name: Set up Node.js and install dependencies
         uses: ./.github/actions/setup-node
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.10'
+
+      - name: Install sprite post-processing dependencies
+        run: |
+          python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt
+          python -m pip check
+
       - name: Verify (typecheck src)
         # Run a fast typecheck of src/ only to confirm the environment is
         # correctly set up. The full suite (tests/ + scripts/) and all unit

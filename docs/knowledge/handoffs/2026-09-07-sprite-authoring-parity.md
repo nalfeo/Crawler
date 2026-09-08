@@ -42,11 +42,17 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
   plumbing. Strict mode now returns the recovered native mesh directly to the
   existing resize stage, and current brief documentation reflects that
   contract.
+- Closed the independent-review findings by keeping full-bleed tiles on their
+  exact resize path, disabling per-frame mesh detection for animation sequences,
+  covering auto-detection, transparency, trivial-mesh refusal, and native-grid
+  output directly, provisioning the pinned Python runtime for Copilot sessions,
+  and differentiating timeout/buffer/toolchain bridge failures.
 - Verification passed before review: 276 focused sprite tests, 429 extension
   tests, 191 CI recovery tests, 1,611 `verify:fast` tests, and PR prerequisites.
   The corrective batch then passed 90 scope-classifier tests, the complete
   2,712-test sprite project apart from one loaded-machine timeout whose isolated
-  15-test file retry passed, and 565 changed tests under `verify:fast`.
+  15-test file retry passed, 88 focused review-fix tests, and the final 481
+  changed tests under `verify:fast`.
 - Observed in the real Workflow and animation canvases: a 192x256 variant
   rendered at 120x160 (ratio 0.75 preserved); postprocess zoom scaled the same
   final image from 120x160 at 1x to 240x320 at 2x with

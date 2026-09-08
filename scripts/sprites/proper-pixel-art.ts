@@ -67,15 +67,31 @@ export function recoverPixelArtMesh(image: RgbaImage, pixelWidth?: number): Rgba
       },
     });
   } catch (error) {
-    const detail =
-      error instanceof Error && 'stderr' in error && Buffer.isBuffer(error.stderr)
-        ? error.stderr.toString('utf8').trim()
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    const processError = error as Error & {
+      readonly code?: string;
+      readonly signal?: NodeJS.Signals;
+      readonly stderr?: Buffer;
+    };
+    const detail = Buffer.isBuffer(processError.stderr)
+      ? processError.stderr.toString('utf8').trim()
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    if (processError.code === 'ETIMEDOUT' || processError.signal === 'SIGKILL') {
+      throw new Error(
+        `pixel-art recovery timed out after ${RECOVERY_TIMEOUT_MS}ms for ` +
+          `${image.width}x${image.height} input`,
+        { cause: error },
+      );
+    }
+    if (processError.code === 'ENOBUFS') {
+      throw new Error('pixel-art recovery output exceeded the 64 MiB process buffer', {
+        cause: error,
+      });
+    }
     throw new Error(
-      `pixel-art recovery failed. Install Python 3.12 and ${'proper-pixel-art==1.7.2'} ` +
-        `(see scripts/sprites/proper-pixel-art-requirements.txt).${detail ? ` ${detail}` : ''}`,
+      'pixel-art recovery failed. Install the pinned Python 3.12 dependencies ' +
+        `from scripts/sprites/proper-pixel-art-requirements.txt.${detail ? ` ${detail}` : ''}`,
       { cause: error },
     );
   }
@@ -83,5 +99,12 @@ export function recoverPixelArtMesh(image: RgbaImage, pixelWidth?: number): Rgba
   if (output.length === 0) {
     throw new Error('pixel-art recovery failed: the upstream adapter produced no PNG output');
   }
-  return decodePng(output);
+  const recovered = decodePng(output);
+  if (recovered.width === 1 && recovered.height === 1 && (image.width > 1 || image.height > 1)) {
+    throw new Error(
+      `pixel-art recovery failed to detect a non-trivial mesh for ` +
+        `${image.width}x${image.height} input`,
+    );
+  }
+  return recovered;
 }

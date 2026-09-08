@@ -44,7 +44,8 @@
 # band (scripts/sprites/slice-sheet.ts), so half the gutter lands inside each
 # cell. Under the former palette-quantization implementation, strict mode mapped
 # it to the nearest ramp step instead of removing it. The other three briefs
-# v2 omits it everywhere and lets the default tile scaffolding do the cutting.
+# never carried that paragraph and sliced fine, so v2 omits it everywhere and
+# lets the default tile scaffolding do the cutting.
 #
 # GEOMETRY unchanged from v1: `type: tile` => 'stretch' + `trimAndFit: false`, so
 # the shipped PNG is exactly 256x256 by construction and the drawn box IS the

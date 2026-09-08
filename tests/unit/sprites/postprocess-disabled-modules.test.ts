@@ -120,13 +120,13 @@ describe('postprocess disabled modules', () => {
   });
 
   describe('frameSequenceDisabledModules', () => {
-    it('returns only trim-and-fit for a frameSequence-enabled brief (transparent-trim now uses union crop instead)', () => {
+    it('disables geometry-changing per-frame modules for a frame sequence', () => {
       // transparent-trim is no longer disabled: it now uses the pre-computed
       // union bounding box (sharedCropRect) so all frames share the same
-      // crop-to-canvas mapping. Only trim-and-fit (post-resize per-frame
-      // re-trim) is still disabled, since that reintroduces independent
-      // centering per frame even after the uniform initial crop.
+      // crop-to-canvas mapping. Pixel-grid and trim-and-fit remain disabled
+      // because each would derive geometry independently per frame.
       expect(frameSequenceDisabledModules(makeCharacterFrameSequenceBrief())).toEqual([
+        'pixel-grid',
         'trim-and-fit',
       ]);
     });

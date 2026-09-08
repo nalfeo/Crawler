@@ -53,7 +53,7 @@ def main() -> None:
         num_colors=0,
         scale_result=1,
         transparent_background=False,
-        pixel_width=args.pixel_width,
+        pixel_width=args.pixel_width or None,
     )
 
     # Preserve one output pixel per recovered mesh cell. Re-expanding this

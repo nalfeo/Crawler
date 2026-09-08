@@ -121,4 +121,11 @@ describe('template pipeline resolution', () => {
       expect(pipeline.pipeline.length).toBeGreaterThan(0);
     }
   });
+
+  it('keeps full-bleed tiles on the exact source-to-target resize path', () => {
+    const active = getActiveModules(getPipelineForType('tile'), 'tile').map(({ name }) => name);
+
+    expect(active).not.toContain('pixel-grid');
+    expect(active).toContain('resize');
+  });
 });

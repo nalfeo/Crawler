@@ -18,6 +18,24 @@ function makeGridFixture(): RgbaImage {
   return { width, height, data };
 }
 
+function makeAutoDetectFixture(): RgbaImage {
+  const width = 128;
+  const height = 128;
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const logicalX = Math.floor(x / 16);
+      const logicalY = Math.floor(y / 16);
+      const index = (y * width + x) * 4;
+      data[index] = (logicalX % 4) * 70;
+      data[index + 1] = (logicalY % 4) * 70;
+      data[index + 2] = (logicalX + logicalY) % 2 === 0 ? 0 : 180;
+      data[index + 3] = logicalX < 2 && logicalY < 2 ? 0 : 255;
+    }
+  }
+  return { width, height, data };
+}
+
 describe('recoverPixelArtMesh', () => {
   it('returns the deterministic native mesh without non-uniform source-canvas expansion', () => {
     const recovered = recoverPixelArtMesh(makeGridFixture(), 4);
@@ -33,8 +51,31 @@ describe('recoverPixelArtMesh', () => {
     );
   });
 
+  it('auto-detects the production mesh path and preserves transparent cells', () => {
+    const recovered = recoverPixelArtMesh(makeAutoDetectFixture());
+    const alpha = Array.from(recovered.data).filter((_, index) => index % 4 === 3);
+
+    expect({ width: recovered.width, height: recovered.height }).toEqual({
+      width: 8,
+      height: 8,
+    });
+    expect(alpha.filter((value) => value === 0)).toHaveLength(4);
+    expect(createHash('sha256').update(recovered.data).digest('hex')).toBe(
+      '93c5638e2f1d7f7cae18197f75d07c7c5577ca52cf3d83f79044ee313546504b',
+    );
+  });
+
   it('rejects invalid explicit pixel widths before spawning Python', () => {
     expect(() => recoverPixelArtMesh(makeGridFixture(), 0)).toThrow(/positive integer/u);
     expect(() => recoverPixelArtMesh(makeGridFixture(), 1.5)).toThrow(/positive integer/u);
+  });
+
+  it('fails closed when auto-detection returns only a trivial mesh', () => {
+    const data = new Uint8Array(16 * 16 * 4);
+    data.fill(255);
+
+    expect(() => recoverPixelArtMesh({ width: 16, height: 16, data })).toThrow(
+      /failed to detect a non-trivial mesh/u,
+    );
   });
 });

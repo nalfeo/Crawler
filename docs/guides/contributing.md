@@ -34,6 +34,13 @@ label (the publisher now creates it on demand if it is missing before publishing
 
 ## 4. Verify fast before push
 
+Sprite-pipeline checks require Python 3.12.10 and the pinned wheel-only runtime:
+
+```bash
+python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt
+python -m pip check
+```
+
 After every meaningful change run:
 
 ```bash

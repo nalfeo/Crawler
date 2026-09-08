@@ -143,9 +143,9 @@ export function normalizeDisabledModules(value: unknown, brief: Brief): string[]
  * every frame is cropped to the SAME bbox + margin before resizing. Callers
  * must supply `sharedCropRect` via {@link computeFrameSequenceUnionCropRect}.
  *
- * `trim-and-fit` is still disabled because it re-trims AFTER resize using an
- * independent per-frame bbox, which would reintroduce different centering
- * offsets per pose even after the initial crop is uniform.
+ * `pixel-grid` and `trim-and-fit` are disabled because both derive geometry
+ * independently per frame. Either could reintroduce different scale or
+ * centering offsets per pose after the initial shared crop.
  *
  * Returns `[]` for non-frame-sequence briefs (no behavior change) and filters
  * to only modules actually active for this brief's type.
@@ -155,7 +155,7 @@ export function frameSequenceDisabledModules(brief: Brief): string[] {
   const activeNames = new Set(
     getActiveModules(getPipelineForType(brief.type), brief.type).map(({ name }) => name),
   );
-  return ['trim-and-fit'].filter((name) => activeNames.has(name));
+  return ['pixel-grid', 'trim-and-fit'].filter((name) => activeNames.has(name));
 }
 
 export function postprocessWithTrace(
