@@ -3122,6 +3122,7 @@ function buildFloor5ReleaseGateStats(
     maxFrameCostMs: gate.maxFrameCostMs,
     observedFrameCostMs,
     stallBackstopFrames: gate.stallBackstopFrames,
+    maxReleaseDelayFrames: gate.maxReleaseDelayFrames,
     cleanSweepMinCommandPostHealthPct: gate.cleanSweepMinCommandPostHealthPct,
     commandPostHealthPct,
     ramSurvivedBreach,

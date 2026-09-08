@@ -1228,6 +1228,7 @@ export interface Floor5SiegeRunStats {
     readonly maxFrameCostMs: number;
     readonly observedFrameCostMs: number | null;
     readonly stallBackstopFrames: number;
+    readonly maxReleaseDelayFrames: number;
     readonly cleanSweepMinCommandPostHealthPct: number;
     readonly commandPostHealthPct: number;
     readonly ramSurvivedBreach: boolean;

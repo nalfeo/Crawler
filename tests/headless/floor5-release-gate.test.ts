@@ -127,9 +127,11 @@ describe('Floor 5 release gate headless telemetry', () => {
           scheduled: manifestEntry.count,
         });
         if (!accounting) continue;
-        expect(accounting.physicalReleased + accounting.debtCleared).toBe(manifestEntry.count);
-        expect(accounting.physicalReleased).toBeLessThanOrEqual(manifestEntry.count);
-        expect(accounting.maxReleaseDelayFrames).toBe(gate.maxReleaseDelayFrames);
+        // No cap contention in this cohort: every authored unit must physically
+        // spawn, so a cancelled wave can never satisfy the cadence gate.
+        expect(accounting.debtCleared).toBe(0);
+        expect(accounting.physicalReleased).toBe(manifestEntry.count);
+        expect(accounting.maxReleaseDelayFrames).toBe(siege.releaseGate.maxReleaseDelayFrames);
         if (accounting.firstReleaseFrame !== null) {
           expect(accounting.firstReleaseFrame).toBeGreaterThanOrEqual(manifestEntry.releaseFrame);
         }
@@ -152,6 +154,7 @@ describe('Floor 5 release gate headless telemetry', () => {
         `seed ${seed} stayed under frame-cost budget`,
       ).toBeLessThanOrEqual(gate.maxFrameCostMs);
       expect(siege.releaseGate.stallBackstopFrames).toBe(gate.stallBackstopFrames);
+      expect(siege.releaseGate.maxReleaseDelayFrames).toBe(gate.maxReleaseDelayFrames);
       if (stats.outcome !== 'victory') {
         expect(siege.releaseGate.terminalIntegrity.capturedCount).toBe(0);
         expect(siege.releaseGate.terminalIntegrity.defeatCount).toBe(1);
