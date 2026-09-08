@@ -208,6 +208,11 @@ const cases: Case[] = [
     files: ['tests/unit/detect-change-scope.test.ts'],
     expected: F(false, false, true, false, false, false, true, false, false, false, false),
   },
+  {
+    name: 'sprite Python requirements',
+    files: ['scripts/sprites/proper-pixel-art-requirements.txt'],
+    expected: F(false, false, true, true, true, false, false, false, false, false, false, true),
+  },
   // Docs / text: non-visual.
   {
     name: 'docs markdown',

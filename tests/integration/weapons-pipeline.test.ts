@@ -61,7 +61,7 @@ function runAllSensors(
   rawPng: Buffer,
   brief: Brief,
 ): { passed: string[]; failed: { sensor: string; reason: string }[] } {
-  const processed = postprocess(rawPng, brief, PALETTE);
+  const processed = postprocess(rawPng, brief);
   const decoded = decodeSprite(processed);
   const results = [
     ...universalSensors(decoded, brief, PALETTE),

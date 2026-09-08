@@ -33,8 +33,20 @@ sprite-pipeline, sprite-workflow, devtools, ci-policy
   repair was already present through current main; older request-context and
   exact-generation rewrites were rejected because they depend on superseded
   Workflow contracts and would weaken current lifecycle route validation.
-- Verification passed: 276 focused sprite tests, 429 extension tests, 191 CI
-  recovery tests, 1,611 `verify:fast` tests, and PR prerequisites.
+- Hardened the mesh-recovery boundary after independent review: CI now uses an
+  exact Python patch and exact binary-only transitive pins, the security
+  allowlist validates that Python closure, the bridge asserts installed
+  versions and runs with a deterministic minimal environment plus a hard
+  timeout, and a native-grid golden test prevents non-uniform re-expansion.
+- Removed the dead palette quantizer and its no-longer-meaningful palette
+  plumbing. Strict mode now returns the recovered native mesh directly to the
+  existing resize stage, and current brief documentation reflects that
+  contract.
+- Verification passed before review: 276 focused sprite tests, 429 extension
+  tests, 191 CI recovery tests, 1,611 `verify:fast` tests, and PR prerequisites.
+  The corrective batch then passed 90 scope-classifier tests, the complete
+  2,712-test sprite project apart from one loaded-machine timeout whose isolated
+  15-test file retry passed, and 565 changed tests under `verify:fast`.
 - Observed in the real Workflow and animation canvases: a 192x256 variant
   rendered at 120x160 (ratio 0.75 preserved); postprocess zoom scaled the same
   final image from 120x160 at 1x to 240x320 at 2x with

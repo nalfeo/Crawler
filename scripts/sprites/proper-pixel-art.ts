@@ -9,6 +9,7 @@ export interface RgbaImage {
 }
 
 const bridgePath = fileURLToPath(new URL('./proper-pixel-art-bridge.py', import.meta.url));
+const RECOVERY_TIMEOUT_MS = 30_000;
 
 function pythonCommand(): { readonly command: string; readonly args: readonly string[] } {
   return process.platform === 'win32'
@@ -36,8 +37,8 @@ function decodePng(pngBuffer: Buffer): RgbaImage {
  *
  * No local grid heuristic is used: when the upstream detector cannot recover a
  * mesh, callers receive its failure instead of a silently destructive fallback.
- * The bridge returns the original canvas dimensions: recovery changes pixels,
- * while the pipeline's dedicated resize module owns canvas sizing.
+ * The bridge returns the recovered native mesh without re-expanding it. The
+ * pipeline's dedicated resize module remains the sole final-size authority.
  */
 export function recoverPixelArtMesh(image: RgbaImage, pixelWidth?: number): RgbaImage {
   if (pixelWidth !== undefined && (!Number.isInteger(pixelWidth) || pixelWidth < 1)) {
@@ -52,7 +53,18 @@ export function recoverPixelArtMesh(image: RgbaImage, pixelWidth?: number): Rgba
       input: encodePng(image),
       maxBuffer: 64 * 1024 * 1024,
       encoding: 'buffer',
+      timeout: RECOVERY_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
       windowsHide: true,
+      env: {
+        PATH: process.env.PATH,
+        SystemRoot: process.env.SystemRoot,
+        WINDIR: process.env.WINDIR,
+        PYTHONHASHSEED: '0',
+        PYTHONNOUSERSITE: '1',
+        PYTHONDONTWRITEBYTECODE: '1',
+        PYTHONUTF8: '1',
+      },
     });
   } catch (error) {
     const detail =
@@ -71,12 +83,5 @@ export function recoverPixelArtMesh(image: RgbaImage, pixelWidth?: number): Rgba
   if (output.length === 0) {
     throw new Error('pixel-art recovery failed: the upstream adapter produced no PNG output');
   }
-  const recovered = decodePng(output);
-  if (recovered.width !== image.width || recovered.height !== image.height) {
-    throw new Error(
-      `pixel-art recovery changed canvas size from ${image.width}x${image.height} ` +
-        `to ${recovered.width}x${recovered.height}`,
-    );
-  }
-  return recovered;
+  return decodePng(output);
 }

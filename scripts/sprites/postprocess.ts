@@ -26,15 +26,10 @@
  *     adapter; it has no network access and receives all image data via stdin.
  *   - Pipeline templates are loaded from disk via a cached resolver.
  *
- * Note on signature: the spec writes `(rawPng, brief) => Buffer`, but the brief
- * carries a palette *id*, not the resolved color list. To keep this function
- * pure (no disk reads to resolve the id), we accept the resolved palette as a
- * third argument. Callers (a Phase-2 driver) load the palette JSON once and
- * pass the colors in.
  */
 
 import { PNG } from 'pngjs';
-import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
+import type { Brief } from './brief-schema.js';
 import { getPipelineForType, getActiveModules } from './template-pipeline.js';
 import { postprocessModules } from './postprocess-modules.js';
 import {
@@ -97,10 +92,9 @@ export interface PostprocessOptions {
 export function postprocess(
   rawPng: Buffer,
   brief: Brief,
-  palette: PaletteColors,
   options: PostprocessOptions = {},
 ): Buffer {
-  return postprocessWithTrace(rawPng, brief, palette, options).finalPng;
+  return postprocessWithTrace(rawPng, brief, options).finalPng;
 }
 
 export interface PostprocessStepTrace {
@@ -167,13 +161,8 @@ export function frameSequenceDisabledModules(brief: Brief): string[] {
 export function postprocessWithTrace(
   rawPng: Buffer,
   brief: Brief,
-  palette: PaletteColors,
   options: PostprocessOptions = {},
 ): PostprocessTrace {
-  if (palette.length === 0) {
-    throw new Error('postprocess: palette must contain at least one color');
-  }
-
   const steps: PostprocessStepTrace[] = [];
 
   let image = decodePng(rawPng);
@@ -251,7 +240,6 @@ export function postprocessWithTrace(
 
     image = handler(image, moduleParams, {
       brief,
-      palette,
       pushStep: (id: string, label: string, stepImage: RgbaImage): void => {
         steps.push({
           id,
@@ -827,63 +815,6 @@ export function fitWithinNearest(
     fittedWidth,
     fittedHeight,
   };
-}
-
-/**
- * Snap every opaque pixel's RGB to the nearest palette entry by Euclidean
- * distance. Transparent pixels (alpha === 0) are left untouched in RGB and
- * keep alpha 0.
- *
- * Tie-breaking: the *first* palette entry at minimum distance wins. This
- * makes quantization deterministic regardless of palette order beyond ties.
- *
- * Exported for direct unit testing.
- */
-export function quantizeToPalette(image: RgbaImage, palette: PaletteColors): RgbaImage {
-  if (palette.length === 0) {
-    throw new Error('quantizeToPalette: palette must be non-empty');
-  }
-  const { width, height, data: src } = image;
-  const dst = new Uint8Array(src.length);
-  for (let i = 0; i < src.length; i += 4) {
-    const a = src[i + 3] ?? 0;
-    if (a === 0) {
-      // preserve transparent pixels, including their RGB (avoids leaking
-      // bg color into anything that later inspects raw RGB)
-      dst[i] = src[i] ?? 0;
-      dst[i + 1] = src[i + 1] ?? 0;
-      dst[i + 2] = src[i + 2] ?? 0;
-      dst[i + 3] = 0;
-      continue;
-    }
-    const r = src[i] ?? 0;
-    const g = src[i + 1] ?? 0;
-    const b = src[i + 2] ?? 0;
-    const nearest = nearestPaletteEntry(r, g, b, palette);
-    dst[i] = nearest[0];
-    dst[i + 1] = nearest[1];
-    dst[i + 2] = nearest[2];
-    dst[i + 3] = a;
-  }
-  return { width, height, data: dst };
-}
-
-function nearestPaletteEntry(r: number, g: number, b: number, palette: PaletteColors): RgbTriple {
-  let bestIdx = 0;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < palette.length; i++) {
-    const c = palette[i] as RgbTriple;
-    const dr = r - c[0];
-    const dg = g - c[1];
-    const db = b - c[2];
-    const dist = dr * dr + dg * dg + db * db;
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestIdx = i;
-      if (dist === 0) break; // exact match; no need to continue
-    }
-  }
-  return palette[bestIdx] as RgbTriple;
 }
 
 /**

@@ -2,13 +2,13 @@
  * Post-processing pipeline modules.
  *
  * Each module is a pure function:
- *   (image, brief, palette, params) => RgbaImage
+ *   (image, brief, params) => RgbaImage
  *
  * Modules are the pluggable processing units that compose into pipelines
  * via templates. They accumulate trace steps via a provided callback.
  */
 
-import type { Brief, PaletteColors } from './brief-schema.js';
+import type { Brief } from './brief-schema.js';
 import {
   removeBackgroundB,
   removeEnclosedBackgroundRegions,
@@ -46,7 +46,6 @@ function normalizeTolerance(userValue: number | undefined, defaultValue: number)
  */
 export interface ModuleContext {
   readonly brief: Brief;
-  readonly palette: PaletteColors;
   readonly pushStep: (id: string, label: string, image: RgbaImage) => void;
   readonly backgroundSource?: RgbaImage;
   readonly shouldRunEnclosedBackgroundCleanup?: boolean;
@@ -240,7 +239,7 @@ export const postprocessModules: Record<string, ModuleHandler> = {
       explicitPixelWidth === undefined ? 'auto-detected mesh' : `${explicitPixelWidth}px mesh`;
     ctx.pushStep(
       'pixel-grid',
-      `Pixel-art mesh recovery (${mode}; preserved ${result.width}x${result.height} canvas)`,
+      `Pixel-art mesh recovery (${mode}; ${result.width}x${result.height} native grid)`,
       result,
     );
     return result;

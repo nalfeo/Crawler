@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
-import {
-  briefSchema,
-  type Brief,
-  type PaletteColors,
-} from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 import {
   frameSequenceDisabledModules,
   normalizeDisabledModules,
@@ -15,12 +11,6 @@ import {
   type OpaqueRect,
   type RgbaImage,
 } from '../../../scripts/sprites/postprocess.js';
-
-const PALETTE: PaletteColors = [
-  [0, 0, 0],
-  [32, 96, 144],
-  [255, 255, 255],
-];
 
 function makeTileBrief(): Brief {
   return briefSchema.parse({
@@ -118,7 +108,7 @@ describe('postprocess disabled modules', () => {
   });
 
   it('passes a disabled step through, keeps it visible, and changes the final output', () => {
-    const traced = postprocessWithTrace(makeFixture(), makeTileBrief(), PALETTE, {
+    const traced = postprocessWithTrace(makeFixture(), makeTileBrief(), {
       disabledModules: ['resize'],
     });
     const skipped = traced.steps.find((step) => step.moduleId === 'resize');
@@ -148,7 +138,7 @@ describe('postprocess disabled modules', () => {
     it('transparent-trim runs (not skipped) for frame-sequence briefs', () => {
       const brief = makeCharacterFrameSequenceBrief();
       const disabledModules = frameSequenceDisabledModules(brief);
-      const traced = postprocessWithTrace(makeFixture(), brief, PALETTE, { disabledModules });
+      const traced = postprocessWithTrace(makeFixture(), brief, { disabledModules });
       const trimStep = traced.steps.find((step) => step.moduleId === 'transparent-trim');
 
       // transparent-trim must NOT be skipped — it runs using the per-frame
@@ -160,7 +150,7 @@ describe('postprocess disabled modules', () => {
     it('transparent-trim uses the shared union bbox when sharedCropRect is provided', () => {
       const brief = makeCharacterFrameSequenceBrief();
       const sharedCropRect: OpaqueRect = { left: 10, top: 10, right: 30, bottom: 50 };
-      const traced = postprocessWithTrace(makeFixture(), brief, PALETTE, { sharedCropRect });
+      const traced = postprocessWithTrace(makeFixture(), brief, { sharedCropRect });
       const trimStep = traced.steps.find((step) => step.moduleId === 'transparent-trim');
 
       expect(trimStep).toBeDefined();
