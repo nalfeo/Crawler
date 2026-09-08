@@ -131,6 +131,34 @@ describe('Floor 5 release gate headless telemetry', () => {
         gate.maxLiveHostilesOnTerminal,
       );
       expect(siege.laneTelemetry.pathStalls).toBeLessThanOrEqual(gate.maxPathStalls);
+      expect(siege.laneTelemetry.activeCap).toBe(4);
+      for (const [team, peak] of Object.entries(siege.laneTelemetry.liveMinionPeak)) {
+        expect(peak, `seed ${seed} ${team} live peak stayed within cap`).toBeLessThanOrEqual(
+          siege.laneTelemetry.activeCap,
+        );
+      }
+      expect(siege.laneTelemetry.waveAccounting).toHaveLength(siege.waveManifest.length);
+      for (const [manifestIndex, manifestEntry] of siege.waveManifest.entries()) {
+        const accounting = siege.laneTelemetry.waveAccounting[manifestIndex];
+        expect(accounting).toMatchObject({
+          manifestIndex,
+          waveId: manifestEntry.id,
+          team: manifestEntry.team,
+          scheduled: manifestEntry.count,
+        });
+        if (!accounting) continue;
+        expect(accounting.physicalReleased + accounting.debtCleared).toBe(manifestEntry.count);
+        expect(accounting.physicalReleased).toBeLessThanOrEqual(manifestEntry.count);
+        expect(accounting.maxReleaseDelayFrames).toBeGreaterThanOrEqual(0);
+        if (accounting.firstReleaseFrame !== null) {
+          expect(accounting.firstReleaseFrame).toBeGreaterThanOrEqual(manifestEntry.releaseFrame);
+        }
+        if (accounting.lastReleaseFrame !== null) {
+          expect(accounting.lastReleaseFrame).toBeGreaterThanOrEqual(
+            accounting.firstReleaseFrame ?? manifestEntry.releaseFrame,
+          );
+        }
+      }
       expect(siege.releaseGate.structuralViolations).toEqual({
         unreachableObjectives: 0,
         phaseOrderViolations: 0,
@@ -145,5 +173,17 @@ describe('Floor 5 release gate headless telemetry', () => {
       ).toBeLessThanOrEqual(gate.maxFrameCostMs);
       expect(siege.releaseGate.stallBackstopFrames).toBe(gate.stallBackstopFrames);
     }
+  });
+
+  it('keeps the release ledger deterministic for the same seed', async () => {
+    const options = {
+      floorId: 'floor5' as const,
+      seed: 1,
+      maxFrames: 120,
+      questStallFrames: 0,
+    };
+    const first = await runHeadless(new IdleFloor5Provider(), options);
+    const second = await runHeadless(new IdleFloor5Provider(), options);
+    expect(second.floor5Siege?.laneTelemetry).toEqual(first.floor5Siege?.laneTelemetry);
   });
 });

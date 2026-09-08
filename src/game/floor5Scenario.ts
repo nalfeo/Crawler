@@ -554,6 +554,19 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
       pathStalls: 0,
       spawned: { allied: 0, enemy: 0 },
       spawnDebtPeak: { allied: 0, enemy: 0 },
+      activeCap: FLOOR5_MINION_LIVE_CAP,
+      liveMinionPeak: { allied: 0, enemy: 0 },
+      waveAccounting: waveManifest.map((entry, manifestIndex) => ({
+        manifestIndex,
+        waveId: entry.id,
+        team: entry.team,
+        scheduled: entry.count,
+        physicalReleased: 0,
+        debtCleared: 0,
+        firstReleaseFrame: null,
+        lastReleaseFrame: null,
+        maxReleaseDelayFrames: 0,
+      })),
     },
     combatEventCursor: 0,
   };
@@ -739,6 +752,17 @@ function spawnFloor5Minion(
     }),
   );
   state.laneTelemetry.spawned[team] += 1;
+  const accounting = state.laneTelemetry.waveAccounting[manifestIndex];
+  if (!accounting || accounting.team !== team) {
+    throw new Error(`Floor 5 manifest accounting missing index ${manifestIndex}`);
+  }
+  accounting.physicalReleased += 1;
+  accounting.firstReleaseFrame ??= world.frameCount;
+  accounting.lastReleaseFrame = world.frameCount;
+  accounting.maxReleaseDelayFrames = Math.max(
+    accounting.maxReleaseDelayFrames,
+    world.frameCount - state.waveManifest[manifestIndex]!.releaseFrame,
+  );
   return eid;
 }
 
@@ -1331,10 +1355,18 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
       state.waveCursor[team] += 1;
     }
     state.liveMinions[team] = countLiveFloor5Minions(world, team);
+    state.laneTelemetry.liveMinionPeak[team] = Math.max(
+      state.laneTelemetry.liveMinionPeak[team],
+      state.liveMinions[team],
+    );
     while (state.spawnDebt[team] > 0 && state.liveMinions[team] < FLOOR5_MINION_LIVE_CAP) {
       spawnFloor5Minion(world, state, team, state.spawnDebtManifestQueue[team].shift() ?? 0);
       state.spawnDebt[team] -= 1;
       state.liveMinions[team] += 1;
+      state.laneTelemetry.liveMinionPeak[team] = Math.max(
+        state.laneTelemetry.liveMinionPeak[team],
+        state.liveMinions[team],
+      );
     }
   }
   if (
@@ -2011,7 +2043,20 @@ function destroyFloor5Ram(world: GameWorld, state: Floor5SiegeState, reason: str
 function clearFloor5WaveDebt(state: Floor5SiegeState): number {
   let cleared = 0;
   for (const team of ['allied', 'enemy'] as const) {
-    cleared += state.waveRemainder[team] + state.spawnDebt[team];
+    const entries = floor5WaveEntriesForTeam(state, team);
+    const remainder = state.waveRemainder[team];
+    const current = entries[state.waveCursor[team]];
+    if (remainder > 0 && current) {
+      const accounting = state.laneTelemetry.waveAccounting[current.manifestIndex];
+      if (!accounting) throw new Error(`Floor 5 accounting missing ${current.manifestIndex}`);
+      accounting.debtCleared += remainder;
+    }
+    for (const manifestIndex of state.spawnDebtManifestQueue[team]) {
+      const accounting = state.laneTelemetry.waveAccounting[manifestIndex];
+      if (!accounting) throw new Error(`Floor 5 accounting missing ${manifestIndex}`);
+      accounting.debtCleared += 1;
+    }
+    cleared += remainder + state.spawnDebt[team];
     state.waveRemainder[team] = 0;
     state.spawnDebt[team] = 0;
     state.spawnDebtManifestQueue[team].length = 0;
@@ -3211,6 +3256,9 @@ export function getFloor5SiegeRunStats(
       pathStalls: state.laneTelemetry.pathStalls,
       spawned: { ...state.laneTelemetry.spawned },
       spawnDebtPeak: { ...state.laneTelemetry.spawnDebtPeak },
+      activeCap: state.laneTelemetry.activeCap,
+      liveMinionPeak: { ...state.laneTelemetry.liveMinionPeak },
+      waveAccounting: state.laneTelemetry.waveAccounting.map((entry) => ({ ...entry })),
     },
     releaseGate: buildFloor5ReleaseGateStats(world, state, observedFrameCostMs),
   };
