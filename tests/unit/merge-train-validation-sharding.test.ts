@@ -80,6 +80,31 @@ describe('merge-train candidate validation sharding', () => {
     }
   });
 
+  it('provisions the pinned Python sprite adapter before running sprite shards', () => {
+    const steps = loadWorkflow().jobs['sprite-tests']?.steps ?? [];
+    const setupPythonIndex = steps.findIndex((step) => step.uses === 'actions/setup-python@v5');
+    const installIndex = steps.findIndex(
+      (step) => step.name === 'Install sprite post-processing dependencies',
+    );
+    const validateIndex = steps.findIndex(
+      (step) => step.name === 'Validate sprite post-processing adapter',
+    );
+    const testIndex = steps.findIndex((step) => step.name === 'Run complete sprite-suite shard');
+
+    expect(steps[setupPythonIndex]?.with?.['python-version']).toBe('3.12.10');
+    expect(steps[installIndex]?.run).toContain(
+      'python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt',
+    );
+    expect(steps[installIndex]?.run).toContain('python -m pip check');
+    expect(steps[validateIndex]?.run).toBe(
+      'python -m py_compile scripts/sprites/proper-pixel-art-bridge.py',
+    );
+    expect(setupPythonIndex).toBeGreaterThan(-1);
+    expect(setupPythonIndex).toBeLessThan(installIndex);
+    expect(installIndex).toBeLessThan(validateIndex);
+    expect(validateIndex).toBeLessThan(testIndex);
+  });
+
   it('keeps candidate execution read-only and the trusted publisher checkout-free', () => {
     const doc = loadWorkflow();
     expect(doc.permissions).toEqual({ contents: 'read' });
