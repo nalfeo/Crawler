@@ -1115,6 +1115,8 @@ export class MainGameScene extends Phaser.Scene {
   private tappedInteraction = false;
   /** NPC selected by this frame's pointer tap, when dialogue is not yet open. */
   private tappedNpcEid: number | null = null;
+  /** Authored construction site selected by the current pointer tap. */
+  private tappedConstructionSiteId: string | null = null;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -1698,6 +1700,7 @@ export class MainGameScene extends Phaser.Scene {
       this.activeConversationLines = null;
       this.tappedInteraction = false;
       this.tappedNpcEid = null;
+      this.tappedConstructionSiteId = null;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1899,11 +1902,6 @@ export class MainGameScene extends Phaser.Scene {
     return SCENARIO_HUD_BASE_Y;
   }
 
-  private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
-    const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
-    return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
-  }
-
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.pendingFloorTransition) {
       // The between-floor summary owns every pointer press while it waits,
@@ -1913,9 +1911,6 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.abilityLoadoutUI?.isOpen()) {
-      return;
-    }
-    if (this.isTouchPointer(pointer)) {
       return;
     }
     const isCornerButtonHit = (button?: Phaser.GameObjects.Text): boolean =>
@@ -1954,6 +1949,22 @@ export class MainGameScene extends Phaser.Scene {
     if (npcEid >= 0) {
       this.tappedNpcEid = npcEid;
       this.tappedInteraction = true;
+      return;
+    }
+    const construction = this.options.scenarioPresentation?.construction;
+    if (construction) {
+      const snapshot = construction.getSnapshot(this.world);
+      const site = snapshot?.sites.find(
+        (candidate) =>
+          pxToFt(pointer.worldX) >= candidate.boundsFt.x &&
+          pxToFt(pointer.worldX) <= candidate.boundsFt.x + candidate.boundsFt.width &&
+          pxToFt(pointer.worldY) >= candidate.boundsFt.y &&
+          pxToFt(pointer.worldY) <= candidate.boundsFt.y + candidate.boundsFt.height,
+      );
+      if (site) {
+        this.tappedConstructionSiteId = site.siteId;
+        this.tappedInteraction = true;
+      }
     }
   }
 
@@ -1968,6 +1979,7 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
     this.tappedNpcEid = null;
+    this.tappedConstructionSiteId = null;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -6170,8 +6182,58 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  private openConstructionPicker(siteId: string): void {
+    const construction = this.options.scenarioPresentation?.construction;
+    if (!construction || !this.modalPicker || this.modalPicker.isOpen()) return;
+    const snapshot = construction.getSnapshot(this.world);
+    const site = snapshot?.sites.find((candidate) => candidate.siteId === siteId);
+    if (!snapshot || !site) {
+      this.flashActionStatus('Construction site is not authored for this floor.');
+      return;
+    }
+    if (site.occupied) {
+      this.flashActionStatus(`${siteId} is occupied. Choose a vacant site.`);
+      return;
+    }
+    const options = snapshot.towers.map((tower) => ({
+      id: tower.towerId,
+      label: `${tower.label} — ${tower.cost} requisitions`,
+      description: tower.affordable
+        ? 'Build at this authored site.'
+        : 'Unaffordable at current balance.',
+      disabled: !tower.affordable,
+    }));
+    if (options.every((option) => option.disabled)) {
+      this.flashActionStatus('No tower is affordable at this site.');
+      return;
+    }
+    this.modalPicker.open(
+      {
+        kind: 'floor6-tower-build',
+        title: `Build at ${siteId}`,
+        subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
+        body: 'Select an affordable tower. The scenario validates the request atomically.',
+        options,
+        allowCancel: true,
+        initialSelectedId: options.find((option) => !option.disabled)?.id,
+      },
+      {
+        onConfirm: ({ option }) => {
+          const result = construction.requestBuild(this.world, siteId, option.id);
+          this.flashActionStatus(
+            result.ok
+              ? `${option.label.split(' — ')[0]} built at ${siteId}.`
+              : `Build rejected: ${result.reason}.`,
+          );
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
   private updateInteractions(): void {
     const tappedNpcEid = this.tappedNpcEid;
+    const tappedConstructionSiteId = this.tappedConstructionSiteId;
     // A pointer tap latches onto the exact NPC whose footprint was clicked, but
     // the simulation step runs before this code and can move that NPC out of
     // interaction range. Cancel such a tap instead of letting it retarget a
@@ -6188,8 +6250,14 @@ export class MainGameScene extends Phaser.Scene {
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
     this.tappedNpcEid = null;
+    this.tappedConstructionSiteId = null;
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
+
+    if (tappedConstructionSiteId !== null && interactionRequested) {
+      this.openConstructionPicker(tappedConstructionSiteId);
+      return;
+    }
 
     const hasScenarioPresentationStairs =
       this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
