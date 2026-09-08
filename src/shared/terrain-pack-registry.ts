@@ -13,6 +13,7 @@
 import industrialCaveManifestJson from './data/terrain-packs/industrial-cave.manifest.json';
 import floor1DungeonManifestJson from './data/terrain-packs/floor1-dungeon.manifest.json';
 import floor1CaveManifestJson from './data/terrain-packs/floor1-cave.manifest.json';
+import companionOverworldManifestJson from './data/terrain-packs/companion-overworld.manifest.json';
 import caelesFixtureManifestJson from './data/terrain-packs/caeles-fixture.manifest.json';
 import {
   terrainPackDefSchema,
@@ -31,6 +32,8 @@ function loadTerrainPack(id: TerrainPackId): TerrainPackDef {
     manifestJson = floor1DungeonManifestJson;
   } else if (id === 'floor1-cave') {
     manifestJson = floor1CaveManifestJson;
+  } else if (id === 'companion-overworld') {
+    manifestJson = companionOverworldManifestJson;
   } else if (id === 'caeles-fixture') {
     manifestJson = caelesFixtureManifestJson;
   } else {

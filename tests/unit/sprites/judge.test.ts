@@ -618,7 +618,7 @@ describe('judgeVariant — happy path', () => {
     });
   });
 
-  it.each(['equipment', 'item', 'prop'] as const)(
+  it.each(['equipment', 'item', 'prop', 'tile'] as const)(
     'requires family presentation for %s briefs',
     async (type) => {
       const { provider, calls } = stubProvider({
@@ -643,6 +643,32 @@ describe('judgeVariant — happy path', () => {
       expect(scorecard.presentation?.score).toBe(5);
     },
   );
+
+  it('includes tile depth and perspective presentation criteria for tile briefs', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'specific' },
+        reference_style_match: { score: 5, rationale: 'on style' },
+        brief_match: { score: 5, rationale: 'matches' },
+        readability: { score: 5, rationale: 'readable' },
+        presentation: { score: 5, rationale: 'tile set has depth and perspective' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'tile', name: 'stone-wall-tile' }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      env: {},
+    });
+    const instructions = calls[0]?.request.systemInstructions ?? '';
+    expect(instructions).toContain('presentation');
+    expect(instructions).toContain('Floor 2 terrain sets (industrial cave)');
+    expect(instructions).toContain('obvious vertical wall faces');
+    expect(scorecard.presentation?.score).toBe(5);
+  });
 
   it('requests a fifth theme_adherence axis when a floor or theme addendum applies (goblin-grunt has both)', async () => {
     const { provider, calls } = stubProvider({

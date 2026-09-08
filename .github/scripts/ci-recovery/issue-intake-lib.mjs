@@ -470,6 +470,9 @@ export async function getCopilotIssueAssignmentContext({
           issue(number: $issueNumber) {
             id
             state
+            author {
+              login
+            }
             labels(first: 50) {
               nodes {
                 name
@@ -505,9 +508,38 @@ export async function getCopilotIssueAssignmentContext({
     copilot,
     issueId: issueData.id,
     issueState: issueData.state,
+    issueAuthor: issueData.author,
     labels: issueData.labels?.nodes || [],
     assignees: issueData.assignees?.nodes || [],
   };
+}
+
+/**
+ * Live ownership fence shared by every issue-level Cloud Copilot assigner.
+ *
+ * The in-review label is an active Goobers claim even if another actor was
+ * assigned after the claim began. The broader cohort check prevents the
+ * selector cutover from racing between candidate selection and assignment.
+ */
+export function assertCopilotIssueAssignmentAllowed({
+  issue,
+  assignmentContext,
+  maintainerLogin = 'nalfeo',
+  env = process.env,
+}) {
+  const liveIssue = {
+    ...issue,
+    state: assignmentContext.issueState,
+    user: assignmentContext.issueAuthor || issue?.user,
+    labels: assignmentContext.labels,
+    assignees: assignmentContext.assignees,
+  };
+  if (hasIssueLabel(liveIssue, GOOBERS_IN_REVIEW_LABEL)) {
+    throw new IssueClaimedByGoobersError(issue.number);
+  }
+  if (goobersOwnsIssueIntake(liveIssue, { maintainerLogin, env })) {
+    throw new IssueClaimedByGoobersError(issue.number);
+  }
 }
 
 export function buildIssueActorIds({ assignees, copilotActorId, includeCopilot }) {
@@ -976,43 +1008,7 @@ export async function runIssueIntake({
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
   }
-  if (
-    goobersOwnsIssueIntake(
-      { ...issue, labels: assignmentContext.labels, assignees: assignmentContext.assignees },
-      { maintainerLogin },
-    )
-  ) {
-    throw new IssueClaimedByGoobersError(issue.number);
-  }
-
-  // Every currently assigned actor recognized as Copilot (by login, not just
-  // by matching `assignmentContext.copilot.id`) -- an issue can be left
-  // assigned to a different valid Copilot actor ID/login variant than the one
-  // freshly discovered here, e.g. after a bot identity rotation.
-  const currentCopilotAssignees = assignmentContext.assignees.filter((actor) =>
-    isCopilotLogin(actor?.login),
-  );
-
-  // `restart: true` only does anything useful if it forces
-  // `replaceActorsForAssignable` to actually change the assignable's actor
-  // set -- GitHub only re-fires the `assigned` webhook (which is what
-  // restarts a stalled Copilot session) on a real transition. If we left a
-  // stale Copilot assignee in `assignmentContext.assignees` here,
-  // `buildIssueActorIds` would just carry that same stale actor id back into
-  // `actorIds` below (see its "keep whichever Copilot is already assigned"
-  // branch), making the mutation a same-set no-op. So on restart, derive
-  // `actorIds` with every Copilot-recognized assignee stripped out first --
-  // the removal below then always clears the actual stale actor(s), and
-  // `buildIssueActorIds` always falls back to the freshly discovered
-  // `assignmentContext.copilot.id` instead of reusing a stale one. Non-Copilot
-  // assignees are preserved either way.
-  const actorIds = buildIssueActorIds({
-    assignees: restart
-      ? assignmentContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
-      : assignmentContext.assignees,
-    copilotActorId: assignmentContext.copilot.id,
-    includeCopilot: true,
-  });
+  assertCopilotIssueAssignmentAllowed({ issue, assignmentContext, maintainerLogin });
 
   // Post the kickoff comment BEFORE assigning Copilot so the instructions are present
   // when the agent session starts. Clean up the new comment if assignment fails.
@@ -1041,6 +1037,34 @@ export async function runIssueIntake({
 
   let assignment;
   try {
+    // Re-fetch after the comment write. This is the final ownership read before
+    // mutation, so a Goobers reservation that won the intervening race is
+    // observed and this newly-created kickoff comment is rolled back below.
+    const finalContext = await getCopilotIssueAssignmentContext({
+      graphql,
+      token,
+      owner,
+      repo,
+      issueNumber: issue.number,
+    });
+    assertCopilotIssueAssignmentAllowed({
+      issue,
+      assignmentContext: finalContext,
+      maintainerLogin,
+    });
+
+    // Every currently assigned actor recognized as Copilot (by login, not just
+    // by matching `copilot.id`) is removed first for a real restart transition.
+    const currentCopilotAssignees = finalContext.assignees.filter((actor) =>
+      isCopilotLogin(actor?.login),
+    );
+    const actorIds = buildIssueActorIds({
+      assignees: restart
+        ? finalContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
+        : finalContext.assignees,
+      copilotActorId: finalContext.copilot.id,
+      includeCopilot: true,
+    });
     if (restart && currentCopilotAssignees.length > 0) {
       await removeIssueAssignees({
         graphql,

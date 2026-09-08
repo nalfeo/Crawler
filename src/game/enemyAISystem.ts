@@ -9,6 +9,7 @@ import {
   EnemyProjectile,
   Player,
   Position,
+  Team,
   Velocity,
 } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
@@ -42,6 +43,7 @@ import {
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
 import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import tuning from '../shared/data/tuning.json';
 
 export const AI_TYPE = {
   CHASE: 0,
@@ -280,6 +282,30 @@ function setVelocity(world: GameWorld, eid: number, x: number, y: number): void 
   setComponent(world.ecs, eid, Velocity, { x, y });
 }
 
+/**
+ * True when `eid` is a Floor 3 player-owned Companion whose current AI
+ * decision is "follow" — i.e. it is out on the leash rope, not mid-rival-fight
+ * or idling. Shared by `getEnemySpeed` (speed ramp) and the main dispatch loop
+ * (movement routing): both must agree on when a companion is "catching up",
+ * otherwise a ranged/support companion gets a faster speed but its authored
+ * standoff/kite movement still carries it AWAY from the player instead of
+ * closing the gap.
+ */
+function isFloor3FollowingCompanion(
+  world: GameWorld,
+  eid: number,
+  companionDecision: ReturnType<typeof getCompanionAIDecision>,
+): boolean {
+  return (
+    world.floorId === 'floor3' &&
+    companionDecision?.kind === 'follow' &&
+    hasComponent(world.ecs, eid, Companion) &&
+    hasComponent(world.ecs, eid, Team) &&
+    (world.stores.team.id[eid] ?? 0) === TeamId.PLAYER &&
+    (world.stores.companion.ownerTeam[eid] ?? 0) === TeamId.PLAYER
+  );
+}
+
 function getEnemySpeed(world: GameWorld, eid: number): number {
   const stored = world.stores.enemyBehavior.speed[eid]!;
   const base = stored > 0 ? stored : DEFAULT_ENEMY_SPEED;
@@ -289,7 +315,39 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // above base, so this is a pure raise-up-toward-player of the base speed.
   const decision = getFamilyAIDecision(world, eid);
   const rampSpeed = decision?.effectiveSpeed;
-  const rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  let rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  const companionDecision = getCompanionAIDecision(world, eid);
+  if (isFloor3FollowingCompanion(world, eid, companionDecision)) {
+    const players = query(world.ecs, [Player, Position]);
+    const playerEid = players[0];
+    const playerSpeed =
+      playerEid === undefined
+        ? 0
+        : Math.hypot(
+            world.stores.velocity.x[playerEid] ?? 0,
+            world.stores.velocity.y[playerEid] ?? 0,
+          );
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const distance = Math.hypot(
+      (world.stores.position.x[playerEid ?? eid] ?? x) - x,
+      (world.stores.position.y[playerEid ?? eid] ?? y) - y,
+    );
+    const leash = tuning.factionRelations.friendlyLeashTiles;
+    const baseline = Math.max(
+      base,
+      playerSpeed * tuning.floor3Companion.followSpeedPlayerMultiplier,
+    );
+    const cap = Math.max(
+      baseline,
+      base * tuning.floor3Companion.followSpeedMaxMultiplier,
+      playerSpeed * tuning.floor3Companion.followSpeedMaxMultiplier,
+    );
+    rampedBase = Math.min(
+      cap,
+      baseline + Math.max(0, distance - leash) * tuning.floor3Companion.followSpeedRampPerFt,
+    );
+  }
   // Then compose active status effects on top — the single seam every enemy
   // speed read (wander, slime-leap prep/pounce, and the speed cap) derives
   // from. Because the slow multiplies the ramped base, status slows genuinely
@@ -2198,6 +2256,33 @@ export function enemyAISystem(world: GameWorld): void {
       // (separation is exempted below; knockback/other systems are not, and
       // are intentionally out of scope).
       setVelocity(world, eid, 0, 0);
+    } else if (isFloor3FollowingCompanion(world, eid, companionDecision)) {
+      // #4373: `companionDecision.kind === 'follow'` means this companion is
+      // out past the leash and returning to its owner — it is NOT engaging a
+      // rival. Every authored AI type below has combat-only spacing logic
+      // (RANGED/SUPPORT standoff+kite, GUARDIAN hold band, LEAPER pounce) that
+      // would otherwise hold the companion at range or even retreat from the
+      // player it's supposed to be catching up to, which defeats the
+      // `getEnemySpeed` follow-speed boost above. Route straight through
+      // chase/direct-follow steering instead; `rival-primary`/`idle` decisions
+      // (and Floor 4 / NPC-owned companions, excluded by
+      // `isFloor3FollowingCompanion`) keep every authored behavior unchanged.
+      if (usePathing) {
+        applyPathDrivenBehavior(
+          world,
+          eid,
+          AI_TYPE.CHASE,
+          virtualPlayerX,
+          virtualPlayerY,
+          distanceToPlayer,
+          speed,
+          attackRange,
+          doorRevision,
+          groundFlow,
+        );
+      } else {
+        applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+      }
     } else if (
       behaviorType === AI_TYPE.LEAPER &&
       applySlimeLeapBehavior(world, eid, playerDx, playerDy, distanceToPlayer, speed)

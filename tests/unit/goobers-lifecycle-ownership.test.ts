@@ -701,8 +701,25 @@ describe('Goobers lifecycle ownership', () => {
     // can never outlive PR publication.
     expect(tasks['open-pr'].next).toBe('pr-opened-gate');
     expect(gates['pr-opened-gate'].branches.pass).toBe('close-out');
-    expect(gates['pr-opened-gate'].branches.fail).toBe('close-out');
+    expect(gates['pr-opened-gate'].branches.fail).toBe('needs-remediation');
     expect(tasks['close-out'].inputs.status).toBe('in-review');
+    for (const name of ['close-out', 'park-needs-human', 'needs-remediation']) {
+      const task = tasks[name];
+      expect(task.inputs.resultFile).toBe('issue-close-out-result.json');
+      // `inputsFrom` is the runtime's declared input contract: the pinned
+      // runner injects each declared input as GOOBERS_INPUT_<NAME> (the same
+      // mechanism hydrate-requirements relies on for GOOBERS_INPUT_ISSUEBODY),
+      // so the human summary reaches issue-close-out without the stage having
+      // to build it from branch-authored code.
+      expect(task.inputsFrom.summary).toBe('implement.summary');
+      expect(task.inputsFrom.resultFile).toBeUndefined();
+      // These stages hold github:issues:write. They must stay direct `goobers`
+      // commands: a script is executed as `sh -c`, which both drops the
+      // operational run context the built-in needs and would let mutable
+      // branch code run with the issue-write credential in scope.
+      expect(task.run.script).toBeUndefined();
+      expect(task.run.command).toEqual(['goobers', 'issue-close-out']);
+    }
   });
 
   it('resolves closing issues within this repository and bounded', () => {

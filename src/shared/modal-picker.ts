@@ -3,6 +3,8 @@ export interface ModalPickerOption<TId extends string = string> {
   readonly label: string;
   readonly description?: string;
   readonly disabled?: boolean;
+  /** Optional sprite key for presentation-only visual pickers like the Floor 3 starter modal. */
+  readonly spriteId?: string;
 }
 
 export interface ModalPickerConfig<TId extends string = string> {

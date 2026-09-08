@@ -89,13 +89,22 @@ function goodFloorEpic(): FloorEpic {
         depends_on: ['ai-mechanics', 'presentation'],
       },
       {
+        id: 'achievement-qa',
+        title: 'Floor 9 slice 5: achievement-integrated QA',
+        body:
+          'Owner: QA Engineer.\n\n' +
+          'Verify the floor achievement unlocks after the measurable objective and that its ' +
+          'reward can be claimed exactly once. Done when the unlock, claim, and reward assertions pass.',
+        depends_on: ['dual-runner-acceptance'],
+      },
+      {
         id: 'release',
-        title: 'Floor 9 slice 5: release',
+        title: 'Floor 9 slice 6: release',
         body:
           'Owner: Producer.\n\n' +
           'Enable the release/MVP flag now that the floor is released for players, gated ' +
           'behind dual-runner acceptance.',
-        depends_on: ['dual-runner-acceptance'],
+        depends_on: ['achievement-qa'],
       },
     ],
   };
@@ -154,6 +163,207 @@ describe('lintFloorEpic — generic schema/DAG constraints', () => {
 });
 
 describe('lintFloorEpic — regression fixtures (one violated invariant each)', () => {
+  it('flags a floor epic without an achievement slice', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const withoutAchievement = {
+      ...epic,
+      nodes: epic.nodes
+        .filter((node) => node.id !== 'achievement-qa')
+        .map((node) =>
+          node.id === 'release' ? { ...node, depends_on: ['dual-runner-acceptance'] } : node,
+        ),
+    };
+    const violations = lintFloorEpic(withoutAchievement, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-slice-missing');
+  });
+
+  it('requires achievement acceptance to include dependency and reward claims', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body: 'Owner: QA Engineer.\n\nAdd achievement coverage.',
+      depends_on: [],
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-dependency-missing');
+    expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
+  });
+
+  it('requires achievement evidence for both unlock and reward claiming', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Owner: QA Engineer.\n\n' +
+        'Verify the floor achievement reward can be claimed exactly once. ' +
+        'Done when the claim assertion passes.',
+      depends_on: ['dual-runner-acceptance'],
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-acceptance-missing');
+  });
+
+  it('requires numeric achievement thresholds to defer to a HUMAN_GATE', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      human_gates: ['Balance numbers will be finalized later.'],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body:
+                'Owner: QA Engineer.\n\n' +
+                'Verify the floor achievement unlocks after at least 25 kills and its reward can be claimed exactly once. ' +
+                'Done when the unlock and claim assertions pass.',
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('detects ordinary numeric achievement wording as a threshold', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      human_gates: ['Balance numbers will be finalized later.'],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body:
+                'Owner: QA Engineer.\n\n' +
+                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once. ' +
+                'Done when the unlock and claim assertions pass.',
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it.each([
+    [
+      'item count',
+      'Verify the floor achievement unlocks after collecting 10 relics and its reward can be claimed exactly once.',
+    ],
+    [
+      'level target',
+      'Verify the floor achievement unlocks after the player reaches level 20 and its reward can be claimed exactly once.',
+    ],
+    [
+      'percentage target',
+      'Verify the floor achievement unlocks when the run finishes with 50% health remaining and its reward can be claimed exactly once.',
+    ],
+    [
+      'qualified ambiguous unit',
+      'Verify the floor achievement unlocks after the player reaches 30 hp remaining and its reward can be claimed exactly once.',
+    ],
+  ])('detects a numeric achievement threshold expressed as %s', (_label, sentence) => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      human_gates: ['Balance numbers will be finalized later.'],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body: `Owner: QA Engineer.\n\n${sentence} Done when the unlock and claim assertions pass.`,
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('rejects an achievement HUMAN_GATE that only defers a generic balance gate without naming achievements', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = {
+      ...epic,
+      // Owner-bearing, persona-named, but never mentions "achievement" —
+      // must not satisfy the achievement-specific deferral contract.
+      human_gates: [
+        'Defer numeric balance, pacing, and difficulty tuning to Playtester evidence and Game ' +
+          'Designer follow-up before any sweep-based sign-off.',
+      ],
+      nodes: epic.nodes.map((node) =>
+        node.id === 'achievement-qa'
+          ? {
+              ...node,
+              body:
+                'Owner: QA Engineer.\n\n' +
+                'Verify the floor achievement unlocks after 25 kills and its reward can be claimed exactly once. ' +
+                'Done when the unlock and claim assertions pass.',
+              depends_on: ['dual-runner-acceptance'],
+            }
+          : node,
+      ),
+    };
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-human-gate-missing');
+  });
+
+  it('does not require a HUMAN_GATE for an unqualified ambiguous-unit mention (flavor text, not a threshold)', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Owner: QA Engineer.\n\n' +
+        'Verify the floor achievement unlocks when the boss deals 50 hp damage per hit and its ' +
+        'reward can be claimed exactly once. Done when the unlock and claim assertions pass.',
+    }));
+    expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
+  });
+
+  it('does not treat a release node that only references achievement QA completion as achievement-owning', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    // The release node references the achievement slice's completion but
+    // does no achievement work itself — it must not be forced through the
+    // owner/dependency/acceptance/HUMAN_GATE checks meant for the node that
+    // actually owns the achievement work.
+    const mutated = withNode(epic, 'release', (node) => ({
+      ...node,
+      body:
+        'Owner: Producer.\n\n' +
+        'Enable the release/MVP flag now that the floor is released for players, gated ' +
+        'behind dual-runner acceptance and after achievement QA has passed.',
+    }));
+    expect(lintFloorEpic(mutated, PERSONA_NAMES)).toEqual([]);
+  });
+
+  it('requires an achievement slice to declare exactly one Owner persona', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Owner: QA Engineer.\n' +
+        'Owner: Game Designer.\n\n' +
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
+        'Done when the unlock and claim assertions pass.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
+  });
+
+  it('rejects an achievement slice with no Owner declaration', () => {
+    const epic = cloneEpic(goodFloorEpic());
+    const mutated = withNode(epic, 'achievement-qa', (node) => ({
+      ...node,
+      body:
+        'Verify the floor achievement unlocks and its reward can be claimed exactly once. ' +
+        'Done when the unlock and claim assertions pass.',
+    }));
+    const violations = lintFloorEpic(mutated, PERSONA_NAMES);
+    expect(violations.map((v) => v.code)).toContain('achievement-owner-count');
+  });
+
   it('flags a missing hard gate', () => {
     const epic = cloneEpic(goodFloorEpic());
     delete (epic as { hard_gate?: string }).hard_gate;
@@ -338,7 +548,7 @@ describe('lintFloorEpic — regression fixtures (one violated invariant each)', 
       ...epic,
       nodes: [
         ...epic.nodes.map((n) =>
-          n.id === 'release' ? { ...n, depends_on: ['extra-milestone'] } : n,
+          n.id === 'release' ? { ...n, depends_on: ['achievement-qa', 'extra-milestone'] } : n,
         ),
         {
           id: 'extra-milestone',

@@ -35,7 +35,16 @@
   "player": {
     "hpBonus": 80,
     "moveSpeedBonus": 0.05,
-    "pickupRangeBonus": 2.5
+    "pickupRangeBonus": 2.5,
+    "directStart": {
+      "level": 20,
+      "weaponSkillLevel": 12,
+      "skillLevels": {
+        "iron-skin": 10,
+        "sprint": 10
+      },
+      "equipmentItemIds": ["merchants-stained-charm"]
+    }
   },
   "camera": {
     "zoom": 1.8

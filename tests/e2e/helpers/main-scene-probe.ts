@@ -20,6 +20,8 @@ import type {
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
   Floor3LeagueHudProbeState,
+  Floor3RangedCompanionProbeResult,
+  Floor3CompanionPropDepthProbe,
   FloatingTextProbe,
   FloorSummaryProbeState,
   ItemIconRenderInfo,
@@ -338,6 +340,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
   getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
+  primeFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor3CompanionPropDepthProbe()),
+  getFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3CompanionPropDepthProbe()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
@@ -346,6 +352,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.fireActiveWeaponForProjectileProbe()),
   getProjectileRenderInfo: (page: Page): Promise<ProjectileRenderInfo[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getProjectileRenderInfo()),
+  spawnFloor3RangedCompanionProbe: (page: Page): Promise<Floor3RangedCompanionProbeResult | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.spawnFloor3RangedCompanionProbe()),
+  getEntityHealth: (page: Page, eid: number): Promise<number | null> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getEntityHealth(id), eid),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>

@@ -1398,9 +1398,12 @@ ${queryScript}
     }
     expect(workflow.jobs.run?.env?.GOOBERS_LANE_ROOT).toContain('/.goobers-lane-');
 
-    // The result comment points at the guaranteed file by name.
+    // The result comment points at the guaranteed artifact by name; verbose
+    // diagnostics stay in that artifact rather than in the issue comment.
     const comment = steps.find((step) => step.name === 'Comment on Goobers run result');
-    expect(comment?.run).toContain('slot-${slot}/diagnostics/slot-diagnostics.txt');
+    expect(comment?.run).toContain(
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
+    );
   });
 
   it('names every artifact per attempt so a re-run cannot collide with itself', () => {
@@ -1742,7 +1745,7 @@ ${queryScript}
     expect(
       definition.spec.gates.find((gate) => gate.name === 'pr-opened-gate')?.branches,
     ).toMatchObject({
-      fail: 'close-out',
+      fail: 'needs-remediation',
     });
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Preserve trusted Goobers source')
@@ -2025,21 +2028,13 @@ ${queryScript}
     );
     const script = comment?.run ?? '';
 
-    // The source half of the same hazard. `jq -r` emits embedded newlines
-    // verbatim, so a Goobers stage error message containing a newline plus a
-    // well-formed marker would render as a standalone marker line inside an
-    // Actions-authored comment. Collapsing CR/LF means every rendered line
-    // starts with the event type token, which the anchored marker grammar can
-    // never match.
-    expect(script).toContain('gsub("[\\r\\n]+"; " ")');
-    const summaryStart = script.indexOf('terminal_summary="$(');
-    const collapseIndex = script.indexOf('gsub("[\\r\\n]+"; " ")');
-    expect(summaryStart).toBeGreaterThanOrEqual(0);
-    expect(collapseIndex).toBeGreaterThan(summaryStart);
-    // The event type is pinned to three literals, so the leading token of every
-    // rendered line is workflow-controlled rather than journal-controlled.
+    // Free-form journal messages are no longer rendered into the issue comment
+    // at all, so an agent-authored newline can never create a trusted marker
+    // line. The compact report points at the artifact instead.
+    expect(script).not.toContain('terminal_summary');
+    expect(script).not.toContain('gsub("[\\r\\n]+"; " ")');
     expect(script).toContain(
-      'select(.type == "stage.finished" or .type == "error" or .type == "run.finished")',
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
     );
   });
 
@@ -2272,9 +2267,23 @@ ${queryScript}
       'pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}"',
     );
     expect(result?.run).toContain('echo "- Pull request: #${pr_number} — ${pr_url}"');
+    expect(result?.run).toContain('delivery_outcome="pr-opened"');
+    expect(result?.run).toContain('delivery_outcome="issue-completed"');
+    expect(result?.run).toContain('delivery_outcome="blocked"');
+    expect(result?.run).toContain('delivery_outcome="timeout"');
+    expect(result?.run).toContain('delivery_outcome="aborted"');
+    expect(result?.run).toContain('delivery_outcome="no-work"');
+    expect(result?.run).toContain('Actions conclusion: \\`${JOB_STATUS}\\`');
+    expect(result?.run).toContain('Terminal stage: \\`${terminal_stage}\\`');
+    expect(result?.run).toContain('Elapsed: \\`${elapsed_seconds}s\\`');
+    expect(result?.run).toContain('Failure code: \\`${failure_code:-none}\\`');
+    expect(result?.run).toContain('return 1');
+    expect(result?.run).not.toContain('Terminal journal events:');
+    expect(result?.run).not.toContain('### PR resolution failure');
+    expect(result?.run).not.toContain('echo "$pr_resolution_error"');
     expect(result?.run).toContain(GOOBERS_RUN_RESULT_MARKER_PREFIX);
     expect(result?.run).toMatch(
-      /echo "\$marker"\s*\n\s*echo\s*\n\s*echo "Goobers GitHub Actions run/,
+      /echo "\$marker"\s*\n\s*echo\s*\n\s*echo "Goobers delivery outcome:/,
     );
     expect(result?.run).toContain('find_issue_comment_id');
     expect(result?.run).toContain('gh api --silent --method PATCH');
@@ -2307,8 +2316,10 @@ ${queryScript}
     expect(script).toContain('-v slot="${assignment_slot}"');
     expect(script).not.toContain('No Goobers journal events found; skipping issue comment.');
     expect(script).toContain('if ! [[ "$issue_number" =~ ^[0-9]+$ ]]');
-    expect(script).toContain('Goobers run id(s): \\`${run_ids:-unknown}\\`');
-    expect(script).toContain('Terminal journal events: none recorded.');
+    expect(script).toContain('delivery_outcome="no-work"');
+    expect(script).toContain(
+      'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
+    );
     expect(script).toContain('gh issue comment "$issue_number"');
   });
 
@@ -2337,9 +2348,9 @@ ${queryScript}
     const failIndex = script.lastIndexOf('if [ -n "$pr_resolution_error" ]');
 
     expect(script).toContain('display_status="failure"');
-    expect(script).toContain('finished with **${display_status}**');
-    expect(script).toContain('### PR resolution failure');
-    expect(script).toContain('echo "$pr_resolution_error"');
+    expect(script).toContain('Goobers delivery outcome: **${delivery_outcome}**.');
+    expect(script).toContain('Actions conclusion: \\`${JOB_STATUS}\\`');
+    expect(script).toContain('failure_code="pr-resolution"');
     expect(script).toContain('echo "::error::${pr_resolution_error}"');
     expect(postIndex).toBeGreaterThanOrEqual(0);
     expect(failIndex).toBeGreaterThan(postIndex);

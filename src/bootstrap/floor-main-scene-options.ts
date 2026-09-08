@@ -100,7 +100,12 @@ export function createFloorMainSceneOptions(
     floorId,
     terrainPackId: manifest.terrainPackId,
     terrainPacks: manifest.terrainPacks,
-    lightingConfig: { ambient: manifest.lighting.ambient },
+    lightingConfig: {
+      ambient: manifest.lighting.ambient,
+      ...(manifest.lighting.sourceIntensity !== undefined
+        ? { sourceIntensity: manifest.lighting.sourceIntensity }
+        : {}),
+    },
     sessionRecorderFactory: (world, playerEid) =>
       createPlayerSessionRecorder(world, playerEid, { recordWeaponTelemetry: true }),
     runStatsFactory: collectHumanRunStats,

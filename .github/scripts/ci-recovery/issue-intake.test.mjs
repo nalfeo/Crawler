@@ -596,10 +596,10 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
   // comment is posted before assignment so Copilot sees it at session start
   assert.deepEqual(
     calls.map(([name]) => name),
-    ['discover', 'comments', 'request', 'assign'],
+    ['discover', 'comments', 'request', 'discover', 'assign'],
   );
   // existing assignee is preserved alongside Copilot
-  assert.deepEqual(calls[3][1], {
+  assert.deepEqual(calls[4][1], {
     assignableId: 'ISSUE_1067',
     actorIds: ['USER_NALFEO', 'BOT_COPILOT'],
   });
@@ -678,9 +678,9 @@ test('restart issue intake removes existing Copilot assignee before reassigning'
   assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'existing' });
   assert.deepEqual(
     calls.map(([name]) => name),
-    ['discover', 'comments', 'remove', 'assign'],
+    ['discover', 'comments', 'discover', 'remove', 'assign'],
   );
-  assert.deepEqual(calls[2][1], {
+  assert.deepEqual(calls[3][1], {
     assignableId: 'ISSUE_1067',
     assigneeIds: ['BOT_COPILOT'],
   });
@@ -759,16 +759,16 @@ test('restart issue intake removes a stale Copilot actor variant that differs fr
   assert.deepEqual(result, { assignee: 'copilot-swe-agent', comment: 'existing' });
   assert.deepEqual(
     calls.map(([name]) => name),
-    ['discover', 'comments', 'remove', 'assign'],
+    ['discover', 'comments', 'discover', 'remove', 'assign'],
   );
   // The stale variant (BOT_B / 'copilot') is removed, not silently kept.
-  assert.deepEqual(calls[2][1], {
+  assert.deepEqual(calls[3][1], {
     assignableId: 'ISSUE_1067',
     assigneeIds: ['BOT_B'],
   });
   // Reassignment preserves the non-Copilot assignee and uses the freshly
   // discovered suggested actor (BOT_A), not the stale removed one (BOT_B).
-  assert.deepEqual(calls[3][1], {
+  assert.deepEqual(calls[4][1], {
     assignableId: 'ISSUE_1067',
     actorIds: ['USER_NALFEO', 'BOT_A'],
   });
@@ -779,7 +779,7 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
   let graphqlCall = 0;
   const graphql = async () => {
     graphqlCall += 1;
-    if (graphqlCall === 1) {
+    if (graphqlCall <= 2) {
       return {
         repository: {
           suggestedActors: {
@@ -1660,6 +1660,94 @@ test('runIssueIntake refuses to assign when Goobers claims the issue during inta
   });
   assert.equal(requestCalled, false);
   assert.equal(assignmentMutationCalled, false);
+});
+
+test('runIssueIntake refuses an active Goobers claim even after another assignee appears', async () => {
+  let mutationCalled = false;
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            author: { login: 'github-actions[bot]' },
+            labels: { nodes: [{ name: 'goobers/status:in-review' }] },
+            assignees: { nodes: [{ id: 'USER_1', login: 'nalfeo' }] },
+          },
+        },
+      };
+    }
+    mutationCalled = true;
+    throw new Error('assignment mutation must not run across an active Goobers claim');
+  };
+
+  await assert.rejects(
+    runIssueIntake({
+      graphql,
+      paginate: async () => [],
+      request: async () => assert.fail('kickoff comment must not be posted'),
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue,
+    }),
+    IssueClaimedByGoobersError,
+  );
+  assert.equal(mutationCalled, false);
+});
+
+test('runIssueIntake rolls back its kickoff comment when Goobers wins the assignment race', async () => {
+  let contextRead = 0;
+  let assignmentMutationCalled = false;
+  const requestCalls = [];
+  const graphql = async (_token, query) => {
+    if (query.includes('suggestedActors')) {
+      contextRead += 1;
+      return {
+        repository: {
+          suggestedActors: {
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
+            author: { login: 'github-actions[bot]' },
+            labels: {
+              nodes: contextRead === 1 ? [] : [{ name: 'goobers/status:in-review' }],
+            },
+            assignees: { nodes: [] },
+          },
+        },
+      };
+    }
+    assignmentMutationCalled = true;
+    throw new Error('assignment mutation must not run after Goobers wins');
+  };
+
+  await assert.rejects(
+    runIssueIntake({
+      graphql,
+      paginate: async () => [],
+      request: async (_token, path, options) => {
+        requestCalls.push({ path, method: options?.method });
+        return { data: { id: 12345 } };
+      },
+      token: 'token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      issue,
+    }),
+    IssueClaimedByGoobersError,
+  );
+  assert.equal(assignmentMutationCalled, false);
+  assert.deepEqual(
+    requestCalls.map((call) => call.method),
+    ['POST', 'DELETE'],
+  );
 });
 
 test('runIssueIntake stands down when a live re-fetch shows the transferred cohort', async () => {

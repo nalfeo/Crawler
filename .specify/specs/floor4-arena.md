@@ -116,7 +116,7 @@ Two constraints shape everything:
 
 ### R3 — Waves
 
-- **FR3.1** Each act schedules **8 waves**, at act-relative offsets `0, 12_000, … 84_000` ms.
+- **FR3.1** Each act schedules **10 waves**, at act-relative offsets `0, 9_000, … 81_000` ms.
 - **FR3.2** Each wave's contents are **precomputed into an immutable spawn manifest** when
   its act begins — an ordered list of `(archetypeId, gateIndex)` entries — drawn from a
   **derived, isolated `SeededRandom` stream** (R7). Composition is never rolled at spawn

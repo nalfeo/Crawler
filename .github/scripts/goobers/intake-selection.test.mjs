@@ -314,10 +314,19 @@ test('goobers-run selects candidates without a label filter and delegates the po
   assert.match(WORKFLOW, /LIFECYCLE_MUTATION_OWNER: \$\{\{ vars\.LIFECYCLE_MUTATION_OWNER \}\}/);
 });
 
-test('every legacy Copilot-assigning workflow reads the lane selector', () => {
+test('every issue-level Copilot-assigning workflow reads the lane selector', () => {
   // A legacy assigner that cannot see the selector always concludes legacy owns
   // intake, and reassigns an issue Goobers is concurrently claiming.
-  for (const file of ['issue-copilot-intake.yml', 'epic-reprocess.yml']) {
+  for (const file of [
+    'issue-copilot-intake.yml',
+    'epic-reprocess.yml',
+    'nightly-perf-issue.yml',
+    'nightly-velocity-issue.yml',
+    'deploy.yml',
+    'ci-liveness-sweep.yml',
+    'ci-recovery-incidents.yml',
+    'nightly-mutation.yml',
+  ]) {
     const workflow = readFileSync(path.resolve('.github/workflows', file), 'utf8');
     assert.match(
       workflow,
@@ -325,6 +334,87 @@ test('every legacy Copilot-assigning workflow reads the lane selector', () => {
       `${file} must pass the implementation-claim lane selector to the intake library`,
     );
   }
+});
+
+test('all direct issue-level Copilot assignment paths call the shared ownership fence', () => {
+  for (const file of [
+    '.github/scripts/ci-recovery/issue-intake-lib.mjs',
+    '.github/scripts/ci-recovery/harvest-liveness.mjs',
+    '.github/scripts/ci-recovery/incident.mjs',
+    '.github/workflows/nightly-mutation.yml',
+  ]) {
+    const source = readFileSync(path.resolve(file), 'utf8');
+    assert.match(
+      source,
+      /assertCopilotIssueAssignmentAllowed\(/,
+      `${file} must refuse a live Goobers claim before assigning Cloud Copilot`,
+    );
+  }
+});
+
+test('Goobers refuses every open same-repository implementation PR regardless of branch name', () => {
+  const fence = WORKFLOW.slice(
+    WORKFLOW.indexOf('find_open_implementation_pr()'),
+    WORKFLOW.indexOf("ASSIGNMENTS='[]'"),
+  );
+  assert.match(fence, /\[ "\$state" = "OPEN" \] &&\s+\[ "\$repository" = "\$GITHUB_REPOSITORY" \]/);
+  assert.match(fence, /find_open_same_repo_pr\(\)/);
+  assert.match(fence, /find_open_implementation_pr "\$1" false/);
+  assert.match(
+    WORKFLOW,
+    /Fresh intake skipped issue #\$\{candidate_issue\}: open same-repository implementation PR/,
+  );
+  assert.match(
+    WORKFLOW,
+    /competing same-repository implementation PR #\$\{competing_pr\} appeared before reservation/,
+  );
+});
+
+test('only assignments whose reservation held are published to the run job', () => {
+  const reserve = WORKFLOW.slice(
+    WORKFLOW.indexOf("LAUNCHABLE_ASSIGNMENTS='[]'"),
+    WORKFLOW.indexOf('  run:\n'),
+  );
+  // A released claim must never reach the run job, which adopts every
+  // published entry without rechecking the label or the assignee.
+  assert.match(reserve, /publish_reservation_outputs true "\$\{LAUNCHABLE_ASSIGNMENTS\}"/);
+  assert.ok(
+    !reserve.includes('publish_reservation_outputs true "${VALIDATED_ASSIGNMENTS}"'),
+    'the validated set still contains entries whose post-reservation recheck released the claim',
+  );
+  assert.match(
+    reserve,
+    /LAUNCHABLE_ASSIGNMENTS="\$\(jq -c --argjson assignment "\$assignment" '\. \+ \[\$assignment\]' <<<"\$LAUNCHABLE_ASSIGNMENTS"\)"/,
+  );
+});
+
+test('every direct issue creator treats a Goobers claim as a stand-down, not a failure', () => {
+  for (const file of [
+    '.github/scripts/nightly-agent-issue/nightly-agent-issue.mjs',
+    '.github/scripts/baseline-regression-issue.mjs',
+    '.github/scripts/ci-recovery/incident.mjs',
+    '.github/scripts/ci-recovery/harvest-liveness.mjs',
+    '.github/workflows/nightly-mutation.yml',
+  ]) {
+    const source = readFileSync(path.resolve(file), 'utf8');
+    // The identifier alone would also match a file that merely rethrows it, so
+    // require the recognition shape every stand-down path uses.
+    assert.match(
+      source,
+      /instanceof (intake\.)?IssueClaimedByGoobersError/,
+      `${file} must not roll back or fail when Goobers owns the issue`,
+    );
+  }
+});
+
+test('managed issue refreshes preserve labels they do not own', () => {
+  const incident = readFileSync(path.resolve('.github/scripts/ci-recovery/incident.mjs'), 'utf8');
+  assert.match(incident, /labels: \[\.\.\.new Set\(\[\.\.\.preserved, \.\.\.managedLabels\]\)\]/);
+  const baseline = readFileSync(
+    path.resolve('.github/scripts/baseline-regression-issue.mjs'),
+    'utf8',
+  );
+  assert.match(baseline, /labels: labelsPreserving\(existing\)/);
 });
 
 test('the gaggle claim fence honors the cohort handed down by the trusted workflow', () => {

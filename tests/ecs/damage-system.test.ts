@@ -2,6 +2,7 @@ import { addComponent, entityExists, hasComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   BroadcastScore,
+  Damage,
   DeathTimer,
   EnemyProjectile,
   Owner,
@@ -15,6 +16,7 @@ import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/cor
 import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -62,6 +64,46 @@ describe('damageSystem', () => {
 
     expect(world.stores.health.current[player]).toBe(100);
     expect(world.combatEvents).toHaveLength(0);
+  });
+
+  it('does not turn zero-damage contact into chip damage after armor reduction', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // Real players have EffectiveStats (via initializeBaseStats at spawn
+    // time), which is exactly what routes damage through
+    // computeArmorReducedDamage's `Math.max(1, rawDamage - armor)` floor.
+    // Without this, applyArmorReduction short-circuits to the raw (already
+    // zero) damage before ever reaching that floor, so this regression test
+    // would still pass even if the `scaled <= 0` early-return guard in
+    // damageSystem were removed.
+    initializeBaseStats(world, player);
+    const startingMaxHp = world.stores.health.max[player]!;
+    const enemy = spawnEnemy(world, 1, 0, 25);
+    addComponent(world.ecs, enemy, set(Damage, { amount: 0 }));
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(startingMaxHp);
+    expect(world.combatEvents).toHaveLength(0);
+  });
+
+  it('does not turn a zero-damage enemy projectile into chip damage, and still destroys it', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    initializeBaseStats(world, player);
+    const startingMaxHp = world.stores.health.max[player]!;
+    // spawnEnemyProjectile(world, x, y, vx, vy, damage) — damage=0 is the
+    // zero-damage case under test.
+    const zeroDamage = 0;
+    const projectile = spawnEnemyProjectile(world, 0, 0, 0, 0, zeroDamage);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(startingMaxHp);
+    expect(world.combatEvents).toHaveLength(0);
+    // A zero-damage enemy projectile must still be destroyed on hit — it
+    // must not survive to keep re-colliding every frame.
+    expect(entityExists(world.ecs, projectile)).toBe(false);
   });
 
   it('xp gem collection is handled by itemPickupSystem (not damageSystem)', () => {

@@ -29,4 +29,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
         run: node .github/scripts/nightly-velocity-issue/run.mjs

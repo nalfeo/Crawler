@@ -170,6 +170,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
           HARVEST_LIVENESS_THRESHOLD_MINUTES: ${{ vars.HARVEST_LIVENESS_THRESHOLD_MINUTES || '60' }}
           CI_RECOVERY_DISPATCH_WINDOW_HOURS: ${{ vars.CI_RECOVERY_DISPATCH_WINDOW_HOURS || '8' }}
           CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS: ${{ vars.CI_RECOVERY_PER_PR_DISPATCH_GAP_HOURS || '4' }}
@@ -330,8 +331,7 @@ jobs:
                   repo,
                   pull_number: pull.number,
                 });
-                const mergeableState = String(details.data.mergeable_state || '').toLowerCase();
-                if (!['dirty', 'blocked', 'unstable', 'unmergeable'].includes(mergeableState)) continue;
+                if (!lib.isLivenessRedispatchEligible(details.data, owner, repo)) continue;
                 openBlockedPulls.push({
                   ...details.data,
                   number: pull.number,

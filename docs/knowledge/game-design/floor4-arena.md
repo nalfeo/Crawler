@@ -149,9 +149,9 @@ _budget_, not a fixed list: the budget is spent on archetypes drawn from the act
 
 ### 5.1 Cadence
 
-- **8 waves per act**, one every 12s of the act's 90-second wave window
-  (`t = 0s, 12s, … 84s`).
-- **40 waves across the floor.**
+- **10 waves per act**, one every 9s of the act's 90-second wave window
+  (`t = 0s, 9s, … 81s`).
+- **50 waves across the floor.**
 - Wave `0` of act 1 is deliberately tiny — the first five seconds teach the gates.
 - Waves spawn at **fixed, indexed feed gates** chosen by the wave's own precomputed
   manifest. Spawn placement never depends on where the player happens to be standing,

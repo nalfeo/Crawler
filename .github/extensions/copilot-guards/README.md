@@ -27,13 +27,17 @@ Loaded automatically because it lives under `.github/extensions/`.
 
 ### `pr-preflight` checks in detail
 
-| Check            | What                                                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Handoff required | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added in the branch diff. Skipped for docs-only diffs.      |
-| Lab gate         | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.     |
-| Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
-| Cross-system ADR | Hard deny when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR in the branch.                    |
-| Main sync        | Safely rebases a clean branch before publication; failures and dirty worktrees warn but never deny by themselves.         |
+| Check                    | What                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Handoff required         | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added exactly once in the branch diff. Multi-turn work updates the existing handoff; skipped for docs-only diffs. |
+| Apple record cardinality | At most one `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json` may be added in a PR. A 1–2🍎 session may add none; multi-turn work updates the existing record.             |
+| Lab gate                 | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.                                                           |
+| Forbidden paths          | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`.                                                       |
+| Cross-system ADR         | Hard deny when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR in the branch.                                                                          |
+| Main sync                | Safely rebases a clean branch before publication; failures and dirty worktrees warn but never deny by themselves.                                                               |
+
+`docs/knowledge/handoffs/INDEX.md` is rebuilt by `docs-update.yml` and remains
+automation-owned; it must not be added or updated by feature PRs.
 
 For earlier feedback in the local completion loop (without waiting for
 `create_pull_request`), run `npm run verify:pr-prereqs` (included in

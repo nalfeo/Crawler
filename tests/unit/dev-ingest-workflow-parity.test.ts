@@ -63,6 +63,7 @@ describe('dev-tier build workflows configure the ingest endpoint', () => {
     );
     expect(source).toMatch(/labels:\s*\[\s*'telemetry'/);
     expect(source).toMatch(/validated\.bundle\.file_issue\s*\?\s*\['reported-issue'\]/);
+    expect(source).toContain('Involved: @nalfeo');
     expect(source).not.toMatch(/'goobers:approved'/);
     expect(source).not.toMatch(/labels:\s*\[survey \? 'telemetry' : 'bug'\]/);
   });

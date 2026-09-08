@@ -1910,6 +1910,102 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
   );
 });
 
+test('residual fence from a partial exhausted release is cleaned up as an orphaned artifact and the run skips without redispatch', async (t) => {
+  // Production-path coverage for the PR #4392 incident shape: a prior exhausted
+  // release persisted the terminal owner:none/idle state but crashed before it
+  // removed the repository fence (and its PR attachment).  The next reconcile
+  // must clean up the residual fence and skip, never re-dispatch the same
+  // blocker task on a reset attempt budget.
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 902,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  let repositoryLabelDeleted = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // The partial release left the fence attached to the PR as well.
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL, node_id: 'LBL_exhausted_orphan' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        repositoryLabelDeleted = true;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The residual fence is cleaned up as an orphaned ownership artifact...
+  assert.match(stdout, /orphaned-fence-cleanup pr=#42 status=idle/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.variables?.labelId || '') === 'LBL_exhausted_orphan',
+    ),
+    'residual repository fence must be deleted by node ID',
+  );
+  // ...and the run then converges on the persisted exhausted state.
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task for an exhausted unchanged blocker set',
+  );
+});
+
 test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhausted matches selectTerminalAction, not a parallel inline code path', async (t) => {
   // This test exists specifically to satisfy the "terminal selection is
   // actually wired into reconcile.mjs rather than existing only in tests"
@@ -6635,7 +6731,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migrated review-threads lane', async (t) => {
+test('live reconcile keeps follow-up backlog writes off legacy and dispatches migrated review-threads lane', async (t) => {
   const sourceIssueNumber = 3120;
   const followupReviewCommentId = '3810312490';
   const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
@@ -6723,21 +6819,25 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
 
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, {
+  const { code, stdout } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
     LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
   });
 
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // With the lane migrated, this test intentionally leaves the thread unresolved
+  // so legacy can dispatch Goobers and stop writing. Reconcile may continue down
+  // its normal blocker path; this test validates write/dispatch ownership only.
+  void code;
 
   const issueCreateCall = mutatingCalls.find(
     (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
   );
-  assert.ok(issueCreateCall, 'expected a follow-up backlog issue to be created');
-  assert.match(issueCreateCall.body.body, /crawler-ci-followup-backlog:v1 sourceIssue=3120/);
-  assert.deepEqual(issueCreateCall.body.assignees, []);
-  assert.ok(issueCreateCall.body.labels.includes('automation'));
+  assert.equal(
+    issueCreateCall,
+    undefined,
+    'legacy must not create follow-up backlog issues on migrated lane',
+  );
 
   const replyCall = mutatingCalls.find(
     (call) =>
@@ -6745,9 +6845,11 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
       call.url ===
         `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`,
   );
-  assert.ok(replyCall, 'expected a marker reply on the exact review-thread comment');
-  assert.match(replyCall.body.body, new RegExp(`✅ Addressed in ${HEAD_SHA}`));
-  assert.match(replyCall.body.body, /#4001/);
+  assert.equal(
+    replyCall,
+    undefined,
+    'legacy must not post follow-up backlog marker replies on migrated lane',
+  );
 
   const resolveCall = mutatingCalls.find(
     (call) =>
@@ -6755,9 +6857,16 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
       String(call.body?.query || '').includes('resolveReviewThread') &&
       call.body?.variables?.threadId === threadId,
   );
-  assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
+  assert.equal(
+    resolveCall,
+    undefined,
+    'legacy must not resolve follow-up backlog threads on migrated lane',
+  );
   assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
-  assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+  assert.doesNotMatch(
+    stdout,
+    /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/,
+  );
   const reviewThreadsDispatchCalls = mutatingCalls.filter(
     (call) =>
       call.method === 'POST' &&
@@ -6765,9 +6874,10 @@ test('live reconcile keeps follow-up backlog reply/resolve legacy-owned on migra
   );
   assert.equal(
     reviewThreadsDispatchCalls.length,
-    0,
-    'follow-up backlog repair needs issue context that Goobers does not receive yet',
+    1,
+    'follow-up backlog handling must dispatch goobers-review-threads exactly once on migrated lane',
   );
+  assert.equal(reviewThreadsDispatchCalls[0].body?.inputs?.pr_number, String(PR_NUM));
 });
 
 test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {

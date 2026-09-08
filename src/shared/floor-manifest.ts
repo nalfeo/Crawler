@@ -458,6 +458,20 @@ export const floorManifestDefSchema = z
         moveSpeedBonus: z.number().nonnegative(),
         /** Additional pickup range. */
         pickupRangeBonus: z.number().nonnegative(),
+        /** Optional cold-start baseline used when entering this floor without carryover. */
+        directStart: z
+          .object({
+            /** Player character level to seed before the floor starts. */
+            level: z.number().int().positive(),
+            /** Skill level for the selected starter weapon's class and type skills. */
+            weaponSkillLevel: z.number().int().min(0).max(20).default(0),
+            /** Additional skill levels keyed by skill id. */
+            skillLevels: z.record(z.string(), z.number().int().min(0).max(20)).default({}),
+            /** Static equipment item ids to force-equip for the skipped-floor baseline. */
+            equipmentItemIds: z.array(z.string().min(1)).default([]),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
     /** Camera configuration. */
@@ -514,19 +528,30 @@ export const floorManifestDefSchema = z
         allowedCategories: z
           .array(z.enum(['rubbish', 'light-source', 'structural', 'organic', 'tech']))
           .optional(),
+        /**
+         * Explicit decoration-ID allowlist. `allowedCategories` can only narrow
+         * a biome's def set, so it cannot express "the vegetation from
+         * `organic`, but not that biome's bone/pustule props" (they share the
+         * `organic` category). Listing IDs here does that precisely.
+         */
+        allowedPropIds: z.array(z.string().min(1)).nonempty().optional(),
       })
       .strict()
       .optional(),
     /**
      * Per-floor lighting defaults. Only `ambient` (the base light level applied
-     * to visible tiles outside any light source) is authored per floor; all
-     * other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
+     * to visible tiles outside any light source) is authored per floor by
+     * default; `sourceIntensity` may override the player's torch intensity for a
+     * specific floor when a scene needs the player light disabled or reduced.
+     * All other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
      * Floor 1 ships 0.2; deeper/darker floors can ship lower values.
      */
     lighting: z
       .object({
         /** Base ambient light level in [0,1] applied to visible tiles. */
         ambient: z.number().min(0).max(1),
+        /** Optional override for the player's torch intensity. */
+        sourceIntensity: z.number().min(0).max(2).optional(),
       })
       .strict(),
     /**

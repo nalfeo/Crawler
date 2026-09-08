@@ -30,15 +30,16 @@ canonical function (`goobersIntakeEligibility` /
 `.github/scripts/ci-recovery/issue-intake-lib.mjs`), consumed by both the
 Goobers dispatcher and legacy intake, so the two can never disagree:
 
-| Issue class                                                | `LIFECYCLE_MUTATION_OWNER=goobers` | rollback (`legacy`/malformed) |
-| ---------------------------------------------------------- | ---------------------------------- | ----------------------------- |
-| `goobers:approved` (any opener)                            | Goobers                            | legacy                        |
-| Opened by `nalfeo` / Actions / Copilot, unassigned         | Goobers                            | legacy                        |
-| `telemetry` labeled, not approved                          | nobody (excluded by policy)        | nobody                        |
-| Untrusted opener, not approved                             | nobody (excluded by policy)        | nobody                        |
-| `automation` labeled, not opened by Actions, not approved  | nobody (excluded by policy)        | nobody                        |
-| Already assigned (e.g. stale Copilot session restart lane) | legacy                             | legacy                        |
-| `goobers/status:in-review` / `completed-existing-work`     | Goobers (in flight / terminal)     | legacy                        |
+| Issue class                                                | `LIFECYCLE_MUTATION_OWNER=goobers`                                      | rollback (`legacy`/malformed)        |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------ |
+| `goobers:approved` (any opener)                            | Goobers                                                                 | legacy                               |
+| Opened by `nalfeo` / Actions / Copilot, unassigned         | Goobers                                                                 | legacy                               |
+| `telemetry` labeled, not approved                          | nobody (excluded by policy)                                             | nobody                               |
+| Untrusted opener, not approved                             | nobody (excluded by policy)                                             | nobody                               |
+| `automation` labeled, not opened by Actions, not approved  | nobody (excluded by policy)                                             | nobody                               |
+| Already assigned (e.g. stale Copilot session restart lane) | legacy                                                                  | legacy                               |
+| `goobers/status:in-review`                                 | Goobers (active claim; Cloud assignment fenced in every selector state) | Goobers until explicit claim cleanup |
+| `completed-existing-work`                                  | Goobers (terminal)                                                      | legacy                               |
 
 ```
 eligible issue ──► Goobers claims ──► implementation ──► PR published
@@ -54,6 +55,28 @@ issue. It is keyed by the **issue** (`<owner>/<repo>#issue-<n>`), never
 by a PR or head SHA, and **no PR-lifecycle lane consults it**. That is what
 guarantees there is no gap: legacy automation is live for a published PR whether
 or not a claim ever existed.
+
+Every workflow that can assign Cloud Copilot at issue level passes
+`LIFECYCLE_MUTATION_OWNER` to the shared live assignment fence. The fence
+re-fetches issue labels and assignees immediately before mutation and refuses an
+active `goobers/status:in-review` claim even during rollback. Goobers separately
+refuses intake when the issue is cross-referenced by any open PR whose head is in
+this repository; branch naming is not ownership evidence. PR-lifecycle workflows
+remain outside both fences.
+
+Two invariants keep that fence honest:
+
+- **Refreshing a managed issue never replaces its label set.** An automation
+  workflow that re-files an existing issue (release regression, CI incident)
+  unions its own labels with the issue's current labels, so a
+  `goobers/status:in-review` claim added after the issue was created survives the
+  refresh and is still visible to the fence.
+- **A refused assignment is a stand-down, not a failure.** Every direct issue
+  creator treats `IssueClaimedByGoobersError` as a successful hand-off: the issue
+  stays open and unassigned, nothing is rolled back or closed, and the job exits
+  green. Only Goobers' own reservation recheck releases the claim, and an
+  assignment it releases is dropped from the published slot set so no lane
+  launches on it.
 
 ## Fail directions (deliberately opposite)
 
@@ -307,16 +330,13 @@ drill record.
 
 Phase 2 transfers **only** the pre-PR implementation claim. Merge-train
 promotion, auto-rebase, and CI Recovery state mutations remain legacy-owned and
-fully operational. Phase 3 review-thread reply/resolve (Lane A) is now
-migratable via `LIFECYCLE_OWNER_REVIEW_THREADS` for generic outdated-marker and
-trusted-marker resolution. Follow-up-backlog thread replies/resolves remain
-legacy-owned until a later contract can pass the created/reused follow-up issue
-mapping into Goobers. The hosted wrapper conservatively passes an empty
-reachable-commit-SHA set rather than reproducing reconcile.mjs's full
-stale-marker lineage/near-typo-promotion logic — a documented limitation, not
-a silent gap. Lanes B (CI Recovery reconciliation), C (merge-train admission),
-and D (merge-train promotion) remain legacy-owned; each moves independently in
-a later Phase 3 slice via its own lane selector. Phase 4 removal of any legacy
+fully operational. Phase 3 review-thread reply/resolve (Lane A) is migratable
+via `LIFECYCLE_OWNER_REVIEW_THREADS` for generic outdated-marker resolution,
+reachable-ancestor lineage, near-typo promotion, and follow-up-backlog
+reply/resolve with the created/reused issue mapping carried in the Goobers
+contract. Lanes B (CI Recovery reconciliation), C (merge-train admission), and
+D (merge-train promotion) remain legacy-owned; each moves independently in a
+later Phase 3 slice via its own lane selector. Phase 4 removal of any legacy
 lane is gated on `npm run check:legacy-decommission` reporting `ready`, which no
 lane can reach until it is migrated, soaked, and drilled.
 

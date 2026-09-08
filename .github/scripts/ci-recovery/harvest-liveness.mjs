@@ -34,7 +34,9 @@
 import { DECISION_LOG_MARKER } from './decision-log.mjs';
 import { DISPATCH_ACTION } from './dispatch-table.mjs';
 import {
+  assertCopilotIssueAssignmentAllowed,
   buildIssueActorIds,
+  IssueClaimedByGoobersError,
   getCopilotIssueAssignmentContext,
   isCopilotLogin,
   replaceIssueAssignees,
@@ -89,10 +91,6 @@ export function parsePositiveIntEnv(value, fallback) {
 }
 
 const PROTECTED_LIVENESS_ACTIONS = new Set([
-  'skip-duplicate-fingerprint',
-  'skip-merge-train-owned',
-  'queue-merge-train',
-  'wait-admission',
   DISPATCH_ACTION.SKIP_CI_CONFLICT_ORDER_WAIT,
   DISPATCH_ACTION.WAIT_CONFLICT_REBASE_PENDING,
   DISPATCH_ACTION.WAIT_CONFLICT_REBASE_BACKOFF,
@@ -104,33 +102,63 @@ const PROTECTED_LIVENESS_ACTIONS = new Set([
   DISPATCH_ACTION.SKIP_STALE_AUTOMATION_EXHAUSTED,
 ]);
 
+// Intentionally exclude the no-op / wait states that simply reflect stale
+// backlog policy rather than active ownership: `skip-duplicate-fingerprint`,
+// `skip-merge-train-owned`, `queue-merge-train`, and `wait-admission` are
+// normal reconcile outcomes and must not permanently fence a stale blocked PR
+// from the liveness backstop. The backstop is meant to force a redispatch once
+// a blocked PR has remained stale past the per-PR gap threshold.
+
 export async function assignCopilotToIncident({ graphql, token, owner, repo, issueNumber }) {
-  const context = await getCopilotIssueAssignmentContext({
-    graphql,
-    token,
-    owner,
-    repo,
-    issueNumber,
-  });
-  if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
-    throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
+  if (typeof token !== 'string' || token.trim() === '') {
+    return null;
   }
 
-  const actorIds = buildIssueActorIds({
-    assignees: context.assignees,
-    copilotActorId: context.copilot.id,
-    includeCopilot: true,
-  });
-  const assignedLogins = await replaceIssueAssignees({
-    graphql,
-    token,
-    assignableId: context.issueId,
-    actorIds,
-  });
-  if (!assignedLogins.some(isCopilotLogin)) {
-    throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
+  try {
+    const context = await getCopilotIssueAssignmentContext({
+      graphql,
+      token,
+      owner,
+      repo,
+      issueNumber,
+    });
+    if (String(context.issueState || '').toUpperCase() !== 'OPEN') {
+      throw new Error(`Issue #${issueNumber} is no longer open; skipping Copilot assignment`);
+    }
+    assertCopilotIssueAssignmentAllowed({
+      issue: { number: issueNumber },
+      assignmentContext: context,
+    });
+
+    const actorIds = buildIssueActorIds({
+      assignees: context.assignees,
+      copilotActorId: context.copilot.id,
+      includeCopilot: true,
+    });
+    const assignedLogins = await replaceIssueAssignees({
+      graphql,
+      token,
+      assignableId: context.issueId,
+      actorIds,
+    });
+    if (!assignedLogins.some(isCopilotLogin)) {
+      throw new Error(`Copilot assignment did not persist on issue #${issueNumber}`);
+    }
+    return context.copilot.login;
+  } catch (err) {
+    // A Goobers claim is an expected ownership handoff, so report it as a
+    // stand-down rather than an assignment failure.
+    if (err instanceof IssueClaimedByGoobersError) {
+      process.stdout.write(`copilot-assignment-stood-down issue=#${issueNumber} owner=goobers\n`);
+      return null;
+    }
+    const rawMsg = String(err?.message || err);
+    const safeMsg = (token ? rawMsg.replaceAll(token, '***') : rawMsg)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(`copilot-assignment-failed issue=#${issueNumber} err=${safeMsg}\n`);
+    return null;
   }
-  return context.copilot.login;
 }
 
 function parseRunTimestamp(run) {
@@ -439,6 +467,30 @@ function isStalePull(pull, now, gapMs) {
 }
 
 /**
+ * Return whether a PR may enter the liveness-monitored redispatch backlog.
+ * Only open, non-draft, same-repository blocked PRs without current ownership,
+ * quarantine, or opt-out metadata qualify. Dirty/unstable PRs are intentionally
+ * excluded because CI Recovery cannot dispatch them. List payloads may omit
+ * `state`; hydration callers require the explicit open state.
+ */
+export function isLivenessRedispatchEligible(
+  pull,
+  owner,
+  repo,
+  { requireExplicitOpenState = false } = {},
+) {
+  const state = String(pull?.state || '').toLowerCase();
+  return (
+    pullNumber(pull) !== null &&
+    (state === 'open' || (!requireExplicitOpenState && state === '')) &&
+    pull.draft !== true &&
+    String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
+    isSameRepositoryPull(pull, owner, repo) &&
+    !hasActiveRecoveryMetadata(pull)
+  );
+}
+
+/**
  * Select never-summoned blocked PRs that are safe for the liveness backstop.
  * The caller must still hydrate each selected PR before dispatching.
  */
@@ -459,12 +511,7 @@ export function selectLivenessRedispatchCandidates({
     .filter((pull) => {
       const number = pullNumber(pull);
       return (
-        number !== null &&
-        String(pull?.state || 'open').toLowerCase() === 'open' &&
-        pull.draft !== true &&
-        String(pull?.mergeable_state || '').toLowerCase() === 'blocked' &&
-        isSameRepositoryPull(pull, owner, repo) &&
-        !hasActiveRecoveryMetadata(pull) &&
+        isLivenessRedispatchEligible(pull, owner, repo) &&
         isStalePull(pull, now, gapMs) &&
         !protectedNumbers.has(number) &&
         !dispatchedNumbers.has(number)
@@ -512,13 +559,8 @@ export async function dispatchLivenessRedispatches({
       continue;
     }
     const pull = response?.data || response;
-    const mergeableState = String(pull?.mergeable_state || '').toLowerCase();
     if (
-      String(pull?.state || '').toLowerCase() !== 'open' ||
-      pull.draft === true ||
-      mergeableState !== 'blocked' ||
-      !isSameRepositoryPull(pull, owner, repo) ||
-      hasActiveRecoveryMetadata(pull) ||
+      !isLivenessRedispatchEligible(pull, owner, repo, { requireExplicitOpenState: true }) ||
       !pull?.head?.sha ||
       !pull?.base?.ref
     ) {
@@ -603,6 +645,21 @@ export function buildHarvestIncidentBody({
     ? `${summary.lastSuccessAt} (${summary.minutesSinceSuccess}m ago)`
     : 'none in sampled window';
 
+  // Incident #4404: a stale harvest with no failure streak is a *dispatch* gap,
+  // not a harvest crash -- nothing ran at all. Triage starts at the scheduled
+  // sweep, not at the PAT bucket, so say so before the rate-limit playbook.
+  const silentDispatchGap =
+    reason === 'last-success-older-than-threshold' && summary.consecutiveFailures === 0
+      ? [
+          '## Likely cause: no harvest was dispatched',
+          '',
+          'No harvest run failed since the last success — the reconciler simply did not run. `ci-liveness-sweep.yml` is the only dispatcher during a quiet window, and GitHub routinely delays or drops its `schedule` triggers. Confirm by listing that workflow: a gap in its run history that matches the gap above means the backstop never fired.',
+          '',
+          'Recovery: dispatch `ci-liveness-sweep.yml` (or `ci-recovery-router.yml`) manually; the sections below apply only if harvest runs are actually failing.',
+          '',
+        ]
+      : [];
+
   return [
     HARVEST_INCIDENT_MARKER,
     '',
@@ -622,6 +679,7 @@ export function buildHarvestIncidentBody({
     ...(summary.lastFailureUrl ? [`- Most recent non-success run: ${summary.lastFailureUrl}`] : []),
     ...(workflowRunUrl ? [`- Detected by: ${workflowRunUrl}`] : []),
     '',
+    ...silentDispatchGap,
     '## First thing to check: the shared user-PAT rate-limit bucket',
     '',
     '`CRAWLER_CI_PAT` is a classic user PAT. GitHub enforces its 5,000 req/hr core budget at the *user* level, shared across every token that user owns, and returns `403 API rate limit exceeded for user ID <id>` on every REST call once exhausted.',
@@ -767,7 +825,7 @@ export async function reconcileHarvestIncident({
       owner,
       repo,
       issueNumber: existing.number,
-    });
+    }).catch(() => null);
     return { action: 'updated', issueNumber: existing.number };
   }
 
@@ -781,7 +839,7 @@ export async function reconcileHarvestIncident({
     owner,
     repo,
     issueNumber: created.data.number,
-  });
+  }).catch(() => null);
   return { action: 'created', issueNumber: created.data.number };
 }
 
