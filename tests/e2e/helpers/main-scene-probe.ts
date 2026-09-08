@@ -208,6 +208,19 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.primeFloor6VictoryExitHint()),
   primeFloor6RelayCriticalDanger: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.primeFloor6RelayCriticalDanger()),
+  prepareFloor6ConstructionTap: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.prepareFloor6ConstructionTap()),
+  tapFloor6ConstructionSite: (
+    page: Page,
+    siteId: string,
+    pointerType: 'mouse' | 'touch' = 'mouse',
+  ): Promise<boolean> =>
+    page.evaluate(({ id, kind }) => window.__mainSceneProbe!.tapFloor6ConstructionSite(id, kind), {
+      id: siteId,
+      kind: pointerType,
+    }),
+  getFloor6TowerRenderInfo: (page: Page, siteId: string) =>
+    page.evaluate((id) => window.__mainSceneProbe!.getFloor6TowerRenderInfo(id), siteId),
   getEntityCameraPosition: (page: Page, eid: number): Promise<ProbePoint | null> =>
     page.evaluate((id) => window.__mainSceneProbe!.getEntityCameraPosition(id), eid),
   applyStatusAuraDebuff: (page: Page, enemyEid: number): Promise<boolean> =>

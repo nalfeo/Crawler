@@ -108,6 +108,48 @@ export interface ScenarioHudSnapshot {
   readonly cues: readonly ScenarioHudCue[];
 }
 
+export interface ScenarioConstructionSite {
+  readonly siteId: string;
+  readonly label: string;
+  readonly occupied: boolean;
+  /** Authored world-space bounds in feet. */
+  readonly boundsFt: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+export interface ScenarioConstructionTower {
+  readonly towerId: string;
+  readonly label: string;
+  readonly cost: number;
+  readonly affordable: boolean;
+}
+
+export interface ScenarioConstructionSnapshot {
+  readonly phaseLabel: string;
+  readonly currencyLabel: string;
+  readonly sites: readonly ScenarioConstructionSite[];
+  readonly towers: readonly ScenarioConstructionTower[];
+}
+
+export interface ScenarioConstructionResult {
+  readonly ok: boolean;
+  readonly reason: string;
+  readonly eid?: number;
+}
+
+export interface ScenarioConstructionContract<TWorld> {
+  readonly getSnapshot: (world: TWorld) => ScenarioConstructionSnapshot | null;
+  readonly requestBuild: (
+    world: TWorld,
+    siteId: string,
+    towerId: string,
+  ) => ScenarioConstructionResult;
+}
+
 /**
  * One ordered Director-commentary beat, shown strictly between `intro` and
  * `victory`/`timeout`. `id` is the stable identifier the presenting layer
@@ -200,6 +242,8 @@ export interface ScenarioPresentationContract<TWorld> {
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
   /** Optional live floor-status panel and cue stream, derived by the scenario. */
   readonly getHudSnapshot?: (world: TWorld) => ScenarioHudSnapshot | null;
+  /** Optional authored construction interaction, consumed by the renderer. */
+  readonly construction?: ScenarioConstructionContract<TWorld>;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }

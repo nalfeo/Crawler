@@ -7,6 +7,7 @@ import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-ty
 import type {
   ScenarioCompletionCopy,
   ScenarioCompletionVariant,
+  ScenarioConstructionContract,
   ScenarioDirectorContract,
   ScenarioDirectorMilestone,
   ScenarioHudSnapshot,
@@ -80,6 +81,8 @@ import {
   floor6CombatContributionSystem,
   getFloor6HudPresentation,
   getFloor6RunOutcome,
+  buildFloor6Tower,
+  _getFloor6TowerRoster,
   initializeFloor6Scenario,
   isFloor6ExitDescendable,
   floor6RaiderSystem,
@@ -309,6 +312,7 @@ export interface ScenarioDefinition {
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
   /** Local alias of `ScenarioPresentationContract.getHudSnapshot` (see `src/shared/scenario-presentation.ts`) for this floor's typed `ScenarioDefinition`. */
   readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
+  readonly construction?: ScenarioConstructionContract<GameWorld>;
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
@@ -333,6 +337,7 @@ export function getScenarioPresentationContract(
     getStairConfirmation: scenario.getStairConfirmation,
     starterLoadout: scenario.starterLoadout,
     getHudSnapshot: scenario.getHudSnapshot,
+    construction: scenario.construction,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -774,6 +779,7 @@ function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
   if (!presentation) {
     return null;
   }
+
   const state = world.floorExtendedState?.floor6Defense;
   const id = state
     ? `floor6-${state.phase.kind}-${state.nextReleaseIndex}-${state.relayHp}-${state.economy.selectedOfferIds.join('-')}`
@@ -802,6 +808,42 @@ function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
     cues: presentation.cues,
   };
 }
+
+function getFloor6ConstructionSnapshot(world: GameWorld) {
+  const presentation = getFloor6HudPresentation(world);
+  const state = world.floorExtendedState?.floor6Defense;
+  if (!presentation || !state) return null;
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  return {
+    phaseLabel: presentation.phaseLabel,
+    currencyLabel: presentation.buildCurrencyLabel,
+    sites: state.geometry.buildSites.map((site) => ({
+      siteId: site.id,
+      label:
+        presentation.buildSites.find((candidate) => candidate.siteId === site.id)?.label ??
+        `VACANT ${site.id}`,
+      occupied: state.towerInstances.some((tower) => tower.siteId === site.id),
+      boundsFt: {
+        x: site.bounds.x * tileSizeFt,
+        y: site.bounds.y * tileSizeFt,
+        width: site.bounds.width * tileSizeFt,
+        height: site.bounds.height * tileSizeFt,
+      },
+    })),
+    towers: _getFloor6TowerRoster().map((tower) => ({
+      towerId: tower.id,
+      label: tower.id,
+      cost: tower.cost,
+      affordable: state.economy.balance >= tower.cost,
+    })),
+  };
+}
+
+const FLOOR6_CONSTRUCTION: ScenarioConstructionContract<GameWorld> = {
+  getSnapshot: getFloor6ConstructionSnapshot,
+  requestBuild: (world: GameWorld, siteId: string, towerId: string) =>
+    buildFloor6Tower(world, siteId, towerId),
+};
 
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
@@ -1064,6 +1106,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       getStairMarkerState: getFloor6StairMarkerState,
       stairConfirmation: FLOOR_6_STAIR_CONFIRMATION,
       getHudSnapshot: getFloor6HudSnapshot,
+      construction: FLOOR6_CONSTRUCTION,
     },
   ],
 ]);

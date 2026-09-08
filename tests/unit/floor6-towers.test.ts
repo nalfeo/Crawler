@@ -1,7 +1,14 @@
 import { addComponent, entityExists, hasComponent, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
-import { BroadcastRelayRaider, Floor6Tower, Health, Position, Team } from '../../src/core/index.js';
+import {
+  BroadcastRelayRaider,
+  Floor6Tower,
+  Health,
+  Position,
+  Sprite,
+  Team,
+} from '../../src/core/index.js';
 import { applyDamage, createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   _getFloor6TowerRoster,
@@ -33,6 +40,29 @@ function initFloor6() {
 }
 
 describe('Floor 6 authored tower construction', () => {
+  it('exposes the authoritative build transaction through the scene presentation contract', () => {
+    const { world, defense } = initFloor6();
+    const construction = createFloorMainSceneOptions('floor6').scenarioPresentation?.construction;
+    expect(construction).toBeDefined();
+    const snapshot = construction!.getSnapshot(world);
+    expect(snapshot?.sites.map((site) => site.siteId)).toEqual(
+      defense.geometry.buildSites.map((site) => site.id),
+    );
+
+    defense.economy.balance = 10;
+    const siteId = defense.geometry.buildSites[0]!.id;
+    const built = construction!.requestBuild(world, siteId, 'signal-slinger');
+    expect(built).toEqual(expect.objectContaining({ ok: true, reason: 'built' }));
+    expect(built).toHaveProperty('eid');
+    expect(hasComponent(world.ecs, built.eid!, Sprite)).toBe(true);
+    const balanceAfterBuild = defense.economy.balance;
+    expect(construction!.requestBuild(world, siteId, 'signal-slinger')).toEqual({
+      ok: false,
+      reason: 'occupied',
+    });
+    expect(defense.economy.balance).toBe(balanceAfterBuild);
+  });
+
   it('builds every starter tower only on vacant authored sites without changing routes', () => {
     const { world, defense } = initFloor6();
     defense.economy.balance = 100;

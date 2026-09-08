@@ -2,6 +2,7 @@ import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import {
   DeathTimer,
+  Floor6Tower,
   MeleeSwing,
   Owner,
   Position,
@@ -142,6 +143,7 @@ const STATUS_AURA_FALLBACK_SIZE_PX = 16;
 const STATUS_AURA_FOOT_OFFSET_RATIO = 0.42;
 /** Aura radius as a fraction of the sprite's half-width, so it reads as a footprint ring. */
 const STATUS_AURA_RADIUS_RATIO = 0.95;
+const FLOOR6_TOWER_OBJECT_NAME_PREFIX = 'floor6-tower:';
 /** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
 export const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
@@ -1725,6 +1727,11 @@ export function createPhaserBridge(
             typeof img.setName === 'function'
           ) {
             img.setName(`${PROJECTILE_OBJECT_NAME_PREFIX}${eid}`);
+          } else if (
+            hasComponent(world.ecs, eid, Floor6Tower) &&
+            typeof img.setName === 'function'
+          ) {
+            img.setName(`${FLOOR6_TOWER_OBJECT_NAME_PREFIX}${eid}`);
           }
         }
 
