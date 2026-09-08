@@ -1861,7 +1861,7 @@ jobs:
             local slot="$1" slot_root="$2" events_file="$3"
             local run_id="" events_input="/dev/null"
             local assignment="" issue_number="" resume_pr="" run_phase="" run_outcome=""
-            local no_work_stage="" no_work_disposition=""
+            local no_work_stage="" no_work_disposition="" no_work_evidence_ref=""
             local prior_stage_failure=false unpushed_diff_size=0
             local open_pr="" pr_lookup_complete=false stale_resume=false
             local source_line_count=0 valid_line_count=0
@@ -1901,6 +1901,10 @@ jobs:
               )"
               no_work_disposition="$(
                 jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.disposition // empty' \
+                  "$events_input" | tail -n 1
+              )"
+              no_work_evidence_ref="$(
+                jq -r 'select(.type == "stage.finished" and .status == "no-work") | .outputs.evidenceRef // empty' \
                   "$events_input" | tail -n 1
               )"
               if jq -e \
@@ -2060,7 +2064,7 @@ jobs:
             fi
 
             if [ "$no_work_disposition" = "completed-existing-work" ]; then
-              if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then
+              if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ] || [ -z "$no_work_evidence_ref" ]; then
                 evidence=""
                 if [ "$run_outcome" != "success" ]; then
                   outcome_evidence="${run_outcome}"
@@ -2080,6 +2084,18 @@ jobs:
                     evidence="${evidence} and "
                   fi
                   evidence="${evidence}a non-empty implement/unpushed-diff.patch artifact (${unpushed_diff_size} bytes)"
+                fi
+                if [ -z "$no_work_evidence_ref" ]; then
+                  if [ -n "$evidence" ]; then
+                    evidence="${evidence} and "
+                  fi
+                  # outputs.evidenceRef is the coder's concrete, checkable
+                  # citation (a merged PR/commit, or a repository path with a
+                  # line range) proving it actually investigated the claim --
+                  # not just inferred completion from the issue text. Its
+                  # absence is untrusted on its own, even when every other
+                  # signal above looks clean.
+                  evidence="${evidence}a missing outputs.evidenceRef citation"
                 fi
                 if ! gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" \
                   --remove-label 'goobers/status:in-review'; then
@@ -2258,7 +2274,7 @@ jobs:
             local pr_number="" pr_url="" pr_resolution_error="" pr_stage_succeeded="" pr_details=""
             local pr_validated_open=false
             local journal_pr_url="" run_ids="" delivery_outcome="" failure_code=""
-            local no_work_disposition="" terminal_stage="" elapsed_seconds="0" stage_error=""
+            local no_work_disposition="" no_work_evidence_ref="" terminal_stage="" elapsed_seconds="0" stage_error=""
             local prior_stage_failure=false unpushed_diff_size=0
             local source_line_count=0 valid_line_count=0
             local marker="" body="" existing_comment_id="" lookup_status=0
@@ -2447,6 +2463,12 @@ jobs:
                 | .outputs.disposition // empty
               ' "$events_input" | tail -n 1
             )"
+            no_work_evidence_ref="$(
+              jq -r '
+                select(.type == "stage.finished" and .status == "no-work")
+                | .outputs.evidenceRef // empty
+              ' "$events_input" | tail -n 1
+            )"
             if jq -s -e 'any(.[]; (.runner.errorClass? // "") == "timeout")' \
               "$events_input" >/dev/null 2>&1; then
               delivery_outcome="timeout"
@@ -2472,8 +2494,17 @@ jobs:
             elif [ "$no_work_disposition" = "completed-existing-work" ] &&
               [ "$run_outcome" = "success" ] &&
               [ "$prior_stage_failure" = "false" ] &&
-              [ "$unpushed_diff_size" -eq 0 ]; then
+              [ "$unpushed_diff_size" -eq 0 ] &&
+              [ -n "$no_work_evidence_ref" ]; then
               delivery_outcome="issue-completed"
+            elif [ "$no_work_disposition" = "completed-existing-work" ] &&
+              [ -z "$no_work_evidence_ref" ]; then
+              # Same evidence bar as "Handle no-work disposition": a
+              # completed-existing-work claim with no outputs.evidenceRef
+              # citation is untrusted, regardless of how clean the run
+              # otherwise looks.
+              delivery_outcome="no-work"
+              failure_code="completed-existing-work-missing-evidence"
             elif [ -n "$no_work_disposition" ]; then
               delivery_outcome="no-work"
               failure_code="no-work-without-delivery"

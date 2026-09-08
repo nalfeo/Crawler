@@ -204,7 +204,8 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
     "appleEstimate": "number | null (1–5); only non-null when task='plan'",
     "hardGate": "string | null (gate criteria); only non-null when task is one of 'plan', 'local-gate', 'pr-opened-gate', 'review'",
     "blockedBy": "string | null (comma-separated issue numbers)",
-    "disposition": "string | null (enum: 'completed-existing-work'); only non-null when status='no-work'"
+    "disposition": "string | null (enum: 'completed-existing-work'); only non-null when status='no-work'",
+    "evidenceRef": "string | null; a concrete, checkable citation (e.g. 'PR #1234' or 'src/foo/bar.ts:120-160') the coder personally inspected; required whenever disposition='completed-existing-work'"
   },
   "summary": "string (one-line summary for human)",
   "error": {
@@ -226,6 +227,7 @@ Payload structure produced by Goobers workflows and written to PR/issue state co
 - `outputs.appleEstimate` only present/non-null when `task='plan'`; value must be 1–5
 - `outputs.hardGate` only present/non-null when `task` is one of `'plan'`, `'local-gate'`, `'pr-opened-gate'`, `'review'`; forbidden for every other task
 - `outputs.disposition` may be `'completed-existing-work'` only when `status='no-work'`; Goobers Run uses it to retire already-satisfied approved issues from scheduled selection
+- `outputs.evidenceRef` is only valid alongside `disposition='completed-existing-work'` and must be non-empty whenever that disposition is set; both the "Handle no-work disposition" step and the result-comment reporter reject the claim (and restore the issue for retry) when it is missing, regardless of how clean the rest of the run looks
 - `summary` must be non-empty string for all states
 - Deterministic gates fail on schema violation (unknown status, missing required error, invalid enum value, task-gated field misuse)
 

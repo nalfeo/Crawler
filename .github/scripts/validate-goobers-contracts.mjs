@@ -192,6 +192,21 @@ export function outputSemanticErrors(payload) {
   if (outputs.disposition !== undefined && outputs.disposition !== null && status !== 'no-work') {
     errors.push(`outputs.disposition is only valid when status='no-work' (got status=${status})`);
   }
+  const hasEvidenceRef =
+    outputs.evidenceRef !== undefined && outputs.evidenceRef !== null && outputs.evidenceRef !== '';
+  if (outputs.evidenceRef !== undefined && outputs.evidenceRef !== null && !hasEvidenceRef) {
+    errors.push('outputs.evidenceRef must be a non-empty string when present');
+  }
+  if (hasEvidenceRef && outputs.disposition !== 'completed-existing-work') {
+    errors.push(
+      "outputs.evidenceRef is only valid when outputs.disposition='completed-existing-work'",
+    );
+  }
+  if (outputs.disposition === 'completed-existing-work' && !hasEvidenceRef) {
+    errors.push(
+      "outputs.evidenceRef is required (a concrete, checkable citation) when outputs.disposition='completed-existing-work'",
+    );
+  }
   if (
     outputs.idempotencyKey !== undefined &&
     outputs.idempotencyKey !== null &&
@@ -599,6 +614,42 @@ function outputFixtures() {
           hardGate: 'push must succeed',
         },
         summary: 'Pushed branch',
+      },
+    },
+    {
+      name: 'completed-existing-work disposition requires a non-empty evidenceRef',
+      shouldPass: false,
+      payload: {
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work' },
+        summary: 'Already implemented',
+      },
+    },
+    {
+      name: 'completed-existing-work disposition with a concrete evidenceRef passes',
+      shouldPass: true,
+      payload: {
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: {
+          disposition: 'completed-existing-work',
+          evidenceRef: 'PR #1234',
+        },
+        summary: 'Linked merged PR already satisfies every acceptance criterion',
+      },
+    },
+    {
+      name: 'evidenceRef without completed-existing-work disposition is rejected',
+      shouldPass: false,
+      payload: {
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'success',
+        outputs: { evidenceRef: 'src/foo/bar.ts:120-160' },
+        summary: 'Implementation finished',
       },
     },
   ];

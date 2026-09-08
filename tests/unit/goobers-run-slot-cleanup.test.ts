@@ -205,7 +205,7 @@ const JOURNALS: Journal[] = [
     runId: 'run-ccc',
     lines: [
       '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"303"}}',
-      '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+      '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work","evidenceRef":"PR #303"}}',
       '{"type":"run.finished","status":"completed"}',
       '{"type":"run.finis',
     ],
@@ -410,17 +410,27 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
         name: 'completed existing work',
         lines: [
           '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
-          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work","evidenceRef":"PR #42"}}',
           '{"type":"run.finished","status":"completed"}',
         ],
         outcome: 'issue-completed',
         failureCode: 'none',
       },
       {
-        name: 'dirty no-work',
+        name: 'completed existing work missing evidenceRef',
         lines: [
           '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
           '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"run.finished","status":"completed"}',
+        ],
+        outcome: 'no-work',
+        failureCode: 'completed-existing-work-missing-evidence',
+      },
+      {
+        name: 'dirty no-work',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work","evidenceRef":"PR #42"}}',
           '{"type":"artifact.recorded","stage":"implement","name":"implement/unpushed-diff.patch","ref":{"size":1}}',
           '{"type":"run.finished","status":"completed"}',
         ],
@@ -432,7 +442,7 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
         lines: [
           '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
           '{"type":"stage.finished","stage":"build","status":"failed","error":{"code":"build-failed"}}',
-          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work","evidenceRef":"PR #42"}}',
           '{"type":"run.finished","status":"completed"}',
         ],
         outcome: 'no-work',
@@ -896,7 +906,7 @@ const KILLED_RUN_JOURNALS: Journal[] = [
     runId: 'run-healthy',
     lines: [
       '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"888"}}',
-      '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+      '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work","evidenceRef":"PR #888"}}',
       '{"type":"run.finished","status":"completed"}',
     ],
   },
