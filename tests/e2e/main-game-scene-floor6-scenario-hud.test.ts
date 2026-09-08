@@ -66,6 +66,29 @@ async function waitForInteractionHintBounds(
   }
 }
 
+async function waitForFloor6TowerRender(
+  page: Page,
+  siteId: string,
+): Promise<{
+  eid: number;
+  towerId: string;
+  hasSprite: boolean;
+  visible: boolean;
+  textureKey: string | null;
+}> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const info = await mainSceneProbe.getFloor6TowerRenderInfo(page, siteId);
+    if (info?.hasSprite && info.visible) {
+      return info;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for rendered tower at ${siteId}`);
+    }
+    await page.waitForTimeout(80);
+  }
+}
+
 async function captureEvidence(
   page: Page,
   viewport: (typeof VIEWPORTS)[number],
@@ -294,6 +317,48 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       );
       expect(finaleState.text).toMatch(/Deadline active: .* on/);
       await captureEvidence(page, VIEWPORTS[0], 'deadline-finale-escalation');
+    } finally {
+      await context.close();
+    }
+  }, 60_000);
+
+  it('opens the real construction picker from an authored site tap and renders the built tower', async () => {
+    const context = await browser.newContext({ viewport: VIEWPORTS[0] });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor6' }, LAB_BASE_URL);
+      const prep = await mainSceneProbe.prepareFloor6ConstructionTap(page);
+      expect(prep).not.toBeNull();
+
+      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
+        true,
+      );
+
+      await page.waitForFunction(
+        () => window.__mainSceneProbe?.getState().modalOpen === true,
+        null,
+        {
+          timeout: 10_000,
+        },
+      );
+      const picker = await mainSceneProbe.getModalPickerContent(page);
+      expect(picker?.kind).toBe('floor6-tower-build');
+      expect(picker?.options.some((option) => option.id === prep!.affordableTowerId)).toBe(true);
+
+      await page.keyboard.press('Enter');
+      const rendered = await waitForFloor6TowerRender(page, prep!.siteId);
+      expect(rendered.towerId).toBe(prep!.affordableTowerId);
+      expect(rendered.textureKey).toBeTruthy();
+
+      const state = await mainSceneProbe.getState(page);
+      expect(state.actionStatusToastText).toContain(`built at ${prep!.siteId}`);
+
+      const hud = await waitForScenarioHud(
+        page,
+        (probe) => probe.text !== null && probe.text.includes(`OCCUPIED ${prep!.siteId}`),
+        'Floor 6 HUD occupied-site state after construction confirm',
+      );
+      expect(hud.text).toContain(`OCCUPIED ${prep!.siteId}: ${prep!.affordableTowerId}`);
     } finally {
       await context.close();
     }

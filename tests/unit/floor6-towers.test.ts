@@ -1,7 +1,14 @@
 import { addComponent, entityExists, hasComponent, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
-import { BroadcastRelayRaider, Floor6Tower, Health, Position, Team } from '../../src/core/index.js';
+import {
+  BroadcastRelayRaider,
+  Floor6Tower,
+  Health,
+  Position,
+  Sprite,
+  Team,
+} from '../../src/core/index.js';
 import { applyDamage, createEntity, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   _getFloor6TowerRoster,
@@ -44,9 +51,10 @@ describe('Floor 6 authored tower construction', () => {
 
     defense.economy.balance = 10;
     const siteId = defense.geometry.buildSites[0]!.id;
-    expect(construction!.requestBuild(world, siteId, 'signal-slinger')).toEqual(
-      expect.objectContaining({ ok: true, reason: 'built' }),
-    );
+    const built = construction!.requestBuild(world, siteId, 'signal-slinger');
+    expect(built).toEqual(expect.objectContaining({ ok: true, reason: 'built' }));
+    expect(built).toHaveProperty('eid');
+    expect(hasComponent(world.ecs, built.eid!, Sprite)).toBe(true);
     const balanceAfterBuild = defense.economy.balance;
     expect(construction!.requestBuild(world, siteId, 'signal-slinger')).toEqual({
       ok: false,

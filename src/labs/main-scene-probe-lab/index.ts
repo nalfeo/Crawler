@@ -1365,6 +1365,29 @@ export interface MainSceneProbeApi {
    */
   primeFloor6RelayCriticalDanger(): boolean;
   /**
+   * Test-only Floor 6 setup: ensure an affordable DEFEND-phase build target
+   * exists and return its tap point in game-space pixels.
+   */
+  prepareFloor6ConstructionTap(): {
+    readonly siteId: string;
+    readonly affordableTowerId: string;
+    readonly tapGameX: number;
+    readonly tapGameY: number;
+  } | null;
+  /** Emit a real scene-input pointer tap on an authored Floor 6 construction site. */
+  tapFloor6ConstructionSite(siteId: string, pointerType?: 'mouse' | 'touch'): boolean;
+  /**
+   * Read real-scene render state for the tower currently occupying `siteId`.
+   * Looks up the display object by the bridge-assigned `floor6-tower:<eid>` name.
+   */
+  getFloor6TowerRenderInfo(siteId: string): {
+    readonly eid: number;
+    readonly towerId: string;
+    readonly hasSprite: boolean;
+    readonly visible: boolean;
+    readonly textureKey: string | null;
+  } | null;
+  /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
    * shipped render bridge from the real world state.
@@ -2892,6 +2915,108 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.setSimulationPaused(true);
       defense.relayHp = 1;
       return true;
+    },
+
+    prepareFloor6ConstructionTap: () => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !phaserScene || !world || !defense) {
+        return null;
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'DEFEND' };
+      const maxTowerCost = _getFloor6TowerRoster().reduce(
+        (maxCost, tower) => Math.max(maxCost, tower.cost),
+        0,
+      );
+      defense.economy.balance = Math.max(defense.economy.balance, maxTowerCost);
+      const snapshot = sceneOptions.scenarioPresentation?.construction?.getSnapshot(world);
+      const site = snapshot?.sites.find((candidate) => !candidate.occupied);
+      const tower = snapshot?.towers.find((candidate) => candidate.affordable);
+      const cam = phaserScene.cameras.main;
+      if (!site || !tower || !cam) {
+        return null;
+      }
+      const centerFtX = site.boundsFt.x + site.boundsFt.width / 2;
+      const centerFtY = site.boundsFt.y + site.boundsFt.height / 2;
+      const zoom = cam.zoom || 1;
+      return {
+        siteId: site.siteId,
+        affordableTowerId: tower.towerId,
+        tapGameX: (ftToPx(centerFtX) - cam.worldView.x) * zoom + cam.x,
+        tapGameY: (ftToPx(centerFtY) - cam.worldView.y) * zoom + cam.y,
+      };
+    },
+
+    tapFloor6ConstructionSite: (siteId: string, pointerType: 'mouse' | 'touch' = 'mouse') => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const construction = sceneOptions.scenarioPresentation?.construction;
+      if (!scene || !phaserScene || !world || !construction) {
+        return false;
+      }
+      const snapshot = construction.getSnapshot(world);
+      const site = snapshot?.sites.find((candidate) => candidate.siteId === siteId);
+      if (!site) {
+        return false;
+      }
+      const centerFtX = site.boundsFt.x + site.boundsFt.width / 2;
+      const centerFtY = site.boundsFt.y + site.boundsFt.height / 2;
+      const worldX = ftToPx(centerFtX);
+      const worldY = ftToPx(centerFtY);
+      const cam = getPhaserScene()?.cameras.main;
+      const zoom = cam?.zoom || 1;
+      const screenX = cam ? (worldX - cam.worldView.x) * zoom + cam.x : worldX;
+      const screenY = cam ? (worldY - cam.worldView.y) * zoom + cam.y : worldY;
+      const makePointer = (eventType: string) =>
+        ({
+          id: 1,
+          x: screenX,
+          y: screenY,
+          worldX,
+          worldY,
+          event: { pointerType, type: eventType },
+          updateWorldPoint: () => ({
+            worldX,
+            worldY,
+          }),
+        }) as unknown as Phaser.Input.Pointer;
+      phaserScene.input.emit('pointerdown', makePointer('pointerdown'));
+      if (pointerType === 'touch') {
+        phaserScene.input.emit('pointerup', makePointer('pointerup'));
+      }
+      return true;
+    },
+
+    getFloor6TowerRenderInfo: (siteId: string) => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const tower = defense?.towerInstances.find((instance) => instance.siteId === siteId);
+      if (!phaserScene || !tower || tower.eid < 0) {
+        return null;
+      }
+      const named = phaserScene.children.getByName(`floor6-tower:${tower.eid}`);
+      const sprite =
+        named instanceof Phaser.GameObjects.Image || named instanceof Phaser.GameObjects.Sprite
+          ? named
+          : null;
+      return {
+        eid: tower.eid,
+        towerId: tower.towerId,
+        hasSprite: sprite !== null,
+        visible: sprite?.visible ?? false,
+        textureKey: sprite?.texture?.key ?? null,
+      };
     },
 
     primeStatusAuraEnemy: (): StatusAuraEnemyProbe | null => {

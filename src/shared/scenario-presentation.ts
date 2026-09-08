@@ -138,6 +138,7 @@ export interface ScenarioConstructionSnapshot {
 export interface ScenarioConstructionResult {
   readonly ok: boolean;
   readonly reason: string;
+  readonly eid?: number;
 }
 
 export interface ScenarioConstructionContract<TWorld> {

@@ -931,6 +931,15 @@ export function buildFloor6Tower(
   addComponent(
     world.ecs,
     eid,
+    set(Sprite, {
+      textureId: 0,
+      width: footprint.widthTiles * tileSizeFt,
+      height: footprint.heightTiles * tileSizeFt,
+    }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
     set(Floor6Tower, {
       towerIndex: _getFloor6TowerRoster().findIndex((candidate) => candidate.id === towerId),
       lastAttackMs: -tower.attackCooldownMs,

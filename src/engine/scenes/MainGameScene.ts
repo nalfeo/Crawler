@@ -270,6 +270,7 @@ const SCENARIO_HUD_BASE_Y = GAME.HEIGHT - 112;
  * button instead of overlapping it whenever the hint is visible.
  */
 const SCENARIO_HUD_INTERACTION_HINT_GAP = 10;
+const TOUCH_CONSTRUCTION_TAP_MAX_DISTANCE_PX = 14;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
 const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
@@ -1117,6 +1118,10 @@ export class MainGameScene extends Phaser.Scene {
   private tappedNpcEid: number | null = null;
   /** Authored construction site selected by the current pointer tap. */
   private tappedConstructionSiteId: string | null = null;
+  /** Touch construction-site candidate latched on down, confirmed on pointer-up tap. */
+  private pendingTouchConstructionTap:
+    | { pointerId: number; siteId: string; screenX: number; screenY: number }
+    | undefined;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -1469,6 +1474,7 @@ export class MainGameScene extends Phaser.Scene {
     // `this.world` and ready to auto-surface here exactly once.
     this.resumePendingRewardPresentations();
     this.input.on('pointerdown', this.handlePointerDown, this);
+    this.input.on('pointerup', this.handlePointerUp, this);
     this.initializeUi();
     // Apply this floor's lighting over a clean DEFAULT base BEFORE the first
     // light-field build in drawFloorTerrain(), so the field is built with the
@@ -1701,6 +1707,7 @@ export class MainGameScene extends Phaser.Scene {
       this.tappedInteraction = false;
       this.tappedNpcEid = null;
       this.tappedConstructionSiteId = null;
+      this.pendingTouchConstructionTap = undefined;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1714,6 +1721,7 @@ export class MainGameScene extends Phaser.Scene {
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
+      this.input.off('pointerup', this.handlePointerUp, this);
       this.input.keyboard?.off('keydown-E', this.handleKeyboardE, this);
       if (typeof window !== 'undefined') {
         window.removeEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1902,6 +1910,29 @@ export class MainGameScene extends Phaser.Scene {
     return SCENARIO_HUD_BASE_Y;
   }
 
+  private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
+    const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
+    return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
+  }
+
+  private findConstructionSiteAtWorldPoint(worldX: number, worldY: number): string | null {
+    const construction = this.options.scenarioPresentation?.construction;
+    if (!construction) {
+      return null;
+    }
+    const worldFtX = pxToFt(worldX);
+    const worldFtY = pxToFt(worldY);
+    const snapshot = construction.getSnapshot(this.world);
+    const site = snapshot?.sites.find(
+      (candidate) =>
+        worldFtX >= candidate.boundsFt.x &&
+        worldFtX <= candidate.boundsFt.x + candidate.boundsFt.width &&
+        worldFtY >= candidate.boundsFt.y &&
+        worldFtY <= candidate.boundsFt.y + candidate.boundsFt.height,
+    );
+    return site?.siteId ?? null;
+  }
+
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
     if (this.pendingFloorTransition) {
       // The between-floor summary owns every pointer press while it waits,
@@ -1911,6 +1942,14 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.abilityLoadoutUI?.isOpen()) {
+      return;
+    }
+    if (this.isTouchPointer(pointer)) {
+      pointer.updateWorldPoint(this.cameras.main);
+      const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+      this.pendingTouchConstructionTap = siteId
+        ? { pointerId: pointer.id, siteId, screenX: pointer.x, screenY: pointer.y }
+        : undefined;
       return;
     }
     const isCornerButtonHit = (button?: Phaser.GameObjects.Text): boolean =>
@@ -1951,21 +1990,34 @@ export class MainGameScene extends Phaser.Scene {
       this.tappedInteraction = true;
       return;
     }
-    const construction = this.options.scenarioPresentation?.construction;
-    if (construction) {
-      const snapshot = construction.getSnapshot(this.world);
-      const site = snapshot?.sites.find(
-        (candidate) =>
-          pxToFt(pointer.worldX) >= candidate.boundsFt.x &&
-          pxToFt(pointer.worldX) <= candidate.boundsFt.x + candidate.boundsFt.width &&
-          pxToFt(pointer.worldY) >= candidate.boundsFt.y &&
-          pxToFt(pointer.worldY) <= candidate.boundsFt.y + candidate.boundsFt.height,
-      );
-      if (site) {
-        this.tappedConstructionSiteId = site.siteId;
-        this.tappedInteraction = true;
-      }
+    const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+    if (siteId) {
+      this.tappedConstructionSiteId = siteId;
+      this.tappedInteraction = true;
     }
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    if (!this.isTouchPointer(pointer)) {
+      return;
+    }
+    const pendingTap = this.pendingTouchConstructionTap;
+    this.pendingTouchConstructionTap = undefined;
+    if (!pendingTap || pendingTap.pointerId !== pointer.id) {
+      return;
+    }
+    const dx = pointer.x - pendingTap.screenX;
+    const dy = pointer.y - pendingTap.screenY;
+    if (dx * dx + dy * dy > TOUCH_CONSTRUCTION_TAP_MAX_DISTANCE_PX ** 2) {
+      return;
+    }
+    pointer.updateWorldPoint(this.cameras.main);
+    const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+    if (siteId !== pendingTap.siteId) {
+      return;
+    }
+    this.tappedConstructionSiteId = siteId;
+    this.tappedInteraction = true;
   }
 
   private handleKeyboardE(): void {
@@ -1980,6 +2032,7 @@ export class MainGameScene extends Phaser.Scene {
     this.tappedInteraction = false;
     this.tappedNpcEid = null;
     this.tappedConstructionSiteId = null;
+    this.pendingTouchConstructionTap = undefined;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -6223,12 +6276,31 @@ export class MainGameScene extends Phaser.Scene {
           this.flashActionStatus(
             result.ok
               ? `${option.label.split(' — ')[0]} built at ${siteId}.`
-              : `Build rejected: ${result.reason}.`,
+              : this.describeConstructionBuildRejection(result.reason, siteId),
           );
           this.updateOverlayText();
         },
       },
     );
+  }
+
+  private describeConstructionBuildRejection(reason: string, siteId: string): string {
+    switch (reason) {
+      case 'phase-locked':
+        return 'Build rejected: Building is available during DEFEND (and approved BREAK actions) only.';
+      case 'invalid-site':
+        return `Build rejected: ${siteId} is not a valid authored construction site.`;
+      case 'occupied':
+        return `Build rejected: ${siteId} already has a tower.`;
+      case 'unaffordable':
+        return 'Build rejected: You need more requisitions for that tower.';
+      case 'unknown-tower':
+        return 'Build rejected: That tower option is unavailable.';
+      case 'not-floor6':
+        return 'Build rejected: Tower construction is unavailable on this floor.';
+      default:
+        return 'Build rejected: Retry with a vacant site and an affordable tower.';
+    }
   }
 
   private updateInteractions(): void {
