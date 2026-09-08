@@ -149,7 +149,7 @@ describe('Floor 5 release gate headless telemetry', () => {
         if (!accounting) continue;
         expect(accounting.physicalReleased + accounting.debtCleared).toBe(manifestEntry.count);
         expect(accounting.physicalReleased).toBeLessThanOrEqual(manifestEntry.count);
-        expect(accounting.maxReleaseDelayFrames).toBeGreaterThanOrEqual(0);
+        expect(accounting.maxReleaseDelayFrames).toBeLessThanOrEqual(gate.maxReleaseDelayFrames);
         if (accounting.firstReleaseFrame !== null) {
           expect(accounting.firstReleaseFrame).toBeGreaterThanOrEqual(manifestEntry.releaseFrame);
         }

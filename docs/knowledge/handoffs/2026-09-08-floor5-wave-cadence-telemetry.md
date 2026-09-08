@@ -18,7 +18,7 @@ ai-combat-balance
 
 ## What Was Done
 
-Added deterministic Floor 5 manifest-indexed release accounting to the real headless RunStats path. Each authored unit is recorded as physically released or terminally cleared debt, with release delay, active cap, and per-team live-minion peak telemetry. Observed in the real headless pipeline — before: only aggregate spawned/debt totals were available, after: seeds 1–10 expose and validate every manifest entry exactly once.
+Added deterministic Floor 5 manifest-indexed release accounting to the real headless RunStats path. Each authored unit is recorded as physically released or terminally cleared debt, with release delay, active cap, and per-team live-minion peak telemetry. Observed in the real headless pipeline — before: only aggregate spawned/debt totals were available, after: seeds 1–10 expose and validate every manifest entry exactly once. The follow-up gate now authors a 1,200-frame fixed-tick maximum release delay and asserts every representative wave against it, rather than accepting arbitrary positive delay.
 
 ## Key Decisions Made
 
@@ -26,7 +26,7 @@ The authored wave manifest remains the schedule authority. No pacing or balance 
 
 ## What's Next / Blockers
 
-No blockers. Future cadence reports can use `laneTelemetry.waveAccounting` to compare authored release frames with physical releases without relying on a single seed.
+No blockers. Future cadence reports can use `laneTelemetry.waveAccounting` to compare authored release frames with physical releases without relying on a single seed; the authored `releaseGate.maxReleaseDelayFrames` is the bounded acceptance tolerance.
 
 ## Retrospective
 

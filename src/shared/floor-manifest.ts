@@ -1183,6 +1183,11 @@ export const floorManifestDefSchema = z
             maxPathStalls: z.number().int().nonnegative(),
             maxFrameCostMs: z.number().positive(),
             stallBackstopFrames: z.number().int().positive(),
+            /**
+             * Fixed-tick allowance for a scheduled minion to wait behind the
+             * authored live cap before its release is considered unexplained.
+             */
+            maxReleaseDelayFrames: z.number().int().nonnegative(),
             cleanSweepMinCommandPostHealthPct: z.number().min(0).max(1),
           })
           .strict(),
