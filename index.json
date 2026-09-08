@@ -1,5 +1,44 @@
 [
   {
+    "commit": "86b36e0902c5ca97fe7505df6370f6790d155f5a",
+    "commitDate": "2026-09-08T00:10:55Z",
+    "commitSubject": "Make Goobers delivery outcomes authoritative and terminal reports compact (#4456)",
+    "capturedAt": "2026-09-08T01:42:18.370Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/34174263162",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/86b36e0902c5ca97fe7505df6370f6790d155f5a.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/86b36e0902c5ca97fe7505df6370f6790d155f5a.fun-report.json"
+    }
+  },
+  {
     "commit": "32e2eebcee5c0448d44e93fcd026d2df125424d4",
     "commitDate": "2026-09-06T22:05:51Z",
     "commitSubject": "Floor 4: add new achievements (#4385)",
