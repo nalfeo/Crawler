@@ -101,6 +101,8 @@ describe('Floor 5 release gate headless telemetry', () => {
     expect(victoryFrames.length).toBeGreaterThan(0);
     expect(median(victoryFrames)).toBeLessThanOrEqual(gate.maxMedianDurationFrames);
     expect(p95(victoryFrames)).toBeLessThanOrEqual(gate.maxP95DurationFrames);
+    // The representative cohort has no cap contention; authored release frames are exact.
+    expect(gate.maxReleaseDelayFrames).toBe(0);
 
     for (const { seed, stats } of runs) {
       const siege = stats.floor5Siege;
@@ -108,6 +110,51 @@ describe('Floor 5 release gate headless telemetry', () => {
       if (!siege) continue;
       expect(siege.releaseGate.terminalIntegrity.terminal).toBe(true);
       expect(siege.releaseGate.terminalIntegrity.terminalOutcomeCount).toBe(1);
+      expect(siege.laneTelemetry.pathStalls).toBeLessThanOrEqual(gate.maxPathStalls);
+      expect(siege.laneTelemetry.activeCap).toBe(4);
+      for (const [team, peak] of Object.entries(siege.laneTelemetry.liveMinionPeak)) {
+        expect(peak, `seed ${seed} ${team} live peak stayed within cap`).toBeLessThanOrEqual(
+          siege.laneTelemetry.activeCap,
+        );
+      }
+      expect(siege.laneTelemetry.waveAccounting).toHaveLength(siege.waveManifest.length);
+      for (const [manifestIndex, manifestEntry] of siege.waveManifest.entries()) {
+        const accounting = siege.laneTelemetry.waveAccounting[manifestIndex];
+        expect(accounting).toMatchObject({
+          manifestIndex,
+          waveId: manifestEntry.id,
+          team: manifestEntry.team,
+          scheduled: manifestEntry.count,
+        });
+        if (!accounting) continue;
+        // No cap contention in this cohort: every authored unit must physically
+        // spawn, so a cancelled wave can never satisfy the cadence gate.
+        expect(accounting.debtCleared).toBe(0);
+        expect(accounting.physicalReleased).toBe(manifestEntry.count);
+        expect(accounting.maxReleaseDelayFrames).toBe(siege.releaseGate.maxReleaseDelayFrames);
+        if (accounting.firstReleaseFrame !== null) {
+          expect(accounting.firstReleaseFrame).toBeGreaterThanOrEqual(manifestEntry.releaseFrame);
+        }
+        if (accounting.lastReleaseFrame !== null) {
+          expect(accounting.lastReleaseFrame).toBeGreaterThanOrEqual(
+            accounting.firstReleaseFrame ?? manifestEntry.releaseFrame,
+          );
+        }
+      }
+      expect(siege.releaseGate.structuralViolations).toEqual({
+        unreachableObjectives: 0,
+        phaseOrderViolations: 0,
+        invalidTargetAllegianceEvents: 0,
+        navigationMismatchCount: 0,
+        unboundedSpawnDebt: 0,
+        nonTerminalRuns: 0,
+      });
+      expect(
+        siege.releaseGate.observedFrameCostMs ?? Number.POSITIVE_INFINITY,
+        `seed ${seed} stayed under frame-cost budget`,
+      ).toBeLessThanOrEqual(gate.maxFrameCostMs);
+      expect(siege.releaseGate.stallBackstopFrames).toBe(gate.stallBackstopFrames);
+      expect(siege.releaseGate.maxReleaseDelayFrames).toBe(gate.maxReleaseDelayFrames);
       if (stats.outcome !== 'victory') {
         expect(siege.releaseGate.terminalIntegrity.capturedCount).toBe(0);
         expect(siege.releaseGate.terminalIntegrity.defeatCount).toBe(1);
@@ -130,20 +177,18 @@ describe('Floor 5 release gate headless telemetry', () => {
       expect(siege.releaseGate.liveHostilesOnTerminal).toBeLessThanOrEqual(
         gate.maxLiveHostilesOnTerminal,
       );
-      expect(siege.laneTelemetry.pathStalls).toBeLessThanOrEqual(gate.maxPathStalls);
-      expect(siege.releaseGate.structuralViolations).toEqual({
-        unreachableObjectives: 0,
-        phaseOrderViolations: 0,
-        invalidTargetAllegianceEvents: 0,
-        navigationMismatchCount: 0,
-        unboundedSpawnDebt: 0,
-        nonTerminalRuns: 0,
-      });
-      expect(
-        siege.releaseGate.observedFrameCostMs ?? Number.POSITIVE_INFINITY,
-        `seed ${seed} stayed under frame-cost budget`,
-      ).toBeLessThanOrEqual(gate.maxFrameCostMs);
-      expect(siege.releaseGate.stallBackstopFrames).toBe(gate.stallBackstopFrames);
     }
+  });
+
+  it('keeps the release ledger deterministic for the same seed', async () => {
+    const options = {
+      floorId: 'floor5' as const,
+      seed: 1,
+      maxFrames: 120,
+      questStallFrames: 0,
+    };
+    const first = await runHeadless(new IdleFloor5Provider(), options);
+    const second = await runHeadless(new IdleFloor5Provider(), options);
+    expect(second.floor5Siege?.laneTelemetry).toEqual(first.floor5Siege?.laneTelemetry);
   });
 });
