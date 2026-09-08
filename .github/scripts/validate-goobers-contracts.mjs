@@ -193,9 +193,11 @@ export function outputSemanticErrors(payload) {
     errors.push(`outputs.disposition is only valid when status='no-work' (got status=${status})`);
   }
   const hasEvidenceRef =
-    outputs.evidenceRef !== undefined && outputs.evidenceRef !== null && outputs.evidenceRef !== '';
+    typeof outputs.evidenceRef === 'string' && outputs.evidenceRef.trim() !== '';
   if (outputs.evidenceRef !== undefined && outputs.evidenceRef !== null && !hasEvidenceRef) {
-    errors.push('outputs.evidenceRef must be a non-empty string when present');
+    errors.push(
+      'outputs.evidenceRef must include at least one non-whitespace character when present',
+    );
   }
   if (hasEvidenceRef && outputs.disposition !== 'completed-existing-work') {
     errors.push(
@@ -624,6 +626,17 @@ function outputFixtures() {
         task: 'implement',
         status: 'no-work',
         outputs: { disposition: 'completed-existing-work' },
+        summary: 'Already implemented',
+      },
+    },
+    {
+      name: 'completed-existing-work disposition rejects whitespace-only evidenceRef',
+      shouldPass: false,
+      payload: {
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work', evidenceRef: '   ' },
         summary: 'Already implemented',
       },
     },

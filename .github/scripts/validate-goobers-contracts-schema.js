@@ -236,6 +236,7 @@ export const outputV1 = {
         evidenceRef: {
           type: ['string', 'null'],
           minLength: 1,
+          pattern: '\\S',
           description:
             "Concrete, checkable citation proving the coder actually investigated the claim before disposition='completed-existing-work' " +
             "(a merged PR/commit reference such as 'PR #1234' or 'commit abc1234', or a repository path with a line range such as " +

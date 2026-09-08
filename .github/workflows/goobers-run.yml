@@ -2064,7 +2064,7 @@ jobs:
             fi
 
             if [ "$no_work_disposition" = "completed-existing-work" ]; then
-              if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ] || [ -z "$no_work_evidence_ref" ]; then
+              if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ] || ! [[ "$no_work_evidence_ref" =~ [^[:space:]] ]]; then
                 evidence=""
                 if [ "$run_outcome" != "success" ]; then
                   outcome_evidence="${run_outcome}"
@@ -2085,7 +2085,7 @@ jobs:
                   fi
                   evidence="${evidence}a non-empty implement/unpushed-diff.patch artifact (${unpushed_diff_size} bytes)"
                 fi
-                if [ -z "$no_work_evidence_ref" ]; then
+                if ! [[ "$no_work_evidence_ref" =~ [^[:space:]] ]]; then
                   if [ -n "$evidence" ]; then
                     evidence="${evidence} and "
                   fi
@@ -2495,10 +2495,10 @@ jobs:
               [ "$run_outcome" = "success" ] &&
               [ "$prior_stage_failure" = "false" ] &&
               [ "$unpushed_diff_size" -eq 0 ] &&
-              [ -n "$no_work_evidence_ref" ]; then
+              [[ "$no_work_evidence_ref" =~ [^[:space:]] ]]; then
               delivery_outcome="issue-completed"
             elif [ "$no_work_disposition" = "completed-existing-work" ] &&
-              [ -z "$no_work_evidence_ref" ]; then
+              ! [[ "$no_work_evidence_ref" =~ [^[:space:]] ]]; then
               # Same evidence bar as "Handle no-work disposition": a
               # completed-existing-work claim with no outputs.evidenceRef
               # citation is untrusted, regardless of how clean the run

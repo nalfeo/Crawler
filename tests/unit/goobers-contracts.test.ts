@@ -408,6 +408,16 @@ describe('crawler.goobers.output/v1 schema', () => {
         summary: 'Already implemented',
       }),
     ).toBe(false);
+
+    expect(
+      isOutputValid({
+        contractVersion: 'v1',
+        task: 'implement',
+        status: 'no-work',
+        outputs: { disposition: 'completed-existing-work', evidenceRef: '   ' },
+        summary: 'Already implemented',
+      }),
+    ).toBe(false);
   });
 
   it('rejects evidenceRef when no completed-existing-work disposition is present', () => {
