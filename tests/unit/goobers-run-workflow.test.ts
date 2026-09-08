@@ -1246,11 +1246,21 @@ ${queryScript}
     expect(materializePlan?.run?.script).toContain('implementation-plan-result.json');
     expect(materializePlan?.run?.script).toContain('GOOBERS_INPUT_IMPLEMENTATIONPLAN');
     expect(materializePlan?.next).toBe('implement');
-    expect(implement?.contextFrom).toEqual(['hydrate-requirements', 'materialize-plan']);
+    // `local-ci` and `review` are listed so a repass carries forward the
+    // pinned runtime's SelectContextPointers output for those sources
+    // (`local-ci.artifact[...]` and `review.verdict`) — the exact defect
+    // evidence that triggered the re-entry. `plan` is deliberately absent
+    // (superseded by the materialized `materialize-plan` artifact) and
+    // `implement` is absent so no prior implementation attempt's own
+    // historical pointer is restored.
+    expect(implement?.contextFrom).toEqual([
+      'hydrate-requirements',
+      'materialize-plan',
+      'local-ci',
+      'review',
+    ]);
     expect(implement?.contextFrom).not.toContain('plan');
     expect(implement?.contextFrom).not.toContain('implement');
-    expect(implement?.contextFrom).not.toContain('review');
-    expect(implement?.contextFrom).not.toContain('local-ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
     // Canonical implementation repasses consume only the latest requirements and

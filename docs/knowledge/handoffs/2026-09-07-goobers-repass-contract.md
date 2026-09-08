@@ -24,7 +24,7 @@ The review gate now waits until after `verify:fast` succeeds and caps automatic 
 
 ## Key Decisions Made
 
-- Kept the canonical repass contract bounded to the latest applicable stage evidence only: requirements + producer plan for initial implementation, and the newest reviewer/local-gate defect evidence for subsequent passes.
+- Kept the canonical repass contract bounded to the latest applicable stage evidence only: requirements + producer plan for initial implementation, and the newest reviewer/local-gate defect evidence for subsequent passes — `implement.contextFrom` lists `local-ci` and `review` alongside the requirements/plan sources so the pinned runtime's `SelectContextPointers` carries forward `local-ci.artifact[...]`/`review.verdict` on a repass; both resolve to nothing on the initial pass since neither task has run yet.
 - Placed the local verification gate before the reviewer so the task order matches the intended "implement -> local fast verification -> review -> push/open PR" pipeline and avoids review churn on deterministic local failures.
 - Preserved the explicit human escalation branches while tightening the workflow cap to the documented two-repass ceiling.
 

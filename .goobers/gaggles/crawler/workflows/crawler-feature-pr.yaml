@@ -234,13 +234,25 @@ spec:
     - name: implement
       type: agentic
       goober: coder
+      # `local-gate.fail` and `review.needs-changes` both re-enter here, and
+      # the pinned runtime's SelectContextPointers keeps only
+      # `<source>.artifact[...]`/`<source>.verdict` for each listed source —
+      # nothing else survives across a repass. Listing `local-ci` and `review`
+      # is what carries the local verification failure artifact and the
+      # reviewer's defect verdict into that re-entry; without them a repass
+      # would see only the requirements and plan and could not act on the
+      # feedback that triggered it. On the initial pass neither task has run
+      # yet, so both resolve to no pointer and are silently omitted.
       contextFrom:
         - hydrate-requirements
         - materialize-plan
+        - local-ci
+        - review
       goal: >-
         Implement the claimed Crawler feature according to the producer plan,
         run focused checks, and commit the change. On a repass, address the
-        attached reviewer or local-gate evidence before continuing.
+        attached reviewer or local-gate evidence (the latest failing local-ci
+        artifact or review verdict) before continuing.
       capabilities:
         - repo:push
         - agent:model
