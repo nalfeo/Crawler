@@ -27,7 +27,11 @@ import {
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
 import { DISPATCH_ACTION, selectTerminalAction } from './dispatch-table.mjs';
-import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
+import {
+  GOOBERS_IN_REVIEW_LABEL,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+} from './issue-intake-lib.mjs';
 import { PHASE, renderLifecycleComment } from './pr-lifecycle.mjs';
 import {
   REVIEW_CONFLICT_MARKER,
@@ -12598,6 +12602,79 @@ test('a failed linked-issue restart keeps the pending intent for the next run', 
     parseStateComment(stateComment.body)?.pendingIssueRestarts,
     [3198],
     'unfinished restart intent must survive for the next reconciliation',
+  );
+});
+
+test('a Goobers-owned pending restart is cleared and does not fail reconciliation', async (t) => {
+  // Regression: if a linked issue acquires the Goobers in-review label between
+  // abandonment and the restart attempt, runIssueIntake throws
+  // IssueClaimedByGoobersError. That error must be treated the same as
+  // IssueNoLongerOpenError — clear the pending intent and continue — rather
+  // than recording a retry failure and looping on it forever.
+  const stateComment = {
+    id: 773,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3199],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199`]: () => ({
+      body: { number: 3199, node_id: 'ISSUE_3199', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: () => ({
+      body: {
+        data: {
+          repository: {
+            suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+            issue: {
+              id: 'ISSUE_3199',
+              state: 'OPEN',
+              labels: { nodes: [{ name: GOOBERS_IN_REVIEW_LABEL }] },
+              assignees: { nodes: [] },
+            },
+          },
+        },
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /skipped restart for linked issue #3199/);
+  assert.equal(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    undefined,
+    'Goobers-owned pending restart must be cleared from recovery state',
   );
 });
 

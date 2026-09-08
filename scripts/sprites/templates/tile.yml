@@ -3,6 +3,7 @@
 # Tiles must end edge-to-edge at their requested frame size:
 # - No background removal
 # - Slice away transparent sheet/cell buffer with zero margin
+# - No content-dependent mesh recovery; preserve exact source-to-target scaling
 # - Stretch-resize exactly to brief.size
 #
 # Inherits from base.yml but disables background-specific steps.
@@ -23,6 +24,9 @@ modules:
     params:
       marginFraction: 0
       minMarginPx: 0
+
+  pixel-grid:
+    enabled: false
 
   resize:
     enabled: true

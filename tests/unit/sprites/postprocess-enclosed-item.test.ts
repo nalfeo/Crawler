@@ -1,24 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
-import {
-  briefSchema,
-  type Brief,
-  type PaletteColors,
-  type SpriteType,
-} from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief, type SpriteType } from '../../../scripts/sprites/brief-schema.js';
 import { postprocess, postprocessWithTrace } from '../../../scripts/sprites/postprocess.js';
 import {
   getActiveModules,
   getPipelineForType,
 } from '../../../scripts/sprites/template-pipeline.js';
-
-const PALETTE: PaletteColors = [
-  [0, 0, 0],
-  [0, 180, 40],
-  [255, 0, 255],
-  [30, 60, 200],
-  [255, 255, 255],
-];
 
 // Magenta is one of the per-item generation background candidates
 // (build-prompt.ts BACKGROUND_CANDIDATES). A model routinely paints that
@@ -132,7 +119,6 @@ describe('postprocess enclosed-region cleanup for item-family sprite types', () 
     const { finalPng, steps } = postprocessWithTrace(
       makeEnclosedPocketFixture(),
       makeBrief('weapon', 32),
-      PALETTE,
     );
 
     // The dedicated cleanup stage actually ran (id is only pushed when enabled).
@@ -149,16 +135,12 @@ describe('postprocess enclosed-region cleanup for item-family sprite types', () 
   });
 
   it('clears an enclosed background pocket in an equipment sprite', () => {
-    const out = PNG.sync.read(
-      postprocess(makeEnclosedPocketFixture(), makeBrief('equipment', 32), PALETTE),
-    );
+    const out = PNG.sync.read(postprocess(makeEnclosedPocketFixture(), makeBrief('equipment', 32)));
     expect(hasOpaquePixelNear(out, MAGENTA)).toBe(false);
   });
 
   it('preserves a legitimate enclosed interior accent far from the background colour', () => {
-    const out = PNG.sync.read(
-      postprocess(makeEnclosedPocketFixture(FAR), makeBrief('weapon', 32), PALETTE),
-    );
+    const out = PNG.sync.read(postprocess(makeEnclosedPocketFixture(FAR), makeBrief('weapon', 32)));
     // The blue accent is nowhere near the magenta corner colour, so both the
     // pre-resize cleanup and the post-resize rekey pass must leave it intact.
     expect(hasOpaquePixelNear(out, FAR)).toBe(true);
@@ -169,7 +151,6 @@ describe('postprocess enclosed-region cleanup for item-family sprite types', () 
     const { finalPng, steps } = postprocessWithTrace(
       makeEnclosedPocketFixture(),
       makeBrief('weapon', 32),
-      PALETTE,
       { disabledModules: ['enclosed-regions'] },
     );
     // Cleanup stage never ran...
@@ -181,7 +162,7 @@ describe('postprocess enclosed-region cleanup for item-family sprite types', () 
 
   it('honours the global enclosedBackgroundMode disabled escape hatch', () => {
     const out = PNG.sync.read(
-      postprocess(makeEnclosedPocketFixture(), makeBrief('weapon', 32), PALETTE, {
+      postprocess(makeEnclosedPocketFixture(), makeBrief('weapon', 32), {
         modules: { enclosedBackgroundMode: 'disabled' },
       }),
     );

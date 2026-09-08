@@ -1,10 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PNG } from 'pngjs';
-import {
-  briefSchema,
-  type Brief,
-  type PaletteColors,
-} from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 import {
   frameSequenceDisabledModules,
   normalizeDisabledModules,
@@ -16,11 +12,13 @@ import {
   type RgbaImage,
 } from '../../../scripts/sprites/postprocess.js';
 
-const PALETTE: PaletteColors = [
-  [0, 0, 0],
-  [32, 96, 144],
-  [255, 255, 255],
-];
+vi.mock('../../../scripts/sprites/proper-pixel-art.js', () => ({
+  recoverPixelArtMesh: vi.fn((image: RgbaImage) => ({
+    width: 4,
+    height: 4,
+    data: image.data.slice(0, 4 * 4 * 4),
+  })),
+}));
 
 function makeTileBrief(): Brief {
   return briefSchema.parse({
@@ -101,6 +99,46 @@ function makePngWithBlock(
   return PNG.sync.write(png);
 }
 
+function makePixelGridFixture(): Buffer {
+  const png = new PNG({ width: 16, height: 16 });
+  for (let y = 0; y < png.height; y++) {
+    for (let x = 0; x < png.width; x++) {
+      const index = (y * png.width + x) * 4;
+      png.data[index] = Math.floor(x / 4) % 2 === 0 ? 0 : 160;
+      png.data[index + 1] = Math.floor(y / 4) % 2 === 0 ? 0 : 192;
+      png.data[index + 2] = 192;
+      png.data[index + 3] = 255;
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+function makeMeshRecoveryBrief(): Brief {
+  return briefSchema.parse({
+    type: 'prop',
+    name: 'mesh-recovery-test',
+    size: { width: 32, height: 32 },
+    palette: {
+      id: 'test-palette',
+      colors: [
+        [0, 0, 192],
+        [160, 192, 192],
+      ],
+    },
+    anchor: { x: 16, y: 31 },
+    tags: ['test'],
+    prompt: 'test prop',
+    references: [{ path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' }],
+    postprocessing: {
+      paletteMode: 'strict',
+      meshRecovery: true,
+      pixelWidth: 4,
+      trimAndFit: false,
+      minDimension: 32,
+    },
+  });
+}
+
 describe('postprocess disabled modules', () => {
   it('canonicalizes requested modules in effective pipeline order', () => {
     expect(
@@ -118,9 +156,10 @@ describe('postprocess disabled modules', () => {
   });
 
   it('passes a disabled step through, keeps it visible, and changes the final output', () => {
-    const traced = postprocessWithTrace(makeFixture(), makeTileBrief(), PALETTE, {
+    const traced = postprocessWithTrace(makeFixture(), makeTileBrief(), {
       disabledModules: ['resize'],
     });
+
     const skipped = traced.steps.find((step) => step.moduleId === 'resize');
     const final = PNG.sync.read(traced.finalPng);
 
@@ -129,14 +168,34 @@ describe('postprocess disabled modules', () => {
     expect(final).toMatchObject({ width: 24, height: 36 });
   });
 
+  it('runs strict mesh recovery before resize and preserves the requested final dimensions', () => {
+    const traced = postprocessWithTrace(makePixelGridFixture(), makeMeshRecoveryBrief(), {
+      disabledModules: [
+        'background-removal',
+        'enclosed-regions',
+        'background-rekey',
+        'speckle-cleanup',
+      ],
+    });
+    const moduleIds = traced.steps.map((step) => step.moduleId);
+
+    expect(moduleIds.indexOf('palette-quantize')).toBeLessThan(moduleIds.indexOf('pixel-grid'));
+    expect(moduleIds.indexOf('pixel-grid')).toBeLessThan(moduleIds.indexOf('resize'));
+    expect(traced.steps.find((step) => step.moduleId === 'pixel-grid')).toMatchObject({
+      id: 'pixel-grid',
+      skipped: false,
+    });
+    expect(PNG.sync.read(traced.finalPng)).toMatchObject({ width: 32, height: 32 });
+  });
+
   describe('frameSequenceDisabledModules', () => {
-    it('returns only trim-and-fit for a frameSequence-enabled brief (transparent-trim now uses union crop instead)', () => {
+    it('disables geometry-changing per-frame modules for a frame sequence', () => {
       // transparent-trim is no longer disabled: it now uses the pre-computed
       // union bounding box (sharedCropRect) so all frames share the same
-      // crop-to-canvas mapping. Only trim-and-fit (post-resize per-frame
-      // re-trim) is still disabled, since that reintroduces independent
-      // centering per frame even after the uniform initial crop.
+      // crop-to-canvas mapping. Pixel-grid and trim-and-fit remain disabled
+      // because each would derive geometry independently per frame.
       expect(frameSequenceDisabledModules(makeCharacterFrameSequenceBrief())).toEqual([
+        'pixel-grid',
         'trim-and-fit',
       ]);
     });
@@ -148,7 +207,7 @@ describe('postprocess disabled modules', () => {
     it('transparent-trim runs (not skipped) for frame-sequence briefs', () => {
       const brief = makeCharacterFrameSequenceBrief();
       const disabledModules = frameSequenceDisabledModules(brief);
-      const traced = postprocessWithTrace(makeFixture(), brief, PALETTE, { disabledModules });
+      const traced = postprocessWithTrace(makeFixture(), brief, { disabledModules });
       const trimStep = traced.steps.find((step) => step.moduleId === 'transparent-trim');
 
       // transparent-trim must NOT be skipped — it runs using the per-frame
@@ -160,7 +219,7 @@ describe('postprocess disabled modules', () => {
     it('transparent-trim uses the shared union bbox when sharedCropRect is provided', () => {
       const brief = makeCharacterFrameSequenceBrief();
       const sharedCropRect: OpaqueRect = { left: 10, top: 10, right: 30, bottom: 50 };
-      const traced = postprocessWithTrace(makeFixture(), brief, PALETTE, { sharedCropRect });
+      const traced = postprocessWithTrace(makeFixture(), brief, { sharedCropRect });
       const trimStep = traced.steps.find((step) => step.moduleId === 'transparent-trim');
 
       expect(trimStep).toBeDefined();

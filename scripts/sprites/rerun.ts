@@ -189,6 +189,14 @@ export interface RepostprocessArgs {
    * want to replace prior per-variant indexing with the new data-driven grid.
    */
   readonly allowGridDrift?: boolean;
+  /**
+   * Clear operator-disabled modules for a forced recovery while preserving
+   * modules the brief requires to stay disabled. Use when a persisted or
+   * explicit `disabledModules` set is itself the reason a run is stuck (e.g. a
+   * stale operator override left over from a previous, now-irrelevant salvage
+   * attempt) and the operator wants a clean recovery baseline.
+   */
+  readonly forceRecovery?: boolean;
   readonly manualAnchor?: ManualAnchorOverride | null;
   /**
    * Optional weapon-anchor override to thread through the pipeline and write as
@@ -268,20 +276,24 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       : args.options !== undefined
         ? args.options
         : (persistedProfile?.options ?? defaultFrameSequenceOptions);
+  // Forced recovery drops any persisted/explicit operator disabledModules
+  // (which may themselves be the reason a salvage attempt is stuck) down to
+  // just the modules the brief requires — it never re-enables a module the
+  // brief itself demands stay off.
+  const recoveryOptions: PostprocessOptions = args.forceRecovery
+    ? { ...baseEffectiveOptions, disabledModules: requiredDisabledModules }
+    : baseEffectiveOptions;
   // Union the required disabled modules into every effective option mode so
   // a `reset` or explicit `replace` cannot re-enable them.
   const effectiveOptions: PostprocessOptions =
     requiredDisabledModules.length > 0
       ? {
-          ...baseEffectiveOptions,
+          ...recoveryOptions,
           disabledModules: [
-            ...new Set([
-              ...(baseEffectiveOptions.disabledModules ?? []),
-              ...requiredDisabledModules,
-            ]),
+            ...new Set([...(recoveryOptions.disabledModules ?? []), ...requiredDisabledModules]),
           ],
         }
-      : baseEffectiveOptions;
+      : recoveryOptions;
   const effectiveManualAnchor =
     optionsMode === 'reset'
       ? null

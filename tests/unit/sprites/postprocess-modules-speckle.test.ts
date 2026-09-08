@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { briefSchema, type PaletteColors } from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema } from '../../../scripts/sprites/brief-schema.js';
 import {
   postprocessModules,
   type ModuleContext,
@@ -10,11 +10,6 @@ interface TestImage {
   readonly height: number;
   readonly data: Uint8Array;
 }
-
-const PALETTE: PaletteColors = [
-  [0, 0, 0],
-  [255, 255, 255],
-];
 
 const BRIEF = briefSchema.parse({
   type: 'enemy',
@@ -48,7 +43,6 @@ function alphaAt(image: TestImage, x: number, y: number): number {
 function makeContext(steps: string[]): ModuleContext {
   return {
     brief: BRIEF,
-    palette: PALETTE,
     pushStep: (id) => {
       steps.push(id);
     },

@@ -85,7 +85,7 @@ function rectPixels(
 describe('scoreCandidate', () => {
   it('a good sword fixture passes every sensor', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.passed).toBe(true);
     expect(card.score).toBe(card.outOf);
@@ -94,7 +94,7 @@ describe('scoreCandidate', () => {
 
   it('an empty fixture fails the bbox sensor and is reported in the breakdown', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildEmptyFixture(), brief, PALETTE);
+    const processed = postprocess(buildEmptyFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.passed).toBe(false);
     const fails = card.breakdown.filter((r) => !r.ok).map((r) => r.sensor);
@@ -103,7 +103,7 @@ describe('scoreCandidate', () => {
 
   it('a solid-block fixture fails the opaque-ratio sensor', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildSolidBlockFixture(), brief, PALETTE);
+    const processed = postprocess(buildSolidBlockFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.passed).toBe(false);
     const fails = card.breakdown.filter((r) => !r.ok).map((r) => r.sensor);
@@ -112,7 +112,7 @@ describe('scoreCandidate', () => {
 
   it('a horizontal-bar fixture fails the weapon orientation sensor', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const processed = postprocess(buildHorizontalBarFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const fails = card.breakdown.filter((r) => !r.ok).map((r) => r.sensor);
     expect(fails).toContain('silhouette-orientation-axis');
@@ -126,7 +126,7 @@ describe('scoreCandidate', () => {
     // sensor. (A genuinely sparse final sprite is still caught — see the
     // directly-scored case below.)
     const brief = makeBrief();
-    const processed = postprocess(buildTinyDotFixture(), brief, PALETTE);
+    const processed = postprocess(buildTinyDotFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.passed).toBe(false);
     const opaqueResult = card.breakdown.find((r) => r.sensor === 'opaque-ratio');
@@ -149,7 +149,7 @@ describe('scoreCandidate', () => {
 
   it('non-weapon briefs do not run the weapon sensors', () => {
     const brief = makeBrief({ type: 'item' });
-    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const processed = postprocess(buildHorizontalBarFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const sensors = card.breakdown.map((r) => r.sensor);
     expect(sensors).not.toContain('silhouette-orientation-axis');
@@ -180,7 +180,7 @@ describe('scoreCandidate', () => {
         anchor: { mode: 'center-of-mass' },
       } as Brief['sensors'],
     });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.breakdown.map((r) => r.sensor)).not.toContain('silhouette-orientation-axis');
   });
@@ -203,7 +203,7 @@ describe('scoreCandidate', () => {
         anchor: { mode: 'center-of-mass' },
       },
     });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
   });
@@ -214,7 +214,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { opaqueRatio: { max: 1.0 } } as Brief['sensors'],
     });
-    const processed = postprocess(buildSolidBlockFixture(), brief, PALETTE);
+    const processed = postprocess(buildSolidBlockFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const opaqueResult = card.breakdown.find((r) => r.sensor === 'opaque-ratio');
     expect(opaqueResult?.ok).toBe(true);
@@ -226,7 +226,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { opaqueRatio: { disabled: true } } as Brief['sensors'],
     });
-    const processed = postprocess(buildSolidBlockFixture(), brief, PALETTE);
+    const processed = postprocess(buildSolidBlockFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const opaqueResult = card.breakdown.find((r) => r.sensor === 'opaque-ratio');
     expect(opaqueResult?.ok).toBe(true);
@@ -240,7 +240,7 @@ describe('scoreCandidate', () => {
         weapon: { orientation: 'diagonal', diagonalToleranceDeg: 30 },
       } as Brief['sensors'],
     });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     // The good sword's axis is near 45°, which is outside even a 30° cone
     // around horizontal/vertical, so it should still pass.
@@ -252,7 +252,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { weapon: {} } as Brief['sensors'], // explicit empty weapon block
     });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
     expect(orient?.ok).toBe(false);
@@ -262,7 +262,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { weapon: { orientation: 'any' } } as Brief['sensors'],
     });
-    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const processed = postprocess(buildHorizontalBarFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
     expect(orient?.ok).toBe(true);
@@ -272,7 +272,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { weapon: { orientation: 'horizontal' } } as Brief['sensors'],
     });
-    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const processed = postprocess(buildHorizontalBarFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
     expect(orient?.ok).toBe(true);
@@ -280,7 +280,7 @@ describe('scoreCandidate', () => {
 
   it('produces a stable breakdown order for a given brief type', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card1 = scoreCandidate(processed, brief, PALETTE);
     const card2 = scoreCandidate(processed, brief, PALETTE);
     expect(card1.breakdown.map((r) => r.sensor)).toEqual(card2.breakdown.map((r) => r.sensor));
@@ -348,7 +348,7 @@ describe('scoreCandidate', () => {
 
   it('uses anchor-opaque by default and reports derivedAnchor=null', () => {
     const brief = makeBrief();
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const sensors = card.breakdown.map((r) => r.sensor);
     expect(sensors).toContain('anchor-opaque');
@@ -374,7 +374,7 @@ describe('scoreCandidate', () => {
     expect(paletteResult?.ok).toBe(true);
   });
 
-  it('enforces palette-membership when paletteMode is strict', () => {
+  it('rejects off-palette opaque pixels when paletteMode is strict', () => {
     const processed = buildProcessedFixture(16, 16, rectPixels(6, 6, 9, 9));
     const png = PNG.sync.read(processed);
     const idx = (7 * png.width + 7) * 4;
@@ -394,7 +394,7 @@ describe('scoreCandidate', () => {
     const brief = makeBrief({
       sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } } as Brief['sensors'],
     });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const processed = postprocess(buildGoodSwordFixture(), brief);
     const card = scoreCandidate(processed, brief, PALETTE);
     const sensors = card.breakdown.map((r) => r.sensor);
     expect(sensors).toContain('anchor-derivable');
