@@ -80,29 +80,46 @@ describe('merge-train candidate validation sharding', () => {
     }
   });
 
-  it('provisions the pinned Python sprite adapter before running sprite shards', () => {
-    const steps = loadWorkflow().jobs['sprite-tests']?.steps ?? [];
-    const setupPythonIndex = steps.findIndex((step) => step.uses === 'actions/setup-python@v5');
-    const installIndex = steps.findIndex(
-      (step) => step.name === 'Install sprite post-processing dependencies',
+  it('provisions the candidate Python sprite adapter after materialization and fails closed', () => {
+    const spriteJob = loadWorkflow().jobs['sprite-tests'];
+    const steps = spriteJob?.steps ?? [];
+    const materializeIndex = steps.findIndex(
+      (step) => step.name === 'Materialize immutable candidate',
     );
-    const validateIndex = steps.findIndex(
-      (step) => step.name === 'Validate sprite post-processing adapter',
+    const setupPythonIndex = steps.findIndex((step) => step.uses === 'actions/setup-python@v5');
+    const provisionIndex = steps.findIndex(
+      (step) => step.name === 'Provision candidate sprite post-processing runtime',
     );
     const testIndex = steps.findIndex((step) => step.name === 'Run complete sprite-suite shard');
+    const provision = steps[provisionIndex]?.run ?? '';
 
+    expect(spriteJob?.['timeout-minutes']).toBeGreaterThanOrEqual(10);
     expect(steps[setupPythonIndex]?.with?.['python-version']).toBe('3.12.10');
-    expect(steps[installIndex]?.run).toContain(
+    expect(provision).toContain('set -euo pipefail');
+    expect(provision).toContain(
+      `if [[ ! -e "$requirements" && ! -e "$bridge" ]]; then
+  echo "Candidate does not include the sprite post-processing runtime; skipping Python provisioning."
+  exit 0
+fi`,
+    );
+    expect(provision).toContain(
+      `if [[ ! -f "$requirements" || ! -f "$bridge" ]]; then
+  echo "::error::Candidate must include both $requirements and $bridge."
+  exit 1
+fi`,
+    );
+    expect(provision).toContain(
       'python -m pip install --no-deps --only-binary=:all: --requirement scripts/sprites/proper-pixel-art-requirements.txt',
     );
-    expect(steps[installIndex]?.run).toContain('python -m pip check');
-    expect(steps[validateIndex]?.run).toBe(
-      'python -m py_compile scripts/sprites/proper-pixel-art-bridge.py',
-    );
+    expect(provision).toContain('python -m pip check');
+    expect(provision).toContain('python -m py_compile scripts/sprites/proper-pixel-art-bridge.py');
+    expect(provision).not.toMatch(/\|\|\s*true|continue-on-error/u);
+    expect(materializeIndex).toBeGreaterThan(-1);
     expect(setupPythonIndex).toBeGreaterThan(-1);
-    expect(setupPythonIndex).toBeLessThan(installIndex);
-    expect(installIndex).toBeLessThan(validateIndex);
-    expect(validateIndex).toBeLessThan(testIndex);
+    expect(provisionIndex).toBeGreaterThan(-1);
+    expect(materializeIndex).toBeLessThan(setupPythonIndex);
+    expect(setupPythonIndex).toBeLessThan(provisionIndex);
+    expect(provisionIndex).toBeLessThan(testIndex);
   });
 
   it('keeps candidate execution read-only and the trusted publisher checkout-free', () => {
