@@ -233,6 +233,15 @@ export const outputV1 = {
           description:
             "Machine-readable no-work disposition; 'completed-existing-work' marks a claimed issue already satisfied by repository evidence",
         },
+        evidenceRef: {
+          type: ['string', 'null'],
+          minLength: 1,
+          pattern: '\\S',
+          description:
+            "Concrete, checkable citation proving the coder actually investigated the claim before disposition='completed-existing-work' " +
+            "(a merged PR/commit reference such as 'PR #1234' or 'commit abc1234', or a repository path with a line range such as " +
+            "'src/foo/bar.ts:120-160'). Required whenever disposition='completed-existing-work'; forbidden otherwise.",
+        },
       },
       additionalProperties: false,
     },
@@ -285,6 +294,8 @@ export const outputV1 = {
    * - outputs.appleEstimate only non-null when task='plan'
    * - outputs.hardGate only non-null when task is 'plan', 'local-gate', 'pr-opened-gate', or 'review'
    * - outputs.disposition='completed-existing-work' only when status='no-work'
+   * - outputs.evidenceRef only non-null when outputs.disposition='completed-existing-work'
+   * - outputs.evidenceRef is required (non-empty) when outputs.disposition='completed-existing-work'
    * - Deterministic gates fail on schema violation
    */
 };

@@ -2580,9 +2580,13 @@ ${queryScript}
     );
 
     expect(coderInstructions).toContain('Do not return `no-work` merely');
-    expect(coderInstructions).toContain('linked merged pull request');
+    expect(coderInstructions).toContain('a linked merged');
+    expect(coderInstructions).toContain('pull request satisfies every acceptance criterion');
     expect(coderInstructions).toContain('outputs.disposition');
     expect(coderInstructions).toContain('completed-existing-work');
+    expect(coderInstructions).toContain('outputs.evidenceRef');
+    expect(coderInstructions).toContain('deep investigation');
+    expect(coderInstructions).toContain('without having opened and read the implementation');
     expect(producerInstructions).toContain("repository's existing canonical configuration");
     expect(producerInstructions).toContain('do not by themselves');
     expect(producerInstructions).toContain('require a maintainer decision');
@@ -2592,8 +2596,11 @@ ${queryScript}
     expect(retry?.run).toContain('preserving in-review ownership');
     expect(retry?.run).toContain('.status == "no-work"');
     expect(retry?.run).toContain('outputs.disposition // empty');
+    expect(retry?.run).toContain('outputs.evidenceRef // empty');
     expect(retry?.run).toContain('no_work_disposition" = "completed-existing-work"');
     expect(retry?.run).toContain('[ "$run_outcome" != "success" ]');
+    expect(retry?.run).toContain('[[ "$no_work_evidence_ref" =~ [^[:space:]] ]]');
+    expect(retry?.run).toContain('a missing outputs.evidenceRef citation');
     expect(retry?.run).toContain(
       '.type == "error" or (.type == "stage.finished" and .status == "failed")',
     );
@@ -2601,7 +2608,7 @@ ${queryScript}
     expect(retry?.run).toContain('(.ref.size // 0) | numbers');
     const falseCompletionGuard =
       retry?.run?.indexOf(
-        'if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ]; then',
+        'if [ "$run_outcome" != "success" ] || [ "$prior_stage_failure" = "true" ] || [ "$unpushed_diff_size" -gt 0 ] || ! [[ "$no_work_evidence_ref" =~ [^[:space:]] ]]; then',
       ) ?? -1;
     const terminalLabelMutation =
       retry?.run?.indexOf("--add-label 'goobers/status:completed-existing-work'") ?? -1;
@@ -2616,6 +2623,12 @@ ${queryScript}
     expect(retry?.run).toContain('gh workflow run goobers-run.yml -f issue_number=${issue_number}');
     expect(diagnostics?.run).toContain('GOOBERS_SLOT_ASSIGNMENTS');
     expect(diagnostics?.run).toContain('.stage == "query-backlog"');
+    // The independent delivery-outcome reporter must apply the SAME evidence
+    // bar, not just the disposition-handling step -- otherwise a rejected
+    // completed-existing-work claim could still be reported as a successful
+    // "issue-completed" delivery outcome in the issue comment.
+    expect(diagnostics?.run).toContain('no_work_evidence_ref');
+    expect(diagnostics?.run).toContain('completed-existing-work-missing-evidence');
   });
 
   it('preserves single-writer lease fields in ci-recovery dispatch wiring', () => {
