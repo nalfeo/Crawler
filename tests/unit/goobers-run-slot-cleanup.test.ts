@@ -107,6 +107,7 @@ gh() {
     *comments*) printf '[[]]\\n' ;;
     *timeline*) printf '[]\\n' ;;
     *blocked_by*) printf '[]\\n' ;;
+    *'pr view'*) printf '%s\\n' "$GH_PR_VIEW_RESPONSE" ;;
   esac
   return 0
 }
@@ -289,6 +290,9 @@ function runStep(stepName: string, options: RunStepOptions = {}): Harness {
       GITHUB_RUN_ATTEMPT: '1',
       GITHUB_REF_NAME: 'main',
       GITHUB_SHA: 'deadbeef',
+      GITHUB_SERVER_URL: 'https://github.com',
+      GH_PR_VIEW_RESPONSE:
+        '{"state":"OPEN","headRefName":"goobers/crawler/test","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
       ARTIFACT_NAME: 'goobers-journal-artifact',
       RUN_JOURNAL_ARTIFACT_ID: '12345',
       // The lane job as a whole failed (slot 2's run died); the per-run
@@ -379,8 +383,120 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
     }
     // Per-run status again: the sibling failure must not be reported on the
     // healthy run's issue.
-    expect(harness.log).toContain('finished with **success**');
-    expect(harness.log).toContain('finished with **failure**');
+    expect(harness.log).toContain('Goobers delivery outcome: **pr-opened**');
+    expect(harness.log).toContain('Goobers delivery outcome: **blocked**');
+    expect(harness.log).toContain('Goobers delivery outcome: **issue-completed**');
+  });
+
+  it('classifies authoritative delivery outcomes from each run journal', () => {
+    const cases: Array<{
+      name: string;
+      lines: string[];
+      outcome: string;
+      failureCode: string;
+      env?: Record<string, string>;
+    }> = [
+      {
+        name: 'opened PR',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"open-pr","status":"success","outputs":{"prNumber":"5001"}}',
+          '{"type":"run.finished","status":"completed"}',
+        ],
+        outcome: 'pr-opened',
+        failureCode: 'none',
+      },
+      {
+        name: 'completed existing work',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"run.finished","status":"completed"}',
+        ],
+        outcome: 'issue-completed',
+        failureCode: 'none',
+      },
+      {
+        name: 'dirty no-work',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"artifact.recorded","stage":"implement","name":"implement/unpushed-diff.patch","ref":{"size":1}}',
+          '{"type":"run.finished","status":"completed"}',
+        ],
+        outcome: 'no-work',
+        failureCode: 'no-work-without-delivery',
+      },
+      {
+        name: 'failed no-work',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"build","status":"failed","error":{"code":"build-failed"}}',
+          '{"type":"stage.finished","stage":"implement","status":"no-work","outputs":{"disposition":"completed-existing-work"}}',
+          '{"type":"run.finished","status":"completed"}',
+        ],
+        outcome: 'no-work',
+        failureCode: 'no-work-without-delivery',
+      },
+      {
+        name: 'closed resumed PR',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"run.finished","status":"failed"}',
+        ],
+        outcome: 'blocked',
+        failureCode: 'pr-resolution',
+        env: {
+          GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42', resumePr: '5001' }]),
+          GH_PR_VIEW_RESPONSE:
+            '{"state":"CLOSED","headRefName":"goobers/crawler/test","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
+        },
+      },
+      {
+        name: 'failed PR-open gate',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"stage.finished","stage":"pr-opened-gate","status":"failed"}',
+          '{"type":"run.finished","status":"failed"}',
+        ],
+        outcome: 'blocked',
+        failureCode: 'pr-opened-gate-failed',
+      },
+      {
+        name: 'executor timeout',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"error","stage":"implement","runner":{"errorClass":"timeout"}}',
+          '{"type":"run.finished","status":"failed"}',
+        ],
+        outcome: 'timeout',
+        failureCode: 'run-timeout',
+      },
+      {
+        name: 'aborted run',
+        lines: [
+          '{"type":"stage.finished","stage":"query-backlog","status":"success","outputs":{"id":"42"}}',
+          '{"type":"run.finished","status":"aborted"}',
+        ],
+        outcome: 'aborted',
+        failureCode: 'run-aborted',
+      },
+    ];
+
+    for (const fixture of cases) {
+      const harness = runStep('Comment on Goobers run result', {
+        journals: [
+          { slot: '1', runId: `run-${fixture.name.replaceAll(' ', '-')}`, lines: fixture.lines },
+        ],
+        env: fixture.env,
+      });
+
+      expect(harness.status, `${fixture.name} stderr:\n${harness.stderr}`).toBe(0);
+      expect(harness.log, fixture.name).toContain(
+        `Goobers delivery outcome: **${fixture.outcome}**.`,
+      );
+      expect(harness.log, fixture.name).toContain(`- Failure code: \`${fixture.failureCode}\``);
+    }
   });
 });
 
@@ -740,11 +856,10 @@ describe.skipIf(!hasJq)('goobers-run.yml journal text cannot own a comment line'
     });
 
     expect(harness.status, `stderr:\n${harness.stderr}`).toBe(0);
-    // The message text is still reported — this is sanitation, not redaction.
-    expect(harness.log).toContain('build broke');
-    expect(harness.log).toContain('crawler-goobers-reservation-disposed:v1');
-    // ...but never as a line of its own, which is the only form the lease
-    // grammar accepts. Trimmed exactly as the lease library trims.
+    // The message text is retained in the uploaded journal artifact, but is
+    // deliberately absent from the compact terminal issue comment.
+    expect(harness.log).not.toContain('build broke');
+    expect(harness.log).not.toContain('crawler-goobers-reservation-disposed:v1');
     const marker = '<!-- crawler-goobers-reservation-disposed:v1 run-id=999 attempt=1 issue=42 -->';
     const ownsALine = harness.log
       .split('\n')

@@ -384,4 +384,4 @@ spec:
           equals: 'true'
       branches:
         pass: close-out
-        fail: close-out
+        fail: needs-remediation
