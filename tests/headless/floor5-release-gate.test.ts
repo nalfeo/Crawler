@@ -101,6 +101,8 @@ describe('Floor 5 release gate headless telemetry', () => {
     expect(victoryFrames.length).toBeGreaterThan(0);
     expect(median(victoryFrames)).toBeLessThanOrEqual(gate.maxMedianDurationFrames);
     expect(p95(victoryFrames)).toBeLessThanOrEqual(gate.maxP95DurationFrames);
+    // The representative cohort has no cap contention; authored release frames are exact.
+    expect(gate.maxReleaseDelayFrames).toBe(0);
 
     for (const { seed, stats } of runs) {
       const siege = stats.floor5Siege;
@@ -108,28 +110,6 @@ describe('Floor 5 release gate headless telemetry', () => {
       if (!siege) continue;
       expect(siege.releaseGate.terminalIntegrity.terminal).toBe(true);
       expect(siege.releaseGate.terminalIntegrity.terminalOutcomeCount).toBe(1);
-      if (stats.outcome !== 'victory') {
-        expect(siege.releaseGate.terminalIntegrity.capturedCount).toBe(0);
-        expect(siege.releaseGate.terminalIntegrity.defeatCount).toBe(1);
-        continue;
-      }
-      const frameBudget = siege.releaseGate.frameBudget;
-      if (frameBudget === null) throw new Error(`seed ${seed} missing Floor 5 frame budget`);
-      expect(stats.totalFrames, `seed ${seed} stayed under the frame budget`).toBeLessThanOrEqual(
-        frameBudget,
-      );
-      expect(siege.releaseGate.terminalIntegrity).toEqual({
-        terminal: true,
-        terminalOutcomeCount: 1,
-        capturedCount: 1,
-        defeatCount: 0,
-      });
-      expect(siege.releaseGate.commandPostHealthPct).toBeGreaterThanOrEqual(
-        gate.minimumCommandPostHealthPct,
-      );
-      expect(siege.releaseGate.liveHostilesOnTerminal).toBeLessThanOrEqual(
-        gate.maxLiveHostilesOnTerminal,
-      );
       expect(siege.laneTelemetry.pathStalls).toBeLessThanOrEqual(gate.maxPathStalls);
       expect(siege.laneTelemetry.activeCap).toBe(4);
       for (const [team, peak] of Object.entries(siege.laneTelemetry.liveMinionPeak)) {
@@ -149,7 +129,7 @@ describe('Floor 5 release gate headless telemetry', () => {
         if (!accounting) continue;
         expect(accounting.physicalReleased + accounting.debtCleared).toBe(manifestEntry.count);
         expect(accounting.physicalReleased).toBeLessThanOrEqual(manifestEntry.count);
-        expect(accounting.maxReleaseDelayFrames).toBeLessThanOrEqual(gate.maxReleaseDelayFrames);
+        expect(accounting.maxReleaseDelayFrames).toBe(gate.maxReleaseDelayFrames);
         if (accounting.firstReleaseFrame !== null) {
           expect(accounting.firstReleaseFrame).toBeGreaterThanOrEqual(manifestEntry.releaseFrame);
         }
@@ -172,6 +152,28 @@ describe('Floor 5 release gate headless telemetry', () => {
         `seed ${seed} stayed under frame-cost budget`,
       ).toBeLessThanOrEqual(gate.maxFrameCostMs);
       expect(siege.releaseGate.stallBackstopFrames).toBe(gate.stallBackstopFrames);
+      if (stats.outcome !== 'victory') {
+        expect(siege.releaseGate.terminalIntegrity.capturedCount).toBe(0);
+        expect(siege.releaseGate.terminalIntegrity.defeatCount).toBe(1);
+        continue;
+      }
+      const frameBudget = siege.releaseGate.frameBudget;
+      if (frameBudget === null) throw new Error(`seed ${seed} missing Floor 5 frame budget`);
+      expect(stats.totalFrames, `seed ${seed} stayed under the frame budget`).toBeLessThanOrEqual(
+        frameBudget,
+      );
+      expect(siege.releaseGate.terminalIntegrity).toEqual({
+        terminal: true,
+        terminalOutcomeCount: 1,
+        capturedCount: 1,
+        defeatCount: 0,
+      });
+      expect(siege.releaseGate.commandPostHealthPct).toBeGreaterThanOrEqual(
+        gate.minimumCommandPostHealthPct,
+      );
+      expect(siege.releaseGate.liveHostilesOnTerminal).toBeLessThanOrEqual(
+        gate.maxLiveHostilesOnTerminal,
+      );
     }
   });
 
