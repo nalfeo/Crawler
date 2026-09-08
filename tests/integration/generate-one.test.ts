@@ -299,6 +299,14 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     expect(result.summary.variantCount).toBe(4);
     expect(existsSync(path.join(result.runDir, 'processed'))).toBe(false);
     expect(existsSync(path.join(result.runDir, 'raw'))).toBe(false);
+    expect(
+      existsSync(
+        path.join(root, 'public', 'assets', 'generated', 'entries', 'iron-sword-var-0.json'),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(root, 'public', 'assets', 'generated', 'iron-sword-var-0.png')),
+    ).toBe(false);
 
     // Identity + variation metadata is still captured for auditability.
     expect(typeof result.summary.runId).toBe('string');
@@ -336,7 +344,7 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     // later rejudge can replay the same references (see load-reference-pngs.ts).
     const selection = result.summary.referenceSprites;
     expect(selection).toBeTruthy();
-    expect(selection!.selectorVersion).toBe('v1');
+    expect(selection!.selectorVersion).toBe('v2');
     expect(selection!.requestedCount).toBe(3);
     expect(selection!.selected.length).toBe(3);
     // All eligible candidates were same-type (weapon), so the whole set is same-type.
@@ -461,6 +469,54 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
     expect(selectedNames).toContain(liked.spriteName);
     expect(selectedNames).not.toContain(disliked.spriteName);
+  });
+
+  it('uses manifest keys for stale dislike provenance when legacy sprite names collide', async () => {
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const first = {
+      ...refEntry({ briefId: 'legacy-alpha', type: 'weapon' }),
+      spriteName: 'legacy-collision',
+      sourceRun: 'generated/runs/legacy-alpha/run-1',
+      variantIndex: 1,
+    };
+    const second = {
+      ...refEntry({ briefId: 'legacy-beta', type: 'weapon' }),
+      spriteName: 'legacy-collision',
+      sourceRun: 'generated/runs/legacy-beta/run-2',
+      variantIndex: 2,
+    };
+    const liked = refEntry({ briefId: 'gamma-liked', type: 'weapon' });
+
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      repoRoot: root,
+      outputRoot,
+      now: fixedClock,
+      loadReferenceCandidates: () => ({
+        'legacy-alpha-var-1': first,
+        'legacy-beta-var-2': second,
+        [liked.spriteName]: liked,
+      }),
+      loadDislikedReferenceNames: () => new Set(['stale-legacy-key']),
+      loadPendingDislikedReferenceNames: () => new Set(),
+      loadDislikedReferenceAnnotations: () => ({
+        'stale-legacy-key': {
+          disliked: true,
+          sourceRun: first.sourceRun,
+          variantIndex: first.variantIndex,
+        },
+      }),
+      referenceAssetExists: () => true,
+      readReference: (absolutePath: string) => Buffer.from(absolutePath),
+    });
+
+    const selectedNames =
+      result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+    expect(selectedNames).toContain(liked.spriteName);
+    expect(selectedNames).not.toContain('legacy-collision');
   });
 
   it('excludes a queued-but-unpromoted disliked sprite via the pending annotation overlay', async () => {

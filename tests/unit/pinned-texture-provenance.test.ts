@@ -24,22 +24,21 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { TILE_SPRITES } from '../../src/engine/sprites/tile-visuals.js';
+import { getSprite } from '../../src/engine/sprites/registry.js';
 import { TerrainType } from '../../src/shared/map-types.js';
+import setPieces from '../../src/shared/data/set-pieces.json' with { type: 'json' };
 import substrate from '../../src/shared/data/set-piece-substrate.json' with { type: 'json' };
+import {
+  isRuntimeEligibleManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
 
 const ENTRIES_DIR = path.resolve('public/assets/generated/entries');
 
-interface ShardEntry {
-  readonly briefId: string;
-  readonly assetPath: string;
-  readonly contentHash?: string;
-  readonly sourceRun?: string;
-}
-
-function loadEntry(key: string): ShardEntry | undefined {
+function loadEntry(key: string): ManifestEntry | undefined {
   const file = path.join(ENTRIES_DIR, `${key}.json`);
   if (!existsSync(file)) return undefined;
-  return JSON.parse(readFileSync(file, 'utf8')) as ShardEntry;
+  return JSON.parse(readFileSync(file, 'utf8')) as ManifestEntry;
 }
 
 describe('pinned texture-key provenance', () => {
@@ -68,7 +67,12 @@ describe('pinned texture-key provenance', () => {
     for (const [terrain, def] of Object.entries(TILE_SPRITES)) {
       const key = def?.textureKey;
       if (key === undefined) continue;
-      expect(loadEntry(key), `terrain ${terrain} pins missing key "${key}"`).toBeDefined();
+      const entry = loadEntry(key);
+      expect(entry, `terrain ${terrain} pins missing key "${key}"`).toBeDefined();
+      expect(
+        isRuntimeEligibleManifestEntry(entry!),
+        `terrain ${terrain} pins runtime-ineligible key "${key}"`,
+      ).toBe(true);
     }
   });
 
@@ -79,6 +83,25 @@ describe('pinned texture-key provenance', () => {
       expect(/-v\d+(-var-\d+)?$/.test(key), `terrain ${terrain} pins versioned "${key}"`).toBe(
         false,
       );
+    }
+  });
+
+  it('every set-piece catalog layer resolves to static or runtime-eligible generated art', () => {
+    for (const setPiece of setPieces.setPieces) {
+      for (const prop of setPiece.props) {
+        for (const layer of prop.layers ?? []) {
+          if (layer.sprite.source !== 'catalog' || !('spriteId' in layer.sprite)) continue;
+          const key = layer.sprite.spriteId;
+          if (typeof key !== 'string') continue;
+          const generatedEntry = loadEntry(key);
+          expect(
+            getSprite(key) !== undefined ||
+              key.startsWith('sprite:') ||
+              (generatedEntry !== undefined && isRuntimeEligibleManifestEntry(generatedEntry)),
+            `set piece "${setPiece.id}" prop "${prop.id}" pins unresolved or runtime-ineligible key "${key}"`,
+          ).toBe(true);
+        }
+      }
     }
   });
 });

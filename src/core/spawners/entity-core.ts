@@ -27,6 +27,7 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
   }
   world.enemyAppearanceKeys.delete(eid);
   world.enemyProjectileArchetypeKeys.delete(eid);
+  world.entityWeaponAnchors.delete(eid);
   world.statusEffectsByEntity.delete(eid);
   world.attackWeaponSkillsByEntity.delete(eid);
   // Floor 3 Companion League (slice 5): drop any tracked combat-XP

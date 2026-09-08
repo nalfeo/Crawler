@@ -13833,9 +13833,9 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
+                "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 0.96,
+              "widthFt": 0.76,
               "heightFt": 0.96,
               "offsetXFt": -2,
               "offsetYFt": -1
@@ -13864,9 +13864,9 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
+                "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 1.44,
+              "widthFt": 1.14,
               "heightFt": 1.44,
               "offsetXFt": -2.5,
               "offsetYFt": -1.5
@@ -14272,9 +14272,9 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
+                "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 1.8,
+              "widthFt": 1.43,
               "heightFt": 1.8,
               "offsetXFt": 1,
               "offsetYFt": -1
@@ -15717,9 +15717,9 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
+                "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 0.96,
+              "widthFt": 0.76,
               "heightFt": 0.96,
               "offsetXFt": -2,
               "offsetYFt": -1
@@ -15877,9 +15877,9 @@
             {
               "sprite": {
                 "source": "catalog",
-                "spriteId": "autograph-book-placeholder"
+                "spriteId": "welcome-room-call-sheet-var-3"
               },
-              "widthFt": 1.44,
+              "widthFt": 1.14,
               "heightFt": 1.44,
               "offsetXFt": -2.5,
               "offsetYFt": -1.5

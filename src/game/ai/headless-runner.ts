@@ -28,6 +28,8 @@ import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
+import type { GeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import { loadShippedGeneratedSpriteRegistry } from './shipped-sprite-registry.js';
 import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, denUnlockGoalId } from '../floor2Scenario.js';
 import { getFloor4ArenaRunStats } from '../floor4Scenario.js';
 import { getFloor5SiegeRunStats } from '../floor5Scenario.js';
@@ -354,6 +356,19 @@ function updateEquipmentSpendTelemetry(world: GameWorld, telemetry: EquipmentSpe
 export interface HeadlessRunnerConfig {
   /** Random seed for deterministic runs */
   seed: number;
+  /**
+   * Generated-sprite registry installed on the world.
+   *
+   * **Simulation-visible**: `enemyTelegraph` resolves per-entity weapon anchors
+   * through it, so a missing registry shifts enemy projectile origins back to
+   * the entity centre — drift the real game never has, because `MainGameScene`
+   * always installs the shipped registry.
+   *
+   * Omitted (the normal headless/sweep shape) loads the shipped registry from
+   * the committed shards; an explicit registry is used as-is; an explicit `null`
+   * is the deliberate no-registry override for tests.
+   */
+  generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Maximum frames to simulate (safety limit) */
   maxFrames?: number;
   /**
@@ -551,6 +566,7 @@ const DEFAULT_CONFIG: Required<
     | 'forceWeaponId'
     | 'forceAbilityIds'
     | 'onFinish'
+    | 'generatedSpriteRegistry'
     | 'floor2EquipmentFlags'
     | 'stopWhen'
     | 'playerPersona'
@@ -933,6 +949,14 @@ export async function runHeadless(
   );
   const startTime = Date.now();
 
+  // Fidelity with the real game: `MainGameScene` ALWAYS installs the preloaded
+  // generated-sprite registry, and that registry is simulation-visible through
+  // enemy weapon anchors. Only an explicit `null` keeps the no-registry path.
+  const generatedSpriteRegistry =
+    config.generatedSpriteRegistry === undefined
+      ? await loadShippedGeneratedSpriteRegistry()
+      : config.generatedSpriteRegistry;
+
   if (mergedConfig.debug) {
     logger.info('Starting headless run', { ...mergedConfig, ...featureFlags });
   }
@@ -943,6 +967,7 @@ export async function runHeadless(
   // lootBox + Floor 2 equipment) work identically in headless AI runs.
   const world = createGameWorld({
     seed: mergedConfig.seed,
+    generatedSpriteRegistry,
     generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(mergedConfig.seed),
   });
   world.runEvents = createRunEventCollector();

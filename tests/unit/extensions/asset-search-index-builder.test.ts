@@ -22,7 +22,7 @@ describe('asset-search index builder brief enrichment', () => {
   });
 
   it('falls back to top-level brief description when no item-level entry exists', () => {
-    const doc = buildCorpus().find((entry) => entry.label === 'cactusfolk-boss-var-1');
+    const doc = buildCorpus().find((entry) => entry.label === 'cactusfolk-boss-var-2');
     expect(doc).toBeDefined();
     expect(doc?.briefId).toBe('cactusfolk-boss');
     expect(doc?.briefText).toBe(loadBriefDescription('briefs/enemies/cactusfolk-boss.yaml'));

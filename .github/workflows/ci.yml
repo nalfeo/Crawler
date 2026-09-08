@@ -320,6 +320,18 @@ jobs:
         if: env.DOCS_ONLY != 'true'
         run: npm run check:manifest-hard-blocked
 
+      # Disliked-sprite lifecycle closure guard (hard zero-dangling gate): every
+      # HISTORICAL disliked-sprite tombstone must still be closed — shard gone,
+      # PNG gone, tombstone intact, and zero exact manifest-key/asset-path
+      # references left anywhere in the tree. This wraps the existing read-only
+      # `disliked-lifecycle-cli.ts --closure-only` check, which validates the
+      # persisted deletion ledger without requiring a mutation plan; it was not a CI/verify
+      # gate, so a dangling tombstone or a resurrected exact reference could
+      # land and stay undetected indefinitely.
+      - name: Disliked-sprite lifecycle closure guard
+        if: env.DOCS_ONLY != 'true'
+        run: npm run check:disliked-lifecycle-closure
+
       - name: Lab gate check
         if: env.DOCS_ONLY != 'true'
         run: bash scripts/agent/lab-gate-check.sh
@@ -597,7 +609,9 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 6-minute active-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
+  # Scoped: skipped on docs_only and on PRs where sim_touched=false. Generated
+  # manifest shards are art-only but simulation-visible through weapon anchors,
+  # so art_only must not independently suppress this job.
   # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
   #
   # This is the BLOCKING leg of the PR sweep tier (see scripts/agent/perf/sweep-legs.ts).
@@ -607,7 +621,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: >-
-      needs.changes.outputs.art_only != 'true' &&
       needs.changes.outputs.docs_only != 'true' &&
       (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
     steps:

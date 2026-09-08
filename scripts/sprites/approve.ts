@@ -394,6 +394,29 @@ export interface ApproveVariantOptions {
 }
 
 /**
+ * Project the judge scorecard that gets PERSISTED on an approved manifest entry.
+ *
+ * When a human consciously overrides a hard-block, the stored `hardBlocked`
+ * flag is cleared to `false` and `humanHardBlockOverride: true` records the
+ * conscious decision. Without the clear, `npm run check:manifest-hard-blocked`
+ * (the CI invariant) rejects the very entry the operator just authorized, so a
+ * legitimate `--allow-hard-blocked` approval would ship an instantly-red repo.
+ *
+ * Shared by `approveVariant` AND `approveIconBatch` so the two acceptance
+ * paths can never diverge on what an override durably means.
+ */
+export function resolveApprovedJudgeScorecard(
+  scorecard: NonNullable<ManifestEntry['judgeScorecard']> | null | undefined,
+  allowHardBlocked: boolean,
+): ManifestEntry['judgeScorecard'] {
+  const resolved = scorecard ?? null;
+  if (resolved && allowHardBlocked && resolved.hardBlocked === true) {
+    return { ...resolved, hardBlocked: false, humanHardBlockOverride: true };
+  }
+  return resolved;
+}
+
+/**
  * Approve one variant of one run. Pure given (`now`, `fs`).
  *
  * Steps:
@@ -604,17 +627,10 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     sensorScore,
     judgeScore,
     sensorBreakdown: candidate.breakdown,
-    judgeScorecard: (() => {
-      const sc = candidate.judgeScorecard ?? null;
-      // When a human consciously overrides a hard-block, clear the hardBlocked
-      // flag so the CI invariant (check-manifest-hard-blocked) doesn't reject
-      // the entry. Persist humanHardBlockOverride as durable evidence of the
-      // conscious override decision.
-      if (sc && options.allowHardBlocked && sc.hardBlocked === true) {
-        return { ...sc, hardBlocked: false, humanHardBlockOverride: true };
-      }
-      return sc;
-    })(),
+    judgeScorecard: resolveApprovedJudgeScorecard(
+      candidate.judgeScorecard ?? null,
+      options.allowHardBlocked === true,
+    ),
     type,
     contentHash,
     ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
@@ -952,6 +968,31 @@ export function loadApprovedFrameSequenceEntry(options: {
   const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
   const briefId = canonicalBriefId(summary.brief, summaryPath);
   return readManifestEntry(fs, options.manifestPath, briefId);
+}
+
+/**
+ * Frame-sequence counterpart to {@link resolveVariantIdentity}: the manifest
+ * key + asset path an `approveFrameSequence` run WOULD claim, resolved without
+ * mutating anything and without duplicating any of the approval gates.
+ *
+ * `approveFrameSequence` keys a walk cycle by the bare canonical brief id and
+ * packs its strip to `generated/<briefId>.png`; this reads the SAME
+ * `summary.json` through the SAME `canonicalBriefId`, so the two cannot drift.
+ * Deliberately does NOT run the frame/coherence gates — those stay inside
+ * `approveFrameSequence`, which still refuses (and, inside the disliked-asset
+ * lifecycle transaction, rolls back) when the sequence is unapprovable.
+ */
+export function resolveFrameSequenceIdentity(
+  runDir: string,
+  fs: ApproveFs = DEFAULT_FS,
+): Pick<VariantIdentity, 'briefId' | 'variantId' | 'assetPath'> {
+  const summaryPath = path.join(runDir, 'summary.json');
+  if (!fs.existsSync(summaryPath)) {
+    throw new ApproveError('run-not-found', `Run directory has no summary.json: ${runDir}`);
+  }
+  const summary = parseSummary(fs.readFileSync(summaryPath, 'utf8'), summaryPath);
+  const briefId = canonicalBriefId(summary.brief, summaryPath);
+  return { briefId, variantId: briefId, assetPath: `generated/${briefId}.png` };
 }
 
 function resolveFacingDirection(summary: RunSummaryShape, variantIndex: number): 'left' | 'right' {
@@ -1298,7 +1339,10 @@ export interface ApproveIconBatchOptions {
    * When `true`, cells with `judgeScorecard.hardBlocked === true` are approved
    * despite the judge veto. Defaults to `false` (fail-closed).
    * Reserved for conscious human overrides; automated batch runs must not set
-   * this flag.
+   * this flag. Mirrors `approveVariant`: the persisted scorecard has
+   * `hardBlocked` cleared and `humanHardBlockOverride` set (see
+   * {@link resolveApprovedJudgeScorecard}) so the override does not immediately
+   * fail `npm run check:manifest-hard-blocked`.
    */
   readonly allowHardBlocked?: boolean;
 }
@@ -1443,7 +1487,10 @@ export function approveIconBatch(options: ApproveIconBatchOptions): ManifestEntr
       sensorScore,
       judgeScore,
       sensorBreakdown: candidate?.breakdown,
-      judgeScorecard: candidate?.judgeScorecard ?? null,
+      judgeScorecard: resolveApprovedJudgeScorecard(
+        candidate?.judgeScorecard ?? null,
+        options.allowHardBlocked === true,
+      ),
       type,
       contentHash,
       ...(opaqueBounds !== undefined ? { opaqueBounds } : {}),
@@ -1564,18 +1611,23 @@ export function unapproveVariant(options: UnapproveVariantOptions): ManifestEntr
       `Shard ${shardPath} is not parseable: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  // Resolve and validate the PNG before removing the shard. A malformed
+  // assetPath must leave both files untouched.
+  const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
+  const assetAbsPath = path.join(options.publicAssetsDir, ...entry.assetPath.split('/'));
+  if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
+    throw new UnapproveError(
+      'manifest-invalid',
+      `Variant "${options.variantId}" has unsafe assetPath "${entry.assetPath}".`,
+    );
+  }
+
   fs.unlinkSync(shardPath);
 
-  // 3. Delete the on-disk PNG when requested.
+  // 3. Delete the on-disk PNG when requested. The manifest assetPath is the
+  // authority: approved equipment and future nested assets do not necessarily
+  // live at generated/<variantId>.png.
   if (deleteAsset) {
-    const assetGeneratedDir = path.join(options.publicAssetsDir, 'generated');
-    const assetAbsPath = path.join(assetGeneratedDir, `${options.variantId}.png`);
-    // Safety guard: ensure the resolved path stays inside generated/ to prevent
-    // a variantId like `../../etc/passwd` from traversing outside the tree.
-    if (!path.resolve(assetAbsPath).startsWith(path.resolve(assetGeneratedDir) + path.sep)) {
-      // Skip deletion — the shard was already removed above.
-      return entry;
-    }
     if (fs.existsSync(assetAbsPath)) {
       fs.unlinkSync(assetAbsPath);
     }

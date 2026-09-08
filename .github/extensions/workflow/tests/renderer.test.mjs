@@ -156,6 +156,7 @@ test('the client script exposes token-gated accept and visible queue states', ()
   assert.match(html, /Accepting & queueing…/);
   assert.match(html, /Already queued/);
   assert.match(html, /Open asset issue/);
+  assert.match(html, /acceptance\.queueBranch \|\| 'assets\/queue'/);
   // Any accepted/staged/integrated/unverified variant exposes "Re-accept"
   // (force-retries the same idempotent sidecar acceptance path) rather than
   // the old ephemeral-acceptance-driven "Retry accept & queue" label.

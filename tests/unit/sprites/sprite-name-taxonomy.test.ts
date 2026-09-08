@@ -85,6 +85,10 @@ describe('splitVariantKey', () => {
     expect(splitVariantKey('rat-placeholder')).toBeNull();
     expect(splitVariantKey('equipment/weapon/bone-saw')).toBeNull();
   });
+
+  it('returns null for a nested key even when it has a variant suffix', () => {
+    expect(splitVariantKey('equipment/weapon/bone-saw-v1-var-0')).toBeNull();
+  });
 });
 
 describe('isPlaceholder', () => {

@@ -73,7 +73,7 @@ describe('resolveManifestEntryType', () => {
   it('resolves via catalog concept when a single type is unambiguous', () => {
     const entry = manifestEntry({
       briefId: 'baseball-bat',
-      spriteName: 'baseball-bat-var-6',
+      spriteName: 'baseball-bat-var-0',
     });
     const res = resolveManifestEntryType(
       entry,
