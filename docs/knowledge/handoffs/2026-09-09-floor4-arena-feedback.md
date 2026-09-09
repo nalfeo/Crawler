@@ -6,7 +6,7 @@ floor4-arena
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual (exact). The existing arena, Headliner, and Green
+3🍎 estimated, 4🍎 actual (underestimated by one). The existing arena, Headliner, and Green
 Room transition contracts were validated and the missing authoritative shop
 purchase path was added without changing combat balance or phase timing.
 
@@ -30,6 +30,8 @@ against existing telemetry before the remaining shop gap was implemented.
   decrementing stock, adding the catalog item, and charging gold.
 - Added purchase-count state and deterministic regression coverage for a
   successful purchase and an inactive-visit rejection.
+- Added bootstrap-level stock, wallet, and vendor-telemetry coverage, plus
+  authored arena-to-Green-Room traversal coverage.
 - Scoped table-qualified purchases to the selected sponsor table, including
   the duplicate-item regression and malformed offer-id rejection.
 - Made the Green Room shop optional and once-per-visit for human input;
@@ -63,6 +65,7 @@ owns barrier lifecycle; no headless-only mutation was added.
 
 - `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts`
 - `npx vitest run tests/unit/floor4-green-room-stock.test.ts tests/unit/floor4-arena-director.test.ts tests/unit/floor4-arena-map.test.ts`
+- `npx vitest run --project unit tests/unit/floor4-green-room-stock.test.ts tests/unit/floor4-arena-director.test.ts tests/unit/floor4-arena-map.test.ts`
 - `npx vitest run --project e2e-game tests/e2e/floor4-main-scene-spawning.deterministic.test.ts tests/e2e/floor4-ai-completion.deterministic.test.ts`
 - `npm run typecheck`
 - `git diff --check`
