@@ -40,9 +40,9 @@ describe('combatFloaterStyle', () => {
     expect(style.fontSize).toBe('16px');
   });
 
-  it('rounds death-event amounts (maxHp from an f32 store)', () => {
+  it('suppresses death events from damage-number floaters', () => {
     const style = combatFloaterStyle(hit({ type: 'death', amount: 30.000001 }));
-    expect(style.label).toBe('-30');
+    expect(style.label).toBe('');
   });
 
   it('leaves non-numeric indicators untouched', () => {
