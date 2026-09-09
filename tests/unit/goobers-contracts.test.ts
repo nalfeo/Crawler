@@ -598,6 +598,23 @@ describe('crawler.goobers.attempt-telemetry/v1', () => {
     ).toBe(false);
   });
 
+  it('fails closed on an unversioned attempt record', () => {
+    expect(
+      isAttemptTelemetryValid({
+        attemptLineageKey: 'issue-1234:run-1:attempt-1',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        terminalOutcome: 'pr-opened',
+        promptBytes: 1,
+        contextArtifactBytes: 1,
+        modelInputTokens: 1,
+        modelOutputTokens: 1,
+        compactionCount: 0,
+      }),
+    ).toBe(false);
+  });
+
   it('forces explicit unavailableReason whenever a telemetry field is null', () => {
     expect(
       isAttemptTelemetryValid({

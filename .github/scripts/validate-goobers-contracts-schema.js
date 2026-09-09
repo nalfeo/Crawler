@@ -306,7 +306,17 @@ export const attemptTelemetryV1 = {
   description:
     'Per-attempt journal telemetry for a Goobers feature-PR attempt, including lineage, stage timings, privacy-safe context footprint, and normalized terminal outcome.',
   type: 'object',
-  required: ['attemptLineageKey', 'issueNumber', 'terminalOutcome', 'stageDurations', 'totalElapsedMs'],
+  // `contractVersion` is required exactly as it is on the invocation, output,
+  // and run-artifact contracts: a versioned /v1 record that accepts an
+  // unversioned payload cannot fail closed on an unknown future version.
+  required: [
+    'contractVersion',
+    'attemptLineageKey',
+    'issueNumber',
+    'terminalOutcome',
+    'stageDurations',
+    'totalElapsedMs',
+  ],
   properties: {
     contractVersion: {
       type: 'string',
@@ -323,7 +333,8 @@ export const attemptTelemetryV1 = {
     issueNumber: {
       type: 'string',
       pattern: '^[0-9]+$',
-      description: 'Issue number as a numeric string so the record stays compatible with GH Actions inputs.',
+      description:
+        'Issue number as a numeric string so the record stays compatible with GH Actions inputs.',
     },
     runId: {
       type: 'string',
@@ -372,7 +383,8 @@ export const attemptTelemetryV1 = {
     contextArtifactBytes: {
       type: ['number', 'null'],
       minimum: 0,
-      description: 'Supplied context-artifact bytes, or null when unavailable with an explicit reason.',
+      description:
+        'Supplied context-artifact bytes, or null when unavailable with an explicit reason.',
     },
     modelInputTokens: {
       type: ['number', 'null'],
@@ -391,12 +403,14 @@ export const attemptTelemetryV1 = {
     },
     unavailableReason: {
       type: ['string', 'null'],
-      description: 'Explicit reason for any null telemetry field; required when a field is absent or null.',
+      description:
+        'Explicit reason for any null telemetry field; required when a field is absent or null.',
     },
     terminalOutcome: {
       type: 'string',
       enum: ['pr-opened', 'issue-completed', 'blocked', 'timeout', 'no-work', 'aborted'],
-      description: 'Normalized terminal outcome for the issue attempt. Future states can be added via the extension policy.',
+      description:
+        'Normalized terminal outcome for the issue attempt. Future states can be added via the extension policy.',
     },
     outcomeReason: {
       type: 'string',
@@ -405,7 +419,8 @@ export const attemptTelemetryV1 = {
     },
     stageTrace: {
       type: 'array',
-      description: 'Optional ordered stage names for auditability; never stores prompt text or credentials.',
+      description:
+        'Optional ordered stage names for auditability; never stores prompt text or credentials.',
       items: {
         type: 'string',
         minLength: 1,
@@ -440,7 +455,8 @@ export const runArtifactV1 = {
     },
     cohortSummary: {
       type: ['object', 'null'],
-      description: 'Optional matched-cohort summary for comparison against canonical-context behavior.',
+      description:
+        'Optional matched-cohort summary for comparison against canonical-context behavior.',
     },
   },
   definitions: {
@@ -455,7 +471,15 @@ export const cohortSummaryV1 = {
   description:
     'Aggregate entry for comparing baseline and canonical-context cohorts on delivery success, elapsed time, repasses, and context bytes.',
   type: 'object',
-  required: ['cohort', 'issueCount', 'deliverySuccessRate', 'averageElapsedMs', 'averageRepasses', 'averageContextArtifactBytes'],
+  required: [
+    'contractVersion',
+    'cohort',
+    'issueCount',
+    'deliverySuccessRate',
+    'averageElapsedMs',
+    'averageRepasses',
+    'averageContextArtifactBytes',
+  ],
   properties: {
     contractVersion: {
       type: 'string',

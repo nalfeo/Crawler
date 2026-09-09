@@ -190,9 +190,7 @@ export function attemptTelemetrySemanticErrors(payload) {
     errors.push('issueNumber must be a numeric string');
   }
   if (typeof terminalOutcome !== 'string' || !ALLOWED_TERMINAL_OUTCOMES.has(terminalOutcome)) {
-    errors.push(
-      `terminalOutcome must be one of ${[...ALLOWED_TERMINAL_OUTCOMES].join(', ')}`,
-    );
+    errors.push(`terminalOutcome must be one of ${[...ALLOWED_TERMINAL_OUTCOMES].join(', ')}`);
   }
   if (
     payload?.stageDurations !== undefined &&
@@ -220,8 +218,15 @@ export function attemptTelemetrySemanticErrors(payload) {
     }
   }
 
-  const isMetricUnavailable = (field) => payload?.[field] === null || payload?.[field] === undefined;
-  const metricFields = ['promptBytes', 'contextArtifactBytes', 'modelInputTokens', 'modelOutputTokens', 'compactionCount'];
+  const isMetricUnavailable = (field) =>
+    payload?.[field] === null || payload?.[field] === undefined;
+  const metricFields = [
+    'promptBytes',
+    'contextArtifactBytes',
+    'modelInputTokens',
+    'modelOutputTokens',
+    'compactionCount',
+  ];
   const unavailableMetricFields = metricFields.filter(isMetricUnavailable);
   if (unavailableMetricFields.length > 0) {
     const reason = String(unavailableReason ?? '').trim();
@@ -255,7 +260,12 @@ export function cohortSummarySemanticErrors(payload) {
   if (!Number.isInteger(payload?.issueCount) || Number(payload.issueCount) < 0) {
     errors.push('issueCount must be a non-negative integer');
   }
-  for (const field of ['deliverySuccessRate', 'averageElapsedMs', 'averageRepasses', 'averageContextArtifactBytes']) {
+  for (const field of [
+    'deliverySuccessRate',
+    'averageElapsedMs',
+    'averageRepasses',
+    'averageContextArtifactBytes',
+  ]) {
     const value = Number(payload?.[field]);
     if (!Number.isFinite(value) || value < 0) {
       errors.push(`${field} must be a non-negative finite number`);
@@ -268,7 +278,11 @@ export function cohortSummarySemanticErrors(payload) {
   ) {
     errors.push('deliverySuccessRate must be between 0 and 1 inclusive');
   }
-  if (payload?.comparison !== undefined && payload?.comparison !== null && !['improved', 'preserved', 'regressed', 'inconclusive'].includes(payload.comparison)) {
+  if (
+    payload?.comparison !== undefined &&
+    payload?.comparison !== null &&
+    !['improved', 'preserved', 'regressed', 'inconclusive'].includes(payload.comparison)
+  ) {
     errors.push("comparison must be 'improved', 'preserved', 'regressed', or 'inconclusive'");
   }
   return errors;
@@ -859,6 +873,142 @@ function validateSummaryFixtures(fixtures) {
   });
 }
 
+function attemptTelemetryFixtures() {
+  const baseline = {
+    contractVersion: 'v1',
+    attemptLineageKey: 'issue-4443:run-a82b1983:attempt-1',
+    issueNumber: '4443',
+    runId: 'a82b1983',
+    attemptNumber: 1,
+    retryCount: 0,
+    repassCount: 0,
+    parentAttemptLineageKey: null,
+    stageDurations: { 'query-backlog': 1200, implement: 42000, 'open-pr': 3100 },
+    totalElapsedMs: 46300,
+    promptBytes: 24000,
+    contextArtifactBytes: 18000,
+    modelInputTokens: 9000,
+    modelOutputTokens: 2400,
+    compactionCount: 0,
+    terminalOutcome: 'pr-opened',
+    outcomeReason: 'Run completed after opening a feature PR.',
+    stageTrace: ['query-backlog', 'implement', 'open-pr'],
+  };
+  return [
+    {
+      name: 'attempt telemetry: lineage-linked pr-opened attempt',
+      shouldPass: true,
+      payload: baseline,
+    },
+    {
+      name: 'attempt telemetry: journal-less attempt with an explicit unavailable reason',
+      shouldPass: true,
+      payload: {
+        ...baseline,
+        runId: 'no-journal-attempt-2',
+        attemptNumber: 2,
+        retryCount: 1,
+        parentAttemptLineageKey: 'issue-4443:run-a82b1983:attempt-1',
+        stageDurations: {},
+        totalElapsedMs: 0,
+        promptBytes: null,
+        contextArtifactBytes: null,
+        modelInputTokens: null,
+        modelOutputTokens: null,
+        compactionCount: null,
+        unavailableReason:
+          'Slot produced no run journal, so no context or model usage could be measured.',
+        terminalOutcome: 'aborted',
+        stageTrace: [],
+      },
+    },
+    {
+      name: 'attempt telemetry: unversioned payload is rejected',
+      shouldPass: false,
+      payload: (() => {
+        const { contractVersion, ...rest } = baseline;
+        void contractVersion;
+        return rest;
+      })(),
+    },
+    {
+      name: 'attempt telemetry: null metric without a reason is rejected',
+      shouldPass: false,
+      payload: { ...baseline, promptBytes: null },
+    },
+    {
+      name: 'attempt telemetry: unknown terminal outcome is rejected',
+      shouldPass: false,
+      payload: { ...baseline, terminalOutcome: 'mostly-done' },
+    },
+  ];
+}
+
+function cohortSummaryFixtures() {
+  const baseline = {
+    contractVersion: 'v1',
+    cohort: 'canonical-context',
+    issueCount: 12,
+    deliverySuccessRate: 0.92,
+    averageElapsedMs: 814000,
+    averageRepasses: 0.25,
+    averageContextArtifactBytes: 64000,
+    comparison: 'preserved',
+  };
+  return [
+    {
+      name: 'cohort summary: matched canonical-context cohort',
+      shouldPass: true,
+      payload: baseline,
+    },
+    {
+      name: 'cohort summary: out-of-range delivery success rate is rejected',
+      shouldPass: false,
+      payload: { ...baseline, deliverySuccessRate: 1.2 },
+    },
+    {
+      name: 'cohort summary: unversioned payload is rejected',
+      shouldPass: false,
+      payload: (() => {
+        const { contractVersion, ...rest } = baseline;
+        void contractVersion;
+        return rest;
+      })(),
+    },
+  ];
+}
+
+function runArtifactFixtures() {
+  const attempt = attemptTelemetryFixtures()[0].payload;
+  const cohortSummary = cohortSummaryFixtures()[0].payload;
+  return [
+    {
+      name: 'run artifact: attempts plus a matched cohort summary',
+      shouldPass: true,
+      payload: {
+        contractVersion: 'v1',
+        issueNumber: '4443',
+        attempts: [attempt],
+        cohortSummary,
+      },
+    },
+    {
+      name: 'run artifact: an invalid nested attempt is rejected',
+      shouldPass: false,
+      payload: {
+        contractVersion: 'v1',
+        issueNumber: '4443',
+        attempts: [{ ...attempt, terminalOutcome: 'mostly-done' }],
+      },
+    },
+    {
+      name: 'run artifact: a non-numeric issue number is rejected',
+      shouldPass: false,
+      payload: { contractVersion: 'v1', issueNumber: 'issue-4443', attempts: [attempt] },
+    },
+  ];
+}
+
 /**
  * Main validation routine
  */
@@ -867,6 +1017,9 @@ async function main() {
   const ajv = new Ajv({ allErrors: true, strict: false });
   const validateInvocation = ajv.compile(invocationV1);
   const validateOutput = ajv.compile(outputV1);
+  const validateAttemptTelemetry = ajv.compile(attemptTelemetryV1);
+  const validateCohortSummary = ajv.compile(cohortSummaryV1);
+  const validateRunArtifact = ajv.compile(runArtifactV1);
 
   const workflowDir = path.join(repoRoot, '.github/workflows');
   let allPass = true;
@@ -912,12 +1065,30 @@ async function main() {
     invocationSemanticErrors,
   );
   const summaryResults = validateSummaryFixtures(summaryFixtures());
+  const attemptTelemetryResults = validateFixtures(
+    validateAttemptTelemetry,
+    attemptTelemetryFixtures(),
+    attemptTelemetrySemanticErrors,
+  );
+  const cohortSummaryResults = validateFixtures(
+    validateCohortSummary,
+    cohortSummaryFixtures(),
+    cohortSummarySemanticErrors,
+  );
+  const runArtifactResults = validateFixtures(
+    validateRunArtifact,
+    runArtifactFixtures(),
+    runArtifactSemanticErrors,
+  );
 
   for (const result of [
     ...invocationResults,
     ...outputResults,
     ...producerResults,
     ...summaryResults,
+    ...attemptTelemetryResults,
+    ...cohortSummaryResults,
+    ...runArtifactResults,
   ]) {
     if (result.status === 'pass') {
       console.log(`✅ fixture: ${result.name}`);
@@ -938,12 +1109,18 @@ async function main() {
     ...outputResults,
     ...producerResults,
     ...summaryResults,
+    ...attemptTelemetryResults,
+    ...cohortSummaryResults,
+    ...runArtifactResults,
   ].filter((r) => r.status === 'pass').length;
   const fixtureTotal =
     invocationResults.length +
     outputResults.length +
     producerResults.length +
-    summaryResults.length;
+    summaryResults.length +
+    attemptTelemetryResults.length +
+    cohortSummaryResults.length +
+    runArtifactResults.length;
 
   console.log(`Workflow schemas passed: ${passed}/${REQUIRED_WORKFLOWS.length}`);
   console.log(`Failed: ${failed}`);
