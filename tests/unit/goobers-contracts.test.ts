@@ -728,6 +728,23 @@ describe('crawler.goobers.run-artifact/v1', () => {
       }),
     ).toBe(true);
   });
+  it('rejects an unversioned nested cohort summary', () => {
+    expect(
+      isRunArtifactValid({
+        contractVersion: 'v1',
+        issueNumber: '1234',
+        attempts: [],
+        cohortSummary: {
+          cohort: 'baseline',
+          issueCount: 1,
+          deliverySuccessRate: 1,
+          averageElapsedMs: 8400,
+          averageRepasses: 0,
+          averageContextArtifactBytes: 24000,
+        },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('PR State Comment contract matches the runtime encoding', () => {

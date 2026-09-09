@@ -1002,6 +1002,20 @@ function runArtifactFixtures() {
       },
     },
     {
+      name: 'run artifact: an unversioned nested cohort summary is rejected',
+      shouldPass: false,
+      payload: {
+        contractVersion: 'v1',
+        issueNumber: '4443',
+        attempts: [attempt],
+        cohortSummary: (() => {
+          const { contractVersion, ...rest } = cohortSummary;
+          void contractVersion;
+          return rest;
+        })(),
+      },
+    },
+    {
       name: 'run artifact: a non-numeric issue number is rejected',
       shouldPass: false,
       payload: { contractVersion: 'v1', issueNumber: 'issue-4443', attempts: [attempt] },

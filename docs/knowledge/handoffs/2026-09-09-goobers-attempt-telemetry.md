@@ -28,6 +28,9 @@ Review follow-up (a contract nobody emits is not telemetry):
 - `goobers-run.yml` runs it between the diagnostics sentinel and the run-journal upload, so the uploaded artifact carries the telemetry. The step is `continue-on-error` because telemetry must never gate a lane that delivered.
 - `attemptTelemetryV1` and `cohortSummaryV1` now require `contractVersion`, matching the invocation/output/run-artifact contracts so an unversioned payload fails closed.
 - `node .github/scripts/validate-goobers-contracts.mjs` now compiles and fixture-tests the telemetry, cohort-summary, and run-artifact schemas alongside invocation/output, so "All contract validations pass" means all of them.
+- `runArtifactV1.cohortSummary` `$ref`s the cohort-summary contract instead of typing it as a bare object, so an unversioned nested cohort can no longer ride along inside a valid run artifact.
+- The producer only writes `attempt-telemetry.json` when the record passes its own contract; a violation writes `attempt-telemetry.invalid.txt` and annotates the run instead of publishing a non-conforming artifact.
+- Parent lineage keys are only set when the caller can prove them (a rerun mints a new Goobers run ID and resets `GITHUB_RUN_ATTEMPT`); `issue-<n>` remains the shared lineage root.
 
 ## Verification
 

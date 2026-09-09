@@ -274,15 +274,17 @@ export function terminalOutcomeFrom({ events, hasJournal, jobStatus }) {
  */
 export function buildAttemptTelemetry({
   events = [],
+  usageEvents = [],
   hasJournal = events.length > 0,
   issueNumber,
   runId = '',
   attemptNumber = 1,
   jobStatus = '',
   malformedCount = 0,
+  parentAttemptLineageKey = null,
 }) {
   const { durations, trace } = stageDurationsFrom(events);
-  const metrics = contextMetricsFrom(events);
+  const metrics = contextMetricsFrom([...events, ...usageEvents]);
   const { terminalOutcome, outcomeReason } = terminalOutcomeFrom({ events, hasJournal, jobStatus });
   const attempt = Math.max(1, Number(attemptNumber) || 1);
   const missingMetrics = METRIC_FIELDS.filter((field) => metrics[field] === null);
@@ -295,8 +297,12 @@ export function buildAttemptTelemetry({
     attemptNumber: attempt,
     retryCount: attempt - 1,
     repassCount: repassCountFrom(events),
-    parentAttemptLineageKey:
-      attempt > 1 ? attemptLineageKeyFor({ issueNumber, runId, attemptNumber: attempt - 1 }) : null,
+    // Only a lineage key the caller can actually PROVE, never a fabricated
+    // one: a rerun or a fresh recovery dispatch mints a new Goobers run ID
+    // (and resets GITHUB_RUN_ATTEMPT), so deriving the parent from this run's
+    // ID would point at an attempt that never existed. `issue-<n>` is the
+    // shared lineage root that links the attempts regardless.
+    parentAttemptLineageKey: parentAttemptLineageKey ? lineageToken(parentAttemptLineageKey) : null,
     stageDurations: durations,
     totalElapsedMs: totalElapsedMsFrom(events, durations),
     ...metrics,
@@ -307,7 +313,7 @@ export function buildAttemptTelemetry({
 
   if (missingMetrics.length > 0) {
     record.unavailableReason = hasJournal
-      ? `Goobers run journal reported no ${missingMetrics.join(', ')} usage for this attempt${
+      ? `Goobers run journal and usage sidecars reported no ${missingMetrics.join(', ')} for this attempt${
           malformedCount > 0 ? ` (${malformedCount} malformed journal line(s) ignored)` : ''
         }.`
       : 'Slot produced no run journal, so no context or model usage could be measured.';
@@ -361,6 +367,14 @@ export function validateRunArtifactPayload(payload) {
   }
   return errors;
 }
+
+/**
+ * Usage-bearing sidecar files a Goobers run can leave next to its journal.
+ * The journal is authoritative for stages and phases, but token/byte usage is
+ * emitted as span records by some runtime versions, so read both and let the
+ * metric merge decide.
+ */
+export const USAGE_SIDECAR_FILES = Object.freeze(['spans.jsonl', 'usage.jsonl']);
 
 /** Newest-last list of `events.jsonl` files under a slot instance root. */
 export function findJournalFiles(slotRoot, readdir = fs.readdirSync, exists = fs.existsSync) {
@@ -423,6 +437,7 @@ export function emitLaneTelemetry({
   attemptNumber = 1,
   jobStatus = '',
   log = () => {},
+  validate = validateRunArtifactPayload,
 }) {
   const emitted = [];
   const errors = [];
@@ -438,13 +453,21 @@ export function emitLaneTelemetry({
     const journalFiles = findJournalFiles(slotRoot);
     const attempts = [];
     for (const journalFile of journalFiles) {
+      const runDir = path.dirname(journalFile);
       const { events, malformedCount } = parseJournalLines(fs.readFileSync(journalFile, 'utf8'));
+      const usageEvents = [];
+      for (const sidecar of USAGE_SIDECAR_FILES) {
+        const sidecarPath = path.join(runDir, sidecar);
+        if (!fs.existsSync(sidecarPath)) continue;
+        usageEvents.push(...parseJournalLines(fs.readFileSync(sidecarPath, 'utf8')).events);
+      }
       attempts.push(
         buildAttemptTelemetry({
           events,
+          usageEvents,
           hasJournal: true,
           issueNumber,
-          runId: path.basename(path.dirname(journalFile)),
+          runId: path.basename(runDir),
           attemptNumber,
           jobStatus,
           malformedCount,
@@ -466,17 +489,25 @@ export function emitLaneTelemetry({
     }
 
     const payload = buildRunArtifact({ issueNumber, attempts });
-    const payloadErrors = validateRunArtifactPayload(payload);
+    const payloadErrors = validate(payload);
     const outputDir = path.join(slotRoot, 'diagnostics');
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, 'attempt-telemetry.json');
-    fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`);
-    emitted.push({ slot, issueNumber, outputPath, payload });
 
     if (payloadErrors.length > 0) {
+      // Fail closed: an artifact that violates its own contract is worse than
+      // no artifact, because a consumer would treat it as conforming. Record
+      // the violation next to the diagnostics sentinel instead.
+      fs.writeFileSync(
+        path.join(outputDir, 'attempt-telemetry.invalid.txt'),
+        `${payloadErrors.join('\n')}\n`,
+      );
       errors.push(`slot ${slot} (issue #${issueNumber}): ${payloadErrors.join('; ')}`);
       continue;
     }
+
+    fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`);
+    emitted.push({ slot, issueNumber, outputPath, payload });
     log(
       `Slot ${slot}: wrote ${outputPath} (issue #${issueNumber}, ${attempts.length} attempt(s), outcome ${attempts
         .map((entry) => entry.terminalOutcome)

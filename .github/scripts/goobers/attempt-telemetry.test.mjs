@@ -140,20 +140,35 @@ test('an attempt built from a real journal validates against its own contract', 
   );
 });
 
-test('a retry links to its parent attempt in the same lineage', () => {
-  const attempt = buildAttemptTelemetry({
+test('a retry only claims a parent lineage the caller can prove', () => {
+  const withoutParent = buildAttemptTelemetry({
     events: PR_RUN_EVENTS,
     issueNumber: '4443',
-    runId: 'a82b1983',
+    runId: 'b91c2094',
     attemptNumber: 3,
     jobStatus: 'success',
   });
-  assert.equal(attempt.attemptNumber, 3);
-  assert.equal(attempt.retryCount, 2);
-  assert.equal(
-    attempt.parentAttemptLineageKey,
-    attemptLineageKeyFor({ issueNumber: '4443', runId: 'a82b1983', attemptNumber: 2 }),
-  );
+  assert.equal(withoutParent.attemptNumber, 3);
+  assert.equal(withoutParent.retryCount, 2);
+  // A rerun mints a fresh Goobers run ID, so a parent derived from THIS run's
+  // ID would name an attempt that never existed.
+  assert.equal(withoutParent.parentAttemptLineageKey, null);
+
+  const withParent = buildAttemptTelemetry({
+    events: PR_RUN_EVENTS,
+    issueNumber: '4443',
+    runId: 'b91c2094',
+    attemptNumber: 2,
+    parentAttemptLineageKey: attemptLineageKeyFor({
+      issueNumber: '4443',
+      runId: 'a82b1983',
+      attemptNumber: 1,
+    }),
+  });
+  assert.equal(withParent.parentAttemptLineageKey, 'issue-4443:run-a82b1983:attempt-1');
+  // Both attempts share the `issue-<n>` lineage root that links them.
+  assert.ok(withParent.attemptLineageKey.startsWith('issue-4443:'));
+  assert.ok(withoutParent.attemptLineageKey.startsWith('issue-4443:'));
 });
 
 test('a journal-less attempt is still emitted, with an explicit unavailable reason', () => {
@@ -224,6 +239,67 @@ test('emitLaneTelemetry writes a validated record per assigned slot', () => {
     const serialized = JSON.stringify(withJournal);
     assert.ok(!serialized.includes('prompt:'));
     assert.ok(!/gh[pous]_[A-Za-z0-9]/.test(serialized));
+  } finally {
+    fs.rmSync(laneRoot, { recursive: true, force: true });
+  }
+});
+
+test('usage recorded in a spans sidecar is merged into the context metrics', () => {
+  const laneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'goobers-telemetry-spans-'));
+  try {
+    const runDir = path.join(laneRoot, 'slot-0', 'gaggles', 'crawler', 'runs', 'c31f');
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runDir, 'events.jsonl'),
+      `${journal(PR_RUN_EVENTS.filter((event) => !event.usage))}\n`,
+    );
+    fs.writeFileSync(
+      path.join(runDir, 'spans.jsonl'),
+      `${journal([{ name: 'implement', usage: { inputTokens: 5000, outputTokens: 1200 }, compactions: 2 }])}\n`,
+    );
+
+    const { emitted, errors } = emitLaneTelemetry({
+      laneRoot,
+      lane: 0,
+      slots: ['0'],
+      assignments: [{ lane: 0, slot: 0, issue: '4443' }],
+    });
+    assert.deepEqual(errors, []);
+    const attempt = emitted[0].payload.attempts[0];
+    assert.equal(attempt.modelInputTokens, 5000);
+    assert.equal(attempt.modelOutputTokens, 1200);
+    assert.equal(attempt.compactionCount, 2);
+    // Metrics the runtime never reported still demand an explicit reason.
+    assert.equal(attempt.promptBytes, null);
+    assert.match(attempt.unavailableReason, /promptBytes/);
+  } finally {
+    fs.rmSync(laneRoot, { recursive: true, force: true });
+  }
+});
+
+test('an invalid record is never written as a conforming artifact', () => {
+  const laneRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'goobers-telemetry-invalid-'));
+  try {
+    const runDir = path.join(laneRoot, 'slot-0', 'gaggles', 'crawler', 'runs', 'd4a2');
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'events.jsonl'), `${journal(PR_RUN_EVENTS)}\n`);
+
+    const { emitted, errors } = emitLaneTelemetry({
+      laneRoot,
+      lane: 0,
+      slots: ['0'],
+      assignments: [{ lane: 0, slot: 0, issue: '4443' }],
+      validate: () => ['issueNumber must be a numeric string'],
+    });
+
+    assert.equal(emitted.length, 0);
+    assert.equal(errors.length, 1);
+    const diagnostics = path.join(laneRoot, 'slot-0', 'diagnostics');
+    assert.equal(fs.existsSync(path.join(diagnostics, 'attempt-telemetry.json')), false);
+    assert.match(
+      fs.readFileSync(path.join(diagnostics, 'attempt-telemetry.invalid.txt'), 'utf8'),
+      /numeric string/,
+    );
   } finally {
     fs.rmSync(laneRoot, { recursive: true, force: true });
   }

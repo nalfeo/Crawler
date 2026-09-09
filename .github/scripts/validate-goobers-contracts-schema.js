@@ -431,40 +431,6 @@ export const attemptTelemetryV1 = {
 };
 
 export const runJournalAttemptV1 = attemptTelemetryV1;
-export const runArtifactV1 = {
-  $schema: 'http://json-schema.org/draft-07/schema#',
-  title: 'crawler.goobers.run-artifact/v1',
-  description:
-    'Run artifact for a Goobers feature-PR attempt cohort, bundling per-attempt telemetry and a matched-cohort summary.',
-  type: 'object',
-  required: ['contractVersion', 'issueNumber', 'attempts'],
-  properties: {
-    contractVersion: {
-      type: 'string',
-      enum: ['v1'],
-    },
-    issueNumber: {
-      type: 'string',
-      pattern: '^[0-9]+$',
-    },
-    attempts: {
-      type: 'array',
-      items: {
-        $ref: '#/definitions/attemptTelemetry',
-      },
-    },
-    cohortSummary: {
-      type: ['object', 'null'],
-      description:
-        'Optional matched-cohort summary for comparison against canonical-context behavior.',
-    },
-  },
-  definitions: {
-    attemptTelemetry: attemptTelemetryV1,
-  },
-  additionalProperties: false,
-};
-
 export const cohortSummaryV1 = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'crawler.goobers.cohort-summary/v1',
@@ -516,6 +482,45 @@ export const cohortSummaryV1 = {
       enum: ['improved', 'preserved', 'regressed', 'inconclusive', null],
       description: 'Optional comparison to the matched baseline or canonical-context cohort.',
     },
+  },
+  additionalProperties: false,
+};
+
+export const runArtifactV1 = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  title: 'crawler.goobers.run-artifact/v1',
+  description:
+    'Run artifact for a Goobers feature-PR attempt cohort, bundling per-attempt telemetry and a matched-cohort summary.',
+  type: 'object',
+  required: ['contractVersion', 'issueNumber', 'attempts'],
+  properties: {
+    contractVersion: {
+      type: 'string',
+      enum: ['v1'],
+    },
+    issueNumber: {
+      type: 'string',
+      pattern: '^[0-9]+$',
+    },
+    attempts: {
+      type: 'array',
+      items: {
+        $ref: '#/definitions/attemptTelemetry',
+      },
+    },
+    cohortSummary: {
+      // A nested cohort summary is the SAME contract as the standalone one:
+      // referencing it (rather than typing it as a bare object) is what stops
+      // an unversioned or malformed cohort from riding along inside an
+      // otherwise valid run artifact.
+      oneOf: [{ type: 'null' }, { $ref: '#/definitions/cohortSummary' }],
+      description:
+        'Optional matched-cohort summary for comparison against canonical-context behavior.',
+    },
+  },
+  definitions: {
+    attemptTelemetry: attemptTelemetryV1,
+    cohortSummary: cohortSummaryV1,
   },
   additionalProperties: false,
 };
