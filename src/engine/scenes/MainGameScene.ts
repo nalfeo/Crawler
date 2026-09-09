@@ -5651,7 +5651,10 @@ export class MainGameScene extends Phaser.Scene {
       kills: this.floorKills,
       level: this.world.playerLevel?.level ?? 0,
       xpGained: (this.world.playerLevel?.xp ?? 0) - this.runStartXp,
-      goldEarned: goldLedger.earnedFromDrops + goldLedger.earnedFromLootBoxes,
+      goldEarned:
+        goldLedger.earnedFromDrops +
+        goldLedger.earnedFromLootBoxes +
+        goldLedger.earnedFromAppearanceFees,
       goldHeld: this.world.playerGold,
       currentHealth: this.world.stores.health.current[this.playerEid] ?? 0,
       maxHealth: this.world.stores.health.max[this.playerEid] ?? 0,
