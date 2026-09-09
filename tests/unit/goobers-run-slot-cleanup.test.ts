@@ -227,6 +227,8 @@ function slotAssignments(
     cohort?: string;
     resumePr?: string;
     resumeBranch?: string;
+    resumeCheckpointSha?: string;
+    resumeFailure?: string;
   }>,
 ): string {
   return JSON.stringify(
@@ -237,6 +239,8 @@ function slotAssignments(
       cohort: entry.cohort ?? 'approved',
       resumePr: entry.resumePr ?? '',
       resumeBranch: entry.resumeBranch ?? '',
+      resumeCheckpointSha: entry.resumeCheckpointSha ?? '',
+      resumeFailure: entry.resumeFailure ?? '',
     })),
   );
 }
@@ -292,7 +296,7 @@ function runStep(stepName: string, options: RunStepOptions = {}): Harness {
       GITHUB_SHA: 'deadbeef',
       GITHUB_SERVER_URL: 'https://github.com',
       GH_PR_VIEW_RESPONSE:
-        '{"state":"OPEN","headRefName":"goobers/crawler/test","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
+        '{"state":"OPEN","headRefName":"goobers/crawler/test","headRefOid":"1234567890abcdef1234567890abcdef12345678","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
       ARTIFACT_NAME: 'goobers-journal-artifact',
       RUN_JOURNAL_ARTIFACT_ID: '12345',
       // The lane job as a whole failed (slot 2's run died); the per-run
@@ -469,7 +473,7 @@ describe.skipIf(!hasJq)('goobers-run.yml per-slot lifecycle cleanup', () => {
         env: {
           GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([{ slot: 1, issue: '42', resumePr: '5001' }]),
           GH_PR_VIEW_RESPONSE:
-            '{"state":"CLOSED","headRefName":"goobers/crawler/test","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
+            '{"state":"CLOSED","headRefName":"goobers/crawler/test","headRefOid":"1234567890abcdef1234567890abcdef12345678","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}',
         },
       },
       {
@@ -1125,13 +1129,7 @@ describe.skipIf(!hasJq)('goobers-run.yml slot concurrency', () => {
         RUNNER_TEMP: toBashScriptPath(workdir),
         ...jobBudgetEnv({
           GOOBERS_SLOT_ASSIGNMENTS: slotAssignments([
-            {
-              slot: 1,
-              issue: '42',
-              cohort: 'resume',
-              resumePr: '7',
-              resumeBranch: 'goobers/crawler/x',
-            },
+            { slot: 1, issue: '42' },
             { slot: 2, issue: '43' },
           ]),
         }),
@@ -1957,7 +1955,7 @@ gh() {
       fi
       ;;
     "pr view"*)
-      printf '{"state":"OPEN","headRefName":"goobers/crawler/resume","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}\\n'
+      printf '{"state":"OPEN","headRefName":"goobers/crawler/resume","headRefOid":"1234567890abcdef1234567890abcdef12345678","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}\\n'
       ;;
     "search issues"*)
       # MUST precede the issue-view case below: the search now requests
@@ -2373,7 +2371,7 @@ gh() {
       fi
       ;;
     *'pr view 900'*)
-      printf '%s\\n' '{"state":"OPEN","headRefName":"goobers/crawler/42","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}'
+      printf '%s\\n' '{"state":"OPEN","headRefName":"goobers/crawler/42","headRefOid":"1234567890abcdef1234567890abcdef12345678","headRepository":{"nameWithOwner":"nalfeo/Crawler"}}'
       ;;
   esac
   if [[ "$*" == *" --input -"* ]]; then

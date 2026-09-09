@@ -15,7 +15,7 @@ import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
-import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { AI_TYPE, enemyAISystem } from '../../src/game/enemyAISystem.js';
 import {
   companionAISystem,
   getCompanionAIDecision,
@@ -369,5 +369,37 @@ describe('companionCombatSystem', () => {
     floor3WildTargetRedirectSystem(world);
 
     expect(getCompanionAIDecision(world, trash)?.targetEid).toBe(companion);
+  });
+
+  it('keeps a hostile wild targeting the player when the party companion is off-screen', () => {
+    const world = createTestWorld({ floor: 3 });
+    world.floorId = 'floor3';
+    const player = spawnPlayer(world, 0, 0);
+    const companion = spawnBehaviorEnemy(world, 100, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, companion, set(Team, { id: TeamId.PLAYER }));
+    addComponent(
+      world.ecs,
+      companion,
+      set(Companion, {
+        speciesToken: speciesTokenForId('ember-charger'),
+        form: 0,
+        level: 1,
+        xp: 0,
+        ownerTeam: TeamId.PLAYER,
+        knockedOut: 0,
+      }),
+    );
+    const wild = spawnBehaviorEnemy(world, 10, 0, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+    addComponent(world.ecs, wild, set(Team, { id: TeamId.ENEMY }));
+    world.stores.enemyBehavior.aggroedPermanently[wild] = 1;
+
+    companionAISystem(world);
+    floor3WildTargetRedirectSystem(world);
+    enemyAISystem(world);
+
+    expect(isEnemyHostileToPlayer(world, wild)).toBe(true);
+    expect(getCompanionAIDecision(world, wild)).toBeUndefined();
+    expect(world.stores.velocity.x[wild]).toBeLessThan(0);
+    expect(world.stores.position.x[player]).toBe(0);
   });
 });
