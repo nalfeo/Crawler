@@ -195,6 +195,60 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     ).toBe(0);
   });
 
+  it('decrements only the selected table when the same item appears across multiple sponsor tables', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    const initialVisit = openVisit(world, 0);
+    const firstTable = initialVisit.tables[0]!;
+    const secondTable = initialVisit.tables[1]!;
+    const duplicateItemId = 'throwing-knife';
+    world.floorExtendedState!.floor4GreenRoom!.currentVisit = {
+      ...initialVisit,
+      tables: initialVisit.tables.map((table, index) => {
+        if (index === 0) {
+          return {
+            ...table,
+            offers: [
+              { itemId: duplicateItemId, unitPrice: 40, stock: 4 },
+              ...table.offers.filter((offer) => offer.itemId !== duplicateItemId),
+            ],
+          };
+        }
+        if (index === 1) {
+          return {
+            ...table,
+            offers: [
+              { itemId: duplicateItemId, unitPrice: 55, stock: 2 },
+              ...table.offers.filter((offer) => offer.itemId !== duplicateItemId),
+            ],
+          };
+        }
+        return table;
+      }),
+    };
+
+    const result = purchaseFloor4GreenRoomOffer(
+      world,
+      playerEid,
+      `${secondTable.tableId}:${duplicateItemId}`,
+    );
+
+    expect(result).toEqual({ ok: true, goldSpent: 55, remainingGold: 945 });
+    expect(world.playerGold).toBe(945);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .find((entry) => entry.tableId === firstTable.tableId)
+        ?.offers.find((entry) => entry.itemId === duplicateItemId)?.stock,
+    ).toBe(4);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .find((entry) => entry.tableId === secondTable.tableId)
+        ?.offers.find((entry) => entry.itemId === duplicateItemId)?.stock,
+    ).toBe(1);
+  });
+
   it('rejects purchases with invalid offerId format without changing wallet state', () => {
     const world = createTestWorld({ seed: 42 });
     world.playerGold = 1000;

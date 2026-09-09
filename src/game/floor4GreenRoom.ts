@@ -301,7 +301,7 @@ export type Floor4GreenRoomPurchaseResult =
  *
  * The stock, wallet, catalog, and inventory are checked and mutated together
  * here so scene and headless callers cannot diverge on eligibility.
- * 
+ *
  * Accepts a table-qualified offerId (format: "tableId:itemId") to correctly
  * identify offers when multiple tables stock the same item.
  */
@@ -315,7 +315,7 @@ export function purchaseFloor4GreenRoomOffer(
   if (!state || !visit) {
     return { ok: false, reason: 'no-open-visit', message: 'No Green Room visit is open' };
   }
-  
+
   // Parse table-qualified offerId format: "tableId:itemId"
   const offerIdParts = offerId.split(':');
   if (offerIdParts.length !== 2 || !offerIdParts[0] || !offerIdParts[1]) {
@@ -326,7 +326,7 @@ export function purchaseFloor4GreenRoomOffer(
     };
   }
   const [tableId, itemId] = offerIdParts as [string, string];
-  
+
   const table = visit.tables.find((candidate) => candidate.tableId === tableId);
   if (!table) {
     return { ok: false, reason: 'unknown-table', message: 'Table is not in the current stock' };
@@ -395,12 +395,18 @@ export function purchaseFloor4GreenRoomOffer(
   state.purchases = (state.purchases ?? 0) + 1;
   state.currentVisit = {
     ...visit,
-    tables: visit.tables.map((entry) => ({
-      ...entry,
-      offers: entry.offers.map((candidate) =>
-        candidate.itemId === itemId ? { ...candidate, stock: candidate.stock - 1 } : candidate,
-      ),
-    })),
+    tables: visit.tables.map((entry) =>
+      entry.tableId === tableId
+        ? {
+            ...entry,
+            offers: entry.offers.map((candidate) =>
+              candidate.itemId === itemId
+                ? { ...candidate, stock: candidate.stock - 1 }
+                : candidate,
+            ),
+          }
+        : entry,
+    ),
   };
   return { ok: true, goldSpent: offer.unitPrice, remainingGold: world.playerGold };
 }
