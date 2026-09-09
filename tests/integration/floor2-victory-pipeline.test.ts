@@ -58,6 +58,7 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
 
     const floor2Options = createFloorMainSceneOptions('floor2');
     runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
       postSystems: floor2Options.postSystems,
     });
 
@@ -69,6 +70,7 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
 
     // The shared completion latch must be stable across later objective ticks.
     runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
       postSystems: floor2Options.postSystems,
     });
     expect(world.floorExtendedState?.familyState?.staircasePos).toEqual(firstStaircasePos);
@@ -133,6 +135,7 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     world.floorObjectiveTick = floor2ObjectiveTick;
     const floor2Options = createFloorMainSceneOptions('floor2');
     runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
       postSystems: floor2Options.postSystems,
     });
 
