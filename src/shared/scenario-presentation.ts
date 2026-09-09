@@ -58,6 +58,28 @@ export interface ScenarioStairMarkerState {
   readonly label: string;
 }
 
+/**
+ * Whether the player stands inside a stair marker's interaction footprint.
+ *
+ * The single predicate every interaction path shares (`MainGameScene`'s
+ * descend affordance and the AI-runner lab's interact driver), so the prompt,
+ * the AI, and the rendered footprint can never disagree about where the exit
+ * is reachable from: the marker's `radiusFt` is exactly the half-width of the
+ * 2x2-tile square the stairs art is drawn into.
+ */
+export function isPlayerWithinStairMarker(
+  marker: ScenarioStairMarkerState | null | undefined,
+  playerXFt: number,
+  playerYFt: number,
+): boolean {
+  if (!marker) {
+    return false;
+  }
+  return (
+    Math.hypot(playerXFt - marker.positionFt.x, playerYFt - marker.positionFt.y) <= marker.radiusFt
+  );
+}
+
 /** Presentation copy for the stair-descend confirmation prompt. */
 export interface ScenarioStairConfirmationCopy {
   readonly kind?: string;

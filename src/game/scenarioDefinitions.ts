@@ -2,7 +2,7 @@ import type { GameWorld } from '../core/world.js';
 import type { CoreSimulationSystem } from '../core/simulation-core-step.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
-import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, STAIR_FOOTPRINT_RADIUS_FT } from '../shared/constants.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
 import type {
   ScenarioCompletionCopy,
@@ -376,7 +376,10 @@ function getFloor1StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
   }
   return {
     positionFt: objective.staircasePos,
-    radiusFt: objective.markerRadiusFt,
+    // Stair-specific footprint radius, NOT the floor's generic
+    // `objective.markerRadiusFt` (which also drives safe-room discovery): the
+    // stairs render as — and are interactable across — a 2x2-tile square.
+    radiusFt: STAIR_FOOTPRINT_RADIUS_FT,
     visible: objective.staircaseSpawned && !objective.staircaseDiscovered,
     // `locked` must mean exactly "descent is barred", because the presentation
     // layer withholds the descend prompt while it is set and
