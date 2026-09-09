@@ -485,7 +485,13 @@ interface MainSceneInternals {
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
-  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean };
+  getStaircaseMarkerRenderInfo(): {
+    usesGeneratedArt: boolean;
+    visible: boolean;
+    footprintPx: number;
+    spriteWidthPx: number;
+    spriteHeightPx: number;
+  };
   /**
    * Last observed outcome of the terminal run-bundle (RunStats payload)
    * upload kicked off by `emitRunBundle()`, or `undefined` before any
@@ -1057,6 +1063,11 @@ export interface StaircaseMarkerRenderInfo {
   readonly usesGeneratedArt: boolean;
   /** Whether the marker (sprite or fallback circle) is currently visible. */
   readonly visible: boolean;
+  /** Marker footprint (2 * radius) in render px — the square the art fits into. */
+  readonly footprintPx: number;
+  /** Drawn size of the stairs art in render px. */
+  readonly spriteWidthPx: number;
+  readonly spriteHeightPx: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -3762,6 +3773,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return {
         usesGeneratedArt: info?.usesGeneratedArt ?? false,
         visible: info?.visible ?? false,
+        footprintPx: info?.footprintPx ?? 0,
+        spriteWidthPx: info?.spriteWidthPx ?? 0,
+        spriteHeightPx: info?.spriteHeightPx ?? 0,
       };
     },
 
