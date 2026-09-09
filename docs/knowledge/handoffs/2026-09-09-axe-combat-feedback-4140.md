@@ -18,7 +18,7 @@ Producer
 
 ## What Was Done
 
-Fixed the duplicate axe damage-number issue by suppressing `death` combat events in the combat VFX renderer while preserving them for gore/objective consumers. The real InventoryUI tooltip path already provides DPS lines for static and generated rune/axe weapons, and the combat Floater regression now asserts that death events do not render as numeric floaters. Observed in deterministic regression coverage: before the fix, a death event mapped to a `-N` floater; after the fix, death-only events are skipped by `CombatVfx.update()` and `combatFloaterStyle()` returns an empty label instead of a damage number.
+Fixed the duplicate axe damage-number issue by suppressing `death` combat events in the combat VFX renderer while preserving them for gore/objective consumers. Added deterministic real-scene coverage through the shipped `MainGameScene` bootstrap: the lethal rune-axe event pair (`hit` + `death`, both 24 damage) produces exactly one visible `-24` floating number. The generated `weapon.rune-axe` InventoryUI tooltip render path also deterministically contains a `DPS:` line. Before the fix, the same death event mapped to a second `-24` floater; after the fix, `CombatVfx.update()` skips it while retaining the event for simulation consumers.
 
 ## Key Decisions Made
 
@@ -39,7 +39,3 @@ The duplicate-number symptom was caused by `death` events being treated as ordin
 ### Mistakes Made
 
 None beyond initially assuming the issue was only in the visual layer; confirming the event ownership boundary showed the correct fix was to suppress VFX generation without deleting the event from the sim queue.
-
-### Opportunities for Future Improvement
-
-Add a scene-level probe that renders a real rune axe hit to a deterministic framebuffer and asserts exactly one floating damage number on a lethal strike.
