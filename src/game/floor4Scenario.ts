@@ -53,7 +53,11 @@ import { applyDamage, clearEntityStores } from '../core/helpers.js';
 import { spawnRosterCompanion } from '../core/spawners/companions.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
-import { attachBarriersToFloorMap } from '../core/barriers/index.js';
+import {
+  attachBarriersToFloorMap,
+  createPolyBarrier,
+  dropBarrier,
+} from '../core/barriers/index.js';
 import {
   computeShowcaseArenaLayout,
   showcaseArenaOptionsFromConfig,
@@ -266,6 +270,7 @@ function recordFloor4PhaseTransition(
   if (state.phase.kind === 'INTERMISSION' && phase.kind !== 'INTERMISSION') {
     retireFloor4GreenRoomVisit(world);
   }
+  setFloor4GreenRoomAccess(world, state, phase.kind === 'INTERMISSION');
   state.waves = undefined;
   const pending = state.pendingWaves;
   state.pendingWaves = undefined;
@@ -308,6 +313,52 @@ function recordFloor4PhaseTransition(
       throw new Error(opened.message);
     }
   }
+}
+
+/**
+ * The Green Room is a break-only space. Keep the authored tunnel walkable
+ * during intermission, but plug its arena-side mouth for every active phase so
+ * the player cannot retreat to the shop or bypass the public break transition.
+ */
+function setFloor4GreenRoomAccess(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  available: boolean,
+): void {
+  if (available) {
+    if (state.greenRoomBarrierId !== undefined) {
+      dropBarrier(world, state.greenRoomBarrierId);
+      state.greenRoomBarrierId = undefined;
+    }
+    return;
+  }
+  if (state.greenRoomBarrierId !== undefined || !world.floorMap) {
+    return;
+  }
+  // The public exit confirmation happens at the Green Room marker. Give the
+  // player a physically valid route out before sealing the active arena.
+  const layout = computeShowcaseArenaLayout(showcaseArenaOptionsFromConfig(world.floorMap.config));
+  const playerEid = query(world.ecs, [Player, Position])[0];
+  if (playerEid !== undefined) {
+    const playerTile = world.floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    const greenRoom = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)[0];
+    if (
+      greenRoom &&
+      playerTile.x >= layout.tunnel.x &&
+      playerTile.x < greenRoom.bounds.x + greenRoom.bounds.width &&
+      playerTile.y >= greenRoom.bounds.y &&
+      playerTile.y < greenRoom.bounds.y + greenRoom.bounds.height
+    ) {
+      return;
+    }
+  }
+  const tiles = Array.from({ length: layout.tunnel.height }, (_, offset) =>
+    world.floorMap!.tileMap.index(layout.tunnel.x, layout.tunnel.y + offset),
+  );
+  state.greenRoomBarrierId = createPolyBarrier(world, tiles, 'forcefield').id;
 }
 
 function createFloor4ArenaState(world: GameWorld): Floor4ArenaState {
@@ -1234,6 +1285,9 @@ export function arenaDirectorSystem(world: GameWorld): void {
   const state = floor4ArenaState(world);
   if (!state) {
     return;
+  }
+  if (state.phase.kind !== 'INTERMISSION') {
+    setFloor4GreenRoomAccess(world, state, false);
   }
 
   const elapsedDeltaMs = Math.max(0, world.elapsedMs - state.lastWorldElapsedMs);

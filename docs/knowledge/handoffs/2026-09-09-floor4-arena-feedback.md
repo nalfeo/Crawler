@@ -51,6 +51,14 @@ Act 2. Before the repair the visual AI artifact remained in Act 1 intermission;
 afterward it completes because automated input bypasses the optional human shop
 surface while human input sees it once per visit.
 
+## Follow-up lock fix
+
+The Green Room tunnel is now sealed by the shared barrier overlay outside
+intermission. After a public Green Room confirmation, sealing waits until the
+player has crossed back into the arena, preventing both active-wave retreat and
+the transition edge that could trap a player on the shop side. The director
+owns barrier lifecycle; no headless-only mutation was added.
+
 ## Validation
 
 - `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts`
@@ -60,3 +68,5 @@ surface while human input sees it once per visit.
 - `git diff --check`
 - `bash scripts/agent/verify-fast.sh`
 - `npm run verify:pr-prereqs`
+- `npx vitest run tests/headless/floor4-arena-completion.test.ts` (seed 404
+  real-pipeline completion and deterministic replay)

@@ -42,4 +42,6 @@ None beyond initially assuming the issue was only in the visual layer; confirmin
 
 ### Opportunities for Future Improvement
 
-Add a focused render-level event classification test whenever a new combat event kind gains a damage-number presentation.
+Add a focused render-level event classification test whenever a new combat event
+kind gains a damage-number presentation, while retaining real-scene coverage for
+cross-layer event ownership.

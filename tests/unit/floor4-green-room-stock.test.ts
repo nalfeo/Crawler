@@ -11,6 +11,7 @@ import {
 } from '../../src/game/floor4GreenRoom';
 import type { Floor4GreenRoomVisitStock } from '../../src/shared/floor-types';
 import { floor4Manifest } from '../../src/shared/floor-manifest';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options';
 
 const ACT_COUNT = 5;
 
@@ -193,6 +194,41 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
         (entry) => entry.itemId === offer.itemId,
       )?.stock,
     ).toBe(0);
+  });
+
+  it('wires the production bootstrap shop adapter to the authoritative purchase path', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.floor = 4;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    openVisit(world, 0);
+    const options = createFloorMainSceneOptions('floor4');
+    const shop = options.floor4GreenRoomShop;
+
+    expect(shop?.isAvailable(world, playerEid)).toBe(true);
+    const panelOffers = shop?.getOffers(world, playerEid) ?? [];
+    const panelOffer = panelOffers.find((offer) => offer.canPurchase);
+    expect(panelOffer, 'bootstrap adapter must expose a purchasable panel offer').toBeDefined();
+
+    const beforeGold = world.playerGold;
+    const result = shop!.purchase(world, playerEid, panelOffer!);
+
+    expect(result.ok).toBe(true);
+    expect(world.playerGold).toBe(beforeGold - panelOffer!.unitPrice);
+    expect(world.goldLedger.greenRoomPurchases).toBe(1);
+    expect(world.vendorLedger.decisions).toContainEqual(
+      expect.objectContaining({
+        vendorId: 'floor4-green-room',
+        itemId: panelOffer!.itemId,
+        outcome: 'purchased',
+      }),
+    );
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .flatMap((table) => table.offers)
+        .find((offer) => offer.itemId === panelOffer!.itemId)?.stock,
+    ).toBe(panelOffer!.quantity - 1);
   });
 
   it('decrements only the selected table when the same item appears across multiple sponsor tables', () => {
