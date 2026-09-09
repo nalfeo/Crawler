@@ -39,3 +39,7 @@ The duplicate-number symptom was caused by `death` events being treated as ordin
 ### Mistakes Made
 
 None beyond initially assuming the issue was only in the visual layer; confirming the event ownership boundary showed the correct fix was to suppress VFX generation without deleting the event from the sim queue.
+
+### Opportunities for Future Improvement
+
+Continue using real-scene deterministic coverage when combat-event ownership crosses simulation and presentation layers.
