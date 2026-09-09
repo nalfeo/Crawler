@@ -318,6 +318,7 @@ describe('arenaDirectorSystem', () => {
     const state = world.floorExtendedState!.floor4Arena!;
     expect(state.phase).toEqual({ kind: 'HEADLINE', act: 1, cleared: true });
     expect(world.playerGold).toBe(goldBefore + encounter.appearanceFeeGold);
+    expect(world.goldLedger.earnedFromAppearanceFees).toBe(encounter.appearanceFeeGold);
     expect(world.bossChests.has(createBossChestId('floor4-headliner-act-1'))).toBe(true);
     expect(state.headlinerTelemetry.appearanceFeeGoldGranted).toBe(encounter.appearanceFeeGold);
     expect(state.headlinerTelemetry.chestsSpawned).toBe(1);

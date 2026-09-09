@@ -221,6 +221,8 @@ export interface GoldLedger {
   earnedFromDrops: number;
   /** Gold granted by claimed achievement loot boxes. */
   earnedFromLootBoxes: number;
+  /** Gold paid for Floor 4 Headliner appearances. */
+  earnedFromAppearanceFees: number;
   /** Gold spent on the Floor 1 merchant's charm. */
   spentOnCharm: number;
   /** Gold spent on post-quest merchant weapons. */
@@ -255,6 +257,7 @@ export function createGoldLedger(): GoldLedger {
   return {
     earnedFromDrops: 0,
     earnedFromLootBoxes: 0,
+    earnedFromAppearanceFees: 0,
     spentOnCharm: 0,
     spentOnMerchantWeapon: 0,
     spentOnSpell: 0,
@@ -275,7 +278,9 @@ export function createGoldLedger(): GoldLedger {
 export function markGoldLedgerFloorExit(world: GameWorld): void {
   if (world.goldLedger.earnedBeforeExit !== null) return;
   world.goldLedger.earnedBeforeExit =
-    world.goldLedger.earnedFromDrops + world.goldLedger.earnedFromLootBoxes;
+    world.goldLedger.earnedFromDrops +
+    world.goldLedger.earnedFromLootBoxes +
+    world.goldLedger.earnedFromAppearanceFees;
 }
 
 /** One item a vendor had on offer at the moment it was visited. */

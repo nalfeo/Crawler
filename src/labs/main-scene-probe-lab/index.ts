@@ -131,7 +131,8 @@ import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
-import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getFloor4ArenaRunStats, getFloor4GreenRoomExitMarker } from '../../game/floor4Scenario.js';
+import { openFloor4GreenRoomVisit } from '../../game/floor4GreenRoom.js';
 import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -1149,6 +1150,8 @@ export interface MainSceneProbeApi {
   getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
+  /** Stage the live Floor 4 world at its first Green Room marker for scene-interaction e2e coverage. */
+  primeFloor4GreenRoomIntermission(): boolean;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
   /**
@@ -2332,6 +2335,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     getFloor4ArenaHudState: (): HudFloor4ArenaProbeState | null =>
       getScene()?.hudUi?.getFloor4ArenaState?.() ?? null,
+
+    primeFloor4GreenRoomIntermission: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const arena = world?.floorExtendedState?.floor4Arena;
+      if (!world || playerEid < 0 || !arena) {
+        return false;
+      }
+      arena.phase = { kind: 'INTERMISSION', act: 1 };
+      if (!world.floorExtendedState?.floor4GreenRoom?.currentVisit) {
+        openFloor4GreenRoomVisit(world, 0);
+      }
+      const marker = getFloor4GreenRoomExitMarker(world);
+      if (!marker) {
+        return false;
+      }
+      world.state = 'playing';
+      world.playerInSafeRoom = true;
+      world.stores.position.x[playerEid] = marker.positionFt.x;
+      world.stores.position.y[playerEid] = marker.positionFt.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+      return true;
+    },
 
     getFamilyHudState: (): FamilyHudProbeState => {
       const hud = getScene()?.hudUi;

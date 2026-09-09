@@ -292,7 +292,8 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
 
 function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
   const ledger = world.goldLedger;
-  const earnedTotal = ledger.earnedFromDrops + ledger.earnedFromLootBoxes;
+  const earnedTotal =
+    ledger.earnedFromDrops + ledger.earnedFromLootBoxes + ledger.earnedFromAppearanceFees;
   const spentTotal =
     ledger.spentOnCharm +
     ledger.spentOnMerchantWeapon +
@@ -304,6 +305,7 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
   return {
     earnedFromDrops: ledger.earnedFromDrops,
     earnedFromLootBoxes: ledger.earnedFromLootBoxes,
+    earnedFromAppearanceFees: ledger.earnedFromAppearanceFees,
     earnedTotal,
     spentOnCharm: ledger.spentOnCharm,
     spentOnMerchantWeapon: ledger.spentOnMerchantWeapon,

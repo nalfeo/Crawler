@@ -253,10 +253,11 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     const world = createTestWorld({ seed: 42 });
     world.playerGold = 1000;
     const playerEid = query(world.ecs, [Player])[0]!;
+    openVisit(world, 0);
     expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'invalid-format')).toEqual({
       ok: false,
-      reason: 'no-open-visit',
-      message: 'No Green Room visit is open',
+      reason: 'invalid-offer-id',
+      message: 'Offer ID must be in the format "tableId:itemId"',
     });
     expect(world.playerGold).toBe(1000);
   });

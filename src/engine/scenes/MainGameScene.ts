@@ -1173,6 +1173,8 @@ export class MainGameScene extends Phaser.Scene {
   private activeSettlementShopNpcEid: number | null = null;
   /** True while the shared shop panel is showing the intermission Green Room. */
   private activeFloor4GreenRoomShop = false;
+  /** Green Room visit whose optional sponsor shop has already been presented. */
+  private floor4GreenRoomShopVisitShown: number | null = null;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -6590,10 +6592,14 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Descend').setVisible(true);
       this.dialogueBox?.hide();
       if (interactionRequested && this.modalPicker && stairConfirmation) {
+        const greenRoomVisit = this.world.floorExtendedState?.floor4GreenRoom?.currentVisit;
         if (
+          greenRoomVisit &&
           this.options.floor4GreenRoomShop?.isAvailable(this.world, this.playerEid) &&
-          !this.activeFloor4GreenRoomShop
+          !this.options.inputCaptureOverride &&
+          this.floor4GreenRoomShopVisitShown !== greenRoomVisit.visitIndex
         ) {
+          this.floor4GreenRoomShopVisitShown = greenRoomVisit.visitIndex;
           this.openFloor4GreenRoomShopPanel();
           return;
         }

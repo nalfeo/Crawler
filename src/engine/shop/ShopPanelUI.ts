@@ -50,7 +50,7 @@ const PANEL_PADDING = 16;
 const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 const ROW_HEIGHT = 72;
 const ROW_GAP = 8;
-const HEADER_HEIGHT = 48;
+const HEADER_HEIGHT = 64;
 
 const COLORS = {
   panelBg: 0x0d0d1a,
@@ -197,6 +197,8 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
   let visible = false;
   let lastSignature: string | null = null;
   let focusedOfferId: string | null = null;
+  let pageIndex = 0;
+  let activeWorld: GameWorld | null = null;
 
   const container = scene.add.container(0, 0).setDepth(1000).setVisible(false);
 
@@ -228,6 +230,13 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
     color: hex(COLORS.goldColor),
   });
   container.add(goldLabel);
+  const pageLabel = crispText(0, 0, '', {
+    fontFamily: FONT_FAMILY,
+    fontSize: '12px',
+    color: hex(COLORS.textSecondary),
+  });
+  pageLabel.setOrigin(1, 0);
+  container.add(pageLabel);
 
   const rowObjects: Phaser.GameObjects.GameObject[] = [];
   interface BuyRowControl {
@@ -430,13 +439,26 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
   }
 
   function render(world: GameWorld, playerEid: number): void {
+    activeWorld = world;
     clearRows();
     title.setText(resolveTitle(world)).setResolution(textResolution);
     const offers = resolveOffers(world, playerEid);
+    const rowsPerPage = Math.max(
+      1,
+      Math.floor(
+        (panelHeight - PANEL_PADDING * 2 - HEADER_HEIGHT + ROW_GAP) / (ROW_HEIGHT + ROW_GAP),
+      ),
+    );
+    const pageCount = Math.max(1, Math.ceil(offers.length / rowsPerPage));
+    pageIndex = Math.min(pageIndex, pageCount - 1);
 
     goldLabel
       .setText(formatShopGoldLine(world.playerGold))
       .setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING + 28)
+      .setResolution(textResolution);
+    pageLabel
+      .setText(pageCount > 1 ? `Page ${pageIndex + 1}/${pageCount}  [PgUp/PgDn]` : '')
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 30)
       .setResolution(textResolution);
 
     const x = panelX + PANEL_PADDING;
@@ -459,7 +481,7 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
     }
 
     let currentY = panelY + PANEL_PADDING + HEADER_HEIGHT;
-    for (const offer of offers) {
+    for (const offer of offers.slice(pageIndex * rowsPerPage, (pageIndex + 1) * rowsPerPage)) {
       makeRow(world, playerEid, offer, x, currentY, w);
       currentY += ROW_HEIGHT + ROW_GAP;
     }
@@ -486,6 +508,9 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
       .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
       .setResolution(textResolution);
     goldLabel.setResolution(textResolution);
+    pageLabel
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 30)
+      .setResolution(textResolution);
     if (visible) lastSignature = null;
   }
 
@@ -515,6 +540,28 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (!visible || buyRowControls.length === 0) return;
+    if (event.code === 'PageDown' || event.code === 'PageUp') {
+      const playerEid = config.getPlayerEid();
+      if (!activeWorld || playerEid === undefined || playerEid < 0) return;
+      const rowsPerPage = Math.max(
+        1,
+        Math.floor(
+          (panelHeight - PANEL_PADDING * 2 - HEADER_HEIGHT + ROW_GAP) / (ROW_HEIGHT + ROW_GAP),
+        ),
+      );
+      const pageCount = Math.max(
+        1,
+        Math.ceil(resolveOffers(activeWorld, playerEid).length / rowsPerPage),
+      );
+      pageIndex =
+        event.code === 'PageDown'
+          ? (pageIndex + 1) % pageCount
+          : (pageIndex - 1 + pageCount) % pageCount;
+      lastSignature = null;
+      refresh(activeWorld);
+      event.preventDefault();
+      return;
+    }
     if (event.code === 'ArrowDown' || event.code === 'KeyS') {
       event.preventDefault();
       focusedBuyRowIndex = (focusedBuyRowIndex + 1 + buyRowControls.length) % buyRowControls.length;

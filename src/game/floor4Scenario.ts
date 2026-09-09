@@ -1093,6 +1093,7 @@ function resolveFloor4HeadlinerDefeat(world: GameWorld, state: Floor4ArenaState)
   }
   if (!encounter.feeGranted) {
     world.playerGold += encounter.appearanceFeeGold;
+    world.goldLedger.earnedFromAppearanceFees += encounter.appearanceFeeGold;
     encounter.feeGranted = true;
     state.headlinerTelemetry.appearanceFeeGoldGranted += encounter.appearanceFeeGold;
   }

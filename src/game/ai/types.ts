@@ -559,7 +559,9 @@ export interface GoldEconomyMetrics {
   earnedFromDrops: number;
   /** Gold granted by claimed achievement loot boxes. */
   earnedFromLootBoxes: number;
-  /** `earnedFromDrops + earnedFromLootBoxes`. */
+  /** Gold paid for Floor 4 Headliner appearances. */
+  earnedFromAppearanceFees: number;
+  /** `earnedFromDrops + earnedFromLootBoxes + earnedFromAppearanceFees`. */
   earnedTotal: number;
   /** Gold spent on the Floor 1 merchant's charm. */
   spentOnCharm: number;
