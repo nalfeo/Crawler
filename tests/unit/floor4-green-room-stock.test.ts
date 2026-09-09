@@ -163,9 +163,14 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     world.playerGold = 1000;
     world.inventories.set(playerEid, createInventoryBag());
     const visit = openVisit(world, 0);
-    const offer = visit.tables[0]!.offers[0]!;
+    const table = visit.tables[0]!;
+    const offer = table.offers[0]!;
     const beforeGold = world.playerGold;
-    const result = purchaseFloor4GreenRoomOffer(world, playerEid, offer.itemId);
+    const result = purchaseFloor4GreenRoomOffer(
+      world,
+      playerEid,
+      `${table.tableId}:${offer.itemId}`,
+    );
 
     expect(result).toEqual({
       ok: true,
@@ -190,11 +195,36 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     ).toBe(0);
   });
 
+  it('rejects purchases with invalid offerId format without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'invalid-format')).toEqual({
+      ok: false,
+      reason: 'no-open-visit',
+      message: 'No Green Room visit is open',
+    });
+    expect(world.playerGold).toBe(1000);
+  });
+
+  it('rejects purchases from non-existent tables without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    openVisit(world, 0);
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'missing-table:missing-item')).toEqual({
+      ok: false,
+      reason: 'unknown-table',
+      message: 'Table is not in the current stock',
+    });
+    expect(world.playerGold).toBe(1000);
+  });
+
   it('rejects purchases outside the active visit without changing wallet state', () => {
     const world = createTestWorld({ seed: 42 });
     world.playerGold = 1000;
     const playerEid = query(world.ecs, [Player])[0]!;
-    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'missing-item')).toEqual({
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'any-table:missing-item')).toEqual({
       ok: false,
       reason: 'no-open-visit',
       message: 'No Green Room visit is open',

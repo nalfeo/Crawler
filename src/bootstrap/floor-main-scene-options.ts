@@ -199,7 +199,7 @@ export function createFloorMainSceneOptions(
         );
       },
       purchase: (world: GameWorld, playerEid: number, offer: Floor4GreenRoomPanelOffer) =>
-        purchaseFloor4GreenRoomOffer(world, playerEid, offer.itemId),
+        purchaseFloor4GreenRoomOffer(world, playerEid, offer.offerId),
     },
     preSystems: [
       statSystem,

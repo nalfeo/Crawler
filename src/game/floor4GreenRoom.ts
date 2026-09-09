@@ -290,7 +290,9 @@ export type Floor4GreenRoomPurchaseResult =
         | 'stock-unavailable'
         | 'missing-inventory'
         | 'unknown-item'
-        | 'insufficient-funds';
+        | 'insufficient-funds'
+        | 'invalid-offer-id'
+        | 'unknown-table';
       readonly message: string;
     };
 
@@ -299,21 +301,37 @@ export type Floor4GreenRoomPurchaseResult =
  *
  * The stock, wallet, catalog, and inventory are checked and mutated together
  * here so scene and headless callers cannot diverge on eligibility.
+ * 
+ * Accepts a table-qualified offerId (format: "tableId:itemId") to correctly
+ * identify offers when multiple tables stock the same item.
  */
 export function purchaseFloor4GreenRoomOffer(
   world: GameWorld,
   playerEid: number,
-  itemId: string,
+  offerId: string,
 ): Floor4GreenRoomPurchaseResult {
   const state = world.floorExtendedState?.floor4GreenRoom;
   const visit = state?.currentVisit;
   if (!state || !visit) {
     return { ok: false, reason: 'no-open-visit', message: 'No Green Room visit is open' };
   }
-  const table = visit.tables.find((candidate) =>
-    candidate.offers.some((offer) => offer.itemId === itemId),
-  );
-  const offer = table?.offers.find((candidate) => candidate.itemId === itemId);
+  
+  // Parse table-qualified offerId format: "tableId:itemId"
+  const offerIdParts = offerId.split(':');
+  if (offerIdParts.length !== 2 || !offerIdParts[0] || !offerIdParts[1]) {
+    return {
+      ok: false,
+      reason: 'invalid-offer-id',
+      message: 'Offer ID must be in the format "tableId:itemId"',
+    };
+  }
+  const [tableId, itemId] = offerIdParts as [string, string];
+  
+  const table = visit.tables.find((candidate) => candidate.tableId === tableId);
+  if (!table) {
+    return { ok: false, reason: 'unknown-table', message: 'Table is not in the current stock' };
+  }
+  const offer = table.offers.find((candidate) => candidate.itemId === itemId);
   if (!offer) {
     return { ok: false, reason: 'unknown-offer', message: 'Offer is not in the current stock' };
   }
