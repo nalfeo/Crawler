@@ -2288,6 +2288,14 @@ ${queryScript}
     expect(result?.run).toContain('find_issue_comment_id');
     expect(result?.run).toContain('gh api --silent --method PATCH');
     expect(result?.run).toContain('gh issue comment "$issue_number"');
+    expect(result?.run).toContain('find_pr_comment_id');
+    expect(result?.run).toContain('destination=pr');
+    expect(result?.run).toContain('gh issue comment "$pr_number"');
+    expect(result?.run).toContain('Source issue: #${issue_number}');
+    expect(result?.run).toContain('Could not post the Goobers result comment on PR #${pr_number}');
+    expect(result?.run).toContain(
+      'Could not update the Goobers result comment on PR #${pr_number}',
+    );
     expect(result?.run).toContain('no PR number could be recovered');
   });
 
@@ -2321,6 +2329,8 @@ ${queryScript}
       'Journal artifact: [\\`${ARTIFACT_NAME}\\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})',
     );
     expect(script).toContain('gh issue comment "$issue_number"');
+    expect(script).toContain('if [ "$pr_validated_open" = "true" ]; then');
+    expect(script).toContain('find_pr_comment_id "$pr_marker"');
   });
 
   it('tolerates malformed trailing journal lines while retaining valid terminal events', () => {
@@ -2354,8 +2364,13 @@ ${queryScript}
     expect(script).toContain('echo "::error::${pr_resolution_error}"');
     expect(postIndex).toBeGreaterThanOrEqual(0);
     expect(failIndex).toBeGreaterThan(postIndex);
-    expect(script.match(/marker="<!-- crawler-goobers-run-result:v1 /g)).toHaveLength(1);
+    // The issue and PR destinations each have a separately keyed marker.
+    expect(script.match(/(?:^|[^a-z])marker="<!-- crawler-goobers-run-result:v1 /g)).toHaveLength(
+      2,
+    );
     expect(script).toContain('echo "$marker"');
+    expect(script).toContain('report_failed=true');
+    expect(script).toContain('return 1');
   });
 
   it('releases failed claims without a PR while preserving resumable PR ownership', () => {
