@@ -92,6 +92,15 @@ export function combatFloaterStyle(event: CombatEvent): FloaterStyle {
   if (event.type === 'blocked') {
     return { label: 'BLOCKED', color: '#888888', fontSize: FONT_SIZE };
   }
+  if (event.type === 'death') {
+    // Death is a gameplay state event used for gore/objective processing; it is
+    // not a damage-number presentation. Keep it in the event queue for other
+    // consumers, but never render it as a duplicate numeric floater.
+    return { label: '', color: '#000000', fontSize: FONT_SIZE };
+  }
+  if (event.type === 'corpseExplode') {
+    return { label: '', color: '#000000', fontSize: FONT_SIZE };
+  }
 
   const amount = Math.round(event.amount);
   if (event.targetType === 'player') {
@@ -219,9 +228,10 @@ export function createCombatVfx(scene: Phaser.Scene): {
     update(world: GameWorld, renderElapsedMs: number): void {
       // Spawn VFX for new events
       for (const event of world.combatEvents) {
-        // `corpseExplode` is consumed by the shatter VFX, not shown as a damage
-        // number — a corpse takes 0 actual damage, so a floater would mislead.
-        if (event.type === 'corpseExplode') continue;
+        // Death events are gameplay-state signals for gore/objective systems and
+        // should never render as duplicate numeric damage text. `corpseExplode`
+        // is also consumed by the shatter VFX instead of a damage-number floater.
+        if (event.type === 'death' || event.type === 'corpseExplode') continue;
         spawnFloater(event, combatFloaterStyle(event), renderElapsedMs);
       }
       // Drain the queue — we are the sole consumer
