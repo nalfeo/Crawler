@@ -64,6 +64,7 @@ import { createLogger } from '../../shared/logger.js';
 import {
   GAME,
   FLOOR2_STAIR_MARKER_RADIUS_FT,
+  STAIR_FOOTPRINT_RADIUS_FT,
   TeamId,
   WeaponType,
   PLAYER_SPEED,
@@ -5682,9 +5683,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       floor1UnlockedStairTarget || floor3UnlockedStairTarget
         ? Math.max(
             CLOSE_APPROACH_DIRECT_FT,
-            floor1UnlockedStairTarget
-              ? floor1Objective.markerRadiusFt
-              : FLOOR2_STAIR_MARKER_RADIUS_FT,
+            floor1UnlockedStairTarget ? STAIR_FOOTPRINT_RADIUS_FT : FLOOR2_STAIR_MARKER_RADIUS_FT,
           )
         : CLOSE_APPROACH_DIRECT_FT;
 

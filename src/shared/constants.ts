@@ -126,6 +126,21 @@ export const FLOOR = {
 } as const;
 
 /**
+ * Half-width (ft) of the floor-exit staircase footprint: the stairs occupy a
+ * 2x2-tile square, and every floor manifest uses `tileSizeFt: 4.0`, so the
+ * footprint is 8 ft across and this radius is 4 ft.
+ *
+ * This single value drives BOTH the rendered stairs art (contain-fitted into a
+ * `2 * radius` square, see `resolveStairsContainFit`) and the descend
+ * interaction/proximity reach on every floor, so what the player sees is
+ * exactly what they can interact with. It is deliberately stair-specific: a
+ * floor's generic `objectives.markerRadiusFt` also drives unrelated discovery
+ * checks (e.g. Floor 1's safe-room discovery) and must not be resized to change
+ * stair art.
+ */
+export const STAIR_FOOTPRINT_RADIUS_FT = 4.0;
+
+/**
  * Interaction radius (ft) for the Floor 2 exit-staircase marker, shared by the
  * engine (marker render + proximity check) and the game layer. Floor 2 is not
  * yet fully data-driven, so — unlike Floor 1, which threads
@@ -135,7 +150,7 @@ export const FLOOR = {
  * by a unit test (see tests/unit/floor2-scenario-initialization.test.ts) so the
  * two values cannot silently drift apart.
  */
-export const FLOOR2_STAIR_MARKER_RADIUS_FT = 4.0;
+export const FLOOR2_STAIR_MARKER_RADIUS_FT = STAIR_FOOTPRINT_RADIUS_FT;
 
 /** Floor 1 Spell Broker price, in gold. */
 export const FLOOR1_SPELL_BROKER_COST: number = tuning.shopPricing.floor1.spellBrokerCost;

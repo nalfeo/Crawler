@@ -15,6 +15,7 @@ import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-op
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
+import { isPlayerWithinStairMarker } from '../../shared/scenario-presentation.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
 import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
@@ -2111,10 +2112,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         stairMarker !== null &&
         stairMarker.visible &&
         !stairMarker.locked &&
-        Math.hypot(
-          (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
-          (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
-        ) <= stairMarker.radiusFt
+        isPlayerWithinStairMarker(
+          stairMarker,
+          world.stores.position.x[playerEid] ?? 0,
+          world.stores.position.y[playerEid] ?? 0,
+        )
       ) {
         confirmModalSelection(modalPicker, world, modalKind);
         return;
@@ -2180,10 +2182,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       stairMarker !== null &&
       stairMarker.visible &&
       !stairMarker.locked &&
-      Math.hypot(
-        (world.stores.position.x[playerEid] ?? 0) - stairMarker.positionFt.x,
-        (world.stores.position.y[playerEid] ?? 0) - stairMarker.positionFt.y,
-      ) <= stairMarker.radiusFt;
+      isPlayerWithinStairMarker(
+        stairMarker,
+        world.stores.position.x[playerEid] ?? 0,
+        world.stores.position.y[playerEid] ?? 0,
+      );
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }

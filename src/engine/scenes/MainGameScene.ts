@@ -16,6 +16,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
+  isPlayerWithinStairMarker,
   selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
   type ScenarioHudSnapshot,
@@ -5130,10 +5131,22 @@ export class MainGameScene extends Phaser.Scene {
    * marker is currently visible. Lets the main-scene-probe-lab prove — in a
    * REAL booted scene — that the floor-exit marker renders real stairs art.
    */
-  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean } {
+  getStaircaseMarkerRenderInfo(): {
+    usesGeneratedArt: boolean;
+    visible: boolean;
+    footprintPx: number;
+    spriteWidthPx: number;
+    spriteHeightPx: number;
+  } {
     return {
       usesGeneratedArt: this.staircaseMarkerUsesGeneratedArt,
       visible: this.staircaseSprite?.visible ?? this.staircaseMarker?.visible ?? false,
+      // The footprint the marker is sized to (2 * radius), and the size the
+      // stairs art is actually drawn at — so an e2e can prove, in the REAL
+      // booted scene, that the stairs occupy a 2x2-tile square.
+      footprintPx: (this.staircaseMarker?.radius ?? 0) * 2,
+      spriteWidthPx: this.staircaseSprite?.displayWidth ?? 0,
+      spriteHeightPx: this.staircaseSprite?.displayHeight ?? 0,
     };
   }
 
@@ -6438,8 +6451,7 @@ export class MainGameScene extends Phaser.Scene {
       stairMarker !== null &&
       stairMarker.visible &&
       !stairMarker.locked &&
-      Math.hypot(playerX - stairMarker.positionFt.x, playerY - stairMarker.positionFt.y) <=
-        stairMarker.radiusFt;
+      isPlayerWithinStairMarker(stairMarker, playerX, playerY);
 
     const selectedNpcEid =
       interactionRequested && nearStairs && stairConfirmation.kind === 'floor3-stair-descend'

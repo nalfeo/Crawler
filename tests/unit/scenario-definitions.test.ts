@@ -20,7 +20,10 @@ import {
   initializeFloor1Scenario,
 } from '../../src/game/floorScenario.js';
 import { confirmFloor2StairDescend } from '../../src/game/floor2Scenario.js';
-import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
+import {
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  STAIR_FOOTPRINT_RADIUS_FT,
+} from '../../src/shared/constants.js';
 import {
   FLOOR3_STAIRS_DISCOVERED_GOAL_ID,
   FLOOR3_TIMEOUT_GOAL_ID,
@@ -446,7 +449,9 @@ describe('scenario definitions', () => {
       expect(objective.staircaseUnlocked).toBe(false);
       expect(hidden!.locked).toBe(true);
       expect(confirmFloor1StairDescend(world, player)).toBe(false);
-      expect(hidden!.radiusFt).toBe(objective.markerRadiusFt);
+      // Stair-specific footprint radius (2x2 tiles), NOT the floor's generic
+      // objective radius, which also drives safe-room discovery.
+      expect(hidden!.radiusFt).toBe(STAIR_FOOTPRINT_RADIUS_FT);
       expect(hidden!.positionFt).toEqual(objective.staircasePos);
       // No Phaser/pixel/color/depth values leak into the semantic contract.
       expect(hidden).not.toHaveProperty('depth');
