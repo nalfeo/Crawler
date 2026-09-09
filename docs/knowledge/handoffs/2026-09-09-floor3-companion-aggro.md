@@ -22,14 +22,16 @@ Floor 3 wild enemies previously redirected to the nearest player companion
 regardless of distance. That allowed an off-screen or lagging companion to
 override the wild's normal hostile player target and pull the encounter away
 from the player. Wild redirection now only selects a player companion within
-the authored Floor 3 wild aggro range; otherwise it leaves the decision unset,
-so the standard hostile player path remains active. Nearby companion
-engagement remains unchanged.
+the authored Floor 3 wild aggro range of both the player and the wild;
+otherwise it leaves the decision unset, so the standard hostile player path
+remains active. Nearby companion engagement remains unchanged.
 
 Added direct enemy-AI coverage and a real `runHeadless` regression that injects
 an off-screen companion and hostile wild into the production Floor 3 pipeline.
-The headless case confirms no companion override is emitted while hostility is
-preserved.
+The headless case places the companion 50 feet from the player and 20 feet
+from a wild at 30 feet, confirming no companion override is emitted while
+hostility is preserved even when the companion is close enough to the wild
+alone to trigger the old bug.
 
 ## Verification
 

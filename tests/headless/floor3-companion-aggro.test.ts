@@ -33,7 +33,7 @@ describe('Floor 3 wild aggro real headless pipeline', () => {
 
             const companion = spawnBehaviorEnemy(
               world,
-              (world.stores.position.x[playerEid] ?? 0) + 100,
+              (world.stores.position.x[playerEid] ?? 0) + 50,
               world.stores.position.y[playerEid] ?? 0,
               100,
               AI_TYPE.CHASE,
@@ -57,7 +57,7 @@ describe('Floor 3 wild aggro real headless pipeline', () => {
 
             wildEid = spawnBehaviorEnemy(
               world,
-              (world.stores.position.x[playerEid] ?? 0) + 10,
+              (world.stores.position.x[playerEid] ?? 0) + 30,
               world.stores.position.y[playerEid] ?? 0,
               100,
               AI_TYPE.CHASE,
