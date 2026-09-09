@@ -700,10 +700,15 @@ describe('Goobers lifecycle ownership', () => {
     // Publication deterministically ends the claim on EVERY branch, so a claim
     // can never outlive PR publication.
     expect(tasks['open-pr'].next).toBe('pr-opened-gate');
-    expect(gates['pr-opened-gate'].branches.pass).toBe('close-out');
-    expect(gates['pr-opened-gate'].branches.fail).toBe('needs-remediation');
+    expect(gates['pr-opened-gate'].branches.pass).toBe('prepare-close-out-summary');
+    expect(gates['pr-opened-gate'].branches.fail).toBe('prepare-needs-remediation-summary');
     expect(tasks['close-out'].inputs.status).toBe('in-review');
-    for (const name of ['close-out', 'park-needs-human', 'needs-remediation']) {
+    const terminalSummaries = {
+      'close-out': 'prepare-close-out-summary.summary',
+      'park-needs-human': 'prepare-park-needs-human-summary.summary',
+      'needs-remediation': 'prepare-needs-remediation-summary.summary',
+    } as const;
+    for (const name of Object.keys(terminalSummaries) as Array<keyof typeof terminalSummaries>) {
       const task = tasks[name];
       expect(task.inputs.resultFile).toBe('issue-close-out-result.json');
       // `inputsFrom` is the runtime's declared input contract: the pinned
@@ -711,7 +716,7 @@ describe('Goobers lifecycle ownership', () => {
       // mechanism hydrate-requirements relies on for GOOBERS_INPUT_ISSUEBODY),
       // so the human summary reaches issue-close-out without the stage having
       // to build it from branch-authored code.
-      expect(task.inputsFrom.summary).toBe('implement.summary');
+      expect(task.inputsFrom.summary).toBe(terminalSummaries[name]);
       expect(task.inputsFrom.resultFile).toBeUndefined();
       // These stages hold github:issues:write. They must stay direct `goobers`
       // commands: a script is executed as `sh -c`, which both drops the
@@ -719,6 +724,18 @@ describe('Goobers lifecycle ownership', () => {
       // branch code run with the issue-write credential in scope.
       expect(task.run.script).toBeUndefined();
       expect(task.run.command).toEqual(['goobers', 'issue-close-out']);
+    }
+    for (const [name, completion] of [
+      ['prepare-close-out-summary', 'Session is fully complete.'],
+      ['prepare-park-needs-human-summary', 'Session is not fully complete.'],
+      ['prepare-needs-remediation-summary', 'Session is not fully complete.'],
+    ] as const) {
+      const task = tasks[name];
+      expect(task.inputsFrom.summary).toBe('implement.summary');
+      expect(task.expectedOutputs).toEqual(['summary']);
+      expect(task.run.script).toContain(completion);
+      expect(task.run.script).toContain('terminal-summary-result.json');
+      expect(task.capabilities).toBeUndefined();
     }
   });
 

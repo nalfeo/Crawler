@@ -138,9 +138,14 @@ export const goobersSummaryV1 = {
   requiredFields: Object.freeze(['Description', 'Systems', 'Verification', 'Risk']),
   format:
     'Markdown block with one short label prefix per line or bullet, in order: ' +
-    'Description, Systems, Verification, Risk. Single-sentence summaries are rejected.',
+    'Description, Systems, Verification, Risk. The Description value must explicitly state ' +
+    'whether the session is fully complete or not fully complete. Single-sentence summaries ' +
+    'are rejected.',
+  completionPattern:
+    'The Description value must end with "Session is fully complete." or ' +
+    '"Session is not fully complete.".',
   example: [
-    'Description: Fixes the Goobers summary so it states the change in plain language.',
+    'Description: Fixes the Goobers summary in plain language. Session is fully complete.',
     'Systems: Goobers workflow, validation schema, issue-close-out output contract',
     'Verification: node .github/scripts/validate-goobers-contracts.mjs; npx vitest run tests/unit/goobers-contracts.test.ts',
     'Risk: Low — this is contract-only work and does not change game logic or runtime behavior.',

@@ -506,7 +506,22 @@ describe('crawler.goobers.summary/v1 close-out summary contract', () => {
     expect(summarySemanticErrors('Implemented the fix.')).not.toHaveLength(0);
     expect(
       summarySemanticErrors(
-        ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+        [
+          'Description: Fixes it. Session is fully complete.',
+          'Systems:',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
+      ),
+    ).not.toHaveLength(0);
+    expect(
+      summarySemanticErrors(
+        [
+          'Description: Fixes it',
+          'Systems: Goobers workflow',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
       ),
     ).not.toHaveLength(0);
     expect(
@@ -529,10 +544,42 @@ describe('crawler.goobers.summary/v1 close-out summary contract', () => {
   it('names the specific violation rather than one generic message', () => {
     expect(
       summarySemanticErrors(
-        ['Description: Fixes it', 'Systems:', 'Verification: tests', 'Risk: Low'].join('\n'),
+        [
+          'Description: Fixes it. Session is fully complete.',
+          'Systems:',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
       ),
     ).toEqual(['summary section "Systems" is empty']);
+    expect(
+      summarySemanticErrors(
+        [
+          'Description: Fixes it',
+          'Systems: Goobers workflow',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
+      ),
+    ).toContain(
+      'summary Description must end with "Session is fully complete." or "Session is not fully complete."',
+    );
     expect(summarySemanticErrors(undefined)[0]).toContain('must be a string');
+  });
+
+  it('rejects a completion phrase that is not at the end of the Description', () => {
+    expect(
+      summarySemanticErrors(
+        [
+          'Description: Work remains; session is fully complete only if CI passes.',
+          'Systems: Goobers workflow',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
+      ),
+    ).toContain(
+      'summary Description must end with "Session is fully complete." or "Session is not fully complete."',
+    );
   });
 
   it('leaves crawler.goobers.output/v1 summary semantics unchanged for in-flight v1 payloads', () => {
