@@ -69,6 +69,7 @@ import { acceptQuest, getActiveQuests, setTrackedQuest } from '../../core/system
 import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
@@ -1152,6 +1153,11 @@ export interface MainSceneProbeApi {
    */
   primeFloor1StairTransition(): void;
   /**
+   * Complete the live Floor-1 quota objective so the real Director update path
+   * presents its configured progression handoff modal.
+   */
+  primeFloor1QuotaCompletion(): void;
+  /**
    * Arrange the live Floor-2 world at its unlocked exit stairs, the Floor-2
    * mirror of {@link MainSceneProbeApi.primeFloor1StairTransition}. The test
    * still drives the real interaction modal, `onStairDescend`, the
@@ -2096,6 +2102,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[playerEid] = 0;
       world.stores.velocity.y[playerEid] = 0;
       scene.setSimulationPaused(true);
+    },
+    primeFloor1QuotaCompletion: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective) {
+        throw new Error('Floor 1 quota path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+      objective.ratsKilled = objective.requiredRats;
+      objective.slimesKilled = objective.requiredSlimes;
     },
 
     primeFloor2StairTransition: () => {

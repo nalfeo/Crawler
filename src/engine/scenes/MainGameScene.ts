@@ -18,6 +18,7 @@ import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
   selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
+  type ScenarioDirectorMilestone,
   type ScenarioHudSnapshot,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
@@ -5430,10 +5431,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     for (const milestone of director.milestones) {
-      if (
-        milestone.isReached(this.world) &&
-        this.queueDirectorBeatOnce(milestone.id, milestone.copy)
-      ) {
+      if (milestone.isReached(this.world) && this.queueDirectorMilestoneOnce(milestone)) {
         return;
       }
     }
@@ -5459,6 +5457,43 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.shownCommentaryIds.add(id);
     this.queueDirectorCommentary(copy);
+    return true;
+  }
+
+  private queueDirectorMilestoneOnce(milestone: ScenarioDirectorMilestone<GameWorld>): boolean {
+    if (this.shownCommentaryIds.has(milestone.id)) {
+      return false;
+    }
+    this.shownCommentaryIds.add(milestone.id);
+    const modal = milestone.blockingModal;
+    if (!modal || !this.modalPicker) {
+      this.queueDirectorCommentary(milestone.copy);
+      return true;
+    }
+
+    const wasPaused = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    this.modalPicker.open(
+      {
+        kind: modal.kind,
+        title: modal.title,
+        subtitle: modal.subtitle,
+        body: modal.body,
+        options: [
+          {
+            id: 'acknowledge',
+            label: modal.confirmLabel,
+          },
+        ],
+        allowCancel: false,
+      },
+      {
+        onConfirm: () => {
+          this.setSimulationPaused(wasPaused);
+          this.updateOverlayText();
+        },
+      },
+    );
     return true;
   }
 
