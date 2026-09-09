@@ -285,4 +285,44 @@ describe('floor4 plumbing', () => {
     expect(config.widthTiles).toBeGreaterThanOrEqual(layout.widthTiles);
     expect(config.heightTiles).toBeGreaterThanOrEqual(layout.heightTiles);
   });
+
+  it('preserves the authored Floor 4 play-space dimensions and route', () => {
+    const config = floor4Config();
+    const layout = computeShowcaseArenaLayout(config.showcaseArena);
+    const map = generate(config, 404);
+
+    expect(layout.arena).toMatchObject({ x: 2, y: 2, width: 48, height: 40 });
+    expect(layout.tunnel).toMatchObject({ x: 50, width: 8, height: 4 });
+    expect(layout.greenRoom).toMatchObject({ x: 58, width: 20, height: 14 });
+    expect(map.playerSpawn).toEqual(layout.playerSpawn);
+
+    const route = (from: { x: number; y: number }, to: { x: number; y: number }): boolean => {
+      const seen = new Set<number>([from.y * config.widthTiles + from.x]);
+      const queue = [from];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (current.x === to.x && current.y === to.y) return true;
+        for (const [dx, dy] of [
+          [0, -1],
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+        ] as const) {
+          const x = current.x + dx;
+          const y = current.y + dy;
+          const key = y * config.widthTiles + x;
+          if (!seen.has(key) && map.tileMap.isPassable(x, y)) {
+            seen.add(key);
+            queue.push({ x, y });
+          }
+        }
+      }
+      return false;
+    };
+    const greenRoomCenter = {
+      x: layout.greenRoom.x + Math.floor(layout.greenRoom.width / 2),
+      y: layout.greenRoom.y + Math.floor(layout.greenRoom.height / 2),
+    };
+    expect(route(map.playerSpawn, greenRoomCenter)).toBe(true);
+  });
 });
