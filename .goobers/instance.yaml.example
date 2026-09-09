@@ -16,6 +16,9 @@ runner:
     - GOOBERS_RECOVERY_ISSUE
     - GOOBERS_INTAKE_COHORT
     - GOOBERS_RESUME_BRANCH
+    - GOOBERS_RESUME_CHECKPOINT_SHA
+    - GOOBERS_RESUME_FAILURE
+    - GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES
 runConditions:
   # 1 matches crawler-feature-pr's readiness.maxConcurrentRuns. Hosted CI does
   # not raise this either: goobers-run.yml runs four SEPARATE single-capacity

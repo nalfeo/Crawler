@@ -154,7 +154,7 @@ jobs:
       ISSUE_OWNER: nalfeo
     outputs:
       should_run: ${{ steps.reserve.outputs.should_run || steps.recovery.outputs.should_run }}
-      # Compact JSON array of {lane,slot,issue,cohort,resumePr,resumeBranch}.
+      # Compact JSON array of {lane,slot,issue,cohort,resumePr,resumeBranch,resumeCheckpointSha,resumeFailure}.
       # Reservation replaces the planned set with the live-validated set. During
       # mutation it publishes each attempted claim before touching GitHub, so the
       # always()-gated release job can reconcile a partially failed pass without
@@ -435,9 +435,11 @@ jobs:
           INTAKE_COHORT=""
           RESUME_PR=""
           RESUME_BRANCH=""
+          RESUME_CHECKPOINT_SHA=""
+          RESUME_FAILURE=""
 
           append_assignment() {
-            local issue="$1" cohort="$2" resume_pr="${3:-}" resume_branch="${4:-}"
+            local issue="$1" cohort="$2" resume_pr="${3:-}" resume_branch="${4:-}" resume_checkpoint_sha="${5:-}" resume_failure="${6:-}"
             local count="" lane="" slot=""
             if jq -e --arg issue "$issue" 'any(.[]; .issue == $issue)' <<<"$ASSIGNMENTS" >/dev/null; then
               return 0
@@ -458,7 +460,9 @@ jobs:
                 --arg cohort "$cohort" \
                 --arg resumePr "$resume_pr" \
                 --arg resumeBranch "$resume_branch" \
-                '. + [{lane: $lane, slot: $slot, issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch}]' \
+                --arg resumeCheckpointSha "$resume_checkpoint_sha" \
+                --arg resumeFailure "$resume_failure" \
+                '. + [{lane: $lane, slot: $slot, issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, resumeCheckpointSha: $resumeCheckpointSha, resumeFailure: $resumeFailure}]' \
                 <<<"$ASSIGNMENTS"
             )"
           }
@@ -619,20 +623,30 @@ jobs:
             if [ -n "${pr_number}" ]; then
               INTAKE_COHORT="resume"
               RESUME_PR="${pr_number}"
-              RESUME_BRANCH="$(
+              pr_details="$(
                 gh pr view "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
-                  --json headRefName --jq '.headRefName'
+                  --json headRefName,headRefOid
               )"
-              if [ -z "${RESUME_BRANCH}" ]; then
-                echo "::error::Open PR #${pr_number} has no readable head branch; use abandon_existing=true to start over." >&2
+              RESUME_BRANCH="$(jq -r '.headRefName // ""' <<<"${pr_details}")"
+              RESUME_CHECKPOINT_SHA="$(jq -r '.headRefOid // ""' <<<"${pr_details}")"
+              if [ -z "${RESUME_BRANCH}" ] || [ -z "${RESUME_CHECKPOINT_SHA}" ]; then
+                echo "::error::Open PR #${pr_number} has no readable head branch/checkpoint SHA; use abandon_existing=true to start over." >&2
                 exit 1
               fi
+              if [ -n "${RESUME_CONTRACT_BRANCH:-}" ] && [ "${RESUME_CONTRACT_BRANCH}" != "${RESUME_BRANCH}" ]; then
+                echo "::error::Refusing to resume issue #${ISSUE_NUMBER}: supplied resume_branch '${RESUME_CONTRACT_BRANCH}' does not match open PR #${pr_number}'s head branch '${RESUME_BRANCH}'." >&2
+                exit 1
+              fi
+              if [ -n "${RESUME_CONTRACT_SHA:-}" ]; then
+                RESUME_CHECKPOINT_SHA="${RESUME_CONTRACT_SHA}"
+              fi
+              RESUME_FAILURE="${RESUME_CONTRACT_FAILURE:-Goobers recovery for open PR #${pr_number}}"
               if [ "${ABANDON_EXISTING}" = "true" ]; then
                 # The close/delete below are destructive. Preserve this
                 # assignment first so an always()-gated release can reconcile
                 # the existing reservation if either mutation or a later
                 # selector check fails.
-                append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"
+                append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}" "${RESUME_CHECKPOINT_SHA}" "${RESUME_FAILURE}"
                 publish_assignments
                 gh pr close "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
                   --comment "Goobers recovery instructed to abandon this partial-progress PR; a fresh run will start from the issue."
@@ -640,11 +654,13 @@ jobs:
                 echo "Abandoned open Goobers PR #${pr_number} by explicit instruction; starting over."
                 ASSIGNMENTS="$(
                   jq -c --arg issue "${ISSUE_NUMBER}" \
-                    'map(if .issue == $issue then .resumePr = "" | .resumeBranch = "" else . end)' \
+                    'map(if .issue == $issue then .resumePr = "" | .resumeBranch = "" | .resumeCheckpointSha = "" | .resumeFailure = "" else . end)' \
                     <<<"$ASSIGNMENTS"
                 )"
                 RESUME_PR=""
                 RESUME_BRANCH=""
+                RESUME_CHECKPOINT_SHA=""
+                RESUME_FAILURE=""
               else
                 echo "Resuming open Goobers PR #${pr_number} on branch '${RESUME_BRANCH}'."
               fi
@@ -658,7 +674,7 @@ jobs:
                 exit 0
               fi
             fi
-            append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}"
+            append_assignment "${ISSUE_NUMBER}" "${INTAKE_COHORT}" "${RESUME_PR}" "${RESUME_BRANCH}" "${RESUME_CHECKPOINT_SHA}" "${RESUME_FAILURE}"
           fi
 
           selected_file="$(scan_fresh_candidates)" || exit 1
@@ -1020,45 +1036,6 @@ jobs:
           cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
           echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
 
-      - name: Validate clean worktree for resumed runs
-        # Before a resume/retry with a checkpoint contract can proceed, the
-        # worktree must be clean. A dirty worktree indicates uncommitted changes
-        # from the prior attempt that must not be mixed with the retry attempt.
-        # The old runner-temporary goobers-timeout-checkpoint files are not
-        # trusted here: RUNNER_TEMP is fresh on every workflow run.
-        run: |
-          set -euo pipefail
-          has_contract=false
-          if [ -n "${GOOBERS_EXPLICIT_ISSUE_NUMBER}" ] ||
-             [ -n "${GOOBERS_RESUME_CONTRACT_BRANCH}" ] ||
-             [ -n "${GOOBERS_RESUME_CONTRACT_SHA}" ] ||
-             [ -n "${GOOBERS_RESUME_CONTRACT_FAILURE}" ]; then
-            has_contract=true
-          fi
-          if [ "${has_contract}" = "true" ]; then
-            if [ -z "${GOOBERS_RESUME_CONTRACT_BRANCH}" ] ||
-               [ -z "${GOOBERS_RESUME_CONTRACT_FAILURE}" ]; then
-              echo "::error::Refusing to resume: the explicit resume contract must identify branch, checkpoint SHA (if any), and latest actionable defect/failure. Retry with: gh workflow run goobers-run.yml -f resume_branch=... -f resume_checkpoint_sha=... -f resume_failure=..." >&2
-              exit 1
-            fi
-            if ! [[ "${GOOBERS_RESUME_CONTRACT_BRANCH}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-              echo "::error::Refusing to resume: resume_branch is not a valid branch name." >&2
-              exit 1
-            fi
-            if [ -n "${GOOBERS_RESUME_CONTRACT_SHA}" ] &&
-               ! [[ "${GOOBERS_RESUME_CONTRACT_SHA}" =~ ^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$ ]]; then
-              echo "::error::Refusing to resume: resume_checkpoint_sha must be a full commit SHA or empty." >&2
-              exit 1
-            fi
-            if ! git diff-index --quiet HEAD -- 2>/dev/null ||
-               ! git diff-files --quiet 2>/dev/null ||
-               [ -n "$(git status --porcelain)" ]; then
-              echo "::error::Refusing to resume: worktree is dirty. A retry requires a clean worktree plus the explicit resume contract. Clear the worktree and retry." >&2
-              exit 1
-            fi
-            echo "Clean worktree and explicit resume contract validated for branch ${GOOBERS_RESUME_CONTRACT_BRANCH}; checkpoint ${GOOBERS_RESUME_CONTRACT_SHA:-none}."
-          fi
-
       - name: Adopt reserved slot assignments
         # Every issue was selected and labelled by the serialized reserve job.
         # This lane validates every assigned slot before it writes any durable
@@ -1083,6 +1060,8 @@ jobs:
             cohort="$(jq -r '.cohort' <<<"$assignment")"
             resume_pr="$(jq -r '.resumePr' <<<"$assignment")"
             resume_branch="$(jq -r '.resumeBranch' <<<"$assignment")"
+            resume_checkpoint_sha="$(jq -r '.resumeCheckpointSha // ""' <<<"$assignment")"
+            resume_failure="$(jq -r '.resumeFailure // ""' <<<"$assignment")"
 
             comments="$(mktemp)"
             if ! goobers_lease_fetch "${GITHUB_REPOSITORY}" "${issue_number}" "$comments"; then
@@ -1107,11 +1086,13 @@ jobs:
               --arg cohort "$cohort" \
               --arg resumePr "$resume_pr" \
               --arg resumeBranch "$resume_branch" \
+              --arg resumeCheckpointSha "$resume_checkpoint_sha" \
+              --arg resumeFailure "$resume_failure" \
               --arg leaseState "$lease_state" \
               --arg leaseRun "$lease_run" \
               --arg leaseAttempt "$lease_attempt" \
               --arg leaseComment "$lease_comment" \
-              '{lane: ($lane | tonumber), slot: ($slot | tonumber), issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, leaseState: $leaseState, leaseRun: $leaseRun, leaseAttempt: $leaseAttempt, leaseComment: $leaseComment}' \
+              '{lane: ($lane | tonumber), slot: ($slot | tonumber), issue: $issue, cohort: $cohort, resumePr: $resumePr, resumeBranch: $resumeBranch, resumeCheckpointSha: $resumeCheckpointSha, resumeFailure: $resumeFailure, leaseState: $leaseState, leaseRun: $leaseRun, leaseAttempt: $leaseAttempt, leaseComment: $leaseComment}' \
               >> "$assignment_file"
           done < <(jq -c '.[]' <<<"$RESERVED_ASSIGNMENTS")
 
@@ -1122,6 +1103,8 @@ jobs:
             cohort="$(jq -r '.cohort' <<<"$staged_assignment")"
             resume_pr="$(jq -r '.resumePr' <<<"$staged_assignment")"
             resume_branch="$(jq -r '.resumeBranch' <<<"$staged_assignment")"
+            resume_checkpoint_sha="$(jq -r '.resumeCheckpointSha // ""' <<<"$staged_assignment")"
+            resume_failure="$(jq -r '.resumeFailure // ""' <<<"$staged_assignment")"
             lease_state="$(jq -r '.leaseState' <<<"$staged_assignment")"
             lease_run="$(jq -r '.leaseRun' <<<"$staged_assignment")"
             lease_attempt="$(jq -r '.leaseAttempt' <<<"$staged_assignment")"
@@ -1323,6 +1306,9 @@ jobs:
               - GOOBERS_RECOVERY_ISSUE
               - GOOBERS_INTAKE_COHORT
               - GOOBERS_RESUME_BRANCH
+              - GOOBERS_RESUME_CHECKPOINT_SHA
+              - GOOBERS_RESUME_FAILURE
+              - GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES
               - GH_TOKEN
               - GITHUB_REPOSITORY
           runConditions:
@@ -1401,55 +1387,113 @@ jobs:
             exit 1
           fi
 
-          # Create a timeout checkpoint contract that records a valid committed patch
-          # SHA when one exists, or a no-checkpoint reason in diagnostics. This allows
-          # retries to resume with an explicit contract identifying the branch, checkpoint
-          # SHA, and latest actionable defect/failure.
-          create_timeout_checkpoint() {
-            local slot_root="$1"
+          write_timeout_contract() {
+            local slot_root="$1" branch="$2" checkpoint_sha="$3" failure="$4" no_checkpoint_reason="${5:-}"
             local diagnostics_dir="${slot_root}/diagnostics"
             local checkpoint_file="${diagnostics_dir}/timeout-resume-contract.json"
-            local worktree branch current_sha no_checkpoint_reason artifact_url
-
+            local artifact_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             mkdir -p "$diagnostics_dir"
-            worktree="$(find "$slot_root/gaggles" -name .git \( -type d -o -type f \) -print -quit 2>/dev/null | sed 's#/.git$##')"
-            
-            if [ -z "$worktree" ] || ! cd "$worktree" 2>/dev/null || ! current_sha=$(git rev-parse HEAD 2>/dev/null); then
-              no_checkpoint_reason="No readable Goobers git worktree was available before timeout"
-              jq -cn --arg branch "" --arg reason "$no_checkpoint_reason" \
-                --arg artifact "goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-                '{contract_version: 1, branch: $branch, checkpoint_sha: null, no_checkpoint_reason: $reason, latest_failure: "slot deadline exceeded", artifact: $artifact, terminal: true}' \
-                > "$checkpoint_file"
-              return 0
-            fi
-            
-            branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-            
-            # Include untracked files: a tracked-only commit could claim a
-            # checkpoint while silently dropping the implementation patch.
-            if ! git diff-index --quiet HEAD -- 2>/dev/null ||
-               [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]; then
-              if git add -A && git commit -m "chore: checkpoint implementation before timeout" 2>/dev/null; then
-                current_sha=$(git rev-parse HEAD 2>/dev/null)
-              else
-                no_checkpoint_reason="Worktree changes were present but checkpoint commit failed"
-              fi
-            fi
-            
-            artifact_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            if [ -z "${no_checkpoint_reason:-}" ]; then
-              jq -cn --arg branch "$branch" --arg sha "$current_sha" \
-                --arg failure "slot deadline exceeded" --arg artifact "$artifact_url" \
-                '{contract_version: 1, branch: $branch, checkpoint_sha: $sha, latest_failure: $failure, artifact: $artifact, terminal: true}' \
-                > "$checkpoint_file"
-            else
+            if [ -n "$no_checkpoint_reason" ]; then
               jq -cn --arg branch "$branch" --arg reason "$no_checkpoint_reason" \
-                --arg failure "slot deadline exceeded" --arg artifact "$artifact_url" \
+                --arg failure "$failure" --arg artifact "$artifact_url" \
                 '{contract_version: 1, branch: $branch, checkpoint_sha: null, no_checkpoint_reason: $reason, latest_failure: $failure, artifact: $artifact, terminal: true}' \
                 > "$checkpoint_file"
+            else
+              jq -cn --arg branch "$branch" --arg sha "$checkpoint_sha" \
+                --arg failure "$failure" --arg artifact "$artifact_url" \
+                '{contract_version: 1, branch: $branch, checkpoint_sha: $sha, latest_failure: $failure, artifact: $artifact, terminal: true}' \
+                > "$checkpoint_file"
             fi
-            
-            echo "Checkpoint contract written to $checkpoint_file"
+            echo "Timeout resume contract written to $checkpoint_file"
+          }
+
+          validate_resume_slot_contract() {
+            local slot_root="$1" issue_number="$2" cohort="$3" resume_pr="$4" resume_branch="$5" resume_checkpoint_sha="$6" resume_failure="$7"
+            [ "$cohort" = "resume" ] || return 0
+            if [ -z "$resume_pr" ] || [ -z "$resume_branch" ] || [ -z "$resume_checkpoint_sha" ] || [ -z "$resume_failure" ]; then
+              echo "::error::Refusing to resume issue #${issue_number}: a resume assignment must carry PR, branch, checkpoint SHA, and latest failure context." >&2
+              return 1
+            fi
+            if ! [[ "$resume_branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              echo "::error::Refusing to resume issue #${issue_number}: resume branch '${resume_branch}' is not a safe branch name." >&2
+              return 1
+            fi
+            if ! [[ "$resume_checkpoint_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::Refusing to resume issue #${issue_number}: resume checkpoint SHA must be the 40-character commit at the selected PR head." >&2
+              return 1
+            fi
+            local verify_worktree="${slot_root}/resume-contract-checkout"
+            mkdir -p "$verify_worktree"
+            if [ -d "${verify_worktree}/.git" ]; then
+              if ! git -C "$verify_worktree" diff-index --quiet HEAD -- 2>/dev/null ||
+                 ! git -C "$verify_worktree" diff-files --quiet 2>/dev/null ||
+                 [ -n "$(git -C "$verify_worktree" status --porcelain)" ]; then
+                echo "::error::Refusing to resume issue #${issue_number}: slot resume verification worktree is dirty. Clear ${verify_worktree} and retry." >&2
+                return 1
+              fi
+            else
+              git -C "$verify_worktree" init -q || return 1
+              git -C "$verify_worktree" remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" || return 1
+            fi
+            if ! git -C "$verify_worktree" fetch --depth=1 origin "+refs/heads/${resume_branch}:refs/remotes/origin/${resume_branch}"; then
+              echo "::error::Refusing to resume issue #${issue_number}: could not fetch contract branch '${resume_branch}' for PR #${resume_pr}." >&2
+              return 1
+            fi
+            branch_head="$(git -C "$verify_worktree" rev-parse "refs/remotes/origin/${resume_branch}" 2>/dev/null || true)"
+            if [ "$branch_head" != "$resume_checkpoint_sha" ]; then
+              echo "::error::Refusing to resume issue #${issue_number}: checkpoint ${resume_checkpoint_sha} is not the fetched head of contract branch '${resume_branch}' (${branch_head:-unreadable})." >&2
+              return 1
+            fi
+            if ! git -C "$verify_worktree" -c advice.detachedHead=false checkout --detach "$resume_checkpoint_sha"; then
+              echo "::error::Refusing to resume issue #${issue_number}: could not check out checkpoint ${resume_checkpoint_sha}." >&2
+              return 1
+            fi
+            if ! git -C "$verify_worktree" diff-index --quiet HEAD -- 2>/dev/null ||
+               ! git -C "$verify_worktree" diff-files --quiet 2>/dev/null ||
+               [ -n "$(git -C "$verify_worktree" status --porcelain)" ]; then
+              echo "::error::Refusing to resume issue #${issue_number}: slot resume verification worktree is dirty after checkout." >&2
+              return 1
+            fi
+            echo "Validated resume contract for issue #${issue_number}: PR #${resume_pr}, branch ${resume_branch}, checkpoint ${resume_checkpoint_sha}, failure '${resume_failure}'."
+          }
+
+          create_timeout_checkpoint() {
+            local slot_root="$1" unsafe_reason="${2:-}"
+            local failure="slot deadline exceeded"
+            local worktree branch current_sha no_checkpoint_reason
+
+            if [ -n "$unsafe_reason" ]; then
+              write_timeout_contract "$slot_root" "" "" "$failure" "$unsafe_reason"
+              return 0
+            fi
+
+            worktree="$(find "$slot_root/gaggles" -name .git \( -type d -o -type f \) -print -quit 2>/dev/null | sed 's#/.git$##')"
+            if [ -z "$worktree" ] || ! current_sha=$(git -C "$worktree" rev-parse HEAD 2>/dev/null); then
+              write_timeout_contract "$slot_root" "" "" "$failure" "No readable Goobers git worktree was available after timeout teardown"
+              return 0
+            fi
+            branch="$(git -C "$worktree" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+            if [ -z "$branch" ] || [ "$branch" = "HEAD" ] || ! [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+              write_timeout_contract "$slot_root" "${branch:-}" "" "$failure" "Goobers worktree was not on a safe named branch after timeout teardown"
+              return 0
+            fi
+
+            # Include untracked files: a tracked-only commit could claim a
+            # checkpoint while silently dropping the implementation patch.
+            if ! git -C "$worktree" diff-index --quiet HEAD -- 2>/dev/null ||
+               [ -n "$(git -C "$worktree" ls-files --others --exclude-standard 2>/dev/null)" ]; then
+              if git -C "$worktree" add -A && git -C "$worktree" commit -m "chore: checkpoint implementation before timeout" 2>/dev/null; then
+                current_sha="$(git -C "$worktree" rev-parse HEAD 2>/dev/null)"
+              else
+                write_timeout_contract "$slot_root" "$branch" "" "$failure" "Worktree changes were present after teardown but checkpoint commit failed"
+                return 0
+              fi
+            fi
+            if git -C "$worktree" push origin "HEAD:refs/heads/${branch}"; then
+              write_timeout_contract "$slot_root" "$branch" "$current_sha" "$failure"
+            else
+              write_timeout_contract "$slot_root" "$branch" "" "$failure" "Checkpoint commit ${current_sha} could not be pushed to ${branch}"
+            fi
           }
 
           # The slot deadline is derived BEFORE any slot starts, so a budget
@@ -1541,6 +1585,11 @@ jobs:
             cohort="$(jq -r '.cohort' <<<"$assignment")"
             resume_pr="$(jq -r '.resumePr' <<<"$assignment")"
             resume_branch="$(jq -r '.resumeBranch' <<<"$assignment")"
+            resume_checkpoint_sha="$(jq -r '.resumeCheckpointSha // ""' <<<"$assignment")"
+            resume_failure="$(jq -r '.resumeFailure // ""' <<<"$assignment")"
+            if ! validate_resume_slot_contract "$slot_root" "$issue_number" "$cohort" "$resume_pr" "$resume_branch" "$resume_checkpoint_sha" "$resume_failure"; then
+              exit 1
+            fi
             (
               set -uo pipefail
               export GOOBERS_INSTANCE="$slot_root"
@@ -1549,6 +1598,9 @@ jobs:
               export GOOBERS_INTAKE_COHORT="$cohort"
               export GOOBERS_RESUME_PR="$resume_pr"
               export GOOBERS_RESUME_BRANCH="$resume_branch"
+              export GOOBERS_RESUME_CHECKPOINT_SHA="$resume_checkpoint_sha"
+              export GOOBERS_RESUME_FAILURE="$resume_failure"
+              export GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES="$implementation_timeout_minutes"
               exec goobers run --github-progress "$GOOBERS_WORKFLOW" "$slot_root"
             ) >"$slot_log" 2>&1 &
             slot_pid=$!
@@ -1584,13 +1636,14 @@ jobs:
           # real exit status.
           unreaped_slots=" "
           terminate_slots() {
+            local target_table="${1:-$slot_table}"
             local slot pid log recovery start status=0
             while IFS="$(printf '\t')" read -r slot pid log recovery start; do
               if ! goobers_teardown_tree "${GOOBERS_LANE_ROOT}/slot-${slot}" 120 "${pid}:${start}"; then
                 status=1
                 unreaped_slots="${unreaped_slots}${slot} "
               fi
-            done < "$slot_table"
+            done < "$target_table"
             return "$status"
           }
 
@@ -1606,12 +1659,25 @@ jobs:
           while slots_alive; do
             remaining=$(( deadline - SECONDS ))
             if [ "$remaining" -le 0 ]; then
-              echo "::error::Lane ${GOOBERS_LANE} hit its ${run_budget}s slot deadline (derived from the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget minus ${job_elapsed}s of setup and a ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve) before every slot reached a terminal state. Creating timeout checkpoint contracts before teardown; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and retry with: gh workflow run goobers-run.yml" >&2
-              # Create checkpoint contracts for each slot before tearing down
-              for slot in ${GOOBERS_SLOTS}; do
-                create_timeout_checkpoint "${GOOBERS_LANE_ROOT}/slot-${slot}"
-              done
-              terminate_slots || teardown_failed=1
+              echo "::error::Lane ${GOOBERS_LANE} hit its ${run_budget}s slot deadline (derived from the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget minus ${job_elapsed}s of setup and a ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve) before every slot reached a terminal state. Stopping live slots before creating timeout checkpoint contracts; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and retry with: gh workflow run goobers-run.yml" >&2
+              timed_out_slots="${RUNNER_TEMP}/goobers-timed-out-slots-lane-${GOOBERS_LANE}.tsv"
+              : > "$timed_out_slots"
+              while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+                if kill -0 "$pid" 2>/dev/null; then
+                  printf '%s\t%s\t%s\t%s\t%s\n' "$slot" "$pid" "$log" "$recovery" "$start" >> "$timed_out_slots"
+                fi
+              done < "$slot_table"
+              terminate_slots "$timed_out_slots" || teardown_failed=1
+              while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+                case "$unreaped_slots" in
+                  *" $slot "*)
+                    create_timeout_checkpoint "${GOOBERS_LANE_ROOT}/slot-${slot}" "Unsafe to checkpoint: slot ${slot}'s process tree could not be proven stopped after the deadline"
+                    ;;
+                  *)
+                    create_timeout_checkpoint "${GOOBERS_LANE_ROOT}/slot-${slot}"
+                    ;;
+                esac
+              done < "$timed_out_slots"
               break
             fi
             if [ "$remaining" -lt "$GOOBERS_SLOT_POLL_SECONDS" ]; then
