@@ -2649,6 +2649,11 @@ jobs:
           }
 
           find_pr_comment_id() {
+            # Ownership requires the marker to be the LEADING line, matching
+            # the hasLeadingMarker contract in
+            # .github/scripts/merge-train/state.mjs. A marker quoted or
+            # embedded further down an Actions-authored comment's body must
+            # never match, or this could PATCH an unrelated bot comment.
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments?per_page=100" |
               jq -r --arg marker "$1" '
@@ -2657,7 +2662,7 @@ jobs:
                   select(
                     (.user.login // "") == "github-actions[bot]" and
                     (.user.type // "") == "Bot" and
-                    any((.body // "") | split("\n")[]; . == $marker)
+                    (((.body // "") | split("\n")[0] // "") | gsub("^\\s+|\\s+$"; "")) == $marker
                   ) |
                   .id
                 ][0] // empty

@@ -11,6 +11,12 @@ import {
 import { bashEnv } from '../helpers/bash-script-path';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
+const hasJq = hasBash && spawnSync('bash', ['-c', 'command -v jq >/dev/null 2>&1']).status === 0;
+// `goobers-contract-validation.yml` sets this on ubuntu-latest so a missing
+// bash/jq there is a failure rather than a silent skip, matching the gate
+// documented in "forces the executable Goobers suites to actually run in CI".
+const requireLinuxSuites = process.env.GOOBERS_REQUIRE_LINUX_SUITES === '1';
 
 interface GoobersActionsWorkflow {
   on: {
@@ -2292,7 +2298,13 @@ ${queryScript}
     expect(result?.run).toContain('destination=pr');
     expect(result?.run).toContain('(.user.login // "") == "github-actions[bot]"');
     expect(result?.run).toContain('(.user.type // "") == "Bot"');
-    expect(result?.run).toContain('any((.body // "") | split("\\n")[]; . == $marker)');
+    // Ownership requires the marker to own the LEADING line (matching
+    // hasLeadingMarker in .github/scripts/merge-train/state.mjs), not merely
+    // appear on any line — a quoted/embedded marker must not match.
+    expect(result?.run).toContain(
+      '(((.body // "") | split("\\n")[0] // "") | gsub("^\\\\s+|\\\\s+$"; "")) == $marker',
+    );
+    expect(result?.run).not.toContain('any((.body // "") | split("\\n")[]; . == $marker)');
     expect(result?.run).toContain('gh issue comment "$pr_number"');
     expect(result?.run).toContain('Source issue: #${issue_number}');
     expect(result?.run).toContain('Could not post the Goobers result comment on PR #${pr_number}');
@@ -2300,6 +2312,157 @@ ${queryScript}
       'Could not update the Goobers result comment on PR #${pr_number}',
     );
     expect(result?.run).toContain('no PR number could be recovered');
+  });
+
+  it('patches only the Actions-owned, leading-line-exact PR result comment', () => {
+    if (!hasBash || !hasJq) {
+      expect(!requireLinuxSuites, 'bash and jq are required to run this suite in CI').toBe(true);
+      return;
+    }
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const result = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Comment on Goobers run result',
+    );
+    const script = result?.run ?? '';
+
+    // Pull the real `find_pr_comment_id` definition and the real PR-branch
+    // reporting logic straight out of the workflow so the harness cannot
+    // silently drift from what actually ships.
+    const findPrCommentIdMatch = script.match(/find_pr_comment_id\(\) \{[\s\S]*?\n\}/);
+    expect(findPrCommentIdMatch, 'find_pr_comment_id() must exist in the script').not.toBeNull();
+    const findPrCommentIdSource = findPrCommentIdMatch![0];
+
+    const branchStart = script.indexOf('\n  if [ "$pr_validated_open" = "true" ]; then');
+    const branchEnd = script.indexOf('if [ -n "$pr_resolution_error" ]; then', branchStart);
+    expect(branchStart).toBeGreaterThanOrEqual(0);
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const prBranchSource = script.slice(branchStart, branchEnd);
+
+    const marker =
+      '<!-- crawler-goobers-run-result:v1 run-id=1 attempt=1 lane=1 slot=1 goobers-run=run-1 workflow=crawler-feature-pr destination=pr -->';
+
+    function runHarness(ghStub: string): { status: number | null; stdout: string; stderr: string } {
+      const harness = `
+set -uo pipefail
+GITHUB_REPOSITORY="owner/repo"
+GITHUB_SERVER_URL="https://github.com"
+GITHUB_RUN_ID="1"
+GITHUB_RUN_ATTEMPT="1"
+GOOBERS_LANE="1"
+GOOBERS_WORKFLOW="crawler-feature-pr"
+ARTIFACT_NAME="artifact"
+JOB_STATUS="success"
+slot="1"
+run_id="run-1"
+delivery_outcome="pr-opened"
+failure_code=""
+terminal_stage="deliver"
+elapsed_seconds="10"
+pr_number="42"
+pr_url="https://github.com/owner/repo/pull/42"
+issue_number="7"
+pr_validated_open=true
+report_failed=false
+existing_pr_comment_id=""
+pr_marker=""
+pr_body=""
+PATCH_LOG="$(mktemp)"
+
+${ghStub}
+
+${findPrCommentIdSource}
+
+${prBranchSource}
+
+echo "REPORT_FAILED=\${report_failed}"
+echo "PATCH_LOG_CONTENTS_START"
+cat "$PATCH_LOG"
+echo "PATCH_LOG_CONTENTS_END"
+`;
+      return spawnSync('bash', ['-c', harness], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        env: bashEnv({}),
+      });
+    }
+
+    // Case 1: a user-authored comment with the exact marker as its leading
+    // line, and an Actions-authored comment that only embeds the marker
+    // further down its body, must NEVER be treated as the owner. Only the
+    // Actions-authored comment whose LEADING line is the exact marker may be
+    // patched.
+    const ownership = runHarness(`
+      gh() {
+        if [ "$1" = "api" ] && [ "$2" = "--paginate" ]; then
+          cat <<JSON
+[[
+  {"id": 111, "user": {"login": "someone-else", "type": "User"}, "body": "${marker}\\nnot the real owner"},
+  {"id": 222, "user": {"login": "github-actions[bot]", "type": "Bot"}, "body": "unrelated preface\\n${marker}"},
+  {"id": 333, "user": {"login": "github-actions[bot]", "type": "Bot"}, "body": "${marker}\\nActions-owned leading marker"}
+]]
+JSON
+          return 0
+        fi
+        if [ "$1" = "api" ] && [ "$2" = "--silent" ]; then
+          echo "PATCHED:$5" >> "$PATCH_LOG"
+          cat - >> "$PATCH_LOG"
+          return 0
+        fi
+        echo "UNEXPECTED_GH_CALL:$*" >> "$PATCH_LOG"
+        return 1
+      }
+    `);
+    expect(ownership.status, `stdout:\n${ownership.stdout}\nstderr:\n${ownership.stderr}`).toBe(0);
+    expect(ownership.stdout).toContain('PATCHED:repos/owner/repo/issues/comments/333');
+    expect(ownership.stdout).not.toContain('issues/comments/111');
+    expect(ownership.stdout).not.toContain('issues/comments/222');
+    expect(ownership.stdout).toContain('REPORT_FAILED=false');
+
+    // Case 2: the lookup call itself fails (gh api errors) — this must set
+    // report_failed rather than silently proceeding as "no existing comment".
+    const lookupFailure = runHarness(`
+      gh() {
+        if [ "$1" = "api" ] && [ "$2" = "--paginate" ]; then
+          echo "boom" >&2
+          return 1
+        fi
+        echo "UNEXPECTED_GH_CALL:$*" >> "$PATCH_LOG"
+        return 1
+      }
+    `);
+    expect(
+      lookupFailure.status,
+      `stdout:\n${lookupFailure.stdout}\nstderr:\n${lookupFailure.stderr}`,
+    ).toBe(0);
+    expect(lookupFailure.stdout).toContain('REPORT_FAILED=true');
+    expect(lookupFailure.stdout).not.toContain('PATCHED:');
+
+    // Case 3: the lookup succeeds and finds the Actions-owned comment, but
+    // the PATCH itself fails — this must also set report_failed, not be
+    // swallowed.
+    const patchFailure = runHarness(`
+      gh() {
+        if [ "$1" = "api" ] && [ "$2" = "--paginate" ]; then
+          cat <<JSON
+[[
+  {"id": 333, "user": {"login": "github-actions[bot]", "type": "Bot"}, "body": "${marker}\\nActions-owned leading marker"}
+]]
+JSON
+          return 0
+        fi
+        if [ "$1" = "api" ] && [ "$2" = "--silent" ]; then
+          cat - >/dev/null
+          return 1
+        fi
+        echo "UNEXPECTED_GH_CALL:$*" >> "$PATCH_LOG"
+        return 1
+      }
+    `);
+    expect(
+      patchFailure.status,
+      `stdout:\n${patchFailure.stdout}\nstderr:\n${patchFailure.stderr}`,
+    ).toBe(0);
+    expect(patchFailure.stdout).toContain('REPORT_FAILED=true');
   });
 
   it('posts a terminal result for an assigned issue even when no journal exists', () => {
