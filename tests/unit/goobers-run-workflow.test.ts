@@ -87,6 +87,7 @@ interface GoobersDefinition {
     }>;
     gates: Array<{
       name: string;
+      maxRepasses?: number;
       agentic?: { retry?: { maxAttempts?: number; backoffSeconds?: number } };
       branches?: Record<string, string>;
     }>;
@@ -1093,6 +1094,7 @@ ${queryScript}
     const plan = tasks.get('plan');
     const materializePlan = tasks.get('materialize-plan');
     const implement = tasks.get('implement');
+    const localGate = definition.spec.gates.find((gate) => gate.name === 'local-gate');
     const review = definition.spec.gates.find((gate) => gate.name === 'review');
     const runStep = loadYaml<GoobersActionsWorkflow>(
       '.github',
@@ -1100,7 +1102,8 @@ ${queryScript}
       'goobers-run.yml',
     ).jobs.run?.steps?.find((step) => step.name === 'Run the workflow');
 
-    expect(definition.spec.runControls?.maxRepasses).toBe(6);
+    expect(definition.spec.runControls?.maxRepasses).toBe(2);
+    expect(review?.maxRepasses).toBe(2);
     expect(hydrate).toBeDefined();
     expect(tasks.get('query-backlog')?.expectedOutputs).toEqual([
       'id',
@@ -1243,16 +1246,39 @@ ${queryScript}
     expect(materializePlan?.run?.script).toContain('implementation-plan-result.json');
     expect(materializePlan?.run?.script).toContain('GOOBERS_INPUT_IMPLEMENTATIONPLAN');
     expect(materializePlan?.next).toBe('implement');
-    expect(implement?.contextFrom).toContain('hydrate-requirements');
-    expect(implement?.contextFrom).toContain('materialize-plan');
+    // `local-ci` and `review` are listed so a repass carries forward the
+    // pinned runtime's SelectContextPointers output for those sources
+    // (`local-ci.artifact[...]` and `review.verdict`) — the exact defect
+    // evidence that triggered the re-entry. `plan` is deliberately absent
+    // (superseded by the materialized `materialize-plan` artifact) and
+    // `implement` is absent so no prior implementation attempt's own
+    // historical pointer is restored.
+    expect(implement?.contextFrom).toEqual([
+      'hydrate-requirements',
+      'materialize-plan',
+      'local-ci',
+      'review',
+    ]);
     expect(implement?.contextFrom).not.toContain('plan');
+    expect(implement?.contextFrom).not.toContain('implement');
     expect(tasks.get('push-branch')?.run?.script).toContain('npm ci');
     expect(tasks.get('push-branch')?.run?.script).toContain('goobers push-branch');
-    // The pre-review `checkpoint-branch` stage was removed; `implement` now
-    // hands straight to the review gate and no checkpoint task remains.
-    expect(implement?.next).toBe('review');
-    expect(tasks.get('push-branch')?.next).toBe('local-ci');
+    // Canonical implementation repasses consume only the latest requirements and
+    // materialized plan; the local gate runs before any reviewer pass.
+    expect([
+      implement?.next,
+      tasks.get('local-ci')?.next,
+      localGate?.branches?.pass,
+      review?.branches?.pass,
+      tasks.get('push-branch')?.next,
+    ]).toEqual(['local-ci', 'local-gate', 'review', 'push-branch', 'open-pr']);
     expect(tasks.get('local-ci')?.next).toBe('local-gate');
+    expect(localGate?.branches?.pass).toBe('review');
+    expect(localGate?.branches?.fail).toBe('implement');
+    expect(localGate?.branches?.infra).toBe('local-ci');
+    expect(review?.branches?.['needs-changes']).toBe('implement');
+    expect(review?.branches?.fail).toBe('park-needs-human');
+    expect(review?.branches?.escalate).toBe('needs-remediation');
     expect(tasks.get('checkpoint-branch')).toBeUndefined();
     for (const name of ['plan', 'implement']) {
       expect(tasks.get(name)?.retry).toEqual({ maxAttempts: 2, backoffSeconds: 30 });

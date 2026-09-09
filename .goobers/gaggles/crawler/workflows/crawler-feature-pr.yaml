@@ -24,8 +24,9 @@ spec:
   # recovery/manual dispatch.
   readiness:
     maxConcurrentRuns: 1
+  # Keep automatic repasses bounded below the former six-pass ceiling.
   runControls:
-    maxRepasses: 6
+    maxRepasses: 2
   start: query-backlog
   tasks:
     - name: query-backlog
@@ -233,16 +234,22 @@ spec:
     - name: implement
       type: agentic
       goober: coder
+      # `local-gate.fail` and `review.needs-changes` both re-enter here. The
+      # pinned runtime's SelectContextPointers keeps one current pointer per
+      # listed source: the canonical requirements/plan artifacts plus the
+      # latest local-ci artifact or review verdict. It does not restore the
+      # implementer output or superseded plan/review history. On the initial
+      # pass local-ci and review have not run, so their pointers are omitted.
       contextFrom:
         - hydrate-requirements
         - materialize-plan
-        - implement
-        - review
         - local-ci
+        - review
       goal: >-
         Implement the claimed Crawler feature according to the producer plan,
         run focused checks, and commit the change. On a repass, address the
-        attached reviewer or local-gate evidence before continuing.
+        attached reviewer or local-gate evidence (the latest failing local-ci
+        artifact or review verdict) before continuing.
       capabilities:
         - repo:push
         - agent:model
@@ -251,7 +258,7 @@ spec:
       retry:
         maxAttempts: 2
         backoffSeconds: 30
-      next: review
+      next: local-ci
     - name: push-branch
       type: deterministic
       goal: Push the implemented change as a branch.
@@ -266,7 +273,7 @@ spec:
         - repo:push
       policyActions:
         - push-repository-branch
-      next: local-ci
+      next: open-pr
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
@@ -363,7 +370,8 @@ spec:
         retry:
           maxAttempts: 2
           backoffSeconds: 30
-      maxRepasses: 6
+      # Keep automatic reviewer repasses bounded below the former six-pass ceiling.
+      maxRepasses: 2
       branches:
         pass: push-branch
         needs-changes: implement
@@ -374,7 +382,7 @@ spec:
       automated:
         check: failure-class
       branches:
-        pass: open-pr
+        pass: review
         fail: implement
         infra: local-ci
         escalate: needs-remediation
