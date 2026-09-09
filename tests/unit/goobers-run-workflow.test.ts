@@ -2290,6 +2290,9 @@ ${queryScript}
     expect(result?.run).toContain('gh issue comment "$issue_number"');
     expect(result?.run).toContain('find_pr_comment_id');
     expect(result?.run).toContain('destination=pr');
+    expect(result?.run).toContain('(.user.login // "") == "github-actions[bot]"');
+    expect(result?.run).toContain('(.user.type // "") == "Bot"');
+    expect(result?.run).toContain('any((.body // "") | split("\\n")[]; . == $marker)');
     expect(result?.run).toContain('gh issue comment "$pr_number"');
     expect(result?.run).toContain('Source issue: #${issue_number}');
     expect(result?.run).toContain('Could not post the Goobers result comment on PR #${pr_number}');

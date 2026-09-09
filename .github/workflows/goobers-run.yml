@@ -2651,8 +2651,17 @@ jobs:
           find_pr_comment_id() {
             gh api --paginate --slurp \
               "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments?per_page=100" |
-              jq -r --arg marker "$1" \
-                '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+              jq -r --arg marker "$1" '
+                [
+                  .[][] |
+                  select(
+                    (.user.login // "") == "github-actions[bot]" and
+                    (.user.type // "") == "Bot" and
+                    any((.body // "") | split("\n")[]; . == $marker)
+                  ) |
+                  .id
+                ][0] // empty
+              '
           }
 
           # Same exhaustive enumeration as "Handle no-work disposition": every

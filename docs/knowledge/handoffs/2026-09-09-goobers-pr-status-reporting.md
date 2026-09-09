@@ -22,6 +22,10 @@ Issue and PR comment lookup, creation, and update failures are surfaced and
 fail the reporting step instead of being silently treated as successful
 delivery. Claim cleanup and PR validation remain unchanged.
 
+The PR idempotency lookup now updates only an exact marker line authored by
+`github-actions[bot]`, preventing a user-authored comment containing similar
+text from being overwritten.
+
 ## Verification
 
 - `npm run test:unit -- tests/unit/goobers-run-workflow.test.ts tests/unit/goobers-run-slot-cleanup.test.ts --run`
