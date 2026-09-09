@@ -67,13 +67,19 @@ spec:
               exit 1
             fi
             gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'
-            printf '%s' "${issue_json}" | jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
-              id: ((.number // '"${issue}"') | tostring),
-              title,
-              body,
-              url,
-              workspaceBranch: $workspaceBranch
-            }' > claimed-item.json
+            printf '%s' "${issue_json}" | jq \
+              --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" \
+              --arg resumeCheckpointSha "${GOOBERS_RESUME_CHECKPOINT_SHA:-}" \
+              --arg resumeFailure "${GOOBERS_RESUME_FAILURE:-}" \
+              '{
+                id: ((.number // '"${issue}"') | tostring),
+                title,
+                body,
+                url,
+                workspaceBranch: $workspaceBranch,
+                resumeCheckpointSha: $resumeCheckpointSha,
+                resumeFailure: $resumeFailure
+              }' > claimed-item.json
           elif [ "${GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED:-false}" = "true" ]; then
             echo "Hosted Goobers slots require an explicit issue assignment; refusing the pinned runtime's nested backlog-query path." >&2
             exit 1
@@ -105,6 +111,8 @@ spec:
         # Goobers' well-known branch-rebinding contract: a recovered PR head
         # is emitted here so every later stage uses that existing branch.
         - workspaceBranch
+        - resumeCheckpointSha
+        - resumeFailure
       next: hydrate-requirements
     - name: hydrate-requirements
       type: deterministic
@@ -113,6 +121,8 @@ spec:
         issueTitle: query-backlog.title
         issueBody: query-backlog.body
         issueUrl: query-backlog.url
+        resumeCheckpointSha: query-backlog.resumeCheckpointSha
+        resumeFailure: query-backlog.resumeFailure
       goal: Fetch the full claimed issue body into deterministic requirements context.
       run:
         script: |
@@ -137,6 +147,13 @@ spec:
             echo "## Body"
             echo
             printf '%s\n' "${body:-"(empty)"}"
+            if [ -n "${GOOBERS_INPUT_RESUMECHECKPOINTSHA:-}" ] || [ -n "${GOOBERS_INPUT_RESUMEFAILURE:-}" ]; then
+              echo
+              echo "## Resume contract"
+              echo
+              echo "- Checkpoint SHA: ${GOOBERS_INPUT_RESUMECHECKPOINTSHA:-none}"
+              echo "- Latest failure: ${GOOBERS_INPUT_RESUMEFAILURE:-none}"
+            fi
           } > requirements.md
 
           jq -n \
@@ -165,6 +182,7 @@ spec:
     - name: plan
       type: agentic
       goober: producer
+      timeoutMinutes: 20
       contextFrom:
         - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
@@ -233,6 +251,7 @@ spec:
     - name: implement
       type: agentic
       goober: coder
+      timeoutMinutes: 50
       contextFrom:
         - hydrate-requirements
         - materialize-plan
