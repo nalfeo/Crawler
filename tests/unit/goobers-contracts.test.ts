@@ -529,9 +529,24 @@ describe('crawler.goobers.summary/v1 close-out summary contract', () => {
         ].join('\n'),
       ),
     ).toContain(
-      'summary Description must state "Session is fully complete" or "Session is not fully complete"',
+      'summary Description must end with "Session is fully complete." or "Session is not fully complete."',
     );
     expect(summarySemanticErrors(undefined)[0]).toContain('must be a string');
+  });
+
+  it('rejects a completion phrase that is not at the end of the Description', () => {
+    expect(
+      summarySemanticErrors(
+        [
+          'Description: Work remains; session is fully complete only if CI passes.',
+          'Systems: Goobers workflow',
+          'Verification: tests',
+          'Risk: Low',
+        ].join('\n'),
+      ),
+    ).toContain(
+      'summary Description must end with "Session is fully complete." or "Session is not fully complete."',
+    );
   });
 
   it('leaves crawler.goobers.output/v1 summary semantics unchanged for in-flight v1 payloads', () => {

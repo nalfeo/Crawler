@@ -1745,7 +1745,7 @@ ${queryScript}
     expect(
       definition.spec.gates.find((gate) => gate.name === 'pr-opened-gate')?.branches,
     ).toMatchObject({
-      fail: 'needs-remediation',
+      fail: 'prepare-needs-remediation-summary',
     });
     expect(
       workflow.jobs.run?.steps?.find((step) => step.name === 'Preserve trusted Goobers source')

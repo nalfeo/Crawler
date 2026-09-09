@@ -153,9 +153,9 @@ export function summarySemanticErrors(summary) {
   });
 
   const description = lines[0].replace(/^(?:[-*]\s*)?Description:\s*/i, '').trim();
-  if (!/\bsession\s+is\s+(?:not\s+)?fully\s+complete\b/i.test(description)) {
+  if (!/\bsession\s+is\s+(?:not\s+)?fully\s+complete\.\s*$/i.test(description)) {
     errors.push(
-      'summary Description must state "Session is fully complete" or "Session is not fully complete"',
+      'summary Description must end with "Session is fully complete." or "Session is not fully complete."',
     );
   }
 
@@ -700,6 +700,16 @@ function summaryFixtures() {
       summary: [
         'Systems: Goobers workflow',
         'Description: Fixes it',
+        'Verification: tests',
+        'Risk: Low',
+      ].join('\n'),
+    },
+    {
+      name: 'summary with a non-terminal completion state is rejected',
+      shouldPass: false,
+      summary: [
+        'Description: Work remains; Session is fully complete only if CI passes.',
+        'Systems: Goobers workflow',
         'Verification: tests',
         'Risk: Low',
       ].join('\n'),

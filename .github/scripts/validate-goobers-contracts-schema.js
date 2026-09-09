@@ -142,8 +142,8 @@ export const goobersSummaryV1 = {
     'whether the session is fully complete or not fully complete. Single-sentence summaries ' +
     'are rejected.',
   completionPattern:
-    'The Description value must contain "Session is fully complete" or ' +
-    '"Session is not fully complete".',
+    'The Description value must end with "Session is fully complete." or ' +
+    '"Session is not fully complete.".',
   example: [
     'Description: Fixes the Goobers summary in plain language. Session is fully complete.',
     'Systems: Goobers workflow, validation schema, issue-close-out output contract',
