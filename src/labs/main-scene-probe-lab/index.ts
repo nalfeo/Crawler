@@ -131,7 +131,9 @@ import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
-import { getFloor4ArenaRunStats } from '../../game/floor4Scenario.js';
+import { getFloor4ArenaRunStats, getFloor4GreenRoomExitMarker } from '../../game/floor4Scenario.js';
+import { openFloor4GreenRoomVisit } from '../../game/floor4GreenRoom.js';
+import { listStaticInventorySlots } from '../../shared/inventory.js';
 import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -696,6 +698,15 @@ export interface MainSceneState {
   readonly livingEnemyCount: number;
   /** Floor 4 arena telemetry, when the probe booted Floor 4. */
   readonly floor4Arena: Floor4ArenaRunStats | null;
+  readonly floor4GreenRoom: {
+    readonly playerGold: number;
+    readonly purchases: number;
+    readonly spentGold: number;
+    readonly vendorVisits: number;
+    readonly vendorPurchases: number;
+    readonly inventory: readonly { readonly itemId: string; readonly quantity: number }[];
+    readonly stock: readonly { readonly offerId: string; readonly quantity: number }[];
+  } | null;
   /** Live player position in FEET (sim space), or null before spawn. */
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
@@ -1464,6 +1475,13 @@ export interface MainSceneProbeApi {
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
   queueInteraction(): void;
+  /**
+   * Arrange the live Floor 4 world at the first authored intermission, then
+   * return the real Green Room marker position for the interaction probe.
+   * This only seeds deterministic fixture state; the scene interaction and
+   * shop panel remain production code paths.
+   */
+  primeFloor4GreenRoomIntermission(): ProbePoint | null;
   /** Live world-camera center in PIXELS, or null before the camera exists. */
   getCameraCenter(): ProbePoint | null;
   /** Floor map size in FEET (camera bounds === ftToPx of this), or null. */
@@ -2018,6 +2036,28 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         enemyCount: enemyEids.length,
         livingEnemyCount: livingEnemyEids.length,
         floor4Arena: world ? (getFloor4ArenaRunStats(world) ?? null) : null,
+        floor4GreenRoom: (() => {
+          const visit = world?.floorExtendedState?.floor4GreenRoom?.currentVisit;
+          if (!world || !visit) return null;
+          return {
+            playerGold: world.playerGold,
+            purchases: world.floorExtendedState?.floor4GreenRoom?.purchases ?? 0,
+            spentGold: world.goldLedger.spentOnGreenRoom,
+            vendorVisits: world.vendorLedger.visits.filter(
+              (entry) => entry.vendorId === 'floor4-green-room',
+            ).length,
+            vendorPurchases: world.vendorLedger.decisions.filter(
+              (entry) => entry.vendorId === 'floor4-green-room' && entry.outcome === 'purchased',
+            ).length,
+            inventory: listStaticInventorySlots(world.inventories.get(eid) ?? { slots: [] }),
+            stock: visit.tables.flatMap((table) =>
+              table.offers.map((offer) => ({
+                offerId: `${table.tableId}:${offer.itemId}`,
+                quantity: offer.stock,
+              })),
+            ),
+          };
+        })(),
         playerFeet,
         cameraCenter: cameraCenter(),
         floorId: world?.floorId ?? null,
@@ -3357,6 +3397,37 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene) {
         scene.queuedInteraction = true;
       }
+    },
+
+    primeFloor4GreenRoomIntermission: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const arena = world?.floorExtendedState?.floor4Arena;
+      if (!world || !arena || playerEid < 0 || world.floor !== 4) {
+        return null;
+      }
+      arena.phase = { kind: 'INTERMISSION', act: 1 };
+      arena.phaseElapsedMs = 0;
+      const opened = openFloor4GreenRoomVisit(world, 0);
+      if (!opened.ok) {
+        throw new Error(opened.message);
+      }
+      const marker = getFloor4GreenRoomExitMarker(world);
+      if (!marker) {
+        return null;
+      }
+      world.state = 'playing';
+      world.playerInSafeRoom = true;
+      world.stores.position.x[playerEid] = marker.positionFt.x;
+      world.stores.position.y[playerEid] = marker.positionFt.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      for (const npc of world.npcs.values()) {
+        npc.nearbyPlayer = false;
+      }
+      scene.setSimulationPaused(true);
+      return marker.positionFt;
     },
 
     getCameraCenter: () => cameraCenter(),

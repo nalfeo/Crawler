@@ -574,6 +574,8 @@ export interface Floor4ArenaState {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
   /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
   activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** Barrier handle sealing the Green Room tunnel outside intermission. */
+  greenRoomBarrierId?: number;
   /** True when Floor 4 successfully re-hosted an optional kept-companion co-star. */
   keptCompanionCoStarActive: boolean;
   /** Cumulative wave counters, retained across acts for RunStats. */
@@ -1759,9 +1761,8 @@ export interface Floor4GreenRoomVisitStock {
  * on `world.floorExtendedState.floor4GreenRoom`. Deliberately NOT the Floor-2
  * settlement/quartermaster state: the Green Room re-rolls every table every
  * visit and retires unsold stock, which the Floor-2 single-restock model does
- * not express. Transaction (purchase) and UI are owned by later slices; this
- * state only holds the current visit's immutable offer and the lifecycle
- * bookkeeping needed to guard against re-rolls and reopens.
+ * not express. The game-layer purchase transaction owns wallet/inventory
+ * mutation; this state holds the current visit's offer and lifecycle guards.
  */
 export interface Floor4GreenRoomState {
   /** The open visit's rolled, immutable stock; undefined between visits. */
@@ -1773,6 +1774,8 @@ export interface Floor4GreenRoomState {
    * against re-rolling an open visit and against reopening a retired one.
    */
   lastOpenedVisitIndex: number;
+  /** Number of successful Green Room purchases in this run. */
+  purchases?: number;
 }
 
 // Backward compatibility exports

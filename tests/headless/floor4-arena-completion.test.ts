@@ -161,6 +161,14 @@ describe('Floor 4 headless completion gate (seed 404)', () => {
       FLOOR4_GREEN_ROOM_EXIT_REASON,
       FLOOR4_TERMINAL_EXIT_REASON,
     ]);
+    const economy = stats.goldEconomy;
+    expect(economy, telemetryFailure).toBeDefined();
+    expect(economy!.earnedFromAppearanceFees, telemetryFailure).toBe(
+      arena!.actIncome.reduce((total, entry) => total + entry.appearanceFeeGold, 0),
+    );
+    expect(economy!.earnedTotal, telemetryFailure).toBe(
+      economy!.earnedFromDrops + economy!.earnedFromLootBoxes + economy!.earnedFromAppearanceFees,
+    );
 
     // C6 — the phase trace actually reached the terminal VICTORY phase.
     expect(arena!.phase.kind, telemetryFailure).toBe('VICTORY');

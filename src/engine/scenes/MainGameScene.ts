@@ -186,7 +186,7 @@ import {
   purchaseSettlementShopOffer,
   type SettlementShopOfferView,
 } from '../../core/settlement-shop-purchase.js';
-import type { ShopPanelOfferView } from '../shop/ShopPanelUI.js';
+import type { Floor4GreenRoomPanelOffer, ShopPanelOfferView } from '../shop/ShopPanelUI.js';
 import {
   blockReasonFromGold,
   describeShopPurchaseFailure,
@@ -436,6 +436,15 @@ export interface MainGameSceneOptions {
    */
   floorId?: string;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
+  floor4GreenRoomShop?: {
+    isAvailable: (world: GameWorld, playerEid: number) => boolean;
+    getOffers: (world: GameWorld, playerEid: number) => readonly Floor4GreenRoomPanelOffer[];
+    purchase: (
+      world: GameWorld,
+      playerEid: number,
+      offer: Floor4GreenRoomPanelOffer,
+    ) => { ok: boolean; reason?: string; goldSpent?: number };
+  };
   shopkeeper?: {
     getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     getStage: (world: GameWorld) => ShopkeeperStage;
@@ -1162,6 +1171,10 @@ export class MainGameScene extends Phaser.Scene {
   private queuedSettlementShopNpcEid: number | null = null;
   /** NPC identity whose settlement stock is currently being shown in the shared shop panel. */
   private activeSettlementShopNpcEid: number | null = null;
+  /** True while the shared shop panel is showing the intermission Green Room. */
+  private activeFloor4GreenRoomShop = false;
+  /** Green Room visit whose optional sponsor shop has already been presented. */
+  private floor4GreenRoomShopVisitShown: number | null = null;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -1434,6 +1447,7 @@ export class MainGameScene extends Phaser.Scene {
       },
       onPanelClosed: () => {
         this.activeSettlementShopNpcEid = null;
+        this.activeFloor4GreenRoomShop = false;
       },
     });
     this.gameOverUI = createGameOverUI(this, {
@@ -2256,6 +2270,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private resolveSettlementShopPanelTitle(_world: GameWorld): string {
+    if (this.activeFloor4GreenRoomShop) {
+      return '🛒 GREEN ROOM SPONSORS';
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return '🛒 SHOP';
@@ -2271,6 +2288,9 @@ export class MainGameScene extends Phaser.Scene {
     world: GameWorld,
     playerEid: number,
   ): readonly ShopPanelOfferView[] {
+    if (this.activeFloor4GreenRoomShop) {
+      return this.options.floor4GreenRoomShop?.getOffers(world, playerEid) ?? [];
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return Object.freeze([]);
@@ -2286,6 +2306,15 @@ export class MainGameScene extends Phaser.Scene {
     playerEid: number,
     offer: ShopPanelOfferView,
   ): { ok: boolean; reason?: string; goldSpent?: number } {
+    if (this.activeFloor4GreenRoomShop) {
+      if (!this.options.floor4GreenRoomShop) {
+        return { ok: false, reason: 'unknown-shop' };
+      }
+      if (!('greenRoom' in offer)) {
+        return { ok: false, reason: 'invalid-stock-identity' };
+      }
+      return this.options.floor4GreenRoomShop.purchase(world, playerEid, offer);
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return { ok: false, reason: 'unknown-shop' };
@@ -2361,7 +2390,20 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openSettlementShopPanel(npcEid: number): void {
+    this.activeFloor4GreenRoomShop = false;
     this.activeSettlementShopNpcEid = npcEid;
+    this.closeMapOverlayIfOpen();
+    this.closeCharacterPanels({ keepQuartermaster: true });
+    if (this.shopPanelUI?.isOpen()) {
+      this.shopPanelUI.refresh(this.world);
+    } else {
+      this.shopPanelUI?.toggle(this.world);
+    }
+  }
+
+  private openFloor4GreenRoomShopPanel(): void {
+    this.activeFloor4GreenRoomShop = true;
+    this.activeSettlementShopNpcEid = null;
     this.closeMapOverlayIfOpen();
     this.closeCharacterPanels({ keepQuartermaster: true });
     if (this.shopPanelUI?.isOpen()) {
@@ -5609,7 +5651,10 @@ export class MainGameScene extends Phaser.Scene {
       kills: this.floorKills,
       level: this.world.playerLevel?.level ?? 0,
       xpGained: (this.world.playerLevel?.xp ?? 0) - this.runStartXp,
-      goldEarned: goldLedger.earnedFromDrops + goldLedger.earnedFromLootBoxes,
+      goldEarned:
+        goldLedger.earnedFromDrops +
+        goldLedger.earnedFromLootBoxes +
+        goldLedger.earnedFromAppearanceFees,
       goldHeld: this.world.playerGold,
       currentHealth: this.world.stores.health.current[this.playerEid] ?? 0,
       maxHealth: this.world.stores.health.max[this.playerEid] ?? 0,
@@ -6550,6 +6595,17 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Descend').setVisible(true);
       this.dialogueBox?.hide();
       if (interactionRequested && this.modalPicker && stairConfirmation) {
+        const greenRoomVisit = this.world.floorExtendedState?.floor4GreenRoom?.currentVisit;
+        if (
+          greenRoomVisit &&
+          this.options.floor4GreenRoomShop?.isAvailable(this.world, this.playerEid) &&
+          !this.options.inputCaptureOverride &&
+          this.floor4GreenRoomShopVisitShown !== greenRoomVisit.visitIndex
+        ) {
+          this.floor4GreenRoomShopVisitShown = greenRoomVisit.visitIndex;
+          this.openFloor4GreenRoomShopPanel();
+          return;
+        }
         if (!this.modalPicker.isOpen()) {
           this.modalPicker.open(
             {

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import { query } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory';
+import { Player } from '../../src/core/components';
+import { createInventoryBag } from '../../src/shared/inventory';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry';
 import {
   openFloor4GreenRoomVisit,
+  purchaseFloor4GreenRoomOffer,
   retireFloor4GreenRoomVisit,
 } from '../../src/game/floor4GreenRoom';
 import type { Floor4GreenRoomVisitStock } from '../../src/shared/floor-types';
 import { floor4Manifest } from '../../src/shared/floor-manifest';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options';
 
 const ACT_COUNT = 5;
 
@@ -151,6 +156,171 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     expect(retired.changed).toBe(true);
     expect(world.floorExtendedState?.floor4GreenRoom?.currentVisit).toBeUndefined();
     expect(world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount).toBe(1);
+  });
+
+  it('purchases one current offer through the authoritative wallet and inventory path', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    const visit = openVisit(world, 0);
+    const table = visit.tables[0]!;
+    const offer = table.offers[0]!;
+    const beforeGold = world.playerGold;
+    const result = purchaseFloor4GreenRoomOffer(
+      world,
+      playerEid,
+      `${table.tableId}:${offer.itemId}`,
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      goldSpent: offer.unitPrice,
+      remainingGold: beforeGold - offer.unitPrice,
+    });
+    expect(world.playerGold).toBe(beforeGold - offer.unitPrice);
+    expect(world.goldLedger.spentOnGreenRoom).toBe(offer.unitPrice);
+    expect(world.goldLedger.greenRoomPurchases).toBe(1);
+    expect(world.vendorLedger.decisions).toContainEqual(
+      expect.objectContaining({
+        vendorId: 'floor4-green-room',
+        itemId: offer.itemId,
+        outcome: 'purchased',
+      }),
+    );
+    expect(world.floorExtendedState?.floor4GreenRoom?.purchases).toBe(1);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables[0]?.offers.find(
+        (entry) => entry.itemId === offer.itemId,
+      )?.stock,
+    ).toBe(0);
+  });
+
+  it('wires the production bootstrap shop adapter to the authoritative purchase path', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.floor = 4;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    openVisit(world, 0);
+    const options = createFloorMainSceneOptions('floor4');
+    const shop = options.floor4GreenRoomShop;
+
+    expect(shop?.isAvailable(world, playerEid)).toBe(true);
+    const panelOffers = shop?.getOffers(world, playerEid) ?? [];
+    const panelOffer = panelOffers.find((offer) => offer.canPurchase);
+    expect(panelOffer, 'bootstrap adapter must expose a purchasable panel offer').toBeDefined();
+
+    const beforeGold = world.playerGold;
+    const result = shop!.purchase(world, playerEid, panelOffer!);
+
+    expect(result.ok).toBe(true);
+    expect(world.playerGold).toBe(beforeGold - panelOffer!.unitPrice);
+    expect(world.goldLedger.greenRoomPurchases).toBe(1);
+    expect(world.vendorLedger.decisions).toContainEqual(
+      expect.objectContaining({
+        vendorId: 'floor4-green-room',
+        itemId: panelOffer!.itemId,
+        outcome: 'purchased',
+      }),
+    );
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .flatMap((table) => table.offers)
+        .find((offer) => offer.itemId === panelOffer!.itemId)?.stock,
+    ).toBe(panelOffer!.quantity - 1);
+  });
+
+  it('decrements only the selected table when the same item appears across multiple sponsor tables', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    const initialVisit = openVisit(world, 0);
+    const firstTable = initialVisit.tables[0]!;
+    const secondTable = initialVisit.tables[1]!;
+    const duplicateItemId = 'throwing-knife';
+    world.floorExtendedState!.floor4GreenRoom!.currentVisit = {
+      ...initialVisit,
+      tables: initialVisit.tables.map((table, index) => {
+        if (index === 0) {
+          return {
+            ...table,
+            offers: [
+              { itemId: duplicateItemId, unitPrice: 40, stock: 4 },
+              ...table.offers.filter((offer) => offer.itemId !== duplicateItemId),
+            ],
+          };
+        }
+        if (index === 1) {
+          return {
+            ...table,
+            offers: [
+              { itemId: duplicateItemId, unitPrice: 55, stock: 2 },
+              ...table.offers.filter((offer) => offer.itemId !== duplicateItemId),
+            ],
+          };
+        }
+        return table;
+      }),
+    };
+
+    const result = purchaseFloor4GreenRoomOffer(
+      world,
+      playerEid,
+      `${secondTable.tableId}:${duplicateItemId}`,
+    );
+
+    expect(result).toEqual({ ok: true, goldSpent: 55, remainingGold: 945 });
+    expect(world.playerGold).toBe(945);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .find((entry) => entry.tableId === firstTable.tableId)
+        ?.offers.find((entry) => entry.itemId === duplicateItemId)?.stock,
+    ).toBe(4);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables
+        .find((entry) => entry.tableId === secondTable.tableId)
+        ?.offers.find((entry) => entry.itemId === duplicateItemId)?.stock,
+    ).toBe(1);
+  });
+
+  it('rejects purchases with invalid offerId format without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    openVisit(world, 0);
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'invalid-format')).toEqual({
+      ok: false,
+      reason: 'invalid-offer-id',
+      message: 'Offer ID must be in the format "tableId:itemId"',
+    });
+    expect(world.playerGold).toBe(1000);
+  });
+
+  it('rejects purchases from non-existent tables without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    openVisit(world, 0);
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'missing-table:missing-item')).toEqual({
+      ok: false,
+      reason: 'unknown-table',
+      message: 'Table is not in the current stock',
+    });
+    expect(world.playerGold).toBe(1000);
+  });
+
+  it('rejects purchases outside the active visit without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'any-table:missing-item')).toEqual({
+      ok: false,
+      reason: 'no-open-visit',
+      message: 'No Green Room visit is open',
+    });
+    expect(world.playerGold).toBe(1000);
   });
 });
 

@@ -14,6 +14,7 @@ import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { buildFloor4HudState } from '../../src/shared/floor4-hud.js';
 import { RoomRole } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { computeShowcaseArenaLayout } from '../../src/core/map/generators/ShowcaseArenaGenerator.js';
 
 function setupFloor4(seed = 42) {
   const world = createTestWorld({ seed });
@@ -164,6 +165,46 @@ describe('arenaDirectorSystem', () => {
     expect(world.floorExtendedState!.floor4GreenRoom?.retiredVisitCount).toBe(1);
     expect(world.floorExtendedState!.floor4GreenRoom?.lastOpenedVisitIndex).toBe(0);
     expect(firstVisit).toBeDefined();
+  });
+
+  it('seals the Green Room tunnel during active phases and opens it only for intermission', () => {
+    const world = setupFloor4();
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+    const floorMap = world.floorMap!;
+    const tunnel = world.floorExtendedState!.floor4Arena!;
+    const layout = computeShowcaseArenaLayout(floorMap.config.showcaseArena);
+    const tunnelPosition = floorMap.tileToWorld(layout.tunnel.x, layout.tunnel.y);
+
+    expect(tunnel.greenRoomBarrierId).toBeDefined();
+    expect(floorMap.isPassableAt(tunnelPosition.x, tunnelPosition.y)).toBe(false);
+
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+    defeatActiveHeadliner(world);
+    advance(world, phase.headlineWindowMs);
+
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({
+      kind: 'INTERMISSION',
+      act: 1,
+    });
+    expect(world.floorExtendedState!.floor4Arena!.greenRoomBarrierId).toBeUndefined();
+    expect(floorMap.isPassableAt(tunnelPosition.x, tunnelPosition.y)).toBe(true);
+
+    exitGreenRoom(world);
+    expect(world.floorExtendedState!.floor4Arena!.phase).toEqual({ kind: 'WAVES', act: 2 });
+    expect(world.floorExtendedState!.floor4Arena!.greenRoomBarrierId).toBeUndefined();
+    const player = query(world.ecs, [Player])[0]!;
+    world.stores.position.x[player] = floorMap.tileToWorld(
+      layout.arena.x + 2,
+      layout.arena.y + 2,
+    ).x;
+    world.stores.position.y[player] = floorMap.tileToWorld(
+      layout.arena.x + 2,
+      layout.arena.y + 2,
+    ).y;
+    advance(world, 1);
+    expect(world.floorExtendedState!.floor4Arena!.greenRoomBarrierId).toBeDefined();
+    expect(floorMap.isPassableAt(tunnelPosition.x, tunnelPosition.y)).toBe(false);
   });
 
   it('allows stair descent only during the final intermission window', () => {
@@ -318,6 +359,7 @@ describe('arenaDirectorSystem', () => {
     const state = world.floorExtendedState!.floor4Arena!;
     expect(state.phase).toEqual({ kind: 'HEADLINE', act: 1, cleared: true });
     expect(world.playerGold).toBe(goldBefore + encounter.appearanceFeeGold);
+    expect(world.goldLedger.earnedFromAppearanceFees).toBe(encounter.appearanceFeeGold);
     expect(world.bossChests.has(createBossChestId('floor4-headliner-act-1'))).toBe(true);
     expect(state.headlinerTelemetry.appearanceFeeGoldGranted).toBe(encounter.appearanceFeeGold);
     expect(state.headlinerTelemetry.chestsSpawned).toBe(1);

@@ -10,6 +10,7 @@ import {
   configureAttackWaves,
   weaponSystem,
   capturePlayerCarryover,
+  purchaseFloor4GreenRoomOffer,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
 import {
@@ -32,7 +33,9 @@ import { createRunEventCollector } from '../core/run-events.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
+import type { Floor4GreenRoomPanelOffer } from '../engine/shop/ShopPanelUI.js';
 import type { RunBundle } from '../shared/run-bundle.js';
+import { resolveShopCatalogItem } from '../shared/shop-catalog.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
@@ -160,6 +163,44 @@ export function createFloorMainSceneOptions(
     tutorialGoon: scenario.npcs?.tutorialGoon,
     spellQuestGiver: scenario.npcs?.spellQuestGiver,
     broker: scenario.npcs?.broker,
+    floor4GreenRoomShop: {
+      isAvailable: (world: GameWorld) =>
+        world.floor === 4 && world.floorExtendedState?.floor4GreenRoom?.currentVisit !== undefined,
+      getOffers: (world: GameWorld, playerEid: number): readonly Floor4GreenRoomPanelOffer[] => {
+        const visit = world.floorExtendedState?.floor4GreenRoom?.currentVisit;
+        const bag = world.inventories.get(playerEid);
+        if (!visit) return [];
+        return visit.tables.flatMap((table) =>
+          table.offers.map((offer) => {
+            const catalogItem = resolveShopCatalogItem(offer.itemId);
+            const purchaseFailure = catalogItem
+              ? bag === undefined
+                ? 'missing-inventory'
+                : offer.stock < 1
+                  ? 'stock-unavailable'
+                  : world.playerGold < offer.unitPrice
+                    ? 'insufficient-funds'
+                    : null
+              : 'unknown-item';
+            return {
+              greenRoom: true as const,
+              itemId: offer.itemId,
+              offerId: `${table.tableId}:${offer.itemId}`,
+              displayName: catalogItem?.displayName ?? offer.itemId,
+              unitPrice: offer.unitPrice,
+              quantity: offer.stock,
+              affordable: world.playerGold >= offer.unitPrice,
+              capacityAvailable: bag !== undefined,
+              canPurchase: purchaseFailure === null,
+              purchaseFailure,
+              utility: null,
+            };
+          }),
+        );
+      },
+      purchase: (world: GameWorld, playerEid: number, offer: Floor4GreenRoomPanelOffer) =>
+        purchaseFloor4GreenRoomOffer(world, playerEid, offer.offerId),
+    },
     preSystems: [
       statSystem,
       // Drain queued faction-relation deltas early so any preSystem or

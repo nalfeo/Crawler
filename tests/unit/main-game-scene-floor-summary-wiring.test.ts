@@ -25,6 +25,12 @@ describe('MainGameScene between-floor summary wiring', () => {
     expect(source).toContain('formatFloorSummaryText(');
   });
 
+  it('includes every gold income source in the floor summary', () => {
+    expect(source).toMatch(
+      /goldEarned:\s*goldLedger\.earnedFromDrops\s*\+\s*goldLedger\.earnedFromLootBoxes\s*\+\s*goldLedger\.earnedFromAppearanceFees/,
+    );
+  });
+
   it('counts kills per simulation step from the pre-step event cursor', () => {
     // One assertion so the cursor cannot be declared, the counter cannot be
     // called, and the cursor cannot be dropped as the third argument

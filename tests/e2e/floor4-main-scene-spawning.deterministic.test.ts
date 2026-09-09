@@ -1,7 +1,14 @@
+import { mkdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL } from './e2e-constants.js';
+import {
+  loadMainSceneProbeLab,
+  mainSceneProbe,
+  tapKeyUntil,
+  waitForState,
+} from './helpers/main-scene-probe.js';
 import type { MainSceneProbeApi } from '../../src/labs/main-scene-probe-lab/index.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { buildFloor4ActWaveManifests } from '../../src/shared/floor4-waves.js';
@@ -70,6 +77,76 @@ describe('Floor 4 MainGameScene physical spawning (seed 404)', () => {
   afterAll(async () => {
     await closeQuietly(page);
     await closeQuietly(browser);
+  });
+
+  describe('Floor 4 Green Room scene interaction (seed 404)', () => {
+    let browser: Browser;
+    let page: Page;
+
+    beforeAll(async () => {
+      browser = await chromium.launch({ headless: true });
+      page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+      mkdirSync('tmp/e2e-screenshots', { recursive: true });
+      await loadMainSceneProbeLab(page, { floor: 'floor4', seed: SEED });
+    });
+
+    afterAll(async () => {
+      await closeQuietly(page);
+      await closeQuietly(browser);
+    });
+
+    it('opens, purchases, closes, and confirms a Green Room visit into the next act', async () => {
+      expect(await mainSceneProbe.primeFloor4GreenRoomIntermission(page)).not.toBeNull();
+      await mainSceneProbe.setPlayerGold(page, 100_000);
+
+      await mainSceneProbe.queueInteraction(page);
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      await waitForState(page, (state) => state.quartermasterOpen, {
+        label: 'Green Room sponsor shop open',
+      });
+      const before = await mainSceneProbe.getQuartermasterStockSnapshot(page);
+      expect(before.length).toBeGreaterThan(4);
+
+      await tapKeyUntil(
+        page,
+        'Enter',
+        async () =>
+          (await mainSceneProbe.getQuartermasterStockSnapshot(page)).some(
+            (offer, index) => offer.quantity < (before[index]?.quantity ?? offer.quantity),
+          ),
+        { label: 'Green Room purchase' },
+      );
+      await page.screenshot({
+        path: 'tmp/e2e-screenshots/floor4-green-room-shop.png',
+        type: 'png',
+      });
+      await page.keyboard.press('PageDown');
+      await page.screenshot({
+        path: 'tmp/e2e-screenshots/floor4-green-room-shop-page-2.png',
+        type: 'png',
+      });
+
+      await mainSceneProbe.requestQuartermasterToggle(page);
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      await waitForState(page, (state) => !state.quartermasterOpen, {
+        label: 'Green Room sponsor shop closed',
+      });
+
+      await mainSceneProbe.queueInteraction(page);
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      await waitForState(page, (state) => state.modalOpen, {
+        label: 'Green Room exit confirmation open',
+      });
+      await tapKeyUntil(
+        page,
+        'Enter',
+        async () => {
+          const phase = (await mainSceneProbe.getState(page)).floor4Arena?.phase;
+          return phase?.kind === 'WAVES' && phase.act === 2;
+        },
+        { label: 'Floor 4 act 2 confirmation' },
+      );
+    });
   });
 
   it('boots the shipped scene path with the intended non-empty wave cadence and live hostiles', async () => {

@@ -42,4 +42,6 @@ None beyond initially assuming the issue was only in the visual layer; confirmin
 
 ### Opportunities for Future Improvement
 
-Continue using real-scene deterministic coverage when combat-event ownership crosses simulation and presentation layers.
+Add a focused render-level event classification test whenever a new combat event
+kind gains a damage-number presentation, while retaining real-scene coverage for
+cross-layer event ownership.
