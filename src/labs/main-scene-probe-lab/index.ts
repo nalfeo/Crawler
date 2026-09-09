@@ -69,6 +69,7 @@ import { acceptQuest, getActiveQuests, setTrackedQuest } from '../../core/system
 import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
@@ -2114,9 +2115,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         sceneOptions.selectLoadoutOption?.(world, 0);
       }
       world.state = 'playing';
-      objective.questAccepted = true;
-      objective.questCompleted = true;
-      world.goalFlags.set('floor1-goon-quest-complete', true);
+      acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+      objective.ratsKilled = objective.requiredRats;
+      objective.slimesKilled = objective.requiredSlimes;
     },
 
     primeFloor2StairTransition: () => {
