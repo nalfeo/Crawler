@@ -27,7 +27,10 @@ import {
   merchantWeaponReserve,
 } from './merchant-weapon-intent.js';
 import { requiredShopPurchaseReserve } from './required-purchase-reserve.js';
-import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../shared/constants.js';
+import {
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  STAIR_FOOTPRINT_RADIUS_FT,
+} from '../../shared/constants.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
@@ -385,7 +388,7 @@ export function autoFloor1ProgressionSystem(
     resolveFloor1AiCollapsePanicDeadlineMs(objective.deadlineMs);
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
-  if (Math.hypot(dx, dy) > objective.markerRadiusFt) {
+  if (Math.hypot(dx, dy) > STAIR_FOOTPRINT_RADIUS_FT) {
     return;
   }
   if (shouldDeferStairDescend(world, 'floor1', floor1PanicDeadlineMs)) {
