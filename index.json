@@ -1,5 +1,44 @@
 [
   {
+    "commit": "62c7d14fe639b5de0d69dac1c1f27e5582c58017",
+    "commitDate": "2026-09-09T03:01:03Z",
+    "commitSubject": "Axe combat feedback: show generated DPS and prevent duplicate hit numbers (#4482)",
+    "capturedAt": "2026-09-09T04:19:04.300Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/34307062232",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/62c7d14fe639b5de0d69dac1c1f27e5582c58017.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/62c7d14fe639b5de0d69dac1c1f27e5582c58017.fun-report.json"
+    }
+  },
+  {
     "commit": "86b36e0902c5ca97fe7505df6370f6790d155f5a",
     "commitDate": "2026-09-08T00:10:55Z",
     "commitSubject": "Make Goobers delivery outcomes authoritative and terminal reports compact (#4456)",
