@@ -1152,6 +1152,11 @@ export interface MainSceneProbeApi {
    */
   primeFloor1StairTransition(): void;
   /**
+   * Complete the live Floor-1 quota objective so the real Director update path
+   * presents its configured progression handoff modal.
+   */
+  primeFloor1QuotaCompletion(): void;
+  /**
    * Arrange the live Floor-2 world at its unlocked exit stairs, the Floor-2
    * mirror of {@link MainSceneProbeApi.primeFloor1StairTransition}. The test
    * still drives the real interaction modal, `onStairDescend`, the
@@ -2096,6 +2101,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.x[playerEid] = 0;
       world.stores.velocity.y[playerEid] = 0;
       scene.setSimulationPaused(true);
+    },
+    primeFloor1QuotaCompletion: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective) {
+        throw new Error('Floor 1 quota path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      objective.questAccepted = true;
+      objective.questCompleted = true;
+      world.goalFlags.set('floor1-goon-quest-complete', true);
     },
 
     primeFloor2StairTransition: () => {

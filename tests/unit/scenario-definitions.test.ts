@@ -165,6 +165,13 @@ describe('scenario definitions', () => {
         expect(milestone.copy.length).toBeGreaterThan(0);
         expect(typeof milestone.isReached).toBe('function');
       }
+      const quotaMilestone = scenario.director.milestones[1];
+      expect(quotaMilestone?.blockingModal).toEqual({
+        kind: 'floor1-quest-completed',
+        title: 'First leg complete',
+        body: 'Return to the Broker for your next quests.',
+        confirmLabel: 'Continue',
+      });
     });
 
     it('floor2 declares no mid-run milestones today', () => {

@@ -160,6 +160,17 @@ export interface ScenarioDirectorMilestone<TWorld> {
   readonly id: string;
   readonly copy: string;
   readonly isReached: (world: TWorld) => boolean;
+  /**
+   * Optional acknowledgement surface for milestones that must stop the run
+   * until the player has read the handoff.
+   */
+  readonly blockingModal?: {
+    readonly kind?: string;
+    readonly title: string;
+    readonly subtitle?: string;
+    readonly body: string;
+    readonly confirmLabel: string;
+  };
 }
 
 export interface ScenarioDirectorContract<TWorld> {

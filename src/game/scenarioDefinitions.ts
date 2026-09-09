@@ -859,7 +859,13 @@ const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
   },
   {
     id: 'floor1-quest-completed',
-    copy: 'Quota complete. Boss room is live for the next segment.',
+    copy: 'The first leg is complete. Return to the Broker for your next quests.',
+    blockingModal: {
+      kind: 'floor1-quest-completed',
+      title: 'First leg complete',
+      body: 'Return to the Broker for your next quests.',
+      confirmLabel: 'Continue',
+    },
     isReached: (world: GameWorld) => world.floorScenario?.objective.questCompleted === true,
   },
   {
