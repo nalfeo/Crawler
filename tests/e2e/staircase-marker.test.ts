@@ -14,6 +14,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe } from './helpers/main-scene-probe.js';
+import { STAIR_FOOTPRINT_RADIUS_FT } from '../../src/shared/constants.js';
+import { ftToPx } from '../../src/shared/units.js';
+
+/** The stairs cover 2x2 tiles; in render px that is `2 * radius` per side. */
+const TWO_TILE_FOOTPRINT_PX = ftToPx(STAIR_FOOTPRINT_RADIUS_FT * 2);
 
 describe('Floor-exit staircase marker', () => {
   let browser: Browser;
@@ -36,10 +41,35 @@ describe('Floor-exit staircase marker', () => {
     await mainSceneProbe.primeFloor1StairTransition(page);
 
     await expect
+      .poll(
+        async () => {
+          const info = await mainSceneProbe.getStaircaseMarkerRenderInfo(page);
+          return { usesGeneratedArt: info.usesGeneratedArt, visible: info.visible };
+        },
+        {
+          timeout: 8_000,
+          interval: 100,
+        },
+      )
+      .toEqual({ usesGeneratedArt: true, visible: true });
+  });
+
+  it('draws the stairs across exactly a 2x2-tile footprint in the real scene', async () => {
+    await loadMainSceneProbeLab(page);
+    await mainSceneProbe.resolveLoadout(page);
+    await mainSceneProbe.primeFloor1StairTransition(page);
+
+    await expect
       .poll(() => mainSceneProbe.getStaircaseMarkerRenderInfo(page), {
         timeout: 8_000,
         interval: 100,
       })
-      .toEqual({ usesGeneratedArt: true, visible: true });
+      .toMatchObject({ usesGeneratedArt: true, visible: true });
+
+    const info = await mainSceneProbe.getStaircaseMarkerRenderInfo(page);
+    // 2 tiles x 4 ft/tile x PIXELS_PER_FOOT (8) = 64 render px per side.
+    expect(info.footprintPx).toBeCloseTo(TWO_TILE_FOOTPRINT_PX, 5);
+    expect(info.spriteWidthPx).toBeCloseTo(TWO_TILE_FOOTPRINT_PX, 5);
+    expect(info.spriteHeightPx).toBeCloseTo(TWO_TILE_FOOTPRINT_PX, 5);
   });
 });

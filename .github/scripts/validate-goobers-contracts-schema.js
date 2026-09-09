@@ -305,6 +305,235 @@ export const outputV1 = {
    */
 };
 
+export const attemptTelemetryV1 = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  title: 'crawler.goobers.attempt-telemetry/v1',
+  description:
+    'Per-attempt journal telemetry for a Goobers feature-PR attempt, including lineage, stage timings, privacy-safe context footprint, and normalized terminal outcome.',
+  type: 'object',
+  // `contractVersion` is required exactly as it is on the invocation, output,
+  // and run-artifact contracts: a versioned /v1 record that accepts an
+  // unversioned payload cannot fail closed on an unknown future version.
+  required: [
+    'contractVersion',
+    'attemptLineageKey',
+    'issueNumber',
+    'terminalOutcome',
+    'stageDurations',
+    'totalElapsedMs',
+  ],
+  properties: {
+    contractVersion: {
+      type: 'string',
+      enum: ['v1'],
+      description: 'Schema version for the attempt telemetry record.',
+    },
+    attemptLineageKey: {
+      type: 'string',
+      minLength: 1,
+      pattern: '^[A-Za-z0-9._:-]+$',
+      description:
+        'Stable lineage key that links the initial run, retries, resumes, and repasses for one issue.',
+    },
+    issueNumber: {
+      type: 'string',
+      pattern: '^[0-9]+$',
+      description:
+        'Issue number as a numeric string so the record stays compatible with GH Actions inputs.',
+    },
+    runId: {
+      type: 'string',
+      minLength: 1,
+      description: 'Goobers run ID or workflow run ID owning this attempt.',
+    },
+    attemptNumber: {
+      type: 'integer',
+      minimum: 1,
+      description: '1-based attempt ordinal within the issue lineage.',
+    },
+    retryCount: {
+      type: 'integer',
+      minimum: 0,
+      description: 'Number of retries already absorbed by the attempted issue lineage.',
+    },
+    repassCount: {
+      type: 'integer',
+      minimum: 0,
+      description: 'Number of repasses already absorbed by the attempted issue lineage.',
+    },
+    parentAttemptLineageKey: {
+      type: ['string', 'null'],
+      minLength: 1,
+      pattern: '^[A-Za-z0-9._:-]+$',
+      description: 'Previous attempt in the same lineage; null for the root attempt.',
+    },
+    stageDurations: {
+      type: 'object',
+      description: 'Per-stage durations keyed by stage name, in milliseconds.',
+      additionalProperties: {
+        type: 'number',
+        minimum: 0,
+      },
+    },
+    totalElapsedMs: {
+      type: 'number',
+      minimum: 0,
+      description: 'Total wall-clock elapsed milliseconds for this attempt.',
+    },
+    promptBytes: {
+      type: ['number', 'null'],
+      minimum: 0,
+      description: 'Prompt payload bytes, or null when unavailable with an explicit reason.',
+    },
+    contextArtifactBytes: {
+      type: ['number', 'null'],
+      minimum: 0,
+      description:
+        'Supplied context-artifact bytes, or null when unavailable with an explicit reason.',
+    },
+    modelInputTokens: {
+      type: ['number', 'null'],
+      minimum: 0,
+      description: 'Model input tokens, or null when unavailable with an explicit reason.',
+    },
+    modelOutputTokens: {
+      type: ['number', 'null'],
+      minimum: 0,
+      description: 'Model output tokens, or null when unavailable with an explicit reason.',
+    },
+    compactionCount: {
+      type: ['number', 'null'],
+      minimum: 0,
+      description: 'Context compaction count, or null when unavailable with an explicit reason.',
+    },
+    unavailableReason: {
+      type: ['string', 'null'],
+      description:
+        'Explicit reason for any null telemetry field; required when a field is absent or null.',
+    },
+    terminalOutcome: {
+      type: 'string',
+      enum: ['pr-opened', 'issue-completed', 'blocked', 'timeout', 'no-work', 'aborted'],
+      description:
+        'Normalized terminal outcome for the issue attempt. Future states can be added via the extension policy.',
+    },
+    outcomeReason: {
+      type: 'string',
+      minLength: 1,
+      description: 'Short human-readable reason for the normalized terminal outcome.',
+    },
+    stageTrace: {
+      type: 'array',
+      description:
+        'Optional ordered stage names for auditability; never stores prompt text or credentials.',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+  },
+  additionalProperties: false,
+};
+
+export const runJournalAttemptV1 = attemptTelemetryV1;
+export const cohortSummaryV1 = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  title: 'crawler.goobers.cohort-summary/v1',
+  description:
+    'Aggregate entry for comparing baseline and canonical-context cohorts on delivery success, elapsed time, repasses, and context bytes.',
+  type: 'object',
+  required: [
+    'contractVersion',
+    'cohort',
+    'issueCount',
+    'deliverySuccessRate',
+    'averageElapsedMs',
+    'averageRepasses',
+    'averageContextArtifactBytes',
+  ],
+  properties: {
+    contractVersion: {
+      type: 'string',
+      enum: ['v1'],
+    },
+    cohort: {
+      type: 'string',
+      minLength: 1,
+      description: 'Cohort label such as baseline or canonical-context.',
+    },
+    issueCount: {
+      type: 'integer',
+      minimum: 0,
+    },
+    deliverySuccessRate: {
+      type: 'number',
+      minimum: 0,
+      maximum: 1,
+    },
+    averageElapsedMs: {
+      type: 'number',
+      minimum: 0,
+    },
+    averageRepasses: {
+      type: 'number',
+      minimum: 0,
+    },
+    averageContextArtifactBytes: {
+      type: 'number',
+      minimum: 0,
+    },
+    comparison: {
+      type: ['string', 'null'],
+      enum: ['improved', 'preserved', 'regressed', 'inconclusive', null],
+      description: 'Optional comparison to the matched baseline or canonical-context cohort.',
+    },
+  },
+  additionalProperties: false,
+};
+
+export const runArtifactV1 = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  title: 'crawler.goobers.run-artifact/v1',
+  description:
+    'Run artifact for a Goobers feature-PR attempt cohort, bundling per-attempt telemetry and a matched-cohort summary.',
+  type: 'object',
+  required: ['contractVersion', 'issueNumber', 'attempts'],
+  properties: {
+    contractVersion: {
+      type: 'string',
+      enum: ['v1'],
+    },
+    issueNumber: {
+      type: 'string',
+      pattern: '^[0-9]+$',
+    },
+    attempts: {
+      type: 'array',
+      items: {
+        $ref: '#/definitions/attemptTelemetry',
+      },
+    },
+    cohortSummary: {
+      // A nested cohort summary is the SAME contract as the standalone one:
+      // referencing it (rather than typing it as a bare object) is what stops
+      // an unversioned or malformed cohort from riding along inside an
+      // otherwise valid run artifact.
+      oneOf: [{ type: 'null' }, { $ref: '#/definitions/cohortSummary' }],
+      description:
+        'Optional matched-cohort summary for comparison against canonical-context behavior.',
+    },
+  },
+  definitions: {
+    attemptTelemetry: attemptTelemetryV1,
+    cohortSummary: cohortSummaryV1,
+  },
+  additionalProperties: false,
+};
+
+export const attemptTelemetryV1Alias = attemptTelemetryV1;
+export const cohortSummaryV1Alias = cohortSummaryV1;
+export const runArtifactV1Alias = runArtifactV1;
+
 export const prStateCommentV1 = {
   /**
    * CI Recovery → Pinned PR State Comment Contract
@@ -345,4 +574,8 @@ export default {
   outputV1,
   prStateCommentV1,
   goobersSummaryV1,
+  attemptTelemetryV1,
+  runJournalAttemptV1,
+  runArtifactV1,
+  cohortSummaryV1,
 };

@@ -26,6 +26,9 @@ type Output = Record<string, unknown>;
 
 let invocationV1: object;
 let outputV1: object;
+let attemptTelemetryV1: object;
+let cohortSummaryV1: object;
+let runArtifactV1: object;
 let prStateCommentV1: {
   marker: string;
   dataPrefix: string;
@@ -40,9 +43,15 @@ let goobersSummaryV1: {
 };
 let invocationSemanticErrors: (payload: Invocation) => string[];
 let outputSemanticErrors: (payload: Output) => string[];
+let attemptTelemetrySemanticErrors: (payload: unknown) => string[];
+let cohortSummarySemanticErrors: (payload: unknown) => string[];
+let runArtifactSemanticErrors: (payload: unknown) => string[];
 let summarySemanticErrors: (summary: unknown) => string[];
 let validateInvocation: Ajv.ValidateFunction;
 let validateOutput: Ajv.ValidateFunction;
+let validateAttemptTelemetry: Ajv.ValidateFunction;
+let validateCohortSummary: Ajv.ValidateFunction;
+let validateRunArtifact: Ajv.ValidateFunction;
 
 beforeAll(async () => {
   const schemaModule = await import(
@@ -50,6 +59,9 @@ beforeAll(async () => {
   );
   invocationV1 = schemaModule.invocationV1;
   outputV1 = schemaModule.outputV1;
+  attemptTelemetryV1 = schemaModule.attemptTelemetryV1;
+  cohortSummaryV1 = schemaModule.cohortSummaryV1;
+  runArtifactV1 = schemaModule.runArtifactV1;
   prStateCommentV1 = schemaModule.prStateCommentV1;
   goobersSummaryV1 = schemaModule.goobersSummaryV1;
 
@@ -58,12 +70,18 @@ beforeAll(async () => {
   );
   invocationSemanticErrors = validatorModule.invocationSemanticErrors;
   outputSemanticErrors = validatorModule.outputSemanticErrors;
+  attemptTelemetrySemanticErrors = validatorModule.attemptTelemetrySemanticErrors;
+  cohortSummarySemanticErrors = validatorModule.cohortSummarySemanticErrors;
+  runArtifactSemanticErrors = validatorModule.runArtifactSemanticErrors;
   summarySemanticErrors = validatorModule.summarySemanticErrors;
 
   const AjvCtor = require('ajv');
   const ajv = new AjvCtor({ allErrors: true, strict: false });
   validateInvocation = ajv.compile(invocationV1);
   validateOutput = ajv.compile(outputV1);
+  validateAttemptTelemetry = ajv.compile(attemptTelemetryV1);
+  validateCohortSummary = ajv.compile(cohortSummaryV1);
+  validateRunArtifact = ajv.compile(runArtifactV1);
 });
 
 function isInvocationValid(payload: Invocation): boolean {
@@ -74,6 +92,21 @@ function isInvocationValid(payload: Invocation): boolean {
 function isOutputValid(payload: Output): boolean {
   const schemaOk = Boolean(validateOutput(payload));
   return schemaOk && outputSemanticErrors(payload).length === 0;
+}
+
+function isAttemptTelemetryValid(payload: Record<string, unknown>): boolean {
+  const schemaOk = Boolean(validateAttemptTelemetry(payload));
+  return schemaOk && attemptTelemetrySemanticErrors(payload).length === 0;
+}
+
+function isCohortSummaryValid(payload: Record<string, unknown>): boolean {
+  const schemaOk = Boolean(validateCohortSummary(payload));
+  return schemaOk && cohortSummarySemanticErrors(payload).length === 0;
+}
+
+function isRunArtifactValid(payload: Record<string, unknown>): boolean {
+  const schemaOk = Boolean(validateRunArtifact(payload));
+  return schemaOk && runArtifactSemanticErrors(payload).length === 0;
 }
 
 describe('crawler.goobers.invocation/v1 schema', () => {
@@ -559,6 +592,205 @@ describe('crawler.goobers.summary/v1 close-out summary contract', () => {
         summary: 'Feature implemented and reviewed',
       }),
     ).toBe(true);
+  });
+});
+
+describe('crawler.goobers.attempt-telemetry/v1', () => {
+  it('accepts a lineage-linked attempt with per-stage timings and privacy-safe metrics', () => {
+    expect(
+      isAttemptTelemetryValid({
+        contractVersion: 'v1',
+        attemptLineageKey: 'issue-1234:run-1:attempt-2',
+        issueNumber: '1234',
+        runId: 'run-42',
+        attemptNumber: 2,
+        retryCount: 1,
+        repassCount: 0,
+        parentAttemptLineageKey: 'issue-1234:run-1:attempt-1',
+        stageDurations: { 'query-backlog': 1200, implement: 5400, 'pr-opened-gate': 800 },
+        totalElapsedMs: 7400,
+        promptBytes: 24000,
+        contextArtifactBytes: 18000,
+        modelInputTokens: 9000,
+        modelOutputTokens: 2400,
+        compactionCount: 1,
+        terminalOutcome: 'pr-opened',
+        outcomeReason: 'Opened a feature PR with the required change set.',
+        stageTrace: ['query-backlog', 'implement', 'pr-opened-gate'],
+      }),
+    ).toBe(true);
+  });
+
+  it('requires a stable lineage key and normalized terminal outcome', () => {
+    expect(
+      isAttemptTelemetryValid({
+        contractVersion: 'v1',
+        attemptLineageKey: '',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        terminalOutcome: 'pr-opened',
+      }),
+    ).toBe(false);
+
+    expect(
+      isAttemptTelemetryValid({
+        contractVersion: 'v1',
+        attemptLineageKey: 'issue-1234:run-1:attempt-1',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        terminalOutcome: 'unknown',
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed on an unversioned attempt record', () => {
+    expect(
+      isAttemptTelemetryValid({
+        attemptLineageKey: 'issue-1234:run-1:attempt-1',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        terminalOutcome: 'pr-opened',
+        promptBytes: 1,
+        contextArtifactBytes: 1,
+        modelInputTokens: 1,
+        modelOutputTokens: 1,
+        compactionCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('forces explicit unavailableReason whenever a telemetry field is null', () => {
+    expect(
+      isAttemptTelemetryValid({
+        contractVersion: 'v1',
+        attemptLineageKey: 'issue-1234:run-1:attempt-1',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        promptBytes: null,
+        contextArtifactBytes: null,
+        modelInputTokens: null,
+        modelOutputTokens: null,
+        compactionCount: null,
+        terminalOutcome: 'blocked',
+        unavailableReason: 'Telemetry not logged by the upstream runtime.',
+      }),
+    ).toBe(true);
+
+    expect(
+      isAttemptTelemetryValid({
+        contractVersion: 'v1',
+        attemptLineageKey: 'issue-1234:run-1:attempt-1',
+        issueNumber: '1234',
+        stageDurations: { implement: 1000 },
+        totalElapsedMs: 1000,
+        promptBytes: null,
+        contextArtifactBytes: null,
+        modelInputTokens: null,
+        modelOutputTokens: null,
+        compactionCount: null,
+        terminalOutcome: 'blocked',
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('crawler.goobers.cohort-summary/v1', () => {
+  it('accepts a matched-cohort summary for delivery rate and context comparison', () => {
+    expect(
+      isCohortSummaryValid({
+        contractVersion: 'v1',
+        cohort: 'canonical-context',
+        issueCount: 12,
+        deliverySuccessRate: 0.92,
+        averageElapsedMs: 814000,
+        averageRepasses: 0.25,
+        averageContextArtifactBytes: 64000,
+        comparison: 'preserved',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects out-of-range delivery success and negative averages', () => {
+    expect(
+      isCohortSummaryValid({
+        contractVersion: 'v1',
+        cohort: 'baseline',
+        issueCount: 12,
+        deliverySuccessRate: 1.2,
+        averageElapsedMs: 1000,
+        averageRepasses: 1,
+        averageContextArtifactBytes: 5000,
+      }),
+    ).toBe(false);
+    expect(
+      isCohortSummaryValid({
+        contractVersion: 'v1',
+        cohort: 'baseline',
+        issueCount: 12,
+        deliverySuccessRate: 0.8,
+        averageElapsedMs: -1,
+        averageRepasses: 0,
+        averageContextArtifactBytes: 5000,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('crawler.goobers.run-artifact/v1', () => {
+  it('bundles attempts and a cohort summary without leaking prompt text', () => {
+    expect(
+      isRunArtifactValid({
+        contractVersion: 'v1',
+        issueNumber: '1234',
+        attempts: [
+          {
+            contractVersion: 'v1',
+            attemptLineageKey: 'issue-1234:run-1:attempt-1',
+            issueNumber: '1234',
+            stageDurations: { 'query-backlog': 2200, implement: 6200 },
+            totalElapsedMs: 8400,
+            promptBytes: 36000,
+            contextArtifactBytes: 24000,
+            modelInputTokens: 11000,
+            modelOutputTokens: 3200,
+            compactionCount: 1,
+            terminalOutcome: 'issue-completed',
+            outcomeReason: 'Opened and completed the feature PR.',
+          },
+        ],
+        cohortSummary: {
+          contractVersion: 'v1',
+          cohort: 'canonical-context',
+          issueCount: 1,
+          deliverySuccessRate: 1,
+          averageElapsedMs: 8400,
+          averageRepasses: 0,
+          averageContextArtifactBytes: 24000,
+          comparison: 'preserved',
+        },
+      }),
+    ).toBe(true);
+  });
+  it('rejects an unversioned nested cohort summary', () => {
+    expect(
+      isRunArtifactValid({
+        contractVersion: 'v1',
+        issueNumber: '1234',
+        attempts: [],
+        cohortSummary: {
+          cohort: 'baseline',
+          issueCount: 1,
+          deliverySuccessRate: 1,
+          averageElapsedMs: 8400,
+          averageRepasses: 0,
+          averageContextArtifactBytes: 24000,
+        },
+      }),
+    ).toBe(false);
   });
 });
 
