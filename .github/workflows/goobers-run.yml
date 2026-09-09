@@ -2504,7 +2504,8 @@ jobs:
             local no_work_disposition="" no_work_evidence_ref="" terminal_stage="" elapsed_seconds="0" stage_error=""
             local prior_stage_failure=false unpushed_diff_size=0
             local source_line_count=0 valid_line_count=0
-            local marker="" body="" existing_comment_id="" lookup_status=0
+            local marker="" body="" existing_comment_id="" pr_marker="" pr_body="" existing_pr_comment_id="" lookup_status=0
+            local report_failed=false
 
             assignment="$(
               jq -c \
@@ -2772,22 +2773,68 @@ jobs:
               echo "- Journal artifact: [\`${ARTIFACT_NAME}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
             } > "$body"
 
-            existing_comment_id="$(find_issue_comment_id "$marker")"
-            if [ -n "$existing_comment_id" ]; then
-              jq -Rs '{body: .}' "$body" |
+            if ! existing_comment_id="$(find_issue_comment_id "$marker")"; then
+              echo "::error::Could not find the existing Goobers issue result comment for issue #${issue_number}; refusing to report a successful delivery." >&2
+              report_failed=true
+            elif [ -n "$existing_comment_id" ]; then
+              if ! jq -Rs '{body: .}' "$body" |
                 gh api --silent --method PATCH \
-                  "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -
-              echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID} slot ${slot}."
-            else
-              gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+                  "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_comment_id}" --input -; then
+                echo "::error::Could not update the Goobers result comment on issue #${issue_number}." >&2
+                report_failed=true
+              else
+                echo "Updated existing Goobers result comment for Actions run ${GITHUB_RUN_ID} slot ${slot}."
+              fi
+            elif ! gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"; then
+              echo "::error::Could not post the Goobers result comment on issue #${issue_number}." >&2
+              report_failed=true
+            fi
+
+            if [ "$pr_validated_open" = "true" ]; then
+              # Use a destination-specific marker so an issue result can never
+              # be mistaken for the PR's idempotent status comment.
+              pr_marker="<!-- crawler-goobers-run-result:v1 run-id=${GITHUB_RUN_ID} attempt=${GITHUB_RUN_ATTEMPT} lane=${GOOBERS_LANE} slot=${slot} goobers-run=${run_id:-none} workflow=${GOOBERS_WORKFLOW} destination=pr -->"
+              pr_body="$(mktemp)"
+              {
+                echo "$pr_marker"
+                echo
+                echo "Goobers delivery outcome: **${delivery_outcome}**."
+                echo
+                echo "- Actions conclusion: \`${JOB_STATUS}\`"
+                echo "- Failure code: \`${failure_code:-none}\`"
+                echo "- Terminal stage: \`${terminal_stage}\`"
+                echo "- Elapsed: \`${elapsed_seconds}s\`"
+                echo "- Pull request: #${pr_number} — ${pr_url}"
+                echo "- Source issue: #${issue_number} — https://github.com/${GITHUB_REPOSITORY}/issues/${issue_number}"
+                echo "- Journal artifact: [\`${ARTIFACT_NAME}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+              } > "$pr_body"
+
+              if ! existing_pr_comment_id="$(find_pr_comment_id "$pr_marker")"; then
+                echo "::error::Could not find the existing Goobers PR result comment for PR #${pr_number}; refusing to report a successful delivery." >&2
+                report_failed=true
+              elif [ -n "$existing_pr_comment_id" ]; then
+                if ! jq -Rs '{body: .}' "$pr_body" |
+                  gh api --silent --method PATCH \
+                    "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_pr_comment_id}" --input -; then
+                  echo "::error::Could not update the Goobers result comment on PR #${pr_number}." >&2
+                  report_failed=true
+                else
+                  echo "Updated existing Goobers PR result comment for PR #${pr_number}."
+                fi
+              elif ! gh issue comment "$pr_number" --repo "$GITHUB_REPOSITORY" --body-file "$pr_body"; then
+                echo "::error::Could not post the Goobers result comment on PR #${pr_number}." >&2
+                report_failed=true
+              fi
             fi
 
             if [ -n "$pr_resolution_error" ]; then
               echo "::error::${pr_resolution_error}" >&2
             fi
-            # The comment is the durable delivery verdict. Keep this reporter
-            # successful after posting it so its own exit status cannot replace
-            # the canonical outcome or hide the artifact pointer.
+            # Reporting failures are distinct from the delivery outcome, but
+            # must still fail this terminal step instead of being hidden.
+            if [ "$report_failed" = "true" ]; then
+              return 1
+            fi
             return 0
           }
 
@@ -2796,6 +2843,27 @@ jobs:
               "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/comments?per_page=100" |
               jq -r --arg marker "$1" \
                 '[.[][] | select((.body // "") | contains($marker)) | .id][0] // empty'
+          }
+
+          find_pr_comment_id() {
+            # Ownership requires the marker to be the LEADING line, matching
+            # the hasLeadingMarker contract in
+            # .github/scripts/merge-train/state.mjs. A marker quoted or
+            # embedded further down an Actions-authored comment's body must
+            # never match, or this could PATCH an unrelated bot comment.
+            gh api --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments?per_page=100" |
+              jq -r --arg marker "$1" '
+                [
+                  .[][] |
+                  select(
+                    (.user.login // "") == "github-actions[bot]" and
+                    (.user.type // "") == "Bot" and
+                    (((.body // "") | split("\n")[0] // "") | gsub("^\\s+|\\s+$"; "")) == $marker
+                  ) |
+                  .id
+                ][0] // empty
+              '
           }
 
           # Same exhaustive enumeration as "Handle no-work disposition": every
