@@ -1,11 +1,9 @@
 /**
  * Floor 4 · Green Room shop stock lifecycle (slice A).
  *
- * Owns the *data and state* of the intermission shops, and nothing else: this
- * module rolls, holds, and retires each visit's immutable stock when the arena
- * director enters/exits each intermission. Purchase transactions, entity
- * placement, sponsor branding, and any UI are explicitly later slices
- * (spec §7.3 / ADR 0090 D7) and are NOT touched here.
+ * Owns the data, state, and authoritative purchase transaction for the
+ * intermission shops. Entity placement, sponsor branding, and UI remain
+ * presentation concerns.
  *
  * Design contract enforced here (spec §7):
  *
@@ -34,6 +32,8 @@ import type { GameWorld } from '../core/world.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getShopArchetype } from '../shared/data/shop-archetypes.js';
+import { addItem, cloneInventoryBag } from '../shared/inventory.js';
+import { resolveShopCatalogItem } from '../shared/shop-catalog.js';
 import type {
   Floor4GreenRoomOffer,
   Floor4GreenRoomState,
@@ -188,7 +188,7 @@ function floor4GreenRoomCheapestOfferPrice(visit: Floor4GreenRoomVisitStock): nu
 }
 
 function createFloor4GreenRoomState(): Floor4GreenRoomState {
-  return { retiredVisitCount: 0, lastOpenedVisitIndex: -1 };
+  return { retiredVisitCount: 0, lastOpenedVisitIndex: -1, purchases: 0 };
 }
 
 function ensureFloor4GreenRoomState(world: GameWorld): Floor4GreenRoomState {
@@ -277,4 +277,73 @@ export function retireFloor4GreenRoomVisit(world: GameWorld): Floor4GreenRoomRet
   state.currentVisit = undefined;
   state.retiredVisitCount += 1;
   return { changed: true, retiredGeneratedInstances: 0 };
+}
+
+export type Floor4GreenRoomPurchaseResult =
+  | { readonly ok: true; readonly goldSpent: number; readonly remainingGold: number }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | 'no-open-visit'
+        | 'unknown-offer'
+        | 'stock-unavailable'
+        | 'missing-inventory'
+        | 'unknown-item'
+        | 'insufficient-funds';
+      readonly message: string;
+    };
+
+/**
+ * Purchase one unit from the currently open Green Room visit.
+ *
+ * The stock, wallet, catalog, and inventory are checked and mutated together
+ * here so scene and headless callers cannot diverge on eligibility.
+ */
+export function purchaseFloor4GreenRoomOffer(
+  world: GameWorld,
+  playerEid: number,
+  itemId: string,
+): Floor4GreenRoomPurchaseResult {
+  const state = world.floorExtendedState?.floor4GreenRoom;
+  const visit = state?.currentVisit;
+  if (!state || !visit) {
+    return { ok: false, reason: 'no-open-visit', message: 'No Green Room visit is open' };
+  }
+  const table = visit.tables.find((candidate) =>
+    candidate.offers.some((offer) => offer.itemId === itemId),
+  );
+  const offer = table?.offers.find((candidate) => candidate.itemId === itemId);
+  if (!offer) {
+    return { ok: false, reason: 'unknown-offer', message: 'Offer is not in the current stock' };
+  }
+  if (offer.stock < 1) {
+    return { ok: false, reason: 'stock-unavailable', message: 'Offer is sold out' };
+  }
+  const bag = world.inventories.get(playerEid);
+  if (!bag) {
+    return { ok: false, reason: 'missing-inventory', message: 'Purchasing entity has no inventory' };
+  }
+  const catalogItem = resolveShopCatalogItem(itemId);
+  if (!catalogItem) {
+    return { ok: false, reason: 'unknown-item', message: 'Offer is not in the shared item catalog' };
+  }
+  if (world.playerGold < offer.unitPrice) {
+    return { ok: false, reason: 'insufficient-funds', message: 'Player cannot afford this offer' };
+  }
+
+  const nextBag = cloneInventoryBag(bag);
+  addItem(nextBag, catalogItem.itemId, 1);
+  world.inventories.set(playerEid, nextBag);
+  world.playerGold -= offer.unitPrice;
+  state.purchases = (state.purchases ?? 0) + 1;
+  state.currentVisit = {
+    ...visit,
+    tables: visit.tables.map((entry) => ({
+      ...entry,
+      offers: entry.offers.map((candidate) =>
+        candidate.itemId === itemId ? { ...candidate, stock: candidate.stock - 1 } : candidate,
+      ),
+    })),
+  };
+  return { ok: true, goldSpent: offer.unitPrice, remainingGold: world.playerGold };
 }

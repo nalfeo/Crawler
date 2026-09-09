@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { query } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory';
+import { Player } from '../../src/core/components';
+import { createInventoryBag } from '../../src/shared/inventory';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry';
 import {
   openFloor4GreenRoomVisit,
+  purchaseFloor4GreenRoomOffer,
   retireFloor4GreenRoomVisit,
 } from '../../src/game/floor4GreenRoom';
 import type { Floor4GreenRoomVisitStock } from '../../src/shared/floor-types';
@@ -151,6 +155,42 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
     expect(retired.changed).toBe(true);
     expect(world.floorExtendedState?.floor4GreenRoom?.currentVisit).toBeUndefined();
     expect(world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount).toBe(1);
+  });
+
+  it('purchases one current offer through the authoritative wallet and inventory path', () => {
+    const world = createTestWorld({ seed: 42 });
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.playerGold = 1000;
+    world.inventories.set(playerEid, createInventoryBag());
+    const visit = openVisit(world, 0);
+    const offer = visit.tables[0]!.offers[0]!;
+    const beforeGold = world.playerGold;
+    const result = purchaseFloor4GreenRoomOffer(world, playerEid, offer.itemId);
+
+    expect(result).toEqual({
+      ok: true,
+      goldSpent: offer.unitPrice,
+      remainingGold: beforeGold - offer.unitPrice,
+    });
+    expect(world.playerGold).toBe(beforeGold - offer.unitPrice);
+    expect(world.floorExtendedState?.floor4GreenRoom?.purchases).toBe(1);
+    expect(
+      world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables[0]?.offers.find(
+        (entry) => entry.itemId === offer.itemId,
+      )?.stock,
+    ).toBe(0);
+  });
+
+  it('rejects purchases outside the active visit without changing wallet state', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 1000;
+    const playerEid = query(world.ecs, [Player])[0]!;
+    expect(purchaseFloor4GreenRoomOffer(world, playerEid, 'missing-item')).toEqual({
+      ok: false,
+      reason: 'no-open-visit',
+      message: 'No Green Room visit is open',
+    });
+    expect(world.playerGold).toBe(1000);
   });
 });
 
