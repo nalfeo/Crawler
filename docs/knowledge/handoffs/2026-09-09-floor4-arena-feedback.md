@@ -39,6 +39,14 @@ terminal victory. The purchase regression exercises the same run-scoped
 Green Room state used by `arenaDirectorSystem`; no runner-only phase shortcut
 or balance change was introduced.
 
+## Follow-up lock fix
+
+The Green Room tunnel is now sealed by the shared barrier overlay outside
+intermission. After a public Green Room confirmation, sealing waits until the
+player has crossed back into the arena, preventing both active-wave retreat and
+the transition edge that could trap a player on the shop side. The director
+owns barrier lifecycle; no headless-only mutation was added.
+
 ## Validation
 
 - `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts`
@@ -46,3 +54,5 @@ or balance change was introduced.
 - `npm run typecheck`
 - `git diff --check`
 - `bash scripts/agent/verify-fast.sh`
+- `npx vitest run tests/headless/floor4-arena-completion.test.ts` (seed 404
+  real-pipeline completion and deterministic replay)
