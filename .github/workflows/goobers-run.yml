@@ -1643,6 +1643,36 @@ jobs:
         env:
           REAP_OUTCOME: ${{ steps.reap-stage-processes.outcome }}
 
+      - name: Emit attempt telemetry
+        id: attempt-telemetry
+        # Turns each slot's raw run journal into a validated
+        # `crawler.goobers.run-artifact/v1` record (lineage key, per-stage
+        # durations, privacy-safe context footprint, normalized terminal
+        # outcome) written next to the diagnostics sentinel, so the artifact
+        # uploaded below carries the attempt telemetry instead of only the raw
+        # journal tree. Runs after the sentinel and before the upload so a
+        # journal-less slot -- the case the sentinel exists for -- still emits
+        # an attempt with an explicit unavailable reason.
+        #
+        # `continue-on-error`: telemetry is observability, never a gate. A
+        # contract violation here must be loud (the script exits non-zero and
+        # annotates the run) but must not fail a lane that actually delivered,
+        # nor skip the claim/label reconciliation steps below.
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -uo pipefail
+          node .github/scripts/goobers/attempt-telemetry.mjs \
+            --lane-root "${GOOBERS_LANE_ROOT}" \
+            --lane "${GOOBERS_LANE}" \
+            --slots "${GOOBERS_SLOTS}" \
+            --assignments "${GOOBERS_SLOT_ASSIGNMENTS}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --job-status "${JOB_STATUS}"
+
       - name: Upload run journal
         id: upload-run-journal
         if: always()
