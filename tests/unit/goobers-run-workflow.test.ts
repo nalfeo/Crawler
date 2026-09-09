@@ -2628,19 +2628,21 @@ ${queryScript}
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const reserveJob = workflow.jobs.reserve;
     const runJob = workflow.jobs.run;
-    
+
     // Planning (reserve job) retains a shorter independent budget
     expect(Number(reserveJob?.['timeout-minutes'])).toBe(20);
-    
+
     // Implementation (run job) has the longer overall budget
     expect(Number(runJob?.['timeout-minutes'])).toBe(90);
-    
+
     // New GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES variable exists and is > 30 minutes
-    const implementationTimeoutMinutes = Number(runJob?.env?.GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES);
+    const implementationTimeoutMinutes = Number(
+      runJob?.env?.GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES,
+    );
     expect(Number.isInteger(implementationTimeoutMinutes)).toBe(true);
     expect(implementationTimeoutMinutes).toBeGreaterThan(30);
     expect(implementationTimeoutMinutes).toBeLessThanOrEqual(90);
-    
+
     // Validate that the variable is checked in the workflow
     const script = runJob?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
     expect(script).toContain('GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES');
@@ -2651,43 +2653,48 @@ ${queryScript}
 
   it('creates timeout checkpoint contracts that record committed SHA or no-checkpoint reason', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
-    const script = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
-    
+    const script =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
+
     // The checkpoint function is defined
     expect(script).toContain('create_timeout_checkpoint()');
-    
+
     // It accepts a slot root parameter
     expect(script).toContain('local slot_root="$1"');
-    
+
     // It attempts to record git state
     expect(script).toContain('git rev-parse HEAD');
     expect(script).toContain('git rev-parse --abbrev-ref HEAD');
-    
-    // It handles uncommitted changes with automatic commit
+
+    // It handles tracked and untracked changes with an automatic commit
     expect(script).toContain('git diff-index --quiet HEAD');
-    expect(script).toContain('git commit -a -m');
-    
+    expect(script).toContain('git add -A');
+    expect(script).toContain('git commit -m "chore: checkpoint implementation before timeout"');
+
     // It records either a checkpoint SHA or a no_checkpoint_reason
-    expect(script).toContain('checkpoint: {branch');
+    expect(script).toContain('checkpoint_sha: $sha');
     expect(script).toContain('no_checkpoint_reason');
-    
+
     // It marks the outcome as terminal
     expect(script).toContain('terminal: true');
-    
+
     // Checkpoint creation is called when timeout occurs
     expect(script).toContain('create_timeout_checkpoint');
   });
 
   it('marks timeout as a terminal attempt outcome and preserves artifact links', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
-    const script = workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
-    
+    const script =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
+
     // Timeout condition is detected
-    expect(script).toContain("if [ \"$remaining\" -le 0 ]");
-    
+    expect(script).toContain('if [ "$remaining" -le 0 ]');
+
     // Artifact link is preserved in error message
-    expect(script).toContain('goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}');
-    
+    expect(script).toContain(
+      'goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}',
+    );
+
     // Error messages guide users to recovery
     expect(script).toContain('Creating timeout checkpoint contracts before teardown');
     expect(script).toContain('retry with: gh workflow run goobers-run.yml');
@@ -2696,29 +2703,36 @@ ${queryScript}
   it('blocks retries unless worktree is clean and confirms resume contract eligibility', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const steps = workflow.jobs.run?.steps ?? [];
-    const validateStep = steps.find((step) => step.name === 'Validate clean worktree for resumed runs');
+    const validateStep = steps.find(
+      (step) => step.name === 'Validate clean worktree for resumed runs',
+    );
     const script = validateStep?.run ?? '';
-    
+
     // The validation step exists
     expect(validateStep).toBeDefined();
-    
-    // It checks for checkpoint contracts (evidence of a prior timeout)
-    expect(script).toContain('goobers-timeout-checkpoint');
-    
+
+    // A retry carries the durable contract explicitly; runner-temporary files
+    // cannot be used because each workflow run gets a fresh runner.
+    expect(script).toContain('GOOBERS_RESUME_CONTRACT_BRANCH');
+    expect(script).toContain('GOOBERS_RESUME_CONTRACT_SHA');
+    expect(script).toContain('GOOBERS_RESUME_CONTRACT_FAILURE');
+
     // It validates the worktree is clean before resuming
     expect(script).toContain('git diff-index --quiet HEAD');
     expect(script).toContain('git diff-files --quiet');
-    
+
     // It blocks resumption if worktree is dirty
-    expect(script).toContain('Refusing to resume: worktree has uncommitted changes');
-    expect(script).toContain('Refusing to resume: working tree has modifications');
-    
+    expect(script).toContain('Refusing to resume: worktree is dirty');
+    expect(script).toContain('explicit resume contract');
+
     // It guides users to retry with a clean state
     expect(script).toContain('resume contract');
     expect(script).toContain('gh workflow run goobers-run.yml');
-    
+
     // Step runs before adoption so a dirty worktree is detected early
-    const validateIndex = steps.findIndex((step) => step.name === 'Validate clean worktree for resumed runs');
+    const validateIndex = steps.findIndex(
+      (step) => step.name === 'Validate clean worktree for resumed runs',
+    );
     const adoptIndex = steps.findIndex((step) => step.name === 'Adopt reserved slot assignments');
     expect(validateIndex).toBeGreaterThanOrEqual(0);
     expect(adoptIndex).toBeGreaterThan(validateIndex);
