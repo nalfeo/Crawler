@@ -234,15 +234,12 @@ spec:
     - name: implement
       type: agentic
       goober: coder
-      # `local-gate.fail` and `review.needs-changes` both re-enter here, and
-      # the pinned runtime's SelectContextPointers keeps only
-      # `<source>.artifact[...]`/`<source>.verdict` for each listed source —
-      # nothing else survives across a repass. Listing `local-ci` and `review`
-      # is what carries the local verification failure artifact and the
-      # reviewer's defect verdict into that re-entry; without them a repass
-      # would see only the requirements and plan and could not act on the
-      # feedback that triggered it. On the initial pass neither task has run
-      # yet, so both resolve to no pointer and are silently omitted.
+      # `local-gate.fail` and `review.needs-changes` both re-enter here. The
+      # pinned runtime's SelectContextPointers keeps one current pointer per
+      # listed source: the canonical requirements/plan artifacts plus the
+      # latest local-ci artifact or review verdict. It does not restore the
+      # implementer output or superseded plan/review history. On the initial
+      # pass local-ci and review have not run, so their pointers are omitted.
       contextFrom:
         - hydrate-requirements
         - materialize-plan

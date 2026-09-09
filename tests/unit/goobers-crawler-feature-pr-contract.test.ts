@@ -185,6 +185,18 @@ describe('Crawler crawler-feature-pr workflow contract', () => {
       expect(contextFrom).toContain('hydrate-requirements');
       expect(contextFrom).toContain('materialize-plan');
     });
+
+    it('does not permit historical or self-context sources on repass', () => {
+      const implement = tasks.get('implement');
+      expect(implement?.contextFrom).toEqual([
+        'hydrate-requirements',
+        'materialize-plan',
+        'local-ci',
+        'review',
+      ]);
+      expect(implement?.contextFrom).not.toContain('implement');
+      expect(implement?.contextFrom).not.toContain('plan');
+    });
   });
 
   describe('Automatic repass caps', () => {

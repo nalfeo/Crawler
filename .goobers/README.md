@@ -9,8 +9,8 @@ recovery sweep:
 eligible issue (approved, or the legacy intake cohort)
   -> producer plan
   -> implementer
-  -> independent reviewer
   -> npm run verify:fast
+  -> independent reviewer
   -> ready-for-review PR
 ```
 
@@ -43,9 +43,10 @@ would independently claim, and it stays with legacy rather than becoming
 ownerless or dual-claimed.
 
 The workflow never merges a PR. Plan, implementation, and review each allow at
-most two attempts, and the run
-allows at most two gate repasses. After implementation commits, the workflow
-checkpoints the branch before review so partial progress survives a failed run.
+most two attempts, and the run allows at most two gate repasses. Local fast
+verification runs before review; deterministic failures return directly to
+implementation, while a passing run proceeds to branch publication and PR
+creation.
 When an issue is linked to an open PR, the hosted wrapper passes its validated
 head branch to Goobers. The workflow's claim stage emits Goobers'
 `workspaceBranch` output, rebinding every subsequent managed worktree to that
