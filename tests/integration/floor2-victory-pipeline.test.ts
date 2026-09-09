@@ -35,6 +35,53 @@ function smallCaveConfig(seed: number): MapConfig {
 }
 
 describe('Floor 2 Slice 5 — victory pipeline', () => {
+  it('reaches Win A through the real simulation pipeline and shares the completion lifecycle', () => {
+    const seed = 97530;
+    const gen = new CaveSystemGenerator({ presentCount: 3 });
+    const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
+    const world = createTestWorld({ seed, floor: 2 });
+    world.floorMap = floorMap;
+    const roster = selectFloor2Roster(new SeededRandom(seed), loadFamilies(), loadResources(), {
+      presentCountFourProbability: 0,
+    });
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [...roster.presentFamilies],
+        contestedResource: roster.contestedResource,
+        betrayerFlag: false,
+        decapitatedFamilies: new Set(roster.presentFamilies.slice(1)),
+      },
+    };
+    const survivor = roster.presentFamilies[0]!;
+    world.factionRelations.set(survivor, 76);
+    world.floorObjectiveTick = floor2ObjectiveTick;
+
+    const floor2Options = createFloorMainSceneOptions('floor2');
+    runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
+      postSystems: floor2Options.postSystems,
+    });
+
+    expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
+    expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).toBe(true);
+    const firstStaircasePos = world.floorExtendedState?.familyState?.staircasePos;
+    expect(firstStaircasePos).toBeDefined();
+    expect(world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status).toBe('active');
+
+    // The shared completion latch must be stable across later objective ticks.
+    runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
+      postSystems: floor2Options.postSystems,
+    });
+    expect(world.floorExtendedState?.familyState?.staircasePos).toEqual(firstStaircasePos);
+    expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).toBe(true);
+
+    expect(confirmFloor2StairDescend(world, 0)).toBe(true);
+    expect(world.goalFlags.get(FLOOR2_STAIRS_DISCOVERED_GOAL_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR2_LEAVE_FLOOR_QUEST_ID)?.status).toBe('complete');
+    expect(confirmFloor2StairDescend(world, 0)).toBe(false);
+  });
+
   it('latches floor2-victory and pops stairs when all bosses die', () => {
     const seed = 97531;
     const gen = new CaveSystemGenerator({ presentCount: 3 });
@@ -88,6 +135,7 @@ describe('Floor 2 Slice 5 — victory pipeline', () => {
     world.floorObjectiveTick = floor2ObjectiveTick;
     const floor2Options = createFloorMainSceneOptions('floor2');
     runSimulationStep(world, createInputState(), 16, {
+      preSystems: floor2Options.preSystems,
       postSystems: floor2Options.postSystems,
     });
 
