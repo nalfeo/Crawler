@@ -15,7 +15,14 @@ import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import yaml from 'yaml';
-import { invocationV1, outputV1, goobersSummaryV1 } from './validate-goobers-contracts-schema.js';
+import {
+  invocationV1,
+  outputV1,
+  goobersSummaryV1,
+  attemptTelemetryV1,
+  cohortSummaryV1,
+  runArtifactV1,
+} from './validate-goobers-contracts-schema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -158,6 +165,140 @@ export function summarySemanticErrors(summary) {
  */
 export function isStructuredGoobersSummary(summary) {
   return summarySemanticErrors(summary).length === 0;
+}
+
+const ALLOWED_TERMINAL_OUTCOMES = new Set([
+  'pr-opened',
+  'issue-completed',
+  'blocked',
+  'timeout',
+  'no-work',
+  'aborted',
+]);
+
+export function attemptTelemetrySemanticErrors(payload) {
+  const errors = [];
+  const attemptLineageKey = String(payload?.attemptLineageKey ?? '').trim();
+  const issueNumber = String(payload?.issueNumber ?? '').trim();
+  const terminalOutcome = payload?.terminalOutcome;
+  const unavailableReason = payload?.unavailableReason;
+
+  if (!attemptLineageKey) {
+    errors.push('attemptLineageKey is required and must be a non-empty string');
+  }
+  if (!/^[0-9]+$/.test(issueNumber)) {
+    errors.push('issueNumber must be a numeric string');
+  }
+  if (typeof terminalOutcome !== 'string' || !ALLOWED_TERMINAL_OUTCOMES.has(terminalOutcome)) {
+    errors.push(
+      `terminalOutcome must be one of ${[...ALLOWED_TERMINAL_OUTCOMES].join(', ')}`,
+    );
+  }
+  if (
+    payload?.stageDurations !== undefined &&
+    payload?.stageDurations !== null &&
+    typeof payload.stageDurations !== 'object'
+  ) {
+    errors.push('stageDurations must be an object of stage name -> millisecond duration');
+  }
+
+  const numericFields = [
+    'totalElapsedMs',
+    'promptBytes',
+    'contextArtifactBytes',
+    'modelInputTokens',
+    'modelOutputTokens',
+    'compactionCount',
+  ];
+  for (const field of numericFields) {
+    if (payload?.[field] === undefined || payload?.[field] === null) {
+      continue;
+    }
+    const value = Number(payload[field]);
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`${field} must be a non-negative finite number when present`);
+    }
+  }
+
+  const isMetricUnavailable = (field) => payload?.[field] === null || payload?.[field] === undefined;
+  const metricFields = ['promptBytes', 'contextArtifactBytes', 'modelInputTokens', 'modelOutputTokens', 'compactionCount'];
+  const unavailableMetricFields = metricFields.filter(isMetricUnavailable);
+  if (unavailableMetricFields.length > 0) {
+    const reason = String(unavailableReason ?? '').trim();
+    if (!reason) {
+      errors.push(
+        `unavailableReason is required when metric fields are absent or null: ${unavailableMetricFields.join(', ')}`,
+      );
+    }
+  }
+
+  if (payload?.stageDurations && typeof payload.stageDurations === 'object') {
+    for (const [stageName, duration] of Object.entries(payload.stageDurations)) {
+      const numericDuration = Number(duration);
+      if (!Number.isFinite(numericDuration) || numericDuration < 0) {
+        errors.push(`stageDurations[${stageName}] must be a non-negative finite number`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+export function cohortSummarySemanticErrors(payload) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') {
+    return ['cohortSummary must be an object'];
+  }
+  if (!String(payload?.cohort ?? '').trim()) {
+    errors.push('cohort is required');
+  }
+  if (!Number.isInteger(payload?.issueCount) || Number(payload.issueCount) < 0) {
+    errors.push('issueCount must be a non-negative integer');
+  }
+  for (const field of ['deliverySuccessRate', 'averageElapsedMs', 'averageRepasses', 'averageContextArtifactBytes']) {
+    const value = Number(payload?.[field]);
+    if (!Number.isFinite(value) || value < 0) {
+      errors.push(`${field} must be a non-negative finite number`);
+    }
+  }
+  if (
+    payload?.deliverySuccessRate !== undefined &&
+    payload?.deliverySuccessRate !== null &&
+    (Number(payload.deliverySuccessRate) < 0 || Number(payload.deliverySuccessRate) > 1)
+  ) {
+    errors.push('deliverySuccessRate must be between 0 and 1 inclusive');
+  }
+  if (payload?.comparison !== undefined && payload?.comparison !== null && !['improved', 'preserved', 'regressed', 'inconclusive'].includes(payload.comparison)) {
+    errors.push("comparison must be 'improved', 'preserved', 'regressed', or 'inconclusive'");
+  }
+  return errors;
+}
+
+export function runArtifactSemanticErrors(payload) {
+  const errors = [];
+  if (!payload || typeof payload !== 'object') {
+    return ['runArtifact must be an object'];
+  }
+  if (!Array.isArray(payload?.attempts)) {
+    errors.push('attempts must be an array');
+    return errors;
+  }
+  if (!payload?.issueNumber || !/^[0-9]+$/.test(String(payload.issueNumber))) {
+    errors.push('issueNumber must be a numeric string');
+  }
+  for (const attempt of payload.attempts) {
+    const attemptErrors = attemptTelemetrySemanticErrors(attempt);
+    if (attemptErrors.length > 0) {
+      errors.push(...attemptErrors.map((message) => `attempts: ${message}`));
+    }
+  }
+  if (payload?.cohortSummary !== undefined && payload?.cohortSummary !== null) {
+    const summaryErrors = cohortSummarySemanticErrors(payload.cohortSummary);
+    if (summaryErrors.length > 0) {
+      errors.push(...summaryErrors.map((message) => `cohortSummary: ${message}`));
+    }
+  }
+  return errors;
 }
 
 export function outputSemanticErrors(payload) {
