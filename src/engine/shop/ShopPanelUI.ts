@@ -98,7 +98,24 @@ function rarityColor(rarity: GeneratedEquipmentRarity): number {
   }
 }
 
-export type ShopPanelOfferView = QuartermasterOfferView | SettlementShopOfferView;
+export interface Floor4GreenRoomPanelOffer {
+  readonly greenRoom: true;
+  readonly itemId: string;
+  readonly offerId: string;
+  readonly displayName: string | null;
+  readonly unitPrice: number;
+  readonly quantity: number;
+  readonly affordable: boolean;
+  readonly capacityAvailable: boolean;
+  readonly canPurchase: boolean;
+  readonly purchaseFailure: string | null;
+  readonly utility: null;
+}
+
+export type ShopPanelOfferView =
+  | QuartermasterOfferView
+  | SettlementShopOfferView
+  | Floor4GreenRoomPanelOffer;
 
 /**
  * Project a panel offer view onto the shared shop-offer snapshot so the panel

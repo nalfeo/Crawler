@@ -173,6 +173,15 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
       remainingGold: beforeGold - offer.unitPrice,
     });
     expect(world.playerGold).toBe(beforeGold - offer.unitPrice);
+    expect(world.goldLedger.spentOnGreenRoom).toBe(offer.unitPrice);
+    expect(world.goldLedger.greenRoomPurchases).toBe(1);
+    expect(world.vendorLedger.decisions).toContainEqual(
+      expect.objectContaining({
+        vendorId: 'floor4-green-room',
+        itemId: offer.itemId,
+        outcome: 'purchased',
+      }),
+    );
     expect(world.floorExtendedState?.floor4GreenRoom?.purchases).toBe(1);
     expect(
       world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables[0]?.offers.find(

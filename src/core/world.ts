@@ -227,12 +227,16 @@ export interface GoldLedger {
   spentOnMerchantWeapon: number;
   /** Gold spent at the Floor 1 Spell Broker. */
   spentOnSpell: number;
+  /** Gold spent at Floor 4 Green Room sponsor tables. */
+  spentOnGreenRoom: number;
   /** Number of charm purchases (0 or 1 per run). */
   charmPurchases: number;
   /** Number of post-quest merchant weapon purchases. */
   merchantWeaponPurchases: number;
   /** Number of Spell Broker spell purchases. */
   spellPurchases: number;
+  /** Number of Floor 4 Green Room purchases. */
+  greenRoomPurchases: number;
   /**
    * Gold earned at the moment the floor exit was confirmed, i.e. the income the
    * run could still convert into power at a Floor 1 vendor. `null` until the
@@ -254,9 +258,11 @@ export function createGoldLedger(): GoldLedger {
     spentOnCharm: 0,
     spentOnMerchantWeapon: 0,
     spentOnSpell: 0,
+    spentOnGreenRoom: 0,
     charmPurchases: 0,
     merchantWeaponPurchases: 0,
     spellPurchases: 0,
+    greenRoomPurchases: 0,
     earnedBeforeExit: null,
   };
 }

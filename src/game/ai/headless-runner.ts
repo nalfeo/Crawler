@@ -293,7 +293,11 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
 function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
   const ledger = world.goldLedger;
   const earnedTotal = ledger.earnedFromDrops + ledger.earnedFromLootBoxes;
-  const spentTotal = ledger.spentOnCharm + ledger.spentOnMerchantWeapon + ledger.spentOnSpell;
+  const spentTotal =
+    ledger.spentOnCharm +
+    ledger.spentOnMerchantWeapon +
+    ledger.spentOnSpell +
+    ledger.spentOnGreenRoom;
   const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
   const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
   const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
@@ -304,6 +308,7 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     spentOnCharm: ledger.spentOnCharm,
     spentOnMerchantWeapon: ledger.spentOnMerchantWeapon,
     spentOnSpell: ledger.spentOnSpell,
+    spentOnGreenRoom: ledger.spentOnGreenRoom,
     spentTotal,
     unspentAtExit,
     unspentFraction: earnedTotal > 0 ? unspentAtExit / earnedTotal : 0,
@@ -313,6 +318,7 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     charmPurchases: ledger.charmPurchases,
     merchantWeaponPurchases: ledger.merchantWeaponPurchases,
     spellPurchases: ledger.spellPurchases,
+    greenRoomPurchases: ledger.greenRoomPurchases,
     // Distinct *vendors* purchased from, not purchase categories: the charm
     // and the post-quest weapon are both bought from the single
     // `floor1-merchant` NPC (see `FLOOR1_MERCHANT_VENDOR_ID`), so buying both
@@ -320,7 +326,8 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     // is a second, distinct vendor.
     distinctPurchases:
       (ledger.charmPurchases > 0 || ledger.merchantWeaponPurchases > 0 ? 1 : 0) +
-      (ledger.spellPurchases > 0 ? 1 : 0),
+      (ledger.spellPurchases > 0 ? 1 : 0) +
+      (ledger.greenRoomPurchases > 0 ? 1 : 0),
   };
 }
 

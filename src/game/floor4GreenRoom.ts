@@ -28,7 +28,7 @@
  * Layer-safe: game → core (`generateShopInventory`) → shared. No engine, no UI,
  * no `Math.random()`.
  */
-import type { GameWorld } from '../core/world.js';
+import { recordVendorDecision, recordVendorVisit, type GameWorld } from '../core/world.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getShopArchetype } from '../shared/data/shop-archetypes.js';
@@ -44,6 +44,7 @@ import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 
 /** Purpose label for the derived per-visit, per-table stock streams (ADR D5). */
 const FLOOR4_STOCK_STREAM_LABEL = 'floor4:stock';
+const FLOOR4_GREEN_ROOM_VENDOR_ID = 'floor4-green-room';
 
 /**
  * Build the exact derived-stream key for one table's stock on one visit.
@@ -321,20 +322,58 @@ export function purchaseFloor4GreenRoomOffer(
   }
   const bag = world.inventories.get(playerEid);
   if (!bag) {
-    return { ok: false, reason: 'missing-inventory', message: 'Purchasing entity has no inventory' };
+    return {
+      ok: false,
+      reason: 'missing-inventory',
+      message: 'Purchasing entity has no inventory',
+    };
   }
   const catalogItem = resolveShopCatalogItem(itemId);
   if (!catalogItem) {
-    return { ok: false, reason: 'unknown-item', message: 'Offer is not in the shared item catalog' };
+    return {
+      ok: false,
+      reason: 'unknown-item',
+      message: 'Offer is not in the shared item catalog',
+    };
   }
   if (world.playerGold < offer.unitPrice) {
+    recordVendorVisit(
+      world,
+      FLOOR4_GREEN_ROOM_VENDOR_ID,
+      visit.tables.flatMap((entry) =>
+        entry.offers.map((candidate) => ({ itemId: candidate.itemId, cost: candidate.unitPrice })),
+      ),
+    );
+    recordVendorDecision(world, {
+      vendorId: FLOOR4_GREEN_ROOM_VENDOR_ID,
+      itemId,
+      cost: offer.unitPrice,
+      outcome: 'unaffordable',
+      reason: 'insufficient-gold',
+    });
     return { ok: false, reason: 'insufficient-funds', message: 'Player cannot afford this offer' };
   }
 
+  recordVendorVisit(
+    world,
+    FLOOR4_GREEN_ROOM_VENDOR_ID,
+    visit.tables.flatMap((entry) =>
+      entry.offers.map((candidate) => ({ itemId: candidate.itemId, cost: candidate.unitPrice })),
+    ),
+  );
   const nextBag = cloneInventoryBag(bag);
   addItem(nextBag, catalogItem.itemId, 1);
   world.inventories.set(playerEid, nextBag);
   world.playerGold -= offer.unitPrice;
+  world.goldLedger.spentOnGreenRoom += offer.unitPrice;
+  world.goldLedger.greenRoomPurchases += 1;
+  recordVendorDecision(world, {
+    vendorId: FLOOR4_GREEN_ROOM_VENDOR_ID,
+    itemId,
+    cost: offer.unitPrice,
+    outcome: 'purchased',
+    reason: 'green-room-sponsor',
+  });
   state.purchases = (state.purchases ?? 0) + 1;
   state.currentVisit = {
     ...visit,

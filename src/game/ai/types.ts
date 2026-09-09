@@ -567,6 +567,8 @@ export interface GoldEconomyMetrics {
   spentOnMerchantWeapon: number;
   /** Gold spent at the Floor 1 Spell Broker. */
   spentOnSpell: number;
+  /** Gold spent at Floor 4 Green Room sponsor tables. */
+  spentOnGreenRoom: number;
   /** Total gold spent across every vendor. */
   spentTotal: number;
   /** `earnedTotal - spentTotal`, clamped at 0. */
@@ -595,7 +597,9 @@ export interface GoldEconomyMetrics {
   charmPurchases: number;
   merchantWeaponPurchases: number;
   spellPurchases: number;
-  /** Distinct vendors bought from this run (0-2): merchant, spell broker. */
+  /** Number of Floor 4 Green Room purchases. */
+  greenRoomPurchases: number;
+  /** Distinct vendors bought from this run. */
   distinctPurchases: number;
 }
 
