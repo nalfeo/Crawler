@@ -96,7 +96,7 @@ describe('Floor 4 MainGameScene physical spawning (seed 404)', () => {
     });
 
     it('opens, purchases, closes, and confirms a Green Room visit into the next act', async () => {
-      expect(await mainSceneProbe.primeFloor4GreenRoomIntermission(page)).toBe(true);
+      expect(await mainSceneProbe.primeFloor4GreenRoomIntermission(page)).not.toBeNull();
       await mainSceneProbe.setPlayerGold(page, 100_000);
 
       await mainSceneProbe.queueInteraction(page);

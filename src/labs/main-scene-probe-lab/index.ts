@@ -1160,8 +1160,6 @@ export interface MainSceneProbeApi {
   getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
-  /** Stage the live Floor 4 world at its first Green Room marker for scene-interaction e2e coverage. */
-  primeFloor4GreenRoomIntermission(): boolean;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
   openBossRewardPicker(): void;
   /**
@@ -2375,32 +2373,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getFloor4ArenaHudState: (): HudFloor4ArenaProbeState | null =>
       getScene()?.hudUi?.getFloor4ArenaState?.() ?? null,
 
-    primeFloor4GreenRoomIntermission: (): boolean => {
-      const scene = getScene();
-      const world = scene?.world;
-      const playerEid = playerEidOf(scene);
-      const arena = world?.floorExtendedState?.floor4Arena;
-      if (!world || playerEid < 0 || !arena) {
-        return false;
-      }
-      arena.phase = { kind: 'INTERMISSION', act: 1 };
-      if (!world.floorExtendedState?.floor4GreenRoom?.currentVisit) {
-        openFloor4GreenRoomVisit(world, 0);
-      }
-      const marker = getFloor4GreenRoomExitMarker(world);
-      if (!marker) {
-        return false;
-      }
-      world.state = 'playing';
-      world.playerInSafeRoom = true;
-      world.stores.position.x[playerEid] = marker.positionFt.x;
-      world.stores.position.y[playerEid] = marker.positionFt.y;
-      world.stores.velocity.x[playerEid] = 0;
-      world.stores.velocity.y[playerEid] = 0;
-      scene.setSimulationPaused(true);
-      return true;
-    },
-
     getFamilyHudState: (): FamilyHudProbeState => {
       const hud = getScene()?.hudUi;
       const family = hud?.getFamilyRelationshipsState();
@@ -3445,6 +3417,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!marker) {
         return null;
       }
+      world.state = 'playing';
+      world.playerInSafeRoom = true;
       world.stores.position.x[playerEid] = marker.positionFt.x;
       world.stores.position.y[playerEid] = marker.positionFt.y;
       world.stores.velocity.x[playerEid] = 0;
@@ -3452,6 +3426,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       for (const npc of world.npcs.values()) {
         npc.nearbyPlayer = false;
       }
+      scene.setSimulationPaused(true);
       return marker.positionFt;
     },
 
