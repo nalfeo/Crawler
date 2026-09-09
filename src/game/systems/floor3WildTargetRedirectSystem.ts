@@ -4,7 +4,7 @@ import { isFloor3WildEnemyHostile } from '../../core/enemy-targeting.js';
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import { setCompanionAIDecision } from './companionAISystem.js';
-import { updateFloor3WildHostility } from './floor3WildHostility.js';
+import { FLOOR3_WILD_AGGRO_RANGE_FT, updateFloor3WildHostility } from './floor3WildHostility.js';
 
 /** Makes Floor 3 wilds engage the player's Companions instead of the Wrangler. */
 export function floor3WildTargetRedirectSystem(world: GameWorld): void {
@@ -16,6 +16,7 @@ export function floor3WildTargetRedirectSystem(world: GameWorld): void {
       (world.stores.team.id[eid] ?? 0) === TeamId.PLAYER,
   );
   if (party.length === 0) return;
+  const companionEngagementRangeSq = FLOOR3_WILD_AGGRO_RANGE_FT * FLOOR3_WILD_AGGRO_RANGE_FT;
 
   for (const eid of query(world.ecs, [Enemy, Position, Team])) {
     if (
@@ -39,6 +40,12 @@ export function floor3WildTargetRedirectSystem(world: GameWorld): void {
         bestDistanceSq = distanceSq;
       }
     }
+    // Do not make a wild chase a party member that is off-screen or otherwise
+    // far away. Leaving the decision unset preserves the normal hostile
+    // player target, while nearby companions still absorb the engagement as
+    // intended. This also prevents a wild encounter from pulling the party
+    // across the overworld toward a lagging companion.
+    if (bestDistanceSq > companionEngagementRangeSq) continue;
     setCompanionAIDecision(world, eid, {
       x: world.stores.position.x[targetEid] ?? 0,
       y: world.stores.position.y[targetEid] ?? 0,
