@@ -103,9 +103,11 @@ const GOOBERS_SUMMARY_FIELDS = goobersSummaryV1.requiredFields;
 /**
  * Error-list form of `crawler.goobers.summary/v1`: empty when `summary` is
  * exactly four lines (optionally bulleted) labelled Description, Systems,
- * Verification, and Risk, in that order, each with non-empty text. Otherwise it
- * names the specific problem (non-string, wrong line count, unlabelled line,
- * empty section, or wrong order).
+ * Verification, and Risk, in that order, each with non-empty text. The
+ * Description value must also explicitly state whether the session is fully
+ * complete or not fully complete. Otherwise it names the specific problem
+ * (non-string, wrong line count, unlabelled line, empty section, wrong order, or
+ * missing completion state).
  *
  * This is intentionally a separate contract from `crawler.goobers.output/v1`,
  * whose `summary` field keeps its original "non-empty string" v1 semantics so
@@ -149,6 +151,13 @@ export function summarySemanticErrors(summary) {
       errors.push(`summary section "${expectedField}" is empty`);
     }
   });
+
+  const description = lines[0].replace(/^(?:[-*]\s*)?Description:\s*/i, '').trim();
+  if (!/\bsession\s+is\s+(?:not\s+)?fully\s+complete\b/i.test(description)) {
+    errors.push(
+      'summary Description must state "Session is fully complete" or "Session is not fully complete"',
+    );
+  }
 
   return errors;
 }
