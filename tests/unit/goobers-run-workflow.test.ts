@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -90,6 +91,7 @@ interface GoobersDefinition {
       contextFrom?: string[];
       expectedOutputs?: string[];
       retry?: { maxAttempts?: number; backoffSeconds?: number };
+      timeoutMinutes?: number;
     }>;
     gates: Array<{
       name: string;
@@ -168,6 +170,15 @@ function extractPinnedSha(script: string | null | undefined): string | null {
   }
   const match = script.match(/GOOBERS_SHA256=([0-9a-f]{64})/);
   return match?.[1] ?? null;
+}
+
+function extractWorkflowShellFunction(script: string, name: string): string {
+  const lines = script.split('\n');
+  const start = lines.findIndex((line) => line === `${name}() {`);
+  expect(start, `function ${name} should exist`).toBeGreaterThanOrEqual(0);
+  const end = lines.findIndex((line, index) => index > start && line === '}');
+  expect(end, `function ${name} should be extractable`).toBeGreaterThan(start);
+  return lines.slice(start, end + 1).join('\n');
 }
 
 function readSparseCheckoutPaths(step: GoobersActionsStep | undefined): string[] {
@@ -668,10 +679,10 @@ ${queryScript}
     expect(
       script.match(/read -r slot pid log recovery start/g)?.length,
       'every slot-table reader must bind the start-time column',
-    ).toBe(3);
+    ).toBe(5);
     expect(script).not.toMatch(/read -r slot pid log recovery\s*;/);
 
-    expect(script).toContain('terminate_slots || teardown_failed=1');
+    expect(script).toContain('terminate_slots "$timed_out_slots" || teardown_failed=1');
     // A teardown that cannot prove the tree is gone fails the step rather than
     // letting cleanup proceed.
     expect(script).toContain('if [ "$teardown_failed" != "0" ]; then');
@@ -1114,6 +1125,8 @@ ${queryScript}
       'body',
       'url',
       'workspaceBranch',
+      'resumeCheckpointSha',
+      'resumeFailure',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
     // Hosted slots export GOOBERS_INSTANCE and instance.yaml.example passes it
@@ -1225,6 +1238,8 @@ ${queryScript}
       issueTitle: 'query-backlog.title',
       issueBody: 'query-backlog.body',
       issueUrl: 'query-backlog.url',
+      resumeCheckpointSha: 'query-backlog.resumeCheckpointSha',
+      resumeFailure: 'query-backlog.resumeFailure',
     });
     expect(hydrate?.run?.script).not.toContain('gh issue view');
     expect(hydrate?.run?.script).toContain('GOOBERS_INPUT_ISSUENUMBER');
@@ -1662,6 +1677,9 @@ ${queryScript}
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',
+      'GOOBERS_RESUME_CHECKPOINT_SHA',
+      'GOOBERS_RESUME_FAILURE',
+      'GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES',
       'GH_TOKEN',
       'GITHUB_REPOSITORY',
     ]);
@@ -1670,6 +1688,9 @@ ${queryScript}
       'GOOBERS_RECOVERY_ISSUE',
       'GOOBERS_INTAKE_COHORT',
       'GOOBERS_RESUME_BRANCH',
+      'GOOBERS_RESUME_CHECKPOINT_SHA',
+      'GOOBERS_RESUME_FAILURE',
+      'GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES',
     ]);
   });
 
@@ -2803,6 +2824,153 @@ JSON
     // "issue-completed" delivery outcome in the issue comment.
     expect(diagnostics?.run).toContain('no_work_evidence_ref');
     expect(diagnostics?.run).toContain('completed-existing-work-missing-evidence');
+  });
+
+  it('separates implementation-stage timeout from planning-stage timeout with staged budgets', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const reserveJob = workflow.jobs.reserve;
+    const runJob = workflow.jobs.run;
+
+    // Planning (reserve job) retains a shorter independent budget
+    expect(Number(reserveJob?.['timeout-minutes'])).toBe(20);
+
+    // Implementation (run job) has the longer overall budget
+    expect(Number(runJob?.['timeout-minutes'])).toBe(90);
+
+    const definition = loadYaml<GoobersDefinition>(
+      '.goobers',
+      'gaggles',
+      'crawler',
+      'workflows',
+      'crawler-feature-pr.yaml',
+    );
+    const planTask = definition.spec.tasks.find((task) => task.name === 'plan');
+    const implementTask = definition.spec.tasks.find((task) => task.name === 'implement');
+    expect(planTask?.timeoutMinutes).toBe(20);
+    expect(implementTask?.timeoutMinutes).toBe(50);
+
+    // New GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES variable exists and is > 30 minutes
+    const implementationTimeoutMinutes = Number(
+      runJob?.env?.GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES,
+    );
+    expect(Number.isInteger(implementationTimeoutMinutes)).toBe(true);
+    expect(implementationTimeoutMinutes).toBeGreaterThan(30);
+    expect(implementationTimeoutMinutes).toBeLessThanOrEqual(90);
+
+    // Validate that the variable is checked in the workflow
+    const script = runJob?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
+    expect(script).toContain('GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES');
+    expect(script).toContain('require_positive_int GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES');
+    expect(script).toContain('GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES');
+    expect(script).toContain('must be > 30 minutes');
+  });
+
+  it('creates timeout checkpoint contracts that record committed SHA or no-checkpoint reason', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const script =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
+
+    // The checkpoint function is defined
+    expect(script).toContain('create_timeout_checkpoint()');
+
+    // It accepts a slot root parameter
+    expect(script).toContain('local slot_root="$1"');
+
+    // It attempts to record git state
+    expect(script).toContain('git -C "$worktree" rev-parse HEAD');
+    expect(script).toContain('git -C "$worktree" rev-parse --abbrev-ref HEAD');
+
+    // It handles tracked and untracked changes with an automatic commit
+    expect(script).toContain('git -C "$worktree" diff-index --quiet HEAD');
+    expect(script).toContain('git -C "$worktree" add -A');
+    expect(script).toContain(
+      'git -C "$worktree" commit -m "chore: checkpoint implementation before timeout"',
+    );
+    expect(script).toContain('git -C "$worktree" push origin "HEAD:refs/heads/${branch}"');
+
+    // It records either a checkpoint SHA or a no_checkpoint_reason
+    expect(script).toContain('checkpoint_sha: $sha');
+    expect(script).toContain('no_checkpoint_reason');
+
+    // It marks the outcome as terminal
+    expect(script).toContain('terminal: true');
+
+    // Checkpoint creation is called when timeout occurs
+    expect(script).toContain('create_timeout_checkpoint');
+  });
+
+  it('marks timeout as a terminal attempt outcome and preserves artifact links', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const script =
+      workflow.jobs.run?.steps?.find((step) => step.name === 'Run the workflow')?.run ?? '';
+
+    // Timeout condition is detected
+    expect(script).toContain('if [ "$remaining" -le 0 ]');
+
+    // Artifact link is preserved in error message
+    expect(script).toContain(
+      'goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}',
+    );
+
+    // Error messages guide users to recovery
+    expect(script).toContain('Stopping live slots before creating timeout checkpoint contracts');
+    expect(script).toContain('retry with: gh workflow run goobers-run.yml');
+  });
+
+  it('validates resumed slot contracts in the slot worktree and refuses dirty checkouts', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const steps = workflow.jobs.run?.steps ?? [];
+    const runScript = steps.find((step) => step.name === 'Run the workflow')?.run ?? '';
+    const validateFunction = extractWorkflowShellFunction(
+      runScript,
+      'validate_resume_slot_contract',
+    );
+    const tempRoot = mkdtempSync(path.join(tmpdir(), 'crawler-goobers-resume-'));
+
+    try {
+      const harness = `
+set -euo pipefail
+${validateFunction}
+origin="${tempRoot}/origin.git"
+seed="${tempRoot}/seed"
+git init --bare "$origin" >/dev/null
+git init "$seed" >/dev/null
+git -C "$seed" config user.email test@example.invalid
+git -C "$seed" config user.name Test
+printf 'base\n' > "$seed/file.txt"
+git -C "$seed" add file.txt
+git -C "$seed" commit -m base >/dev/null
+git -C "$seed" branch -M goobers/resume-test
+git -C "$seed" remote add origin "$origin"
+git -C "$seed" push origin HEAD:refs/heads/goobers/resume-test >/dev/null
+sha="$(git -C "$seed" rev-parse HEAD)"
+export GITHUB_SERVER_URL=file://${tempRoot}
+export GITHUB_REPOSITORY=origin
+clean_slot="${tempRoot}/clean-slot"
+validate_resume_slot_contract "$clean_slot" 4444 resume 4492 goobers/resume-test "$sha" 'slot deadline exceeded'
+dirty_slot="${tempRoot}/dirty-slot"
+git clone --branch goobers/resume-test "$origin" "$dirty_slot/resume-contract-checkout" >/dev/null 2>&1
+printf 'dirty\n' >> "$dirty_slot/resume-contract-checkout/file.txt"
+if validate_resume_slot_contract "$dirty_slot" 4444 resume 4492 goobers/resume-test "$sha" 'slot deadline exceeded'; then
+  echo 'dirty resume verification unexpectedly succeeded' >&2
+  exit 1
+fi
+`;
+      const result = spawnSync('bash', ['-c', harness], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        env: bashEnv({}),
+      });
+
+      expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+      expect(result.stdout).toContain('Validated resume contract for issue #4444');
+      expect(result.stderr).toContain('slot resume verification worktree is dirty');
+      expect(runScript).toContain('validate_resume_slot_contract "$slot_root"');
+      expect(runScript).toContain('export GOOBERS_RESUME_CHECKPOINT_SHA="$resume_checkpoint_sha"');
+      expect(runScript).toContain('export GOOBERS_RESUME_FAILURE="$resume_failure"');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('preserves single-writer lease fields in ci-recovery dispatch wiring', () => {
