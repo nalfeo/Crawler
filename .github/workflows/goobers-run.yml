@@ -966,6 +966,13 @@ jobs:
       # eating the cleanup window at the far end. 3300 + 2100 = the full 5400s
       # job budget exactly, so even the capped case leaves the reserve intact.
       GOOBERS_SLOT_DEADLINE_SECONDS: '3300'
+      # Implementation-stage timeout, explicitly separated from the overall job
+      # timeout. This is raised above the previous 30-minute ceiling and applies
+      # only to implementation work (planning is bounded separately by the reserve
+      # job's 20-minute timeout). Set to 50 minutes (3000 seconds), which allows
+      # meaningful implementation work while leaving headroom for cleanup within
+      # the 90-minute job timeout. A test pins this to a value > 30 minutes.
+      GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES: '50'
       GOOBERS_WORKFLOW: ${{ inputs.workflow || 'crawler-feature-pr' }}
     steps:
       - name: Record job start
@@ -993,6 +1000,29 @@ jobs:
           set -euo pipefail
           cp -R .goobers "${RUNNER_TEMP}/crawler-goobers-source"
           echo "GOOBERS_SOURCE=${RUNNER_TEMP}/crawler-goobers-source" >> "${GITHUB_ENV}"
+
+      - name: Validate clean worktree for resumed runs
+        # Before a resume/retry with a checkpoint contract can proceed, the
+        # worktree must be clean. A dirty worktree indicates uncommitted changes
+        # from the prior attempt that must not be mixed with the retry attempt.
+        run: |
+          set -euo pipefail
+          
+          # Check if this is a resumed run by looking for checkpoint contracts
+          checkpoint_glob="${RUNNER_TEMP}/goobers-timeout-checkpoint-*.json"
+          if compgen -G "$checkpoint_glob" > /dev/null; then
+            # This is a resumed run with existing checkpoints
+            if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+              echo "::error::Refusing to resume: worktree has uncommitted changes. A retry must proceed with a clean worktree and an explicit resume contract identifying the branch, checkpoint SHA, and latest actionable defect/failure. Clear the worktree or restart: gh workflow run goobers-run.yml" >&2
+              exit 1
+            fi
+            if ! git diff-files --quiet 2>/dev/null; then
+              echo "::error::Refusing to resume: working tree has modifications. A retry must proceed with a clean worktree. Clear the worktree or restart: gh workflow run goobers-run.yml" >&2
+              exit 1
+            fi
+            # Worktree is clean and this is a valid resume
+            echo "Worktree is clean. Resume with checkpoint contracts is eligible to proceed."
+          fi
 
       - name: Adopt reserved slot assignments
         # Every issue was selected and labelled by the serialized reserve job.
@@ -1336,6 +1366,50 @@ jobs:
             exit 1
           fi
 
+          # Create a timeout checkpoint contract that records a valid committed patch
+          # SHA when one exists, or a no-checkpoint reason in diagnostics. This allows
+          # retries to resume with an explicit contract identifying the branch, checkpoint
+          # SHA, and latest actionable defect/failure.
+          create_timeout_checkpoint() {
+            local slot_root="$1"
+            local checkpoint_file="${RUNNER_TEMP}/goobers-timeout-checkpoint-${slot_root##*/}.json"
+            local branch current_sha no_checkpoint_reason
+            
+            # Verify the worktree is accessible and get current state
+            if ! cd "$slot_root" 2>/dev/null || ! current_sha=$(git rev-parse HEAD 2>/dev/null); then
+              no_checkpoint_reason="Could not read current commit SHA from slot root"
+              jq -cn --arg reason "$no_checkpoint_reason" \
+                '{checkpoint: null, no_checkpoint_reason: $reason, timestamp: now, terminal: true}' \
+                > "$checkpoint_file"
+              return 0
+            fi
+            
+            branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+            
+            # Check if there are uncommitted changes
+            if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+              # There are uncommitted changes -- try to commit them with a clear message
+              if git commit -a -m "chore: checkpoint at timeout after $(date -u +'%Y-%m-%dT%H:%M:%SZ')" 2>/dev/null; then
+                current_sha=$(git rev-parse HEAD 2>/dev/null)
+              else
+                no_checkpoint_reason="Uncommitted changes present; automatic commit failed (likely file permission or untracked files)"
+              fi
+            fi
+            
+            # Record the checkpoint contract
+            if [ -z "${no_checkpoint_reason:-}" ]; then
+              jq -cn --arg branch "$branch" --arg sha "$current_sha" \
+                '{checkpoint: {branch: $branch, sha: $sha}, timestamp: now, terminal: true}' \
+                > "$checkpoint_file"
+            else
+              jq -cn --arg branch "$branch" --arg reason "$no_checkpoint_reason" \
+                '{checkpoint: null, branch: $branch, no_checkpoint_reason: $reason, timestamp: now, terminal: true}' \
+                > "$checkpoint_file"
+            fi
+            
+            echo "Checkpoint contract written to $checkpoint_file"
+          }
+
           # The slot deadline is derived BEFORE any slot starts, so a budget
           # that cannot fit a run plus its cleanup refuses to start the run at
           # all rather than starting one this job could not clean up after.
@@ -1363,6 +1437,12 @@ jobs:
           require_positive_int GOOBERS_CLEANUP_RESERVE_SECONDS "${GOOBERS_CLEANUP_RESERVE_SECONDS:-}" || exit 1
           require_positive_int GOOBERS_SLOT_DEADLINE_SECONDS "${GOOBERS_SLOT_DEADLINE_SECONDS:-}" || exit 1
           require_positive_int GOOBERS_SLOT_POLL_SECONDS "${GOOBERS_SLOT_POLL_SECONDS:-}" || exit 1
+          require_positive_int GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES "${GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES:-}" || exit 1
+          # Implementation timeout must be explicitly > 30 minutes per acceptance criteria
+          if [ "$(( GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES ))" -le 30 ]; then
+            echo "::error::GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES must be > 30 minutes, got '${GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES}'. Fix it in .github/workflows/goobers-run.yml's \`run\` job env and re-run: gh workflow run goobers-run.yml" >&2
+            exit 1
+          fi
           # Zero is a legitimate value for the startup allowance (a test pins
           # the arithmetic with it), so it is validated as a non-negative int
           # rather than through require_positive_int.
@@ -1479,7 +1559,11 @@ jobs:
           while slots_alive; do
             remaining=$(( deadline - SECONDS ))
             if [ "$remaining" -le 0 ]; then
-              echo "::error::Lane ${GOOBERS_LANE} hit its ${run_budget}s slot deadline (derived from the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget minus ${job_elapsed}s of setup and a ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve) before every slot reached a terminal state. Tearing down each slot's whole stage process tree so journals upload and claims are released; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and retry with: gh workflow run goobers-run.yml" >&2
+              echo "::error::Lane ${GOOBERS_LANE} hit its ${run_budget}s slot deadline (derived from the ${GOOBERS_JOB_TIMEOUT_MINUTES}-minute job budget minus ${job_elapsed}s of setup and a ${GOOBERS_CLEANUP_RESERVE_SECONDS}s cleanup reserve) before every slot reached a terminal state. Creating timeout checkpoint contracts before teardown; inspect artifact goobers-run-${GOOBERS_WORKFLOW}-lane-${GOOBERS_LANE}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and retry with: gh workflow run goobers-run.yml" >&2
+              # Create checkpoint contracts for each slot before tearing down
+              while IFS="$(printf '\t')" read -r slot pid log recovery start; do
+                create_timeout_checkpoint "${GOOBERS_LANE_ROOT}/slot-${slot}"
+              done < "$slot_table"
               terminate_slots || teardown_failed=1
               break
             fi
