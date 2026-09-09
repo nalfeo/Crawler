@@ -286,6 +286,69 @@ spec:
       policyActions:
         - push-repository-branch
       next: local-ci
+    - name: prepare-close-out-summary
+      type: deterministic
+      goal: Set the successful terminal completion state on the human-readable close-out summary.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: close-out
+    - name: prepare-park-needs-human-summary
+      type: deterministic
+      goal: Set the incomplete terminal completion state before parking for a human decision.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: park-needs-human
+    - name: prepare-needs-remediation-summary
+      type: deterministic
+      goal: Set the incomplete terminal completion state before escalating remediation.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: needs-remediation
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
@@ -325,7 +388,7 @@ spec:
         status: 'in-review'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: implement.summary
+        summary: prepare-close-out-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -346,7 +409,7 @@ spec:
         status: 'needs-human'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: implement.summary
+        summary: prepare-park-needs-human-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -368,7 +431,7 @@ spec:
         status: 'needs-remediation'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: implement.summary
+        summary: prepare-needs-remediation-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -386,8 +449,8 @@ spec:
       branches:
         pass: push-branch
         needs-changes: implement
-        fail: park-needs-human
-        escalate: needs-remediation
+        fail: prepare-park-needs-human-summary
+        escalate: prepare-needs-remediation-summary
     - name: local-gate
       evaluator: automated
       automated:
@@ -396,7 +459,7 @@ spec:
         pass: open-pr
         fail: implement
         infra: local-ci
-        escalate: needs-remediation
+        escalate: prepare-needs-remediation-summary
     - name: pr-opened-gate
       evaluator: automated
       automated:
@@ -405,5 +468,5 @@ spec:
           key: opened
           equals: 'true'
       branches:
-        pass: close-out
-        fail: needs-remediation
+        pass: prepare-close-out-summary
+        fail: prepare-needs-remediation-summary

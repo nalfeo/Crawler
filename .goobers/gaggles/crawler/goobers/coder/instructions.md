@@ -88,5 +88,7 @@ Verification: the checks that were run
 Risk: the residual risk and why it is acceptable
 ```
 
+The Description value must explicitly end with either `Session is fully complete.`
+or `Session is not fully complete.` so the close-out makes completion unambiguous.
 Escape the newlines as `\n` inside the JSON string. Single-sentence summaries
 such as "Implemented the fix." are rejected.
