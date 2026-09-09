@@ -3,6 +3,8 @@ import {
   STAIRS_TEXTURE_KEY,
   resolveStairsContainFit,
 } from '../../src/engine/sprites/stairs-visuals.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../../src/shared/constants.js';
+import { _getFloorConfig } from '../../src/shared/floor-config.js';
 import type { OpaqueBounds } from '../../src/shared/generated-assets.js';
 
 /** The real measured shape of `the-stairs-var-0`: a full-bleed square tile. */
@@ -80,5 +82,21 @@ describe('resolveStairsContainFit', () => {
       markerRadiusPx: 100,
     });
     expect(fit).toEqual({ originX: 0.5, originY: 0.5, scale: 1 });
+  });
+});
+
+describe('stairs footprint dimensions (acceptance criteria)', () => {
+  it('has a 2x2 tile footprint (8ft × 8ft) for Floor 1', () => {
+    const floor1 = _getFloorConfig('floor1');
+    const tileSizeFt = floor1.map.tileSizeFt;
+    const footprintSize = floor1.objectives.markerRadiusFt * 2;
+    expect(footprintSize).toBe(8); // 2 tiles × 4 ft/tile = 8 ft
+    expect(footprintSize / tileSizeFt).toBe(2); // Exactly 2 tiles
+  });
+
+  it('Floor 2 constant matches the desired 2x2 tile footprint', () => {
+    // 2x2 tiles with 4 ft/tile = 8 ft diameter = 4 ft radius
+    expect(FLOOR2_STAIR_MARKER_RADIUS_FT).toBe(4.0);
+    expect(FLOOR2_STAIR_MARKER_RADIUS_FT * 2).toBe(8.0);
   });
 });

@@ -131,11 +131,11 @@ export const FLOOR = {
  * yet fully data-driven, so — unlike Floor 1, which threads
  * `objectives.markerRadiusFt` through `world.floorScenario.objective` — this constant
  * is the engine/game source until the objective-plumbing follow-up lands. It is
- * kept in lockstep with `floor2.manifest.json` `objectives.markerRadiusFt` (8.0)
+ * kept in lockstep with `floor2.manifest.json` `objectives.markerRadiusFt` (4.0)
  * by a unit test (see tests/unit/floor2-scenario-initialization.test.ts) so the
  * two values cannot silently drift apart.
  */
-export const FLOOR2_STAIR_MARKER_RADIUS_FT = 8.0;
+export const FLOOR2_STAIR_MARKER_RADIUS_FT = 4.0;
 
 /** Floor 1 Spell Broker price, in gold. */
 export const FLOOR1_SPELL_BROKER_COST: number = tuning.shopPricing.floor1.spellBrokerCost;
