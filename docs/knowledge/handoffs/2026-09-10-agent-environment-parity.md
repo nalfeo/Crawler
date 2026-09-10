@@ -24,6 +24,8 @@ environment, runner wiring, and a deterministic drift gate.
 - Made GHCP, the normal sprite CI runner, and Codex consume the shared contract.
 - Added an environment parity command and focused regression tests.
 - Documented how to update and validate the environment contract.
+- Listed Bash and authenticated GitHub CLI as repository prerequisites, including
+  the Windows WinGet installation command.
 
 ## Evidence
 

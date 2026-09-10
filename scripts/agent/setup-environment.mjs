@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import { URL } from 'node:url';
 
 const skipNpm = process.argv.includes('--skip-npm');
 const nodeVersion = readFileSync(new URL('../../.node-version', import.meta.url), 'utf8').trim();
@@ -67,6 +68,6 @@ run(python, [
 ]);
 run(python, [...pythonSelector, '-m', 'pip', 'check']);
 
-console.log(
-  `Crawler environment ready: Node ${nodeVersion}, Python ${pythonVersion}, dependencies synchronized.`,
+process.stdout.write(
+  `Crawler environment ready: Node ${nodeVersion}, Python ${pythonVersion}, dependencies synchronized.\n`,
 );

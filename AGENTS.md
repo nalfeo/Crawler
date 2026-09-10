@@ -4,6 +4,11 @@ Crawler is a crafting-focused vampire-survivors-like game. It uses Phaser 4 for
 rendering and bitecs 0.4 for deterministic ECS logic. This is the canonical,
 short session contract; detailed procedures live in the linked docs.
 
+Prerequisites: Node.js and Python versions from `.node-version` and
+`.python-version`, Bash, and [GitHub CLI](https://cli.github.com/) authenticated
+with `gh auth login`. On Windows, install GitHub CLI with
+`winget install --id GitHub.cli --exact`.
+
 ## Start and scope
 
 1. Run `npm run preflight`. This bootstraps Git Bash on Windows and installs
