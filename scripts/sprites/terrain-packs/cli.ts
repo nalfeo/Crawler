@@ -12,6 +12,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeIndustrialCavePack } from './build-industrial-cave.js';
 import { writeCaelesFixturePack } from './build-caeles-fixture.js';
+import { writeCompanionOverworldPack } from './build-companion-overworld.js';
 import { applySharedBasePoolRestyle } from './rebuild-shared-base-pools.js';
 import {
   validateTerrainPack,
@@ -20,9 +21,11 @@ import {
   validateWallAutotileImagePath,
   validateWallAccentImagePaths,
   validateWallAccentTopology,
+  validateTerrainDepthAndPerspective,
   validateCrossPackWallSilhouettes,
   validateVariantTransformEligibility,
   validateGroundDecalImages,
+  type ValidationIssue,
 } from './validate.js';
 import { decodePng } from './png-buffer.js';
 import {
@@ -39,6 +42,10 @@ function runBuild(): void {
   const repoRoot = repoRootFromHere();
   writeIndustrialCavePack(repoRoot);
   writeCaelesFixturePack(repoRoot);
+  // `companion-overworld` (Floor 3) is pure procedural art with no generated-image
+  // step, so — unlike industrial-cave — this write is UNGUARDED: it is the source
+  // of truth for the shipped bytes and re-running it must reproduce them exactly.
+  writeCompanionOverworldPack(repoRoot);
   // `writeIndustrialCavePack` emits plain procedural floor/corridor tiles and a
   // manifest with no pool weights. The shipped Floor 2 art is that output plus
   // the shared-base restyle, so the two steps are ONE build — running the pack
@@ -46,14 +53,21 @@ function runBuild(): void {
   applySharedBasePoolRestyle();
 }
 
-function runValidate(): void {
-  const repoRoot = repoRootFromHere();
+export function runValidate(
+  repoRoot = repoRootFromHere(),
+  packIds?: readonly string[],
+  reportedIssues?: ValidationIssue[],
+): boolean {
   const manifestDir = path.join(repoRoot, 'src', 'shared', 'data', 'terrain-packs');
-  const packs = fs
+  const discoveredPacks = fs
     .readdirSync(manifestDir)
     .filter((fileName) => fileName.endsWith('.manifest.json'))
     .map((fileName) => ({ id: fileName.replace(/\.manifest\.json$/, '') }))
     .sort((left, right) => left.id.localeCompare(right.id));
+  const selectedPackIds = packIds === undefined ? undefined : new Set(packIds);
+  const packs = discoveredPacks.filter(
+    (pack) => selectedPackIds === undefined || selectedPackIds.has(pack.id),
+  );
   const decodedPacks: Array<{
     id: string;
     manifest: TerrainPackDef;
@@ -134,6 +148,7 @@ function runValidate(): void {
     const atlasAbsPath = path.join(repoRoot, 'public', atlasRelPath);
     const atlasBytes = fs.readFileSync(atlasAbsPath);
     const result = validateTerrainPack(manifestJson, atlasBytes);
+    const wallAtlas = decodePng(atlasBytes);
 
     const allIssues = [
       ...result.issues,
@@ -142,10 +157,24 @@ function runValidate(): void {
       ...decalPathResult.issues,
     ];
 
+    if (accentPathResult.ok && (RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
+      const accentAtlases = (manifest.wallAccents ?? []).map((accent) =>
+        decodePng(
+          fs.readFileSync(path.join(repoRoot, 'public', accent.imagePath.replace(/\\/g, '/'))),
+        ),
+      );
+      const depthResult = validateTerrainDepthAndPerspective(manifest, wallAtlas, accentAtlases);
+      allIssues.push(...depthResult.issues);
+    } else if ((RUNTIME_TERRAIN_PACK_IDS as readonly string[]).includes(pack.id)) {
+      allIssues.push({
+        code: 'terrain-pack-lacks-depth',
+        message: `Terrain pack '${manifest.id}' could not be evaluated for wall depth because its accent paths are invalid.`,
+      });
+    }
+
     // Wall-accent topology ("no spill") — only meaningful once paths/dims are
     // confirmed safe above; skip if the accent path validation already failed
     // (avoids reading an unsafe/missing path).
-    const wallAtlas = decodePng(atlasBytes);
     if (accentPathResult.ok) {
       for (const accent of manifest.wallAccents ?? []) {
         const accentAbsPath = path.join(repoRoot, 'public', accent.imagePath.replace(/\\/g, '/'));
@@ -184,6 +213,7 @@ function runValidate(): void {
         }
       }
     }
+    reportedIssues?.push(...allIssues);
 
     if (
       result.ok &&
@@ -228,8 +258,9 @@ function runValidate(): void {
     }
   }
   if (!allOk) {
-    process.exitCode = 1;
+    return false;
   }
+  return true;
 }
 
 const cliEntry = process.argv[1];
@@ -238,7 +269,7 @@ if (cliEntry && import.meta.url === pathToFileURL(cliEntry).href) {
   if (cmd === 'build') {
     runBuild();
   } else if (cmd === 'validate') {
-    runValidate();
+    if (!runValidate()) process.exitCode = 1;
   } else {
     console.error('Usage: cli.ts <build|validate>');
     process.exitCode = 1;

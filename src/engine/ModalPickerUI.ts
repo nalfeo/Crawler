@@ -34,7 +34,7 @@ export interface ModalPickerSelectionChangeEvent<TId extends string = string> {
 }
 
 export interface ModalPickerOpenHooks<TId extends string = string> {
-  readonly onConfirm?: (event: ModalPickerConfirmEvent<TId>) => void;
+  readonly onConfirm?: (event: ModalPickerConfirmEvent<TId>) => boolean | void;
   readonly onCancel?: (event: ModalPickerCancelEvent) => void;
   readonly onSelectionChange?: (event: ModalPickerSelectionChangeEvent<TId>) => void;
 }
@@ -50,6 +50,9 @@ export interface ModalPickerContentSnapshot {
     readonly label: string;
     readonly description: string | null;
     readonly disabled: boolean;
+    readonly spriteId: string | null;
+    /** Texture key of the image actually created for this option, if any. */
+    readonly renderedSpriteId: string | null;
   }>;
 }
 
@@ -69,6 +72,7 @@ export interface ModalPickerLayoutSnapshot {
 interface RenderEntry<TId extends string = string> {
   readonly option: ModalPickerOption<TId>;
   readonly row: Phaser.GameObjects.Rectangle;
+  readonly sprite?: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly description: Phaser.GameObjects.Text;
 }
@@ -108,6 +112,7 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   color: '#64748b',
 };
 const ENTRY_TEXT_INDENT = 26;
+const OPTION_ICON_SIZE = 26;
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
   fontSize: '13px',
@@ -135,6 +140,13 @@ export function createModalPickerUI(
   close(): void;
   isOpen(): boolean;
   getKind(): string | null;
+  /**
+   * True once the currently (or most recently) open picker's `onConfirm`
+   * hook has actually run — distinct from the picker having merely closed,
+   * which also happens with no `onConfirm` hook registered at all. Resets to
+   * `false` on every `open()` call.
+   */
+  wasConfirmedByCallback(): boolean;
   /** Content currently rendered by the real modal (automation/e2e read-only). */
   getContentSnapshot(): ModalPickerContentSnapshot | null;
   getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
@@ -212,6 +224,16 @@ export function createModalPickerUI(
   let state: ModalPickerState<string> | null = null;
   let kind: string | null = null;
   let hooks: ModalPickerOpenHooks<string> | undefined;
+  /**
+   * True only once `hooks.onConfirm` has actually been invoked for the
+   * current `open()` call. This is intentionally distinct from the modal
+   * merely closing: `confirmModalPickerSelection` closes even when no
+   * `onConfirm` hook is registered at all, so callers that need proof the
+   * real callback executed (not just that the picker went away) must read
+   * this flag via `wasConfirmedByCallback()` instead of inferring it from
+   * `isOpen()` transitioning to false.
+   */
+  let confirmCallbackInvoked = false;
   const entries: RenderEntry<string>[] = [];
   const textNodes: Phaser.GameObjects.Text[] = [];
   let titleNode: Phaser.GameObjects.Text | undefined;
@@ -223,6 +245,7 @@ export function createModalPickerUI(
   const clearEntries = (): void => {
     for (const entry of entries) {
       entry.row.destroy();
+      entry.sprite?.destroy();
       entry.label.destroy();
       entry.description.destroy();
     }
@@ -312,6 +335,7 @@ export function createModalPickerUI(
     }
     for (const entry of entries) {
       entry.row.setPosition(snap(entry.row.x + dx), snap(entry.row.y + dy));
+      entry.sprite?.setPosition(snap(entry.sprite.x + dx), snap(entry.sprite.y + dy));
       entry.label.setPosition(snap(entry.label.x + dx), snap(entry.label.y + dy));
       entry.description.setPosition(snap(entry.description.x + dx), snap(entry.description.y + dy));
       entry.label.setResolution(effectiveResolution);
@@ -401,18 +425,34 @@ export function createModalPickerUI(
       const isSelected = state.selectedIndex === index;
       const isDisabled = Boolean(option.disabled);
       const rowY = cursorY;
+      const labelX = panelX + PANEL_PADDING + 10 + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
+      const descriptionX =
+        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT + (option.spriteId ? OPTION_ICON_SIZE + 12 : 0);
       const label = crispText(
-        panelX + PANEL_PADDING + 10,
+        labelX,
         rowY + LABEL_TOP,
         `${isSelected ? '▶ ' : '  '}${option.label}`,
         isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
       );
       const description = crispText(
-        panelX + PANEL_PADDING + ENTRY_TEXT_INDENT,
+        descriptionX,
         rowY + DESCRIPTION_TOP,
         option.description ?? (isDisabled ? 'Unavailable' : ''),
         DESCRIPTION_STYLE,
       );
+      const sprite =
+        option.spriteId && scene.textures.exists(option.spriteId)
+          ? scene.add.image(
+              panelX + PANEL_PADDING + 12 + OPTION_ICON_SIZE / 2,
+              rowY + 18,
+              option.spriteId,
+            )
+          : undefined;
+      if (sprite) {
+        sprite.setDisplaySize(OPTION_ICON_SIZE, OPTION_ICON_SIZE);
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setAlpha(isDisabled ? 0.5 : 1);
+      }
       const textContentHeight = Math.max(
         LABEL_TOP + label.height,
         DESCRIPTION_TOP + description.height,
@@ -453,14 +493,23 @@ export function createModalPickerUI(
         const confirmed = confirmModalPickerSelection(next);
         if (confirmed.status === 'confirmed' && confirmed.selectedIndex !== null) {
           const selectedOption = confirmed.options[confirmed.selectedIndex];
+          let shouldClose = true;
           if (selectedOption) {
-            hooks?.onConfirm?.({
-              option: selectedOption,
-              optionIndex: confirmed.selectedIndex,
-              source: 'pointer',
-            });
+            const onConfirm = hooks?.onConfirm;
+            let confirmResult: boolean | void = undefined;
+            if (onConfirm) {
+              confirmResult = onConfirm({
+                option: selectedOption,
+                optionIndex: confirmed.selectedIndex,
+                source: 'pointer',
+              });
+              confirmCallbackInvoked = true;
+            }
+            shouldClose = confirmResult !== false;
           }
-          close();
+          if (shouldClose) {
+            close();
+          }
           return;
         }
         rerender();
@@ -468,8 +517,8 @@ export function createModalPickerUI(
 
       description.setAlpha(isDisabled ? 0.5 : 0.8);
 
-      entries.push({ option, row, label, description });
-      overlay.add([row, label, description]);
+      entries.push({ option, row, sprite, label, description });
+      overlay.add([row, ...(sprite ? [sprite] : []), label, description]);
       cursorY += rowHeight + ROW_GAP;
     }
 
@@ -544,14 +593,23 @@ export function createModalPickerUI(
         const next = confirmModalPickerSelection(state);
         if (next.status === 'confirmed' && next.selectedIndex !== null) {
           const option = next.options[next.selectedIndex];
+          let shouldClose = true;
           if (option) {
-            hooks?.onConfirm?.({
-              option,
-              optionIndex: next.selectedIndex,
-              source: 'keyboard',
-            });
+            const onConfirm = hooks?.onConfirm;
+            let confirmResult: boolean | void = undefined;
+            if (onConfirm) {
+              confirmResult = onConfirm({
+                option,
+                optionIndex: next.selectedIndex,
+                source: 'keyboard',
+              });
+              confirmCallbackInvoked = true;
+            }
+            shouldClose = confirmResult !== false;
           }
-          close();
+          if (shouldClose) {
+            close();
+          }
         }
         break;
       }
@@ -585,6 +643,7 @@ export function createModalPickerUI(
       state = createModalPickerState(config) as ModalPickerState<string>;
       kind = config.kind ?? null;
       hooks = nextHooks as ModalPickerOpenHooks<string> | undefined;
+      confirmCallbackInvoked = false;
       rerender();
     },
     handleKeyDown: onKeyDown,
@@ -595,6 +654,9 @@ export function createModalPickerUI(
     getKind(): string | null {
       return kind;
     },
+    wasConfirmedByCallback(): boolean {
+      return confirmCallbackInvoked;
+    },
     getContentSnapshot(): ModalPickerContentSnapshot | null {
       if (!state) return null;
       return {
@@ -602,11 +664,13 @@ export function createModalPickerUI(
         title: state.title,
         subtitle: state.subtitle ?? null,
         body: state.body ?? null,
-        options: state.options.map((option) => ({
+        options: state.options.map((option, index) => ({
           id: option.id,
           label: option.label,
           description: option.description ?? null,
           disabled: option.disabled === true,
+          spriteId: option.spriteId ?? null,
+          renderedSpriteId: entries[index]?.sprite?.texture.key ?? null,
         })),
       };
     },

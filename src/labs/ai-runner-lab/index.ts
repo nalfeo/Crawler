@@ -13,6 +13,11 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
+import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
+import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
+import { isPlayerWithinStairMarker } from '../../shared/scenario-presentation.js';
+import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
+import { _isPartyWiped } from '../../core/systems/companionKOSystem.js';
 import {
   AIState,
   AIDecisionMode,
@@ -34,8 +39,10 @@ import { DEFAULT_CONFIG } from '../../game/ai/bt-ai-tuning.js';
 import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
+  autoFloor3ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
+import { applyStartPlayerLevel } from '../../game/scenarios/playerLevelProgression.js';
 import {
   runSettlementMaintenancePlanner,
   runEagerMaintenanceTick,
@@ -55,6 +62,7 @@ import {
   questSystem,
   setTrackedQuest,
   startFloor1BossEncounter,
+  getCompanionAIDecision,
   type ScenarioInitializationOptions,
 } from '../../game/index.js';
 import {
@@ -66,8 +74,10 @@ import {
   Gold,
   DroppedItem,
   Harvestable,
+  Companion,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
@@ -98,7 +108,11 @@ import { ftToPx, pxToFt } from '../../shared/units.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
-import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './path-overlay.js';
+import {
+  buildSmoothedOverlayPath,
+  OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
+  type OverlayPoint,
+} from './path-overlay.js';
 import {
   AI_RUNNER_SCENARIO_PRESETS,
   DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
@@ -535,6 +549,37 @@ function scenarioPresetIdFromUrl(): AiRunnerScenarioPresetId | null {
     : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
 }
 
+function floorIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('floor');
+  if (!requested) return null;
+  if (hasFloorManifest(requested)) return requested;
+  console.warn(`AI Runner lab: unknown ?floor="${requested}" — falling back to floor1.`);
+  return 'floor1';
+}
+
+function seedFromUrl(): number | null {
+  if (typeof window === 'undefined') return null;
+  const requested = new URLSearchParams(window.location.search).get('seed');
+  if (!requested) return null;
+  const parsed = Number(requested);
+  if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  console.warn(`AI Runner lab: invalid ?seed="${requested}" — falling back to the saved seed.`);
+  return null;
+}
+
+function startPlayerLevelFromUrl(): number {
+  if (typeof window === 'undefined') return 1;
+  const requested = new URLSearchParams(window.location.search).get('startPlayerLevel');
+  if (!requested) return 1;
+  const parsed = Number(requested);
+  if (Number.isInteger(parsed) && parsed >= 1) return parsed;
+  console.warn(
+    `AI Runner lab: invalid ?startPlayerLevel="${requested}" — falling back to level 1.`,
+  );
+  return 1;
+}
+
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
@@ -618,7 +663,48 @@ export interface AiRunnerDebugSnapshot {
   npcMem: { discovered: string[]; talked: string[]; needed: number };
   conversationNpcEid: number | null;
   modalOpen: boolean;
+  modalKind: string | null;
+  inSpawnRoom: boolean | null;
+  floor3AliveOutsideSpawnStreakMs: number;
+  floor3MaxAliveOutsideSpawnStreakMs: number;
+  floor3SurfaceTrace: ReadonlyArray<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }>;
+  floor4SurfaceTrace: ReadonlyArray<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }>;
   runOutcome: string | null;
+  /**
+   * The SAME shared-authority run-outcome decision headless `RunStats.outcome`
+   * derives from — `getScenarioDefinition(floorId).getRunOutcome(world)` — not
+   * a re-derivation from a lower-level field like `floor4Arena.phase.kind`.
+   * `'victory'` mirrors headless's `outcome === 'victory'` mapping (both are
+   * `true` exactly when the scenario's own `getRunOutcome` reports
+   * `'cleared_floor'`); `null` off Floor 4, before the world exists, or while
+   * the run has not (yet) reached a scenario-decided outcome. Exists so an
+   * e2e observer can assert the actual outcome authority instead of inferring
+   * it from `floor4Arena.phase.kind`, which happens to track it today but
+   * isn't the decision itself.
+   */
+  floor4RunOutcome: 'victory' | null;
+  /**
+   * Distinguishes Floor 3's three `world.state === 'game_over'` causes so a
+   * headless/e2e observer can tell a companion-party wipe apart from a floor
+   * timeout or the player's own HP reaching zero — all three set the same
+   * `worldState` string (`healthSystem.ts`, `floor3Scenario.ts`), so without
+   * this the underlying cause is otherwise invisible outside the game
+   * process. `null` while the world is not in `game_over` (or is on a
+   * different floor). Debug-only; never asserted against by shipped code.
+   */
+  floor3LossReason: 'party-wiped' | 'timeout' | 'player-hp' | null;
   /**
    * The floor the live world is actually on, or `'unknown'` before a world
    * exists / when the world reports a floor with no registered manifest.
@@ -631,6 +717,41 @@ export interface AiRunnerDebugSnapshot {
   playerPersona: PlayerPersona;
   arenaEntryFrame: number | null;
   quests: Record<string, { status: string; done: number; total: number }>;
+  /**
+   * Floor 4 arena telemetry (phase, wave/Headliner counters, timeline),
+   * mirroring headless `RunStats.floor4Arena` (`getFloor4ArenaRunStats`) so
+   * an e2e observer can confirm the SAME real production scenario state —
+   * physical spawns, Headliner defeats, and the terminal `VICTORY` phase —
+   * without re-deriving it from raw ECS state. `undefined` off Floor 4 or
+   * before the world exists.
+   */
+  floor4Arena?: Floor4ArenaRunStats;
+  /**
+   * Count of Floor 4 wave enemies currently alive (backed by live ECS
+   * entities). `0` off Floor 4 or before the first wave. Used by the e2e
+   * live-wave checkpoint to prove a rendered hostile exists, not just that
+   * the cumulative spawn counter is positive.
+   */
+  floor4LiveEnemyCount: number;
+  /**
+   * Per-companion decision + path telemetry (#4205), mirroring the player's
+   * own `state`/`reason`/`targetX`/`targetY`/`targetDist` fields above so a
+   * companion's current behavior is exposed with the same shape/parity as
+   * the player's. `path` is the same string-pulled overlay geometry drawn
+   * on screen (see `buildSmoothedOverlayPath` in `path-overlay.ts`), reduced
+   * to plain points for headless/e2e assertions.
+   */
+  companions: ReadonlyArray<{
+    eid: number;
+    x: number;
+    y: number;
+    kind: string;
+    targetEid: number | null;
+    targetX: number | null;
+    targetY: number | null;
+    targetDist: number | null;
+    path: ReadonlyArray<{ x: number; y: number }>;
+  }>;
 }
 
 declare global {
@@ -653,7 +774,12 @@ function randomRunSeed(): number {
 interface RunnerSceneInternals {
   world?: GameWorld;
   playerEid?: number;
-  modalPicker?: { isOpen(): boolean; getKind(): string | null; close(): void };
+  modalPicker?: {
+    isOpen(): boolean;
+    getKind(): string | null;
+    handleKeyDown(event: KeyboardEvent): void;
+    wasConfirmedByCallback(): boolean;
+  };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   requestInventoryToggle(): void;
@@ -730,15 +856,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // tab that last ran Floor 2 with a different seed doesn't contaminate the
   // inspection scene with the wrong floor or the wrong RNG state.
   const urlScenario = scenarioPresetIdFromUrl();
+  const urlFloor = floorIdFromUrl();
+  const urlSeed = seedFromUrl();
   let selectedScenarioPresetId =
     urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
   let currentSeed =
-    urlScenario != null
+    urlSeed ??
+    (urlScenario != null
       ? (getAiRunnerScenarioPreset(urlScenario)?.defaultSeed ?? INITIAL_SEED)
-      : (persisted?.seed ?? INITIAL_SEED);
+      : (persisted?.seed ?? INITIAL_SEED));
   // Declared ahead of `featureFlags` (below) so its context can reflect the
   // real starting floor rather than re-deriving the same expression twice.
-  let currentFloor = urlScenario != null ? 'floor1' : (persisted?.floorId ?? 'floor1');
+  let currentFloor = urlScenario != null ? 'floor1' : (urlFloor ?? persisted?.floorId ?? 'floor1');
   let pendingRunSettingsNote: string | null = null;
   let arenaEntryFrame: number | null = null;
 
@@ -749,6 +878,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // lab constructs.
   const urlPersona = playerPersonaFromUrl();
   const persistedPersona = persisted?.aiConfig?.playerPersona;
+  const configuredStartPlayerLevel = startPlayerLevelFromUrl();
   const aiConfig: {
     pathingMode: AIPathingModeValue;
     decisionMode: AIDecisionModeValue;
@@ -861,8 +991,44 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let lastObservedPlayerHealth: number | null = null;
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
+  let previousFloor3ModalKind: string | null = null;
+  let previousFloor4ModalKind: string | null = null;
+  let floor3AliveOutsideSpawnStreakStartMs: number | null = null;
+  let floor3AliveOutsideSpawnStreakMs = 0;
+  let floor3MaxAliveOutsideSpawnStreakMs = 0;
+  const floor3SurfaceTrace: Array<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }> = [];
+  const floor4SurfaceTrace: Array<{
+    kind: string;
+    action: 'opened' | 'confirmed' | 'resumed';
+    frame: number | null;
+    gameMs: number | null;
+    worldState: string | null;
+  }> = [];
+  // Kinds confirmed but not yet observed running again. Resume evidence is
+  // recorded here, on the lab's own UI tick, so an observer never has to catch
+  // the un-paused window with its own polling interval.
+  const floor3PendingResumeKinds = new Set<string>();
+  const FLOOR3_AUTO_MODAL_KINDS = new Set<string>([
+    'floor3-intro',
+    'floor3-starter',
+    'floor3-poach',
+    'floor3-studio-versus',
+    'floor3-final-four-versus',
+    'floor3-keep-companion',
+    'floor3-stair-descend',
+  ]);
+  const FLOOR4_AUTO_MODAL_KINDS = new Set<string>(['floor4-stair-descend']);
+  const floor4PendingResumeKinds = new Set<string>();
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
+  /** Companion decision/path overlay graphics (#4205), parity with `pathGraphics`. */
+  let companionGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let riskRewardFieldsGraphics: Phaser.GameObjects.Graphics | null = null;
   let fusedCandidatesGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -913,6 +1079,52 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   applyScenarioVisualProfile(selectedScenarioPresetId);
 
+  const isPlayerInSpawnRoom = (world: GameWorld, playerEid: number): boolean | null => {
+    if (!world.floorMap || world.floorMap.spawnRoom === null) {
+      return null;
+    }
+    const tile = world.floorMap.worldToTile(
+      world.stores.position.x[playerEid] ?? 0,
+      world.stores.position.y[playerEid] ?? 0,
+    );
+    return world.floorMap.roomGraph.getRoomAt(tile.x, tile.y) === world.floorMap.spawnRoom.id;
+  };
+
+  const updateFloor3AliveOutsideSpawnStreak = (
+    world: GameWorld,
+    playerEid: number,
+    playerHealth: number | null,
+  ): void => {
+    if (world.floorId !== 'floor3') {
+      floor3AliveOutsideSpawnStreakStartMs = null;
+      floor3AliveOutsideSpawnStreakMs = 0;
+      return;
+    }
+    const inSpawnRoom = isPlayerInSpawnRoom(world, playerEid);
+    const activeOutside =
+      typeof world.elapsedMs === 'number' &&
+      world.state === 'playing' &&
+      inSpawnRoom === false &&
+      playerHealth !== null &&
+      playerHealth > 0;
+    if (!activeOutside) {
+      floor3AliveOutsideSpawnStreakStartMs = null;
+      floor3AliveOutsideSpawnStreakMs = 0;
+      return;
+    }
+    if (floor3AliveOutsideSpawnStreakStartMs === null) {
+      floor3AliveOutsideSpawnStreakStartMs = world.elapsedMs;
+    }
+    floor3AliveOutsideSpawnStreakMs = Math.max(
+      0,
+      world.elapsedMs - floor3AliveOutsideSpawnStreakStartMs,
+    );
+    floor3MaxAliveOutsideSpawnStreakMs = Math.max(
+      floor3MaxAliveOutsideSpawnStreakMs,
+      floor3AliveOutsideSpawnStreakMs,
+    );
+  };
+
   const aiInputProvider = {
     poll(state: {
       moveX: number;
@@ -944,6 +1156,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           renderControls();
         }
         lastObservedPlayerHealth = playerHealth;
+        if (typeof playerEid === 'number' && playerEid >= 0) {
+          updateFloor3AliveOutsideSpawnStreak(world, playerEid, playerHealth);
+        } else {
+          floor3AliveOutsideSpawnStreakStartMs = null;
+          floor3AliveOutsideSpawnStreakMs = 0;
+        }
         syncAiRunnerSettlementReturnRouting(
           world,
           !manualControl,
@@ -1009,6 +1227,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     configureSpellBrokerPurchase(world, featureFlags.optionalPurchases);
     autoFloor1ProgressionSystem(world, playerEid, ai, featureFlags.weaponPersonas);
     autoFloor2ProgressionSystem(world, playerEid);
+    autoFloor3ProgressionSystem(world, playerEid, {
+      allowDirectKeptCompanionSelection: false,
+      allowDirectStairDescend: false,
+    });
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
     });
@@ -1030,6 +1252,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   ) => ReturnType<typeof createFloorMainSceneOptions> = (base) => ({
     ...base,
     configureWorld: (world: GameWorld, playerEid: number) => {
+      // Match the production headless runner: scenarios must observe explicit
+      // start-level overrides while applying their direct-start baselines.
+      applyStartPlayerLevel(world, configuredStartPlayerLevel);
       base.configureWorld(world, playerEid);
       const scenarioPreset = getAiRunnerScenarioPreset(selectedScenarioPresetId);
       scenarioPreset?.configureWorld?.(world, playerEid);
@@ -1106,6 +1331,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     world: GameWorld,
     target: Exclude<JumpTarget, 'boss-encounter'>,
   ): { x: number; y: number } | null => {
+    if (target === 'staircase-room') {
+      const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world);
+      if (stairMarker?.visible) {
+        return stairMarker.positionFt;
+      }
+      const floor3Stairs = world.floorExtendedState?.floor3Studios?.staircasePos;
+      if (floor3Stairs) {
+        return floor3Stairs;
+      }
+    }
     const objective = world.floorScenario?.objective;
     if (!objective) {
       return null;
@@ -1565,6 +1800,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     // Drop any stale AI path overlay so it doesn't trail behind the human.
     pathGraphics?.clear();
+    companionGraphics?.clear();
     renderControls();
   };
 
@@ -1608,8 +1844,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     disposeHardwareInput();
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
+    previousFloor3ModalKind = null;
+    previousFloor4ModalKind = null;
+    floor3AliveOutsideSpawnStreakStartMs = null;
+    floor3AliveOutsideSpawnStreakMs = 0;
+    floor3MaxAliveOutsideSpawnStreakMs = 0;
+    floor3SurfaceTrace.length = 0;
+    floor3PendingResumeKinds.clear();
+    floor4SurfaceTrace.length = 0;
+    floor4PendingResumeKinds.clear();
     pathGraphics?.destroy();
     pathGraphics = null;
+    companionGraphics?.destroy();
+    companionGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
     riskRewardFieldsGraphics?.destroy();
@@ -1684,6 +1931,85 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     return { kind: 'floor', floorId: 'floor1' };
   };
 
+  const recordFloor3SurfaceEvent = (
+    world: GameWorld,
+    kind: string,
+    action: 'opened' | 'confirmed' | 'resumed',
+  ): void => {
+    floor3SurfaceTrace.push({
+      kind,
+      action,
+      frame: world.frameCount ?? null,
+      gameMs: world.elapsedMs ?? null,
+      worldState: world.state ?? null,
+    });
+    if (floor3SurfaceTrace.length > 128) {
+      floor3SurfaceTrace.splice(0, floor3SurfaceTrace.length - 128);
+    }
+  };
+
+  const recordFloor4SurfaceEvent = (
+    world: GameWorld,
+    kind: string,
+    action: 'opened' | 'confirmed' | 'resumed',
+  ): void => {
+    floor4SurfaceTrace.push({
+      kind,
+      action,
+      frame: world.frameCount ?? null,
+      gameMs: world.elapsedMs ?? null,
+      worldState: world.state ?? null,
+    });
+    if (floor4SurfaceTrace.length > 128) {
+      floor4SurfaceTrace.splice(0, floor4SurfaceTrace.length - 128);
+    }
+  };
+
+  const confirmModalSelection = (
+    modalPicker: NonNullable<RunnerSceneInternals['modalPicker']>,
+    world: GameWorld,
+    modalKind: string | null,
+  ): void => {
+    const wasOpen = modalPicker.isOpen();
+    modalPicker.handleKeyDown(
+      new KeyboardEvent('keydown', {
+        code: 'Enter',
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    if (wasOpen && !modalPicker.isOpen()) {
+      // `wasConfirmedByCallback()` reflects whether the modal's real
+      // `onConfirm` hook actually ran, not just that the picker closed —
+      // `ModalPickerUI` also closes a confirmed selection when no
+      // `onConfirm` hook is registered at all, so recording on close alone
+      // would keep passing even if a required handler were removed.
+      if (
+        modalKind &&
+        FLOOR3_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
+        recordFloor3SurfaceEvent(world, modalKind, 'confirmed');
+        floor3PendingResumeKinds.add(modalKind);
+      }
+      if (
+        modalKind &&
+        FLOOR4_AUTO_MODAL_KINDS.has(modalKind) &&
+        modalPicker.wasConfirmedByCallback()
+      ) {
+        recordFloor4SurfaceEvent(world, modalKind, 'confirmed');
+        floor4PendingResumeKinds.add(modalKind);
+      }
+      if (world.floorId === 'floor3') {
+        previousFloor3ModalKind = null;
+      }
+      if (world.floorId === 'floor4') {
+        previousFloor4ModalKind = null;
+      }
+    }
+  };
+
   const autoAdvanceSceneUi = (): void => {
     if (manualControl) {
       // Human is driving — let them operate modals, NPCs, shops and stairs
@@ -1698,11 +2024,52 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const modalPicker = scene.modalPicker;
-    const objective = world.floorScenario?.objective;
+    const stairMarker = sceneOptions.scenarioPresentation?.getStairMarkerState?.(world) ?? null;
+    const activeModalKind =
+      modalPicker?.isOpen() === true ? (modalPicker.getKind() ?? '__anonymous__') : null;
+    if (world.floorId === 'floor3' && activeModalKind !== previousFloor3ModalKind) {
+      if (activeModalKind && FLOOR3_AUTO_MODAL_KINDS.has(activeModalKind)) {
+        recordFloor3SurfaceEvent(world, activeModalKind, 'opened');
+      }
+      previousFloor3ModalKind = activeModalKind;
+    }
+    if (world.floorId === 'floor4' && activeModalKind !== previousFloor4ModalKind) {
+      if (activeModalKind && FLOOR4_AUTO_MODAL_KINDS.has(activeModalKind)) {
+        recordFloor4SurfaceEvent(world, activeModalKind, 'opened');
+      }
+      previousFloor4ModalKind = activeModalKind;
+    }
+
+    if (
+      world.floorId === 'floor3' &&
+      floor3PendingResumeKinds.size > 0 &&
+      activeModalKind === null &&
+      world.state === 'playing'
+    ) {
+      for (const kind of floor3PendingResumeKinds) {
+        recordFloor3SurfaceEvent(world, kind, 'resumed');
+      }
+      floor3PendingResumeKinds.clear();
+    }
+    if (
+      world.floorId === 'floor4' &&
+      floor4PendingResumeKinds.size > 0 &&
+      activeModalKind === null &&
+      world.state === 'playing'
+    ) {
+      for (const kind of floor4PendingResumeKinds) {
+        recordFloor4SurfaceEvent(world, kind, 'resumed');
+      }
+      floor4PendingResumeKinds.clear();
+    }
 
     if (world.state === 'loadout') {
-      sceneOptions.selectLoadoutOption?.(world, 0);
-      modalPicker?.close();
+      if (modalPicker?.isOpen()) {
+        const modalKind = modalPicker.getKind();
+        if (world.floorId !== 'floor3' || (modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind))) {
+          confirmModalSelection(modalPicker, world, modalKind);
+        }
+      }
       return;
     }
 
@@ -1725,43 +2092,48 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     if (modalPicker?.isOpen()) {
+      const modalKind = modalPicker.getKind();
+      if (world.floorId === 'floor3' && modalKind && FLOOR3_AUTO_MODAL_KINDS.has(modalKind)) {
+        confirmModalSelection(modalPicker, world, modalKind);
+        return;
+      }
+      if (world.floorId === 'floor4' && modalKind && FLOOR4_AUTO_MODAL_KINDS.has(modalKind)) {
+        confirmModalSelection(modalPicker, world, modalKind);
+        return;
+      }
       if (
         world.goalFlags.get('floor1-boss-battle-complete') === true &&
         world.featureUnlocks.spells !== true
       ) {
-        const offeredSpellId = sceneOptions.getSpellRewardOptions?.(world)?.[0]?.id;
-        if (offeredSpellId) {
-          sceneOptions.selectSpellFromBossBattle?.(world, playerEid, offeredSpellId);
-        }
-        modalPicker.close();
+        confirmModalSelection(modalPicker, world, modalKind);
         return;
       }
       if (
-        objective?.staircaseUnlocked &&
-        !objective.staircaseDiscovered &&
-        Math.hypot(
-          (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
-          (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-        ) <= objective.markerRadiusFt
+        stairMarker !== null &&
+        stairMarker.visible &&
+        !stairMarker.locked &&
+        isPlayerWithinStairMarker(
+          stairMarker,
+          world.stores.position.x[playerEid] ?? 0,
+          world.stores.position.y[playerEid] ?? 0,
+        )
       ) {
-        sceneOptions.onStairDescend?.(world, playerEid);
-        modalPicker.close();
+        confirmModalSelection(modalPicker, world, modalKind);
         return;
       }
       if (sceneOptions.shopkeeper && sceneOptions.shopkeeper.getStage(world) === 'ready-to-buy') {
-        if (world.playerGold >= sceneOptions.shopkeeper.equipmentCost) {
-          if (sceneOptions.shopkeeper.purchase(world, playerEid)) {
-            pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
-            pendingGearEquipPreview = true;
-          }
+        const hadGold = world.playerGold >= sceneOptions.shopkeeper.equipmentCost;
+        confirmModalSelection(modalPicker, world, modalKind);
+        if (hadGold) {
+          pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
+          pendingGearEquipPreview = true;
         }
-        modalPicker.close();
         return;
       }
       const spellBroker = sceneOptions.spellQuestGiver;
       const spellBrokerIntent = getSpellBrokerIntent(world);
       if (
-        modalPicker.getKind() === 'spell-broker' &&
+        modalKind === 'spell-broker' &&
         spellBroker?.getSpellBrokerOffers &&
         spellBroker.canPurchaseSpell &&
         spellBroker.purchaseSpell &&
@@ -1769,16 +2141,16 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         (isSpellBrokerPurchaseActive(spellBrokerIntent) ||
           spellBrokerIntent.purchaseStatus === 'purchased')
       ) {
-        const offer = spellBroker
+        const hadPurchasableOffer = spellBroker
           .getSpellBrokerOffers(world)
-          .find(
+          .some(
             (entry) =>
               !entry.purchased && spellBroker.canPurchaseSpell?.(world, playerEid, entry.spellId),
           );
-        if (offer && spellBroker.purchaseSpell(world, playerEid, offer.spellId)) {
+        confirmModalSelection(modalPicker, world, modalKind);
+        if (hadPurchasableOffer) {
           markSpellBrokerPurchased(world);
         }
-        modalPicker.close();
         return;
       }
     }
@@ -1807,13 +2179,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       decision.targetEid >= 0 &&
       (world.npcs.get(decision.targetEid)?.nearbyPlayer ?? false);
     const nearStairs =
-      objective?.staircaseUnlocked === true &&
-      objective.staircaseSpawned === true &&
-      !objective.staircaseDiscovered &&
-      Math.hypot(
-        (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
-        (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-      ) <= objective.markerRadiusFt;
+      stairMarker !== null &&
+      stairMarker.visible &&
+      !stairMarker.locked &&
+      isPlayerWithinStairMarker(
+        stairMarker,
+        world.stores.position.x[playerEid] ?? 0,
+        world.stores.position.y[playerEid] ?? 0,
+      );
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -1924,6 +2297,131 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (decision.targetX !== null && decision.targetY !== null) {
       graphics.lineStyle(2, 0xff7043, 0.9);
       graphics.strokeCircle(ftToPx(decision.targetX), ftToPx(decision.targetY), 10);
+    }
+  };
+
+  /**
+   * Reads every companion's current AI decision + a string-pulled path to its
+   * decision target, in the same shape/units as the player's own telemetry
+   * (#4205). A companion has no multi-waypoint route planner like the
+   * player's `BehaviorTreeAI` — `enemyAISystem` steers it straight at
+   * `CompanionAIDecision.x/y` — so the "path" is that single leg run through
+   * the same string-pull/line-of-sight helper the player overlay uses, for
+   * visual and structural parity rather than a literal identical algorithm.
+   */
+  const getCompanionTelemetry = (world: GameWorld): AiRunnerDebugSnapshot['companions'] => {
+    const companions: AiRunnerDebugSnapshot['companions'][number][] = [];
+    for (const eid of query(world.ecs, [Companion, Position])) {
+      const decision = getCompanionAIDecision(world, eid);
+      if (!decision) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const targetDist = Math.hypot(decision.x - x, decision.y - y);
+      let path: OverlayPoint[] = [{ x, y }];
+      if (world.floorMap) {
+        path = buildSmoothedOverlayPath(
+          { x, y },
+          [{ x: decision.x, y: decision.y }],
+          (px, py) => world.floorMap!.isPassableAt(px, py),
+          pxToFt(OVERLAY_LINE_OF_SIGHT_SAMPLE_PX),
+          (px, py) => world.floorMap!.worldToTile(px, py),
+        );
+      }
+      companions.push({
+        eid,
+        x: Math.round(x),
+        y: Math.round(y),
+        kind: decision.kind,
+        targetEid: decision.targetEid ?? null,
+        targetX: Math.round(decision.x),
+        targetY: Math.round(decision.y),
+        targetDist: Math.round(targetDist),
+        path: path.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) })),
+      });
+    }
+    return companions;
+  };
+
+  /**
+   * Distinguishes Floor 3's `game_over` causes (see `AiRunnerDebugSnapshot`
+   * doc comment) by re-deriving the same predicates `floor3Scenario.ts` and
+   * `healthSystem.ts` used to set it, rather than adding new state — pure and
+   * read-only, safe to call every frame regardless of floor or world state.
+   *
+   * Floor-gated on `floorId === 'floor3'` per the doc comment ("or is on a
+   * different floor"): the timeout goal flag and party-wipe predicate are
+   * Floor-3-specific concepts, so evaluating them on another floor would be
+   * meaningless even if `world.state` happened to be `'game_over'` there too.
+   *
+   * Player-HP is checked before the party-wipe predicate: a simultaneous
+   * player-death + party-wipe frame is the player's own HP reaching zero
+   * (`healthSystem.ts`), which is the more specific/actionable cause and must
+   * win over the party-wipe fallback, not the other way around.
+   */
+  const getFloor3LossReason = (world: GameWorld): AiRunnerDebugSnapshot['floor3LossReason'] => {
+    if (world.floorId !== 'floor3' || world.state !== 'game_over') return null;
+    if (world.goalFlags.get(FLOOR3_TIMEOUT_GOAL_ID) === true) return 'timeout';
+    const playerEid = query(world.ecs, [Player])[0];
+    const playerHealth =
+      playerEid !== undefined ? (world.stores.health.current[playerEid] ?? 0) : 0;
+    if (playerHealth <= 0) return 'player-hp';
+    if (_isPartyWiped(world)) return 'party-wiped';
+    return 'player-hp';
+  };
+
+  const ensureCompanionGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!companionGraphics || !companionGraphics.scene) {
+      companionGraphics = scene.add.graphics();
+      // World-space debug overlay: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
+      companionGraphics.setDepth(WORLD_VFX_DEPTH.debugPath);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        companionGraphics,
+      );
+    }
+    return companionGraphics;
+  };
+
+  /**
+   * Draws each companion's current decision path + target with the same
+   * visual language as the player's own path overlay above (#4205): a
+   * colored line to the target and a stroked target circle, giving on-screen
+   * parity between the player's AI decision and every companion's.
+   * Rival-primary pursuit renders pink/magenta so it reads as distinct from
+   * the player's orange target circle; follow/idle/disabled render green.
+   */
+  const drawCompanionOverlay = (): void => {
+    const graphics = ensureCompanionGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !world) {
+      return;
+    }
+    graphics.clear();
+    if (manualControl) {
+      // Mirrors drawPathOverlay: the AI's own targeting is frozen/stale while
+      // a human drives, so hide it rather than show a misleading overlay.
+      return;
+    }
+    for (const companion of getCompanionTelemetry(world)) {
+      const color = companion.kind === 'rival-primary' ? 0xff4081 : 0x69f0ae;
+      if (companion.path.length > 1) {
+        graphics.lineStyle(2, color, 0.85);
+        graphics.beginPath();
+        const [first, ...rest] = companion.path;
+        graphics.moveTo(ftToPx(first!.x), ftToPx(first!.y));
+        for (const point of rest) {
+          graphics.lineTo(ftToPx(point.x), ftToPx(point.y));
+        }
+        graphics.strokePath();
+      }
+      if (companion.targetX !== null && companion.targetY !== null) {
+        graphics.lineStyle(2, color, 0.9);
+        graphics.strokeCircle(ftToPx(companion.targetX), ftToPx(companion.targetY), 7);
+      }
     }
   };
 
@@ -2538,6 +3036,17 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
                 <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
                 <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
               </div>
+              <!--
+                #4205: companion decision/path parity with the player row
+                above — reads the same getCompanionTelemetry() snapshot the
+                world-space overlay (drawCompanionOverlay) already draws
+                from, but as an actual visible text readout rather than only
+                canvas geometry, so a user (not just a debug-snapshot
+                consumer) can see each companion's current decision + path.
+              -->
+              <div id="ai-companions-block" class="runner-decision-grid">
+                <div><strong>Companions:</strong> <span id="ai-companions">-</span></div>
+              </div>
               <details id="ai-tree-details" class="runner-tree-details"${openDetails.has('ai-tree-details') ? ' open' : ''}>
                 <summary id="ai-tree-details-summary">Decision tree</summary>
                 <div id="ai-tree"></div>
@@ -2857,6 +3366,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       px !== null && py !== null && decision.targetX !== null && decision.targetY !== null
         ? Math.round(Math.hypot(decision.targetX - px, decision.targetY - py))
         : null;
+    const inSpawnRoom = hasPlayer ? isPlayerInSpawnRoom(world, playerEid) : null;
     const quests: AiRunnerDebugSnapshot['quests'] = {};
     if (world) {
       for (const [questId, quest] of world.questLog.entries()) {
@@ -2909,12 +3419,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       },
       conversationNpcEid: scene?.conversationNpcEid ?? null,
       modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
+      modalKind: scene?.modalPicker?.isOpen?.()
+        ? (scene.modalPicker.getKind() ?? '__anonymous__')
+        : null,
+      inSpawnRoom,
+      floor3AliveOutsideSpawnStreakMs,
+      floor3MaxAliveOutsideSpawnStreakMs,
+      floor3SurfaceTrace,
+      floor4SurfaceTrace,
       runOutcome: world?.floorScenario?.runSummary?.outcome ?? null,
+      floor4RunOutcome:
+        world?.floorId === 'floor4' &&
+        getScenarioDefinition('floor4').getRunOutcome(world) === 'cleared_floor'
+          ? 'victory'
+          : null,
       effectiveFloor,
       scenarioPreset: selectedScenarioPresetId,
       playerPersona: aiConfig.playerPersona,
       arenaEntryFrame,
       quests,
+      floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
+      floor4LiveEnemyCount: world ? getFloor4LiveWaveEnemyCount(world) : 0,
+      companions: world ? getCompanionTelemetry(world) : [],
+      floor3LossReason: world ? getFloor3LossReason(world) : null,
     };
   };
   if (typeof window !== 'undefined') {
@@ -2958,6 +3485,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           ? `${nav.pathIndex + 1}/${nav.pathWaypoints.length} waypoints`
           : 'No path';
     }
+    // #4205: visible companion decision/path readout, parity with the
+    // player's Reason/Path cells above — one comma-joined summary per
+    // recruited companion so the panel scales with party size without new
+    // DOM elements per companion.
+    const companionsElem = document.getElementById('ai-companions');
+    if (companionsElem) {
+      const companions = world ? getCompanionTelemetry(world) : [];
+      companionsElem.textContent =
+        companions.length > 0
+          ? companions
+              .map(
+                (companion) =>
+                  `#${companion.eid} ${companion.kind} → (${companion.targetX}, ${companion.targetY}) · ${companion.path.length} pt path`,
+              )
+              .join('; ')
+          : 'None';
+    }
     const modesElem = document.getElementById('ai-modes');
     if (modesElem) {
       let modesText = `pathing=${ai.getPathingMode()} · decision=${ai.getDecisionMode()}`;
@@ -2991,6 +3535,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     syncLightingTelemetry();
     syncFovTelemetry();
     drawPathOverlay();
+    drawCompanionOverlay();
     drawFlowFieldOverlay();
     drawRiskRewardFieldsOverlay();
     drawFusedCandidateOverlay();
@@ -3030,6 +3575,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     persistLabState();
     pathGraphics?.destroy();
     pathGraphics = null;
+    companionGraphics?.destroy();
+    companionGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
     riskRewardFieldsGraphics?.destroy();

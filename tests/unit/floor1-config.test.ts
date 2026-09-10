@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  _floorConfigSchema,
+  _getFloorConfig,
+  _loadFloor1ConfigFromManifest,
+  _loadFloorConfigFromManifest,
   floor1Config,
-  getFloorConfig,
-  loadFloorConfigFromManifest,
-  loadFloor1ConfigFromManifest,
 } from '../../src/shared/floor-config.js';
 import {
   STARTER_WEAPON_ID_TO_ITEM_ID,
@@ -118,23 +119,36 @@ describe('floor1Config', () => {
 
 describe('loadFloorConfigFromManifest', () => {
   it('returns null for an unknown floor id', () => {
-    expect(loadFloorConfigFromManifest('floor99')).toBeNull();
+    expect(_loadFloorConfigFromManifest('floor99')).toBeNull();
   });
 
   it('returns a config object for a known floor id', () => {
-    const config = loadFloorConfigFromManifest('floor1');
+    const config = _loadFloorConfigFromManifest('floor1');
     expect(config).not.toBeNull();
     expect(config!.protagonist).toBe('Rhea Vale');
+  });
+
+  it('accepts lighting source intensity overrides in derived config payloads', () => {
+    const config = _loadFloorConfigFromManifest('floor1');
+    expect(config).not.toBeNull();
+
+    const parsed = _floorConfigSchema.parse({
+      ...config,
+      lighting: { ambient: 0.8, sourceIntensity: 0 },
+    });
+
+    expect(parsed.lighting.ambient).toBe(0.8);
+    expect(parsed.lighting.sourceIntensity).toBe(0);
   });
 });
 
 describe('getFloorConfig', () => {
   it('throws for an unknown floor id', () => {
-    expect(() => getFloorConfig('floor99')).toThrow('Floor configuration not found: floor99');
+    expect(() => _getFloorConfig('floor99')).toThrow('Floor configuration not found: floor99');
   });
 
   it('returns the config for a known floor id', () => {
-    const config = getFloorConfig('floor1');
+    const config = _getFloorConfig('floor1');
     expect(config).toBeDefined();
     expect(config.protagonist).toBe('Rhea Vale');
   });
@@ -142,8 +156,8 @@ describe('getFloorConfig', () => {
 
 describe('loadFloor1ConfigFromManifest (deprecated compat)', () => {
   it('returns the same data as getFloorConfig("floor1")', () => {
-    const deprecated = loadFloor1ConfigFromManifest();
-    const canonical = getFloorConfig('floor1');
+    const deprecated = _loadFloor1ConfigFromManifest();
+    const canonical = _getFloorConfig('floor1');
     expect(deprecated.protagonist).toBe(canonical.protagonist);
     expect(deprecated.starterWeapons).toEqual(canonical.starterWeapons);
   });

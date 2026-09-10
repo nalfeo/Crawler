@@ -216,6 +216,21 @@ describe('InputCapture (raw DOM)', () => {
     releaseKey('KeyD');
   });
 
+  it('ignores keyboard state from the production window capture listener when blocked', () => {
+    capture.destroy();
+    capture = createInputCapture(createMockScene(), {
+      shouldIgnoreKeyboardEvent: () => true,
+    });
+
+    pressKey('KeyD');
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+
+    releaseKey('KeyD');
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+  });
+
   it('arrow keys produce correct movement directions', () => {
     pressKey('ArrowUp');
     capture.poll(state);

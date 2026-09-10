@@ -22,7 +22,7 @@
  * beyond the aggregate cardinal-edge metric.
  */
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   validateManifestSchema,
@@ -34,7 +34,10 @@ import {
   validateWallAccentImagePaths,
   validateWallAccentTopology,
   validateCrossPackWallSilhouettes,
+  validateTerrainDepthAndPerspective,
 } from '../../../scripts/sprites/terrain-packs/validate.js';
+import { runValidate } from '../../../scripts/sprites/terrain-packs/cli.js';
+import { getTerrainPack } from '../../../src/shared/terrain-pack-registry.js';
 import { decodePng } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 import {
   BORDER_MARGIN_PX,
@@ -42,7 +45,11 @@ import {
   processWallAccents,
   restyleWallAtlas,
 } from '../../../scripts/sprites/terrain-packs/rebuild-shared-base-pools.js';
+import { composeWallAtlas } from '../../../scripts/sprites/terrain-packs/gen/compose-pack.js';
+import { wallCornerStyleForPack } from '../../../scripts/sprites/terrain-packs/wall-corner-style.js';
+import { buildWallReliefAtlases } from '../../../scripts/sprites/terrain-packs/wall-relief.js';
 import type { TerrainPackDef } from '../../../src/shared/terrain-pack-types.js';
+import { createImage, fillRect } from '../../../scripts/sprites/terrain-packs/png-buffer.js';
 
 function repoRoot(): string {
   return path.resolve(import.meta.dirname, '..', '..', '..');
@@ -582,7 +589,7 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     // which only samples cardinal edges): the original bug notched the exposed
     // wall top into per-quadrant battlements.
     //
-    // We use mask 10 (E|W, N absent) — a straight exposed north cap spanning
+    // We use mask 68 (E|W, N absent) — a straight exposed north cap spanning
     // the full cell width. With the OLD edge-band geometry, all four quadrants
     // produce separate top strips, which creates TWO separated horizontal runs
     // at the first opaque row (one left strip, one right strip with a gap
@@ -598,12 +605,12 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
     // check.
     const atlas = decodePng(readCommittedAtlas(manifest));
 
-    // N=1, E=2, S=4, W=8 → E|W = 10 (N absent: exposed north face)
-    const ewCapFrame = frameForMask(manifest, 10);
+    // N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128 → E|W = 68.
+    const ewCapFrame = frameForMask(manifest, 68);
     const topRow = firstOpaqueRow(atlas, manifest, ewCapFrame);
     expect(topRow).toBeGreaterThanOrEqual(0);
     for (let y = topRow; y < topRow + 4; y += 1) {
-      expect(cellRowRuns(atlas, manifest, ewCapFrame, y), `mask 10 row ${y}`).toHaveLength(1);
+      expect(cellRowRuns(atlas, manifest, ewCapFrame, y), `mask 68 row ${y}`).toHaveLength(1);
     }
 
     const solidFrame = frameForMask(manifest, 255);
@@ -670,6 +677,150 @@ describe('committed industrial-cave terrain pack (runtime source of truth)', () 
           `run partially or the file was edited by hand. Re-run ` +
           `scripts/sprites/terrain-packs/import-floor2-materials.ts.`,
       ).toBe(true);
+    }
+  });
+});
+
+describe('validateTerrainDepthAndPerspective', () => {
+  it('Floor 2 (industrial-cave) passes the depth and perspective visual check', () => {
+    const floor2Pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(floor2Pack));
+    const accentAtlases = floor2Pack.wallAccents!.map((accent) =>
+      decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+    );
+    const result = validateTerrainDepthAndPerspective(floor2Pack, wallAtlas, accentAtlases);
+    expect(result.ok).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('Floor 1 (floor1-dungeon, floor1-cave) passes the depth check with regenerated wall relief', () => {
+    for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
+      const pack = getTerrainPack(id);
+      const accentAtlases = pack.wallAccents!.map((accent) =>
+        decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+      );
+      const result = validateTerrainDepthAndPerspective(
+        pack,
+        decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+        accentAtlases,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.issues).toHaveLength(0);
+    }
+  });
+
+  it('Floor 1 wall accents are a byte-exact fixed point from tracked wall material + masks', () => {
+    for (const id of ['floor1-dungeon', 'floor1-cave'] as const) {
+      const pack = getTerrainPack(id);
+      const wallMaterial = decodePng(
+        readFileSync(
+          path.join(repoRoot(), 'public', 'assets', 'terrain-packs', id, 'wall-material.png'),
+        ),
+      );
+      const rebuiltAtlas = composeWallAtlas(
+        wallMaterial,
+        wallCornerStyleForPack(id),
+        pack.wallAutotile.masks,
+      ).atlas;
+      const rebuiltAccents = buildWallReliefAtlases(wallMaterial, rebuiltAtlas);
+      expect(
+        pack.wallAccents?.length ?? 0,
+        `${id} declares at least one wall accent`,
+      ).toBeGreaterThan(0);
+      for (const declared of pack.wallAccents ?? []) {
+        const rebuilt = rebuiltAccents.find((accent) => accent.id === declared.id)?.image;
+        expect(rebuilt, `${id} missing rebuilt accent ${declared.id}`).toBeDefined();
+        const committed = decodePng(
+          readFileSync(path.join(repoRoot(), 'public', declared.imagePath)),
+        );
+        expect(
+          Buffer.compare(Buffer.from(rebuilt!.data), Buffer.from(committed.data)),
+          `${declared.imagePath} differs from fixed-point rebuild output`,
+        ).toBe(0);
+      }
+    }
+  });
+
+  it('Floor 3 (companion-overworld) passes the depth check with regenerated wall relief', () => {
+    const pack = getTerrainPack('companion-overworld');
+    const accentAtlases = pack.wallAccents!.map((accent) =>
+      decodePng(readFileSync(path.join(repoRoot(), 'public', accent.imagePath))),
+    );
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      decodePng(readFileSync(path.join(repoRoot(), 'public', pack.wallAutotile.imagePath))),
+      accentAtlases,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('rejects a declared accent whose pixels are a flat fill', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    fillRect(flatAccent, 0, 0, flatAccent.width, flatAccent.height, 80, 80, 80, 255);
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('rejects a varied full-wall texture that has no wall-to-floor layering', () => {
+    const pack = getTerrainPack('industrial-cave');
+    const wallAtlas = decodePng(readCommittedAtlas(pack));
+    const flatAccent = createImage(wallAtlas.width, wallAtlas.height);
+    for (let pixel = 0; pixel < flatAccent.data.length; pixel += 4) {
+      const x = (pixel / 4) % flatAccent.width;
+      const y = Math.floor(pixel / 4 / flatAccent.width);
+      flatAccent.data[pixel] = (x * 5 + y * 3) % 256;
+      flatAccent.data[pixel + 1] = (x * 2 + y * 7) % 256;
+      flatAccent.data[pixel + 2] = (x + y * 11) % 256;
+      flatAccent.data[pixel + 3] = wallAtlas.data[pixel + 3] ?? 0;
+    }
+    const result = validateTerrainDepthAndPerspective(
+      pack,
+      wallAtlas,
+      pack.wallAccents!.map(() => flatAccent),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.code === 'terrain-pack-lacks-depth')).toBe(true);
+  });
+
+  it('keeps the production terrain-pack validation command gated for a pack without depth assets', () => {
+    const tempRoot = mkdtempSync(path.join(repoRoot(), 'files', 'terrain-pack-cli-fixture-'));
+    try {
+      const manifestDir = path.join(tempRoot, 'src', 'shared', 'data', 'terrain-packs');
+      const assetDir = path.join(tempRoot, 'public', 'assets', 'terrain-packs', 'industrial-cave');
+      const sourceManifestPath = path.join(
+        repoRoot(),
+        'src',
+        'shared',
+        'data',
+        'terrain-packs',
+        'industrial-cave.manifest.json',
+      );
+      cpSync(path.dirname(sourceManifestPath), manifestDir, { recursive: true });
+      cpSync(
+        path.join(repoRoot(), 'public', 'assets', 'terrain-packs', 'industrial-cave'),
+        assetDir,
+        { recursive: true },
+      );
+      const manifest = JSON.parse(readFileSync(sourceManifestPath, 'utf8')) as TerrainPackDef;
+      const flatManifest = { ...manifest, wallAccents: undefined };
+      writeFileSync(
+        path.join(manifestDir, 'industrial-cave.manifest.json'),
+        JSON.stringify(flatManifest),
+      );
+
+      const issues: Array<{ code: string; message: string }> = [];
+      expect(runValidate(tempRoot, ['industrial-cave'], issues)).toBe(false);
+      expect(issues.some((issue) => issue.code === 'terrain-pack-lacks-depth')).toBe(true);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 });

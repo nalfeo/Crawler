@@ -79,6 +79,16 @@ export const LIFECYCLE_MARKER = '<!-- crawler-pr-lifecycle:v1 -->';
 export const LIFECYCLE_DATA_PREFIX = '<!-- crawler-pr-lifecycle-data:';
 
 // ---------------------------------------------------------------------------
+// Lifecycle-ownership lease comment
+// ---------------------------------------------------------------------------
+
+/** Leading marker for the authoritative lifecycle-ownership lease comment. */
+export const LIFECYCLE_LEASE_MARKER = '<!-- crawler-lifecycle-lease:v1 -->';
+
+/** Inline data prefix embedded in lifecycle-ownership lease comments. */
+export const LIFECYCLE_LEASE_DATA_PREFIX = '<!-- crawler-lifecycle-lease-data:';
+
+// ---------------------------------------------------------------------------
 // Issue-intake / recovery-plan comments
 // ---------------------------------------------------------------------------
 
@@ -208,6 +218,92 @@ export function epicIssuesCommentMarker(epicId, hash, issueNumbers) {
 }
 
 // ---------------------------------------------------------------------------
+// Goobers lifecycle-progress comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Leading prefix for the Goobers run-start comment posted on an approved
+ * issue when `.github/workflows/goobers-run.yml` claims it. Full format:
+ * `<!-- crawler-goobers-run-start:v1 run-id=<id> workflow=<name> -->`.
+ *
+ * This MUST be the first line of the comment body, not merely present
+ * somewhere inside it: `ci-recovery-router.yml`'s `issue_comment` job filters
+ * with `startsWith(comment.body, MANAGED_COMMENT_PREFIX)`, and a marker that
+ * isn't the leading text does not satisfy `startsWith`.
+ */
+export const GOOBERS_RUN_START_MARKER_PREFIX = '<!-- crawler-goobers-run-start:v1';
+
+/**
+ * Leading prefix for the Goobers run-result comment posted once a claimed
+ * run finishes. Full format:
+ * `<!-- crawler-goobers-run-result:v1 run-id=<id> attempt=<n> lane=<n> slot=<n> goobers-run=<id> workflow=<name> -->`.
+ * Same leading-line requirement as `GOOBERS_RUN_START_MARKER_PREFIX`.
+ *
+ * The key is per lane/slot/Goobers-run because up to four runs share one
+ * Actions run id, and per ATTEMPT because each attempt uploads its own journal
+ * artifact and this comment names that artifact by name.
+ *
+ * NOTE: this comment's body embeds Goobers journal text, which is written by
+ * the agent under test rather than by the workflow. `goobers-run.yml` collapses
+ * embedded newlines out of that text before rendering it, so a journal message
+ * can never own a line of an Actions-authored comment — see the reservation
+ * receipt markers below for why that matters.
+ */
+export const GOOBERS_RUN_RESULT_MARKER_PREFIX = '<!-- crawler-goobers-run-result:v1';
+
+/**
+ * Leading prefix for the reservation ADOPTION receipt that
+ * `.github/workflows/goobers-run.yml`'s recovery lane posts on the reserved
+ * issue before it takes ownership of `goobers/status:in-review`. Full format:
+ * `<!-- crawler-goobers-reservation-adopted:v1 run-id=<id> attempt=<n> issue=<n> -->`.
+ *
+ * This receipt is the deterministic evidence `release-unstarted-reservation`
+ * reads: its ABSENCE proves no lane ever adopted the reservation (the receipt
+ * is written before the adopting lane exports any recovery metadata, so a lane
+ * that failed to write it never ran a slot), which is the only state in which
+ * that job may remove the reservation label. It is also the DURABLE lease a
+ * later dispatch reads before re-adopting the issue at all, because an Actions
+ * run can report `completed` while a session-detached stage is still pushing.
+ *
+ * `attempt` is part of the lease key, not decoration: re-running a failed
+ * Actions run keeps the same run id, so without it a re-run's adoption would
+ * be closed by the previous attempt's disposal.
+ *
+ * Parsing is exact and author-checked in
+ * `scripts/agent/goobers-reservation-lease.sh` — a whole-line match on a
+ * comment written by the GitHub Actions identity — because issue comments are
+ * public and this text is predictable. Same leading-line requirement as
+ * `GOOBERS_RUN_START_MARKER_PREFIX`.
+ */
+export const GOOBERS_RESERVATION_ADOPTED_MARKER_PREFIX =
+  '<!-- crawler-goobers-reservation-adopted:v1';
+
+/**
+ * Leading prefix for the reservation DISPOSAL receipt, appended into the same
+ * comment body once the adopting lane has proved both that its stage tree was
+ * reaped and that its run disposition was applied. Full format:
+ * `<!-- crawler-goobers-reservation-disposed:v1 run-id=<id> attempt=<n> issue=<n> -->`.
+ *
+ * A disposal closes only the lease whose run id AND attempt it names, and only
+ * when it lives in THAT ADOPTION'S OWN COMMENT BODY. Trusted authorship alone is
+ * not sufficient: `goobers-run.yml` posts other Actions-authored comments that
+ * embed free-form Goobers journal text, so a disposal accepted from any trusted
+ * comment could be injected through a stage error message and would close a live
+ * lease. Both writers resolve the receipt comment through the same reader the
+ * guards use, so the comment a disposal is written into is by construction the
+ * comment a later read sees it in.
+ *
+ * Adopted-without-disposed is the "a descendant may still be live" state:
+ * `release-unstarted-reservation` refuses to remove the reservation label in
+ * that case, and the next dispatch refuses to select the issue at all, rather
+ * than handing a possibly still-running issue to a second agent. It is
+ * deliberately not the leading line of the comment (the adoption marker keeps
+ * that position for the router's `startsWith` filter).
+ */
+export const GOOBERS_RESERVATION_DISPOSED_MARKER_PREFIX =
+  '<!-- crawler-goobers-reservation-disposed:v1';
+
+// ---------------------------------------------------------------------------
 // Shared prefix & router filter list
 // ---------------------------------------------------------------------------
 
@@ -241,6 +337,8 @@ export const MANAGED_COMMENT_MARKERS = [
   REVIEW_CONFLICT_MARKER,
   LIFECYCLE_MARKER,
   LIFECYCLE_DATA_PREFIX,
+  LIFECYCLE_LEASE_MARKER,
+  LIFECYCLE_LEASE_DATA_PREFIX,
   COORDINATOR_MARKER,
   COORDINATOR_DATA_PREFIX,
   ISSUE_INTAKE_MARKER,
@@ -256,4 +354,8 @@ export const MANAGED_COMMENT_MARKERS = [
   EPIC_REVIEW_MARKER_PREFIX,
   EPIC_NODE_MARKER_PREFIX,
   EPIC_ISSUES_COMMENT_MARKER_PREFIX,
+  GOOBERS_RUN_START_MARKER_PREFIX,
+  GOOBERS_RUN_RESULT_MARKER_PREFIX,
+  GOOBERS_RESERVATION_ADOPTED_MARKER_PREFIX,
+  GOOBERS_RESERVATION_DISPOSED_MARKER_PREFIX,
 ];

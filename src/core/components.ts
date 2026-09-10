@@ -31,9 +31,17 @@ export const AttackWaveRat = {};
 export const Spawner = {};
 export const Flying = {};
 export const Projectile = {};
+/** Presentation identity for a player projectile, independent of its physics. */
+export const ProjectileVisual = {};
+export enum ProjectileVisualKind {
+  ARROW = 0,
+  BULLET = 1,
+}
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
 export const XpGem = {};
+/** Floor-scoped build currency pickup; never mutates persistent player gold. */
+export const BuildCurrencyPickup = {};
 export const DroppedItem = {};
 export const Inventory = {};
 export const Sprite = {};
@@ -75,12 +83,25 @@ export const SiegeStructure = {};
  */
 export const SiegeHero = {};
 /**
+ * Floor 5 Ratings Ram marker — the single escorted siege engine (spec `R5`).
+ * Distinct from {@link SiegeStructure} so lane-war structure queries, wave
+ * caps and telemetry never mistake the ram for a lane objective.
+ */
+export const SiegeRam = {};
+/**
+ * Floor 5 Ratings Ram escort-route waypoint marker. Purely positional: never
+ * carries `Team` or `Health`, so it is untargetable and unkillable.
+ */
+export const SiegeRouteMarker = {};
+/**
  * Floor 6 route-following raider marker. Placed on demolition crew enemies that
  * follow authored waypoint routes toward the Broadcast Relay. Distinct from
  * `Enemy`/`EnemyBehavior` so normal AI systems skip them; `floor6RaiderSystem`
  * owns their movement and `floor6DefenseDirectorSystem` owns their lifecycle.
  */
 export const BroadcastRelayRaider = {};
+/** Floor 6 authored-site defensive tower. Combat is owned by floor6TowerSystem. */
+export const Floor6Tower = {};
 /** Marks an entity for automatic removal after expiry. */
 export const Lifetime = {};
 /** Area-of-effect damage centered on this entity's position. */
@@ -229,6 +250,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       lastFireMs: new Float32Array(maxEntities),
     },
     xpGem: { value: new Float32Array(maxEntities) },
+    buildCurrencyPickup: { value: new Float32Array(maxEntities) },
     projectile: {
       pierce: new Uint8Array(maxEntities),
       hitCount: new Uint8Array(maxEntities),
@@ -236,6 +258,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       originX: new Float32Array(maxEntities),
       originY: new Float32Array(maxEntities),
     },
+    projectileVisual: { kind: new Uint8Array(maxEntities) },
     sprite: {
       textureId: new Uint16Array(maxEntities),
       width: new Float32Array(maxEntities),
@@ -371,6 +394,33 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       team: new Uint8Array(maxEntities),
       kind: new Uint8Array(maxEntities),
     },
+    /**
+     * Floor 5 · Ratings Ram (slice 5). Deliberately its OWN store rather than
+     * a reuse of `siegeStructure`: the ram is neither a lane objective nor a
+     * minion, and the lane-war contract counts `[SiegeStructure, Team, Health]`
+     * entities exactly.
+     */
+    siegeRam: {
+      /** Index of the route landmark the ram is travelling TOWARD. */
+      routeIndex: new Uint8Array(maxEntities),
+      /** 1 while the protection gate is satisfied, else 0. */
+      protectionMet: new Uint8Array(maxEntities),
+      /** Strikes landed on the outer wall by THIS ram instance. */
+      strikes: new Uint16Array(maxEntities),
+      /** `world.elapsedMs` of the last landed strike (0 = never). */
+      lastStrikeMs: new Float64Array(maxEntities),
+    },
+    /**
+     * Floor 5 · Ratings Ram escort-route waypoint marker. Carries no `Team`
+     * and no `Health` on purpose — markers must never be targetable, killable,
+     * or counted by any lane-war query.
+     */
+    siegeRouteMarker: {
+      /** 0-based index into the authored landmark order. */
+      index: new Uint8Array(maxEntities),
+      /** 1 once the ram has arrived at this landmark. */
+      reached: new Uint8Array(maxEntities),
+    },
     siegeHero: {
       /** Siege-marker team code (1 = allied, 2 = enemy). Heroes are always 2. */
       team: new Uint8Array(maxEntities),
@@ -411,6 +461,12 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       prevX: new Float32Array(maxEntities),
       /** Position captured at end of previous tick, used to detect stalls. */
       prevY: new Float32Array(maxEntities),
+    },
+    floor6Tower: {
+      /** Index into the immutable Floor 6 tower roster. */
+      towerIndex: new Uint16Array(maxEntities),
+      /** Elapsed-ms timestamp of this tower's most recent attack. */
+      lastAttackMs: new Float64Array(maxEntities),
     },
     lifetime: {
       expiresAtMs: new Float32Array(maxEntities),
@@ -621,6 +677,15 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       scaleWithPrimary: new Uint8Array(maxEntities),
       canCrit: new Uint8Array(maxEntities),
       fromActiveAbility: new Uint8Array(maxEntities),
+      /**
+       * Floor 3 Companion League Temperament (see `DamageOptions.attackerTemperament`
+       * / `defenderTemperament` in `core/apply-damage.ts`), encoded so a delayed
+       * damage-bearing entity (e.g. a companion's ranged projectile) can replay
+       * the matchup multiplier at impact time instead of always resolving
+       * neutral. 0 = none (fail-closed); 1..7 = `AFFINITY_RING` index + 1.
+       */
+      attackerTemperament: new Uint8Array(maxEntities),
+      defenderTemperament: new Uint8Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.

@@ -1,0 +1,99 @@
+# Session Handoff: Restore sprite authoring parity
+
+## Date
+
+2026-09-07
+
+## Persona
+
+Producer -> DevOps Engineer, UX Designer, Asset Forge, QA Engineer
+
+## Systems touched
+
+sprite-pipeline, sprite-workflow, devtools, ci-policy
+
+## Apples
+
+3🍎 estimated, 3🍎 actual (exact under the tooling-only cap).
+
+## What Was Done
+
+- Re-audited the exact PR #3234 head after PR #4310 landed and current `main`
+  was integrated. Ported the previously deferred pinned `proper-pixel-art`
+  mesh-recovery bridge as an explicit postprocessing option while preserving
+  strict palette quantization and color-lock scoring.
+- Provisioned Python 3.12 plus pinned mesh-recovery dependencies in sprite CI,
+  restored source-sheet force/reset recovery, allowed guarded edits to durable
+  synthesized candidate YAML, and added readable required facial-feature
+  judging.
+- Added 1x-8x pixel-crisp postprocess preview zoom, native-aspect-ratio Workflow
+  variants, 1x animation-viewer defaults, stale-view reload after sheet swaps,
+  and confirmation before destructive force reprocessing.
+- Ported terminal handling for Goobers-owned issue restarts. Exact-ref queue
+  repair was already present through current main; older request-context and
+  exact-generation rewrites were rejected because they depend on superseded
+  Workflow contracts and would weaken current lifecycle route validation.
+- Hardened the mesh-recovery boundary after independent review: CI now uses an
+  exact Python patch and exact binary-only transitive pins, the security
+  allowlist validates that Python closure, the bridge asserts installed
+  versions and runs with a deterministic minimal environment plus a hard
+  timeout, and a native-grid golden test prevents non-uniform re-expansion.
+- Removed the dead palette quantizer and its no-longer-meaningful palette
+  plumbing. Strict mode now returns the recovered native mesh directly to the
+  existing resize stage, and current brief documentation reflects that
+  contract.
+- Closed the independent-review findings by keeping full-bleed tiles on their
+  exact resize path, disabling per-frame mesh detection for animation sequences,
+  covering auto-detection, transparency, trivial-mesh refusal, and native-grid
+  output directly, provisioning the pinned Python runtime for Copilot sessions,
+  and differentiating timeout/buffer/toolchain bridge failures.
+- Verification passed before review: 276 focused sprite tests, 429 extension
+  tests, 191 CI recovery tests, 1,611 `verify:fast` tests, and PR prerequisites.
+  The corrective batch then passed 90 scope-classifier tests, the complete
+  2,712-test sprite project apart from one loaded-machine timeout whose isolated
+  15-test file retry passed, 88 focused review-fix tests, and the final 481
+  changed tests under `verify:fast`.
+- Observed in the real Workflow and animation canvases: a 192x256 variant
+  rendered at 120x160 (ratio 0.75 preserved); postprocess zoom scaled the same
+  final image from 120x160 at 1x to 240x320 at 2x with
+  `image-rendering: pixelated`; and the 256x64 player walk sheet played as four
+  native 64x64 frames at 1x.
+
+## Key Decisions Made
+
+- Keep `paletteMode: strict` as the durable palette-quantization and color-lock
+  contract; mesh recovery is an independent opt-in, avoiding migration of
+  existing briefs.
+- Port only source improvements that preserve current lifecycle and route
+  validation. Do not wholesale transplant PR #3234's older Workflow request
+  architecture.
+- Treat viewer zoom as ephemeral presentation state; it never enters persisted
+  postprocess overrides.
+
+## What's Next / Blockers
+
+Publish the follow-up PR and let CI Recovery plus the merge train own final
+landing. No art was generated, approved, or deleted.
+
+## Retrospective
+
+### Lessons Learned
+
+Patch identity is not behavioral identity: several unique PR #3234 patches were
+already present through stronger mainline implementations, while the useful
+remaining ports were distributed across pipeline, extension, and recovery
+commits. Real-canvas DOM geometry gave stronger evidence for native resolution
+than static CSS inspection alone.
+
+### Mistakes Made
+
+Opening a store-backed run in the real postprocess debugger restored its brief
+into the worktree. The observation side effect was detected by the status gate
+and the exact untracked file was removed before publication.
+
+### Opportunities for Future Improvement
+
+Teach preflight and sprite test wrappers to discover the installed Python 3.12
+launcher path on Windows automatically; the pinned bridge worked once the
+existing launcher directory was added to `PATH`, but a fresh shell did not
+discover it.

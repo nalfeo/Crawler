@@ -7,6 +7,9 @@ import {
 import {
   arenaDirectorSystem,
   companionAISystem,
+  companionCombatSystem,
+  floor3NonCombatantSystem,
+  floor3WildTargetRedirectSystem,
   enemyAISystem,
   emergentEventSystem,
   familyFeudSystem,
@@ -26,11 +29,21 @@ import {
 import { floor2VictorySystem } from '../../src/game/floor2Scenario.js';
 import {
   siegeDirectorSystem,
+  siegeFinaleSystem,
   siegeHeroSystem,
   siegeMinionSystem,
+  siegeRamSystem,
 } from '../../src/game/floor5Scenario.js';
+import {
+  floor6DefenseDirectorSystem,
+  floor6CombatContributionSystem,
+  floor6RaiderSystem,
+  floor6TowerSystem,
+} from '../../src/game/floor6Scenario.js';
 import { getScenarioDefinition } from '../../src/game/scenarioDefinitions.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
+import { abilitySystem } from '../../src/game/systems/abilitySystem.js';
+import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID } from '../../src/shared/quest-types.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
@@ -54,8 +67,12 @@ describe('createFloor1MainSceneOptions', () => {
     },
     {
       floorId: 'floor3',
-      beforeWeaponSystems: [],
-      beforeEnemyAISystems: [companionAISystem],
+      beforeWeaponSystems: [floor3NonCombatantSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        floor3WildTargetRedirectSystem,
+        companionCombatSystem,
+      ],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,
@@ -83,7 +100,13 @@ describe('createFloor1MainSceneOptions', () => {
     {
       floorId: 'floor5',
       beforeWeaponSystems: [],
-      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem, siegeHeroSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        siegeMinionSystem,
+        siegeHeroSystem,
+        siegeRamSystem,
+        siegeFinaleSystem,
+      ],
       afterSpawnerSystems: [siegeDirectorSystem],
       foreignSystems: [
         floor1PlayerStatSystem,
@@ -95,6 +118,23 @@ describe('createFloor1MainSceneOptions', () => {
         arenaDirectorSystem,
       ],
     },
+    {
+      floorId: 'floor6',
+      beforeWeaponSystems: [],
+      beforeEnemyAISystems: [floor6RaiderSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
+      foreignSystems: [
+        floor1PlayerStatSystem,
+        floor1EnemyDirectorSystem,
+        floor2VictorySystem,
+        emergentEventSystem,
+        familyFeudSystem,
+        floor3WildDirectorSystem,
+        arenaDirectorSystem,
+        siegeDirectorSystem,
+      ],
+    },
   ])(
     'assembles only $floorId scenario systems at their canonical slots',
     ({
@@ -102,6 +142,7 @@ describe('createFloor1MainSceneOptions', () => {
       beforeWeaponSystems,
       beforeEnemyAISystems,
       afterSpawnerSystems,
+      afterCoreSystems,
       foreignSystems,
     }) => {
       // The expected slot contents below are hardcoded independently of
@@ -111,8 +152,10 @@ describe('createFloor1MainSceneOptions', () => {
       expect(scenario.beforeWeaponSystems ?? []).toEqual(beforeWeaponSystems);
       expect(scenario.beforeEnemyAISystems ?? []).toEqual(beforeEnemyAISystems);
       expect(scenario.afterSpawnerSystems ?? []).toEqual(afterSpawnerSystems);
+      expect(scenario.afterCoreSystems ?? []).toEqual(afterCoreSystems ?? []);
 
       const preSystems = createFloorMainSceneOptions(floorId).preSystems ?? [];
+      const postSystems = createFloorMainSceneOptions(floorId).postSystems ?? [];
       const localSystems = [
         ...beforeWeaponSystems,
         ...beforeEnemyAISystems,
@@ -147,6 +190,14 @@ describe('createFloor1MainSceneOptions', () => {
       ).toEqual(beforeEnemyAISystems);
       expect(preSystems.slice(preSystems.indexOf(spawnerSystem) + 1)).toEqual(afterSpawnerSystems);
       expect(preSystems.indexOf(spawnerSystem)).toBe(preSystems.indexOf(spawnerArenaSystem) + 1);
+      const floorSpecificPostStart = postSystems.indexOf(abilitySystem) + 1;
+      expect(
+        postSystems.slice(
+          floorSpecificPostStart,
+          floorSpecificPostStart + (afterCoreSystems?.length ?? 0),
+        ),
+      ).toEqual(afterCoreSystems ?? []);
+      expect(postSystems.indexOf(skillSystem)).toBeLessThan(postSystems.indexOf(abilitySystem));
     },
   );
 
@@ -340,7 +391,12 @@ describe('createFloor1MainSceneOptions', () => {
     expect(world.stores.position.x[player]).toBe(spawn.x);
     expect(world.stores.position.y[player]).toBe(spawn.y);
     expect(world.hideFloorTimer).toBe(true);
-    expect(world.stores.health.max[player]).toBe(100 + manifest.player.hpBonus);
+    expect(world.playerLevel.level).toBe(manifest.player.directStart!.level);
+    // Direct-start baseline: Floor 4 level/stat allocation plus skill/equipment
+    // passives, plus the manifest's +60 direct-start HP bonus applied after
+    // the baseline (PR #4392 review fix — the bonus must not be discarded by
+    // applyFloorSkipBaseline's initializeBaseStats reseed).
+    expect(world.stores.health.max[player]).toBe(487);
     expect(getActiveWeaponDef(world)?.id).toBeTruthy();
     expect(world.featureUnlocks.inventory).toBe(true);
     expect(world.featureUnlocks.equipment).toBe(true);

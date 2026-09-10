@@ -172,14 +172,15 @@ Every persona above has an agent. These additional agents are **specialist
 siblings** — they narrow a persona's doctrine to one repeatable workflow and are
 selected directly rather than by routing:
 
-| Agent                                                                             | Inherits from     | Use when                                            |
-| --------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------- |
-| [`perf-optimizer`](../../../.github/agents/perf-optimizer.agent.md)               | Systems Engineer  | Gameplay-neutral speed/memory work only             |
-| [`velocity-engineer`](../../../.github/agents/velocity-engineer.agent.md)         | DevOps Engineer   | Measuring and removing agent-delivery bottlenecks   |
-| [`pr-shepherd`](../../../.github/agents/pr-shepherd.agent.md)                     | DevOps Engineer   | Driving open PRs to a clean squash-merge            |
-| [`docs-update`](../../../.github/agents/docs-update.agent.md)                     | DevOps Engineer   | Extracting and validating provenance-backed lore    |
-| [`ci-review-validator`](../../../.github/agents/ci-review-validator.agent.md)     | Reviewer          | Validating exact review threads with a second model |
-| [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md) | Graphics Designer | Building a full themed equipment collection         |
+| Agent                                                                             | Inherits from     | Use when                                              |
+| --------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------------- |
+| [`perf-optimizer`](../../../.github/agents/perf-optimizer.agent.md)               | Systems Engineer  | Gameplay-neutral speed/memory work only               |
+| [`velocity-engineer`](../../../.github/agents/velocity-engineer.agent.md)         | DevOps Engineer   | Measuring and removing agent-delivery bottlenecks     |
+| [`pr-shepherd`](../../../.github/agents/pr-shepherd.agent.md)                     | DevOps Engineer   | Driving open PRs to a clean squash-merge              |
+| [`docs-update`](../../../.github/agents/docs-update.agent.md)                     | DevOps Engineer   | Extracting and validating provenance-backed lore      |
+| [`ci-review-validator`](../../../.github/agents/ci-review-validator.agent.md)     | Reviewer          | Validating exact review threads with a second model   |
+| [`equipment-theme-forge`](../../../.github/agents/equipment-theme-forge.agent.md) | Graphics Designer | Building a full themed equipment collection           |
+| [`floor-factory`](../../../.github/agents/floor-factory.agent.md)                 | Producer          | Planning a floor concept into an epic completion plan |
 
 ## Retired personas
 

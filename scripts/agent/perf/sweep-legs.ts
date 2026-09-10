@@ -62,7 +62,7 @@ function leg(spec: Omit<SweepLeg, 'runs'>): SweepLeg {
 }
 
 /**
- * PR tier — 50 runs.
+ * PR tier — 65 runs.
  *
  * Floor 1 is the only blocking leg. The chained leg's seeds are a strict subset
  * of the Floor-1 leg's panel (1-10 ⊂ 1-25) so a chained failure can be read
@@ -97,11 +97,20 @@ export const PR_SWEEP_LEGS: readonly SweepLeg[] = [
     chain: false,
     blocking: false,
   }),
+  leg({
+    id: 'floor6',
+    floorId: 'floor6',
+    seeds: '1-15',
+    seedCount: 15,
+    weapons: null,
+    chain: false,
+    blocking: false,
+  }),
 ];
 
 /**
- * Release tier — 600 runs, the same total as today, redistributed across the
- * three legs exactly as specified in the approved methodology.
+ * Release tier — 750 runs, preserving the prior 600-run matrix and adding
+ * Floor 6 as a report-only release leg once it becomes implemented.
  *
  * Only Floor 1 forces weapons: this leg is what per-weapon balance and the
  * existing baseline-regression issue filing are measured on.
@@ -142,6 +151,15 @@ export const RELEASE_SWEEP_LEGS: readonly SweepLeg[] = [
     chain: true,
     blocking: false,
   }),
+  leg({
+    id: 'floor6',
+    floorId: 'floor6',
+    seeds: '1-150',
+    seedCount: 150,
+    weapons: null,
+    chain: false,
+    blocking: false,
+  }),
 ];
 
 /**
@@ -150,10 +168,11 @@ export const RELEASE_SWEEP_LEGS: readonly SweepLeg[] = [
  * regression check reports that instead of throwing or comparing apples to
  * oranges.
  *
- * `2` = the multi-floor matrix above (Floor 1 resized 100→50 seeds, Floor 2 and
- * the chained leg added). `1` was the Floor-1-only 100-seed × 6-weapon sweep.
+ * `3` = Floor 6 report-only coverage added. `2` = the multi-floor matrix above
+ * (Floor 1 resized 100→50 seeds, Floor 2 and the chained leg added). `1` was
+ * the Floor-1-only 100-seed × 6-weapon sweep.
  */
-export const RELEASE_SWEEP_REVISION = 2;
+export const RELEASE_SWEEP_REVISION = 3;
 
 export function totalRuns(legs: readonly SweepLeg[]): number {
   return legs.reduce((sum, l) => sum + l.runs, 0);

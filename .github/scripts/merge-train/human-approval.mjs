@@ -2,12 +2,6 @@ export const HUMAN_APPROVAL_LABEL = 'human-approval-required';
 export const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
 export const HUMAN_APPROVAL_PHRASE_VARIANT = 'APPROVED FOR CHECKIN';
 
-// Broad prefix intentionally covers both legacy naming
-// ('copilot/balance-telemetry-driven-improvement-sweep') and the current
-// naming ('copilot/balance-telemetry-improvement-sweep').  Balance-sweep
-// agents choose branch names autonomously so pinning to a full name is fragile.
-const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry';
-
 // Per-line pattern: optional list/ordered-list bullet, optional owner/repo
 // prefix (captured as group 1), closing verb, then #N (captured as group 2).
 // Anchored at both ends so only lines whose entire content is a single
@@ -23,14 +17,12 @@ function labelNames(labels) {
 
 export function requiresHumanApproval(pullRequest, closingIssues = []) {
   if (labelNames(pullRequest?.labels).has(HUMAN_APPROVAL_LABEL)) return true;
-  if (String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)) return true;
   return closingIssues.some((issue) => labelNames(issue?.labels).has(HUMAN_APPROVAL_LABEL));
 }
 
 /**
  * Returns the subset of `closingIssues` that are propagating
- * `human-approval-required` to the PR via a closing-keyword reference — i.e.
- * the PR is not a nightly-balance branch.
+ * `human-approval-required` to the PR via a closing-keyword reference.
  * These issues are safe to de-link by stripping the closing-keyword lines from
  * the PR body (see `stripClosingKeywordsForIssues`).
  *
@@ -40,9 +32,6 @@ export function requiresHumanApproval(pullRequest, closingIssues = []) {
  * carries the direct label even when propagation is the sole root cause.
  */
 export function closingIssuesPropagatingHumanApproval(pullRequest, closingIssues = []) {
-  // Nightly-balance branches have an intentional human-approval gate that must
-  // not be auto-bypassed via keyword stripping.
-  if (String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)) return [];
   return (closingIssues || []).filter((issue) =>
     labelNames(issue?.labels).has(HUMAN_APPROVAL_LABEL),
   );

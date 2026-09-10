@@ -819,9 +819,9 @@
     "scope": "current_run",
     "title": "Fully Outfitted",
     "popupText": "New achievement: Fully Outfitted!",
-    "unlockCriteria": "Unlock the equipment system, tracked for the rest of the run.",
-    "details": "Unlock once the equipment system is available and stays flagged for the remainder of the current run.",
-    "directorFlavor": "Equipment unlocked, and it's staying unlocked for the rest of the run — no floor transition takes this away from you now. The wardrobe department considers this the real season premiere, discount-bin era officially over for good. Everything from here on is yours to keep, rarity and all. That's not nothing on a run this long.",
+    "unlockCriteria": "Equip an item in every required equipment slot simultaneously.",
+    "details": "Unlock once every required equipment slot is occupied at the same time.",
+    "directorFlavor": "Every required slot is occupied at once — the wardrobe department finally has nothing left to complain about. This is the kind of commitment that makes a season finale nervous.",
     "iconId": "achv-floor2-run-fully-outfitted-placeholder",
     "difficulty": "basic",
     "reward": {
@@ -832,7 +832,7 @@
     "unlockRules": [
       {
         "type": "booleanIs",
-        "fact": "equipmentUnlocked",
+        "fact": "allEquipmentSlotsOccupied",
         "value": true
       }
     ]

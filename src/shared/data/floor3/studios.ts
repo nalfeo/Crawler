@@ -45,6 +45,30 @@ export const FLOOR3_STUDIO_SELECT_COUNT = 6;
 /** Final Four handlers actually used on a floor run (spec R5/R6). */
 export const FLOOR3_FINAL_FOUR_SELECT_COUNT = 4;
 
+/**
+ * Per-Studio goal flag latched true once that Studio's rosters are wiped.
+ *
+ * Lives here (rather than in `src/game/floor3Scenario.ts`) so both the
+ * game-layer objective tick and the core-layer quest waypoint resolver
+ * (`src/core/systems/questWaypoints.ts`) can share one definition without
+ * `src/core/` importing from `src/game/` (layer rule). `floor3Scenario.ts`
+ * re-exports this for its existing callers/tests.
+ */
+export function floor3StudioDefeatGoalId(studioId: string): string {
+  return `floor3-studio-${studioId}-defeated`;
+}
+
+/**
+ * Standard quest-log id registered for a Studio once it unlocks (issue
+ * #4208: route the Studios objective through the canonical quest
+ * tracker/waypoints instead of a bespoke surface). One quest per candidate
+ * `studioId`, defined statically in `quests.floor3.json` — only the ~6
+ * selected-for-this-run studios ever actually get `acceptQuest`'d.
+ */
+export function floor3StudioQuestId(studioId: string): string {
+  return `floor3-studio-${studioId}`;
+}
+
 /** ~10-candidate Studio pool (spec R8: "6-of-~10 Studio pick"). */
 export const STUDIO_CANDIDATES: readonly StudioDef[] = [
   {

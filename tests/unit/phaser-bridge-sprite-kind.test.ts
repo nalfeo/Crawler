@@ -4,6 +4,7 @@ import {
   AoeOnImpact,
   AreaDamage,
   BossChestEntity,
+  BuildCurrencyPickup,
   Enemy,
   EnemyProjectile,
   Gold,
@@ -13,7 +14,11 @@ import {
   Npc,
   Player,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
+  SiegeHero,
+  SiegeMinion,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -72,8 +77,11 @@ const DEFINING_COMPONENT: ReadonlyArray<readonly [string, KindBuild]> = [
   ['harvestable', (w, e) => addComponent(w.ecs, e, Harvestable)],
   ['boss_chest', (w, e) => addComponent(w.ecs, e, BossChestEntity)],
   ['enemy', (w, e) => addComponent(w.ecs, e, Enemy)],
+  ['enemy', (w, e) => addComponent(w.ecs, e, SiegeMinion)],
+  ['enemy', (w, e) => addComponent(w.ecs, e, SiegeHero)],
   ['gem', (w, e) => addComponent(w.ecs, e, XpGem)],
   ['gold', (w, e) => addComponent(w.ecs, e, Gold)],
+  ['build_currency', (w, e) => addComponent(w.ecs, e, BuildCurrencyPickup)],
   ['beam', (w, e) => addComponent(w.ecs, e, LineDamage)],
   ['melee_swing', (w, e) => addComponent(w.ecs, e, MeleeSwing)],
   ['trap', (w, e) => addComponent(w.ecs, e, Trap)],
@@ -81,7 +89,7 @@ const DEFINING_COMPONENT: ReadonlyArray<readonly [string, KindBuild]> = [
   ['returning', (w, e) => addComponent(w.ecs, e, Returning)],
   ['aoe_proj', (w, e) => addComponent(w.ecs, e, AoeOnImpact)],
   ['enemy_proj', (w, e) => addComponent(w.ecs, e, EnemyProjectile)],
-  ['proj', (w, e) => addComponent(w.ecs, e, Projectile)],
+  ['arrow', (w, e) => addComponent(w.ecs, e, Projectile)],
   [
     'welcome_sign',
     (w, e) => addComponent(w.ecs, e, set(Sprite, { textureId: 3, width: 0, height: 0 })),
@@ -109,6 +117,24 @@ describe('resolveRenderKind — one branch per render kind', () => {
   });
 });
 
+describe('resolveRenderKind — enemy projectile visual identity', () => {
+  it('resolves "bullet" for a companion-owned EnemyProjectile tagged BULLET', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, EnemyProjectile);
+    addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.BULLET }));
+    expect(resolveRenderKind(world, eid)).toBe('bullet');
+  });
+
+  it('stays "enemy_proj" for an EnemyProjectile with the default ARROW visual', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, EnemyProjectile);
+    addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.ARROW }));
+    expect(resolveRenderKind(world, eid)).toBe('enemy_proj');
+  });
+});
+
 describe('resolveRenderKind — team-split area damage', () => {
   it('resolves "enemy_aoe" when AreaDamage carries the ENEMY team', () => {
     const world = createTestWorld();
@@ -116,6 +142,16 @@ describe('resolveRenderKind — team-split area damage', () => {
     addComponent(world.ecs, eid, AreaDamage);
     addComponent(world.ecs, eid, set(Team, { id: TeamId.ENEMY }));
     expect(resolveRenderKind(world, eid)).toBe('enemy_aoe');
+  });
+
+  describe('resolveRenderKind — player projectile visual identity', () => {
+    it('resolves a bullet identity without changing the projectile component', () => {
+      const world = createTestWorld();
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, Projectile);
+      addComponent(world.ecs, eid, set(ProjectileVisual, { kind: ProjectileVisualKind.BULLET }));
+      expect(resolveRenderKind(world, eid)).toBe('bullet');
+    });
   });
 
   it('stays "aoe" when AreaDamage carries the PLAYER team', () => {
@@ -328,24 +364,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-king-var-7': {
+      'rat-king-var-8': {
         briefId: 'rat-king',
-        spriteName: 'rat-king-var-7',
-        assetPath: 'generated/rat-king-var-7.png',
+        spriteName: 'rat-king-var-8',
+        assetPath: 'generated/rat-king-var-8.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 8,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
       },
-      'rat-queen-var-7': {
+      'rat-queen-var-2': {
         briefId: 'rat-queen',
-        spriteName: 'rat-queen-var-7',
-        assetPath: 'generated/rat-queen-var-7.png',
+        spriteName: 'rat-queen-var-2',
+        assetPath: 'generated/rat-queen-var-2.png',
         approvedAt: '2026-07-02T00:00:00.000Z',
         sourceRun: 'test',
-        variantIndex: 7,
+        variantIndex: 2,
         anchor: null,
         sensorScore: '7/8',
         judgeScore: '2',
@@ -407,10 +443,10 @@ describe('pickGeneratedEnemyTextureKey', () => {
 
   it('resolves rat monarch and slime-pool appearance keys to their generated briefs', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-king')).toBe(
-      'rat-king-var-7',
+      'rat-king-var-8',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_rat', 0.5, 'rat-queen')).toBe(
-      'rat-queen-var-7',
+      'rat-queen-var-2',
     );
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.5, 'slime-pool')).toBe(
       'slime-pool-var-3',
@@ -430,6 +466,24 @@ describe('pickGeneratedEnemyTextureKey', () => {
     expect(pickGeneratedEnemyTextureKey(registry, 'enemy_spawner_slime_pool', 0.95)).toBe(
       'slime-pool-var-3',
     );
+  });
+
+  it('treats an absent roll as the lowest variant', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0)).toBe('slime-var-2');
+  });
+
+  it('keeps interleaved calls independent despite the reused adapter', () => {
+    // The resolver runs against a module-local structural adapter mutated in
+    // place (no per-entity allocation on this rendering path). A stale roll or
+    // registry leaking between calls would show up here.
+    const empty = buildGeneratedSpriteRegistry({ version: 1, entries: {} });
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(empty, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-var-9');
+    expect(pickGeneratedEnemyTextureKey(null, 'enemy_slime', 0.95)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', undefined)).toBe('slime-var-2');
   });
 });
 
@@ -516,7 +570,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     // Three DISTINCT keys — the whole point of the feature (no shared villager).
     expect(pickGeneratedNpcTextureKey('tutorial-goon')).toBe('welcome-goon-var-1');
     expect(pickGeneratedNpcTextureKey('shopkeeper')).toBe('sweaty-merchant-var-3');
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     const keys = [
       pickGeneratedNpcTextureKey('tutorial-goon'),
       pickGeneratedNpcTextureKey('shopkeeper'),
@@ -537,7 +591,7 @@ describe('pickGeneratedNpcTextureKey — def-aware welcome-room NPC art', () => 
     );
     expect(indices.every((n) => Number.isInteger(n))).toBe(true);
     expect(new Set(indices).size).toBeGreaterThan(1);
-    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('npc-spell-broker-var-1');
+    expect(pickGeneratedNpcTextureKey('spell-quest-giver')).toBe('spell-broker-var-2');
     expect(pickGeneratedNpcTextureKey('spell-quest-giver')).not.toBe('npc-spell-broker-var-0');
   });
 
@@ -637,6 +691,18 @@ describe('pickGeneratedHarvestableTextureKey', () => {
       'crimson-mushroom-var-0',
     );
     expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 0.95)).toBe(
+      'crimson-mushroom-var-3',
+    );
+  });
+
+  it('shares the canonical roll fallback and clamping semantics', () => {
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', Number.NaN)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', -1)).toBe(
+      'crimson-mushroom-var-0',
+    );
+    expect(pickGeneratedHarvestableTextureKey(registry, 'crimson-mushroom', 1)).toBe(
       'crimson-mushroom-var-3',
     );
   });

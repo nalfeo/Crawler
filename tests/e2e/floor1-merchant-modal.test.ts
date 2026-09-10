@@ -45,6 +45,25 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
     });
   }
 
+  it('displays the coy initial merchant request through the real scene', async () => {
+    await loadResolvedScene();
+    const merchant = await mainSceneProbe.primeShopkeeperInitialDialogue(page);
+    expect(merchant, 'initial Floor 1 shopkeeper should be spawned').not.toBeNull();
+
+    await mainSceneProbe.queueInteraction(page);
+    const state = await waitForState(page, (s) => s.conversationOpen && !s.modalOpen, {
+      label: 'initial merchant dialogue opened through MainGameScene',
+    });
+
+    expect(state.conversationLines).toHaveLength(3);
+    expect(state.conversationLines).toContain(
+      "Don't clean it. Don't ask. It's not for the shop—it's for the room, and the room has been lonely.",
+    );
+    expect(state.conversationLines.join(' ')).not.toContain(
+      "It's for the shop. It's for the room.",
+    );
+  });
+
   it('renders an affordable ware as a shared, enabled offer row', async () => {
     await openMerchantModal(500);
 
@@ -132,5 +151,20 @@ describe('Floor 1 merchant modal — shared shop presentation', () => {
         /(Damage|Heals|Radius|Range|Slow|Duration|Knockback|Move Speed).*\d/,
       );
     }
+  });
+
+  it('keeps the unlocked pre-merchant Broker actionable without mentioning the tail', async () => {
+    await loadResolvedScene();
+    const broker = await mainSceneProbe.primeSpellBrokerQuestIntro(page);
+    expect(broker, 'unlocked Floor 1 Spell Broker should be spawned').not.toBeNull();
+    expect(await mainSceneProbe.getActiveQuestIds(page)).not.toContain('floor1-shopkeeper-errand');
+
+    await mainSceneProbe.queueInteraction(page);
+    const state = await waitForState(page, (s) => s.conversationOpen && !s.modalOpen, {
+      label: 'pre-merchant Spell Broker dialogue opened through MainGameScene',
+    });
+    expect(state.conversationLines).toHaveLength(2);
+    expect(state.conversationLines.join(' ')).not.toContain('tail');
+    expect(await mainSceneProbe.getActiveQuestIds(page)).toContain('floor1-boss-battle');
   });
 });

@@ -136,6 +136,9 @@ const OPERATIONALLY_TWEAKABLE_ROUTER: Record<string, string> = {
  * a matching env read in its own file and a row in ci-config-knobs.md.
  */
 const OPERATIONALLY_TWEAKABLE_BY_FILE: Record<string, Record<string, string>> = {
+  '.github/scripts/lifecycle-ownership.mjs': {
+    DEFAULT_LIFECYCLE_LEASE_TTL_SECONDS: 'LIFECYCLE_LEASE_TTL_SECONDS',
+  },
   '.github/scripts/release-sweep-admission.mjs': {
     RELEASE_SWEEP_MAX_COMPETING_DEMAND: 'RELEASE_SWEEP_MAX_COMPETING_DEMAND',
     RELEASE_SWEEP_MAX_QUEUED_JOBS: 'RELEASE_SWEEP_MAX_QUEUED_JOBS',
@@ -216,9 +219,14 @@ const STRUCTURAL_ALLOWLIST = new Set([
   'DEFAULT_HARVEST_THRESHOLD_MINUTES', // default stale-session harvest liveness alarm threshold
   'DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS', // default decision-log lookback window for dispatch-liveness sweep
   'DEFAULT_PR_DISPATCH_GAP_HOURS', // default per-PR dispatch gap threshold for blocked PRs
+  'DEFAULT_LIVENESS_REDISPATCH_CAP', // bounded per-sweep liveness redispatch cap, overridden by workflow input
   // ci-recovery/issue-intake-lib.mjs
   'RECOVERY_PLAN_CHECKLIST_MAX_ITEMS', // max checklist items in a recovery plan
   'RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH', // max length per checklist item
+  // goobers/intake-selection.mjs — synchronous stdin reader bounds
+  'STDIN_RETRY_SLEEP_MS', // delay between EAGAIN retries
+  'STDIN_TIMEOUT_MS', // maximum time to wait for a non-blocking stdin pipe
+  'STDIN_CHUNK_BYTES', // fixed read buffer size
   // ci-recovery/duplicate-detect.mjs — auto-close grace window (incident PR #2948)
   'EMPTY_DIFF_MIN_AGE_MS', // min PR age before an empty diff is duplicate proof
   'EMPTY_DIFF_MIN_QUIET_MS', // min quiet period since last update before an empty diff counts
@@ -233,6 +241,9 @@ const STRUCTURAL_ALLOWLIST = new Set([
   // release-sweep-admission.mjs
   'RELEASE_SWEEP_PEAK_RUNNERS', // peak runners the release sweep claims; mirrors deploy.yml max-parallel, pinned by a parity test
   'HOUR_MS', // milliseconds per hour; a unit conversion, not a behavior knob
+  // lifecycle-decommission.mjs
+  'DEFAULT_SOAK_DAYS', // fallback Goobers-only soak length; overridden by --soak-days or the committed evidence record, not by an env var
+  'SUPPORTED_STATE_VERSION', // schema version of the committed decommission evidence record; a compatibility marker, not a knob
   // sweep-budget.mjs
   'SWEEP_POOL_SIZE', // max concurrent sweep runs in the pool
   'ACCOUNT_RUNNER_LIMIT', // GitHub Free account-level runner concurrency limit
@@ -652,9 +663,7 @@ describe('ci-config knobs + invariants guard', () => {
     );
     expect(concurrencyTests).toContain('cancels superseded runs only for pull_request');
     expect(concurrencyTests).toContain('keeps PR groups isolated and separate from non-PR runs');
-    expect(ciGatingPolicyTests).toContain(
-      'ci-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)',
-    );
+    expect(ciGatingPolicyTests).toContain('does not run or comment code coverage from PR CI');
     expect(ciWorkflowOverheadTests).toContain(
       'scope-gated jobs carry allow_skipped=true so art/sprites-only changes pass',
     );

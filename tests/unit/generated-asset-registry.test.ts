@@ -140,6 +140,115 @@ describe('loadGeneratedManifest', () => {
     expect(registry.lookup('iron-sword')).not.toBeNull();
     expect(registry.lookup('throwing-star')).not.toBeNull();
   });
+
+  it('excludes placeholders from a normalized concept that also has real art', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'npc-welcome-goon-placeholder': {
+          ...baseEntry,
+          briefId: 'npc-welcome-goon',
+          spriteName: 'npc-welcome-goon-placeholder',
+          assetPath: 'generated/npc-welcome-goon-placeholder.png',
+          variantIndex: 0,
+          placeholder: true,
+        },
+        'welcome-goon-v2-var-1': {
+          ...baseEntry,
+          briefId: 'welcome-goon-v2',
+          spriteName: 'welcome-goon-v2-var-1',
+          assetPath: 'generated/welcome-goon-v2-var-1.png',
+          variantIndex: 1,
+        },
+      },
+    });
+
+    expect(registry.variants('welcome-goon').map((entry) => entry.textureKey)).toEqual([
+      'welcome-goon-v2-var-1',
+    ]);
+    expect(registry.entries().map((entry) => entry.textureKey)).toEqual(['welcome-goon-v2-var-1']);
+    expect(registry.size).toBe(1);
+  });
+
+  it('excludes a manifest-disliked variant while keeping the concept usable', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'welcome-goon-var-0': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-0',
+          assetPath: 'generated/welcome-goon-var-0.png',
+          variantIndex: 0,
+          // Retired via manifest metadata: real art still on disk, but the
+          // runtime must never pick it. The lifecycle's survivor test reads the
+          // SAME predicate, so it cannot delete art believing this is a survivor.
+          disliked: true,
+        },
+        'welcome-goon-var-1': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-1',
+          assetPath: 'generated/welcome-goon-var-1.png',
+          variantIndex: 1,
+        },
+      },
+    });
+
+    expect(registry.variants('welcome-goon').map((entry) => entry.textureKey)).toEqual([
+      'welcome-goon-var-1',
+    ]);
+    expect(registry.entries().map((entry) => entry.textureKey)).toEqual(['welcome-goon-var-1']);
+    expect(registry.has('welcome-goon')).toBe(true);
+  });
+
+  it('indexes distinct icon-batch cells as distinct concepts', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'ability-icon-magic-missile': {
+          ...baseEntry,
+          briefId: 'ability-icons-batch-01',
+          spriteName: 'ability-icon-magic-missile',
+          assetPath: 'generated/ability-icon-magic-missile.png',
+          type: 'icon',
+        },
+        'ability-icon-frost-nova': {
+          ...baseEntry,
+          briefId: 'ability-icons-batch-01',
+          spriteName: 'ability-icon-frost-nova',
+          assetPath: 'generated/ability-icon-frost-nova.png',
+          variantIndex: 1,
+          type: 'icon',
+        },
+      },
+    });
+
+    expect(registry.lookup('ability-icon-magic-missile')?.textureKey).toBe(
+      'ability-icon-magic-missile',
+    );
+    expect(registry.lookup('ability-icon-frost-nova')?.textureKey).toBe('ability-icon-frost-nova');
+  });
+
+  it('reports a concept with only disliked art as absent rather than falling back to it', () => {
+    const registry = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: {
+        'welcome-goon-var-0': {
+          ...baseEntry,
+          briefId: 'welcome-goon',
+          spriteName: 'welcome-goon-var-0',
+          assetPath: 'generated/welcome-goon-var-0.png',
+          variantIndex: 0,
+          disliked: true,
+        },
+      },
+    });
+
+    expect(registry.has('welcome-goon')).toBe(false);
+    expect(registry.lookup('welcome-goon')).toBeNull();
+    expect(registry.size).toBe(0);
+  });
 });
 
 describe('loadGeneratedManifest — multiple variants per brief', () => {

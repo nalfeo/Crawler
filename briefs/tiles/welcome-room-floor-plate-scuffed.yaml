@@ -4,8 +4,8 @@
 # Short version: this is an OPAQUE full-bleed 4ft x 4ft floor plate, not a decal,
 # so edge-to-edge opacity is the requirement; `type: tile` forces 'stretch' +
 # `trimAndFit: false` so the shipped PNG is 256x256 and the aspect is 1:1 by
-# construction; strict palette quantization is the only lever that actually
-# controls colour on this model.
+# construction; the tile template disables pixel-grid, so this uses a
+# zero-margin transparent trim followed by exact nearest-neighbor resize.
 type: tile
 name: welcome-room-floor-plate-scuffed
 description: |

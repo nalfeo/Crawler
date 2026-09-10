@@ -259,4 +259,24 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     // neutral copy replaces mechanical text, it does not delete it.
     expect(record.textStrings.some((line) => /^Main Hand · \d+(\.\d+)? lb$/.test(line))).toBe(true);
   });
+
+  it('shows DPS for a generated rune axe in the tooltip render path', () => {
+    const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
+    const scene = makeScene(record);
+    const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons({
+      baseId: 'weapon.rune-axe',
+    });
+    const ui = createInventoryUI(scene as never, { height: 900 });
+    ui.toggle(world);
+
+    const generatedWeaponIndex = ui.getCellIndexForEntry({
+      kind: 'generated-instance',
+      instanceKey: generatedInstanceKey,
+    });
+    expect(generatedWeaponIndex).not.toBeNull();
+    if (generatedWeaponIndex === null) return;
+    record.cellRects[generatedWeaponIndex]?.emit('pointerover');
+
+    expect(record.textStrings.some((line) => line.startsWith('DPS: '))).toBe(true);
+  });
 });

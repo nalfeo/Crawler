@@ -5,7 +5,16 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { Companion, Enemy, PartySlot, Position, Prop, Size, Sprite } from '../../src/core/index.js';
+import {
+  Companion,
+  Enemy,
+  Invincible,
+  PartySlot,
+  Position,
+  Prop,
+  Size,
+  Sprite,
+} from '../../src/core/index.js';
 import {
   FLOOR3_TIMEOUT_GOAL_ID,
   _resolveFloor3AmbientSpawnPoint,
@@ -193,9 +202,10 @@ describe('Floor 3 overworld + wild spawns', () => {
     expect(leftAmbient).toEqual(rightAmbient);
   });
 
-  it('equips a starter weapon for direct non-carryover Floor 3 starts', () => {
-    const { world } = createFloor3World(555);
-    expect(getActiveWeaponDef(world)?.id).toBeTruthy();
+  it('makes the Floor 3 Wrangler invincible and unarmed', () => {
+    const { world, playerEid } = createFloor3World(555);
+    expect(hasComponent(world.ecs, playerEid, Invincible)).toBe(true);
+    expect(getActiveWeaponDef(world)).toBeUndefined();
   });
 
   it('places props from the floor3 manifest during scenario initialization', () => {

@@ -43,6 +43,11 @@
  */
 
 import { ASSET_SURFACE_PATHS, type CheckinAsset, type Exec } from './checkin.js';
+import {
+  assertLifecycleDeletionMatchesShard,
+  isLifecycleDeletionTombstone,
+  selectAuthorizedLifecycleDeletions,
+} from './reconcile-queue.js';
 
 /** How the queue-commit resolved. */
 export type QueueCommitStatus = 'committed' | 'noop';
@@ -80,9 +85,79 @@ export interface QueueCommitResult {
 /** One normalized Sprite Editor curation update. */
 export interface SpriteAnnotationUpdate {
   readonly key: string;
-  readonly favorite: boolean;
-  readonly disliked: boolean;
-  readonly comment: string;
+  readonly delete?: boolean;
+  readonly favorite?: boolean;
+  readonly disliked?: boolean;
+  readonly comment?: string;
+  readonly sourceRun?: string;
+  readonly variantIndex?: number;
+  readonly tombstone?: Readonly<Record<string, unknown>>;
+  readonly reconciliation?: Readonly<Record<string, unknown>>;
+}
+
+export interface SpriteAnnotationsUpdateDocument {
+  readonly version: 1;
+  readonly sprites: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Apply per-key Sprite Editor updates without replacing unrelated annotations.
+ * Optional tombstone/reconciliation fields distinguish absent ("leave alone")
+ * from an explicit undefined value ("clear").
+ */
+export function applySpriteAnnotationUpdates(
+  document: SpriteAnnotationsUpdateDocument,
+  updates: readonly (Omit<SpriteAnnotationUpdate, 'tombstone' | 'reconciliation'> & {
+    readonly tombstone?: unknown;
+    readonly reconciliation?: unknown;
+  })[],
+): { version: 1; sprites: Record<string, unknown> } {
+  const sprites: Record<string, unknown> = { ...document.sprites };
+  for (const update of updates) {
+    if (update.delete === true) {
+      delete sprites[update.key];
+      continue;
+    }
+    const existing =
+      sprites[update.key] &&
+      typeof sprites[update.key] === 'object' &&
+      !Array.isArray(sprites[update.key])
+        ? (sprites[update.key] as Record<string, unknown>)
+        : {};
+    if (
+      Object.keys(existing).length === 0 &&
+      update.favorite === undefined &&
+      update.disliked === undefined &&
+      update.comment === undefined &&
+      update.sourceRun === undefined &&
+      update.variantIndex === undefined &&
+      update.tombstone === undefined &&
+      update.reconciliation === undefined
+    ) {
+      continue;
+    }
+    const next: Record<string, unknown> = { ...existing };
+    if (update.favorite !== undefined) next.favorite = update.favorite;
+    if (update.disliked !== undefined) next.disliked = update.disliked;
+    if (update.comment !== undefined) next.comment = update.comment;
+    if (update.sourceRun !== undefined) next.sourceRun = update.sourceRun;
+    if (update.variantIndex !== undefined) next.variantIndex = update.variantIndex;
+    for (const field of ['tombstone', 'reconciliation'] as const) {
+      if (!Object.hasOwn(update, field)) continue;
+      const value = update[field];
+      if (value === undefined) delete next[field];
+      else next[field] = value;
+    }
+    sprites[update.key] = next;
+  }
+  return { version: 1, sprites };
+}
+
+export interface QueueCommitRemoval {
+  readonly assetPath: string;
+  readonly manifestKey: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
 }
 
 export interface QueueCommitDeps {
@@ -98,6 +173,11 @@ export interface QueueCommitDeps {
     srcRepoRoot: string,
     destRepoRoot: string,
     assets: readonly CheckinAsset[],
+  ) => Promise<void>;
+  /** Remove explicitly authorized lifecycle assets from the fresh queue tip. */
+  readonly removeArtSurface?: (
+    worktree: string,
+    removals: readonly QueueCommitRemoval[],
   ) => Promise<void>;
   /**
    * Copy brief YAML files from `sourceRoot` into the worktree at the same
@@ -176,6 +256,8 @@ export interface QueueCommitOptions {
    * editor saves survive every CAS retry.
    */
   readonly annotations?: readonly SpriteAnnotationUpdate[];
+  /** Destructive lifecycle changes explicitly authorized by a dry-run plan. */
+  readonly removals?: readonly QueueCommitRemoval[];
   /**
    * Narrow CI capability for the trusted asset-request publisher, or the
    * equally narrow theme-equipment-set publisher (ADR 0073). Ordinary
@@ -319,19 +401,68 @@ export function assertSafeAnnotationUpdates(updates: readonly SpriteAnnotationUp
       );
     }
     seen.add(update.key);
+    if (update.delete === true) continue;
     if (
-      typeof update.favorite !== 'boolean' ||
-      typeof update.disliked !== 'boolean' ||
-      typeof update.comment !== 'string' ||
-      update.comment.length > 1000 ||
-      (update.favorite && update.disliked)
+      update.tombstone !== undefined &&
+      !isLifecycleDeletionTombstone(update.key, update.tombstone)
     ) {
       throw new QueueCommitError(
         'invalid-annotation',
-        `Invalid annotation for ${update.key}. favorite/disliked must be booleans, cannot both be true, and comment must be at most 1000 characters.`,
+        `Invalid lifecycle tombstone for ${update.key}.`,
+      );
+    }
+    const isCompleteCuration =
+      typeof update.favorite === 'boolean' &&
+      typeof update.disliked === 'boolean' &&
+      typeof update.comment === 'string' &&
+      update.comment.length <= 1000 &&
+      !(update.favorite && update.disliked);
+    const isTombstoneClearPatch =
+      Object.hasOwn(update, 'tombstone') &&
+      update.tombstone === undefined &&
+      update.favorite === undefined &&
+      update.disliked === undefined &&
+      update.comment === undefined &&
+      update.sourceRun === undefined &&
+      update.variantIndex === undefined &&
+      !Object.hasOwn(update, 'reconciliation');
+    if (!isCompleteCuration && !isTombstoneClearPatch) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Invalid annotation for ${update.key}. Send a complete favorite/disliked/comment update or a tombstone-clear patch.`,
       );
     }
   }
+}
+
+/** Ensure republished accepted art cannot coexist with a queue-tip deletion tombstone. */
+export function withRepublishedAssetTombstoneClears(
+  assets: readonly CheckinAsset[],
+  updates: readonly SpriteAnnotationUpdate[],
+): readonly SpriteAnnotationUpdate[] {
+  const byKey = new Map(updates.map((update) => [update.key, update]));
+  const manifestedAssets = assets
+    .filter(
+      (asset): asset is CheckinAsset & { readonly manifestKey: string } =>
+        asset.manifestKey !== null,
+    )
+    .sort((a, b) => a.manifestKey.localeCompare(b.manifestKey));
+  for (const asset of manifestedAssets) {
+    const existing = byKey.get(asset.manifestKey);
+    if (existing?.delete === true) {
+      throw new QueueCommitError(
+        'invalid-annotation',
+        `Cannot republish ${asset.manifestKey} while deleting its annotation.`,
+      );
+    }
+    byKey.set(
+      asset.manifestKey,
+      existing === undefined
+        ? { key: asset.manifestKey, tombstone: undefined }
+        : { ...existing, tombstone: undefined },
+    );
+  }
+  return [...byKey.values()];
 }
 
 async function runGit(
@@ -396,29 +527,31 @@ export function isNonFastForwardRejection(stderr: string): boolean {
   );
 }
 
-function generatedDeletionRepairCommand(): string {
-  return (
-    'npm run sprites:repair-queue -- --audit --policy acc25eda-selective-v1 ' +
-    '(then re-run with --apply --expect-main <sha> --expect-queue <sha>)'
-  );
-}
-
 /**
  * Normal queue ingestion is additive.  A generated deletion in the remote queue
- * is corruption until a deliberately invoked, source-bound maintenance recovery
- * proves otherwise; never auto-heal it by rewriting the branch mid-ingestion.
+ * is corruption unless a persisted lifecycle tombstone proves otherwise; never
+ * auto-heal it by rewriting the branch mid-ingestion.
  */
-export function assertNoGeneratedQueueDeletions(paths: readonly string[]): void {
+export function assertNoGeneratedQueueDeletions(
+  paths: readonly string[],
+  allowedPaths: ReadonlySet<string> = new Set(),
+): void {
   const assetPaths = paths.filter(
-    (path) =>
-      /^public\/assets\/generated\/.+\.png$/u.test(path) ||
-      /^public\/assets\/generated\/entries\/.+\.json$/u.test(path),
+    (path) => !allowedPaths.has(path) && isGeneratedAssetDeletionPath(path),
   );
   if (assetPaths.length === 0) return;
   throw new QueueCommitError(
     'generated-deletion-refused',
     `assets/queue deletes generated asset path(s): ${assetPaths.join(', ')}. ` +
-      `Normal ingestion refuses to publish over a destructive queue. Run ${generatedDeletionRepairCommand()}.`,
+      'Normal ingestion refuses to publish over an unauthorized destructive queue. ' +
+      'Restore those exact paths, or commit a complete lifecycle tombstone that exactly matches the current main shard, then retry.',
+  );
+}
+
+function isGeneratedAssetDeletionPath(deletedPath: string): boolean {
+  return (
+    /^public\/assets\/generated\/.+\.png$/u.test(deletedPath) ||
+    /^public\/assets\/generated\/entries\/.+\.json$/u.test(deletedPath)
   );
 }
 
@@ -455,8 +588,48 @@ export async function runQueueCommit(
 
   const briefs = options.briefs ?? [];
   assertSafeBriefPaths(briefs);
-  const annotations = options.annotations ?? [];
+  const requestedAnnotations = options.annotations ?? [];
+  assertSafeAnnotationUpdates(requestedAnnotations);
+  const annotations = withRepublishedAssetTombstoneClears(assets, requestedAnnotations);
   assertSafeAnnotationUpdates(annotations);
+  const removals = options.removals ?? [];
+  assertSafeAssetPaths(
+    removals.map((removal) => ({
+      assetPath: removal.assetPath,
+      manifestKey: removal.manifestKey,
+      briefId: null,
+      variantIndex: null,
+    })),
+  );
+  if (removals.length > 0 && options.ciAuthorization !== undefined) {
+    throw new QueueCommitError(
+      'generated-deletion-refused',
+      'CI-authorized asset publishers cannot submit lifecycle removals; destructive cleanup requires explicit human acceptance.',
+    );
+  }
+  if (removals.length > 0 && deps.removeArtSurface === undefined) {
+    throw new QueueCommitError(
+      'invalid-asset-path',
+      'Lifecycle removals were provided but removeArtSurface is not wired.',
+    );
+  }
+  for (const removal of removals) {
+    const update = annotations.find((candidate) => candidate.key === removal.manifestKey);
+    const tombstone = update?.tombstone;
+    if (
+      update?.delete === true ||
+      !isLifecycleDeletionTombstone(removal.manifestKey, tombstone) ||
+      tombstone.replacementKey === undefined ||
+      tombstone.assetPath !== removal.assetPath ||
+      tombstone.sourceRun !== removal.sourceRun ||
+      tombstone.variantIndex !== removal.variantIndex
+    ) {
+      throw new QueueCommitError(
+        'generated-deletion-refused',
+        `Lifecycle removal for ${removal.manifestKey} requires a matching replacement-bearing tombstone in the same annotation update.`,
+      );
+    }
+  }
 
   const remote = options.remote ?? 'origin';
   const queueBranch = options.queueBranch ?? 'assets/queue';
@@ -466,7 +639,12 @@ export async function runQueueCommit(
   const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  if (assets.length === 0 && briefs.length === 0 && annotations.length === 0) {
+  if (
+    assets.length === 0 &&
+    briefs.length === 0 &&
+    annotations.length === 0 &&
+    removals.length === 0
+  ) {
     return { status: 'noop', branch: queueBranch, attempts: 0 };
   }
 
@@ -508,6 +686,7 @@ export async function runQueueCommit(
       const scratchId = (worktree.split(/[\\/]/).pop() || 'base').replace(/[^A-Za-z0-9._-]/g, '-');
       const baseRef = `refs/queue-commit/base-${scratchId}`;
       const mainRef = `refs/queue-commit/main-${scratchId}`;
+      let persistedLifecycleRemovals: QueueCommitRemoval[] = [];
       try {
         await mustGit(deps.exec, repoRoot, [
           'fetch',
@@ -538,9 +717,63 @@ export async function runQueueCommit(
               `Could not inspect ${queueBranch} for generated-path deletions: ${deleted.stderr || deleted.stdout}`,
             );
           }
-          assertNoGeneratedQueueDeletions(
-            deleted.stdout.split(/\r?\n/).filter((path) => path.trim() !== ''),
-          );
+          const deletedPaths = deleted.stdout
+            .split(/\r?\n/)
+            .filter((deletedPath) => deletedPath.trim() !== '');
+          const generatedAssetDeletionPaths = deletedPaths.filter(isGeneratedAssetDeletionPath);
+          const allowedDeletionPaths = new Set<string>();
+          if (generatedAssetDeletionPaths.length > 0) {
+            const persistedAnnotations = await runGit(deps.exec, repoRoot, [
+              'show',
+              `${baseRef}:public/assets/generated/sprite-editor-annotations.json`,
+            ]);
+            if (persistedAnnotations.code !== 0 || persistedAnnotations.stdout.trim() === '') {
+              throw new QueueCommitError(
+                'generated-deletion-refused',
+                `${queueBranch} contains generated deletions but its persisted lifecycle annotations are unavailable. ` +
+                  'Restore the deleted paths or repair the annotations with exact main-shard provenance, then retry.',
+              );
+            }
+            try {
+              const persisted = selectAuthorizedLifecycleDeletions(
+                generatedAssetDeletionPaths,
+                persistedAnnotations.stdout,
+              );
+              persistedLifecycleRemovals = persisted.map(({ tombstone }) => ({
+                assetPath: tombstone.assetPath,
+                manifestKey: tombstone.manifestKey,
+                sourceRun: tombstone.sourceRun,
+                variantIndex: tombstone.variantIndex,
+              }));
+              for (const deletion of persisted) {
+                const shard = await runGit(deps.exec, repoRoot, [
+                  'show',
+                  `${mainRef}:${deletion.paths[0]}`,
+                ]);
+                assertLifecycleDeletionMatchesShard(
+                  deletion,
+                  shard.code === 0 ? shard.stdout : null,
+                );
+                for (const deletionPath of deletion.paths) {
+                  allowedDeletionPaths.add(deletionPath);
+                }
+              }
+              if (persistedLifecycleRemovals.length > 0 && deps.removeArtSurface === undefined) {
+                throw new Error(
+                  'removeArtSurface is not wired for tombstone-authorized queue-tip deletions.',
+                );
+              }
+            } catch (error) {
+              throw new QueueCommitError(
+                'generated-deletion-refused',
+                `Invalid persisted lifecycle deletion on ${queueBranch}: ${
+                  error instanceof Error ? error.message : String(error)
+                } Restore the deleted paths or repair the tombstone to exactly match the current main shard, then retry.`,
+                { cause: error },
+              );
+            }
+          }
+          assertNoGeneratedQueueDeletions(deletedPaths, allowedDeletionPaths);
         }
         // Detached checkout of the freshly-fetched tip: we push by refspec and
         // never check the queue branch out by name, so there is no
@@ -604,6 +837,9 @@ export async function runQueueCommit(
                 `assets/queue orphan brief checkout failed: ${briefCheckout.stderr}`,
               );
             }
+            if (persistedLifecycleRemovals.length > 0) {
+              await deps.removeArtSurface!(worktree, persistedLifecycleRemovals);
+            }
             await runGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);
             await runGit(deps.exec, worktree, ['add', '--', 'briefs/']);
             merge = { code: 0, stdout: '', stderr: '' };
@@ -626,9 +862,37 @@ export async function runQueueCommit(
             );
           }
         }
+        for (const removal of removals) {
+          const shardPath = `public/assets/generated/entries/${removal.manifestKey}.json`;
+          const destinationShard = await runGit(deps.exec, worktree, ['show', `:${shardPath}`]);
+          if (destinationShard.code !== 0 || destinationShard.stdout.trim() === '') continue;
+          try {
+            assertLifecycleDeletionMatchesShard(
+              {
+                tombstone: {
+                  manifestKey: removal.manifestKey,
+                  assetPath: removal.assetPath,
+                  sourceRun: removal.sourceRun,
+                  variantIndex: removal.variantIndex,
+                },
+                paths: [shardPath, `public/assets/${removal.assetPath}`],
+              },
+              destinationShard.stdout,
+            );
+          } catch (error) {
+            throw new QueueCommitError(
+              'generated-deletion-refused',
+              error instanceof Error ? error.message : String(error),
+              { cause: error },
+            );
+          }
+        }
         // Copy each asset's PNG + its manifest shard onto the tip. The
         // aggregate manifest and sprite-catalog rows are derived, never staged.
         await deps.copyArtSurface(sourceRoot, worktree, assets);
+        if (removals.length > 0) {
+          await deps.removeArtSurface!(worktree, removals);
+        }
         // Fixed allowlist: only the generated art surface (PNGs + shards) can
         // ever be staged.
         await mustGit(deps.exec, worktree, ['add', '--', ...ASSET_SURFACE_PATHS]);

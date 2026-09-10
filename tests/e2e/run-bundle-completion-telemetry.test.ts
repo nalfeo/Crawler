@@ -146,6 +146,55 @@ describe('terminal run-bundle completion telemetry (production scene/bootstrap b
     expect(requests).toHaveLength(1);
   });
 
+  it('keeps the real game-over picker usable while the terminal survey owns input', async () => {
+    const page = await newPage();
+    await installRunBundleEndpoint(page);
+    await page.route(INGEST_URL, async (route) => {
+      if (await fulfillPreflight(route)) {
+        return;
+      }
+      await route.fulfill({
+        status: 202,
+        headers: { 'access-control-allow-origin': '*' },
+        json: { runId: 'e2e-survey-reset-guard' },
+      });
+    });
+
+    await loadMainSceneProbeLab(page);
+    await mainSceneProbe.resolveLoadout(page);
+    await mainSceneProbe.setWorldState(page, 'game_over');
+    await page.locator('[role="dialog"][aria-labelledby="crawler-run-survey-title"]').waitFor({
+      state: 'visible',
+    });
+    const gameOverState = await waitForState(
+      page,
+      (s) => s.worldState === 'game_over' && s.gameOverOpen,
+      {
+        label: 'game-over picker visible behind run survey',
+      },
+    );
+    expect(gameOverState.gameOverOpen).toBe(true);
+
+    await mainSceneProbe.pressGameOverKey(page, 'Enter');
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+    const blockedConfirmState = await mainSceneProbe.getState(page);
+    expect(blockedConfirmState.worldState).toBe('game_over');
+    expect(blockedConfirmState.gameOverOpen).toBe(true);
+
+    await page.getByRole('button', { name: 'Skip' }).click();
+    await page.locator('[role="dialog"][aria-labelledby="crawler-run-survey-title"]').waitFor({
+      state: 'hidden',
+    });
+    const afterSkipState = await mainSceneProbe.getState(page);
+    expect(afterSkipState.worldState).toBe('game_over');
+    expect(afterSkipState.gameOverOpen).toBe(true);
+  });
+
   it('shows a visible failure confirmation when the ingest endpoint rejects the upload', async () => {
     const page = await newPage();
     await installRunBundleEndpoint(page);

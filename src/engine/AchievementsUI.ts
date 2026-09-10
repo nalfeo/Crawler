@@ -16,9 +16,11 @@ import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import {
   ALL_ACHIEVEMENTS,
+  LOOT_BOX_TIERS,
   type AchievementDef,
   type AchievementDifficulty,
   type AchievementReward,
+  type LootBoxTier,
 } from '../shared/achievements.js';
 import {
   claimAchievementReward,
@@ -165,6 +167,7 @@ export function createAchievementsUI(
    * without synthesizing a pointer event on an internal, non-exported button.
    */
   claimReward(achievementId: string): void;
+  openAllPendingRewards(): void;
   setFilterForProbe(filter: AwardsFilter): void;
   setExpandedForProbe(achievementId: string, expanded: boolean): void;
   setScrollIndexForProbe(index: number): void;
@@ -215,6 +218,7 @@ export function createAchievementsUI(
   let draggedPointerId: number | null = null;
   const expandedIds = new Set<string>();
   let activeFilter: AwardsFilter = FILTER_ALL;
+  let openAllInProgress = false;
   /** Chip objects are rebuilt per render alongside rows. */
   const filterObjects: Phaser.GameObjects.GameObject[] = [];
   /** Geometry published for visual-review sensors; rebuilt every render. */
@@ -245,7 +249,7 @@ export function createAchievementsUI(
   });
   container.add(title);
 
-  const hint = crispText(0, 0, '[V] close', {
+  const hint = crispText(0, 0, '[V]/[ESC] close', {
     fontFamily: FONT_FAMILY,
     fontSize: '13px',
     color: hex(COLORS.textSecondary),
@@ -397,8 +401,153 @@ export function createAchievementsUI(
   }
 
   function open(id: string): void {
-    if (!lastWorld) return;
+    if (!lastWorld || openAllInProgress) return;
     claimAndPresent(lastWorld, id);
+  }
+
+  function pendingOpenableLootBoxDefs(world: GameWorld): AchievementDef[] {
+    return ALL_ACHIEVEMENTS.filter(
+      (def) =>
+        def.reward.type === 'lootBox' &&
+        world.achievements.unlockedIds.has(def.id) &&
+        !world.achievements.claimedIds.has(def.id),
+    );
+  }
+
+  function aggregateLootBoxPresentation(
+    presentations: readonly {
+      readonly kind: 'lootBox';
+      readonly tier: LootBoxTier;
+      readonly gold: number;
+      readonly materials: readonly string[];
+    }[],
+  ): {
+    readonly kind: 'lootBox';
+    readonly tier: LootBoxTier;
+    readonly gold: number;
+    readonly materials: readonly string[];
+  } {
+    const tierOrder = new Map<LootBoxTier, number>(
+      LOOT_BOX_TIERS.map((tier, index) => [tier, index]),
+    );
+    const tier = presentations.reduce<LootBoxTier>((best, current) => {
+      return (tierOrder.get(current.tier) ?? -1) > (tierOrder.get(best) ?? -1)
+        ? current.tier
+        : best;
+    }, presentations[0]?.tier ?? 'trash');
+    const gold = presentations.reduce((sum, item) => sum + item.gold, 0);
+    const materialCounts = new Map<string, number>();
+    for (const presentation of presentations) {
+      for (const material of presentation.materials) {
+        materialCounts.set(material, (materialCounts.get(material) ?? 0) + 1);
+      }
+    }
+    const materials: string[] = [];
+    for (const [material, count] of materialCounts) {
+      for (let i = 0; i < count; i += 1) {
+        materials.push(material);
+      }
+    }
+    return { kind: 'lootBox', tier, gold, materials };
+  }
+
+  function openAllPendingRewards(world: GameWorld): void {
+    if (openAllInProgress || rewardOpeningUI.isOpen()) return;
+    const queue = pendingOpenableLootBoxDefs(world).map((def) => def.id);
+    if (queue.length <= 1) return;
+
+    openAllInProgress = true;
+    const playNext = (
+      index: number,
+      aggregate: readonly {
+        readonly kind: 'lootBox';
+        readonly tier: LootBoxTier;
+        readonly gold: number;
+        readonly materials: readonly string[];
+      }[],
+    ) => {
+      if (index >= queue.length) {
+        const summaryPresentation = aggregateLootBoxPresentation(aggregate);
+        rewardOpeningUI.open({
+          world,
+          presentation: summaryPresentation,
+          reducedMotion: prefersReducedMotion(),
+          sourceLabel: `${aggregate.length} achievement rewards`,
+          // Keep the aggregate summary visible for normal acknowledgement; unlike
+          // intermediate box reveals, the final summary is a player-facing
+          // recap, not an auto-advance continuation. The follow-up open-all run
+          // only auto-advances each individual box before the aggregate summary.
+          autoAdvance: false,
+          onAcknowledge: () => {
+            openAllInProgress = false;
+            lastSignature = null;
+            refresh(world);
+            resumePendingPresentation(world);
+            if (!rewardOpeningUI.isOpen()) {
+              config.onPresentationQueueDrained?.(world);
+            }
+          },
+        });
+        return;
+      }
+
+      const currentId = queue[index];
+      if (currentId === undefined) return;
+      const def = ALL_ACHIEVEMENTS.find((achievement) => achievement.id === currentId);
+      const result = claimAchievementReward(world, currentId);
+      if (!result.ok) {
+        if (result.reason === 'grantFailed') config.onGrantFailed?.(result.reason);
+        playNext(index + 1, aggregate);
+        return;
+      }
+
+      const presentation = getPendingAchievementRewardPresentation(world, currentId);
+      if (!presentation || presentation.kind !== 'lootBox') {
+        playNext(index + 1, aggregate);
+        return;
+      }
+
+      const nextAggregate = [...aggregate, presentation];
+      rewardOpeningUI.open({
+        world,
+        presentation,
+        reducedMotion: prefersReducedMotion(),
+        sourceLabel: def ? `Achievement: ${def.title}` : 'Achievement Reward',
+        autoAdvance: true,
+        onAcknowledge: () => {
+          acknowledgeAchievementRewardPresentation(world, currentId);
+          playNext(index + 1, nextAggregate);
+        },
+      });
+    };
+
+    playNext(0, []);
+  }
+
+  function renderOpenAllAction(openCount: number): void {
+    if (openCount <= 1 || openAllInProgress) return;
+    const x2 = panelX + panelWidth - PANEL_PADDING - 104;
+    const y2 = panelY + PANEL_PADDING + 18;
+    const bg = scene.add.rectangle(x2, y2, 104, 26, COLORS.btnBg, 1);
+    bg.setStrokeStyle(1, COLORS.btnTopBevel, 0.9);
+    container.add(bg);
+    rowObjects.push(bg);
+    const label = crispText(x2, y2, 'OPEN ALL', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: hex(COLORS.textPrimary),
+      align: 'center',
+    });
+    label.setOrigin(0.5, 0.5);
+    container.add(label);
+    rowObjects.push(label);
+    bg.setInteractive({ useHandCursor: true })
+      .on('pointerdown', onPointerDown)
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.id === draggedPointerId) return;
+        openAllPendingRewards(lastWorld!);
+      });
   }
 
   function makeRow(def: AchievementDef, x: number, y: number, w: number): number {
@@ -435,10 +584,29 @@ export function createAchievementsUI(
     const expandedFlavorH = FLAVOR_EXPANDED_LINES * FLAVOR_LINE_H;
     const flavorH = isLong ? (isExpanded ? expandedFlavorH : collapsedFlavorH) : fullFlavorH;
     const expanderH = isLong ? EXPANDER_BTN_H : 0;
+    const titleMeasure = crispText(textLeft, y, def.title, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: hex(DIFFICULTY_HEX[def.difficulty]),
+    });
+    const titleH = titleMeasure.height;
+    titleMeasure.destroy();
+    const criteriaMeasure = crispText(textLeft, y, def.unlockCriteria, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '14px',
+      color: hex(COLORS.textSecondary),
+      wordWrap: { width: detailsWidth },
+    });
+    const criteriaH = criteriaMeasure.height;
+    criteriaMeasure.destroy();
+    const titleY = y + 8;
+    const criteriaY = titleY + titleH + 4;
+    const flavorY = criteriaY + criteriaH + 6;
     // The reward column (chest + tier label + button) is often taller than the
     // text column; the row must reserve whichever is larger or the chest leaks.
     const rewardColumnH = 10 + rewardChestBounds(0, 0, CHEST_SIZE).height + 4 + 18 + 30 + 10;
-    const rowHeight = Math.max(ROW_HEIGHT, 50 + flavorH + expanderH + 8, rewardColumnH);
+    const rowHeight = Math.max(ROW_HEIGHT, flavorY - y + flavorH + expanderH + 8, rewardColumnH);
 
     const box = scene.add.rectangle(x + w / 2, y + rowHeight / 2, w, rowHeight, COLORS.rowBg, 0.9);
     box.setStrokeStyle(1, DIFFICULTY_HEX[def.difficulty]);
@@ -502,7 +670,7 @@ export function createAchievementsUI(
       rowObjects.push(placeholder);
     }
 
-    const t = crispText(textLeft, y + 8, def.title, {
+    const t = crispText(textLeft, titleY, def.title, {
       fontFamily: FONT_FAMILY,
       fontSize: '15px',
       fontStyle: 'bold',
@@ -510,8 +678,18 @@ export function createAchievementsUI(
     });
     container.add(t);
     rowObjects.push(t);
+    const addTextRegion = (id: string, text: Phaser.GameObjects.Text, parentId: string): void => {
+      const bounds = text.getBounds();
+      layoutRegions.push({
+        id,
+        box: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        kind: 'text',
+        parentId,
+      });
+    };
+    addTextRegion(`${rowId}.title`, t, rowId);
 
-    const crit = crispText(textLeft, y + 30, def.unlockCriteria, {
+    const crit = crispText(textLeft, criteriaY, def.unlockCriteria, {
       fontFamily: FONT_FAMILY,
       fontSize: '14px',
       color: hex(COLORS.textSecondary),
@@ -519,16 +697,18 @@ export function createAchievementsUI(
     });
     container.add(crit);
     rowObjects.push(crit);
+    addTextRegion(`${rowId}.criteria`, crit, rowId);
 
-    const flavor = crispText(textLeft, y + 50, def.directorFlavor, {
+    const flavor = crispText(textLeft, flavorY, def.directorFlavor, {
       ...flavorStyle,
       maxLines: isLong ? (isExpanded ? FLAVOR_EXPANDED_LINES : FLAVOR_COLLAPSED_LINES) : 0,
     });
     container.add(flavor);
     rowObjects.push(flavor);
+    addTextRegion(`${rowId}.flavor`, flavor, rowId);
 
     if (isLong) {
-      const expanderY = y + 50 + flavorH + 2;
+      const expanderY = flavorY + flavorH + 2;
       const expanderLabel = isExpanded ? '▲ Show less' : '▼ Show more';
       const expander = crispText(textLeft, expanderY, expanderLabel, {
         fontFamily: FONT_FAMILY,
@@ -738,6 +918,7 @@ export function createAchievementsUI(
     layoutRegions = [];
     if (!lastWorld) return;
     const defs = unlockedDefs(lastWorld);
+    const openCount = pendingOpenableLootBoxDefs(lastWorld).length;
     const x = panelX + PANEL_PADDING;
     const w = panelWidth - PANEL_PADDING * 2 - SCROLLBAR_GUTTER;
 
@@ -759,7 +940,8 @@ export function createAchievementsUI(
       );
       container.add(empty);
       rowObjects.push(empty);
-      summary.setText('0 unlocked  ·  0 rewards ready');
+      summary.setText(`0 unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`);
+      renderOpenAllAction(openCount);
       if (scrollbarTrack) scrollbarTrack.setVisible(false);
       if (scrollbarThumb) scrollbarThumb.setVisible(false);
       layoutRegions.unshift({
@@ -770,12 +952,10 @@ export function createAchievementsUI(
       return;
     }
 
-    const openCount = defs.filter(
-      (def) => def.reward.type === 'lootBox' && !lastWorld?.achievements.claimedIds.has(def.id),
-    ).length;
     summary.setText(
       `${defs.length} unlocked  ·  ${openCount} reward${openCount === 1 ? '' : 's'} ready`,
     );
+    renderOpenAllAction(openCount);
 
     if (scrollIndex > Math.max(0, defs.length - 1)) scrollIndex = Math.max(0, defs.length - 1);
 
@@ -967,6 +1147,9 @@ export function createAchievementsUI(
     refresh,
     resumePendingPresentation,
     claimReward: open,
+    openAllPendingRewards() {
+      if (lastWorld) openAllPendingRewards(lastWorld);
+    },
     setFilterForProbe(filter: AwardsFilter) {
       activeFilter = filter;
       scrollIndex = 0;

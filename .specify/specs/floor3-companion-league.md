@@ -11,7 +11,8 @@
 > Rally Point + party-wipe predicate state machine (`src/core/systems/companionKOSystem.ts`);
 > slice 7 adds the biome-overworld map generator, Floor 3 manifest, and affinity-weighted wild
 > spawns (`src/game/floor3Scenario.ts`, `src/shared/data/floors/floor3.manifest.json`,
-> `src/shared/data/enemies.floor3.json`); slice 13 adds the party-combat UX group — game-design
+> `src/shared/data/enemies.floor3.json`), with wild hostility gated by
+> `tuning.floor3Companion.wildAggroRangeFt`; slice 13 adds the party-combat UX group — game-design
 > §15 surfaces 4–8 (party HUD, roster/detail, level-up/evolve/learn notice, ability command,
 > matchup indicator) as `src/engine/floor3-*-state.ts` resolvers behind
 > `src/engine/HudFloor3Party.ts` + `src/engine/Floor3RosterUI.ts`, with one lab per surface in
@@ -149,6 +150,11 @@ hpProfile, dmgProfile, aoeShape? }`. Numbers scale by form; the persona is **con
 - **Trainer poach:** on KO'ing all a Trainer's Companions, offer that Trainer's 2–3 Companions;
   player takes 1. Party fills to `starter + 5 = 6`, then **locks** (5th-pick warning UX). Wild
   creatures are **never** recruitable.
+- **Wild hostility:** wild mobs are hostile only while player-anchored aggro is active. The
+  aggro radius is tunable (`tuning.floor3Companion.wildAggroRangeFt`, initial value 30 ft =
+  3/4 normal horizontal screen radius). Active wild mobs disengage when the player is more than
+  `2 * wildAggroRangeFt` away, revert to non-hostile, and heal to full health on that transition.
+  Player Companions target hostile wild mobs only; neutral/disengaged wilds are ignored.
 - **KO/recovery:** a Companion at 0 HP sets `knockedOut = 1` (down for the current engagement,
   not dead); it recovers when the engagement ends or instantly at a **Rally Point**.
 - **Lose:** all party Companions `knockedOut` **simultaneously** → floor loss. The objective

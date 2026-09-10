@@ -107,6 +107,12 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
       deficitAmount: z.number().positive(),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal('player_damage'),
+      minDamage: z.number().nonnegative().optional(),
+    })
+    .strict(),
 ]);
 
 const statKeySchema = z.enum(STAT_KEYS);

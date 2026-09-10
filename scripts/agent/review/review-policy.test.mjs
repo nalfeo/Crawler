@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, extname, relative, resolve } from 'node:path';
+import { dirname, extname, relative, resolve, sep } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -40,6 +40,13 @@ const retiredTokens = [
   'docs/knowledge/review-ledgers',
 ];
 
+// path.relative() returns backslash-separated paths on Windows, which would
+// otherwise never match the forward-slash entries in `allowedRetirementDocs`
+// below, silently widening the scan to files that are explicitly allowlisted.
+function toPosixPath(p) {
+  return p.split(sep).join('/');
+}
+
 function activeSourceFiles(path) {
   const absolute = resolve(repoRoot, path);
   if (!existsSync(absolute)) return [];
@@ -49,8 +56,10 @@ function activeSourceFiles(path) {
   const entries = readdirSync(absolute, { withFileTypes: true });
   return entries.flatMap((entry) => {
     const child = resolve(absolute, entry.name);
-    if (entry.isDirectory()) return activeSourceFiles(relative(repoRoot, child));
-    return scannedExtensions.has(extname(entry.name)) ? [relative(repoRoot, child)] : [];
+    if (entry.isDirectory()) return activeSourceFiles(toPosixPath(relative(repoRoot, child)));
+    return scannedExtensions.has(extname(entry.name))
+      ? [toPosixPath(relative(repoRoot, child))]
+      : [];
   });
 }
 

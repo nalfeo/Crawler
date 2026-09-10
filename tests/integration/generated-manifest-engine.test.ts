@@ -252,6 +252,29 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
+  /**
+   * The root contract behind the removal of the placeholder ranking in
+   * `resolveItemSprite` and of the `!_isPlaceholderEntry(...)` arm in
+   * `PhaserBridge`'s carried-weapon path (ADR 0051 amendment, 2026-09-05):
+   * `loadGeneratedManifest` filters through `isRuntimeEligibleManifestEntry`, so
+   * the SHIPPED registry contains no placeholder and no manifest-`disliked` row
+   * at all. Asserting it on real data — not a fixture — is what makes both
+   * removals provably behaviour-preserving for EVERY consumer, rather than only
+   * for the item ids enumerated below.
+   */
+  it('exposes zero placeholder entries in the shipped registry (runtime-eligibility contract)', () => {
+    if (!sharedRealRegistry) return;
+
+    const entries = sharedRealRegistry.entries();
+    expect(entries.length).toBeGreaterThan(0);
+    const leaked = entries.filter(_isPlaceholderEntry).map((entry) => entry.textureKey);
+    expect(
+      leaked,
+      'placeholder art reached registry.entries(); the resolver and PhaserBridge no longer ' +
+        'rank placeholders, so a leak here would render a stand-in as if it were approved art',
+    ).toEqual([]);
+  });
+
   it('resolves real approved Basic Leather art for generated-equipment runtime keys without preload aliases', () => {
     if (!sharedRealRegistry) return;
 
@@ -451,14 +474,14 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
 
     // The exact pinned generated keys each welcome-room NPC resolves to. The
     // approved variants differ per NPC (Goon var-1, Merchant var-3, Broker
-    // var-1) — pinned per def id (not a variant roll) so this stays
+    // var-2) — pinned per def id (not a variant roll) so this stays
     // deterministic. Cross-checked against GENERATED_KEY_BY_NPC_DEF below so a
     // rename on EITHER side — the wiring map or the shipped manifest — fails
     // loudly here.
     const expectedByDef: Record<string, string> = {
       'tutorial-goon': 'welcome-goon-var-1',
       shopkeeper: 'sweaty-merchant-var-3',
-      'spell-quest-giver': 'npc-spell-broker-var-1',
+      'spell-quest-giver': 'spell-broker-var-2',
     };
 
     // 1) Each pinned key exists in the shipped manifest as its own texture and

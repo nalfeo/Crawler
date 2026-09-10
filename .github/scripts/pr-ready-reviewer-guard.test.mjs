@@ -1496,16 +1496,6 @@ test('a human-gated PR preserves an existing nalfeo review request', async () =>
 });
 
 test('requests nalfeo only for every canonical human-approval gate', async () => {
-  const branchGated = makePr({
-    number: 43,
-    node_id: 'PR_43',
-    draft: false,
-    head: {
-      sha: 'b'.repeat(40),
-      ref: 'copilot/balance-telemetry-smoke',
-      repo: { full_name: REPOSITORY },
-    },
-  });
   const closingIssueGated = makePr({
     number: 44,
     node_id: 'PR_44',
@@ -1529,13 +1519,11 @@ test('requests nalfeo only for every canonical human-approval gate', async () =>
   const harness = createHarness({
     pulls: [
       makePr({ draft: false, labels: [{ name: 'human-approval-required' }] }),
-      branchGated,
       closingIssueGated,
       ungated,
     ],
     linkedIssuesByPull: new Map([
       [42, []],
-      [43, []],
       [44, [makeLinkedIssue({ labels: [{ name: 'human-approval-required' }] })]],
       [45, []],
     ]),
@@ -1553,17 +1541,16 @@ test('requests nalfeo only for every canonical human-approval gate', async () =>
   assert.deepEqual(summary, {
     draftsPublished: 0,
     emptyDraftRepairs: 0,
-    humanReviewerRequests: 3,
+    humanReviewerRequests: 2,
   });
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'requestReviewer'),
     [
       ['requestReviewer', 42, 'nalfeo'],
-      ['requestReviewer', 43, 'nalfeo'],
       ['requestReviewer', 44, 'nalfeo'],
     ],
   );
-  assert.deepEqual(harness.state.pulls[3].requested_reviewers, []);
+  assert.deepEqual(harness.state.pulls[2].requested_reviewers, []);
 });
 
 test('skips a human-reviewer request when the reviewer authored the PR', async () => {

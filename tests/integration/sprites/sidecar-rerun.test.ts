@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { POSTPROCESS_PROFILE_KEY } from '../../../scripts/sprites/postprocess-overrides.js';
 import { buildServer } from '../../../scripts/sprites/sidecar/server.js';
 import { seedRun, type SeededRun } from '../../fixtures/sprites/seed-run.js';
 
@@ -55,6 +56,48 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
       expect(c.judgeScorecard).toBeNull();
       expect(c.judgeSkipReason).toBeNull();
     }
+  });
+
+  it('force reprocess resets persisted options and adopts the current raw-sheet grid', async () => {
+    const seed = await setup();
+    const persisted = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { disabledModules: ['speckle-cleanup'] },
+        manualAnchor: { variantIndex: 0, x: 9, y: 14 },
+      },
+    });
+    expect(persisted.statusCode).toBe(200);
+    expect(await seed.store.has(`${seed.briefId}/${seed.runId}/${POSTPROCESS_PROFILE_KEY}`)).toBe(
+      true,
+    );
+    const staleSummary = persisted.json().summary;
+    await seed.store.put(
+      `${seed.briefId}/${seed.runId}/summary.json`,
+      Buffer.from(
+        `${JSON.stringify({ ...staleSummary, grid: { rows: 2, cols: 3, emptyCells: [] } })}\n`,
+      ),
+    );
+
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: { force: true, reset: true, mode: 'reset' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.status).toBe('completed');
+    expect(body.summary.candidates).toHaveLength(4);
+    expect(body.summary.postprocessOverrides?.appliedMode).toBe('reset');
+    expect(body.summary.grid).toEqual({ rows: 2, cols: 2, emptyCells: [] });
+    expect(await seed.store.has(`${seed.briefId}/${seed.runId}/${POSTPROCESS_PROFILE_KEY}`)).toBe(
+      false,
+    );
   });
 
   it('rejects a non-string body.sheet with 400', async () => {

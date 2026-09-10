@@ -51,13 +51,8 @@ describe('Floor 3 UX surface wiring', () => {
     );
   });
 
-  it('attempts the Floor 3 headless descend even when there is nothing left to keep', () => {
-    // `autoSelectKeptCompanion` returns false on a post-victory party wipe
-    // (nothing keepable left), which the descend gate explicitly allows — so
-    // gating the descend attempt on its return value would stall those runs.
-    expect(headlessRunnerSource).toMatch(
-      /if \(scenario\.autoSelectKeptCompanion\) \{[\s\S]*?scenario\.autoSelectKeptCompanion\(world\);\s*scenario\.onStairDescend\?\.\(world, playerEid\);/,
-    );
+  it('uses the shared Floor 3 progression system in the headless runner', () => {
+    expect(headlessRunnerSource).toContain('autoFloor3ProgressionSystem(world, playerEid);');
   });
 
   it('never strands the loadout pause when a picked option is not in the offer', () => {
@@ -112,8 +107,8 @@ describe('Floor 3 UX surface wiring', () => {
   });
 
   it('gates both verbs on the Floor 3 party being present', () => {
-    expect(mainGameSceneSource).toContain(
-      "import { shouldShowFloor3Party } from '../floor3-party-state.js';",
+    expect(mainGameSceneSource).toMatch(
+      /import \{[^}]*shouldShowFloor3Party[^}]*\} from '\.\.\/floor3-party-state\.js';/,
     );
     expect(mainGameSceneSource).toContain(
       'const floor3PartyAvailable = shouldShowFloor3Party(this.world);',

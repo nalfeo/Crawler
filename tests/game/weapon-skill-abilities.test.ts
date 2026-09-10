@@ -27,11 +27,16 @@ import {
   weaponPrerequisiteMet,
 } from '../../src/game/systems/abilitySystem.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
+import {
+  ABILITY_PRESENTATION_BY_ID,
+  getAbilityPresentation,
+} from '../../src/shared/ability-presentation.js';
 import { getAbilityDefinition } from '../../src/game/abilities/registry.js';
 import { WEAPON_CLASS_SKILL_IDS, WEAPON_TYPE_SKILL_IDS } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { type SkillState } from '../../src/game/skills/types.js';
+import { getWeaponSwingVfxSpec } from '../../src/shared/weapon-swing-vfx.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,6 +86,43 @@ function getL5AbilityId(skillId: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 describe('skill L5 milestone ability grants', () => {
+  it('presents the Bow L5 reward with its player-facing name and concrete effect', () => {
+    const bow = getSkillDefinition('bow')!;
+    const milestone = bow.milestones.find((entry) => entry.level === 5)!;
+    const presentation = getAbilityPresentation(milestone.abilityId!);
+    const definition = getAbilityDefinition(milestone.abilityId!);
+
+    expect(milestone.name).toBe('Steady Aim');
+    expect(milestone.description).toContain('+0.1 accuracy with bows');
+    expect(presentation?.name).toBe('Steady Aim');
+    expect(presentation?.passiveEffectSummary).toBe('+0.1 accuracy with bows');
+    expect(presentation?.name).not.toBe('bow-shot-base');
+    expect(definition?.weaponPrerequisite).toBe('bow');
+    expect(definition?.effects).toEqual([{ type: 'stat_add', stat: 'accuracy', value: 0.1 }]);
+  });
+
+  it('never ships a placeholder sentinel as a player-facing effect summary', () => {
+    for (const id of Object.keys(ABILITY_PRESENTATION_BY_ID)) {
+      const summary = getAbilityPresentation(id)?.passiveEffectSummary;
+      if (summary === undefined) continue;
+      expect(summary.trim(), `placeholder effect summary for ability: ${id}`).not.toMatch(
+        /^(TBD|TODO|N\/A)$/i,
+      );
+    }
+  });
+
+  it('announces the Bow L5 reward without exposing its internal ability ID', () => {
+    const { world, player } = setupPlayerWithSkills();
+    const bow = getSkillDefinition('bow')!;
+
+    fireSkillUsageEvents(world, player, 'bow', 'weapon_fired', bow.usageThresholds[4]!);
+    skillSystem(world);
+
+    const announcement = world.announcements.find((event) => event.kind === 'skillPassiveUnlocked');
+    expect(announcement?.text).toBe('Passive Unlocked: Steady Aim — +0.1 accuracy with bows');
+    expect(announcement?.text).not.toContain('bow-shot-base');
+  });
+
   it('every weapon class skill has an L5 milestone with an abilityId', () => {
     for (const id of WEAPON_CLASS_SKILL_IDS) {
       expect(getL5AbilityId(id), `missing L5 ability grant for class skill: ${id}`).toBeDefined();
@@ -105,9 +147,9 @@ describe('skill L5 milestone ability grants', () => {
       if (!abilityId) continue;
       const def = getAbilityDefinition(abilityId);
       expect(def, `ability ${abilityId} (for skill ${skill.id}) not found`).toBeDefined();
-      // Arcane is the one class whose L5 milestone unlocks an ACTIVE ability
-      // (issue #3676); every other L5 milestone is still a passive.
-      expect(def!.kind).toBe(skill.id === 'arcane' ? 'active' : 'passive');
+      // Arcane and pistol are the weapon skills whose milestone unlocks are real
+      // active abilities with weapon-gated triggers; the rest remain passive.
+      expect(def!.kind).toBe(skill.id === 'arcane' || skill.id === 'pistol' ? 'active' : 'passive');
     }
   });
 
@@ -149,15 +191,50 @@ describe('weapon-skill passive ability definitions', () => {
     }
   });
 
-  it('weapon TYPE skill abilities are passive stubs (active wiring is a follow-up)', () => {
-    for (const typeSkillId of WEAPON_TYPE_SKILL_IDS) {
-      const abilityId = getL5AbilityId(typeSkillId);
-      if (!abilityId) continue;
+  it('pistol milestone rewards stay active and expose canonical player-facing names', () => {
+    const pistol = getSkillDefinition('pistol')!;
+    const expectedIds = [
+      'pistol-shot-base',
+      'pistol-rapid-fire',
+      'pistol-shot-evolved',
+      'pistol-barrage',
+    ];
+    expect(pistol.milestones.map((entry) => entry.abilityId)).toEqual(expectedIds);
+
+    for (const abilityId of expectedIds) {
       const def = getAbilityDefinition(abilityId);
-      // Weapon type skill L5 abilities are stubs: kind=passive, no weapon prerequisite yet.
-      // Active ability wiring is a follow-up task (see PR description).
-      expect(def?.kind).toBe('passive');
+      const presentation = getAbilityPresentation(abilityId);
+      expect(def?.kind).toBe('active');
+      expect(presentation?.name).toBeDefined();
+      expect(presentation?.name).not.toMatch(/[-]/);
+      expect(presentation?.name).not.toContain('pistol-');
     }
+
+    expect(getAbilityDefinition('pistol-volley')).toBe(getAbilityDefinition('pistol-rapid-fire'));
+    expect(getAbilityPresentation('pistol-volley')?.name).toBe('Rapid Fire');
+    expect(getAbilityDefinition('pistol-volley-evolved')).toBe(
+      getAbilityDefinition('pistol-barrage'),
+    );
+    expect(getAbilityPresentation('pistol-volley-evolved')?.name).toBe('Barrage');
+  });
+
+  it('keeps pistol active milestone VFX on canonical IDs while preserving legacy aliases', () => {
+    expect(getWeaponSwingVfxSpec('pistol-rapid-fire')).toEqual({
+      preset: 'volleyTrail',
+      color: 0xfde047,
+      intensity: 1.1,
+    });
+    expect(getWeaponSwingVfxSpec('pistol-barrage')).toEqual({
+      preset: 'spinRing',
+      color: 0xca8a04,
+      intensity: 1.25,
+    });
+    expect(getWeaponSwingVfxSpec('pistol-volley')).toEqual(
+      getWeaponSwingVfxSpec('pistol-rapid-fire'),
+    );
+    expect(getWeaponSwingVfxSpec('pistol-volley-evolved')).toEqual(
+      getWeaponSwingVfxSpec('pistol-barrage'),
+    );
   });
 
   it('general skill abilities (swordsmanship, iron-skin, sprint) have no weaponPrerequisite', () => {

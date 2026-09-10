@@ -1,5 +1,14 @@
 import { addComponent, set } from 'bitecs';
-import { DroppedItem, Gold, Position, Size, Sprite, Weight, XpGem } from '../components.js';
+import {
+  BuildCurrencyPickup,
+  DroppedItem,
+  Gold,
+  Position,
+  Size,
+  Sprite,
+  Weight,
+  XpGem,
+} from '../components.js';
 import { PHYSICS_BODIES, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { createEntity } from './entity-core.js';
@@ -45,6 +54,33 @@ export function spawnGold(
   addComponent(world.ecs, eid, set(Gold, { value }));
   world.lootLedger.goldSpawned += value;
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Size, {
+      radius: PHYSICS_BODIES.gold.radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
+
+  return eid;
+}
+
+export function spawnBuildCurrencyPickup(
+  world: GameWorld,
+  x: number,
+  y: number,
+  value: number,
+  weight = 1,
+): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(BuildCurrencyPickup, { value }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.25, height: 1.25 }));
   addComponent(
     world.ecs,
     eid,

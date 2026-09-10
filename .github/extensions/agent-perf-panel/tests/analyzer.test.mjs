@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   resolveContextWindow,
   computeParallelStats,
+  computeCompactionStorm,
   buildSummary,
   buildWaterfall,
   buildContextPoints,
@@ -108,6 +109,80 @@ test('computeParallelStats does not count adjacent, touching intervals as parall
   assert.equal(r.parallelToolTimeMs, 0);
   assert.equal(r.serialToolTimeMs, 20);
   assert.equal(r.parallelismRatio, 0);
+});
+
+// --- computeCompactionStorm -------------------------------------------------
+
+test('computeCompactionStorm flags rapid-fire compactions within an hour', () => {
+  // 6 compactions inside 20 minutes -> 18/hr, well above the storm threshold.
+  const r = computeCompactionStorm(
+    [
+      { ts: 0 },
+      { ts: 2 * 60_000 },
+      { ts: 5 * 60_000 },
+      { ts: 9 * 60_000 },
+      { ts: 14 * 60_000 },
+      { ts: 20 * 60_000 },
+    ],
+    20 * 60_000,
+  );
+  assert.equal(r.isStorm, true);
+  assert.ok(r.compactionsPerHour > 12, `expected >12/hr, got ${r.compactionsPerHour}`);
+  assert.equal(r.minGapMs, 2 * 60_000);
+});
+
+test('computeCompactionStorm does not flag ordinary long-session compaction', () => {
+  // 3 compactions spread over 6 hours -> 0.5/hr, ordinary conversation growth.
+  const r = computeCompactionStorm(
+    [{ ts: 0 }, { ts: 3 * 60 * 60_000 }, { ts: 6 * 60 * 60_000 }],
+    6 * 60 * 60_000,
+  );
+  assert.equal(r.isStorm, false);
+  assert.ok(r.compactionsPerHour < 12, `expected <12/hr, got ${r.compactionsPerHour}`);
+});
+
+test('computeCompactionStorm ignores a high rate from too few compactions (short session noise)', () => {
+  // Only 2 compactions, but a brief 6-minute session pushes the raw rate
+  // above the per-hour threshold. This must NOT read as a storm — the
+  // pathological pattern requires repeated rapid-fire refills, not just a
+  // short session with a couple of normal compactions.
+  const r = computeCompactionStorm([{ ts: 0 }, { ts: 2 * 60_000 }], 6 * 60_000);
+  assert.ok(
+    r.compactionsPerHour >= 12,
+    `expected raw rate to look high, got ${r.compactionsPerHour}`,
+  );
+  assert.equal(r.isStorm, false);
+});
+
+test('computeCompactionStorm handles zero/one compactions without dividing by zero', () => {
+  assert.deepEqual(computeCompactionStorm([], 10_000), {
+    compactionsPerHour: 0,
+    isStorm: false,
+    minGapMs: undefined,
+  });
+  assert.deepEqual(computeCompactionStorm([{ ts: 100 }], 10_000), {
+    compactionsPerHour: 0,
+    isStorm: false,
+    minGapMs: undefined,
+  });
+});
+
+test('buildSummary surfaces compaction storm totals end-to-end', () => {
+  const raw = makeRaw({
+    startedAt: 0,
+    endedAt: 20 * 60_000,
+    compactions: [
+      { ts: 0, preTokens: 100_000 },
+      { ts: 2 * 60_000, preTokens: 100_000 },
+      { ts: 5 * 60_000, preTokens: 100_000 },
+      { ts: 9 * 60_000, preTokens: 100_000 },
+      { ts: 14 * 60_000, preTokens: 100_000 },
+      { ts: 20 * 60_000, preTokens: 100_000 },
+    ],
+  });
+  const s = buildSummary(raw);
+  assert.equal(s.totals.compactionStorm, true);
+  assert.ok(s.totals.compactionsPerHour > 12);
 });
 
 // --- buildSummary ---------------------------------------------------------

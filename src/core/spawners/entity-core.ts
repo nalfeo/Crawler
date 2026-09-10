@@ -14,13 +14,20 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
   const { stores } = world;
   for (const group of Object.values(stores)) {
     for (const arr of Object.values(group as Record<string, ArrayLike<number>>)) {
-      if (arr instanceof Float32Array || arr instanceof Uint16Array || arr instanceof Uint8Array) {
+      if (
+        arr instanceof Float32Array ||
+        arr instanceof Float64Array ||
+        arr instanceof Uint32Array ||
+        arr instanceof Uint16Array ||
+        arr instanceof Uint8Array
+      ) {
         arr[eid] = 0;
       }
     }
   }
   world.enemyAppearanceKeys.delete(eid);
   world.enemyProjectileArchetypeKeys.delete(eid);
+  world.entityWeaponAnchors.delete(eid);
   world.statusEffectsByEntity.delete(eid);
   world.attackWeaponSkillsByEntity.delete(eid);
   // Floor 3 Companion League (slice 5): drop any tracked combat-XP

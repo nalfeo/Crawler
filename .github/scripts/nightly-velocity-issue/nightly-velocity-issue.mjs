@@ -1,5 +1,5 @@
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
-import { runNightlyBalanceIssue } from '../nightly-balance-issue/nightly-balance-issue.mjs';
+import { runNightlyAgentIssue } from '../nightly-agent-issue/nightly-agent-issue.mjs';
 
 export const ISSUE_TITLE = 'velocity: nightly bottleneck scan + fix proposal';
 export const ISSUE_LABELS = Object.freeze([
@@ -36,7 +36,7 @@ export async function runNightlyVelocityIssue({
   graphqlFn,
   intakeFn,
 }) {
-  return runNightlyBalanceIssue({
+  return runNightlyAgentIssue({
     githubToken,
     intakeToken,
     repository,

@@ -178,6 +178,39 @@ function fakeResult(runDir: string, brief: string): GenerateOneResult {
 }
 
 describe('runBatch', () => {
+  it('does not duplicate or reclassify a successful result when its observer throws', async () => {
+    const root = tmpRoot();
+    try {
+      const batchDir = path.join(root, 'batch');
+      const generate: RunFullFactory = vi.fn(async () =>
+        fakeResult(path.join(root, 'generated', 'runs', 'sword'), 'sword'),
+      );
+      await expect(
+        runBatch({
+          briefPaths: ['briefs/sword.yaml'],
+          repoRoot: root,
+          judgeBudget: null,
+          judgeCache: null,
+          provider: noopImageProvider(),
+          generate,
+          now: fixedClock,
+          batchDir,
+          onBriefComplete: () => {
+            throw new Error('state disk full');
+          },
+        }),
+      ).rejects.toThrow('state disk full');
+
+      const partial = JSON.parse(
+        readFileSync(path.join(batchDir, 'batch-summary.json'), 'utf8'),
+      ) as { briefs: Array<{ status: string }> };
+      expect(partial.briefs).toHaveLength(1);
+      expect(partial.briefs[0]?.status).toBe('succeeded');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('empty brief list produces zero-attempt summary with no errors', async () => {
     const root = tmpRoot();
     try {
@@ -196,6 +229,36 @@ describe('runBatch', () => {
       expect(summary.briefs).toHaveLength(0);
       expect(summary.finishedAt).not.toBeNull();
       expect(generate).not.toHaveBeenCalled();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('forwards the injected durable run store to every generation call', async () => {
+    const root = tmpRoot();
+    try {
+      const store = { backend: 'azure-blob' } as unknown as NonNullable<
+        Parameters<RunFullFactory>[0]['store']
+      >;
+      const generate: RunFullFactory = vi.fn(async (_opts) =>
+        fakeResult(path.join(root, 'generated', 'runs', 'sword'), 'sword'),
+      );
+      await runBatch({
+        briefPaths: ['briefs/sword.yaml', 'briefs/bow.yaml'],
+        repoRoot: root,
+        outputRoot: path.join(root, 'generated'),
+        judgeBudget: null,
+        judgeCache: null,
+        provider: noopImageProvider(),
+        generate,
+        now: fixedClock,
+        store,
+      });
+      expect(generate).toHaveBeenCalledTimes(2);
+      for (const call of (generate as unknown as { mock: { calls: [{ store?: unknown }][] } }).mock
+        .calls) {
+        expect(call[0].store).toBe(store);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

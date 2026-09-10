@@ -16,8 +16,11 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import {
+  isPlayerWithinStairMarker,
   selectScenarioDirectorIntro,
   selectScenarioCompletionVariant,
+  type ScenarioDirectorMilestone,
+  type ScenarioHudSnapshot,
   type ScenarioPresentationContract,
 } from '../../shared/scenario-presentation.js';
 import {
@@ -68,6 +71,7 @@ import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { getUiScale, onUiScaleChange, type ScreenBounds } from '../ui-scale.js';
 import { getSafeAreaInsets, onSafeAreaChange } from '../safe-area.js';
+import { resolveAchievementToastY } from '../../shared/achievement-toast-layout.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { runSimulationStep } from '../sim/simulation-step.js';
 import {
@@ -89,7 +93,7 @@ import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
-import { shouldShowFloor3Party } from '../floor3-party-state.js';
+import { shouldShowFloor3Party, resolvePartyMemberEids } from '../floor3-party-state.js';
 import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
@@ -182,7 +186,7 @@ import {
   purchaseSettlementShopOffer,
   type SettlementShopOfferView,
 } from '../../core/settlement-shop-purchase.js';
-import type { ShopPanelOfferView } from '../shop/ShopPanelUI.js';
+import type { Floor4GreenRoomPanelOffer, ShopPanelOfferView } from '../shop/ShopPanelUI.js';
 import {
   blockReasonFromGold,
   describeShopPurchaseFailure,
@@ -235,6 +239,8 @@ const CORNER_BUTTON_DEPTH = 1100;
 const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const ISSUE_REPORT_PICKER_DEPTH = 7000;
 const ISSUE_BUTTON_DEPTH = ISSUE_REPORT_PICKER_DEPTH + 1;
+export const ISSUE_BUTTON_LABEL = '🚩 Issue';
+export const ISSUE_BUTTON_LABEL_COMPACT = '🚩';
 /**
  * Depth for the terminal action-status toast (run-bundle/RunStats completion
  * telemetry AND issue-filing submission results share this single slot). Must
@@ -258,6 +264,15 @@ const INTERACTION_HINT_BOTTOM_MARGIN = 12;
  * cleanly above the slots row instead of covering it.
  */
 const INTERACTION_HINT_ABILITY_BAR_GAP = 10;
+/** Default bottom-anchored Y for the generic scenario HUD strip (`scenarioHudText`). */
+const SCENARIO_HUD_BASE_Y = GAME.HEIGHT - 112;
+/**
+ * Design-space gutter kept between the top of the interaction hint and the
+ * bottom of the scenario HUD strip, so the strip reflows above the Talk/Descend
+ * button instead of overlapping it whenever the hint is visible.
+ */
+const SCENARIO_HUD_INTERACTION_HINT_GAP = 10;
+const TOUCH_CONSTRUCTION_TAP_MAX_DISTANCE_PX = 14;
 /** Design-space margin from the safe rect's top-left for the mobile corner buttons. */
 const MOBILE_CORNER_BUTTON_MARGIN = 16;
 const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
@@ -278,6 +293,14 @@ const FLOOR_TRANS_BAR_INNER_H = FLOOR_TRANS_BAR_H - 2;
  * read again as "continue" and the summary would flash past unread.
  */
 const FLOOR_SUMMARY_ACK_ARM_MS = 450;
+
+/**
+ * How long a scenario `vfx` HUD cue stays visible before hiding again. Cues
+ * are one-shot (latched by id in `playedScenarioCueIds`), so the strip must
+ * hide itself after a bounded duration rather than staying visible for as
+ * long as the cue remains present in the scenario's snapshot.
+ */
+const SCENARIO_HUD_VFX_FLASH_MS = 600;
 
 /**
  * Acknowledgement prompt on the between-floor summary. The screen blocks the
@@ -413,6 +436,15 @@ export interface MainGameSceneOptions {
    */
   floorId?: string;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
+  floor4GreenRoomShop?: {
+    isAvailable: (world: GameWorld, playerEid: number) => boolean;
+    getOffers: (world: GameWorld, playerEid: number) => readonly Floor4GreenRoomPanelOffer[];
+    purchase: (
+      world: GameWorld,
+      playerEid: number,
+      offer: Floor4GreenRoomPanelOffer,
+    ) => { ok: boolean; reason?: string; goldSpent?: number };
+  };
   shopkeeper?: {
     getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     getStage: (world: GameWorld) => ShopkeeperStage;
@@ -578,6 +610,27 @@ export interface _CornerButtonProbe {
   readonly bounds: ScreenBounds;
 }
 
+/**
+ * Real rendered state of the generic scenario HUD strip (`getHudSnapshot`
+ * presentation). Underscore-prefixed: test/automation scaffolding consumed by
+ * the probe lab and e2e helpers, with no production caller outside this file.
+ */
+export interface _ScenarioHudProbe {
+  readonly visible: boolean;
+  readonly text: string | null;
+  readonly bounds: ScreenBounds | null;
+  /** Whether the one-shot `vfx` cue flash is currently showing. */
+  readonly vfxVisible: boolean;
+  readonly cueLabels: readonly string[];
+}
+
+export interface _AchievementToastProbe {
+  readonly commentary: ScreenBounds | null;
+  readonly toast: ScreenBounds | null;
+  readonly commentaryText: string | null;
+  readonly toastText: string | null;
+}
+
 declare global {
   interface Window {
     __floor1Debug?: {
@@ -596,6 +649,8 @@ declare global {
         | { playerName: string; playerGender: 'female' | 'male' | 'other' }
         | undefined;
       getDirectorCommentaryText?: () => string | null;
+      getScenarioHudText?: () => string | null;
+      getScenarioHudCueLabels?: () => readonly string[];
       /**
        * Dev-only: which art each door tile rendered from on the last overlay
        * pass, in the REAL game (the probe lab has its own copy of this seam).
@@ -689,7 +744,10 @@ export class MainGameScene extends Phaser.Scene {
   private issueReportPicker?: ReturnType<typeof createModalPickerUI>;
   private abilityLoadoutUI?: ReturnType<typeof createAbilityLoadoutUI>;
   private issueButton?: Phaser.GameObjects.Text;
+  private issueButtonCompact = false;
+  private issueButtonLayoutApplied = false;
   private issueReportPausedState?: boolean;
+  private pauseMenuPausedState?: boolean;
   private issueReportDescription = '';
   private issueReportIncludeLogs = true;
   private issueReportIncludeScreenshot = false;
@@ -970,6 +1028,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private spellsUnlockNotified = false;
 
+  /** Latch so the Floor 3 Command-verb explainer toast only shows once (#4209). */
+  private floor3CommandUnlockNotified = false;
+
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
 
@@ -990,6 +1051,12 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Screen-space temporary commentary text for scenario callouts. */
   private directorCommentaryText?: Phaser.GameObjects.Text;
+
+  /** Screen-space floor-owned status panel driven through ScenarioPresentationContract. */
+  private scenarioHudText?: Phaser.GameObjects.Text;
+  private scenarioHudVfx?: Phaser.GameObjects.Rectangle;
+  private readonly playedScenarioCueIds = new Set<string>();
+  private scenarioHudCueLabels: string[] = [];
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
@@ -1060,6 +1127,12 @@ export class MainGameScene extends Phaser.Scene {
   private tappedInteraction = false;
   /** NPC selected by this frame's pointer tap, when dialogue is not yet open. */
   private tappedNpcEid: number | null = null;
+  /** Authored construction site selected by the current pointer tap. */
+  private tappedConstructionSiteId: string | null = null;
+  /** Touch construction-site candidate latched on down, confirmed on pointer-up tap. */
+  private pendingTouchConstructionTap:
+    | { pointerId: number; siteId: string; screenX: number; screenY: number }
+    | undefined;
 
   /** One-frame latch set by tapping the interaction hint button. */
   private queuedInteraction = false;
@@ -1098,6 +1171,10 @@ export class MainGameScene extends Phaser.Scene {
   private queuedSettlementShopNpcEid: number | null = null;
   /** NPC identity whose settlement stock is currently being shown in the shared shop panel. */
   private activeSettlementShopNpcEid: number | null = null;
+  /** True while the shared shop panel is showing the intermission Green Room. */
+  private activeFloor4GreenRoomShop = false;
+  /** Green Room visit whose optional sponsor shop has already been presented. */
+  private floor4GreenRoomShopVisitShown: number | null = null;
 
   /**
    * Tracks whether the currently open modalPicker is the abilities config modal
@@ -1111,10 +1188,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private offMobileButtonScale?: () => void;
   private offMobileButtonSafeArea?: () => void;
-  /** Reapplies the stacked corner-button layout; also used to restore the
-   * Issue button's normal position after it is temporarily relocated to
-   * avoid overlapping an open panel (see {@link updateOverlayText}). */
+  /** Reapplies the safe-area-aware bottom-right Issue-button layout. */
   private applyMobileButtonScale?: (scale: number) => void;
+  /** Keeps the bottom-right Issue button above the live family HUD when needed. */
+  private repositionIssueButton?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -1172,8 +1249,13 @@ export class MainGameScene extends Phaser.Scene {
   create(): void {
     markGame('game:create-start');
     const worldSeed = this.options.worldSeed ?? 42;
+    const generatedSpriteRegistry =
+      (this.game.registry.get(GENERATED_SPRITE_REGISTRY_KEY) as
+        | GeneratedSpriteRegistry
+        | undefined) ?? null;
     this.world = createGameWorld({
       seed: worldSeed,
+      generatedSpriteRegistry,
       generatedEquipmentRunKey:
         this.options.generatedEquipmentRunKey ?? generatedEquipmentRunKeyFromSeed(worldSeed),
     });
@@ -1203,6 +1285,7 @@ export class MainGameScene extends Phaser.Scene {
       };
     } else {
       this.inputCapture = createInputCapture(this, {
+        shouldIgnoreKeyboardEvent: () => this.isTerminalRunSurveyActive(),
         getFollowOrigin: () =>
           this.playerEid < 0
             ? undefined
@@ -1226,6 +1309,8 @@ export class MainGameScene extends Phaser.Scene {
     this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.shownCommentaryIds.clear();
+    this.playedScenarioCueIds.clear();
+    this.scenarioHudCueLabels = [];
     this.floor3IntroAcknowledged = false;
     this.announcedFloor3Studios.clear();
     this.announcedFloor3FinalFourRounds.clear();
@@ -1362,20 +1447,29 @@ export class MainGameScene extends Phaser.Scene {
       },
       onPanelClosed: () => {
         this.activeSettlementShopNpcEid = null;
+        this.activeFloor4GreenRoomShop = false;
       },
     });
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
       onRestart: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return false;
+        }
         window.location.reload();
+        return true;
       },
       onQuit: () => {
+        if (!this.canResetRunFromTerminalSurvey()) {
+          return false;
+        }
         // Death/victory/timeout already emitted the terminal bundle before
         // showing this UI. A future active-run quit screen can use this same
         // path to emit the distinct quit outcome.
         this.emitRunBundle('quit');
         window.location.reload();
+        return true;
       },
     });
     this.levelUpUI = createLevelUpUI(this, {
@@ -1396,6 +1490,7 @@ export class MainGameScene extends Phaser.Scene {
     // `this.world` and ready to auto-surface here exactly once.
     this.resumePendingRewardPresentations();
     this.input.on('pointerdown', this.handlePointerDown, this);
+    this.input.on('pointerup', this.handlePointerUp, this);
     this.initializeUi();
     // Apply this floor's lighting over a clean DEFAULT base BEFORE the first
     // light-field build in drawFloorTerrain(), so the field is built with the
@@ -1446,6 +1541,9 @@ export class MainGameScene extends Phaser.Scene {
                   | { playerName: string; playerGender: 'female' | 'male' | 'other' }
                   | undefined,
               getDirectorCommentaryText: () => this.directorCommentaryText?.text ?? null,
+              getScenarioHudText: () =>
+                this.scenarioHudText?.visible === true ? this.scenarioHudText.text : null,
+              getScenarioHudCueLabels: () => [...this.scenarioHudCueLabels],
               // Door-art provenance for the REAL game, not just the probe lab.
               // Without this the only instrument for "which door art actually
               // rendered" lived in main-scene-probe-lab, so a lab-green door
@@ -1527,6 +1625,10 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.npcQuestIndicators.clear();
       this.interactionHint?.destroy();
+      this.scenarioHudText?.destroy();
+      this.scenarioHudVfx?.destroy();
+      this.playedScenarioCueIds.clear();
+      this.scenarioHudCueLabels = [];
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
       this.offInteractionHintSafeArea?.();
@@ -1594,6 +1696,8 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseSprite = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
+      this.scenarioHudText = undefined;
+      this.scenarioHudVfx = undefined;
       this.actionStatusText?.destroy();
       this.actionStatusText = undefined;
       this.directorCommentaryText = undefined;
@@ -1618,6 +1722,8 @@ export class MainGameScene extends Phaser.Scene {
       this.activeConversationLines = null;
       this.tappedInteraction = false;
       this.tappedNpcEid = null;
+      this.tappedConstructionSiteId = null;
+      this.pendingTouchConstructionTap = undefined;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
@@ -1631,6 +1737,7 @@ export class MainGameScene extends Phaser.Scene {
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
+      this.input.off('pointerup', this.handlePointerUp, this);
       this.input.keyboard?.off('keydown-E', this.handleKeyboardE, this);
       if (typeof window !== 'undefined') {
         window.removeEventListener('keydown', this.handleWindowKeyDown, true);
@@ -1657,6 +1764,36 @@ export class MainGameScene extends Phaser.Scene {
 
     const bounds = this.interactionHint.getBounds();
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+  }
+
+  getAchievementToastLayout(): _AchievementToastProbe {
+    return {
+      commentary: toScreenBounds(this.directorCommentaryText),
+      toast: toScreenBounds(this.achievementToast),
+      commentaryText: this.directorCommentaryText?.visible
+        ? (this.directorCommentaryText.text ?? null)
+        : null,
+      toastText: this.achievementToast?.visible ? (this.achievementToast.text ?? null) : null,
+    };
+  }
+
+  /**
+   * Real rendered state of the generic scenario HUD strip: visibility, text,
+   * screen bounds, whether the one-shot `vfx` cue flash is currently showing,
+   * and the cue labels dispatched this frame. Test/automation affordance so
+   * e2e probes can assert the shipped HUD surface actually renders (bounds,
+   * clipping, one-shot cue behavior) in the real scene, not merely that its
+   * source wiring string is present.
+   */
+  getScenarioHudState(): _ScenarioHudProbe {
+    const visible = this.scenarioHudText?.visible === true;
+    return {
+      visible,
+      text: visible ? (this.scenarioHudText?.text ?? null) : null,
+      bounds: toScreenBounds(this.scenarioHudText),
+      vfxVisible: this.scenarioHudVfx?.visible === true,
+      cueLabels: [...this.scenarioHudCueLabels],
+    };
   }
 
   /**
@@ -1748,6 +1885,10 @@ export class MainGameScene extends Phaser.Scene {
     return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
   }
 
+  getIssueButtonCompactLabel(): string {
+    return ISSUE_BUTTON_LABEL_COMPACT;
+  }
+
   getAchievementsButtonBounds(): ScreenBounds | null {
     if (!this.achievementsButton?.visible) {
       return null;
@@ -1770,9 +1911,42 @@ export class MainGameScene extends Phaser.Scene {
     return Math.min(baseline, abilityBarTop - INTERACTION_HINT_ABILITY_BAR_GAP);
   }
 
+  /**
+   * Bottom-anchored Y for the generic scenario HUD strip, reflowed above the
+   * interaction hint (Talk/Descend button) whenever it is visible so the two
+   * bottom-center surfaces never overlap. The hint's own screen bounds are
+   * used (not a fixed offset) because its position and scale already vary
+   * with the ability bar and UI scale — see {@link interactionHintY}.
+   */
+  private scenarioHudTextY(): number {
+    if (this.interactionHint?.visible) {
+      const hintTop = this.interactionHint.getBounds().y;
+      return Math.min(SCENARIO_HUD_BASE_Y, hintTop - SCENARIO_HUD_INTERACTION_HINT_GAP);
+    }
+    return SCENARIO_HUD_BASE_Y;
+  }
+
   private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
     const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
     return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
+  }
+
+  private findConstructionSiteAtWorldPoint(worldX: number, worldY: number): string | null {
+    const construction = this.options.scenarioPresentation?.construction;
+    if (!construction) {
+      return null;
+    }
+    const worldFtX = pxToFt(worldX);
+    const worldFtY = pxToFt(worldY);
+    const snapshot = construction.getSnapshot(this.world);
+    const site = snapshot?.sites.find(
+      (candidate) =>
+        worldFtX >= candidate.boundsFt.x &&
+        worldFtX <= candidate.boundsFt.x + candidate.boundsFt.width &&
+        worldFtY >= candidate.boundsFt.y &&
+        worldFtY <= candidate.boundsFt.y + candidate.boundsFt.height,
+    );
+    return site?.siteId ?? null;
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer): void {
@@ -1787,6 +1961,11 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.isTouchPointer(pointer)) {
+      pointer.updateWorldPoint(this.cameras.main);
+      const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+      this.pendingTouchConstructionTap = siteId
+        ? { pointerId: pointer.id, siteId, screenX: pointer.x, screenY: pointer.y }
+        : undefined;
       return;
     }
     const isCornerButtonHit = (button?: Phaser.GameObjects.Text): boolean =>
@@ -1825,7 +2004,36 @@ export class MainGameScene extends Phaser.Scene {
     if (npcEid >= 0) {
       this.tappedNpcEid = npcEid;
       this.tappedInteraction = true;
+      return;
     }
+    const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+    if (siteId) {
+      this.tappedConstructionSiteId = siteId;
+      this.tappedInteraction = true;
+    }
+  }
+
+  private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    if (!this.isTouchPointer(pointer)) {
+      return;
+    }
+    const pendingTap = this.pendingTouchConstructionTap;
+    this.pendingTouchConstructionTap = undefined;
+    if (!pendingTap || pendingTap.pointerId !== pointer.id) {
+      return;
+    }
+    const dx = pointer.x - pendingTap.screenX;
+    const dy = pointer.y - pendingTap.screenY;
+    if (dx * dx + dy * dy > TOUCH_CONSTRUCTION_TAP_MAX_DISTANCE_PX ** 2) {
+      return;
+    }
+    pointer.updateWorldPoint(this.cameras.main);
+    const siteId = this.findConstructionSiteAtWorldPoint(pointer.worldX, pointer.worldY);
+    if (siteId !== pendingTap.siteId) {
+      return;
+    }
+    this.tappedConstructionSiteId = siteId;
+    this.tappedInteraction = true;
   }
 
   private handleKeyboardE(): void {
@@ -1839,6 +2047,8 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedInteraction = false;
     this.tappedInteraction = false;
     this.tappedNpcEid = null;
+    this.tappedConstructionSiteId = null;
+    this.pendingTouchConstructionTap = undefined;
     this.inputCapture?.reset();
     this.inputState.moveX = 0;
     this.inputState.moveY = 0;
@@ -1870,6 +2080,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handleWindowKeyDown = (event: KeyboardEvent): void => {
+    if (this.isTerminalRunSurveyActive()) {
+      return;
+    }
     if (this.isTextEntryTarget(event)) {
       return;
     }
@@ -1878,6 +2091,40 @@ export class MainGameScene extends Phaser.Scene {
       event.stopImmediatePropagation();
       this.issueReportPicker?.handleKeyDown(event);
       return;
+    }
+    if (this.modalPicker?.isOpen() && this.modalPicker.getKind() === 'pause-menu') {
+      // The pause menu is exclusive: swallow the key so it cannot leak to the
+      // other capture-phase window listeners (InputCapture, minimap overlay).
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this.modalPicker.handleKeyDown(event);
+      return;
+    }
+    if (event.code === 'Escape' && !event.repeat) {
+      if (this.inventoryUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.inventoryUI.toggle(this.world);
+        return;
+      }
+      if (this.equipmentUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.equipmentUI.toggle(this.world);
+        return;
+      }
+      if (this.shopPanelUI?.isOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.shopPanelUI.toggle(this.world);
+        return;
+      }
+      if (this.conversationNpcEid === null && !this.isBlockingSurfaceOpen()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.openPauseMenu();
+        return;
+      }
     }
     if (event.code === 'F8' && !event.repeat) {
       event.preventDefault();
@@ -1890,6 +2137,15 @@ export class MainGameScene extends Phaser.Scene {
         event.stopImmediatePropagation();
         this.queuedAbilitiesToggle = false;
         this.closeAbilitiesModal();
+      }
+      return;
+    }
+    if (this.achievementsUI?.isOpen()) {
+      if (event.code === 'Escape' && !event.repeat) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.queuedAchievementsToggle = false;
+        this.achievementsUI.toggle(this.world);
       }
       return;
     }
@@ -2014,6 +2270,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private resolveSettlementShopPanelTitle(_world: GameWorld): string {
+    if (this.activeFloor4GreenRoomShop) {
+      return '🛒 GREEN ROOM SPONSORS';
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return '🛒 SHOP';
@@ -2029,6 +2288,9 @@ export class MainGameScene extends Phaser.Scene {
     world: GameWorld,
     playerEid: number,
   ): readonly ShopPanelOfferView[] {
+    if (this.activeFloor4GreenRoomShop) {
+      return this.options.floor4GreenRoomShop?.getOffers(world, playerEid) ?? [];
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return Object.freeze([]);
@@ -2044,6 +2306,15 @@ export class MainGameScene extends Phaser.Scene {
     playerEid: number,
     offer: ShopPanelOfferView,
   ): { ok: boolean; reason?: string; goldSpent?: number } {
+    if (this.activeFloor4GreenRoomShop) {
+      if (!this.options.floor4GreenRoomShop) {
+        return { ok: false, reason: 'unknown-shop' };
+      }
+      if (!('greenRoom' in offer)) {
+        return { ok: false, reason: 'invalid-stock-identity' };
+      }
+      return this.options.floor4GreenRoomShop.purchase(world, playerEid, offer);
+    }
     const selection = this.resolveActiveSettlementShop();
     if (!selection) {
       return { ok: false, reason: 'unknown-shop' };
@@ -2119,7 +2390,20 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openSettlementShopPanel(npcEid: number): void {
+    this.activeFloor4GreenRoomShop = false;
     this.activeSettlementShopNpcEid = npcEid;
+    this.closeMapOverlayIfOpen();
+    this.closeCharacterPanels({ keepQuartermaster: true });
+    if (this.shopPanelUI?.isOpen()) {
+      this.shopPanelUI.refresh(this.world);
+    } else {
+      this.shopPanelUI?.toggle(this.world);
+    }
+  }
+
+  private openFloor4GreenRoomShopPanel(): void {
+    this.activeFloor4GreenRoomShop = true;
+    this.activeSettlementShopNpcEid = null;
     this.closeMapOverlayIfOpen();
     this.closeCharacterPanels({ keepQuartermaster: true });
     if (this.shopPanelUI?.isOpen()) {
@@ -2235,6 +2519,77 @@ export class MainGameScene extends Phaser.Scene {
     if (this.hudUi?.isMapOverlayOpen()) {
       this.hudUi.closeMapOverlay();
     }
+  }
+
+  private openPauseMenu(): void {
+    if (!this.modalPicker || this.modalPicker.isOpen()) {
+      return;
+    }
+    this.pauseMenuPausedState = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    this.modalPicker.open(
+      {
+        kind: 'pause-menu',
+        title: 'Paused',
+        subtitle: 'The dungeon waits. Pick your next move.',
+        options: [
+          {
+            id: 'resume',
+            label: 'Resume',
+            description: 'Continue the run right where you left off.',
+          },
+          {
+            id: 'restart',
+            label: '↺ Restart',
+            description: 'Start the current run over from the beginning.',
+          },
+          {
+            id: 'quit',
+            label: '← Quit',
+            description: 'Return to the title screen.',
+          },
+        ],
+        allowCancel: true,
+        initialSelectedId: 'resume',
+      },
+      {
+        onCancel: () => {
+          this.closePauseMenu();
+        },
+        onConfirm: ({ option }) => {
+          if (option.id === 'resume') {
+            this.closePauseMenu();
+            return true;
+          }
+          if (option.id === 'restart') {
+            this.closePauseMenu();
+            if (this.canResetRunFromTerminalSurvey()) {
+              window.location.reload();
+            }
+            return true;
+          }
+          if (option.id === 'quit') {
+            this.closePauseMenu();
+            if (this.canResetRunFromTerminalSurvey()) {
+              this.emitRunBundle('quit');
+              window.location.reload();
+            }
+            return true;
+          }
+          return true;
+        },
+      },
+    );
+  }
+
+  private closePauseMenu(): void {
+    if (!this.modalPicker?.isOpen() || this.modalPicker.getKind() !== 'pause-menu') {
+      return;
+    }
+    const previousPauseState = this.pauseMenuPausedState ?? false;
+    this.modalPicker.close();
+    this.pauseMenuPausedState = undefined;
+    this.setSimulationPaused(previousPauseState);
   }
 
   /**
@@ -2766,6 +3121,31 @@ export class MainGameScene extends Phaser.Scene {
         'Abilities unlocked! Press [B] or tap Skills in a safe room to configure your bar.',
       );
     }
+    // Explains the Command verb's action *before* first activation (#4209):
+    // the corner button/key have never had any label/help text, so the first
+    // time the button becomes available is the only reliable moment to teach
+    // it without gating on an actual (possibly rejected) command attempt.
+    //
+    // `floor3PartyAvailable` only means "this is Floor 3" — it is true from
+    // the very first frame, before the starter-companion picker has even
+    // been confirmed. Gating on that alone would consume the one-shot latch
+    // while the intro/starter modal is still blocking, and the toast's fixed
+    // display window can expire long before the player actually has a
+    // Companion to command. Require an actual recruited party row (mirrors
+    // the same real party state the Command button and roster act on) and no
+    // blocking surface, so the explainer only fires once the player can
+    // genuinely read it and immediately try the thing it describes.
+    if (
+      floor3PartyAvailable &&
+      !this.floor3CommandUnlockNotified &&
+      !this.isBlockingSurfaceOpen() &&
+      resolvePartyMemberEids(this.world).length > 0
+    ) {
+      this.floor3CommandUnlockNotified = true;
+      this.flashHint(
+        'Command unlocked! Press [C] or tap ⚡ Command to have your ready Companion use its signature ability.',
+      );
+    }
 
     const inventoryToggleRequested =
       this.queuedInventoryToggle ||
@@ -2924,6 +3304,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.achievementToast.setText(message).setVisible(true);
+    this.positionAchievementToast();
     this.time.delayedCall(2800, () => {
       if (this.achievementToast?.text === message) {
         this.achievementToast.setVisible(false);
@@ -3164,6 +3545,28 @@ export class MainGameScene extends Phaser.Scene {
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
 
+    this.scenarioHudVfx = this.add
+      .rectangle(GAME.WIDTH / 2, 0, GAME.WIDTH, 8, 0xf59e0b, 0.75)
+      .setOrigin(0.5, 0)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.scenarioHudText = this.add
+      .text(GAME.WIDTH / 2, SCENARIO_HUD_BASE_Y, '', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#e0f2fe',
+        backgroundColor: '#0f172add',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 120 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(CORNER_BUTTON_DEPTH - 1)
+      .setScrollFactor(0)
+      .setVisible(false);
+
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHintBaselineY =
       GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN - getSafeAreaInsets(this).bottom;
@@ -3241,9 +3644,32 @@ export class MainGameScene extends Phaser.Scene {
     this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
-    this.issueButton = makeCornerButton(cornerButtonTop() + 392, '🚩 Issue', () => {
-      this.openIssueReport();
-    }).setDepth(ISSUE_BUTTON_DEPTH);
+    this.issueButton = makeCornerButton(
+      cornerButtonTop() + 392,
+      this.issueButtonCompact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL,
+      () => {
+        this.openIssueReport();
+      },
+    ).setDepth(ISSUE_BUTTON_DEPTH);
+    const repositionIssueButton = (): void => {
+      const button = this.issueButton;
+      if (!button) return;
+      const insets = getSafeAreaInsets(this);
+      const x = GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - button.displayWidth;
+      let y = GAME.HEIGHT - MOBILE_CORNER_BUTTON_MARGIN - insets.bottom - button.displayHeight;
+      const familyPanel = this.hudUi?.getNavigationBounds().familyPanel;
+      if (
+        familyPanel &&
+        x < familyPanel.x + familyPanel.width &&
+        x + button.displayWidth > familyPanel.x &&
+        y < familyPanel.y + familyPanel.height &&
+        y + button.displayHeight > familyPanel.y
+      ) {
+        y = familyPanel.y - MOBILE_CORNER_BUTTON_MARGIN - button.displayHeight;
+      }
+      button.setPosition(x, y);
+    };
+    this.repositionIssueButton = repositionIssueButton;
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
@@ -3265,7 +3691,6 @@ export class MainGameScene extends Phaser.Scene {
         this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
-        this.issueButton,
       ]) {
         button?.setX(left);
       }
@@ -3283,26 +3708,15 @@ export class MainGameScene extends Phaser.Scene {
       this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
       this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
-      const shopH = (this.quartermasterButton?.height ?? 44) * buttonScale + 8;
-      if (buttonScale > 1) {
-        const firstColumnWidth = Math.max(
-          ...[
-            this.inventoryButton,
-            this.equipButton,
-            this.achievementsButton,
-            this.floor3RosterButton,
-            this.floor3CommandButton,
-            this.abilitiesButton,
-            this.quartermasterButton,
-          ].map((button) => button?.displayWidth ?? 0),
-        );
-        this.issueButton?.setPosition(left + firstColumnWidth + 8, top);
-      } else {
-        this.issueButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH + shopH);
+      // Keep Issue independent from the left-side stack so it cannot cover
+      // the skill HUD or interaction hint as the other buttons are revealed.
+      repositionIssueButton();
+      if (this.issueButton) {
+        this.issueButtonLayoutApplied = true;
       }
+      this.applyMobileButtonScale = applyMobileButtonScale;
     };
     applyMobileButtonScale(getUiScale(this));
-    this.applyMobileButtonScale = applyMobileButtonScale;
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
     this.offMobileButtonSafeArea = onSafeAreaChange(this, () => {
       applyMobileButtonScale(getUiScale(this));
@@ -4114,7 +4528,7 @@ export class MainGameScene extends Phaser.Scene {
   private showFloor3ProgressSurfaceIfNeeded(): void {
     if (
       this.world.floorId !== 'floor3' ||
-      this.world.state !== 'playing' ||
+      (this.world.state !== 'playing' && this.world.state !== 'safe_room') ||
       !this.modalPicker ||
       this.modalPicker.isOpen()
     ) {
@@ -4760,10 +5174,22 @@ export class MainGameScene extends Phaser.Scene {
    * marker is currently visible. Lets the main-scene-probe-lab prove — in a
    * REAL booted scene — that the floor-exit marker renders real stairs art.
    */
-  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean } {
+  getStaircaseMarkerRenderInfo(): {
+    usesGeneratedArt: boolean;
+    visible: boolean;
+    footprintPx: number;
+    spriteWidthPx: number;
+    spriteHeightPx: number;
+  } {
     return {
       usesGeneratedArt: this.staircaseMarkerUsesGeneratedArt,
       visible: this.staircaseSprite?.visible ?? this.staircaseMarker?.visible ?? false,
+      // The footprint the marker is sized to (2 * radius), and the size the
+      // stairs art is actually drawn at — so an e2e can prove, in the REAL
+      // booted scene, that the stairs occupy a 2x2-tile square.
+      footprintPx: (this.staircaseMarker?.radius ?? 0) * 2,
+      spriteWidthPx: this.staircaseSprite?.displayWidth ?? 0,
+      spriteHeightPx: this.staircaseSprite?.displayHeight ?? 0,
     };
   }
 
@@ -4862,6 +5288,60 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  private updateScenarioHudSnapshot(panelOpen: boolean): void {
+    const snapshot = this.options.scenarioPresentation?.getHudSnapshot?.(this.world) ?? null;
+    const visible = snapshot !== null && !panelOpen && this.world.state === 'playing';
+    if (!visible) {
+      this.scenarioHudText?.setVisible(false);
+      this.scenarioHudVfx?.setVisible(false);
+      this.scenarioHudCueLabels = [];
+      return;
+    }
+
+    this.scenarioHudText
+      ?.setY(this.scenarioHudTextY())
+      .setText(snapshot.lines.join('\n'))
+      .setVisible(true);
+    this.scenarioHudCueLabels = snapshot.cues.map((cue) => `${cue.kind}: ${cue.label}`);
+    this.playScenarioHudCues(snapshot);
+  }
+
+  private playScenarioHudCues(snapshot: ScenarioHudSnapshot): void {
+    for (const cue of snapshot.cues) {
+      if (this.playedScenarioCueIds.has(cue.id)) {
+        continue;
+      }
+      this.playedScenarioCueIds.add(cue.id);
+      if (cue.kind === 'audio') {
+        this.rewardAudioEngine?.play({
+          waveform: 'triangle',
+          label: cue.label,
+          frequencyHz: cue.id.includes('danger') ? 220 : 440,
+          durationMs: 180,
+          gain: 0.04,
+        });
+      } else if (cue.kind === 'vfx') {
+        this.flashScenarioHudVfx();
+      }
+    }
+  }
+
+  /**
+   * One-shot flash for a newly-seen `vfx` scenario cue: shows the strip and
+   * hides it again after {@link SCENARIO_HUD_VFX_FLASH_MS}, instead of
+   * staying visible for as long as the cue remains present in the snapshot.
+   */
+  private flashScenarioHudVfx(): void {
+    const vfx = this.scenarioHudVfx;
+    if (!vfx) {
+      return;
+    }
+    vfx.setVisible(true);
+    this.time.delayedCall(SCENARIO_HUD_VFX_FLASH_MS, () => {
+      vfx.setVisible(false);
+    });
+  }
+
   private updateOverlayText(): void {
     // Hide the whole HUD while a full-screen character panel is open so the
     // docked minimap (top-right, HUD_DEPTH..+8) never punches through the
@@ -4911,6 +5391,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    this.updateScenarioHudSnapshot(panelOpen);
     // The ability bar appears/disappears at runtime (spell unlock, modal open),
     // so restack the Talk/Descend hint above it right after the HUD syncs. Both
     // inputs (cached safe-area baseline, cached ability-bar top) are plain
@@ -4925,22 +5406,13 @@ export class MainGameScene extends Phaser.Scene {
 
     const canFileIssue = this.canFileIssue(issueOpen);
     this.issueButton?.setVisible(canFileIssue);
-    // Panels are centered, so parking the Issue button in the opposite corner
-    // (top-right) while any panel is open keeps it clickable without ever
-    // overlapping panel content; it returns to its normal stacked corner
-    // position once every panel closes.
     if (this.issueButton) {
+      this.setIssueButtonCompact(panelOpen);
+      this.repositionIssueButton?.();
       if (panelOpen) {
-        const insets = getSafeAreaInsets(this);
-        this.issueButton
-          .setDepth(MODAL_DISMISS_BUTTON_DEPTH)
-          .setPosition(
-            GAME.WIDTH - MOBILE_CORNER_BUTTON_MARGIN - insets.right - this.issueButton.displayWidth,
-            MOBILE_CORNER_BUTTON_MARGIN + insets.top,
-          );
+        this.issueButton.setDepth(MODAL_DISMISS_BUTTON_DEPTH);
       } else if (this.hudHiddenForPanel === false) {
         this.issueButton.setDepth(ISSUE_BUTTON_DEPTH);
-        this.applyMobileButtonScale?.(getUiScale(this));
       }
     }
 
@@ -4977,12 +5449,24 @@ export class MainGameScene extends Phaser.Scene {
     // Substitute {playerName} with the player's chosen name (all occurrences).
     const resolved = text.replace(/{playerName}/g, () => this.world.playerName);
     this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${resolved}`).setVisible(true);
+    this.positionAchievementToast();
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private positionAchievementToast(): void {
+    const commentary = this.directorCommentaryText;
+    const y = resolveAchievementToastY(
+      commentary?.visible === true,
+      commentary?.y ?? 96,
+      commentary?.height ?? 0,
+    );
+    this.achievementToast?.setY(y);
   }
 
   private updateDirectorCommentary(): void {
     if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
       this.directorCommentaryText?.setVisible(false);
+      this.positionAchievementToast();
       this.commentaryHideAtMs = 0;
     }
 
@@ -5002,10 +5486,7 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     for (const milestone of director.milestones) {
-      if (
-        milestone.isReached(this.world) &&
-        this.queueDirectorBeatOnce(milestone.id, milestone.copy)
-      ) {
+      if (milestone.isReached(this.world) && this.queueDirectorMilestoneOnce(milestone)) {
         return;
       }
     }
@@ -5031,6 +5512,43 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.shownCommentaryIds.add(id);
     this.queueDirectorCommentary(copy);
+    return true;
+  }
+
+  private queueDirectorMilestoneOnce(milestone: ScenarioDirectorMilestone<GameWorld>): boolean {
+    if (this.shownCommentaryIds.has(milestone.id)) {
+      return false;
+    }
+    this.shownCommentaryIds.add(milestone.id);
+    const modal = milestone.blockingModal;
+    if (!modal || !this.modalPicker) {
+      this.queueDirectorCommentary(milestone.copy);
+      return true;
+    }
+
+    const wasPaused = this.isSimulationPaused();
+    this.setSimulationPaused(true);
+    this.modalPicker.open(
+      {
+        kind: modal.kind,
+        title: modal.title,
+        subtitle: modal.subtitle,
+        body: modal.body,
+        options: [
+          {
+            id: 'acknowledge',
+            label: modal.confirmLabel,
+          },
+        ],
+        allowCancel: false,
+      },
+      {
+        onConfirm: () => {
+          this.setSimulationPaused(wasPaused);
+          this.updateOverlayText();
+        },
+      },
+    );
     return true;
   }
 
@@ -5133,7 +5651,10 @@ export class MainGameScene extends Phaser.Scene {
       kills: this.floorKills,
       level: this.world.playerLevel?.level ?? 0,
       xpGained: (this.world.playerLevel?.xp ?? 0) - this.runStartXp,
-      goldEarned: goldLedger.earnedFromDrops + goldLedger.earnedFromLootBoxes,
+      goldEarned:
+        goldLedger.earnedFromDrops +
+        goldLedger.earnedFromLootBoxes +
+        goldLedger.earnedFromAppearanceFees,
       goldHeld: this.world.playerGold,
       currentHealth: this.world.stores.health.current[this.playerEid] ?? 0,
       maxHealth: this.world.stores.health.max[this.playerEid] ?? 0,
@@ -5268,6 +5789,32 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  private setIssueButtonCompact(compact: boolean): void {
+    if (!this.issueButton) {
+      // Preserve the requested initial label for corner-button construction;
+      // once created, the text guard below catches any label/state divergence.
+      this.issueButtonCompact = compact;
+      return;
+    }
+    const label = compact ? ISSUE_BUTTON_LABEL_COMPACT : ISSUE_BUTTON_LABEL;
+    if (
+      this.issueButtonLayoutApplied &&
+      this.issueButtonCompact === compact &&
+      this.issueButton.text === label
+    ) {
+      return;
+    }
+    this.issueButton.setText(label);
+    this.issueButtonCompact = compact;
+    const relayout = this.applyMobileButtonScale;
+    if (relayout) {
+      this.issueButtonLayoutApplied = false;
+      relayout(getUiScale(this));
+    } else {
+      this.issueButtonLayoutApplied = true;
+    }
+  }
+
   private nextIssueReportRunId(): string {
     const randomUuid = globalThis.crypto?.randomUUID?.();
     if (randomUuid) {
@@ -5297,6 +5844,14 @@ export class MainGameScene extends Phaser.Scene {
     this.emitRunBundle('death');
     this.showRunSurveyIfNeeded('death');
     this.gameOverUI?.show(this.world.floorId === 'floor3' ? buildFloor3LoseModel() : undefined);
+  }
+
+  private canResetRunFromTerminalSurvey(): boolean {
+    return !this.isTerminalRunSurveyActive();
+  }
+
+  private isTerminalRunSurveyActive(): boolean {
+    return (this.runSurveyUI?.isVisible() ?? false) && !this.runSurveySubmitted;
   }
 
   private showRunSurveyIfNeeded(endReason: 'death' | 'victory'): void {
@@ -5618,6 +6173,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private finishIssueReport(): void {
     const wasPaused = this.issueReportPausedState;
+    this.issueReportPicker?.close();
     this.issueReportPausedState = undefined;
     if (!this.issueReportSubmitting && !this.issueReportRetryPayload) {
       this.issueReportRunId = undefined;
@@ -5625,6 +6181,7 @@ export class MainGameScene extends Phaser.Scene {
     if (wasPaused !== undefined) {
       this.setSimulationPaused(wasPaused);
     }
+    this.updateOverlayText();
   }
 
   /**
@@ -5771,8 +6328,77 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  private openConstructionPicker(siteId: string): void {
+    const construction = this.options.scenarioPresentation?.construction;
+    if (!construction || !this.modalPicker || this.modalPicker.isOpen()) return;
+    const snapshot = construction.getSnapshot(this.world);
+    const site = snapshot?.sites.find((candidate) => candidate.siteId === siteId);
+    if (!snapshot || !site) {
+      this.flashActionStatus('Construction site is not authored for this floor.');
+      return;
+    }
+    if (site.occupied) {
+      this.flashActionStatus(`${siteId} is occupied. Choose a vacant site.`);
+      return;
+    }
+    const options = snapshot.towers.map((tower) => ({
+      id: tower.towerId,
+      label: `${tower.label} — ${tower.cost} requisitions`,
+      description: tower.affordable
+        ? 'Build at this authored site.'
+        : 'Unaffordable at current balance.',
+      disabled: !tower.affordable,
+    }));
+    if (options.every((option) => option.disabled)) {
+      this.flashActionStatus('No tower is affordable at this site.');
+      return;
+    }
+    this.modalPicker.open(
+      {
+        kind: 'floor6-tower-build',
+        title: `Build at ${siteId}`,
+        subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
+        body: 'Select an affordable tower. The scenario validates the request atomically.',
+        options,
+        allowCancel: true,
+        initialSelectedId: options.find((option) => !option.disabled)?.id,
+      },
+      {
+        onConfirm: ({ option }) => {
+          const result = construction.requestBuild(this.world, siteId, option.id);
+          this.flashActionStatus(
+            result.ok
+              ? `${option.label.split(' — ')[0]} built at ${siteId}.`
+              : this.describeConstructionBuildRejection(result.reason, siteId),
+          );
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
+  private describeConstructionBuildRejection(reason: string, siteId: string): string {
+    switch (reason) {
+      case 'phase-locked':
+        return 'Build rejected: Building is available during DEFEND (and approved BREAK actions) only.';
+      case 'invalid-site':
+        return `Build rejected: ${siteId} is not a valid authored construction site.`;
+      case 'occupied':
+        return `Build rejected: ${siteId} already has a tower.`;
+      case 'unaffordable':
+        return 'Build rejected: You need more requisitions for that tower.';
+      case 'unknown-tower':
+        return 'Build rejected: That tower option is unavailable.';
+      case 'not-floor6':
+        return 'Build rejected: Tower construction is unavailable on this floor.';
+      default:
+        return 'Build rejected: Retry with a vacant site and an affordable tower.';
+    }
+  }
+
   private updateInteractions(): void {
     const tappedNpcEid = this.tappedNpcEid;
+    const tappedConstructionSiteId = this.tappedConstructionSiteId;
     // A pointer tap latches onto the exact NPC whose footprint was clicked, but
     // the simulation step runs before this code and can move that NPC out of
     // interaction range. Cancel such a tap instead of letting it retarget a
@@ -5789,11 +6415,25 @@ export class MainGameScene extends Phaser.Scene {
     const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
     this.tappedNpcEid = null;
+    this.tappedConstructionSiteId = null;
     this.queuedInteraction = false;
     this.queuedConversationClose = false;
 
+    if (tappedConstructionSiteId !== null && interactionRequested) {
+      this.openConstructionPicker(tappedConstructionSiteId);
+      return;
+    }
+
+    const hasScenarioPresentationStairs =
+      this.options.scenarioPresentation?.getStairMarkerState !== undefined &&
+      (this.options.scenarioPresentation.stairConfirmation !== undefined ||
+        this.options.scenarioPresentation.getStairConfirmation !== undefined);
+    // Floors with either legacy floor scenarios, extended floor state, or an
+    // explicit scenario-presentation stair contract can respond to interactions.
     if (
-      (!this.world.floorScenario && !this.world.floorExtendedState?.familyState) ||
+      (!this.world.floorScenario &&
+        !this.world.floorExtendedState &&
+        !hasScenarioPresentationStairs) ||
       this.world.state !== 'playing'
     ) {
       this.interactionHint?.setVisible(false);
@@ -5879,18 +6519,26 @@ export class MainGameScene extends Phaser.Scene {
     // The confirmation copy is required for the affordance, not just for the
     // modal: offering a "Descend" hint the scene cannot follow through on
     // would silently swallow the interact press.
-    const stairConfirmation = this.options.scenarioPresentation?.stairConfirmation;
+    // Scenarios whose single exit affordance narrates more than one
+    // continuation (Floor 4's Green Room exit) resolve their copy per-world;
+    // everyone else keeps the static prompt.
+    const stairConfirmation =
+      this.options.scenarioPresentation?.getStairConfirmation?.(this.world) ??
+      this.options.scenarioPresentation?.stairConfirmation;
     const nearStairs =
       stairConfirmation !== undefined &&
       stairMarker !== undefined &&
       stairMarker !== null &&
       stairMarker.visible &&
       !stairMarker.locked &&
-      Math.hypot(playerX - stairMarker.positionFt.x, playerY - stairMarker.positionFt.y) <=
-        stairMarker.radiusFt;
+      isPlayerWithinStairMarker(stairMarker, playerX, playerY);
 
     const selectedNpcEid =
-      tappedNpcEid !== null && !tappedNpcInvalidated ? tappedNpcEid : nearNpcEid;
+      interactionRequested && nearStairs && stairConfirmation.kind === 'floor3-stair-descend'
+        ? -1
+        : tappedNpcEid !== null && !tappedNpcInvalidated
+          ? tappedNpcEid
+          : nearNpcEid;
     if (selectedNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueBox?.setCloseVisible(false);
@@ -5947,9 +6595,21 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.setText('Descend').setVisible(true);
       this.dialogueBox?.hide();
       if (interactionRequested && this.modalPicker && stairConfirmation) {
+        const greenRoomVisit = this.world.floorExtendedState?.floor4GreenRoom?.currentVisit;
+        if (
+          greenRoomVisit &&
+          this.options.floor4GreenRoomShop?.isAvailable(this.world, this.playerEid) &&
+          !this.options.inputCaptureOverride &&
+          this.floor4GreenRoomShopVisitShown !== greenRoomVisit.visitIndex
+        ) {
+          this.floor4GreenRoomShopVisitShown = greenRoomVisit.visitIndex;
+          this.openFloor4GreenRoomShopPanel();
+          return;
+        }
         if (!this.modalPicker.isOpen()) {
           this.modalPicker.open(
             {
+              kind: stairConfirmation.kind,
               title: stairConfirmation.title,
               subtitle: stairConfirmation.subtitle,
               body: stairConfirmation.body,

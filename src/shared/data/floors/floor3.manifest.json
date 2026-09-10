@@ -30,13 +30,21 @@
     "floorDensity": 0.35,
     "tileSizeFt": 4.0
   },
-  "terrainPackId": "industrial-cave",
+  "terrainPackId": "companion-overworld",
   "enemyPackId": "floor3-wild",
   "floorLootTableId": "floor_3",
   "player": {
     "hpBonus": 45,
     "moveSpeedBonus": 0.05,
-    "pickupRangeBonus": 2.0
+    "pickupRangeBonus": 2.0,
+    "directStart": {
+      "level": 8,
+      "weaponSkillLevel": 7,
+      "skillLevels": {
+        "iron-skin": 5
+      },
+      "equipmentItemIds": ["merchants-stained-charm"]
+    }
   },
   "camera": {
     "zoom": 2.0
@@ -51,12 +59,14 @@
     "bossChests": false
   },
   "lighting": {
-    "ambient": 0.1
+    "ambient": 0.8,
+    "sourceIntensity": 0
   },
   "props": {
-    "biomeTag": "cave",
-    "densityMultiplier": 0.85,
-    "allowedCategories": ["rubbish", "light-source", "structural"]
+    "biomeTag": "organic",
+    "densityMultiplier": 0.9,
+    "allowedCategories": ["organic"],
+    "allowedPropIds": ["vine", "moss-patch"]
   },
   "floor3": {
     "biomeRegionCount": 7

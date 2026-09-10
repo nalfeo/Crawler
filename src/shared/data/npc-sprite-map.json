@@ -22,6 +22,6 @@
   "byNpcDefId": {
     "tutorial-goon": "welcome-goon-var-1",
     "shopkeeper": "sweaty-merchant-var-3",
-    "spell-quest-giver": "npc-spell-broker-var-1"
+    "spell-quest-giver": "spell-broker-var-2"
   }
 }

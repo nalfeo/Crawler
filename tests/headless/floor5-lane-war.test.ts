@@ -93,11 +93,12 @@ describe('Floor 5 lane-war real headless pipeline', () => {
     expect(siege!.laneTelemetry.legalDamageEvents).toBeGreaterThan(0);
     expect(siege!.laneTelemetry.illegalDamageEvents).toBe(0);
     expect(siege!.laneTelemetry.pathStalls).toBe(0);
-    expect(
-      [siege!.structures['enemy-checkpoint'], siege!.structures['outer-wall']].some(
-        (structure) => structure.health < structure.maxHealth,
-      ),
-    ).toBe(true);
+    // Spec `FR5.5`: the outer wall is RAM-ONLY. Lane chaff must never be able to
+    // chip it, so after a full wave cycle — with legal minion damage flowing and
+    // the checkpoint contested — the wall is still at full health. Its one
+    // legitimate damage source (Ratings Ram strikes, plus the rejection ledger
+    // for anything else) is proven end-to-end in `floor5-ratings-ram.test.ts`.
+    expect(siege!.structures['outer-wall'].health).toBe(siege!.structures['outer-wall'].maxHealth);
     expect(siege!.spawnDebt).toEqual({ allied: 0, enemy: 0 });
     expect(siege!.laneTelemetry.spawnDebtPeak.allied).toBeLessThanOrEqual(4);
     expect(siege!.laneTelemetry.spawnDebtPeak.enemy).toBeLessThanOrEqual(4);

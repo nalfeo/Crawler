@@ -10,6 +10,8 @@ export interface NpcQuestDef {
 
 export interface NpcDialogueLine {
   text: string;
+  /** Whether this line may only be shown after the merchant errand begins. */
+  requiresMerchantQuest?: boolean;
 }
 
 export interface NpcDef {
@@ -96,7 +98,7 @@ const SHOPKEEPER_DEF: NpcDef = {
       text: "Fetch me a tail. A good one, from the deep rooms, still got some *spring* in it. Then we'll talk about what I can put on you.",
     },
     {
-      text: "Don't clean it. Don't ask. It's not for the shop. It's for the room.",
+      text: "Don't clean it. Don't ask. It's not for the shop—it's for the room, and the room has been lonely.",
     },
   ],
   quests: [
@@ -123,6 +125,7 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
     },
     {
       text: '...Did he send you for a tail? He did. Of course he did. Take the long way back, contestant. Knock first.',
+      requiresMerchantQuest: true,
     },
   ],
   quests: [
@@ -189,20 +192,33 @@ const SPELL_BROKER_POST_CLAIM_DIALOGUE: readonly string[] = [
   "You know what the worst part is? I *like* them. Both of them. I've liked them for more seasons than he can count, and he used to be able to count. Go on. Kill something.",
 ];
 
+/** Lines shown once the Slime Rat objective is complete but the spellbook has
+ * not yet been claimed. This suppresses the stale intro and advances the Broker
+ * to the next valid progression beat.
+ */
+const SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE: readonly string[] = [
+  "You'll be offered three. Pick fast and *use* it. A spell you're saving for the perfect moment is a spell they find unused on your body. Ask me how I know what unused looks like.",
+];
+
 /** Inputs for {@link selectSpellBrokerDialogue}, derived from world state. */
 interface SpellBrokerDialogueState {
   /** The Spell Broker is still gated behind the Goon's opening quest. */
   readonly locked: boolean;
+  /** The Slime Rat has been defeated (raw kill-state, independent of the spellbook claim). */
+  readonly bossDefeated: boolean;
   /** The player has claimed their spellbook reward. */
   readonly spellbookClaimed: boolean;
+  /** The merchant errand has been accepted and the tail-reference beat is now valid. */
+  readonly merchantQuestStarted: boolean;
 }
 
 /**
  * Pick the Spell Broker's contextual dialogue for the current quest progress.
  *
- * Priority (highest first): locked (gated behind the Goon) > post-spellbook
- * claim. Returns `null` when neither applies, signalling the caller to fall back
- * to the Broker's default authored dialogue.
+ * Priority (highest first): locked > post-spellbook claim > post-boss progression >
+ * merchant-quest gate. Once the Slime Rat objective is done, the stale intro must
+ * not replay; instead we advance to the next valid spell-book line. After the
+ * merchant errand begins, the Broker can safely use the default authored dialogue.
  */
 export function selectSpellBrokerDialogue(
   state: SpellBrokerDialogueState,
@@ -213,7 +229,15 @@ export function selectSpellBrokerDialogue(
   if (state.spellbookClaimed) {
     return SPELL_BROKER_POST_CLAIM_DIALOGUE;
   }
-  return null;
+  if (state.bossDefeated) {
+    return SPELL_QUEST_GIVER_POST_BOSS_DIALOGUE;
+  }
+  if (state.merchantQuestStarted) {
+    return null;
+  }
+  return SPELL_QUEST_GIVER_DEF.dialogue
+    .filter((line) => !line.requiresMerchantQuest)
+    .map((line) => line.text);
 }
 
 // ---- Tutorial Goon contextual dialogue ----

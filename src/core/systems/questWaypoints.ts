@@ -14,6 +14,7 @@ import type { GameWorld } from '../world.js';
 import { getActiveQuests, getQuestObjectiveViews } from './questSystem.js';
 import { getQuestDef, MAX_ACTIVE_QUESTS } from '../../shared/quest-types.js';
 import type { FloorObjectiveState } from '../../shared/floor-types.js';
+import { floor3StudioDefeatGoalId } from '../../shared/data/floor3/studios.js';
 import { pickRoomAnchorCell, resolveFloor2SettlementAnchor } from '../floor2-settlement-anchor.js';
 
 /** Coarse classification used by the HUD to colour the marker/arrow. */
@@ -62,12 +63,44 @@ function entityPos(world: GameWorld, eid: number | null): Vec2 | null {
   return { x, y };
 }
 
+/**
+ * Resolve a Floor 3 Studio's carved room to a stable walkable anchor
+ * position (issue #4208: Floor 3 has no `FloorObjectiveState`-shaped fixed
+ * fields the way Floor 1/2 do, since its selected-Studio roster is seeded
+ * per run — the room id on `Floor3EncounterState` is the only fixed
+ * reference available).
+ */
+function resolveFloor3StudioAnchor(world: GameWorld, goalId: string): Vec2 | null {
+  const studios = world.floorExtendedState?.floor3Studios?.studios;
+  const floorMap = world.floorMap;
+  if (!studios || !floorMap) {
+    return null;
+  }
+  const studio = studios.find((candidate) => floor3StudioDefeatGoalId(candidate.id) === goalId);
+  if (!studio || studio.roomId < 0) {
+    return null;
+  }
+  const room = floorMap.roomGraph.get(studio.roomId);
+  if (!room) {
+    return null;
+  }
+  const anchorTile = pickRoomAnchorCell(room) ?? {
+    x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+    y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+  };
+  return floorMap.tileToWorld(anchorTile.x, anchorTile.y);
+}
+
 /** Map a quest goal flag to a known room position. */
 function goalFlagPos(
   world: GameWorld,
   objective: FloorObjectiveState | undefined,
   goalId: string,
 ): Vec2 | null {
+  const floor3StudioPos = resolveFloor3StudioAnchor(world, goalId);
+  if (floor3StudioPos) {
+    return floor3StudioPos;
+  }
   switch (goalId) {
     case 'floor2-settlement-found':
       return resolveFloor2SettlementAnchor(world);
@@ -137,7 +170,9 @@ function objectiveTarget(
         goalId === 'floor1-defeat-boss' ||
         goalId === 'floor1.objective.staircaseDiscovered' ||
         goalId === 'floor2.objective.staircaseDiscovered';
-      return { pos, kind: isStairs ? 'stairs' : 'npc' };
+      // Studio quests resolve to a Trainer roster to fight, not an NPC to talk to.
+      const isFloor3StudioDefeat = goalId?.startsWith('floor3-studio-') ?? false;
+      return { pos, kind: isStairs ? 'stairs' : isFloor3StudioDefeat ? 'combat' : 'npc' };
     }
     case 'haveEquippable':
     case 'equip':

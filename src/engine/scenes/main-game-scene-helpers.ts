@@ -25,6 +25,7 @@ import {
 } from '../../shared/npc-types.js';
 import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
   type NpcQuestIndicatorState,
   type ShopkeeperStage,
 } from '../../shared/quest-types.js';
@@ -130,7 +131,7 @@ export function formatAbilityTrigger(abilityId: string): string {
   const triggerText = new Map<string, string>([
     ['fireball', 'Auto: hits the nearest enemy, favoring clusters'],
     ['heal', 'Auto: casts when HP deficit warrants it'],
-    ['pulse-shield', 'Auto: casts at low HP when surrounded'],
+    ['pulse-shield', 'Auto: casts when you take damage'],
   ]);
   return triggerText.get(abilityId) ?? 'Auto trigger';
 }
@@ -282,11 +283,20 @@ export function resolveDialogueLines(
   if (defId === 'spell-quest-giver') {
     const brokerLines = selectSpellBrokerDialogue({
       locked: deps.spellQuestGiver?.isLocked?.(world) === true,
+      // Use the Slime Rat's `defeated` kill-state directly rather than the
+      // `floor1-boss-battle-complete` goal flag: that flag is only set once
+      // `claim-spellbook` also completes (see `onCompleteGoalFlag` on the
+      // `floor1-boss-battle` quest), which happens inside `meetSpellQuestGiver`
+      // — after this dialogue is resolved. Gating on the goal flag meant the
+      // very first post-kill Broker interaction still replayed the stale
+      // "Kill the Slime Rat" intro.
+      bossDefeated: objective?.bossBattles.get('slime-rat')?.defeated === true,
       spellbookClaimed:
         world.goalFlags.get('floor1-boss-spellbook-claimed') === true &&
         world.featureUnlocks.spells === true,
+      merchantQuestStarted: world.questLog.has(FLOOR1_SHOP_QUEST_ID),
     });
-    if (brokerLines) {
+    if (brokerLines !== undefined && brokerLines !== null) {
       return [...brokerLines];
     }
   }

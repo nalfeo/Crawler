@@ -11,8 +11,11 @@ import {
   Position,
   Health,
   Enemy,
+  Companion,
   EnemyProjectile,
   AoeOnImpact,
+  BroadcastRelayRaider,
+  BuildCurrencyPickup,
   FamilyMembership,
   Velocity,
   XpGem,
@@ -21,6 +24,9 @@ import {
   DroppedItem,
   Harvestable,
   Npc,
+  PartySlot,
+  Team,
+  RallyPoint,
   HARVEST_RANGE_FT,
   computeMoveSpeed,
   type FamilyId,
@@ -57,6 +63,9 @@ import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
 import {
   GAME,
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  STAIR_FOOTPRINT_RADIUS_FT,
+  TeamId,
   WeaponType,
   PLAYER_SPEED,
   ENEMY_PROJECTILE,
@@ -73,6 +82,7 @@ import {
 } from '../../shared/quest-types.js';
 import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../shared/npc-types.js';
+import type { Floor3EncounterState } from '../../shared/floor-types.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
@@ -113,6 +123,8 @@ import {
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
   denUnlockGoalId,
 } from '../floor2Scenario.js';
+import { floor3KeptCompanionDescendGateSatisfied } from '../floor3Scenario.js';
+import { getFloor4GreenRoomExitMarker } from '../floor4Scenario.js';
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import {
   getActiveWeapon,
@@ -537,7 +549,7 @@ const TACTICAL_OPPORTUNITY_PARAMS: TacticalOpportunityParams = {
 // (or its existing unit test) needs to change.
 export { computeFloorProgressScore };
 
-type LootKind = 'xp' | 'gold' | 'item' | 'harvest';
+type LootKind = 'xp' | 'gold' | 'item' | 'buildCurrency' | 'harvest';
 
 interface WorldTarget {
   eid: number;
@@ -1240,7 +1252,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    *
    * - **Track A** (Movement Goal): the exclusive priority Selector that picks
    *   one movement target per frame. Retreat > ArenaLockin > Interact >
-   *   Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
+   *   Floor6RelayDefense > Progress > LeaveSafeRoom > Engage > Collect > Hunt > Explore. Owns
    *   `this.decision` and `state.moveX/moveY`. See ADR 0045 for the
    *   arena-lockin priority-slot decision.
    *
@@ -1277,6 +1289,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // recovery target, but above Progress on other floors so post-combat drops
         // are still collected before moving on.
         this.buildLootSweepBehavior('mid-run'),
+        this.buildFloor6RelayDefenseBehavior(),
         // Priority 2.9: Boss-chest retrieval. A chest is one guaranteed piece of
         // equipment, so it is treated as a quest objective rather than as loot
         // (loot sits at Priority 5, below Engage, which would let a gold coin
@@ -2384,6 +2397,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         ) {
           return false;
         }
+
         const tutorialLevelGrind =
           ctx.world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) &&
           (ctx.world.playerLevel.level ?? 0) < 2;
@@ -2409,6 +2423,30 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = plan.targetX;
         this.decision.targetY = plan.targetY;
         this.decision.reason = `Hunting enemy at distance ${nearest.distance.toFixed(1)}ft`;
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  private buildFloor6RelayDefenseBehavior(): BTNode {
+    return sequence(
+      'Floor6RelayDefense',
+      condition('Live Relay Raider', (ctx) => {
+        const target = this.findFloor6RelayDefenseTarget(ctx.world, ctx.playerX, ctx.playerY);
+        if (!target) {
+          return false;
+        }
+        ctx.blackboard['floor6RelayDefenseTarget'] = target;
+        return true;
+      }),
+      action('Intercept Relay Raider', (ctx) => {
+        const target = ctx.blackboard['floor6RelayDefenseTarget'] as WorldTarget;
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, target);
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
+        this.decision.reason = `Defending Floor 6 relay from raider ${String(target.eid)} — ${plan.reason}`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -2821,6 +2859,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
         { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
         { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        { kind: 'buildCurrency', entities: query(ctx.world.ecs, [BuildCurrencyPickup, Position]) },
         { kind: 'chest', entities: query(ctx.world.ecs, [BossChestEntity, Position]) },
       ];
       for (const candidate of candidates) {
@@ -3520,6 +3559,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       ...query(world.ecs, [XpGem, Position]),
       ...query(world.ecs, [Gold, Position]),
       ...query(world.ecs, [DroppedItem, Position]),
+      ...query(world.ecs, [BuildCurrencyPickup, Position]),
     ];
     for (const eid of lootEntities) {
       if (eid === undefined) continue;
@@ -3858,6 +3898,17 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private updateQuestProgressWatchdog(world: GameWorld, playerX: number, playerY: number): void {
     if (world.state !== 'playing') {
+      this.questProgressActive = false;
+      this.questProgressStallFrames = 0;
+      return;
+    }
+    const floor3State = world.floorExtendedState?.floor3Studios;
+    if (
+      floor3State?.staircaseUnlocked === true &&
+      floor3State.staircaseSpawned === true &&
+      floor3State.staircaseDiscovered !== true &&
+      floor3KeptCompanionDescendGateSatisfied(world)
+    ) {
       this.questProgressActive = false;
       this.questProgressStallFrames = 0;
       return;
@@ -4538,12 +4589,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     const blockedDoors = getNavigationBlockedDoors(world);
     updateLockedDoorMemory(this.knownLockedDoors, blockedDoors);
     // Advance the navigation epoch whenever the passable graph could have changed
-    // — a different floor, or a door flipping blocked<->passable. The static tile
-    // topology is fixed for a floor's lifetime, so (floor, blocked-door tiles) is
-    // a complete signature of what reachability depends on. This is what
-    // invalidates the resolveReachableGoalTile memo.
+    // — a different floor, a door flipping blocked<->passable, or a dynamic
+    // barrier being raised/dropped. Barriers (`world.barriers`) never mutate
+    // `TileMap.flags` but ARE consulted by the pathfinder, so their registry
+    // version is part of the reachability signature: without it, dropping the
+    // Floor 5 outer-wall seal on breach would leave every memoised reachability
+    // answer claiming the courtyard is unreachable. The static tile topology is
+    // fixed for a floor's lifetime, so (floor, blocked-door tiles, barrier
+    // version) is a complete signature of what reachability depends on. This is
+    // what invalidates the resolveReachableGoalTile memo.
     const signature =
-      `${world.floor}:` +
+      `${world.floor}:${world.barriers.version}:` +
       blockedDoors
         .map((door) => `${door.tileX},${door.tileY}`)
         .sort()
@@ -5165,6 +5221,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         return TACTICAL_OPPORTUNITY_GOLD_VALUE;
       case 'item':
         return TACTICAL_OPPORTUNITY_ITEM_VALUE;
+      case 'buildCurrency':
+        return Math.max(1, world.stores.buildCurrencyPickup.value[eid] ?? 1);
     }
   }
 
@@ -5219,6 +5277,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
     ];
 
     for (const source of lootSources) {
@@ -5613,9 +5672,20 @@ export class BehaviorTreeAI implements AIInputProvider {
         targetX - floor1Objective.staircasePos.x,
         targetY - floor1Objective.staircasePos.y,
       ) <= TARGET_POSITION_EPSILON_FT;
-    const directApproachFt = floor1UnlockedStairTarget
-      ? Math.max(CLOSE_APPROACH_DIRECT_FT, floor1Objective.markerRadiusFt)
-      : CLOSE_APPROACH_DIRECT_FT;
+    const floor3State = world.floorExtendedState?.floor3Studios;
+    const floor3UnlockedStairTarget =
+      floor3State?.staircaseUnlocked === true &&
+      floor3State.staircaseDiscovered !== true &&
+      floor3State.staircasePos !== undefined &&
+      Math.hypot(targetX - floor3State.staircasePos.x, targetY - floor3State.staircasePos.y) <=
+        TARGET_POSITION_EPSILON_FT;
+    const directApproachFt =
+      floor1UnlockedStairTarget || floor3UnlockedStairTarget
+        ? Math.max(
+            CLOSE_APPROACH_DIRECT_FT,
+            floor1UnlockedStairTarget ? STAIR_FOOTPRINT_RADIUS_FT : FLOOR2_STAIR_MARKER_RADIUS_FT,
+          )
+        : CLOSE_APPROACH_DIRECT_FT;
 
     // Close-range direct approach. Tile-granular A* targets tile centers and
     // cannot step the 24px player body onto a small (8px) pickup; worse,
@@ -6113,6 +6183,61 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return null;
+  }
+
+  private findFloor6RelayDefenseTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    const defense = world.floorExtendedState?.floor6Defense;
+    if (
+      world.floorId !== 'floor6' ||
+      !defense ||
+      defense.terminalOutcome !== null ||
+      (defense.phase.kind !== 'DEFEND' && defense.phase.kind !== 'FINALE')
+    ) {
+      return null;
+    }
+
+    const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+    const relay = defense.geometry.broadcastRelay.target;
+    const relayX = (relay.x + 0.5) * tileSizeFt;
+    const relayY = (relay.y + 0.5) * tileSizeFt;
+    const candidates: Array<WorldTarget & { relayDistance: number }> = [];
+
+    for (const eid of query(world.ecs, [BroadcastRelayRaider, Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+
+      const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
+      if (ignoredUntil !== undefined) {
+        if (ignoredUntil > world.frameCount) continue;
+        this.ignoredEnemyUntilFrame.delete(eid);
+      }
+
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const target = {
+        eid,
+        x,
+        y,
+        distance: Math.hypot(x - playerX, y - playerY),
+      };
+      if (!this.isTargetReachable(world, playerX, playerY, target)) continue;
+      candidates.push({
+        ...target,
+        relayDistance: Math.hypot(x - relayX, y - relayY),
+      });
+    }
+
+    candidates.sort(
+      (a, b) => a.relayDistance - b.relayDistance || a.distance - b.distance || a.eid - b.eid,
+    );
+    return candidates[0] ?? null;
   }
 
   private getWorldRoomId(world: GameWorld, x: number, y: number): number | null {
@@ -7547,6 +7672,244 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
   }
 
+  private findNearestFloor3EncounterEnemy(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    teamIds: readonly number[],
+    maxRadius: number = Number.POSITIVE_INFINITY,
+  ): WorldTarget | null {
+    const teamIdSet = new Set(teamIds);
+    const enemies = query(world.ecs, [Enemy, Position, Health, Team]);
+    const candidates: WorldTarget[] = [];
+    for (const eid of enemies) {
+      if (!teamIdSet.has(world.stores.team.id[eid] ?? -1)) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      if (
+        hasComponent(world.ecs, eid, Companion) &&
+        (world.stores.companion.knockedOut[eid] ?? 0) === 1
+      ) {
+        continue;
+      }
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, x, y)) continue;
+      const distance = Math.hypot(x - playerX, y - playerY);
+      if (distance <= maxRadius) {
+        candidates.push({ eid, x, y, distance });
+      }
+    }
+    candidates.sort((a, b) => a.distance - b.distance || a.eid - b.eid);
+    for (const candidate of candidates) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
+        return candidate;
+      }
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  private resolveFloor3EncounterAnchor(
+    world: GameWorld,
+    encounter: Floor3EncounterState,
+  ): { x: number; y: number } | null {
+    const floorMap = world.floorMap;
+    if (!floorMap) return null;
+    const room = floorMap.roomGraph.get(encounter.roomId);
+    if (!room) return null;
+    if (room.interiorCells && room.interiorCells.length > 0) {
+      const cx = room.bounds.x + Math.floor(room.bounds.width / 2);
+      const cy = room.bounds.y + Math.floor(room.bounds.height / 2);
+      let best = room.interiorCells[0]!;
+      let bestDist = (best.x - cx) ** 2 + (best.y - cy) ** 2;
+      for (let i = 1; i < room.interiorCells.length; i += 1) {
+        const candidate = room.interiorCells[i]!;
+        const dist = (candidate.x - cx) ** 2 + (candidate.y - cy) ** 2;
+        if (
+          dist < bestDist ||
+          (dist === bestDist &&
+            (candidate.x < best.x || (candidate.x === best.x && candidate.y < best.y)))
+        ) {
+          best = candidate;
+          bestDist = dist;
+        }
+      }
+      return floorMap.tileToWorld(best.x, best.y);
+    }
+    const centerX = room.bounds.x + Math.floor(room.bounds.width / 2);
+    const centerY = room.bounds.y + Math.floor(room.bounds.height / 2);
+    return floorMap.tileToWorld(centerX, centerY);
+  }
+
+  private resolveFloor3EncounterProgressTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    encounter: Floor3EncounterState,
+    reason: string,
+  ): ProgressTarget | null {
+    const activeEnemy = this.findNearestFloor3EncounterEnemy(
+      world,
+      playerX,
+      playerY,
+      encounter.teamIds,
+    );
+    if (activeEnemy) {
+      return this.createProgressTarget(
+        activeEnemy.x,
+        activeEnemy.y,
+        playerX,
+        playerY,
+        reason,
+        activeEnemy.eid,
+      );
+    }
+
+    const anchor = this.resolveFloor3EncounterAnchor(world, encounter);
+    if (anchor) {
+      const target = this.createProgressTarget(anchor.x, anchor.y, playerX, playerY, reason);
+      if (
+        target.distance <= DIRECT_MOVE_EPSILON_FT ||
+        this.isTargetReachable(world, playerX, playerY, target)
+      ) {
+        return target;
+      }
+    }
+    return null;
+  }
+
+  private resolveNearestRallyPoint(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const rallyPoints = query(world.ecs, [RallyPoint, Position]);
+    let best: ProgressTarget | null = null;
+    for (const eid of rallyPoints) {
+      const x = world.stores.position.x[eid] ?? 0;
+      const y = world.stores.position.y[eid] ?? 0;
+      const target = this.createProgressTarget(
+        x,
+        y,
+        playerX,
+        playerY,
+        'Regrouping at a rally point',
+      );
+      if (best === null || target.distance < best.distance) {
+        best = target;
+      }
+    }
+    return best;
+  }
+
+  private findFloor3ProgressObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const state = world.floorExtendedState?.floor3Studios;
+    if (!state) return null;
+    if (world.frameCount < this.progressGoalSuppressedUntilFrame) return null;
+
+    const companions = query(world.ecs, [Companion, PartySlot, Team]);
+    let partyCount = 0;
+    let knockedOutPartyCount = 0;
+    for (const eid of companions) {
+      if ((world.stores.team.id[eid] ?? -1) !== TeamId.PLAYER) continue;
+      partyCount += 1;
+      if ((world.stores.companion.knockedOut[eid] ?? 0) === 1) {
+        knockedOutPartyCount += 1;
+      }
+    }
+    if (
+      state.staircaseUnlocked === true &&
+      state.staircaseSpawned === true &&
+      state.staircaseDiscovered !== true &&
+      state.staircasePos &&
+      floor3KeptCompanionDescendGateSatisfied(world)
+    ) {
+      return this.createProgressTarget(
+        state.staircasePos.x,
+        state.staircasePos.y,
+        playerX,
+        playerY,
+        'Heading to the Floor 3 exit stairs',
+      );
+    }
+
+    if (partyCount > 1 && knockedOutPartyCount > 0 && knockedOutPartyCount < partyCount) {
+      const rallyPoint = this.resolveNearestRallyPoint(world, playerX, playerY);
+      if (rallyPoint) return rallyPoint;
+    }
+
+    if (state.finalFour.unlocked && !state.finalFour.defeated) {
+      const round = state.finalFourRounds[state.finalFourRoundIndex];
+      const roundLabel =
+        round !== undefined
+          ? `Engaging Final Four ${state.finalFourRoundIndex + 1}/4: ${round.handlerName}`
+          : 'Engaging the Final Four';
+      const finalFourTarget = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        state.finalFour,
+        roundLabel,
+      );
+      if (finalFourTarget) {
+        return finalFourTarget;
+      }
+    }
+
+    const unlockedStudios = state.studios
+      .filter((studio) => studio.unlocked && !studio.defeated)
+      .sort((a, b) => a.unlockLevel - b.unlockLevel || a.id.localeCompare(b.id));
+    for (const studio of unlockedStudios) {
+      const target = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        studio,
+        `Engaging Studio ${studio.name}`,
+      );
+      if (target) {
+        return target;
+      }
+    }
+
+    const nextStudio = state.studios
+      .filter((studio) => !studio.defeated)
+      .sort((a, b) => a.unlockLevel - b.unlockLevel || a.id.localeCompare(b.id))[0];
+    if (nextStudio) {
+      const stagingTarget = this.resolveFloor3EncounterProgressTarget(
+        world,
+        playerX,
+        playerY,
+        nextStudio,
+        `Staging for Studio ${nextStudio.name} (unlock level ${nextStudio.unlockLevel})`,
+      );
+      if (stagingTarget) {
+        return stagingTarget;
+      }
+    }
+
+    const fallbackEnemy = this.findNearestEnemy(world, playerX, playerY, Number.POSITIVE_INFINITY);
+    if (!fallbackEnemy) {
+      return null;
+    }
+    return this.createProgressTarget(
+      fallbackEnemy.x,
+      fallbackEnemy.y,
+      playerX,
+      playerY,
+      'Hunting ambient threats while staging Floor 3 objectives',
+      fallbackEnemy.eid,
+    );
+  }
+
   private findProgressObjective(
     world: GameWorld,
     playerEid: number,
@@ -7563,6 +7926,15 @@ export class BehaviorTreeAI implements AIInputProvider {
         return this.isFloor2IntroductionPending(world)
           ? floor2Target
           : maybeDetourToQuestGiver(floor2Target);
+      }
+    }
+    if (world.floorExtendedState?.floor3Studios) {
+      return this.findFloor3ProgressObjective(world, playerX, playerY);
+    }
+    if (world.floorId === 'floor4') {
+      const floor4Target = this.findFloor4ProgressObjective(world, playerX, playerY);
+      if (floor4Target) {
+        return floor4Target;
       }
     }
     const objective = floorScenario?.objective;
@@ -7937,6 +8309,52 @@ export class BehaviorTreeAI implements AIInputProvider {
     return null;
   }
 
+  private findFloor4ProgressObjective(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const phase = world.floorExtendedState?.floor4Arena?.phase;
+    const activeHeadliner = world.floorExtendedState?.floor4Arena?.activeHeadliner;
+    if (
+      (phase?.kind === 'HEADLINE' || phase?.kind === 'OVERTIME') &&
+      activeHeadliner?.bossEid !== null &&
+      activeHeadliner?.bossEid !== undefined &&
+      !activeHeadliner.defeated &&
+      entityExists(world.ecs, activeHeadliner.bossEid)
+    ) {
+      const x = world.stores.position.x[activeHeadliner.bossEid];
+      const y = world.stores.position.y[activeHeadliner.bossEid];
+      const hp = world.stores.health.current[activeHeadliner.bossEid] ?? 0;
+      if (x !== undefined && y !== undefined && hp > 0) {
+        return this.createProgressTarget(
+          x,
+          y,
+          playerX,
+          playerY,
+          `Engaging Floor 4 Headliner ${activeHeadliner.displayName}`,
+          activeHeadliner.bossEid,
+        );
+      }
+    }
+    // Route to the public Green Room exit marker itself — the same projection
+    // the scene renders and the confirmation gates on — so the AI only ever
+    // confirms from inside the marker's interaction radius.
+    const exitMarker = getFloor4GreenRoomExitMarker(world);
+    if (!exitMarker) {
+      return null;
+    }
+    return this.createProgressTarget(
+      exitMarker.positionFt.x,
+      exitMarker.positionFt.y,
+      playerX,
+      playerY,
+      exitMarker.nextAct === null
+        ? 'Heading to the Green Room exit to claim Floor 4 victory'
+        : `Heading to the Green Room exit for act ${exitMarker.nextAct}`,
+    );
+  }
+
   private findMerchantGoldFarmTarget(
     world: GameWorld,
     playerX: number,
@@ -8282,7 +8700,9 @@ export class BehaviorTreeAI implements AIInputProvider {
           ? 'xp'
           : hasComponent(world.ecs, eid, Gold)
             ? 'gold'
-            : null;
+            : hasComponent(world.ecs, eid, BuildCurrencyPickup)
+              ? 'buildCurrency'
+              : null;
       if (kind !== null) {
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil === undefined || ignoredUntil <= world.frameCount) {
@@ -8303,6 +8723,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const sources: ReadonlyArray<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
     ];
     for (const source of sources) {
       for (const eid of source.entities) {
@@ -8422,6 +8843,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+      { kind: 'buildCurrency', entities: query(world.ecs, [BuildCurrencyPickup, Position]) },
       { kind: 'harvest', entities: query(world.ecs, [Harvestable, Position]) },
     ];
 
@@ -8507,8 +8929,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     const isXp = hasComponent(world.ecs, stickyEid, XpGem);
     const isGold = hasComponent(world.ecs, stickyEid, Gold);
     const isItem = hasComponent(world.ecs, stickyEid, DroppedItem);
+    const isBuildCurrency = hasComponent(world.ecs, stickyEid, BuildCurrencyPickup);
     const isHarvest = hasComponent(world.ecs, stickyEid, Harvestable);
-    if (!isXp && !isGold && !isItem && !isHarvest) {
+    if (!isXp && !isGold && !isItem && !isBuildCurrency && !isHarvest) {
       return null;
     }
 
@@ -8527,7 +8950,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       x,
       y,
       distance,
-      kind: isXp ? 'xp' : isGold ? 'gold' : isItem ? 'item' : 'harvest',
+      kind: isXp
+        ? 'xp'
+        : isGold
+          ? 'gold'
+          : isItem
+            ? 'item'
+            : isBuildCurrency
+              ? 'buildCurrency'
+              : 'harvest',
     };
   }
 

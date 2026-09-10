@@ -94,7 +94,7 @@ function encode(image: RgbaPlane): Buffer {
 
 /**
  * "Good" weapon: a thick diagonal blade silhouette covering the center of the
- * frame. Carefully sized so that, after 32x downscale + palette quantize:
+ * frame. Carefully sized so that, after the 32x nearest-neighbor downscale:
  *   - The output anchor at (16, 16) samples source (528, 528) which lies on
  *     the blade and is therefore opaque. (Nearest-neighbor formula:
  *     floor((dst + 0.5) * 1024 / 32) = dst*32 + 16.)

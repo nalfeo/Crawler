@@ -146,6 +146,9 @@ const STYLES = `
   .final .wrap { position: relative; display: inline-block; line-height: 0; }
   .final .marker { position: absolute; width: 9px; height: 9px; border-radius: 50%;
     transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 1px #0b1120, 0 0 4px rgba(0,0,0,0.6); }
+  .final .zoom-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .final .zoom-row label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+  .final .zoom-row span { font-size: 11px; color: #cbd5e1; min-width: 22px; }
   .authoring { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px;
     padding: 10px; border: 1px solid rgba(125,211,252,0.35); border-radius: 8px; background: #0b1220; }
   .authoring .fld { display: flex; flex-direction: column; gap: 3px; }
@@ -219,6 +222,12 @@ const CLIENT_SCRIPT = String.raw`
   var applyNote = null;              // survives the post-Apply re-render for feedback
   var finalImgEl = null;             // current final <img> (for marker redraw)
   var finalMarkerEl = null;          // current marker dot
+  var finalZoomInput = null;         // current zoom <input type=range> ref
+  var finalZoomLabel = null;         // current zoom label <span> ref
+  // View-only magnification of the "Final output" preview. Not part of the
+  // authoring/persist state: it never affects the processed image or the
+  // persisted overrides, only how large the preview renders in this tab.
+  var currentFinalZoom = 1;          // integer 1..8
   var authoringApplyBtn = null;      // current "Apply changes" <button> (for in-flight disable)
   var applyInFlight = false;         // guards against a double-POST from a rapid re-click
 
@@ -837,6 +846,8 @@ const CLIENT_SCRIPT = String.raw`
     if (!src) {
       finalImgEl = null;
       finalMarkerEl = null;
+      finalZoomInput = null;
+      finalZoomLabel = null;
       return h('div', { class: 'step final' }, [
         label,
         h('span', { class: 'muted', text: 'No final output available.' }),
@@ -849,7 +860,7 @@ const CLIENT_SCRIPT = String.raw`
     var wrap = h('div', { class: 'wrap' }, [img, marker]);
     finalImgEl = img;
     finalMarkerEl = marker;
-    img.addEventListener('load', function () { redrawAnchorMarker(); });
+    img.addEventListener('load', function () { redrawAnchorMarker(); applyFinalZoom(); });
     img.addEventListener('click', function (ev) {
       var rect = img.getBoundingClientRect();
       var a = finalImageClickToAnchor({
@@ -864,7 +875,47 @@ const CLIENT_SCRIPT = String.raw`
       if (anchorYInput) anchorYInput.value = String(a.y);
       redrawAnchorMarker();
     });
-    return h('div', { class: 'step final' }, [label, wrap, makeAuthoringPanel(state)]);
+    var zoomIn = h('input', {
+      type: 'range', id: 'postprocess-final-zoom', min: '1', max: '8', step: '1',
+      value: String(currentFinalZoom), title: 'Zoom the final-output preview without affecting the persisted image'
+    });
+    var zoomLbl = h('span', { text: currentFinalZoom + '\u00d7' });
+    finalZoomInput = zoomIn;
+    finalZoomLabel = zoomLbl;
+    zoomIn.addEventListener('input', function () {
+      currentFinalZoom = clampFinalZoom(parseInt(zoomIn.value, 10));
+      zoomLbl.textContent = currentFinalZoom + '\u00d7';
+      applyFinalZoom();
+    });
+    var zoomRow = h('div', { class: 'zoom-row' }, [
+      h('label', { for: 'postprocess-final-zoom', text: 'Zoom' }), zoomIn, zoomLbl
+    ]);
+    return h('div', { class: 'step final' }, [label, zoomRow, wrap, makeAuthoringPanel(state)]);
+  }
+
+  function clampFinalZoom(value) {
+    if (!Number.isFinite(value)) return 1;
+    return Math.max(1, Math.min(8, Math.round(value)));
+  }
+
+  // View-only magnification of the "final output" preview <img>. Base size
+  // mirrors the pre-existing '.final img' max-width/max-height: 160px
+  // scale-to-fit behavior (so zoom=1 renders IDENTICALLY to before this
+  // control existed); zoom>1 scales that same base size up. image-rendering:
+  // pixelated (set on '.final img') keeps the enlargement crisp/nearest-
+  // neighbor rather than blurry. Never touches the processed image data or
+  // any persisted override — purely a preview affordance.
+  function applyFinalZoom() {
+    if (!finalImgEl) return;
+    if (!finalImgEl.naturalWidth || !finalImgEl.naturalHeight) return;
+    var maxBase = 160;
+    var scale = Math.min(1, maxBase / Math.max(finalImgEl.naturalWidth, finalImgEl.naturalHeight));
+    var baseW = finalImgEl.naturalWidth * scale;
+    var baseH = finalImgEl.naturalHeight * scale;
+    finalImgEl.style.maxWidth = 'none';
+    finalImgEl.style.maxHeight = 'none';
+    finalImgEl.style.width = Math.round(baseW * currentFinalZoom) + 'px';
+    finalImgEl.style.height = Math.round(baseH * currentFinalZoom) + 'px';
   }
 
   // Position the anchor marker over the final image (center-of-pixel percent).

@@ -12,6 +12,9 @@ import {
   FLOOR2_ACHIEVEMENT_CATALOG,
   FLOOR2_ACHIEVEMENTS,
   FLOOR2_RUN_GLOBAL_ACHIEVEMENT_COUNT,
+  _FLOOR4_ACHIEVEMENTS as FLOOR4_ACHIEVEMENTS,
+  _FLOOR5_ACHIEVEMENTS as FLOOR5_ACHIEVEMENTS,
+  _FLOOR6_ACHIEVEMENTS as FLOOR6_ACHIEVEMENTS,
   FLOOR2_ACHIEVEMENT_LOOT_TIERS,
   _FLOOR2_CRAFTING_MATERIALS as FLOOR2_CRAFTING_MATERIALS,
   FLOOR2_EQUIPMENT_DROP_CHANCE_BY_TIER,
@@ -34,6 +37,7 @@ import {
 } from '../../src/shared/generated-equipment-types.js';
 import { FLOOR2_REWARD_POOL_STABLE_IDS } from '../../src/shared/data/floor2-reward-pool.js';
 import { ITEM_CATALOG, ItemRarity } from '../../src/shared/items.js';
+import { FLOOR6_DEFENSE_QUEST_ID } from '../../src/shared/quest-types.js';
 
 function rawAchievement(
   overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
@@ -57,6 +61,19 @@ describe('floor1 achievements catalog', () => {
   it('has unique achievement ids', () => {
     const ids = FLOOR1_ACHIEVEMENTS.map((achievement) => achievement.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('classifies reaching Floor 2 as common and uses the updated Director copy', () => {
+    const achievement = FLOOR1_ACHIEVEMENTS.find((entry) => entry.id === 'floor1-clear');
+
+    expect(achievement).toBeDefined();
+    expect(achievement?.reward).toMatchObject({
+      type: 'lootBox',
+      tier: 'common',
+    });
+    expect(achievement?.directorFlavor).toBe(
+      "Floor 1 cleared. Floor 2 access is the legal minimum for airtime. We downgraded your prize to a budget box because applause has a line item now. The audience logged this as 'adequate breathing with stairs.' Our editors gave your highlight ten seconds and two sarcastic captions. Open it fast before Floor 2 turns you into a ratings graphic.",
+    );
   });
 
   it('uses progressively longer Director flavor text for higher difficulty bands', () => {
@@ -102,6 +119,9 @@ describe('floor1 achievements catalog', () => {
   it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(4)?.all).toEqual(FLOOR4_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
 
     const floor2Catalog = createAchievementCatalog(2, [
       rawAchievement({
@@ -148,7 +168,11 @@ describe('floor1 achievements catalog', () => {
       parseAchievementCatalog([rawAchievement({ id: 'boss-chest:goblin-clan' })]),
     ).toThrow(/collides with the reserved boss-chest reward-bundle prefix/);
     expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(
-      FLOOR1_ACHIEVEMENT_COUNT + FLOOR2_ACHIEVEMENTS.length,
+      FLOOR1_ACHIEVEMENT_COUNT +
+        FLOOR2_ACHIEVEMENTS.length +
+        FLOOR4_ACHIEVEMENTS.length +
+        FLOOR5_ACHIEVEMENTS.length +
+        FLOOR6_ACHIEVEMENTS.length,
     );
     expect(ALL_ACHIEVEMENTS).toEqual(
       ACHIEVEMENT_CATALOG_REGISTRY.catalogs.flatMap((catalog) => catalog.all),
@@ -158,6 +182,9 @@ describe('floor1 achievements catalog', () => {
   it('keeps floor-aware catalog lookup isolated by floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(4)?.all).toEqual(FLOOR4_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(5)?.all).toEqual(FLOOR5_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(6)?.all).toEqual(FLOOR6_ACHIEVEMENTS);
   });
 
   it('defaults missing scope to floor for backward compatibility', () => {
@@ -214,6 +241,123 @@ describe('floor1 achievements catalog', () => {
     delete raw[0]!.unlockRules;
 
     expect(() => parseAchievementCatalog(raw)).toThrow();
+  });
+});
+
+describe('floor6 achievements catalog', () => {
+  it('registers validated Floor 6 achievements with unique measured requirements', () => {
+    expect(FLOOR6_ACHIEVEMENTS).toHaveLength(7);
+    expect(new Set(FLOOR6_ACHIEVEMENTS.map((achievement) => achievement.id)).size).toBe(
+      FLOOR6_ACHIEVEMENTS.length,
+    );
+    expect(FLOOR6_ACHIEVEMENTS.every((achievement) => achievement.floor === 6)).toBe(true);
+    expect(FLOOR6_ACHIEVEMENTS.every((achievement) => achievement.reward.type === 'none')).toBe(
+      true,
+    );
+
+    const requirementKeys = FLOOR6_ACHIEVEMENTS.map((achievement) =>
+      JSON.stringify(achievement.unlockRules),
+    );
+    expect(new Set(requirementKeys).size).toBe(requirementKeys.length);
+  });
+
+  describe('floor5 achievements catalog', () => {
+    it('registers Floor 5 achievements with breach/capture/clean-sweep requirements', () => {
+      expect(FLOOR5_ACHIEVEMENTS).toHaveLength(3);
+      expect(FLOOR5_ACHIEVEMENTS.every((achievement) => achievement.floor === 5)).toBe(true);
+      expect(FLOOR5_ACHIEVEMENTS.every((achievement) => achievement.reward.type === 'none')).toBe(
+        true,
+      );
+      expect(FLOOR5_ACHIEVEMENTS.map((achievement) => achievement.id).sort()).toEqual([
+        'floor5-breach-opened',
+        'floor5-castle-captured',
+        'floor5-clean-sweep',
+      ]);
+    });
+  });
+
+  it('keeps Floor 6 achievements tied to Floor 6 measured facts and quest completion', () => {
+    const factNames = new Set(
+      FLOOR6_ACHIEVEMENTS.flatMap((achievement) =>
+        achievement.unlockRules.flatMap((rule) => (rule.type === 'booleanIs' ? [rule.fact] : [])),
+      ),
+    );
+    expect(factNames).toEqual(
+      new Set([
+        'floor6RelayBriefed',
+        'floor6FirstWaveCleared',
+        'floor6FirstBuildPlaced',
+        'floor6FirstUpgradeChosen',
+        'floor6BreakCleared',
+        'floor6DeadlineDefeated',
+        'floor6RelaySecured',
+        'runClearedFloor',
+      ]),
+    );
+    expect(
+      FLOOR6_ACHIEVEMENTS.some((achievement) =>
+        achievement.unlockRules.some(
+          (rule) =>
+            rule.type === 'allQuestsComplete' && rule.questIds.includes(FLOOR6_DEFENSE_QUEST_ID),
+        ),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('floor4 achievements catalog', () => {
+  it('keeps Director flavor within each difficulty range', () => {
+    const ranges = {
+      basic: [2, 4],
+      standard: [4, 8],
+      hard: [8, 12],
+      brutal: [12, 20],
+    } as const;
+    const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+
+    for (const achievement of FLOOR4_ACHIEVEMENTS) {
+      const sentenceCount = [...segmenter.segment(achievement.directorFlavor)].filter(
+        ({ segment }) => /[.!?]['"”’]?$/.test(segment.trim()),
+      ).length;
+      const [minimum, maximum] = ranges[achievement.difficulty];
+      expect(sentenceCount, achievement.id).toBeGreaterThanOrEqual(minimum);
+      expect(sentenceCount, achievement.id).toBeLessThanOrEqual(maximum);
+    }
+  });
+
+  it('contains 30 floor-scoped achievements with a trash-to-rare distribution', () => {
+    expect(FLOOR4_ACHIEVEMENTS).toHaveLength(30);
+    expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.floor === 4)).toBe(true);
+    expect(FLOOR4_ACHIEVEMENTS.every((achievement) => achievement.scope === 'floor')).toBe(true);
+
+    const counts = { trash: 0, common: 0, uncommon: 0, rare: 0 };
+    for (const achievement of FLOOR4_ACHIEVEMENTS) {
+      expect(achievement.reward.type).toBe('lootBox');
+      if (achievement.reward.type === 'lootBox') {
+        counts[achievement.reward.tier as keyof typeof counts]++;
+      }
+    }
+    expect(counts).toEqual({ trash: 5, common: 12, uncommon: 8, rare: 5 });
+    expect(
+      FLOOR4_ACHIEVEMENTS.every((achievement) => {
+        if (achievement.reward.type !== 'lootBox') return false;
+        return (
+          (achievement.reward.tier === 'trash' && achievement.difficulty === 'basic') ||
+          (achievement.reward.tier === 'common' && achievement.difficulty === 'standard') ||
+          (achievement.reward.tier === 'uncommon' && achievement.difficulty === 'hard') ||
+          (achievement.reward.tier === 'rare' && achievement.difficulty === 'brutal')
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it('uses unique measured Floor 4 requirements across the catalog', () => {
+    const ids = FLOOR4_ACHIEVEMENTS.map((achievement) => achievement.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const requirements = FLOOR4_ACHIEVEMENTS.map((achievement) =>
+      JSON.stringify(achievement.unlockRules),
+    );
+    expect(new Set(requirements).size).toBe(requirements.length);
   });
 });
 

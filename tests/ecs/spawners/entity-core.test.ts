@@ -18,11 +18,13 @@ describe('createEntity', () => {
     // Dirty a store slot manually at ID 0
     world.stores.position.x[0] = 124.875;
     world.stores.health.current[0] = 42;
+    world.stores.siegeMinion.targetEid[0] = 123_456;
 
     const eid = createEntity(world);
 
     expect(world.stores.position.x[eid]).toBe(0);
     expect(world.stores.health.current[eid]).toBe(0);
+    expect(world.stores.siegeMinion.targetEid[eid]).toBe(0);
   });
 });
 
@@ -33,6 +35,7 @@ describe('clearEntityStores', () => {
 
     expect(world.stores.position.x[eid]).toBe(12.5);
     expect(world.stores.health.current[eid]).toBe(50);
+    world.stores.siegeRam.lastStrikeMs[eid] = 12_345_678_901;
 
     clearEntityStores(world, eid);
 
@@ -43,6 +46,7 @@ describe('clearEntityStores', () => {
     expect(world.stores.sprite.width[eid]).toBe(0);
     expect(world.stores.enemyBehavior.type[eid]).toBe(0);
     expect(world.stores.enemyBehavior.speed[eid]).toBe(0);
+    expect(world.stores.siegeRam.lastStrikeMs[eid]).toBe(0);
   });
 
   it('leaves the render-only setPieceProps list untouched (set-piece props are not entities)', () => {

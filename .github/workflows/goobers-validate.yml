@@ -27,7 +27,13 @@ jobs:
       GOOBERS_REPO: Agent-Clubhouse/Goobers
     steps:
       - name: Checkout
+        # Validation only reads the checked-in `.goobers` tree and runs a
+        # downloaded binary against it; it never pushes. Leaving the job token
+        # in `.git/config` would hand write access to that external binary for
+        # no benefit.
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Resolve pinned archive checksum
         # Independent pin: this digest is reviewed and committed here, not

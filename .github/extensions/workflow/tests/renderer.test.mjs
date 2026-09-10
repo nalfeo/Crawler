@@ -55,9 +55,9 @@ test('the client script wires the tab bar and all three read surfaces', () => {
   assert.doesNotMatch(html, /function renderRequests\(/);
 });
 
-test('the Author tab exposes the complete Azure workflow controls and visible refresh', () => {
+test('the Briefs tab exposes the complete Azure workflow controls and visible refresh', () => {
   const html = renderHtml('x');
-  assert.match(html, /id: 'author', label: 'Author'/);
+  assert.match(html, /id: 'briefs', label: 'Briefs'/);
   assert.match(html, /function renderAuthor\(/);
   assert.match(html, /Refresh Azure workflow/);
   assert.match(html, /\/api\/workflow\/request/);
@@ -109,6 +109,18 @@ test('the client script wires SSE + run selection', () => {
   assert.match(html, /\/api\/select\?briefId=/);
 });
 
+test('selected runs render as a static source sheet and processed-variant review grid', () => {
+  const html = renderHtml('x');
+  assert.match(html, /Static review sheet/);
+  assert.match(html, /img\.src = imgUrl\('sheet', sel\.briefId, sel\.runId, current\)/);
+  assert.match(html, /Static variant review grid/);
+  assert.match(
+    html,
+    /thumb\.src = imgUrl\('processed', sel\.briefId, sel\.runId, pad2\(candidate\.index\) \+ '\.png'\)/,
+  );
+  assert.doesNotMatch(html, /document\.createElement\('video'\)/);
+});
+
 test('successful embedded Postprocess applies patch and re-renders all candidate cards', () => {
   const html = renderHtml('x');
   assert.match(html, /msg\.type === 'postprocess:applied'/);
@@ -144,6 +156,7 @@ test('the client script exposes token-gated accept and visible queue states', ()
   assert.match(html, /Accepting & queueing…/);
   assert.match(html, /Already queued/);
   assert.match(html, /Open asset issue/);
+  assert.match(html, /acceptance\.queueBranch \|\| 'assets\/queue'/);
   // Any accepted/staged/integrated/unverified variant exposes "Re-accept"
   // (force-retries the same idempotent sidecar acceptance path) rather than
   // the old ephemeral-acceptance-driven "Retry accept & queue" label.
@@ -258,6 +271,43 @@ test('the run cards expose every current judge axis', () => {
     assert.match(html, new RegExp(`key: '${key}'`));
   }
   assert.match(html, /if \(!score\) continue;/);
+});
+
+test('the workflow uses the Backlog, Briefs, and Sprites information architecture', () => {
+  const html = renderHtml('x');
+  assert.match(html, /id: 'backlog', label: 'Backlog'/);
+  assert.match(html, /id: 'briefs', label: 'Briefs'/);
+  assert.match(html, /id: 'sprites', label: 'Sprites'/);
+  assert.doesNotMatch(html, /label: 'Author'/);
+  assert.match(html, /text: 'Back to Briefs'/);
+  assert.match(html, /text: 'Force reprocess'/);
+  assert.match(html, /text: 'Judge run'/);
+  assert.match(html, /postprocessHost\.hidden = activeTab !== 'sprites'/);
+  assert.match(html, /function filterWorkflowItems\(/);
+  assert.match(html, /chooseButton\.disabled = chosen/);
+});
+
+test('variant thumbnails preserve the source sprite aspect ratio instead of squashing to a square', () => {
+  const html = renderHtml('x');
+  assert.match(
+    html,
+    /\.card \.thumb \{ max-width: 100%; width: auto; height: auto; max-height: 160px;/,
+  );
+  assert.match(html, /object-fit: contain/);
+  assert.doesNotMatch(html, /\.card \.thumb \{ width: 96px; height: 96px;/);
+});
+
+test('Force reprocess requires confirmation before discarding post-process customizations', () => {
+  const html = renderHtml('x');
+  assert.match(
+    html,
+    /text: 'Force reprocess',\s*title: 'Re-slice the stored sheet, clear stale post-process settings, and regenerate variants',\s*onclick: function \(\) \{\s*if \(!window\.confirm\(/,
+  );
+  // The (non-destructive) Judge run action must NOT require confirmation.
+  const judgeStart = html.indexOf("text: 'Judge run'");
+  assert.ok(judgeStart >= 0);
+  const judgeBlock = html.slice(judgeStart, judgeStart + 200);
+  assert.doesNotMatch(judgeBlock, /window\.confirm/);
 });
 
 test('instanceId is HTML-escaped into the shell', () => {
@@ -443,7 +493,7 @@ test('opening the embedded Post-process Debugger reveals the persistent host, la
   assert.match(html, /window\.__postprocessReadyMetric/);
 });
 
-test('the persistent #postprocess-host sits outside #app and only displays on Runs', () => {
+test('the persistent #postprocess-host sits outside #app and only displays on Sprites', () => {
   const html = renderHtml('x');
   const appAt = html.indexOf('id="app"');
   const hostAt = html.indexOf('id="postprocess-host"');
@@ -461,6 +511,6 @@ test('the persistent #postprocess-host sits outside #app and only displays on Ru
     html.indexOf('function render(state) {'),
     html.indexOf('var selecting = false;'),
   );
-  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'runs'/);
+  assert.match(renderBody, /postprocessHost\.hidden = activeTab !== 'sprites'/);
   assert.doesNotMatch(renderBody, /postprocessIframe/);
 });

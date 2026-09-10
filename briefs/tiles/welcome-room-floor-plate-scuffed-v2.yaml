@@ -10,11 +10,11 @@
 # which reads as damage rather than as pattern — worse than a uniform grid. The
 # most likely mechanism is this brief's own v1 SHEET LAYOUT paragraph demanding a
 # "bright magenta #ff00ff gutter": the slicer cuts at the CENTRE of a detected
-# background band, so half the gutter lands inside the cell, and `paletteMode:
-# strict` then quantized that magenta to the nearest ramp step [132,136,142] —
-# luma 136, exactly the measured rim. v2 DROPS that paragraph entirely; the three
-# siblings that never had it sliced cleanly at 256x256, so the default tile
-# scaffolding is sufficient.
+# background band, so half the gutter landed inside the cell. Under the former
+# palette-quantization implementation, strict mode mapped that magenta to
+# [132,136,142] — luma 136, exactly the measured rim. v2 DROPS that paragraph
+# entirely; the three siblings that never had it sliced cleanly at 256x256, so
+# the default tile scaffolding is sufficient.
 generation:
   sheet:
     rows: 1

@@ -1,5 +1,6 @@
 import { query } from 'bitecs';
 import { Player } from '../../core/components.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import type { GameWorld } from '../../core/world.js';
 import {
   ACHIEVEMENT_CATALOG_REGISTRY,
@@ -29,6 +30,8 @@ import {
   LootBoxRewardResolutionError,
   resolveLootBoxRewardBundle,
 } from '../lootbox-materials-reward-resolver.js';
+import { floor5Manifest } from '../../shared/floor-manifest.js';
+import { SLOT_REGISTRY } from '../../shared/equipment-slots.js';
 
 /**
  * Pre-computed set of Floor 2 weapon base IDs for category-weighted reward
@@ -179,7 +182,14 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
     (world.floor === 1 && world.floorScenario?.runSummary?.outcome === 'cleared_floor') ||
     (world.floor === 2 &&
       (world.floorExtendedState?.familyState?.staircaseDiscovered === true ||
-        world.goalFlags.get('floor2.objective.staircaseDiscovered') === true));
+        world.goalFlags.get('floor2.objective.staircaseDiscovered') === true)) ||
+    (world.floor === 4 && world.floorExtendedState?.floor4Arena?.phase.kind === 'VICTORY') ||
+    (world.floor === 5 &&
+      world.goalFlags.get('floor5.siege.castleCaptured') === true &&
+      world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED') ||
+    (world.floor === 6 &&
+      world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
+      world.floorExtendedState.floor6Defense.exit.confirmed === true);
   const ratsKilled = floor1Objective?.ratsKilled ?? 0;
   const slimesKilled = floor1Objective?.slimesKilled ?? 0;
   const familyState = world.floor === 2 ? world.floorExtendedState?.familyState : undefined;
@@ -235,6 +245,38 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
   const hasBetrayedAlly = hasBetrayedFriendlyFamily(world);
   const floor2SafeRoomVisited = world.floor === 2 && isInSafeContext(world);
   const hasMetBroker = world.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID) === true;
+  const playerEid = query(world.ecs, [Player])[0];
+  const equipmentState = playerEid === undefined ? undefined : getEquipmentState(world, playerEid);
+  const allEquipmentSlotsOccupied =
+    equipmentState !== undefined &&
+    SLOT_REGISTRY.every((slot) => equipmentState.equipped[slot.id] != null);
+  const floor5State = world.floor === 5 ? world.floorExtendedState?.floor5Siege : undefined;
+  const floor5ReleaseGate = floor5Manifest.floor5?.releaseGate;
+  const floor5CommandPostMaxHealth = floor5State?.structures['command-post'].maxHealth ?? 0;
+  const floor5CommandPostHealthPct =
+    floor5State && floor5CommandPostMaxHealth > 0
+      ? floor5State.commandPostHealth / floor5CommandPostMaxHealth
+      : 0;
+  const floor5CastleCaptured = Boolean(
+    world.floor === 5 &&
+    world.goalFlags.get('floor5.siege.castleCaptured') === true &&
+    floor5State?.phase.kind === 'CAPTURED',
+  );
+  const floor5CleanSweep =
+    floor5CastleCaptured === true &&
+    floor5ReleaseGate !== undefined &&
+    floor5CommandPostHealthPct >= floor5ReleaseGate.cleanSweepMinCommandPostHealthPct;
+  const floor4State = world.floor === 4 ? world.floorExtendedState?.floor4Arena : undefined;
+  const floor4ActsCompleted = floor4State
+    ? new Set(
+        floor4State.timeline.flatMap((entry) =>
+          entry.phase.kind === 'INTERMISSION' ? [entry.phase.act] : [],
+        ),
+      ).size
+    : 0;
+  const floor4Victory = floor4State?.phase.kind === 'VICTORY';
+  const floor4GoldEarned =
+    floor4State?.actIncome.reduce((total, entry) => total + entry.totalGold, 0) ?? 0;
 
   return {
     numberFacts: {
@@ -259,6 +301,21 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       familyBossesDefeated,
       familyBossEncounterCount,
       familiesEngagedInCombatCount,
+      floor4ActsCompleted,
+      floor4WavesReleased: floor4State?.waveTelemetry.wavesReleased ?? 0,
+      floor4EnemiesSpawned: floor4State?.waveTelemetry.enemiesSpawned ?? 0,
+      floor4HeadlinersSpawned: floor4State?.headlinerTelemetry.spawned ?? 0,
+      floor4HeadlinersDefeated: floor4State?.headlinerTelemetry.defeated ?? 0,
+      // Green Room visits use a zero-based opened index; -1 means none has opened.
+      floor4GreenRoomVisits:
+        world.floor === 4
+          ? Math.max(
+              world.floorExtendedState?.floor4GreenRoom?.retiredVisitCount ?? 0,
+              (world.floorExtendedState?.floor4GreenRoom?.lastOpenedVisitIndex ?? -1) + 1,
+            )
+          : 0,
+      floor4OvertimeStarted: floor4State?.headlinerTelemetry.overtimeStarted ?? 0,
+      floor4GoldEarned,
     },
     booleanFacts: {
       ...empty.booleanFacts,
@@ -266,6 +323,32 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
       allPresentFamiliesNeutralOrBetter,
       allPresentFamiliesEngagedInCombat,
       allPresentFamilyBossesEngaged,
+      floor5WallBreached:
+        world.floor === 5 && world.goalFlags.get('floor5.siege.wallBreached') === true,
+      floor5CastleCaptured,
+      floor5CleanSweep,
+      floor6RelayBriefed:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.briefed') === true,
+      floor6FirstWaveCleared:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstWaveCleared') === true,
+      floor6FirstBuildPlaced:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstBuildPlaced') === true,
+      floor6FirstUpgradeChosen:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true,
+      floor6BreakCleared:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.breakCleared') === true,
+      floor6DeadlineDefeated:
+        world.floor === 6 && world.goalFlags.get('floor6.defense.deadlineDefeated') === true,
+      floor6RelaySecured:
+        world.floor === 6 &&
+        world.goalFlags.get('floor6.defense.relaySecured') === true &&
+        world.floorExtendedState?.floor6Defense?.terminalOutcome === 'victory' &&
+        world.floorExtendedState.floor6Defense.exit.confirmed === true,
+      floor4Victory: world.floor === 4 && floor4Victory,
+      floor4NoOvertime:
+        world.floor === 4 && floor4Victory && floor4State?.headlinerTelemetry.overtimeStarted === 0,
+      floor4KeptCompanionCoStar:
+        world.floor === 4 && floor4State?.keptCompanionCoStarActive === true,
       staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
       staircaseSpawned:
         floor1Objective?.staircaseSpawned === true ||
@@ -275,6 +358,7 @@ export function collectCurrentFloorAchievementFacts(world: GameWorld): Achieveme
         world.floorExtendedState?.familyState?.staircaseUnlocked === true,
       safeRoomDiscovered: floor1Objective?.safeRoomDiscovered === true,
       equipmentUnlocked: world.featureUnlocks.equipment,
+      allEquipmentSlotsOccupied,
       staircaseDiscovered:
         floor1Objective?.staircaseDiscovered === true ||
         world.floorExtendedState?.familyState?.staircaseDiscovered === true,

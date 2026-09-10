@@ -2,18 +2,21 @@ import { addComponent, hasComponent, query, setComponent } from 'bitecs';
 import {
   DeathTimer,
   Damage,
+  Companion,
   DoorState,
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
   Player,
   Position,
+  Team,
   Velocity,
 } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
 import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flow-field.js';
 import type { TileMap } from '../core/map/TileMap.js';
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
+import { isFloor3WildEnemy, isFloor3WildEnemyHostile } from '../core/enemy-targeting.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import { getWorldFloorBehavior } from '../core/floor-behavior.js';
 import type { GameWorld } from '../core/world.js';
@@ -40,6 +43,7 @@ import {
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
 import { getCompanionAIDecision } from './systems/companionAISystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import tuning from '../shared/data/tuning.json';
 
 export const AI_TYPE = {
   CHASE: 0,
@@ -243,18 +247,63 @@ function deterministicLeapDuration(
   return min + ((h >>> 0) % range);
 }
 
+/**
+ * Every movement-decision helper below refuses to step an `Enemy` entity into
+ * the player's invincibility zone. Companions also carry `Enemy` (for query
+ * convenience — see companionKOSystem.ts) but are the player's own ally:
+ * without this exemption a Companion that spawns or idles inside a safe room
+ * (e.g. Floor 3's starter-pet entrance) can never take a single step, since
+ * every candidate destination from inside the zone is itself still "in the
+ * safe space" and gets rejected forever.
+ */
+function isSafeSpaceBlockedForMovement(
+  world: GameWorld,
+  eid: number,
+  x: number,
+  y: number,
+): boolean {
+  if (hasComponent(world.ecs, eid, Companion)) {
+    return false;
+  }
+  return isPointInSafeSpace(world, x, y);
+}
+
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   if (Math.hypot(x, y) > EPSILON) {
     const enemyX = world.stores.position.x[eid] ?? 0;
     const enemyY = world.stores.position.y[eid] ?? 0;
     const nextX = enemyX + x;
     const nextY = enemyY + y;
-    if (isPointInSafeSpace(world, nextX, nextY)) {
+    if (isSafeSpaceBlockedForMovement(world, eid, nextX, nextY)) {
       setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
       return;
     }
   }
   setComponent(world.ecs, eid, Velocity, { x, y });
+}
+
+/**
+ * True when `eid` is a Floor 3 player-owned Companion whose current AI
+ * decision is "follow" — i.e. it is out on the leash rope, not mid-rival-fight
+ * or idling. Shared by `getEnemySpeed` (speed ramp) and the main dispatch loop
+ * (movement routing): both must agree on when a companion is "catching up",
+ * otherwise a ranged/support companion gets a faster speed but its authored
+ * standoff/kite movement still carries it AWAY from the player instead of
+ * closing the gap.
+ */
+function isFloor3FollowingCompanion(
+  world: GameWorld,
+  eid: number,
+  companionDecision: ReturnType<typeof getCompanionAIDecision>,
+): boolean {
+  return (
+    world.floorId === 'floor3' &&
+    companionDecision?.kind === 'follow' &&
+    hasComponent(world.ecs, eid, Companion) &&
+    hasComponent(world.ecs, eid, Team) &&
+    (world.stores.team.id[eid] ?? 0) === TeamId.PLAYER &&
+    (world.stores.companion.ownerTeam[eid] ?? 0) === TeamId.PLAYER
+  );
 }
 
 function getEnemySpeed(world: GameWorld, eid: number): number {
@@ -266,7 +315,39 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   // above base, so this is a pure raise-up-toward-player of the base speed.
   const decision = getFamilyAIDecision(world, eid);
   const rampSpeed = decision?.effectiveSpeed;
-  const rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  let rampedBase = rampSpeed !== undefined && rampSpeed > base ? rampSpeed : base;
+  const companionDecision = getCompanionAIDecision(world, eid);
+  if (isFloor3FollowingCompanion(world, eid, companionDecision)) {
+    const players = query(world.ecs, [Player, Position]);
+    const playerEid = players[0];
+    const playerSpeed =
+      playerEid === undefined
+        ? 0
+        : Math.hypot(
+            world.stores.velocity.x[playerEid] ?? 0,
+            world.stores.velocity.y[playerEid] ?? 0,
+          );
+    const x = world.stores.position.x[eid] ?? 0;
+    const y = world.stores.position.y[eid] ?? 0;
+    const distance = Math.hypot(
+      (world.stores.position.x[playerEid ?? eid] ?? x) - x,
+      (world.stores.position.y[playerEid ?? eid] ?? y) - y,
+    );
+    const leash = tuning.factionRelations.friendlyLeashTiles;
+    const baseline = Math.max(
+      base,
+      playerSpeed * tuning.floor3Companion.followSpeedPlayerMultiplier,
+    );
+    const cap = Math.max(
+      baseline,
+      base * tuning.floor3Companion.followSpeedMaxMultiplier,
+      playerSpeed * tuning.floor3Companion.followSpeedMaxMultiplier,
+    );
+    rampedBase = Math.min(
+      cap,
+      baseline + Math.max(0, distance - leash) * tuning.floor3Companion.followSpeedRampPerFt,
+    );
+  }
   // Then compose active status effects on top — the single seam every enemy
   // speed read (wander, slime-leap prep/pounce, and the speed cap) derives
   // from. Because the slow multiplies the ramped base, status slows genuinely
@@ -388,7 +469,7 @@ function applyIdleWander(
     const sampleY = py + dirY * WANDER_LOOKAHEAD_FT;
     return (
       !floorMap.isPassableAt(sampleX, sampleY) ||
-      isPointInSafeSpace(world, sampleX, sampleY) ||
+      isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY) ||
       (avoidDoors && isNearDoor(world, sampleX, sampleY))
     );
   };
@@ -407,7 +488,7 @@ function applyIdleWander(
       const clear =
         floorMap !== null &&
         floorMap.isPassableAt(aheadX, aheadY) &&
-        !isPointInSafeSpace(world, aheadX, aheadY);
+        !isSafeSpaceBlockedForMovement(world, eid, aheadX, aheadY);
       if (clear) {
         wanderMap.delete(eid);
         setNavigatingVelocity(world, eid, flee.x, flee.y, Math.max(0.025, speed * 0.7));
@@ -638,7 +719,10 @@ function setNavigatingVelocity(
     const candidate = rotate(desired.x, desired.y, offset);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -674,7 +758,10 @@ function tryUnstuckVelocity(
     const candidate = rotate(desired.x, desired.y, angle);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
-    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
+    if (
+      floorMap.isPassableAt(sampleX, sampleY) &&
+      !isSafeSpaceBlockedForMovement(world, eid, sampleX, sampleY)
+    ) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -746,6 +833,16 @@ export function getDoorRevision(world: GameWorld, tileMap: TileMap): number {
     hash ^= physicallyOpen;
     hash = Math.imul(hash, 16777619);
   }
+
+  // Dynamic barriers are the OTHER runtime source of passability change (they
+  // are consulted by `buildDoorAwarePassable`/`findTilePath` via
+  // `floorMap.hasBarrierAtTile` but never mutate `TileMap.flags`, so the door
+  // loop above cannot see them). Folding the registry version in means raising
+  // or dropping a barrier — e.g. the Floor 5 outer-wall breach — invalidates
+  // the shared path memo and the ground flow field on the very next AI tick
+  // instead of leaving enemies pathing through a wall that no longer exists.
+  hash ^= world.barriers.version * 2166136261;
+  hash = Math.imul(hash, 16777619);
 
   const existing = doorRevisionByWorld.get(world);
   if (!existing) {
@@ -2033,6 +2130,13 @@ export function enemyAISystem(world: GameWorld): void {
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+    if (isFloor3WildEnemy(world, eid) && !isFloor3WildEnemyHostile(world, eid)) {
+      applyIdleWander(world, eid, speed);
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
+      continue;
+    }
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
@@ -2152,6 +2256,33 @@ export function enemyAISystem(world: GameWorld): void {
       // (separation is exempted below; knockback/other systems are not, and
       // are intentionally out of scope).
       setVelocity(world, eid, 0, 0);
+    } else if (isFloor3FollowingCompanion(world, eid, companionDecision)) {
+      // #4373: `companionDecision.kind === 'follow'` means this companion is
+      // out past the leash and returning to its owner — it is NOT engaging a
+      // rival. Every authored AI type below has combat-only spacing logic
+      // (RANGED/SUPPORT standoff+kite, GUARDIAN hold band, LEAPER pounce) that
+      // would otherwise hold the companion at range or even retreat from the
+      // player it's supposed to be catching up to, which defeats the
+      // `getEnemySpeed` follow-speed boost above. Route straight through
+      // chase/direct-follow steering instead; `rival-primary`/`idle` decisions
+      // (and Floor 4 / NPC-owned companions, excluded by
+      // `isFloor3FollowingCompanion`) keep every authored behavior unchanged.
+      if (usePathing) {
+        applyPathDrivenBehavior(
+          world,
+          eid,
+          AI_TYPE.CHASE,
+          virtualPlayerX,
+          virtualPlayerY,
+          distanceToPlayer,
+          speed,
+          attackRange,
+          doorRevision,
+          groundFlow,
+        );
+      } else {
+        applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+      }
     } else if (
       behaviorType === AI_TYPE.LEAPER &&
       applySlimeLeapBehavior(world, eid, playerDx, playerDy, distanceToPlayer, speed)
@@ -2243,6 +2374,7 @@ export function enemyAISystem(world: GameWorld): void {
     // Floor 3 slice 4: SUPPORT is movement-only; remove this exclusion when
     // the Kindler support-ability slice wires its actual attack/buff payload.
     if (
+      !hasComponent(world.ecs, eid, Companion) &&
       behaviorType !== AI_TYPE.SUPPORT &&
       attackRange > EPSILON &&
       distanceToPlayer <= attackRange

@@ -5,6 +5,7 @@ export interface ReleaseBalanceSummary {
   revision: number;
   floor1RunCount: number;
   floor2RunCount: number;
+  floor6RunCount: number;
   chainedRunCount: number;
   meanFloor1CompletionLevel: number | null;
   meanFloor3EntryLevel: number | null;
@@ -58,6 +59,7 @@ function bossDurations(run: RunStats): { completed: number[]; incomplete: number
 export function analyzeReleaseBalance(input: {
   floor1: readonly RunStats[];
   floor2: readonly RunStats[];
+  floor6: readonly RunStats[];
   floor1Chain: readonly RunStats[];
 }): ReleaseBalanceSummary {
   const fights = [...input.floor1, ...input.floor2].map(bossDurations);
@@ -77,6 +79,7 @@ export function analyzeReleaseBalance(input: {
     revision: RELEASE_SWEEP_REVISION,
     floor1RunCount: input.floor1.length,
     floor2RunCount: input.floor2.length,
+    floor6RunCount: input.floor6.length,
     chainedRunCount: input.floor1Chain.length,
     meanFloor1CompletionLevel: mean(
       input.floor1.filter((run) => run.outcome === 'victory').map((run) => run.finalLevel),
@@ -102,6 +105,7 @@ export function validateReleaseBalanceSummary(summary: ReleaseBalanceSummary): s
 
   const expectedFloor1 = expectedCounts.floor1 ?? 300;
   const expectedFloor2 = expectedCounts.floor2 ?? 150;
+  const expectedFloor6 = expectedCounts.floor6 ?? 150;
   const expectedChained = expectedCounts['floor1-chain'] ?? 150;
 
   if (summary.floor1RunCount !== expectedFloor1) {
@@ -112,6 +116,11 @@ export function validateReleaseBalanceSummary(summary: ReleaseBalanceSummary): s
   if (summary.floor2RunCount !== expectedFloor2) {
     errors.push(
       `Expected ${expectedFloor2} Floor 2 runs for the release cohort, received ${summary.floor2RunCount}.`,
+    );
+  }
+  if (summary.floor6RunCount !== expectedFloor6) {
+    errors.push(
+      `Expected ${expectedFloor6} Floor 6 runs for the release cohort, received ${summary.floor6RunCount}.`,
     );
   }
   if (summary.chainedRunCount !== expectedChained) {

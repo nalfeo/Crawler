@@ -44,12 +44,13 @@ describe('report-only leg win-rate floor', () => {
         .sort(),
     );
     expect(REPORT_ONLY_LEG_IDS).toContain('floor2');
+    expect(REPORT_ONLY_LEG_IDS).toContain('floor6');
     expect(REPORT_ONLY_LEG_IDS).toContain('floor1-chain');
   });
 
   it('files an issue when a report-only leg is below the target', () => {
     const decision = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(41, 150), 'floor1-chain': leg(140, 150) }),
+      baseline({ floor2: leg(41, 150), floor6: leg(140, 150), 'floor1-chain': leg(140, 150) }),
     );
     expect(decision.regression).toBe(true);
     expect(decision.reason).toContain('floor2');
@@ -65,7 +66,7 @@ describe('report-only leg win-rate floor', () => {
 
   it('is silent when every monitored leg meets the target', () => {
     const decision = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(140, 150), 'floor1-chain': leg(139, 150) }),
+      baseline({ floor2: leg(140, 150), floor6: leg(140, 150), 'floor1-chain': leg(139, 150) }),
     );
     expect(decision.regression).toBe(false);
     expect(decision.issue).toBeUndefined();
@@ -76,21 +77,33 @@ describe('report-only leg win-rate floor', () => {
     // precisely on target would file an issue every single release.
     const exact = Math.round(150 * REPORT_ONLY_LEG_WIN_RATE_FLOOR);
     const decision = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(exact, 150), 'floor1-chain': leg(exact, 150) }),
+      baseline({
+        floor2: leg(exact, 150),
+        floor6: leg(exact, 150),
+        'floor1-chain': leg(exact, 150),
+      }),
     );
     expect(exact).toBe(135);
     expect(decision.regression).toBe(false);
     const justBelow = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(exact - 1, 150), 'floor1-chain': leg(exact, 150) }),
+      baseline({
+        floor2: leg(exact - 1, 150),
+        floor6: leg(exact, 150),
+        'floor1-chain': leg(exact, 150),
+      }),
     );
     expect(justBelow.regression).toBe(true);
   });
 
   it('reuses one stable marker so a long-running breach updates one issue', () => {
     const first = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(41, 150), 'floor1-chain': leg(90, 150) }),
+      baseline({ floor2: leg(41, 150), floor6: leg(140, 150), 'floor1-chain': leg(90, 150) }),
     ).issue?.marker;
-    const next = baseline({ floor2: leg(40, 150), 'floor1-chain': leg(89, 150) });
+    const next = baseline({
+      floor2: leg(40, 150),
+      floor6: leg(140, 150),
+      'floor1-chain': leg(89, 150),
+    });
     const second = evaluateLegWinRateFloor({
       ...next,
       meta: { ...next.meta, commit: 'b'.repeat(40) },
@@ -111,7 +124,7 @@ describe('report-only leg win-rate floor', () => {
     expect(partialLegacy.legs[0]?.belowFloor).toBe(true);
 
     const populatedLegacy = evaluateLegWinRateFloor(
-      baseline({ floor2: leg(41, 150), 'floor1-chain': leg(89, 150) }, 1),
+      baseline({ floor2: leg(41, 150), floor6: leg(89, 150), 'floor1-chain': leg(89, 150) }, 1),
     );
     expect(populatedLegacy.regression).toBe(false);
     expect(populatedLegacy.issue).toBeUndefined();
@@ -123,7 +136,7 @@ describe('report-only leg win-rate floor', () => {
     // retire this check without anyone noticing.
     expect(() => evaluateLegWinRateFloor(baseline(undefined))).toThrow(/has no leg metrics/);
     expect(() => evaluateLegWinRateFloor(baseline({ floor2: leg(140, 150) }))).toThrow(
-      /missing report-only leg metrics: floor1-chain/,
+      /missing report-only leg metrics: floor1-chain, floor6|missing report-only leg metrics: floor6, floor1-chain/,
     );
   });
 
@@ -132,6 +145,7 @@ describe('report-only leg win-rate floor', () => {
       evaluateLegWinRateFloor(
         baseline({
           floor2: { totalWins: 41, totalRuns: 150, winRate: 0.99 },
+          floor6: leg(140, 150),
           'floor1-chain': leg(140, 150),
         }),
       ),
@@ -143,6 +157,7 @@ describe('report-only leg win-rate floor', () => {
       evaluateLegWinRateFloor(
         baseline({
           floor2: { totalWins: 0, totalRuns: 0, winRate: 0 },
+          floor6: leg(140, 150),
           'floor1-chain': leg(9, 10),
         }),
       ),

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "packId": "floor6-defense",
+  "quests": [
+    {
+      "id": "floor6-hold-for-renovation",
+      "title": "Hold for Renovation",
+      "summary": "Protect the Broadcast Relay, spend requisitions on fixed maintenance plinths, use the safe break windows, and survive the Deadline inspection.",
+      "objectives": [
+        {
+          "id": "floor6.defense.briefed",
+          "label": "Hear the Director's Relay briefing",
+          "kind": "goal",
+          "goalId": "floor6.defense.briefed"
+        },
+        {
+          "id": "floor6.defense.firstWaveCleared",
+          "label": "Clear the first renovation crew wave",
+          "kind": "goal",
+          "goalId": "floor6.defense.firstWaveCleared"
+        },
+        {
+          "id": "floor6.defense.firstBuildPlaced",
+          "label": "Build a tower on a vacant maintenance plinth",
+          "kind": "goal",
+          "goalId": "floor6.defense.firstBuildPlaced"
+        },
+        {
+          "id": "floor6.defense.firstUpgradeChosen",
+          "label": "Choose one run-scoped upgrade offer",
+          "kind": "goal",
+          "goalId": "floor6.defense.firstUpgradeChosen"
+        },
+        {
+          "id": "floor6.defense.breakCleared",
+          "label": "Leave a hostile-free service break",
+          "kind": "goal",
+          "goalId": "floor6.defense.breakCleared"
+        },
+        {
+          "id": "floor6.defense.deadlineDefeated",
+          "label": "Defeat the Broadcast Deadline",
+          "kind": "goal",
+          "goalId": "floor6.defense.deadlineDefeated"
+        },
+        {
+          "id": "floor6.defense.relaySecured",
+          "label": "Secure the Relay and open the exit",
+          "kind": "goal",
+          "goalId": "floor6.defense.relaySecured"
+        }
+      ],
+      "onCompleteGoalFlag": "floor6.defense.questComplete"
+    }
+  ]
+}

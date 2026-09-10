@@ -12,7 +12,18 @@ credentials:
       env: COPILOT_GITHUB_TOKEN
 runner:
   envPassthrough:
+    - GOOBERS_INSTANCE
     - GOOBERS_RECOVERY_ISSUE
+    - GOOBERS_INTAKE_COHORT
     - GOOBERS_RESUME_BRANCH
+    - GOOBERS_RESUME_CHECKPOINT_SHA
+    - GOOBERS_RESUME_FAILURE
+    - GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES
 runConditions:
+  # 1 matches crawler-feature-pr's readiness.maxConcurrentRuns. Hosted CI does
+  # not raise this either: goobers-run.yml runs four SEPARATE single-capacity
+  # instance roots (2 matrix lanes x 2 slots) rather than one instance admitting
+  # several runs, so the four-workflow ceiling is a property of how many roots
+  # exist. Mirror that locally by starting a second instance root, not by
+  # raising this number.
   maxParallelRuns: 1

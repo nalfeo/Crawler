@@ -18,6 +18,11 @@
 
 import type { Brief } from '../brief-schema.js';
 
+export type SheetPixelSize = {
+  readonly width: number;
+  readonly height: number;
+};
+
 export interface GenerateSheetRequest {
   readonly brief: Brief;
   readonly prompt: string;
@@ -37,11 +42,12 @@ export interface GenerateSheetRequest {
    */
   readonly variants: number;
   /**
-   * Square pixel side of the *whole sheet* to request from the provider.
-   * Defaults to `brief.generation.sheet.nativeCanvas` (1024 unless the
-   * brief overrides it).
+   * Pixel dimensions of the *whole sheet* to request from the provider.
+   * Defaults to `sheetPixelDimensions(brief.generation.sheet)` and accepts both
+   * the legacy square `number` form and the new rectangular `{ width, height }`
+   * form for compatibility.
    */
-  readonly size?: number;
+  readonly size?: number | SheetPixelSize;
 }
 
 export type ProviderErrorKind =

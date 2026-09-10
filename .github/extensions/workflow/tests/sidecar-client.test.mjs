@@ -202,6 +202,23 @@ test('listRuns throws on a non-OK response', async () => {
   await assert.rejects(() => client.listRuns(), /Failed to load sidecar runs/);
 });
 
+test('displayed-run actions forward their options to the sidecar', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return jsonResponse({ status: 'completed' });
+    },
+  });
+
+  await client.postprocessRun('brief', 'run', { force: true, reset: true });
+  await client.judgeRun('brief', 'run', { force: true });
+
+  assert.deepEqual(JSON.parse(calls[0].options.body), { force: true, reset: true });
+  assert.deepEqual(JSON.parse(calls[1].options.body), { force: true });
+});
+
 test('judge normalization exposes every current axis', () => {
   const raw = Object.fromEntries(
     JUDGE_AXES.map(({ key }, index) => [key, { score: (index % 5) + 1 }]),
@@ -346,7 +363,12 @@ test('probeHealth reports up for the current managed sidecar version', async () 
   assert.equal(health.version, EXPECTED_VERSION);
 });
 
-test('probeHealth: down when azure queue controllers are not ready', async () => {
+test('REGRESSION: healthy sidecar with idle opt-in controllers still exposes mirrored runs', async () => {
+  const mirroredRuns = Array.from({ length: 5 }, (_, index) => ({
+    briefId: `mirrored-${index}`,
+    runId: `run-${index}`,
+    candidateCount: 12,
+  }));
   const client = createSidecarClient({
     baseUrl: BASE,
     workspaceRoot: '/repo/a',
@@ -361,10 +383,14 @@ test('probeHealth: down when azure queue controllers are not ready', async () =>
           issueIngester: { running: false },
         },
       },
+      '/api/runs': { json: { runs: mirroredRuns } },
     }),
   });
   const health = await client.probeHealth();
-  assert.equal(health.state, 'down');
+  const runs = health.state === 'up' ? await client.listRuns() : [];
+  assert.equal(health.state, 'up');
+  assert.equal(runs.length, 5);
+  assert.deepEqual(runs, mirroredRuns);
 });
 
 test('probeHealth: wrong-repo when the sidecar serves a different checkout', async () => {

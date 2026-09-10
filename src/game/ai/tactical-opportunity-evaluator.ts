@@ -7,7 +7,7 @@
  */
 
 export type TacticalOpportunityKind = 'pickup' | 'enemyPack';
-export type TacticalPickupKind = 'xp' | 'gold' | 'item';
+export type TacticalPickupKind = 'xp' | 'gold' | 'item' | 'buildCurrency';
 
 export interface TacticalOpportunityCandidate {
   readonly id: number;

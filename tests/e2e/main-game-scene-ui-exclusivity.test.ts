@@ -7,6 +7,7 @@ import {
   mainSceneProbe,
   waitForState,
 } from './helpers/main-scene-probe.js';
+import { GAME_H, GAME_W } from './e2e-constants.js';
 
 interface CdpSession {
   send(method: string, params: unknown): Promise<unknown>;
@@ -141,6 +142,77 @@ describe('MainGameScene UI exclusivity', () => {
     });
   });
 
+  it('opens the pause menu with Escape when no panel is open and restores the previous pause state', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSimulationPaused(page, false);
+    await waitForState(page, (s) => !s.simulationPaused, {
+      label: 'simulation running before pause menu',
+    });
+    // Prove the frame counter is live before pausing, so the frozen-frame
+    // assertion below cannot pass against a counter that never advances.
+    const runningFrameCount = (await mainSceneProbe.getState(page)).frameCount ?? 0;
+    await waitForState(page, (s) => (s.frameCount ?? 0) > runningFrameCount, {
+      label: 'sim frames advancing while unpaused',
+    });
+
+    await page.keyboard.press('Escape');
+    const pauseState = await waitForState(page, (s) => s.simulationPaused && !!s.modalOpen, {
+      label: 'pause menu opened and simulation paused',
+    });
+    expect(pauseState.modalOpen, 'pause menu should open through the shared modal picker').toBe(
+      true,
+    );
+
+    // Gameplay time must actually stop, not just flip a flag: the fixed-step
+    // sim frame counter must not advance at all while the pause menu is open.
+    const pausedFrameCount = (await mainSceneProbe.getState(page)).frameCount;
+    expect(pausedFrameCount, 'probe should expose the live sim frame count').not.toBeNull();
+    await page.waitForTimeout(600);
+    const stillPaused = await mainSceneProbe.getState(page);
+    expect(stillPaused.frameCount, 'sim frames must not advance while paused').toBe(
+      pausedFrameCount,
+    );
+    expect(stillPaused.simulationPaused).toBe(true);
+
+    const pauseContent = await page.evaluate(() =>
+      window.__mainSceneProbe!.getModalPickerContent(),
+    );
+    expect(
+      pauseContent?.options.map((option) => option.label),
+      'pause menu should offer Resume, Restart, and Quit',
+    ).toEqual(['Resume', '↺ Restart', '← Quit']);
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.simulationPaused && !s.modalOpen, {
+      label: 'pause menu closed and simulation resumed',
+    });
+
+    await mainSceneProbe.setSimulationPaused(page, true);
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => s.simulationPaused && s.modalOpen, {
+      label: 'pause menu can open while the scene is already paused',
+    });
+    await page.keyboard.press('Enter');
+    await waitForState(page, (s) => s.simulationPaused && !s.modalOpen, {
+      label: 'resume command closes pause menu without changing prior paused state',
+    });
+  });
+
+  it('closes an inventory panel on Escape without also pausing the run', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestInventoryToggle(page);
+    await waitForState(page, (s) => s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory opened in paused safe-room state',
+    });
+
+    await page.keyboard.press('Escape');
+    await waitForState(page, (s) => !s.inventoryOpen && s.simulationPaused, {
+      label: 'inventory closed by Escape and safe-room pause preserved',
+    });
+  });
+
   it('keeps the Issue button clickable over inventory without closing the underlying UX', async () => {
     await bootPlayingSafeScene();
 
@@ -203,6 +275,87 @@ describe('MainGameScene UI exclusivity', () => {
       );
     } finally {
       await closeQuietly(smallContext);
+    }
+  });
+
+  it('anchors the Issue button bottom-right and never overlaps a supported HUD surface', async () => {
+    // Floor 2 activates the bottom-right family-relationships panel, so
+    // booting there exercises the tightest supported-surface set (#4210).
+    const familyContext = await browser.newContext({ viewport: { width: GAME_W, height: GAME_H } });
+    const familyPage = await familyContext.newPage();
+    try {
+      await loadMainSceneProbeLab(familyPage, { floor: 'floor2' });
+      await mainSceneProbe.resolveLoadout(familyPage);
+      await waitForState(familyPage, (s) => s.worldState === 'playing' && s.simulationPaused, {
+        label: 'floor2 loadout resolved + simulation paused',
+      });
+      await mainSceneProbe.unlockSafeRoomSurfaces(familyPage);
+      await waitForState(familyPage, (s) => s.safeContext, {
+        label: 'floor2 safe-room surfaces unlocked',
+      });
+      const assertBottomRightNoOverlap = async (label: string): Promise<void> => {
+        const issueBounds = await mainSceneProbe.getIssueButtonBounds(familyPage);
+        expect(issueBounds, `Issue button should be visible (${label})`).not.toBeNull();
+        if (!issueBounds) return;
+        // Bottom-right anchored: right/bottom edges close to the safe rect's
+        // right/bottom edges, not parked in the top-right minimap/tracker zone.
+        expect(issueBounds.x + issueBounds.width, `right-anchored (${label})`).toBeGreaterThan(
+          GAME_W - 220,
+        );
+
+        const { surfaces } = await mainSceneProbe.getSafeAreaLayout(familyPage);
+        const familyPanel = surfaces.find((surface) => surface.name === 'familyPanel')?.bounds;
+        if (familyPanel) {
+          expect(issueBounds.y + issueBounds.height, `above family HUD (${label})`).toBeLessThan(
+            familyPanel.y,
+          );
+        } else {
+          expect(issueBounds.y + issueBounds.height, `bottom-anchored (${label})`).toBeGreaterThan(
+            GAME_H - 220,
+          );
+          expect(issueBounds.y, `not parked at the top (${label})`).toBeGreaterThan(GAME_H / 2);
+        }
+        const questSurfaceNames = new Set(
+          surfaces
+            .filter(
+              (surface) =>
+                surface.name === 'questTracker' || surface.name.startsWith('questArrowToggle:'),
+            )
+            .map((surface) => surface.name),
+        );
+        for (const surface of surfaces) {
+          // The family panel occupies the same vertical band as the quest
+          // tracker by design; verify each supported surface in its own
+          // rendered state rather than treating two independent right-column
+          // layouts as simultaneous exclusion zones.
+          if (
+            surface.name === 'issueButton' ||
+            (familyPanel && questSurfaceNames.has(surface.name))
+          ) {
+            continue;
+          }
+          expect(
+            overlaps(issueBounds, surface.bounds),
+            `Issue button must not cover ${surface.name} (${label})`,
+          ).toBe(false);
+        }
+      };
+
+      await assertBottomRightNoOverlap('no panel open');
+
+      await mainSceneProbe.activateFamilyRelationships(familyPage);
+      await expect
+        .poll(async () => (await mainSceneProbe.getFamilyHudState(familyPage)).panelVisible)
+        .toBe(true);
+      await assertBottomRightNoOverlap('family HUD active');
+
+      await mainSceneProbe.requestInventoryToggle(familyPage);
+      await waitForState(familyPage, (s) => s.inventoryOpen && s.issueButtonVisible, {
+        label: 'inventory opened with Issue button visible',
+      });
+      await assertBottomRightNoOverlap('inventory panel open');
+    } finally {
+      await closeQuietly(familyContext);
     }
   });
 
@@ -323,6 +476,26 @@ describe('MainGameScene UI exclusivity', () => {
       'queued interaction must not start NPC dialogue while a character panel is open',
     ).toBe(false);
     expect(state.primarySurfaceCount, 'only the achievements surface should remain open').toBe(1);
+  });
+
+  it('closes the achievements panel with Escape without opening another surface', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.requestAchievementsToggle(page);
+    await waitForState(page, (s) => s.achievementsOpen, {
+      label: 'achievements panel opened for Escape dismissal',
+    });
+
+    await page.keyboard.press('Escape');
+    const state = await waitForState(page, (s) => !s.achievementsOpen, {
+      label: 'achievements panel closed by Escape',
+    });
+
+    expect(
+      state.primarySurfaceCount,
+      'Escape must not open or expose another primary surface',
+    ).toBe(0);
+    expect(state.conversationOpen, 'Escape must not leak into NPC interaction').toBe(false);
   });
 
   it('requires an explicit NPC interaction before dialogue opens', async () => {
@@ -742,6 +915,24 @@ describe('MainGameScene UI exclusivity', () => {
       afterPassiveActivate.equippedActiveAbilityIds,
       'pressing Enter on a passive row must not change the equipped auto-bar loadout',
     ).toEqual(equippedBeforePassiveActivate);
+  });
+
+  it('renders the Bow level-5 reward name and effect in the real HUD announcement', async () => {
+    await bootPlayingSafeScene();
+    await mainSceneProbe.queueSkillUsage(page, 'bow', 'weapon_fired', 135);
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
+
+    const announcementState = await waitForState(
+      page,
+      (s) =>
+        s.currentAnnouncement?.kind === 'skillPassiveUnlocked' &&
+        s.currentAnnouncement.text.includes('Steady Aim'),
+      { label: 'Bow level-5 milestone renders its player-facing reward' },
+    );
+
+    expect(announcementState.currentAnnouncement?.text).toContain('Steady Aim');
+    expect(announcementState.currentAnnouncement?.text).toContain('+0.1 accuracy with bows');
+    expect(announcementState.currentAnnouncement?.text).not.toContain('bow-shot-base');
   });
 
   it('does not open inventory after pressing I inside the abilities loadout', async () => {

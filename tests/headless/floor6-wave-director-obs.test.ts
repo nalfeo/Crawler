@@ -28,15 +28,13 @@ describe('Floor 6 headless observation — wave director 2000 frames', () => {
     );
     console.log(logLines.join('\n'));
 
-    // The floor should remain in DEFEND after 2000 frames (VICTORY deferred to later slices)
+    // With Slice 7 act gating, later acts do not release until the current act is cleared.
     expect(s?.phase.kind).toBe('DEFEND');
     // Relay should still be healthy (no enemies have been killing it in 2000 frames — they spawn at frame 120+)
     expect(s?.relayHp).toBeGreaterThanOrEqual(0);
     expect(s?.relayMaxHp).toBeGreaterThan(0);
-    // All 12 authored entries should have been processed (released or in debt)
-    expect((s?.totalReleased ?? 0) + (s?.spawnDebt ?? 0)).toBeGreaterThanOrEqual(
-      s?.waveManifestLength ?? 0,
-    );
+    expect(s?.currentActIndex).toBe(0);
+    expect(s?.totalReleased).toBe(3);
     // Spawn debt should be 0 or bounded
     expect(s?.spawnDebt).toBeLessThanOrEqual(12);
     // Phase trace: SETUP → DEFEND

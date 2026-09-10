@@ -1,0 +1,106 @@
+[
+  {
+    "id": "floor6-relay-briefing",
+    "floor": 6,
+    "title": "Relay Briefing",
+    "popupText": "New achievement: Relay Briefing!",
+    "unlockCriteria": "Start Floor 6 and receive the Broadcast Relay briefing.",
+    "details": "Unlocks when the Floor 6 defense director enters the first defended phase and latches the briefing goal.",
+    "directorFlavor": "The renovation crew has arrived, the Broadcast Relay is still technically upright, and you have been briefed with the kind of confidence only a doomed production meeting can provide. Please initial the waiver stating you understand the set may become combat architecture.",
+    "iconId": "achv-floor6-relay-briefing-placeholder",
+    "difficulty": "basic",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6RelayBriefed", "value": true }]
+  },
+  {
+    "id": "floor6-first-wave-cleared",
+    "floor": 6,
+    "title": "Opening Crew Wrapped",
+    "popupText": "New achievement: Opening Crew Wrapped!",
+    "unlockCriteria": "Clear the first Floor 6 defense wave.",
+    "details": "Unlocks from the authoritative Floor 6 first-wave-cleared objective projection.",
+    "directorFlavor": "The first crew made noise, paperwork, and a legally useful amount of dust. You made them leave the set before they could discover the Relay's most expensive weak point.",
+    "iconId": "achv-floor6-first-wave-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6FirstWaveCleared", "value": true }]
+  },
+  {
+    "id": "floor6-first-tower-built",
+    "floor": 6,
+    "title": "Plinth Occupied",
+    "popupText": "New achievement: Plinth Occupied!",
+    "unlockCriteria": "Build a Floor 6 tower on an authored maintenance plinth.",
+    "details": "Unlocks only after a legal Floor 6 tower build transaction occupies an authored site.",
+    "directorFlavor": "At last, a maintenance plinth is doing something other than looking expensive in the background. The Director thanks you for converting scenic infrastructure into billable violence.",
+    "iconId": "achv-floor6-first-tower-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6FirstBuildPlaced", "value": true }]
+  },
+  {
+    "id": "floor6-first-upgrade",
+    "floor": 6,
+    "title": "Change Order Approved",
+    "popupText": "New achievement: Change Order Approved!",
+    "unlockCriteria": "Purchase a Floor 6 run-scoped upgrade offer.",
+    "details": "Unlocks from the Floor 6 upgrade transaction ledger after an offer is selected exactly once.",
+    "directorFlavor": "A change order has been approved, which means the budget is fake but the paperwork is real. Spend it quickly, before Accounting notices the upgrade offer was armed during an active renovation crisis.",
+    "iconId": "achv-floor6-first-upgrade-placeholder",
+    "difficulty": "standard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6FirstUpgradeChosen", "value": true }]
+  },
+  {
+    "id": "floor6-break-secured",
+    "floor": 6,
+    "title": "Service Break Secured",
+    "popupText": "New achievement: Service Break Secured!",
+    "unlockCriteria": "Exit a Floor 6 service break with hostile activity cleared.",
+    "details": "Unlocks once the Floor 6 break-cleanup path exits a safe build break.",
+    "directorFlavor": "A safe service break with no hostile activity: a miracle, or at least a quiet minute the sponsors can sell. Use the silence to admire how little of the Broadcast Relay is currently on fire.",
+    "iconId": "achv-floor6-break-secured-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6BreakCleared", "value": true }]
+  },
+  {
+    "id": "floor6-deadline-defeated",
+    "floor": 6,
+    "title": "Deadline Defeated",
+    "popupText": "New achievement: Deadline Defeated!",
+    "unlockCriteria": "Defeat the Broadcast Deadline finale encounter.",
+    "details": "Unlocks from the authoritative Floor 6 finale boss-defeated latch.",
+    "directorFlavor": "The Broadcast Deadline came due, looked at the Relay, looked at you, and discovered an exciting new definition of overdue. Somewhere, a producer has renamed this disaster a finale.",
+    "iconId": "achv-floor6-deadline-placeholder",
+    "difficulty": "hard",
+    "reward": { "type": "none" },
+    "unlockRules": [{ "type": "booleanIs", "fact": "floor6DeadlineDefeated", "value": true }]
+  },
+  {
+    "id": "floor6-relay-secured",
+    "floor": 6,
+    "title": "Hold for Renovation",
+    "popupText": "New achievement: Hold for Renovation!",
+    "unlockCriteria": "Secure the Broadcast Relay and complete the Floor 6 objective.",
+    "details": "Unlocks only when the Floor 6 defense quest is complete and the run ends in the authoritative victory state.",
+    "directorFlavor": "Against every planning memo, demolition invoice, and ratings-friendly complication, the Broadcast Relay is secured. Renovation may now proceed in whatever sense that word still applies.",
+    "iconId": "achv-floor6-relay-secured-placeholder",
+    "difficulty": "brutal",
+    "reward": { "type": "none" },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "floor6RelaySecured",
+        "value": true,
+        "phase": "run_end_clear"
+      },
+      { "type": "booleanIs", "fact": "runClearedFloor", "value": true, "phase": "run_end_clear" },
+      {
+        "type": "allQuestsComplete",
+        "questIds": ["floor6-hold-for-renovation"],
+        "phase": "run_end_clear"
+      }
+    ]
+  }
+]
