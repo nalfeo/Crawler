@@ -182,7 +182,6 @@ spec:
     - name: plan
       type: agentic
       goober: producer
-      timeoutMinutes: 20
       contextFrom:
         - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
@@ -251,7 +250,6 @@ spec:
     - name: implement
       type: agentic
       goober: coder
-      timeoutMinutes: 50
       contextFrom:
         - hydrate-requirements
         - materialize-plan
