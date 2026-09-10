@@ -1,5 +1,44 @@
 [
   {
+    "commit": "f76d5cf7902176ce60343c4ad478e858c3e9e060",
+    "commitDate": "2026-09-10T14:01:25-07:00",
+    "commitSubject": "Codex/shrink agents startup (#4539)",
+    "capturedAt": "2026-09-10T22:01:48.297Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/34529889091",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/f76d5cf7902176ce60343c4ad478e858c3e9e060.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/f76d5cf7902176ce60343c4ad478e858c3e9e060.fun-report.json"
+    }
+  },
+  {
     "commit": "62c7d14fe639b5de0d69dac1c1f27e5582c58017",
     "commitDate": "2026-09-09T03:01:03Z",
     "commitSubject": "Axe combat feedback: show generated DPS and prevent duplicate hit numbers (#4482)",
