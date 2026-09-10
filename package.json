@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "prepare": "node scripts/agent/setup-git-hooks.mjs",
+    "environment:setup": "node scripts/agent/setup-environment.mjs",
+    "environment:check": "vitest run --project unit tests/unit/agent-environment-parity.test.ts",
     "postinstall": "node scripts/agent/install-playwright-browser.mjs",
     "dev": "vite",
     "build": "vite build",
