@@ -1,0 +1,135 @@
+{
+  "briefId": "boss-chest",
+  "spriteName": "boss-chest-var-1",
+  "assetPath": "generated/boss-chest-var-1.png",
+  "approvedAt": "2026-09-10T03:50:22.923Z",
+  "sourceRun": "generated/runs/boss-chest/2026-09-10T03-44-56-c1ad7ee3",
+  "variantIndex": 1,
+  "anchor": {
+    "x": 39,
+    "y": 57,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 39,
+      "y": 57,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 31,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "5",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 39,
+        "y": 57
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 1,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-09-10T03:47:36.519Z",
+    "designLanguage": {
+      "score": 5,
+      "rationale": "The candidate successfully combines a traditional treasure chest with elements of reality-show prize vault hardware, such as the magenta broadcast-status lamp and worn brass bands. The design is both recognizable and unique, fitting the dark humor and authored contradiction of Crawler's design language."
+    },
+    "referenceStyleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The hard one-pixel outline and shading are consistent with the reference sprites."
+    },
+    "styleMatch": {
+      "score": 5,
+      "rationale": "The rendering matches the approved references in outline weight, palette depth, shading stops, and production finish. The hard one-pixel outline and shading are consistent with the reference sprites."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a squat dark-walnut chest with an arched lid, worn brass bands, oversized latch, and magenta lamp as described in the brief. The three-quarter top-down view is accurate, and the chest appears sturdy and grounded."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is clear and pops against the dark floor tile in the readability composite. The chest is immediately recognizable at game scale, with no visual integrity defects."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and depicts a single inanimate object without any extra elements like coins, text, or additional objects. It adheres to the brief's requirements for presentation."
+    },
+    "themeAdherence": {
+      "score": 5,
+      "rationale": "The sprite incorporates specific details from the Family Matters floor theme, such as the battered and improvised appearance of the chest hardware, which aligns with the cave turf war and reality-show prize vault aesthetic."
+    },
+    "passed": true,
+    "minScore": 5,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.95,
+    "usage": {
+      "promptTokens": 3152,
+      "completionTokens": 422,
+      "totalTokens": 3574
+    }
+  },
+  "type": "item",
+  "contentHash": "11c724f1b869634eac64e4749e844cd4d6ba6a48429ee6960bce8465c267990e",
+  "opaqueBounds": {
+    "x": 3,
+    "y": 6,
+    "width": 58,
+    "height": 52,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "container",
+      "storage",
+      "fantasy",
+      "dungeon",
+      "boss-room",
+      "large",
+      "ornate",
+      "pristine",
+      "wood",
+      "metal",
+      "arcane",
+      "treasure"
+    ]
+  }
+}
