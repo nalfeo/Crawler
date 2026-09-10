@@ -59,8 +59,10 @@ import { GAME } from '../../shared/constants.js';
 import {
   addItem,
   createInventoryBag,
+  listInventoryEntries,
   type GeneratedEquipmentInventoryEntry,
 } from '../../shared/inventory.js';
+import { ITEM_CATALOG, type ItemTag } from '../../shared/items.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   type GeneratedEquipmentInstanceKey,
@@ -131,6 +133,22 @@ export interface UiProbeApi {
   getInventoryMaxScrollRow(): number;
   getInventoryScrollUpControlBounds(): ScreenBounds | null;
   getInventoryScrollDownControlBounds(): ScreenBounds | null;
+  getInventoryPanelBounds(): ScreenBounds | null;
+  getInventoryTabBounds(): readonly ScreenBounds[];
+  getInventorySearchBounds(): ScreenBounds | null;
+  getInventorySortBounds(): ScreenBounds | null;
+  getInventoryTooltipBounds(): ScreenBounds | null;
+  previewInventoryCell(index: number): boolean;
+  setInventoryTagFilter(tag: ItemTag | null): void;
+  setInventorySearchQuery(query: string): void;
+  getInventoryFilterState(): { readonly tag: ItemTag | null; readonly query: string };
+  seedMixedInventory(size: 'standard' | 'lots'): void;
+  getInventoryComposition(): {
+    readonly equipment: number;
+    readonly materials: number;
+    readonly otherLoot: number;
+    readonly total: number;
+  };
   isTooltipVisible(): boolean;
   isTooltipPinned(): boolean;
 
@@ -647,6 +665,81 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.equipmentUI?.refresh(this.world);
     }
 
+    private seedMixedInventory(size: 'standard' | 'lots'): void {
+      const currentBag = this.world.inventories.get(this.playerEid);
+      if (!currentBag) return;
+      const bag = createInventoryBag();
+      if (currentBag.generatedEquipmentCapacity !== undefined) {
+        bag.generatedEquipmentCapacity = currentBag.generatedEquipmentCapacity;
+      }
+
+      const standardIds = [
+        'iron-ore',
+        'copper-ore',
+        'gold-nugget',
+        'shadow-shard',
+        'health-vial',
+        'smoke-bomb',
+        'floor-key-bronze',
+        'broken-circuit',
+        MERCHANTS_CHARM_DEF.id,
+        ...equipmentDefsTestSeams.GEAR_ITEM_IDS.slice(0, 7),
+      ];
+      const ids =
+        size === 'lots'
+          ? [
+              ...ITEM_CATALOG.filter((item) => item.tags.includes('Materials')).slice(0, 10),
+              ...ITEM_CATALOG.filter((item) => item.tags.includes('Weapons')).slice(0, 8),
+              ...ITEM_CATALOG.filter((item) => item.tags.includes('Consumables')).slice(0, 8),
+              ...ITEM_CATALOG.filter((item) => item.tags.includes('Key Items')).slice(0, 6),
+              ...ITEM_CATALOG.filter((item) => item.tags.includes('Misc')).slice(0, 6),
+              ...equipmentDefsTestSeams.GEAR_ITEM_IDS.slice(0, 10)
+                .map((id) => ITEM_CATALOG.find((item) => item.id === id))
+                .filter((item) => item !== undefined),
+            ].map((item) => item.id)
+          : standardIds;
+
+      [...new Set(ids)].forEach((itemId, index) => {
+        const def = ITEM_CATALOG.find((item) => item.id === itemId);
+        addItem(bag, itemId, def && def.maxStack > 1 ? (index % 5) + 1 : 1);
+      });
+      this.world.inventories.set(this.playerEid, bag);
+      this.inventoryUI?.setTagFilter(null);
+      this.inventoryUI?.setSearchQuery('');
+      this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.refresh(this.world);
+    }
+
+    private getInventoryComposition(): {
+      readonly equipment: number;
+      readonly materials: number;
+      readonly otherLoot: number;
+      readonly total: number;
+    } {
+      const bag = this.world.inventories.get(this.playerEid);
+      if (!bag) return { equipment: 0, materials: 0, otherLoot: 0, total: 0 };
+      let equipment = 0;
+      let materials = 0;
+      let otherLoot = 0;
+      const entries = listInventoryEntries(bag);
+      for (const entry of entries) {
+        if (entry.kind === 'generated-instance') {
+          equipment += 1;
+          continue;
+        }
+        const def = ITEM_CATALOG.find((item) => item.id === entry.itemId);
+        if (getEquipmentDefForItem(entry.itemId)) equipment += 1;
+        else if (def?.tags.includes('Materials')) materials += 1;
+        else otherLoot += 1;
+      }
+      return {
+        equipment,
+        materials,
+        otherLoot,
+        total: entries.length,
+      };
+    }
+
     private attachProbe(): void {
       const api: UiProbeApi = {
         ready: () => this.built,
@@ -676,6 +769,18 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.inventoryUI?.getScrollUpControlBounds() ?? null,
         getInventoryScrollDownControlBounds: () =>
           this.inventoryUI?.getScrollDownControlBounds() ?? null,
+        getInventoryPanelBounds: () => this.inventoryUI?.getPanelScreenBounds() ?? null,
+        getInventoryTabBounds: () => this.inventoryUI?.getTabControlBounds() ?? [],
+        getInventorySearchBounds: () => this.inventoryUI?.getSearchControlBounds() ?? null,
+        getInventorySortBounds: () => this.inventoryUI?.getSortControlBounds() ?? null,
+        getInventoryTooltipBounds: () => this.inventoryUI?.getTooltipScreenBounds() ?? null,
+        previewInventoryCell: (index: number) => this.inventoryUI?.previewCell(index) ?? false,
+        setInventoryTagFilter: (tag: ItemTag | null) => this.inventoryUI?.setTagFilter(tag),
+        setInventorySearchQuery: (query: string) => this.inventoryUI?.setSearchQuery(query),
+        getInventoryFilterState: () =>
+          this.inventoryUI?.getFilterState() ?? { tag: null, query: '' },
+        seedMixedInventory: (size: 'standard' | 'lots') => this.seedMixedInventory(size),
+        getInventoryComposition: () => this.getInventoryComposition(),
         isTooltipVisible: () => this.inventoryUI?.isTooltipVisible() ?? false,
         isTooltipPinned: () => this.inventoryUI?.isTooltipPinned() ?? false,
 

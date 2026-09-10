@@ -15,6 +15,7 @@ import { getGeneratedEquipmentInstance } from '../core/generated-equipment-regis
 import { EffectiveStats } from '../core/components.js';
 import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
 import { computeTheoreticalSingleTargetDps } from '../core/weapon-dps.js';
+import { previewEquipDeltaForDef } from '../core/systems/equipmentSystem.js';
 import { fitScaleForBox, fitUiScale, getTextResolution, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
@@ -35,6 +36,7 @@ import {
 } from '../shared/inventory.js';
 import { getSlotLabel, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem, isEquippableItem } from '../shared/equipmentDefs.js';
+import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import {
   ItemRarity,
   type ItemDef,
@@ -55,7 +57,12 @@ import { hashStringToSeed } from '../shared/random.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
-import { formatStatLabel, formatStatValue, renderItemTooltip } from './item-tooltip.js';
+import {
+  formatDpsValue,
+  formatStatLabel,
+  formatStatValue,
+  renderItemTooltip,
+} from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
 import { PIXEL_UI } from './pixel-ui.js';
 
@@ -199,6 +206,24 @@ export function createInventoryUI(
   getScrollUpControlBounds(): ScreenBounds | null;
   /** Bounds for the standalone inventory scroll-down touch control, when shown. */
   getScrollDownControlBounds(): ScreenBounds | null;
+  /** Bounds for the full standalone inventory panel. */
+  getPanelScreenBounds(): ScreenBounds | null;
+  /** Bounds for each visible inventory tab control. */
+  getTabControlBounds(): readonly ScreenBounds[];
+  /** Bounds for the inventory search control. */
+  getSearchControlBounds(): ScreenBounds | null;
+  /** Bounds for the inventory sort control. */
+  getSortControlBounds(): ScreenBounds | null;
+  /** Bounds for the currently rendered tooltip, when visible. */
+  getTooltipScreenBounds(): ScreenBounds | null;
+  /** Render the same tooltip state produced by hovering a visible cell. */
+  previewCell(index: number): boolean;
+  /** Select an inventory category through the same state used by tab clicks. */
+  setTagFilter(tag: ItemTag | null): void;
+  /** Set the inventory text filter through the same state used by keyboard input. */
+  setSearchQuery(query: string): void;
+  /** Current category and text-filter state for deterministic review. */
+  getFilterState(): { readonly tag: ItemTag | null; readonly query: string };
   /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
   isTooltipVisible(): boolean;
   /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
@@ -315,24 +340,29 @@ export function createInventoryUI(
     return computeEffectiveValue(1, getStatusEffects(currentWorld, playerEid), 'attackSpeed');
   }
 
-  function formatDps(value: number): string {
-    if (value >= 100) {
-      return value.toFixed(0);
-    }
-    if (value >= 10) {
-      return value.toFixed(1);
-    }
-    return value.toFixed(2);
-  }
-
-  function weaponDpsLine(def: WeaponDef | undefined): string | undefined {
+  function weaponDpsLine(
+    def: WeaponDef | undefined,
+    equipmentDef: EquipmentItemDef | undefined,
+  ): string | undefined {
     if (!def) {
       return undefined;
     }
-    const dps = computeTheoreticalSingleTargetDps(def, currentWeaponDpsStats(), {
+    const stats = { ...currentWeaponDpsStats() };
+    if (currentWorld && playerEid >= 0 && equipmentDef) {
+      const preview = previewEquipDeltaForDef(currentWorld, playerEid, equipmentDef);
+      if (preview.canEquip) {
+        for (const [statId, delta] of Object.entries(preview.deltas)) {
+          if (typeof delta === 'number') {
+            const typedStatId = statId as StatId;
+            stats[typedStatId] = (stats[typedStatId] ?? 0) + delta;
+          }
+        }
+      }
+    }
+    const dps = computeTheoreticalSingleTargetDps(def, stats, {
       attackSpeedMultiplier: currentAttackSpeedMultiplier(),
     }).dps;
-    return `DPS: ${formatDps(dps)}`;
+    return `DPS: ${formatDpsValue(dps)}`;
   }
 
   function weaponDpsStatSignature(): string {
@@ -526,32 +556,56 @@ export function createInventoryUI(
     'Sort: Rarity',
     {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
-      color: hex(COLORS.textSecondary),
+      fontSize: '18px',
+      fontStyle: 'bold',
+      color: hex(COLORS.accent),
       padding: { top: 4, bottom: 2 },
     },
   )
     .setOrigin(1, 0)
     .setInteractive({ useHandCursor: true });
+  const sortFrame = scene.add.rectangle(
+    snap(panelX + panelWidth - PANEL_PADDING - sortBtn.width / 2),
+    panelY + PANEL_PADDING + 14,
+    Math.ceil(sortBtn.width) + 20,
+    30,
+    COLORS.sectionHeader,
+    0.95,
+  );
+  sortFrame.setStrokeStyle(1, COLORS.accent);
+  sortFrame.setInteractive({ useHandCursor: true });
+  container.add(sortFrame);
 
-  sortBtn.on('pointerdown', () => {
+  function layoutSortControl(): void {
+    const right = panelX + panelWidth - PANEL_PADDING;
+    const width = Math.ceil(sortBtn.width) + 20;
+    sortBtn.setPosition(right, panelY + PANEL_PADDING + 2);
+    sortFrame.setPosition(snap(right - sortBtn.width / 2), panelY + PANEL_PADDING + 14);
+    sortFrame.setSize(width, 30);
+  }
+
+  const cycleSort = (): void => {
     const sortFields: SortField[] = ['rarity', 'name', 'quantity'];
     const idx = sortFields.indexOf(currentSortBy);
     currentSortBy = sortFields[(idx + 1) % sortFields.length]!;
     scrollRow = 0;
     sortBtn.setText(`Sort: ${currentSortBy.charAt(0).toUpperCase() + currentSortBy.slice(1)}`);
+    layoutSortControl();
     renderItems();
-  });
+  };
+  sortBtn.on('pointerdown', cycleSort);
+  sortFrame.on('pointerdown', cycleSort);
   container.add(sortBtn);
 
   // Tab and content areas
-  let tabY = snap(panelY + PANEL_PADDING + 28);
+  let tabY = snap(panelY + PANEL_PADDING + 34);
   let searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
   let gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
   let gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
   // Tab objects pool
   const tabObjects: Phaser.GameObjects.GameObject[] = [];
+  const tabBackgrounds: Phaser.GameObjects.Rectangle[] = [];
   // Cell objects pool
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell background rectangles, in render order (test/automation hit-targets).
@@ -598,7 +652,7 @@ export function createInventoryUI(
     container.setScale(uiScale);
     panelX = snap((viewWidth() - panelWidth) / 2);
     panelY = snap((viewHeight() - panelHeight) / 2);
-    tabY = snap(panelY + PANEL_PADDING + 28);
+    tabY = snap(panelY + PANEL_PADDING + 34);
     searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
     gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
     gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
@@ -621,9 +675,8 @@ export function createInventoryUI(
     slotFilterLabel
       .setPosition(panelX + PANEL_PADDING + 138, panelY + PANEL_PADDING + 4)
       .setResolution(textResolution);
-    sortBtn
-      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING + 2)
-      .setResolution(textResolution);
+    sortBtn.setResolution(textResolution);
+    layoutSortControl();
     searchBg.setPosition(panelX + panelWidth / 2, searchY + SEARCH_HEIGHT / 2);
     searchText
       .setPosition(panelX + PANEL_PADDING + 10, searchY + SEARCH_HEIGHT / 2 + 3)
@@ -644,6 +697,7 @@ export function createInventoryUI(
       obj.destroy();
     }
     tabObjects.length = 0;
+    tabBackgrounds.length = 0;
   }
 
   function clearCellObjects(): void {
@@ -749,6 +803,7 @@ export function createInventoryUI(
       container.add(tabBg);
       container.add(tabLabel);
       tabObjects.push(tabBg, tabLabel);
+      tabBackgrounds.push(tabBg);
 
       tabX += tabWidth + TAB_GAP;
     }
@@ -985,14 +1040,15 @@ export function createInventoryUI(
     }
 
     if (maxScrollRow > 0) {
-      const scrollText = `Rows ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)}/${totalRows}`;
+      const scrollText = `ROWS ${scrollRow + 1}-${Math.min(totalRows, scrollRow + visibleRows)} / ${totalRows}`;
       const scrollHint = crispText(
         gridLeft + gridPixelWidth - 44,
         panelY + panelHeight - PANEL_PADDING - 10,
         scrollText,
         {
           fontFamily: FONT_FAMILY,
-          fontSize: '10px',
+          fontSize: '22px',
+          fontStyle: 'bold',
           color: hex(COLORS.accent),
         },
       );
@@ -1000,7 +1056,7 @@ export function createInventoryUI(
       container.add(scrollHint);
       cellObjects.push(scrollHint);
 
-      const scrollBtnY = panelY + panelHeight - PANEL_PADDING - 16;
+      const scrollBtnY = panelY + panelHeight - PANEL_PADDING - 24;
       const scrollBtnSize = 16;
       const scrollBtnGap = 4;
       const scrollDownX = gridLeft + gridPixelWidth - scrollBtnSize / 2;
@@ -1067,11 +1123,12 @@ export function createInventoryUI(
     const countFooter = crispText(
       gridLeft,
       panelY + panelHeight - PANEL_PADDING - 10,
-      `${entries.length} item${entries.length !== 1 ? 's' : ''}`,
+      `${entries.length} ITEM${entries.length !== 1 ? 'S' : ''}`,
       {
         fontFamily: FONT_FAMILY,
-        fontSize: '12px',
-        color: hex(COLORS.textSecondary),
+        fontSize: '18px',
+        fontStyle: 'bold',
+        color: hex(COLORS.textPrimary),
       },
     );
     countFooter.setOrigin(0, 1);
@@ -1099,13 +1156,24 @@ export function createInventoryUI(
       config.onEquipItem !== undefined && isEquippableEntry(entry)
         ? 'DOUBLE-CLICK TO EQUIP'
         : undefined;
-    const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry));
     const equipmentDef =
       entry.kind === 'stackable-static-item' ? getEquipmentDefForItem(entry.itemId) : undefined;
     const generatedInstance =
       entry.kind === 'generated-instance' && currentWorld
         ? getGeneratedEquipmentInstance(currentWorld, entry.instanceKey)
         : undefined;
+    const candidateEquipmentDef: EquipmentItemDef | undefined = generatedInstance
+      ? {
+          id: generatedInstance.instanceId,
+          name: generatedInstance.frozen.displayName,
+          slots: generatedInstance.frozen.slots,
+          statBonuses: generatedInstance.frozen.statBonuses,
+          rarity: generatedInstance.rarity,
+          tags: generatedInstance.frozen.tags,
+          weightLb: generatedInstance.frozen.weightLb,
+        }
+      : equipmentDef;
+    const dpsLine = weaponDpsLine(resolveEntryWeaponDef(entry), candidateEquipmentDef);
     const bonusStatLines = Object.entries(
       generatedInstance?.frozen.statBonuses ?? equipmentDef?.statBonuses ?? {},
     )
@@ -1152,6 +1220,52 @@ export function createInventoryUI(
         crispText,
       }),
     );
+  }
+
+  function measureObjectBounds(
+    objects: readonly Phaser.GameObjects.GameObject[],
+  ): ScreenBounds | null {
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const object of objects) {
+      const measurable = object as unknown as {
+        getBounds?: () => { x: number; y: number; width: number; height: number };
+      };
+      if (typeof measurable.getBounds !== 'function') continue;
+      const bounds = measurable.getBounds();
+      if (!(bounds.width > 0) || !(bounds.height > 0)) continue;
+      minX = Math.min(minX, bounds.x);
+      minY = Math.min(minY, bounds.y);
+      maxX = Math.max(maxX, bounds.x + bounds.width);
+      maxY = Math.max(maxY, bounds.y + bounds.height);
+    }
+    return Number.isFinite(minX) &&
+      Number.isFinite(minY) &&
+      Number.isFinite(maxX) &&
+      Number.isFinite(maxY)
+      ? {
+          x: snap(minX),
+          y: snap(minY),
+          width: snap(maxX - minX),
+          height: snap(maxY - minY),
+        }
+      : null;
+  }
+
+  function previewCell(index: number): boolean {
+    if (!visible) return false;
+    const entry = getFilteredEntries()[index];
+    const cell = cellBackgrounds[index];
+    if (!entry || !cell) return false;
+    const def = resolveEntryDef(entry);
+    if (!def) return false;
+    const bounds = cell.getBounds();
+    pinned = null;
+    cell.setFillStyle(COLORS.cellHover);
+    showTooltip(def, entry, bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -1270,6 +1384,10 @@ export function createInventoryUI(
     } else {
       clearTooltip();
       pinned = null;
+      lastClickEntryIdentity = null;
+      lastClickTime = Number.NEGATIVE_INFINITY;
+      scrollUpControlBounds = null;
+      scrollDownControlBounds = null;
       lastRenderSignature = null;
     }
   }
@@ -1316,26 +1434,68 @@ export function createInventoryUI(
     refresh,
     isOpen: () => visible,
     getCellScreenBounds: (index: number): ScreenBounds | null => {
+      if (!visible) return null;
       const cell = cellBackgrounds[index];
       if (!cell) return null;
       const b = cell.getBounds();
       return { x: b.x, y: b.y, width: b.width, height: b.height };
     },
     getCellIndexForEntry: (entry: InventoryBagEntry): number | null => {
+      if (!visible) return null;
       const i = cellEntryIdentities.indexOf(inventoryEntryIdentity(entry));
       return i >= 0 && cellBackgrounds[i] ? i : null;
     },
     getCellIndexForItem: (itemId: string): number | null => {
+      if (!visible) return null;
       const i = cellItemIds.findIndex((id, index) => id === itemId && cellBackgrounds[index]);
       return i >= 0 ? i : null;
     },
-    getVisibleItemIds: (): readonly string[] => [...visibleCellItemIds],
-    getVisibleCellIndices: (): readonly number[] => [...visibleCellIndices],
+    getVisibleItemIds: (): readonly string[] => (visible ? [...visibleCellItemIds] : []),
+    getVisibleCellIndices: (): readonly number[] => (visible ? [...visibleCellIndices] : []),
     scroll,
     getScrollRow: () => scrollRow,
     getMaxScrollRow: () => maxScrollRow,
-    getScrollUpControlBounds: () => scrollUpControlBounds,
-    getScrollDownControlBounds: () => scrollDownControlBounds,
+    getScrollUpControlBounds: () => (visible ? scrollUpControlBounds : null),
+    getScrollDownControlBounds: () => (visible ? scrollDownControlBounds : null),
+    getPanelScreenBounds: () => {
+      if (!visible) return null;
+      const bounds = bg.getBounds();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    },
+    getTabControlBounds: () =>
+      visible
+        ? tabBackgrounds.map((tab) => {
+            const bounds = tab.getBounds();
+            return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+          })
+        : [],
+    getSearchControlBounds: () => {
+      if (!visible) return null;
+      const bounds = searchBg.getBounds();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    },
+    getSortControlBounds: () => {
+      if (!visible) return null;
+      const bounds = sortFrame.getBounds();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    },
+    getTooltipScreenBounds: () => (visible ? measureObjectBounds(tooltipObjects) : null),
+    previewCell,
+    setTagFilter: (tag: ItemTag | null) => {
+      activeTag = tag;
+      scrollRow = 0;
+      if (visible) {
+        renderTabs();
+        renderItems();
+      }
+    },
+    setSearchQuery: (query: string) => {
+      searchQuery = query;
+      scrollRow = 0;
+      updateSearchDisplay();
+      if (visible) renderItems();
+    },
+    getFilterState: () => ({ tag: activeTag, query: searchQuery }),
     isTooltipVisible: () => tooltipObjects.length > 0,
     isTooltipPinned: () => pinned !== null,
     setEquipmentSlotFilter: (slotId: EquipmentSlotId | null) => {

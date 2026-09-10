@@ -7,16 +7,23 @@ import { getItemById } from '../../src/shared/items.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import { addGeneratedEquipmentToBag } from '../../src/core/systems/equipmentSystem.js';
-import { generatedEquipmentInput } from '../fixtures/generated-equipment.js';
+import {
+  GENERATED_WEAPON_REQUEST,
+  generatedEquipmentInput,
+} from '../fixtures/generated-equipment.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../src/shared/generated-equipment-types.js';
+import { generateEquipmentInstance } from '../../src/game/generated-equipment-generator.js';
+import { computeTheoreticalSingleTargetDps } from '../../src/core/weapon-dps.js';
+import { formatDpsValue } from '../../src/engine/item-tooltip.js';
 
 // InventoryUI constants (kept local because they are not exported by the production module).
 const INVENTORY_CELL_SIZE = 64;
 const TOOLTIP_WIDTH = 200;
 
 interface RectangleStub {
-  readonly width: number;
-  readonly height: number;
+  width: number;
+  height: number;
+  text?: string;
   on(event: string, handler: () => void): RectangleStub;
   emit(event: string): void;
   setInteractive(options?: unknown): RectangleStub;
@@ -26,6 +33,7 @@ interface RectangleStub {
   setScale(x?: number, y?: number): RectangleStub;
   setDepth(depth?: number): RectangleStub;
   setPosition(x?: number, y?: number): RectangleStub;
+  setSize(width?: number, height?: number): RectangleStub;
   setVisible(visible?: boolean): RectangleStub;
   setScrollFactor(x?: number, y?: number): RectangleStub;
   setAlpha(value?: number): RectangleStub;
@@ -75,6 +83,11 @@ function makeRectangleStub(
     setScale: () => stub,
     setDepth: () => stub,
     setPosition: () => stub,
+    setSize: (nextWidth = width, nextHeight = height) => {
+      stub.width = nextWidth;
+      stub.height = nextHeight;
+      return stub;
+    },
     setVisible: () => stub,
     setScrollFactor: () => stub,
     setAlpha: () => stub,
@@ -93,7 +106,14 @@ function makeRectangleStub(
 
 function makeTextStub(record: RenderRecord, text: string): RectangleStub {
   record.textStrings.push(String(text));
-  return makeRectangleStub(0, 0, 0, 0, record);
+  const stub = makeRectangleStub(0, 0, String(text).length * 6, 14, record);
+  stub.text = String(text);
+  stub.setText = (value = '') => {
+    stub.text = value;
+    stub.width = value.length * 6;
+    return stub;
+  };
+  return stub;
 }
 
 function makeContainerStub(): {
@@ -139,7 +159,8 @@ function makeScene(record: RenderRecord): unknown {
 
 function seedWorldWithStaticAndGeneratedWeapons(options?: { readonly baseId?: string }) {
   const world = createTestWorld({
-    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(42),
+    seed: 2,
+    generatedEquipmentRunKey: generatedEquipmentRunKeyFromSeed(2),
   });
   world.inventories.clear();
   const bag = createInventoryBag();
@@ -147,24 +168,27 @@ function seedWorldWithStaticAndGeneratedWeapons(options?: { readonly baseId?: st
   bag.slots.push({ itemId: 'old-sock', quantity: 1 });
   world.inventories.set(1, bag);
 
-  const generated = createGeneratedEquipmentInstance(
-    world,
-    generatedEquipmentInput({
-      baseId: options?.baseId ?? 'plasma-pistol',
-      slots: ['mainHand'],
-      weapon: true,
-    }),
-  );
+  const generated =
+    options?.baseId === undefined
+      ? generateEquipmentInstance(world, GENERATED_WEAPON_REQUEST)
+      : createGeneratedEquipmentInstance(
+          world,
+          generatedEquipmentInput({
+            baseId: options.baseId,
+            slots: ['mainHand'],
+            weapon: true,
+          }),
+        );
   const added = addGeneratedEquipmentToBag(world, 1, generated.instanceId);
   expect(added.ok).toBe(true);
-  return { world, generatedInstanceKey: generated.instanceId };
+  return { world, generated };
 }
 
 describe('InventoryUI weapon tooltip DPS (real render path)', () => {
   it('shows DPS for static/generated weapons and keeps non-weapons at base tooltip height', () => {
     const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
     const scene = makeScene(record);
-    const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons();
+    const { world, generated } = seedWorldWithStaticAndGeneratedWeapons();
     const ui = createInventoryUI(scene as never, { height: 900 });
     ui.toggle(world);
 
@@ -172,7 +196,7 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     const nonWeaponIndex = ui.getCellIndexForItem('old-sock');
     const generatedWeaponIndex = ui.getCellIndexForEntry({
       kind: 'generated-instance',
-      instanceKey: generatedInstanceKey,
+      instanceKey: generated.instanceId,
     });
 
     expect(staticWeaponIndex).not.toBeNull();
@@ -199,14 +223,23 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     // DPS now leads the rich-content stat-line array (instead of the fixed
     // 128px footer statLine branch), so height grows with the stat lines and
     // description text like any other stat-bearing item.
-    expect(staticWeaponTooltip.lastTooltipHeight).toBe(138);
+    expect(staticWeaponTooltip.lastTooltipHeight).toBe(150);
 
     const generatedWeaponTooltip = hover(generatedWeaponIndex);
     expect(generatedWeaponTooltip.lines.some((line) => line.startsWith('DPS: '))).toBe(true);
+    const generatedWeapon = generated.frozen.activeWeaponSnapshot;
+    expect(generatedWeapon).not.toBeNull();
+    if (generatedWeapon) {
+      const expectedDps = computeTheoreticalSingleTargetDps(
+        generatedWeapon,
+        generated.frozen.statBonuses,
+      ).dps;
+      expect(generatedWeaponTooltip.lines).toContain(`DPS: ${formatDpsValue(expectedDps)}`);
+    }
     // The generated weapon also carries slot/weight metadata and bonus stat
     // rows beyond DPS, so it grows taller than the static weapon's DPS-only
     // stat list.
-    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(166);
+    expect(generatedWeaponTooltip.lastTooltipHeight).toBe(204);
     // DPS must lead the stat-line array, not trail after the bonus stat rows.
     const dpsIndex = generatedWeaponTooltip.lines.findIndex((line) => line.startsWith('DPS: '));
     const firstBonusStatIndex = generatedWeaponTooltip.lines.findIndex(
@@ -231,10 +264,36 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
     expect(nonWeaponTooltip.lastTooltipHeight).toBe(110);
   });
 
+  it('hides all interaction bounds and visible entries when closed', () => {
+    const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
+    const { world } = seedWorldWithStaticAndGeneratedWeapons();
+    const ui = createInventoryUI(makeScene(record) as never, { height: 900 });
+    ui.toggle(world);
+    expect(ui.getPanelScreenBounds()).not.toBeNull();
+    expect(ui.getCellScreenBounds(0)).not.toBeNull();
+    expect(ui.getVisibleItemIds().length).toBeGreaterThan(0);
+
+    ui.toggle(world);
+
+    expect(ui.isOpen()).toBe(false);
+    expect(ui.getPanelScreenBounds()).toBeNull();
+    expect(ui.getCellScreenBounds(0)).toBeNull();
+    expect(ui.getTabControlBounds()).toEqual([]);
+    expect(ui.getSearchControlBounds()).toBeNull();
+    expect(ui.getSortControlBounds()).toBeNull();
+    expect(ui.getVisibleItemIds()).toEqual([]);
+    expect(ui.getVisibleCellIndices()).toEqual([]);
+    expect(ui.previewCell(0)).toBe(false);
+    ui.setTagFilter(null);
+    ui.setSearchQuery('bone');
+    expect(ui.getTooltipScreenBounds()).toBeNull();
+    expect(ui.getVisibleItemIds()).toEqual([]);
+  });
+
   it('uses neutral flavor fallback for generated-only bases in the tooltip render path', () => {
     const record: RenderRecord = { textStrings: [], tooltipHeights: [], cellRects: [] };
     const scene = makeScene(record);
-    const { world, generatedInstanceKey } = seedWorldWithStaticAndGeneratedWeapons({
+    const { world, generated } = seedWorldWithStaticAndGeneratedWeapons({
       baseId: 'equipment/weapon/bone-saw',
     });
     const ui = createInventoryUI(scene as never, { height: 900 });
@@ -242,7 +301,7 @@ describe('InventoryUI weapon tooltip DPS (real render path)', () => {
 
     const generatedWeaponIndex = ui.getCellIndexForEntry({
       kind: 'generated-instance',
-      instanceKey: generatedInstanceKey,
+      instanceKey: generated.instanceId,
     });
 
     expect(generatedWeaponIndex).not.toBeNull();

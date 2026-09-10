@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getEquipmentTooltipCardLayout, renderItemTooltip } from '../../src/engine/item-tooltip.js';
+import {
+  formatDpsValue,
+  formatStatLabel,
+  formatStatValue,
+  getEquipmentTooltipCardLayout,
+  renderItemTooltip,
+} from '../../src/engine/item-tooltip.js';
 import { ItemRarity, type ItemDef } from '../../src/shared/items.js';
 
 interface StubObject {
@@ -82,6 +88,21 @@ const def: ItemDef = {
   maxStack: 1,
 };
 
+describe('shared tooltip formatting', () => {
+  it('uses one stat vocabulary across inventory and equipment', () => {
+    expect(formatStatLabel('cooldownReduction')).toBe('CD Reduction');
+    expect(formatStatLabel('maxHp')).toBe('Max HP');
+    expect(formatStatValue('critChance', 0.125)).toBe('12.5%');
+    expect(formatStatValue('critMultiplier', 1.5)).toBe('1.50x');
+  });
+
+  it('uses stable precision bands for DPS values', () => {
+    expect(formatDpsValue(9.876)).toBe('9.88');
+    expect(formatDpsValue(22.24)).toBe('22.2');
+    expect(formatDpsValue(125.4)).toBe('125');
+  });
+});
+
 describe('item tooltip redesign', () => {
   it('content-sizes equipped cards and keeps stats clear of the icon', () => {
     const layout = getEquipmentTooltipCardLayout(176, ['+2 Armor', '+1 Strength'], def.description);
@@ -91,6 +112,17 @@ describe('item tooltip redesign', () => {
     expect(layout.statStartY).toBeGreaterThan(iconBottom);
     expect(layout.descriptionY - (layout.statStartY + 18 + 14)).toBe(12);
     expect(layout.height).toBe(layout.descriptionY + 2 * 14 + 14);
+  });
+
+  it('caps compact-card layout height to the five rendered stat rows', () => {
+    const fiveRows = getEquipmentTooltipCardLayout(176, ['1', '2', '3', '4', '5'], def.description);
+    const overflowRows = getEquipmentTooltipCardLayout(
+      176,
+      ['1', '2', '3', '4', '5', '6', '7'],
+      def.description,
+    );
+
+    expect(overflowRows).toEqual(fiveRows);
   });
 
   it('reserves separate measured space for candidate differences', () => {
@@ -171,7 +203,7 @@ describe('item tooltip redesign', () => {
     );
     const background = tooltipObjects[0] as unknown as StubObject;
     expect(background.getBounds()).toMatchObject({ x: 24, y: 36, width: 220, height: 136 });
-    expect(background.strokeColor).toBe(0xe9c46a);
+    expect(background.strokeColor).toBe(0xfcd34d);
     const title = objects.find((entry) => entry.text === "Merchant's Charm");
     const stat = objects.find((entry) => entry.text === '+1 Charisma');
     const delta = objects.find((entry) => entry.text === ' (+1)');
@@ -179,6 +211,49 @@ describe('item tooltip redesign', () => {
     expect(stat?.x).toBe(32);
     expect(delta?.x).toBe(98);
     expect(delta?.style).toMatchObject({ color: '#49d06f', fontStyle: 'bold' });
+  });
+
+  it('sizes the standard tooltip for every stat row it renders', () => {
+    const objects: StubObject[] = [];
+    const scene = makeScene();
+    const statLines = ['DPS: 12.3', 'Main Hand · 4 lb', '+2 Armor', '+1 Strength', '+3 Accuracy'];
+    const rendered = renderItemTooltip({
+      scene: scene as never,
+      container: makeContainer(objects) as never,
+      panelX: 0,
+      panelY: 0,
+      panelWidth: 640,
+      panelHeight: 360,
+      anchorX: 320,
+      anchorY: 240,
+      anchorSize: 64,
+      def,
+      quantity: 1,
+      fontFamily: 'Arial',
+      statLines,
+      flavorText: def.description,
+      crispText: (x, y, text, style) =>
+        (
+          scene as {
+            add: {
+              text: (
+                x: number,
+                y: number,
+                text: string,
+                style?: Phaser.Types.GameObjects.Text.TextStyle,
+              ) => StubObject;
+            };
+          }
+        ).add.text(x, y, text, style) as never,
+    });
+
+    expect((rendered[0] as unknown as StubObject).height).toBe(222);
+    expect(objects.flatMap((entry) => (entry.text ? [entry.text] : []))).toEqual(
+      expect.arrayContaining(statLines),
+    );
+    const lastStat = objects.find((entry) => entry.text === statLines.at(-1));
+    const description = objects.find((entry) => entry.text === def.description);
+    expect(description!.y - (lastStat!.y + lastStat!.height)).toBeGreaterThanOrEqual(12);
   });
 
   it('keeps current and candidate cards in separate, stable placements', () => {

@@ -100,7 +100,7 @@ async function charmCellBounds(page: Page): Promise<ScreenBounds | null> {
   return idx === null ? null : probe.getInventoryCellBounds(page, idx);
 }
 
-describe('inventory flow (e2e)', () => {
+describe('inventory flow (e2e)', { timeout: 300_000 }, () => {
   let browser: Browser;
   let context: BrowserContext;
   let page: Page;
@@ -331,6 +331,13 @@ describe('inventory flow (e2e)', () => {
     await page.waitForTimeout(250);
     expect(await probe.isTooltipVisible(page), 'tooltip should show on hover').toBe(true);
     expect(await probe.isTooltipPinned(page), 'hover tooltip is not pinned').toBe(false);
+    const tooltip = await probe.getInventoryTooltipBounds(page);
+    expect(tooltip, 'hover tooltip should expose deterministic bounds').not.toBeNull();
+    if (tooltip) {
+      expect(overlaps(tooltip, cell), 'tooltip must not cover the item cell it explains').toBe(
+        false,
+      );
+    }
 
     // Move the pointer well away from the cell (top-left of the design space).
     const away = designToScreen(rect, game, 8, 8);
@@ -340,6 +347,97 @@ describe('inventory flow (e2e)', () => {
       await probe.isTooltipVisible(page),
       'unpinned tooltip should clear when the pointer leaves the cell',
     ).toBe(false);
+  });
+
+  it('exposes deterministic panel, control, grid, and tooltip regions', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.openInventory(page);
+    await page.waitForTimeout(300);
+
+    const panel = await probe.getInventoryPanelBounds(page);
+    const tabs = await probe.getInventoryTabBounds(page);
+    const search = await probe.getInventorySearchBounds(page);
+    const sort = await probe.getInventorySortBounds(page);
+    const visibleIndices = await probe.getInventoryVisibleCellIndices(page);
+    expect(panel).not.toBeNull();
+    expect(tabs.length, 'inventory should expose at least the All tab').toBeGreaterThan(0);
+    expect(search).not.toBeNull();
+    expect(sort).not.toBeNull();
+    expect(visibleIndices.length, 'populated inventory should expose grid cells').toBeGreaterThan(
+      0,
+    );
+    if (!panel || !search || !sort || visibleIndices.length === 0) return;
+
+    const within = (inner: ScreenBounds, outer: ScreenBounds): boolean =>
+      inner.x >= outer.x &&
+      inner.y >= outer.y &&
+      inner.x + inner.width <= outer.x + outer.width &&
+      inner.y + inner.height <= outer.y + outer.height;
+    const controls: readonly (readonly [string, ScreenBounds])[] = [
+      ['search', search],
+      ['sort', sort],
+      ...tabs.map((bounds, index) => [`tab:${index}`, bounds] as const),
+    ];
+    for (const [label, bounds] of controls) {
+      expect(within(bounds, panel), `${label} control should remain inside the panel`).toBe(true);
+    }
+
+    const canvasRect = await getCanvasRect(page);
+    const gameSize = await getGameSize(page);
+    const sortCenter = boundsCenterScreen(canvasRect, gameSize, sort);
+    await page.mouse.click(sortCenter.x, sortCenter.y);
+    await page.mouse.click(sortCenter.x, sortCenter.y);
+    const quantitySort = await probe.getInventorySortBounds(page);
+    expect(quantitySort).not.toBeNull();
+    expect(quantitySort!.width).toBeGreaterThanOrEqual(sort.width);
+    expect(within(quantitySort!, panel), 'resized quantity sort control should stay in panel').toBe(
+      true,
+    );
+
+    const targetIndex = visibleIndices[0]!;
+    const target = await probe.getInventoryCellBounds(page, targetIndex);
+    expect(target).not.toBeNull();
+    expect(await probe.previewInventoryCell(page, targetIndex)).toBe(true);
+    const tooltip = await probe.getInventoryTooltipBounds(page);
+    expect(tooltip).not.toBeNull();
+    if (target && tooltip) {
+      expect(within(target, panel), 'inventory cell should remain inside the panel').toBe(true);
+      expect(within(tooltip, panel), 'inventory tooltip should remain inside the panel').toBe(true);
+      expect(overlaps(target, tooltip), 'inventory tooltip should not occlude its target').toBe(
+        false,
+      );
+    }
+  });
+
+  it('builds mixed default, tab-filtered, text-filtered, and overflowing review states', async () => {
+    await loadUiProbeLab(page);
+    await hideLabChrome(page);
+    await probe.seedMixedInventory(page, 'standard');
+    await probe.openInventory(page);
+
+    const composition = await probe.getInventoryComposition(page);
+    expect(composition.equipment).toBeGreaterThan(0);
+    expect(composition.materials).toBeGreaterThan(0);
+    expect(composition.otherLoot).toBeGreaterThan(0);
+
+    await probe.setInventoryTagFilter(page, 'Materials');
+    expect(await probe.getInventoryFilterState(page)).toEqual({ tag: 'Materials', query: '' });
+    expect(await probe.getInventoryVisibleItemIds(page)).toEqual(
+      expect.arrayContaining(['iron-ore', 'copper-ore']),
+    );
+
+    await probe.setInventoryTagFilter(page, null);
+    await probe.setInventorySearchQuery(page, 'iron');
+    expect(await probe.getInventoryFilterState(page)).toEqual({ tag: null, query: 'iron' });
+    expect(await probe.getInventoryVisibleItemIds(page)).toEqual(
+      expect.arrayContaining(['iron-ore']),
+    );
+
+    await probe.seedMixedInventory(page, 'lots');
+    expect((await probe.getInventoryComposition(page)).total).toBeGreaterThan(30);
+    expect(await probe.getInventoryMaxScrollRow(page)).toBeGreaterThan(0);
+    expect(await probe.getInventoryScrollDownControlBounds(page)).not.toBeNull();
   });
 
   it('pins a tooltip on click and unpins on a second click', async () => {
@@ -870,7 +968,7 @@ describe('inventory flow (e2e)', () => {
  * supported viewport. Everything here drives the real Phaser panel through the
  * probe API and reads real rendered geometry — no mocks, no eyeballing.
  */
-describe('equipment decision gate (e2e)', () => {
+describe('equipment decision gate (e2e)', { timeout: 300_000 }, () => {
   let browser: Browser;
 
   beforeAll(async () => {
@@ -1256,7 +1354,9 @@ describe('equipment decision gate (e2e)', () => {
         probe.previewGeneratedEquipmentBagItem(candidate);
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
-      expect(ringRows).toEqual(expect.arrayContaining(['(+1)', '(-5%)', '(+2)', '(-1)', '(-3%)']));
+      expect(ringRows).toEqual(
+        expect.arrayContaining(['(+1)', '(-5.0%)', '(+2)', '(-1)', '(-3.0%)']),
+      );
 
       const handRows = await comparisonPage.evaluate(() => {
         const probe = window.__uiProbe!;
@@ -1268,8 +1368,8 @@ describe('equipment decision gate (e2e)', () => {
       });
       expect(handRows).toEqual(
         expect.arrayContaining([
-          'DPS: 22.2',
-          '(-2.8)',
+          'DPS: 20.6',
+          '(-3.90)',
           'Knockback: 5 ft',
           'AoE Range: 5.5 ft',
           'Armor',

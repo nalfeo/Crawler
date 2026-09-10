@@ -27,6 +27,8 @@ import {
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
 import { computeEffectiveStatsFromLoadout } from '../core/effective-stats.js';
+import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
+import { computeTheoreticalSingleTargetDps } from '../core/weapon-dps.js';
 import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import {
   SLOT_REGISTRY,
@@ -66,6 +68,9 @@ import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import {
+  formatDpsValue,
+  formatStatLabel,
+  formatStatValue,
   getEquipmentTooltipCardLayout,
   renderItemTooltip,
   type TooltipStatLine,
@@ -239,43 +244,6 @@ function generatedRarityColor(rarity: string): number {
     default:
       return RARITY_COLORS[ItemRarity.Legendary];
   }
-}
-
-const PERCENT_STAT_IDS = new Set<StatId>([
-  'damagePercent',
-  'attackSpeed',
-  'moveSpeed',
-  'critChance',
-  'dodgeChance',
-  'xpBonus',
-  'cooldownReduction',
-  'accuracy',
-]);
-
-function formatStatValue(statId: StatId, value: number): string {
-  if (PERCENT_STAT_IDS.has(statId)) {
-    return `${(value * 100).toFixed(1)}%`;
-  }
-  if (statId === 'critMultiplier') {
-    return `${value.toFixed(2)}x`;
-  }
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function formatStatLabel(statId: string): string {
-  // Title case, not upper case. Long all-caps runs strip the word-shape cues
-  // readers use to scan a stat list, and the screenshot judge penalises them as
-  // legibility strain. Capitalising each word keeps the labels scannable while
-  // preserving the existing column widths.
-  const label = statId
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
-  return label
-    .replace(/\bXp\b/g, 'XP')
-    .replace(/\bHp\b/g, 'HP')
-    .replace('Cooldown Reduction', 'CD Reduction');
 }
 
 function formatWeightLb(value: number): string {
@@ -1269,9 +1237,9 @@ export function createEquipmentUI(
         const delta = inlineDeltas[typedStatId] ?? 0;
         const inlineDelta =
           Math.abs(delta) > 1e-9
-            ? ` (${delta > 0 ? '+' : '-'}${formatTooltipStatValue(typedStatId, Math.abs(delta))})`
+            ? ` (${delta > 0 ? '+' : '-'}${formatStatValue(typedStatId, Math.abs(delta))})`
             : '';
-        const text = `${value! > 0 ? '+' : ''}${formatTooltipStatValue(typedStatId, value!)} ${formatTooltipStatLabel(typedStatId)}`;
+        const text = `${value! > 0 ? '+' : ''}${formatStatValue(typedStatId, value!)} ${formatStatLabel(typedStatId)}`;
         if (Math.abs(delta) <= 1e-9) return text;
         return {
           text,
@@ -1281,21 +1249,37 @@ export function createEquipmentUI(
       });
   }
 
-  function formatTooltipStatValue(statId: StatId, value: number): string {
-    return formatStatValue(statId, value).replace(/\.0(%|x)$/, '$1');
+  function weaponDefForEquipment(def: EquipmentItemDef) {
+    const generated =
+      lastWorld && def.id.startsWith('gei:v1:')
+        ? getGeneratedEquipmentInstance(lastWorld, def.id as GeneratedEquipmentInstanceKey)
+        : undefined;
+    return (
+      generated?.frozen.activeWeaponSnapshot ??
+      (def.weaponId ? getWeaponDef(def.weaponId) : undefined)
+    );
   }
 
-  function formatTooltipStatLabel(statId: StatId): string {
-    return formatStatLabel(statId);
-  }
-
-  function weaponSingleTargetDps(def: EquipmentItemDef): number | null {
-    const weapon = def.weaponId ? getWeaponDef(def.weaponId) : undefined;
-    return weapon && weapon.cooldownMs > 0 ? weapon.baseDamage / (weapon.cooldownMs / 1000) : null;
-  }
-
-  function formatDps(value: number): string {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  function weaponSingleTargetDps(
+    def: EquipmentItemDef,
+    effectiveStatDeltas: Partial<Record<StatId, number>> = {},
+  ): number | null {
+    const weapon = weaponDefForEquipment(def);
+    if (!weapon || weapon.cooldownMs <= 0) return null;
+    const currentStats: Partial<Record<StatId, number>> =
+      lastWorld && playerEid >= 0 ? getEffectiveStats(lastWorld, playerEid) : {};
+    const stats = { ...currentStats };
+    for (const [statId, delta] of Object.entries(effectiveStatDeltas)) {
+      if (typeof delta === 'number') {
+        const typedStatId = statId as StatId;
+        stats[typedStatId] = (stats[typedStatId] ?? 0) + delta;
+      }
+    }
+    const attackSpeedMultiplier =
+      lastWorld && playerEid >= 0
+        ? computeEffectiveValue(1, getStatusEffects(lastWorld, playerEid), 'attackSpeed')
+        : 1;
+    return computeTheoreticalSingleTargetDps(weapon, stats, { attackSpeedMultiplier }).dps;
   }
 
   function formatFeet(value: number): string {
@@ -1303,7 +1287,7 @@ export function createEquipmentUI(
   }
 
   function weaponEffectTooltipLines(def: EquipmentItemDef): TooltipStatLine[] {
-    const weapon = def.weaponId ? getWeaponDef(def.weaponId) : undefined;
+    const weapon = weaponDefForEquipment(def);
     if (!weapon) return [];
     const lines: TooltipStatLine[] = [];
     if (weapon.knockback > 0) lines.push(`Knockback: ${formatFeet(weapon.knockback)}`);
@@ -1314,6 +1298,7 @@ export function createEquipmentUI(
   function comparisonTooltipStatLines(
     candidate: EquipmentItemDef,
     replaced: readonly EquipmentItemDef[],
+    effectiveStatDeltas: Partial<Record<StatId, number>> = {},
   ): TooltipStatLine[] {
     const replacedBonuses: Partial<Record<StatId, number>> = {};
     for (const def of replaced) {
@@ -1336,16 +1321,16 @@ export function createEquipmentUI(
         const text =
           candidateValue === 0
             ? formatStatLabel(statId)
-            : `${candidateValue > 0 ? '+' : ''}${formatTooltipStatValue(statId, candidateValue)} ${formatTooltipStatLabel(statId)}`;
+            : `${candidateValue > 0 ? '+' : ''}${formatStatValue(statId, candidateValue)} ${formatStatLabel(statId)}`;
         return delta === 0
           ? text
           : {
               text,
-              deltaText: ` (${delta > 0 ? '+' : '-'}${formatTooltipStatValue(statId, Math.abs(delta))})`,
+              deltaText: ` (${delta > 0 ? '+' : '-'}${formatStatValue(statId, Math.abs(delta))})`,
               deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
             };
       });
-    const candidateDps = weaponSingleTargetDps(candidate) ?? 0;
+    const candidateDps = weaponSingleTargetDps(candidate, effectiveStatDeltas) ?? 0;
     const replacedDps = replaced.reduce(
       (total, def) => total + (weaponSingleTargetDps(def) ?? 0),
       0,
@@ -1355,10 +1340,10 @@ export function createEquipmentUI(
       const delta = candidateDps - replacedDps;
       weaponLines.push(
         delta === 0
-          ? `DPS: ${formatDps(candidateDps)}`
+          ? `DPS: ${formatDpsValue(candidateDps)}`
           : {
-              text: candidateDps === 0 ? 'DPS' : `DPS: ${formatDps(candidateDps)}`,
-              deltaText: ` (${delta > 0 ? '+' : '-'}${formatDps(Math.abs(delta))})`,
+              text: candidateDps === 0 ? 'DPS' : `DPS: ${formatDpsValue(candidateDps)}`,
+              deltaText: ` (${delta > 0 ? '+' : '-'}${formatDpsValue(Math.abs(delta))})`,
               deltaColor: delta > 0 ? '#49d06f' : '#e8695b',
             },
       );
@@ -1366,11 +1351,18 @@ export function createEquipmentUI(
     return [...weaponLines, ...weaponEffectTooltipLines(candidate), ...lines];
   }
 
-  function tooltipStatLinesWithDps(def: EquipmentItemDef): TooltipStatLine[] {
-    const dps = weaponSingleTargetDps(def);
+  function tooltipStatLinesWithDps(
+    def: EquipmentItemDef,
+    inlineDeltas: Partial<Record<StatId, number>> = {},
+  ): TooltipStatLine[] {
+    const dps = weaponSingleTargetDps(def, inlineDeltas);
     return dps === null
-      ? tooltipStatLines(def)
-      : [`DPS: ${formatDps(dps)}`, ...weaponEffectTooltipLines(def), ...tooltipStatLines(def)];
+      ? tooltipStatLines(def, inlineDeltas)
+      : [
+          `DPS: ${formatDpsValue(dps)}`,
+          ...weaponEffectTooltipLines(def),
+          ...tooltipStatLines(def, inlineDeltas),
+        ];
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {
@@ -1491,7 +1483,7 @@ export function createEquipmentUI(
           {
             def: candidate,
             label: 'CANDIDATE',
-            statLines: comparisonTooltipStatLines(candidate, [equipped[0]!]),
+            statLines: comparisonTooltipStatLines(candidate, [equipped[0]!], inlineDeltas),
           },
           {
             def: equipped[1]!,
@@ -1501,7 +1493,7 @@ export function createEquipmentUI(
           {
             def: candidate,
             label: 'CANDIDATE',
-            statLines: comparisonTooltipStatLines(candidate, [equipped[1]!]),
+            statLines: comparisonTooltipStatLines(candidate, [equipped[1]!], inlineDeltas),
           },
         ]
       : [
@@ -1515,8 +1507,8 @@ export function createEquipmentUI(
             label: 'CANDIDATE',
             statLines:
               equipped.length > 1
-                ? comparisonTooltipStatLines(candidate, equipped)
-                : tooltipStatLines(candidate, inlineDeltas),
+                ? comparisonTooltipStatLines(candidate, equipped, inlineDeltas)
+                : tooltipStatLinesWithDps(candidate, inlineDeltas),
           },
         ];
     const columns = isDualRingComparison ? 2 : cards.length;
@@ -1620,23 +1612,25 @@ export function createEquipmentUI(
     def: EquipmentItemDef,
     slotId: EquipmentSlotId,
     sourceBounds: ScreenBounds | null = null,
+    inlineDeltas: Partial<Record<StatId, number>> = {},
   ): void {
     const preferredWidth = 176;
+    const statLines = tooltipStatLinesWithDps(def, inlineDeltas);
     const placementSeed = getEquipmentTooltipCardLayout(
       preferredWidth,
-      tooltipStatLines(def),
+      statLines,
       itemTooltipDef(def).description || undefined,
     );
     const placement = sourceBounds
       ? getBagTooltipPlacement(sourceBounds, preferredWidth, placementSeed.height)
       : getCenterFacingTooltipPlacement(slotId, preferredWidth, placementSeed.height);
     if (!placement) {
-      renderComparisonTooltips([emptyComparisonDef(slotId)], def);
+      renderComparisonTooltips([emptyComparisonDef(slotId)], def, inlineDeltas);
       return;
     }
     const layout = getEquipmentTooltipCardLayout(
       placement.width,
-      tooltipStatLines(def),
+      statLines,
       itemTooltipDef(def).description || undefined,
     );
     const contentPlacement = { ...placement, height: layout.height };
@@ -1645,7 +1639,7 @@ export function createEquipmentUI(
       contentPlacement.y + contentPlacement.height / 2,
     );
     inspectorBg.setSize(contentPlacement.width, contentPlacement.height);
-    renderEquipmentTooltipCard(def, contentPlacement, 'CANDIDATE');
+    renderEquipmentTooltipCard(def, contentPlacement, 'CANDIDATE', [], true, statLines);
     tooltipBounds = { ...contentPlacement };
   }
 
@@ -1669,7 +1663,7 @@ export function createEquipmentUI(
     // Leave a full 10px more vertical breathing room around the tooltip copy.
     const height = getEquipmentTooltipCardLayout(
       width,
-      tooltipStatLines(equipmentDef),
+      tooltipStatLinesWithDps(equipmentDef),
       itemTooltipDef(equipmentDef).description || undefined,
     ).height;
     const placement = anchor
@@ -1687,7 +1681,14 @@ export function createEquipmentUI(
     // line without covering the item being examined.
     inspectorBg.setPosition(placement.x + placement.width / 2, placement.y + placement.height / 2);
     inspectorBg.setSize(placement.width, placement.height);
-    renderEquipmentTooltipCard(equipmentDef, placement, 'EQUIPPED');
+    renderEquipmentTooltipCard(
+      equipmentDef,
+      placement,
+      'EQUIPPED',
+      [],
+      true,
+      tooltipStatLinesWithDps(equipmentDef),
+    );
     // The inspector background is the clipped visual card. Child text may have
     // wider logical bounds in Phaser, so expose this actual card rectangle to
     // hover geometry rather than treating invisible overflow as tooltip space.
@@ -1700,6 +1701,9 @@ export function createEquipmentUI(
       def,
       { x: inspectorX + 6, y: inspectorY + 7, width: inspectorW - 12, height: INSPECTOR_H - 14 },
       'EQUIPPED',
+      [],
+      true,
+      tooltipStatLinesWithDps(def),
     );
     tooltipBounds = {
       x: inspectorX + 6,
@@ -1737,7 +1741,7 @@ export function createEquipmentUI(
         ? null
         : (bagPreviewBoxes.get(previewEntryIdentity)?.bounds ?? null);
     if (targetSlot && (isSlotEmpty(targetSlot) || selectedSlotFilter === targetSlot)) {
-      showCandidateTooltip(candidate, targetSlot, bagSource);
+      showCandidateTooltip(candidate, targetSlot, bagSource, preview.deltas);
     } else {
       renderComparisonTooltips(preview.swappedOut, candidate, preview.deltas, bagSource);
     }

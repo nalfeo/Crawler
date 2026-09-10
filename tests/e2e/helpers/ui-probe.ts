@@ -49,10 +49,14 @@ export async function loadUiProbeLab(page: Page): Promise<void> {
   // probe's ready flag instead. waitForFunction re-binds across Vite's own
   // self-reload; the bounded re-navigation below is the recovery path if an
   // optimize/reload cycle wedges or outlasts a single polling window.
-  await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
-  const windows = 3;
-  for (let i = 0; i < windows; i += 1) {
+  // A cold Windows Vite transform can spend more than 45 seconds optimizing the
+  // real InventoryUI + EquipmentUI dependency graph before committing the first
+  // navigation. Three progressively shorter attempts let Vite continue warming
+  // its transform cache while recovering from an optimize-deps reload.
+  const navigationTimeouts = [90_000, 60_000, 45_000] as const;
+  for (let i = 0; i < navigationTimeouts.length; i += 1) {
     try {
+      await page.goto(url, { waitUntil: 'commit', timeout: navigationTimeouts[i] });
       await page.waitForFunction(() => Boolean(window.__uiProbe?.ready()), undefined, {
         timeout: 30_000,
         polling: 200,
@@ -61,8 +65,7 @@ export async function loadUiProbeLab(page: Page): Promise<void> {
       await page.waitForTimeout(600);
       return;
     } catch (err) {
-      if (i === windows - 1) throw err;
-      await page.goto(url, { waitUntil: 'commit', timeout: 45_000 });
+      if (i === navigationTimeouts.length - 1) throw err;
     }
   }
 }
@@ -145,6 +148,28 @@ export const probe = {
     page.evaluate(() => window.__uiProbe!.getInventoryScrollUpControlBounds()),
   getInventoryScrollDownControlBounds: (page: Page) =>
     page.evaluate(() => window.__uiProbe!.getInventoryScrollDownControlBounds()),
+  getInventoryPanelBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryPanelBounds()),
+  getInventoryTabBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryTabBounds()),
+  getInventorySearchBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventorySearchBounds()),
+  getInventorySortBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventorySortBounds()),
+  getInventoryTooltipBounds: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryTooltipBounds()),
+  previewInventoryCell: (page: Page, index: number) =>
+    page.evaluate((i) => window.__uiProbe!.previewInventoryCell(i), index),
+  setInventoryTagFilter: (page: Page, tag: 'Materials' | null) =>
+    page.evaluate((value) => window.__uiProbe!.setInventoryTagFilter(value), tag),
+  setInventorySearchQuery: (page: Page, query: string) =>
+    page.evaluate((value) => window.__uiProbe!.setInventorySearchQuery(value), query),
+  getInventoryFilterState: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryFilterState()),
+  seedMixedInventory: (page: Page, size: 'standard' | 'lots') =>
+    page.evaluate((value) => window.__uiProbe!.seedMixedInventory(value), size),
+  getInventoryComposition: (page: Page) =>
+    page.evaluate(() => window.__uiProbe!.getInventoryComposition()),
   isTooltipVisible: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipVisible()),
   isTooltipPinned: (page: Page) => page.evaluate(() => window.__uiProbe!.isTooltipPinned()),
 

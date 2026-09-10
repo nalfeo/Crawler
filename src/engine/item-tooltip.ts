@@ -43,6 +43,17 @@ export function formatStatLabel(statId: string): string {
     .replace('Cooldown Reduction', 'CD Reduction');
 }
 
+/** Player-facing DPS precision shared by inventory and equipment tooltips. */
+export function formatDpsValue(value: number): string {
+  if (value >= 100) {
+    return value.toFixed(0);
+  }
+  if (value >= 10) {
+    return value.toFixed(1);
+  }
+  return value.toFixed(2);
+}
+
 // Aligned to the shared pixel-ui vocabulary (see engine/pixel-ui): dark slate
 // fill + gold border, matching the HUD/Character-Select/Awards chrome instead
 // of a bespoke tooltip palette.
@@ -54,12 +65,20 @@ const TOOLTIP_STAT_HEIGHT_BONUS = 18;
 const TOOLTIP_META_OFFSET = 16;
 const TOOLTIP_FOOTER_OFFSET_FROM_META = 14;
 const TOOLTIP_LINE_SPACING = 18;
+const MAX_TOOLTIP_STAT_LINES = 5;
 const EQUIPMENT_CARD_ICON_SIZE = 28;
 const EQUIPMENT_CARD_ICON_CENTER_Y = 48;
 const EQUIPMENT_CARD_STAT_START_Y = 70;
 const EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP = 12;
 const EQUIPMENT_CARD_BOTTOM_PADDING = 14;
 const EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT = 14;
+
+function tooltipStatBlockHeight(statLineCount: number): number {
+  const visibleStatLines = Math.min(MAX_TOOLTIP_STAT_LINES, statLineCount);
+  return visibleStatLines > 0
+    ? (visibleStatLines - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
+    : 0;
+}
 
 export type TooltipStatLine =
   | string
@@ -106,10 +125,7 @@ export function getEquipmentTooltipCardLayout(
     flavorText && flavorText.length > 0
       ? Math.min(3, countWrappedDescriptionLines(flavorText, descriptionColumns))
       : 0;
-  const statBlockHeight =
-    statLines.length > 0
-      ? (statLines.length - 1) * TOOLTIP_LINE_SPACING + EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT
-      : 0;
+  const statBlockHeight = tooltipStatBlockHeight(statLines.length);
   const descriptionY =
     EQUIPMENT_CARD_STAT_START_Y + statBlockHeight + EQUIPMENT_CARD_STAT_TO_FLAVOR_GAP;
   const descriptionHeight = descriptionLines * EQUIPMENT_CARD_DESCRIPTION_LINE_HEIGHT;
@@ -209,13 +225,16 @@ export function renderItemTooltip(
         diffLines,
       )
     : null;
+  const standardStatBlockHeight = tooltipStatBlockHeight(statLines.length);
+  const standardStatToFlavorGap = standardStatBlockHeight > 0 ? 12 : 0;
   const tooltipHeight =
     placement?.height ??
     (statLine !== undefined && statLine.length > 0
       ? TOOLTIP_BASE_HEIGHT + TOOLTIP_STAT_HEIGHT_BONUS
       : richContent
         ? TOOLTIP_BASE_HEIGHT +
-          Math.min(3, statLines.length) * 14 +
+          standardStatBlockHeight +
+          standardStatToFlavorGap +
           (flavorText !== undefined && flavorText.length > 0 ? 14 : 0) +
           Math.min(3, diffLines.length) * 14
         : TOOLTIP_BASE_HEIGHT);
@@ -329,7 +348,7 @@ export function renderItemTooltip(
       : placement !== undefined
         ? ty + (statLines.length > 0 ? 76 : 50)
         : richContent
-          ? ty + 50 + Math.min(3, statLines.length) * 14
+          ? ty + 50 + standardStatBlockHeight + standardStatToFlavorGap
           : ty + 26;
   const bodyText = flavorText ?? def.description;
   const descText = crispText(bodyX, bodyY, bodyText, {
@@ -391,7 +410,7 @@ export function renderItemTooltip(
     // assumed glyph advance) so the label + delta pair can never run past the
     // card's right edge regardless of which font is loaded.
     const statLineBudget = tooltipWidth - 16;
-    statLines.slice(0, 5).forEach((line, index) => {
+    statLines.slice(0, MAX_TOOLTIP_STAT_LINES).forEach((line, index) => {
       const text = typeof line === 'string' ? line : line.text;
       const rowY = statStartY + index * TOOLTIP_LINE_SPACING;
       const statText = crispText(tx + 8, rowY, text, {
