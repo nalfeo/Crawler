@@ -50,6 +50,9 @@ export interface FamilyRelProbeApi {
   setRelation(familyIndex: number, value: number): void;
   setBossDefeated(familyIndex: number, defeated: boolean): void;
   setStressState(state: 'representative' | 'worst-case'): void;
+  setCollapsed(collapsed: boolean): void;
+  setPresentCount(count: number): void;
+  setReputationSystemActive(active: boolean): void;
   cycleRapidState(iterations?: number): Array<{
     family: ReturnType<ReturnType<typeof createHudUI>['getFamilyRelationshipsLayout']>;
     minimap: ReturnType<ReturnType<typeof createHudUI>['getMinimapBounds']>;
@@ -163,10 +166,7 @@ function createHudFamilyRelationshipsLab(
 
   const families = loadFamilies();
   const present: FamilyDef[] = [...families]
-    .sort(
-      (a, b) =>
-        Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
-    )
+    .sort((a, b) => b.name.length - a.name.length || a.name.localeCompare(b.name))
     .slice(0, PRESENT_COUNT);
   const settingsById = new Map<string, FamilySettings>(
     present.map((f, i) => [f.id, { relation: 50 + i * 10, bossDefeated: false }]),
@@ -248,6 +248,24 @@ function createHudFamilyRelationshipsLab(
             settings.relation = relations[index]!;
             settings.bossDefeated = state === 'worst-case' && index % 2 === 1;
           });
+        },
+        setCollapsed: (collapsed) => {
+          if (!hudUi) throw new Error('HUD is not ready');
+          hudUi.setFamilyRelationshipsCollapsed(collapsed);
+        },
+        setPresentCount: (count) => {
+          const presentFamilies = world?.floorExtendedState?.familyState?.presentFamilies;
+          if (!presentFamilies) throw new Error('Family state is not ready');
+          presentFamilies.splice(
+            0,
+            presentFamilies.length,
+            ...present.slice(0, count).map((family) => asFamilyId(family.id)),
+          );
+        },
+        setReputationSystemActive: (active) => {
+          const familyState = world?.floorExtendedState?.familyState;
+          if (!familyState) throw new Error('Family state is not ready');
+          familyState.reputationSystemActive = active;
         },
         cycleRapidState: (iterations = 24) => {
           if (!world || !hudUi) throw new Error('HUD is not ready');

@@ -95,6 +95,7 @@ export function createHudUI(scene: Phaser.Scene): {
   setVisible(visible: boolean): void;
   getNavigationBounds(): NavigationHudBounds;
   getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
+  setFamilyRelationshipsCollapsed(collapsed: boolean): void;
   getMinimapBounds(): ScreenBounds | null;
   getMinimapOverlayWaypointArrowBounds(): ScreenBounds | null;
   getMinimapOverlayWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
@@ -411,6 +412,7 @@ export function createHudUI(scene: Phaser.Scene): {
     setVisible,
     getNavigationBounds,
     getFamilyRelationshipsLayout: familyRelationships.getLayout,
+    setFamilyRelationshipsCollapsed: familyRelationships.setCollapsed,
     getMinimapBounds: minimap.getDockedBounds,
     getMinimapOverlayWaypointArrowBounds: minimap.getOverlayWaypointArrowBounds,
     getMinimapOverlayWaypointArrowStates: minimap.getOverlayWaypointArrowStates,

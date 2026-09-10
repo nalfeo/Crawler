@@ -171,5 +171,45 @@
     "setupFile": "scripts/agent/review/setup/ui-probe-equipment-scenarios.js",
     "enabled": true,
     "description": "Hover a two-hand Bag weapon while Main Hand and Off Hand are occupied. The paired comparison must preserve both targets and avoid misleading duplicate deltas."
+  },
+  {
+    "id": "family-relationships-band-spectrum",
+    "label": "Family Relationships (Band Spectrum)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Floor-2 Family Relations comparison contract: four complete family identities, all standing bands, visible 25/50/75 thresholds, centered row content, and heart/skull boss icons with no collisions."
+  },
+  {
+    "id": "family-relationships-boss-aftermath",
+    "label": "Family Relationships (Boss Aftermath)",
+    "viewport": { "width": 1280, "height": 800 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Boss-aftermath contract: every family remains independently scannable while four repeated skull tiles are contained, centered, and subordinate to the standing values."
+  },
+  {
+    "id": "family-relationships-compact-stress",
+    "label": "Family Relationships (Compact Stress)",
+    "viewport": { "width": 960, "height": 540 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Compact 960x540 contract: complete longest real identities with measured panel width, readable Aptos row content, shortened standing bars, aligned values, zero/threshold/max relation values, three threshold notches per bar, alternating heart/skull bosses, and no HUD collision."
+  },
+  {
+    "id": "family-relationships-collapsed",
+    "label": "Family Relationships (Collapsed)",
+    "viewport": { "width": 960, "height": 540 },
+    "captureSource": "ui-probe-lab",
+    "labId": "hud-family-relationships-lab",
+    "setupFile": "scripts/agent/review/setup/hud-family-relationships.js",
+    "enabled": true,
+    "description": "Collapsed Floor-2 contract: the Family title remains identifiable and expandable while all comparison rows release their screen space."
   }
 ]

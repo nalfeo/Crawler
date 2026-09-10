@@ -22,9 +22,7 @@ const OVERLAY_TILE_PX = 33;
 const OVERLAY_CENTER = { x: GAME_W / 2, y: 364 };
 
 const PRESENT_FAMILIES = [...loadFamilies()]
-  .sort(
-    (a, b) => Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
-  )
+  .sort((a, b) => b.name.length - a.name.length || a.name.localeCompare(b.name))
   .slice(0, 4);
 
 function rgbFromHex(color: number): { r: number; g: number; b: number } {
@@ -113,6 +111,10 @@ function contains(parent: Bounds, child: Bounds, tolerance = 0.5): boolean {
   );
 }
 
+function centerY(bounds: Bounds): number {
+  return bounds.y + bounds.height / 2;
+}
+
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
   return page.evaluate(() => {
     const canvas = document.querySelector('#lab-canvas canvas') as HTMLCanvasElement | null;
@@ -127,6 +129,21 @@ function gameToScreen(rect: CanvasRect, gx: number, gy: number): { x: number; y:
     x: Math.round(rect.x + gx * (rect.width / GAME_W)),
     y: Math.round(rect.y + gy * (rect.height / GAME_H)),
   };
+}
+
+async function getFamilyPanelRect(
+  page: Page,
+  canvas: CanvasRect,
+): Promise<{ x: number; y: number; w: number; h: number }> {
+  const panel = await page.evaluate(() => {
+    const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+    if (!probe) throw new Error('__familyRelProbe missing');
+    return probe.getLayout().family.panel;
+  });
+  if (!panel) throw new Error('family panel must be visible');
+  const tl = gameToScreen(canvas, panel.x, panel.y);
+  const br = gameToScreen(canvas, panel.x + panel.width, panel.y + panel.height);
+  return { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
 }
 
 function territoryMarkerPoint(rect: CanvasRect, roomIndex: number): { x: number; y: number } {
@@ -237,21 +254,18 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     const canvas = await getCanvasRect(page);
     const buf = await page.screenshot({ type: 'png' });
     const png = parsePng(buf);
-
-    // The panel is anchored bottom-right in the HUD design space:
-    //   right edge at GAME_W - 12, bottom edge at GAME_H - 160,
-    //   width 232, height ≈ 8 + 22 + 4*(30+4) + 8 = 174.
-    const tl = gameToScreen(canvas, GAME_W - 244, GAME_H - 334);
-    const br = gameToScreen(canvas, GAME_W - 12, GAME_H - 160);
-    const panelRect = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+    const panelRect = await getFamilyPanelRect(page, canvas);
 
     // Below the panel (toward the bottom-center ability bar area) should be
     // mostly empty in the bottom-right column.
     const belowRect = {
-      x: tl.x,
-      y: br.y + 4,
-      w: br.x - tl.x,
-      h: Math.max(4, gameToScreen(canvas, GAME_W - 12, GAME_H - 20).y - (br.y + 4)),
+      x: panelRect.x,
+      y: panelRect.y + panelRect.h + 4,
+      w: panelRect.w,
+      h: Math.max(
+        4,
+        gameToScreen(canvas, GAME_W - 12, GAME_H - 20).y - (panelRect.y + panelRect.h + 4),
+      ),
     };
 
     const panelRatio = nonBackgroundRatio(png, panelRect);
@@ -269,9 +283,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
 
   it('re-renders when relation changes (dirty-flag path repaints the panel)', async () => {
     const canvas = await getCanvasRect(page);
-    const tl = gameToScreen(canvas, GAME_W - 244, GAME_H - 334);
-    const br = gameToScreen(canvas, GAME_W - 12, GAME_H - 160);
-    const panelRect = { x: tl.x, y: tl.y, w: br.x - tl.x, h: br.y - tl.y };
+    const panelRect = await getFamilyPanelRect(page, canvas);
 
     // Establish a known, high-relation baseline (friendly green bars, bosses
     // alive) via the probe, then capture it. Self-contained: no dependence on
@@ -396,6 +408,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     await page.keyboard.press('m');
   });
   it('contains every label and avoids the minimap and adjacent HUD at target viewports', async () => {
+    await page.evaluate(() => document.fonts.ready);
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 960, height: 540 },
@@ -434,20 +447,39 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
       ).toBe(false);
 
       expect(layout.family.rows).toHaveLength(4);
+      expect(layout.family.collapsed).toBe(false);
+      expect(layout.family.collapseToggle).not.toBeNull();
+      expect(layout.family.rows.map((row) => row.displayedName)).toEqual(
+        PRESENT_FAMILIES.map((family) => family.name),
+      );
       expect(new Set(layout.family.rows.map((row) => row.band))).toEqual(
         new Set(['hate', 'hostile', 'neutral', 'friendly']),
       );
       expect(layout.family.rows.map((row) => row.bossDefeated)).toEqual([false, true, false, true]);
+      expect(layout.family.columnHeader).toBeNull();
+      expect(layout.family.columnLabels).toBeNull();
       for (const [index, row] of layout.family.rows.entries()) {
+        expect(row.statusLabel).toBe(
+          row.band === 'friendly'
+            ? 'ALLY'
+            : row.band === 'neutral'
+              ? 'NEUTRAL'
+              : row.band === 'hostile'
+                ? 'HOSTILE'
+                : 'HATE',
+        );
         expect(
           contains(panel, row.row),
           `row ${index} escapes panel at ${viewport.width}x${viewport.height}`,
         ).toBe(true);
         for (const [name, bounds] of Object.entries({
+          swatch: row.swatch,
           name: row.name,
           bar: row.bar,
           value: row.value,
-          bossIcon: row.bossIcon,
+          bossTile: row.bossTile,
+          bossLabel: row.bossLabel,
+          statusPill: row.statusPill,
           status: row.status,
         })) {
           expect(
@@ -456,11 +488,12 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           ).toBe(true);
         }
         const siblings = Object.entries({
+          swatch: row.swatch,
           name: row.name,
           bar: row.bar,
           value: row.value,
-          bossIcon: row.bossIcon,
-          status: row.status,
+          bossTile: row.bossTile,
+          statusPill: row.statusPill,
         });
         for (let left = 0; left < siblings.length; left += 1) {
           for (let right = left + 1; right < siblings.length; right += 1) {
@@ -472,7 +505,110 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
             ).toBe(false);
           }
         }
+        expect(row.displayedName).not.toContain('…');
+        expect(row.bossStateLabel).toBe(row.bossDefeated ? '☠️' : '♥');
+        for (const [name, bounds] of Object.entries({
+          name: row.name,
+          swatch: row.swatch,
+          statusPill: row.statusPill,
+          status: row.status,
+          bossTile: row.bossTile,
+          bossLabel: row.bossLabel,
+        })) {
+          expect(
+            Math.abs(centerY(bounds) - centerY(row.name)),
+            `${name} must share the identity center line in row ${index}`,
+          ).toBeLessThanOrEqual(0.5);
+        }
+        expect(
+          Math.abs(centerY(row.value) - centerY(row.bar)),
+          `standing value must align with the bar in row ${index}`,
+        ).toBeLessThanOrEqual(0.5);
+        expect(
+          row.statusPill.x - (row.value.x + row.value.width),
+          `standing value must keep a readable gap before status in row ${index}`,
+        ).toBeGreaterThanOrEqual(8);
+        expect(
+          row.statusPill.x - (row.bar.x + row.bar.width),
+          `standing bar must not enter the status column in row ${index}`,
+        ).toBeGreaterThanOrEqual(8);
+        expect(row.relationTicks).toHaveLength(3);
+        for (const [tickIndex, tick] of row.relationTicks.entries()) {
+          expect(
+            contains(row.bar, tick),
+            `relation threshold ${tickIndex} escapes bar in row ${index}`,
+          ).toBe(true);
+        }
+        expect(contains(row.statusPill, row.status)).toBe(true);
+        expect(contains(row.bossTile, row.bossLabel)).toBe(true);
       }
+
+      const expandedHeight = panel.height;
+      const canvasRect = await getCanvasRect(page);
+      const toggle = layout.family.collapseToggle;
+      if (!toggle) throw new Error('family collapse toggle must be visible');
+      const togglePoint = gameToScreen(
+        canvasRect,
+        toggle.x + toggle.width / 2,
+        toggle.y + toggle.height / 2,
+      );
+      const storedBeforeHiddenClick = await page.evaluate(() =>
+        localStorage.getItem('crawler:family-relationships-collapsed'),
+      );
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setReputationSystemActive(false);
+      });
+      await page.waitForTimeout(100);
+      await page.mouse.click(togglePoint.x, togglePoint.y);
+      expect(
+        await page.evaluate(() => localStorage.getItem('crawler:family-relationships-collapsed')),
+      ).toBe(storedBeforeHiddenClick);
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setReputationSystemActive(true);
+      });
+      await page.waitForTimeout(100);
+      await page.mouse.click(togglePoint.x, togglePoint.y);
+      await page.waitForTimeout(100);
+      const collapsedLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return {
+          layout: probe.getLayout().family,
+          stored: localStorage.getItem('crawler:family-relationships-collapsed'),
+        };
+      });
+      expect(collapsedLayout.layout.collapsed).toBe(true);
+      expect(collapsedLayout.layout.rows).toHaveLength(0);
+      expect(collapsedLayout.layout.panel?.height).toBeLessThan(expandedHeight / 2);
+      expect(collapsedLayout.stored).toBe('1');
+      await page.reload({ waitUntil: 'commit' });
+      await page.waitForFunction(
+        () =>
+          Boolean((window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe?.ready()),
+        undefined,
+        { timeout: 30_000 },
+      );
+      const persistedLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.getLayout().family;
+      });
+      expect(persistedLayout.collapsed).toBe(true);
+      expect(persistedLayout.rows).toHaveLength(0);
+      const restoredCanvasRect = await getCanvasRect(page);
+      const restoredToggle = persistedLayout.collapseToggle;
+      if (!restoredToggle) throw new Error('persisted collapse toggle must be visible');
+      const restoredTogglePoint = gameToScreen(
+        restoredCanvasRect,
+        restoredToggle.x + restoredToggle.width / 2,
+        restoredToggle.y + restoredToggle.height / 2,
+      );
+      await page.mouse.click(restoredTogglePoint.x, restoredTogglePoint.y);
+      await page.waitForTimeout(100);
 
       const rapidSnapshots = await page.evaluate(() => {
         const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
@@ -480,6 +616,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
         return probe.cycleRapidState(64);
       });
       expect(rapidSnapshots).toHaveLength(64);
+      const initialValueRightEdges = layout.family.rows.map((row) => row.value.x + row.value.width);
       for (const [rapidIndex, rapid] of rapidSnapshots.entries()) {
         expect(
           rapid.family.rows,
@@ -495,7 +632,33 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
           rapid.family.panel && overlaps(rapid.family.panel, rapid.bottomCenter),
           `rapid frame ${rapidIndex} overlaps bottom-center HUD`,
         ).toBe(false);
+        for (const [rowIndex, row] of rapid.family.rows.entries()) {
+          expect(
+            Math.abs(row.value.x + row.value.width - initialValueRightEdges[rowIndex]!),
+            `rapid frame ${rapidIndex} row ${rowIndex} must preserve the score's right edge`,
+          ).toBeLessThanOrEqual(0.5);
+        }
       }
+
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setPresentCount(3);
+      });
+      await page.waitForTimeout(100);
+      const threeFamilyLayout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.getLayout().family;
+      });
+      expect(threeFamilyLayout.rows).toHaveLength(3);
+      expect(threeFamilyLayout.panel?.height).toBeLessThan(expandedHeight);
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setPresentCount(4);
+      });
+      await page.waitForTimeout(100);
     }
   });
 });

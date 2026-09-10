@@ -1,0 +1,67 @@
+{
+  "schema_version": "review-ledger/v2",
+  "date": "2026-08-27",
+  "session_slug": "hud-refresh",
+  "task_title": "Refresh in-game HUD visual language",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Independent review found an accent-token cascade, mixed minimap font literals, flat title/label scale, panel contrast scope, and missing baseline evidence. Added accentGold while preserving existing accent consumers, normalized minimap fonts, differentiated title size, captured real-game baseline/after evidence, and added tracked HUD safe-room/dungeon scenarios."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "independent_grade": {
+      "completed": true,
+      "grader_model": "gpt-5.4",
+      "implementer_model": "gpt-5.6-luna",
+      "head_sha": "6e5c188045e5564ab0373e3068c1c416590f0300",
+      "findings": [
+        {
+          "severity": "major",
+          "file": "src/engine/ui-theme.ts",
+          "detail": "The refresh moves shared HUD typography/palette into new tokens and changes multiple HUD surfaces plus the new lab scenarios, but the diff does not add or update any deterministic regression that would fail if the refreshed visual language regressed. Add a committed headless visual/e2e check alongside tests/e2e/hud-overlap-visual.test.ts that loads the safe-room and dungeon HUD scenarios and asserts the refreshed HUD surfaces."
+        }
+      ],
+      "criteria": {
+        "correctness": 4,
+        "scope_discipline": 4,
+        "test_coverage": 2,
+        "policy_compliance": 5,
+        "maintainability": 4
+      },
+      "verdict": "fail",
+      "findings_count": 1,
+      "notes": "The implementation is coherent and policy-compliant, but the visual refresh lacks deterministic automated regression coverage for the two new scenarios.",
+      "escalated_to_human": {
+        "reason": "criteria below 3: test_coverage",
+        "unresolved_findings": 1
+      },
+      "remediation": {
+        "addressed": true,
+        "commit_note": "Added 'tracked hud A|B scenarios stay non-overlapping (safe-room + dungeon)' describe block to tests/e2e/hud-overlap-visual.test.ts: loads both __hudProbe.setScenario('safe-room-unlocked'|'dungeon') states, asserts every declared getVisualReviewRegions() region stays inside the 1280x720 viewport, asserts no pairwise overlap between top-level HUD panels (abilitiesPanel, hud-health-panel-bounds, hud-skill-panel-bounds, timerPanel, bossPanel, minimap), and reasserts the loot gold/junk text-containment regression fixed this session (LOOT_ROW_H vertical overflow). All 6 tests in the file pass (verified via `npx vitest run --project e2e tests/e2e/hud-overlap-visual.test.ts`)."
+      }
+    }
+  }
+}

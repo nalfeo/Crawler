@@ -1,9 +1,9 @@
 /**
  * Pure resolver for the Floor-2 HUD family-relationships widget (ADR 0040 · D8,
  * FR20). Given `world` + the loaded family roster, produces one `FamilyRow` per
- * present family with the band, band color, boss-alive flag, and status tag.
+ * present family with the band, band color, and boss-alive flag.
  *
- * No Phaser, no rendering — this module exists so the band/status logic can be
+ * No Phaser, no rendering — this module exists so the band logic can be
  * unit-tested without mounting the widget.
  */
 import type { FamilyDef } from '../shared/data/families.js';
@@ -23,24 +23,11 @@ export const BAND_BAR_COLORS: Readonly<Record<FactionBand, number>> = Object.fre
   friendly: 0x22c55e,
 });
 
-/** Player-facing status tag shown on each row. */
-export type FamilyStatusTag = 'Allied' | 'At War' | 'Neutral' | 'Defeated';
-
-/** Map a band to the row's short status label (FR20). */
-export function statusTagForBand(band: FactionBand): FamilyStatusTag {
-  if (band === 'friendly') return 'Allied';
-  if (band === 'hate' || band === 'hostile') return 'At War';
-  return 'Neutral';
-}
-
 /** One row rendered by `HudFamilyRelationships`. */
 export interface FamilyRow {
   familyId: FamilyId;
   name: string;
-  /**
-   * Short label (`species`, e.g. `Cactusfolk`) shown by `displayNameForRow`
-   * when the full family name is too wide for the row's name column.
-   */
+  /** Species label retained for other family presentation surfaces. */
   shortLabel: string;
   /** Family HUD color, parsed from `#RRGGBB` into a `0xRRGGBB` number. */
   hudColor: number;
@@ -50,7 +37,6 @@ export interface FamilyRow {
   /** Bar fill color, keyed off `band`. */
   barColor: number;
   bossDefeated: boolean;
-  statusTag: FamilyStatusTag;
 }
 
 /**
@@ -86,7 +72,6 @@ export function familyRowFromRelation(
     band,
     barColor: BAND_BAR_COLORS[band],
     bossDefeated,
-    statusTag: bossDefeated ? 'Defeated' : statusTagForBand(band),
   };
 }
 
@@ -95,35 +80,12 @@ function findFamilyDef(families: readonly FamilyDef[], id: FamilyId): FamilyDef 
   return families.find((f) => (f.id as FamilyId) === id);
 }
 
-/** Max characters the row's name column can show before falling back to the short label. */
-export const FAMILY_NAME_MAX_CHARS = 18;
-
 /** Whether the family widget is unlocked for the current world. */
 export function shouldShowFamilyRelationships(
   world: Pick<FactionRelationsWorldFacet, 'floorExtendedState'>,
 ): boolean {
   const familyState = world.floorExtendedState?.familyState;
   return familyState != null && familyState.reputationSystemActive !== false;
-}
-
-/**
- * Choose the label to show in a row's name column. Prefers the full family
- * name; when it's wider than `maxChars`, falls back to the shorter
- * `shortLabel` (species) if that fits, and only hard-truncates with an
- * ellipsis as a last resort. Pure so the widget's truncation behavior can be
- * unit-tested without mounting Phaser.
- */
-export function displayNameForRow(
-  row: Pick<FamilyRow, 'name' | 'shortLabel'>,
-  maxChars = FAMILY_NAME_MAX_CHARS,
-): string {
-  if (row.name.length <= maxChars) return row.name;
-  const short = row.shortLabel;
-  if (short.length > 0 && short.length <= maxChars) return short;
-  // Neither the full name nor the short label fits — hard-truncate the
-  // shortest non-empty candidate so we drop as few characters as possible.
-  const base = short.length > 0 && short.length < row.name.length ? short : row.name;
-  return base.slice(0, Math.max(1, maxChars - 1)) + '…';
 }
 
 /**
