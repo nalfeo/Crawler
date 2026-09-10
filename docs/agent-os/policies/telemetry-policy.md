@@ -67,10 +67,10 @@ the limit".
 
 Collection points:
 
-| Where          | How                                                                                                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Cloud session  | `bash scripts/agent/preflight.sh` prints a one-line snapshot at session start; run `npm run host:profile -- --once --headline` any time, or sample a long task with `--duration`/`--stop-file` |
-| GitHub Actions | the `.github/actions/host-profile` composite action brackets a job (`mode: start` / `mode: report`) and publishes a table to the job summary plus a JSON artifact                              |
+| Where          | How                                                                                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloud session  | `npm run preflight` prints a one-line snapshot at session start; run `npm run host:profile -- --once --headline` any time, or sample a long task with `--duration`/`--stop-file` |
+| GitHub Actions | the `.github/actions/host-profile` composite action brackets a job (`mode: start` / `mode: report`) and publishes a table to the job summary plus a JSON artifact                |
 
 Reports are per-run artifacts (`files/` is gitignored) and are **never a gate**:
 the sampler exits 0 regardless of utilization and CI wiring degrades to a warning.

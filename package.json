@@ -105,6 +105,7 @@
     "setup:azure:env:force": "pwsh scripts/setup-azure-env.ps1 -IncludeStorage -Force",
     "setup:azure:github": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets",
     "sync:main": "node scripts/agent/sync-main.mjs",
+    "preflight": "node scripts/agent/preflight.mjs",
     "verify:fast": "tsx scripts/agent/run-bash-wrapper.ts scripts/agent/verify-fast.sh",
     "verify:flash": "vitest run --changed --project unit --reporter=dot",
     "scope": "tsx scripts/agent/run-bash-wrapper.ts scripts/agent/ci/local-scope.sh",

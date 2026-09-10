@@ -6,8 +6,8 @@ short session contract; detailed procedures live in the linked docs.
 
 ## Start and scope
 
-1. Run `bash scripts/agent/preflight.sh`. If unavailable, record the environment
-   limitation and perform its relevant read-only checks manually.
+1. Run `npm run preflight`. This bootstraps Git Bash on Windows and installs
+   dependencies in a fresh worktree before running the canonical preflight.
 2. Choose a persona from [the routing matrix](docs/agent-os/personas/README.md)
    (use **Producer** for multi-layer or ambiguous work) and read that persona.
 3. Before planning a system change, use

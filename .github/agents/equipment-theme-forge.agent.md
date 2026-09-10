@@ -25,7 +25,7 @@ Your output is one cohesive, reusable base-art collection for the requested them
 
 ## First actions
 
-1. Run `bash scripts/agent/preflight.sh`.
+1. Run `npm run preflight`.
 2. Read `docs/agent-os/sprite-style.md`, ADR 0073, and
    `docs/guides/theme-equipment-pipeline.md`.
 3. Declare an apple estimate. This is asset/tooling work unless runtime wiring is added.

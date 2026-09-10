@@ -5,7 +5,7 @@ reality-show dungeon (Phaser 4 rendering · bitecs 0.4 ECS · TypeScript strict)
 This is the map of all project documentation and the **source-of-truth registry**
 for governance rules that appear in more than one place.
 
-> New here? Read [`AGENTS.md`](../AGENTS.md) → run `bash scripts/agent/preflight.sh`
+> New here? Read [`AGENTS.md`](../AGENTS.md) → run `npm run preflight`
 > → pick a [persona](agent-os/personas/README.md) → skim
 > [`architecture.md`](architecture.md).
 

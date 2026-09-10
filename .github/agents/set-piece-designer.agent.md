@@ -38,7 +38,7 @@ them.
    `task` tool), pass `context_tier: "long_context"` explicitly — there is no
    supported agent-frontmatter key for this, so it must be set at the
    invocation call site.
-1. `bash scripts/agent/preflight.sh`; adopt the Set Designer persona.
+1. `npm run preflight`; adopt the Set Designer persona.
 2. Read `docs/knowledge/game-design/lore-bible.md` and trace the relevant
    source citations before writing room fiction. If a room premise conflicts
    with a cited source, record the contradiction in
