@@ -61,3 +61,18 @@ this work was underway. The child branch was checkpointed and the standard
 - No unresolved implementation issues.
 - Run `npm run telemetry:token-budget -- --help` for option names and use
   `--json` for automation.
+
+## Follow-up: dependency audit remediation
+
+After the rollout circuit-breaker branch was pushed, `npm audit` identified the
+high-severity malformed-TOML denial-of-service advisory
+`GHSA-7w5x-hrqm-74c2` in transitive development dependency `smol-toml`
+(`knip → smol-toml@1.6.1`). Added the existing-style exact override for
+`smol-toml@1.8.0` and regenerated only its lockfile resolution. No audit
+exception was added.
+
+Validation: `npm run security:audit` passed; the Node security-helper suite
+passed 40/40; and `npm run verify:fast` passed. The normal
+`security:lock-integrity` script cannot resolve `npm` via `execFileSync` on
+this Windows host (`ENOENT`); its test suite passed, and the direct registry
+validation is recorded with the follow-up validation run.
