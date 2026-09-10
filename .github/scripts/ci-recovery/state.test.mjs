@@ -8,6 +8,7 @@ import {
   automationStallAction,
   blockerFingerprint,
   collapseCheckRunsByName,
+  evaluateClosingIssueAcceptanceScope,
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   hasSubstantiveCopilotReview,
@@ -180,6 +181,200 @@ test('shouldSkipSubstantiveReview requires assets/promote branch and approved ar
     shouldSkipSubstantiveReview({ head: { ref: 'feature/safe-art' } }, approvedFiles),
     false,
   );
+});
+
+function featureIssue(overrides = {}) {
+  return {
+    number: 3915,
+    title: 'Full feature issue',
+    body: [
+      '## Acceptance criteria',
+      '- [ ] Add the runtime CI Recovery admission check.',
+      '- [ ] Add deterministic regression tests.',
+    ].join('\n'),
+    labels: { nodes: [{ name: 'enhancement' }] },
+    repository: { nameWithOwner: 'nalfeo/Crawler' },
+    ...overrides,
+  };
+}
+
+test('closing-issue acceptance scope blocks planning-only full-feature closures', () => {
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' }, body: 'Fixes nalfeo/Crawler#3915' },
+    closingIssues: [featureIssue()],
+    changedFiles: [
+      { filename: 'docs/knowledge/epics/floor7/floor7.epic.json' },
+      { filename: 'docs/knowledge/handoffs/2026-09-03-plan.md' },
+    ],
+  });
+
+  assert.ok(result, 'expected a material acceptance-scope mismatch');
+  assert.equal(result.issueNumber, 3915);
+  assert.deepEqual(result.missing, ['executable diff', 'test diff']);
+  assert.match(result.blockReason, /closing-issue-acceptance-mismatch:#3915/);
+  assert.match(result.summary, /runtime CI Recovery admission check/);
+  assert.match(result.id, /abc123/);
+});
+
+test('closing-issue acceptance scope accepts executable plus test evidence', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Closes #3915' },
+      closingIssues: [featureIssue()],
+      changedFiles: [
+        { filename: '.github/scripts/ci-recovery/reconcile.mjs' },
+        { filename: '.github/scripts/ci-recovery/reconcile.test.mjs' },
+      ],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope skips related references and documentation-only issues', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Related to #3915' },
+      closingIssues: [],
+      changedFiles: [{ filename: 'docs/knowledge/epics/floor7/floor7.epic.json' }],
+    }),
+    null,
+  );
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' }, body: 'Resolves #77' },
+      closingIssues: [
+        featureIssue({
+          number: 77,
+          title: 'Documentation-only: explain CI Recovery',
+          labels: { nodes: [{ name: 'documentation' }] },
+        }),
+      ],
+      changedFiles: [{ filename: 'docs/runbooks/ci-recovery.md' }],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope is issue-scoped when acceptance criteria name paths', () => {
+  const scopedIssue = featureIssue({
+    number: 4100,
+    body: [
+      '## Acceptance criteria',
+      '- [ ] Implement the gate in `.github/scripts/ci-recovery/state.mjs`.',
+      '- [ ] Run `npm run test:guards`.',
+    ].join('\n'),
+  });
+
+  // Unrelated executable + test files must not satisfy an issue that names its own paths.
+  const bypass = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [scopedIssue],
+    changedFiles: [
+      { filename: 'src/game/unrelated.ts' },
+      { filename: 'tests/unit/unrelated.test.ts' },
+    ],
+  });
+  assert.ok(bypass, 'unrelated source+test evidence must not satisfy a path-scoped issue');
+  assert.match(bypass.missing.join(' '), /acceptance paths/);
+  assert.match(bypass.missing.join(' '), /state\.mjs/);
+
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' } },
+      closingIssues: [scopedIssue],
+      changedFiles: [{ filename: '.github/scripts/ci-recovery/state.mjs' }],
+    }),
+    null,
+    'touching a named acceptance path satisfies that issue',
+  );
+});
+
+test('closing-issue acceptance scope ignores non-path tokens in acceptance criteria', () => {
+  // `@scope/pkg` and command strings are documentation references, not diff requirements,
+  // so this issue has no path expectations and falls back to the diff-shape signal.
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [
+      featureIssue({
+        body: [
+          '## Acceptance criteria',
+          '- [ ] Depend on `@scope/pkg` and run `scripts/agent/verify-fast.sh --flag`.',
+        ].join('\n'),
+      }),
+    ],
+    changedFiles: [{ filename: 'src/game/alpha.ts' }, { filename: 'tests/unit/alpha.test.ts' }],
+  });
+
+  assert.equal(result, null);
+});
+
+test('closing-issue acceptance scope evaluates every closing issue independently', () => {
+  const implemented = featureIssue({
+    number: 4101,
+    body: '## Acceptance criteria\n- [ ] Change `src/game/alpha.ts`.',
+  });
+  const unimplemented = featureIssue({
+    number: 4102,
+    body: '## Acceptance criteria\n- [ ] Change `src/game/beta.ts`.',
+  });
+
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [implemented, unimplemented],
+    changedFiles: [{ filename: 'src/game/alpha.ts' }, { filename: 'tests/unit/alpha.test.ts' }],
+  });
+
+  assert.ok(result, 'a PR closing several issues must not pass by implementing one');
+  assert.equal(result.issueNumber, 4102);
+});
+
+test('closing-issue acceptance scope counts composite actions as executable evidence', () => {
+  assert.equal(
+    evaluateClosingIssueAcceptanceScope({
+      pr: { head: { sha: 'abc123' } },
+      closingIssues: [featureIssue()],
+      changedFiles: [
+        { filename: '.github/actions/setup-node/action.yml' },
+        { filename: 'tests/unit/setup-node.test.ts' },
+      ],
+    }),
+    null,
+  );
+});
+
+test('closing-issue acceptance scope ignores docs-only prose in an issue body', () => {
+  const result = evaluateClosingIssueAcceptanceScope({
+    pr: { head: { sha: 'abc123' } },
+    closingIssues: [
+      featureIssue({
+        body: [
+          'This work is not docs-only; it needs runtime changes.',
+          '## Acceptance criteria',
+          '- [ ] Add the runtime admission check.',
+        ].join('\n'),
+      }),
+    ],
+    changedFiles: [{ filename: 'docs/knowledge/handoffs/2026-09-03-plan.md' }],
+  });
+
+  assert.ok(result, 'issue prose must not exempt a feature issue from the gate');
+  assert.deepEqual(result.missing, ['executable diff', 'test diff']);
+});
+
+test('closing-issue acceptance scope blocker identity is head-bound', () => {
+  const args = {
+    closingIssues: [featureIssue()],
+    changedFiles: [{ filename: 'docs/knowledge/epics/floor7/floor7.epic.json' }],
+  };
+  const first = evaluateClosingIssueAcceptanceScope({ ...args, pr: { head: { sha: 'head-one' } } });
+  const second = evaluateClosingIssueAcceptanceScope({
+    ...args,
+    pr: { head: { sha: 'head-two' } },
+  });
+
+  assert.notEqual(first?.id, second?.id);
+  assert.equal(first?.headSha, 'head-one');
+  assert.equal(second?.headSha, 'head-two');
 });
 
 test('normalizes blocker order before fingerprinting', () => {
@@ -2165,6 +2360,19 @@ test('human escalation requires both a human hand-off and an explicit unresolved
     'Why the validator is not fixing this here: the fix required is not a bounded correction \u2014 it is the entire 5\u{1F34E} feature this PR was opened to deliver.\n\n' +
     'Thread intentionally left unresolved for human escalation.';
   assert.equal(isHumanEscalationDeclaration(validatorReply), true);
+  const pr4115Reply =
+    'However, I do not have write access to edit the actual GitHub PR description/closing-keyword text from this session\'s available tooling (no PR-metadata-write scope, only code push + comment replies) — the PR body above still literally reads "Fixes #3980". ' +
+    '**Leaving this thread unresolved**: a maintainer (or an agent with PR-edit permissions) needs to manually change the PR description from `Fixes #3980` to `Related to #3980` before merge, so #3980 is not auto-closed incomplete.';
+  assert.equal(isHumanEscalationDeclaration(pr4115Reply), true);
+  // The external-action pattern must require an actual actor phrase governing
+  // the action, not just the words "human"/"maintainer"/"owner" appearing
+  // anywhere before "needs"/"must" in the clause (PR #4123 review finding).
+  assert.equal(
+    isHumanEscalationDeclaration(
+      'Leaving the human-readable label unresolved: it must be corrected in code.',
+    ),
+    false,
+  );
   // A hand-off mention alone must not park a PR that inline repair can still fix.
   assert.equal(
     isHumanEscalationDeclaration(

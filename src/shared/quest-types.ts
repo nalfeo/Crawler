@@ -8,7 +8,9 @@
 import { z } from 'zod';
 import floor1QuestPack from './data/quests.floor1.json';
 import floor2QuestPack from './data/quests.floor2.json';
+import floor3QuestPack from './data/quests.floor3.json';
 import floor5SiegeQuestPack from './data/quests.floor5.siege.json';
+import floor6DefenseQuestPack from './data/quests.floor6.defense.json';
 
 /**
  * How an objective is satisfied.
@@ -92,6 +94,7 @@ export const FLOOR1_SHOP_QUEST_ID = 'floor1-shopkeeper-errand';
 export const FLOOR1_LEAVE_FLOOR_QUEST_ID = 'floor1-leave-floor';
 export const FLOOR2_FIND_SETTLEMENT_QUEST_ID = 'floor2-find-settlement';
 export const FLOOR2_LEAVE_FLOOR_QUEST_ID = 'floor2-leave-floor';
+export const FLOOR6_DEFENSE_QUEST_ID = 'floor6-hold-for-renovation';
 
 /** The gross, rat/slime-themed key item the shopkeeper sends you to fetch. */
 export const SHOPKEEPER_FETCH_ITEM_ID = 'glistening-rat-tail';
@@ -349,7 +352,9 @@ function buildRegistry(packs: readonly QuestPackDef[]): ReadonlyMap<string, Ques
 const DEFAULT_QUEST_PACKS: readonly QuestPackDef[] = Object.freeze([
   questPackSchema.parse(floor1QuestPack),
   questPackSchema.parse(floor2QuestPack),
+  questPackSchema.parse(floor3QuestPack),
   questPackSchema.parse(floor5SiegeQuestPack),
+  questPackSchema.parse(floor6DefenseQuestPack),
 ]);
 
 let questRegistry: ReadonlyMap<string, QuestDef> = buildRegistry(DEFAULT_QUEST_PACKS);

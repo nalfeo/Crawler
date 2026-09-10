@@ -17,6 +17,30 @@ Do not push, open a pull request, modify the issue, or merge: deterministic
 workflow stages own those mutations. On a review or local-gate repass, address
 the attached evidence before making further changes.
 
+An open approved issue is work to perform. Do not return `no-work` merely
+because existing tests pass or related tuning already exists. `no-work` is
+valid only when repository evidence proves the claimed issue was already
+completed, and only after you have actually begun implementation or performed
+a deep investigation of the real code paths the issue describes -- reading the
+relevant source/tests and tracing how they behave, not inferring completion
+from the issue title or a keyword search. Concluding "already implemented"
+from the issue text alone, without having opened and read the implementation
+it claims already exists, is not sufficient and must not be reported as
+`completed-existing-work`.
+
+When that investigation confirms the claim (for example, a linked merged
+pull request satisfies every acceptance criterion), cite the concrete
+evidence you personally inspected in the summary, set `outputs.disposition`
+to `completed-existing-work`, and set `outputs.evidenceRef` to a specific,
+checkable pointer to what you inspected -- a merged PR/commit reference (e.g.
+`PR #1234` or a commit SHA) or a repository path with a line range (e.g.
+`src/foo/bar.ts:120-160`). `outputs.evidenceRef` is required whenever
+`outputs.disposition` is `completed-existing-work`; the deterministic
+disposition gate rejects the claim and restores the issue for retry if it is
+missing, regardless of how clean the rest of the run looks. Otherwise
+implement the missing acceptance criteria, or return `blocked` with the
+specific external decision that prevents implementation.
+
 On any repass, read every attached review verdict or local-gate artifact and
 address all listed findings in one pass. Do not return `success` until fixable
 review findings have corresponding code, deterministic regression coverage, and
@@ -51,3 +75,20 @@ decision or blocker rather than committing an incomplete change. Final responses
 must be raw JSON only: no Markdown fences, no prose before or after. Keep
 `outputs` scalar-only; encode lists as comma-separated strings or put structured
 details in committed files/artifacts and reference their paths.
+
+`summary` is the text the deterministic close-out stage posts on the issue, so
+it must explain the change to a human rather than restate the task name. Emit it
+as a four-line block (`crawler.goobers.summary/v1`), in this order, each line
+non-empty:
+
+```
+Description: what changed, in plain language
+Systems: the high-level components the change touches
+Verification: the checks that were run
+Risk: the residual risk and why it is acceptable
+```
+
+The Description value must explicitly end with either `Session is fully complete.`
+or `Session is not fully complete.` so the close-out makes completion unambiguous.
+Escape the newlines as `\n` inside the JSON string. Single-sentence summaries
+such as "Implemented the fix." are rejected.

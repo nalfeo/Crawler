@@ -33,6 +33,14 @@ describe('floor implementation status (manifest SSOT)', () => {
     expect(getImplementedFloorIds()).toContain('floor2');
   });
 
+  it('marks Floor 6 implemented, unreleased, and budgeted through the manifest MVP path', () => {
+    expect(isFloorImplemented('floor6')).toBe(true);
+    expect(getFloorManifest('floor6')?.implemented.released).toBe(false);
+    expect(getFloorWinBudgetMs('floor6')).toBe(150_000);
+    expect(getActiveTimeBudgetMs('floor6')).toBe(150_000);
+    expect(getDefaultMaxFrames('floor6')).toBe(9_900);
+  });
+
   it('keeps released a strict subset of implemented', () => {
     const implemented = new Set(getImplementedFloorIds());
     for (const floorId of getAvailableFloorIds()) {

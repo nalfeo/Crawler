@@ -8,6 +8,10 @@ import {
 export { FOLLOWUP_BACKLOG_MARKER, ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER };
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 export const GOOBERS_APPROVED_LABEL = 'goobers:approved';
+/** Goobers has claimed the issue and is implementing it right now. */
+export const GOOBERS_IN_REVIEW_LABEL = 'goobers/status:in-review';
+/** Terminal Goobers disposition: the work was already done by existing code. */
+export const GOOBERS_COMPLETED_EXISTING_WORK_LABEL = 'goobers/status:completed-existing-work';
 const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
 const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
 const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
@@ -24,7 +28,7 @@ const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
   'copilot-pull-request-reviewer[bot]',
 ]);
 
-// Exported so callers (e.g. nightly-balance-issue.mjs) can recognize a completed
+// Exported so recurring issue filers can recognize a completed
 // Copilot assignment as durable proof of finished intake without duplicating this
 // login list.
 export function isCopilotLogin(login) {
@@ -165,13 +169,64 @@ export function isGoobersApprovedIssue(issue) {
   return hasIssueLabel(issue, GOOBERS_APPROVED_LABEL);
 }
 
+/**
+ * True when Goobers owns the implementation-claim lane.
+ *
+ * Mirrors `lifecycleLaneOwner('implementation-claim', ...)`: only the literal
+ * `goobers` selects Goobers, so a rollback (`legacy`) or any malformed value
+ * hands approved-issue intake back to legacy rather than leaving it ownerless.
+ */
+export function goobersOwnsImplementationClaim(env = process.env) {
+  return String(env.LIFECYCLE_MUTATION_OWNER ?? '') === 'goobers';
+}
+
 function hasIssueLabel(issue, expectedLabel) {
   return (issue?.labels || []).some(
     (label) => String(label?.name || '').toLowerCase() === expectedLabel,
   );
 }
 
-export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
+export function issueOpenerLogin(issue) {
+  return String(issue?.user?.login || '').toLowerCase();
+}
+
+/**
+ * Legacy trust boundary for issue intake: the maintainer, GitHub Actions, and
+ * the recognized Copilot identities. Anyone can open an issue on a public repo,
+ * so an unfiltered intake would let an arbitrary account command an agent
+ * session.
+ */
+export function isTrustedIssueOpener(issue, maintainerLogin = 'nalfeo') {
+  const opener = issueOpenerLogin(issue);
+  return (
+    opener === String(maintainerLogin || '').toLowerCase() ||
+    opener === GITHUB_ACTIONS_LOGIN ||
+    isCopilotLogin(opener)
+  );
+}
+
+/** True when the issue carries at least one assignee (REST or GraphQL shape). */
+export function hasIssueAssignees(issue) {
+  return (Array.isArray(issue?.assignees) ? issue.assignees : []).length > 0;
+}
+
+/** GitHub reports `open`/`OPEN` depending on the API; absent means "not stated". */
+export function isOpenIssueState(issue) {
+  const state = String(issue?.state ?? '').toLowerCase();
+  return state === '' || state === 'open';
+}
+
+/**
+ * The canonical *legacy* eligibility cohort: which issues the pre-cutover
+ * issue-intake reconciler would have picked up, expressed with no reference to
+ * who currently owns intake.
+ *
+ * This is the single definition of the exclusions/trust policy — PR payloads
+ * excluded, telemetry excluded, trusted opener required, automation-labeled
+ * issues only when GitHub Actions opened them. Both intake owners select from
+ * it, so parity is structural rather than two selectors kept in sync by hand.
+ */
+export function legacyIntakeCohortEligibility(issue, maintainerLogin = 'nalfeo') {
   if (!issue || issue.pull_request) {
     return { eligible: false, reason: 'event has no eligible issue payload' };
   }
@@ -180,24 +235,14 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
     return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
   }
 
-  if (isGoobersApprovedIssue(issue)) {
+  if (!isTrustedIssueOpener(issue, maintainerLogin)) {
     return {
       eligible: false,
-      reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+      reason: `opener @${issueOpenerLogin(issue) || 'unknown'} is not trusted`,
     };
   }
 
-  const opener = String(issue.user?.login || '').toLowerCase();
-  const maintainer = String(maintainerLogin || '').toLowerCase();
-  const trustedOpener =
-    opener === maintainer || opener === GITHUB_ACTIONS_LOGIN || isCopilotLogin(opener);
-
-  if (!trustedOpener) {
-    return { eligible: false, reason: `opener @${opener || 'unknown'} is not trusted` };
-  }
-
-  const labels = (issue.labels || []).map((label) => String(label.name || '').toLowerCase());
-  if (labels.includes('automation') && opener !== GITHUB_ACTIONS_LOGIN) {
+  if (hasIssueLabel(issue, 'automation') && issueOpenerLogin(issue) !== GITHUB_ACTIONS_LOGIN) {
     return {
       eligible: false,
       reason: `issue #${issue.number} has automation label and was not opened by GitHub Actions`,
@@ -205,6 +250,111 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   }
 
   return { eligible: true, reason: 'trusted issue opener' };
+}
+
+/**
+ * True when Goobers — not legacy automation — owns intake for this issue.
+ *
+ * Phase 2 shipped with Goobers owning only issues a human explicitly labeled
+ * `goobers:approved`, which left the rest of the legacy cohort on the legacy
+ * path. The owner requirement is that Goobers processes *at least* everything
+ * legacy intake would have, so the transferred cohort is the union of:
+ *
+ * - explicitly approved issues that are still unassigned (approval overrides
+ *   opener trust, but never the assignment carve-out below), and
+ * - the legacy eligibility cohort, minus issues that already carry an assignee.
+ *
+ * The assignment carve-out is checked FIRST, ahead of the approval shortcut,
+ * and applies to approved issues too: Goobers only claims unassigned issues
+ * (`requireUnassigned`, enforced identically in `goobersIntakeEligibility`
+ * below), so an already-assigned issue — approved or not — must stay with
+ * legacy, which is the lane that restarts a stalled Copilot session. Checking
+ * approval before assignment would report Goobers as the owner here while
+ * `goobersIntakeEligibility` simultaneously rejects the same issue as
+ * assigned, leaving the restart lane ownerless.
+ */
+export function goobersOwnsIssueIntake(
+  issue,
+  { maintainerLogin = 'nalfeo', env = process.env } = {},
+) {
+  if (!goobersOwnsImplementationClaim(env)) return false;
+  if (!issue || issue.pull_request) return false;
+  if (hasIssueAssignees(issue)) return false;
+  if (isGoobersApprovedIssue(issue)) return true;
+  return legacyIntakeCohortEligibility(issue, maintainerLogin).eligible;
+}
+
+/**
+ * Which issues the Goobers intake workflow may claim, and under which cohort.
+ *
+ * Fails closed on the selector: anything other than the literal `goobers`
+ * leaves Goobers with no claim at all, so a rollback can never produce two
+ * intake owners. Terminal/assigned/in-flight issues are excluded here rather
+ * than in workflow YAML so the workflow, the run-start revalidation, and the
+ * tests all consult one decision.
+ */
+export function goobersIntakeEligibility(
+  issue,
+  { maintainerLogin = 'nalfeo', env = process.env } = {},
+) {
+  const ineligible = (reason) => ({ eligible: false, cohort: null, reason });
+
+  if (!issue || issue.pull_request) {
+    return ineligible('event has no eligible issue payload');
+  }
+  if (!goobersOwnsImplementationClaim(env)) {
+    return ineligible('goobers does not own the implementation-claim lane');
+  }
+  if (!isOpenIssueState(issue)) {
+    return ineligible(`issue #${issue.number} is not open`);
+  }
+  if (hasIssueAssignees(issue)) {
+    return ineligible(`issue #${issue.number} already has an assignee`);
+  }
+  if (hasIssueLabel(issue, GOOBERS_IN_REVIEW_LABEL)) {
+    return ineligible(`issue #${issue.number} is already claimed by an in-review Goobers run`);
+  }
+  if (hasIssueLabel(issue, GOOBERS_COMPLETED_EXISTING_WORK_LABEL)) {
+    return ineligible(`issue #${issue.number} was dispositioned as completed by existing work`);
+  }
+  // Explicit approval overrides the legacy trust cohort: a maintainer labeling
+  // an issue is a stronger signal than who opened it.
+  if (isGoobersApprovedIssue(issue)) {
+    return { eligible: true, cohort: 'approved', reason: 'maintainer-approved issue' };
+  }
+
+  const cohort = legacyIntakeCohortEligibility(issue, maintainerLogin);
+  if (!cohort.eligible) return ineligible(cohort.reason);
+  return { eligible: true, cohort: 'legacy-parity', reason: 'legacy intake parity cohort' };
+}
+
+/**
+ * Legacy intake eligibility, with the Goobers-owned cohort subtracted.
+ *
+ * Legacy keeps its exclusions verbatim; the only change when Goobers owns the
+ * claim lane is that the transferred cohort becomes observe-only here.
+ */
+export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo', env = process.env) {
+  if (!issue || issue.pull_request) {
+    return { eligible: false, reason: 'event has no eligible issue payload' };
+  }
+
+  // Kept ahead of the ownership check so a telemetry issue reports the
+  // telemetry exclusion, which is the durable policy reason, in both eras.
+  if (isTelemetryIssue(issue)) {
+    return { eligible: false, reason: 'telemetry issues are not assigned to Copilot' };
+  }
+
+  if (goobersOwnsIssueIntake(issue, { maintainerLogin, env })) {
+    return {
+      eligible: false,
+      reason: isGoobersApprovedIssue(issue)
+        ? 'goobers:approved issues are owned by the Goobers intake workflow'
+        : 'legacy intake is observe-only while Goobers owns the implementation-claim lane',
+    };
+  }
+
+  return legacyIntakeCohortEligibility(issue, maintainerLogin);
 }
 
 export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
@@ -320,6 +470,9 @@ export async function getCopilotIssueAssignmentContext({
           issue(number: $issueNumber) {
             id
             state
+            author {
+              login
+            }
             labels(first: 50) {
               nodes {
                 name
@@ -355,9 +508,38 @@ export async function getCopilotIssueAssignmentContext({
     copilot,
     issueId: issueData.id,
     issueState: issueData.state,
+    issueAuthor: issueData.author,
     labels: issueData.labels?.nodes || [],
     assignees: issueData.assignees?.nodes || [],
   };
+}
+
+/**
+ * Live ownership fence shared by every issue-level Cloud Copilot assigner.
+ *
+ * The in-review label is an active Goobers claim even if another actor was
+ * assigned after the claim began. The broader cohort check prevents the
+ * selector cutover from racing between candidate selection and assignment.
+ */
+export function assertCopilotIssueAssignmentAllowed({
+  issue,
+  assignmentContext,
+  maintainerLogin = 'nalfeo',
+  env = process.env,
+}) {
+  const liveIssue = {
+    ...issue,
+    state: assignmentContext.issueState,
+    user: assignmentContext.issueAuthor || issue?.user,
+    labels: assignmentContext.labels,
+    assignees: assignmentContext.assignees,
+  };
+  if (hasIssueLabel(liveIssue, GOOBERS_IN_REVIEW_LABEL)) {
+    throw new IssueClaimedByGoobersError(issue.number);
+  }
+  if (goobersOwnsIssueIntake(liveIssue, { maintainerLogin, env })) {
+    throw new IssueClaimedByGoobersError(issue.number);
+  }
 }
 
 export function buildIssueActorIds({ assignees, copilotActorId, includeCopilot }) {
@@ -599,6 +781,15 @@ export function openBlockingIssues(dependencies) {
  * dependent once the blocker clears, regardless of its labels.  The
  * trusted-opener check (no arbitrary bots) still applies.
  *
+ * This bypass is a deliberate, retained legacy-only carve-out, not a parity
+ * gap: Goobers has no equivalent dependency-unblock trigger in this cutover
+ * (its `issues`/[opened, reopened, labeled] event and hourly sweep never fire
+ * from a *blocker* closing), so an automation-labeled, owner-opened dependent
+ * that this bypass unblocks is never a candidate `goobersIntakeEligibility`
+ * would independently claim. `goobersOwnsIssueIntake` still applies the
+ * regular (non-bypassed) cohort policy to it above, so it stays legacy-only
+ * rather than becoming a dual-writer risk — it is simply never transferred.
+ *
  * `restart` is threaded straight through to `runIssueIntake`. It defaults to
  * `false`, which is a no-op when Copilot is already assigned (the assignee
  * replace mutation is idempotent and does not re-fire GitHub's `assigned`
@@ -631,18 +822,19 @@ export async function intakeOpenedIssue({
     if (isTelemetryIssue(issue)) {
       return { assigned: false, reason: 'telemetry issues are not assigned to Copilot' };
     }
-    if (isGoobersApprovedIssue(issue)) {
+    if (goobersOwnsIssueIntake(issue, { maintainerLogin })) {
       return {
         assigned: false,
-        reason: 'goobers:approved issues are owned by the Goobers intake workflow',
+        reason: isGoobersApprovedIssue(issue)
+          ? 'goobers:approved issues are owned by the Goobers intake workflow'
+          : 'legacy intake is observe-only while Goobers owns the implementation-claim lane',
       };
     }
-    const opener = String(issue.user?.login || '').toLowerCase();
-    const maintainer = String(maintainerLogin || '').toLowerCase();
-    const trustedOpener =
-      opener === maintainer || opener === GITHUB_ACTIONS_LOGIN || isCopilotLogin(opener);
-    if (!trustedOpener) {
-      return { assigned: false, reason: `opener @${opener || 'unknown'} is not trusted` };
+    if (!isTrustedIssueOpener(issue, maintainerLogin)) {
+      return {
+        assigned: false,
+        reason: `opener @${issueOpenerLogin(issue) || 'unknown'} is not trusted`,
+      };
     }
     eligibilityReason = 'unblocked dependent';
   } else {
@@ -671,6 +863,7 @@ export async function intakeOpenedIssue({
     owner,
     repo,
     issue,
+    maintainerLogin,
     restart,
   });
   return {
@@ -697,14 +890,15 @@ export class IssueNoLongerOpenError extends Error {
 }
 
 /**
- * Thrown by `runIssueIntake` when a live GraphQL re-fetch sees the
- * `goobers:approved` label even though the triggering payload was eligible for
- * Cloud Copilot intake. Exported so callers like `intakeUnblockedDependents`
- * can treat this ownership race as a benign skip instead of an infra failure.
+ * Thrown by `runIssueIntake` when a live GraphQL re-fetch shows the issue now
+ * belongs to the Goobers intake cohort even though the triggering payload was
+ * eligible for Cloud Copilot intake. Exported so callers like
+ * `intakeUnblockedDependents` can treat this ownership race as a benign skip
+ * instead of an infra failure.
  */
 export class IssueClaimedByGoobersError extends Error {
   constructor(issueNumber) {
-    super(`Issue #${issueNumber} is now labeled goobers:approved; skipping intake`);
+    super(`Issue #${issueNumber} is now owned by the Goobers intake workflow; skipping intake`);
     this.name = 'IssueClaimedByGoobersError';
   }
 }
@@ -796,6 +990,7 @@ export async function runIssueIntake({
   owner,
   repo,
   issue,
+  maintainerLogin = 'nalfeo',
   restart = false,
 }) {
   const assignmentContext = await getCopilotIssueAssignmentContext({
@@ -813,38 +1008,7 @@ export async function runIssueIntake({
   if (String(assignmentContext.issueState || '').toUpperCase() !== 'OPEN') {
     throw new IssueNoLongerOpenError(issue.number);
   }
-  if (isGoobersApprovedIssue({ labels: assignmentContext.labels })) {
-    throw new IssueClaimedByGoobersError(issue.number);
-  }
-
-  // Every currently assigned actor recognized as Copilot (by login, not just
-  // by matching `assignmentContext.copilot.id`) -- an issue can be left
-  // assigned to a different valid Copilot actor ID/login variant than the one
-  // freshly discovered here, e.g. after a bot identity rotation.
-  const currentCopilotAssignees = assignmentContext.assignees.filter((actor) =>
-    isCopilotLogin(actor?.login),
-  );
-
-  // `restart: true` only does anything useful if it forces
-  // `replaceActorsForAssignable` to actually change the assignable's actor
-  // set -- GitHub only re-fires the `assigned` webhook (which is what
-  // restarts a stalled Copilot session) on a real transition. If we left a
-  // stale Copilot assignee in `assignmentContext.assignees` here,
-  // `buildIssueActorIds` would just carry that same stale actor id back into
-  // `actorIds` below (see its "keep whichever Copilot is already assigned"
-  // branch), making the mutation a same-set no-op. So on restart, derive
-  // `actorIds` with every Copilot-recognized assignee stripped out first --
-  // the removal below then always clears the actual stale actor(s), and
-  // `buildIssueActorIds` always falls back to the freshly discovered
-  // `assignmentContext.copilot.id` instead of reusing a stale one. Non-Copilot
-  // assignees are preserved either way.
-  const actorIds = buildIssueActorIds({
-    assignees: restart
-      ? assignmentContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
-      : assignmentContext.assignees,
-    copilotActorId: assignmentContext.copilot.id,
-    includeCopilot: true,
-  });
+  assertCopilotIssueAssignmentAllowed({ issue, assignmentContext, maintainerLogin });
 
   // Post the kickoff comment BEFORE assigning Copilot so the instructions are present
   // when the agent session starts. Clean up the new comment if assignment fails.
@@ -873,6 +1037,34 @@ export async function runIssueIntake({
 
   let assignment;
   try {
+    // Re-fetch after the comment write. This is the final ownership read before
+    // mutation, so a Goobers reservation that won the intervening race is
+    // observed and this newly-created kickoff comment is rolled back below.
+    const finalContext = await getCopilotIssueAssignmentContext({
+      graphql,
+      token,
+      owner,
+      repo,
+      issueNumber: issue.number,
+    });
+    assertCopilotIssueAssignmentAllowed({
+      issue,
+      assignmentContext: finalContext,
+      maintainerLogin,
+    });
+
+    // Every currently assigned actor recognized as Copilot (by login, not just
+    // by matching `copilot.id`) is removed first for a real restart transition.
+    const currentCopilotAssignees = finalContext.assignees.filter((actor) =>
+      isCopilotLogin(actor?.login),
+    );
+    const actorIds = buildIssueActorIds({
+      assignees: restart
+        ? finalContext.assignees.filter((actor) => !isCopilotLogin(actor?.login))
+        : finalContext.assignees,
+      copilotActorId: finalContext.copilot.id,
+      includeCopilot: true,
+    });
     if (restart && currentCopilotAssignees.length > 0) {
       await removeIssueAssignees({
         graphql,

@@ -28,6 +28,7 @@ import type { SetPiecePropRender } from '../../shared/set-piece-render.js';
 import type { SpriteRef } from '../../shared/set-piece-types.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
+import { isPointInSafeSpace } from '../safe-space.js';
 import { createEntity } from './entity-core.js';
 
 export interface SpawnNpcOptions {
@@ -275,7 +276,7 @@ export function addSetPieceProp(
  * a static collectible the player activates by proximity.
  *
  * @param defIndex - Index into HARVESTABLE_DEFS registry
- * @returns The new entity id
+ * @returns The new entity id, or -1 when the position is protected safe space
  */
 export function spawnHarvestableNode(
   world: GameWorld,
@@ -286,6 +287,9 @@ export function spawnHarvestableNode(
   const def: HarvestableDef | undefined = HARVESTABLE_DEFS[defIndex];
   if (def === undefined) {
     throw new Error(`spawnHarvestableNode: unknown defIndex ${defIndex}`);
+  }
+  if (isPointInSafeSpace(world, x, y)) {
+    return -1;
   }
 
   const eid = createEntity(world);

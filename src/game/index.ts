@@ -3,7 +3,7 @@ export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export { spawnerSystem } from './spawners/index.js';
 export { spawnerArenaSystem } from './spawners/index.js';
-export { attackWaveSystem } from './attack-wave-system.js';
+export { attackWaveSystem, configureAttackWaves } from './attack-wave-system.js';
 export {
   SPAWNER_ARCHETYPES,
   getSpawnerArchetype,
@@ -55,6 +55,11 @@ export {
   FLOOR3_TIMEOUT_GOAL_ID,
 } from './floor3Scenario.js';
 export { arenaDirectorSystem, initializeFloor4Scenario } from './floor4Scenario.js';
+export {
+  openFloor4GreenRoomVisit,
+  purchaseFloor4GreenRoomOffer,
+  retireFloor4GreenRoomVisit,
+} from './floor4GreenRoom.js';
 export {
   initializeFloor5Scenario,
   siegeDirectorSystem,
@@ -143,8 +148,12 @@ export {
   companionAISystem,
   getCompanionAIDecision,
   resetCompanionAIState,
+  setCompanionAIDecision,
 } from './systems/companionAISystem.js';
 export type { CompanionAIDecision, CompanionTargetKind } from './systems/companionAISystem.js';
+export { companionCombatSystem } from './systems/companionCombatSystem.js';
+export { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
+export { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 export {
   _aiTypeForSpecies,
   _generateStarterOffer,

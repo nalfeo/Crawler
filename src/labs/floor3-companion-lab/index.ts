@@ -5,7 +5,8 @@
  * - rival targeting (different team id), player follow/idle leash,
  * - Guardian / Support persona movement through the real AI → movement pipeline (slice 4),
  * - combat-XP attribution, evolution, and ability unlocks via the real
- *   `applyDamage` → `companionProgressionSystem` pipeline (slice 5),
+ *   `companionCombatSystem` → `applyDamage` → `companionProgressionSystem`
+ *   pipeline (slice 5),
  * - the real KO/recovery state machine, Rally Point instant recovery, and the
  *   party-wipe predicate via `companionKOSystem` (slice 6).
  */
@@ -15,7 +16,6 @@ import {
   Companion,
   PartySlot,
   Team,
-  applyDamage,
   companionKOSystem,
   companionLearnedAbilityIds,
   companionProgressionSystem,
@@ -30,6 +30,7 @@ import {
 import {
   AI_TYPE,
   companionAISystem,
+  companionCombatSystem,
   enemyAISystem,
   getCompanionAIDecision,
 } from '../../game/index.js';
@@ -40,6 +41,8 @@ import {
   speciesTokenForId,
 } from '../../shared/data/floor3/species.js';
 import tuning from '../../shared/data/tuning.json';
+import { getFloorEnemyPack } from '../../shared/enemy-packs.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -59,12 +62,18 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     playerY: 0,
     companionX: 12,
     companionY: 0,
-    rivalX: 4,
+    rivalX: 2,
     rivalY: 0,
     spawnRival: true,
     companionKnockedOut: false,
     aiType: 'GUARDIAN' as LabAiType,
-    attackDamage: 6,
+    // Floor-3-ONLY companion-buff tunables (human-authorized, session
+    // 2026-09-03) — defaults mirror `tuning.floor3Companion` so the lab
+    // starts in sync with production, but every slider below is editable
+    // here to explore the effect before/instead of editing tuning.json.
+    starterCompanionLevel: tuning.floor3Companion.starterLevel,
+    playerCompanionHpMultiplier: tuning.floor3Companion.playerCompanionHpMultiplier,
+    playerCompanionDamageMultiplier: tuning.floor3Companion.playerCompanionDamageMultiplier,
   };
 
   const panel = document.createElement('pre');
@@ -79,12 +88,27 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
 
   function reseed(): void {
     world = createGameWorld({ seed: state.seed });
+    world.floorId = 'floor3';
     playerEid = spawnPlayer(world, state.playerX, state.playerY);
+    const species = getPetSpecies('ember-charger');
+    const archetype = getFloorEnemyPack('floor3-wild')?.archetypes.find(
+      (candidate) => candidate.speciesId === species?.speciesId,
+    );
+    if (species === undefined || archetype === undefined) {
+      throw new Error('Floor 3 companion lab requires the ember-charger wild archetype.');
+    }
+    const form = formForLevel(species, state.starterCompanionLevel);
+    // Mirror `recruitFloor3PartyCompanion` exactly: wild-pack base HP, current
+    // form scale, then the player-party-only tuning multiplier.
+    const companionHp = Math.max(
+      1,
+      Math.round(archetype.hp * form.statScale * state.playerCompanionHpMultiplier),
+    );
     companionEid = spawnBehaviorEnemy(
       world,
       state.companionX,
       state.companionY,
-      100,
+      companionHp,
       labAiTypeValue(state.aiType),
       0.12,
       999,
@@ -96,9 +120,9 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       companionEid,
       set(Companion, {
         speciesToken: speciesTokenForId('ember-charger'),
-        form: 0,
-        level: 1,
-        xp: 0,
+        form: form.form,
+        level: state.starterCompanionLevel,
+        xp: xpRequiredForLevel(Math.max(0, state.starterCompanionLevel - 1)),
         ownerTeam: TeamId.PLAYER,
         knockedOut: state.companionKnockedOut ? 1 : 0,
       }),
@@ -145,15 +169,8 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
 
   function attackRival(): void {
     if (companionEid < 0 || rivalEid < 0) return;
-    const rivalX = world.stores.position.x[rivalEid] ?? 0;
-    const rivalY = world.stores.position.y[rivalEid] ?? 0;
-    applyDamage(world, rivalEid, state.attackDamage, rivalX, rivalY, {
-      origin: 'enemy',
-      affinity: 'physical',
-      scaleWithPrimary: false,
-      canCrit: false,
-      sourceEid: companionEid,
-    });
+    companionAISystem(world);
+    companionCombatSystem(world, state.playerCompanionDamageMultiplier);
     companionProgressionSystem(world);
     render();
   }
@@ -230,6 +247,18 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(`  level=${level} xp=${xp.toFixed(1)} form=${form} (${formName})`);
       lines.push(`  abilities learned: ${abilities.join(', ')}`);
       lines.push('');
+      lines.push('Floor-3-ONLY companion buff (human-authorized 2026-09-03):');
+      lines.push(
+        `  starterCompanionLevel=${state.starterCompanionLevel} ` +
+          `hpMultiplier=${state.playerCompanionHpMultiplier}x ` +
+          `damageMultiplier=${state.playerCompanionDamageMultiplier}x`,
+      );
+      lines.push(
+        `  tuning.json defaults: starterLevel=${tuning.floor3Companion.starterLevel} ` +
+          `hpMultiplier=${tuning.floor3Companion.playerCompanionHpMultiplier}x ` +
+          `damageMultiplier=${tuning.floor3Companion.playerCompanionDamageMultiplier}x`,
+      );
+      lines.push('');
       const knockedOut = (world.stores.companion.knockedOut[companionEid] ?? 0) === 1;
       const idleSince = world.companionEngagementIdleSince.get(TeamId.PLAYER);
       lines.push(`slice 6 — KO/recovery (frame=${world.frameCount}):`);
@@ -284,7 +313,15 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     .add(state, 'companionKnockedOut')
     .name('Companion KO')
     .onChange(() => applyState());
-  gui.add(state, 'attackDamage', 1, 100, 1).name('Attack damage');
+  gui
+    .add(state, 'starterCompanionLevel', 1, 34, 1)
+    .name('Floor3: starter level')
+    .onChange(() => reseed());
+  gui
+    .add(state, 'playerCompanionHpMultiplier', 0.5, 10, 0.5)
+    .name('Floor3: companion HP x')
+    .onChange(() => reseed());
+  gui.add(state, 'playerCompanionDamageMultiplier', 0.5, 10, 0.5).name('Floor3: companion dmg x');
   gui.add({ attack: () => attackRival() }, 'attack').name('⚔ Companion attacks rival');
   gui.add({ koNow: () => koCompanionNow() }, 'koNow').name('💥 KO companion now');
   gui.add({ advance60: () => advanceFrames(60) }, 'advance60').name('⏱ Advance 60 frames (~1s)');
@@ -301,6 +338,6 @@ registerLab('floor3-companion-lab', {
   category: 'Entities' as LabCategory,
   name: 'Floor 3 Companion Lab',
   description:
-    'Floor 3 — inspect companion targeting, Guardian/Support persona movement, slice-5 combat-XP/evolution/ability progression, and slice-6 KO/recovery + Rally Point.',
+    'Floor 3 — inspect companion targeting, Guardian/Support persona movement, slice-5 combat-XP/evolution/ability progression, slice-6 KO/recovery + Rally Point, and the Floor-3-only starter level / companion HP+damage buff multipliers used to make production Floor 3 completable.',
   create: createFloor3CompanionLab,
 });

@@ -3,6 +3,12 @@ import {
   STAIRS_TEXTURE_KEY,
   resolveStairsContainFit,
 } from '../../src/engine/sprites/stairs-visuals.js';
+import {
+  FLOOR2_STAIR_MARKER_RADIUS_FT,
+  STAIR_FOOTPRINT_RADIUS_FT,
+} from '../../src/shared/constants.js';
+import { ftToPx } from '../../src/shared/units.js';
+import { _getFloorConfig } from '../../src/shared/floor-config.js';
 import type { OpaqueBounds } from '../../src/shared/generated-assets.js';
 
 /** The real measured shape of `the-stairs-var-0`: a full-bleed square tile. */
@@ -80,5 +86,24 @@ describe('resolveStairsContainFit', () => {
       markerRadiusPx: 100,
     });
     expect(fit).toEqual({ originX: 0.5, originY: 0.5, scale: 1 });
+  });
+});
+
+describe('stairs footprint dimensions (acceptance criteria)', () => {
+  it('draws the art across exactly 2x2 tiles at the shared stair footprint radius', () => {
+    const tileSizeFt = _getFloorConfig('floor1').map.tileSizeFt;
+    expect(STAIR_FOOTPRINT_RADIUS_FT * 2).toBe(2 * tileSizeFt);
+
+    const fit = resolveStairsContainFit({
+      bounds: STAIRS_BOUNDS,
+      canvasWidth: 512,
+      canvasHeight: 512,
+      markerRadiusPx: ftToPx(STAIR_FOOTPRINT_RADIUS_FT),
+    });
+    expect(512 * fit.scale).toBe(ftToPx(2 * tileSizeFt));
+  });
+
+  it('shares that footprint with the Floor 2+ stair marker constant', () => {
+    expect(FLOOR2_STAIR_MARKER_RADIUS_FT).toBe(STAIR_FOOTPRINT_RADIUS_FT);
   });
 });

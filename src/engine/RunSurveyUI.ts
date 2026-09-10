@@ -61,6 +61,10 @@ export function createRunSurveyUI(hooks: RunSurveyUIHooks): {
   };
 
   const trapFocus = (event: KeyboardEvent): void => {
+    // Keep the modal authoritative while a terminal run survey is open so the
+    // underlying scene cannot still respond to Space/Enter or other browser
+    // keyboard inputs while the player is submitting/skipping feedback.
+    event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
       if (submitBtnRef?.disabled) {

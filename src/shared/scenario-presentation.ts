@@ -58,8 +58,31 @@ export interface ScenarioStairMarkerState {
   readonly label: string;
 }
 
+/**
+ * Whether the player stands inside a stair marker's interaction footprint.
+ *
+ * The single predicate every interaction path shares (`MainGameScene`'s
+ * descend affordance and the AI-runner lab's interact driver), so the prompt,
+ * the AI, and the rendered footprint can never disagree about where the exit
+ * is reachable from: the marker's `radiusFt` is exactly the half-width of the
+ * 2x2-tile square the stairs art is drawn into.
+ */
+export function isPlayerWithinStairMarker(
+  marker: ScenarioStairMarkerState | null | undefined,
+  playerXFt: number,
+  playerYFt: number,
+): boolean {
+  if (!marker) {
+    return false;
+  }
+  return (
+    Math.hypot(playerXFt - marker.positionFt.x, playerYFt - marker.positionFt.y) <= marker.radiusFt
+  );
+}
+
 /** Presentation copy for the stair-descend confirmation prompt. */
 export interface ScenarioStairConfirmationCopy {
+  readonly kind?: string;
   readonly title: string;
   readonly subtitle: string;
   readonly body: string;
@@ -89,6 +112,66 @@ export interface ScenarioStarterLoadoutCopy {
   readonly optionDescriptionPrefix: string;
 }
 
+/** Semantic floor HUD/audio/VFX cue that the renderer can present without floor branches. */
+export interface ScenarioHudCue {
+  readonly id: string;
+  readonly kind: 'audio' | 'vfx' | 'hud';
+  readonly label: string;
+}
+
+/**
+ * Floor-owned, renderer-neutral HUD state. Scenarios project authoritative
+ * state into plain text/cue semantics; the engine alone chooses pixels, colors,
+ * audio synthesis, and effects.
+ */
+export interface ScenarioHudSnapshot {
+  readonly id: string;
+  readonly lines: readonly string[];
+  readonly cues: readonly ScenarioHudCue[];
+}
+
+export interface ScenarioConstructionSite {
+  readonly siteId: string;
+  readonly label: string;
+  readonly occupied: boolean;
+  /** Authored world-space bounds in feet. */
+  readonly boundsFt: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+export interface ScenarioConstructionTower {
+  readonly towerId: string;
+  readonly label: string;
+  readonly cost: number;
+  readonly affordable: boolean;
+}
+
+export interface ScenarioConstructionSnapshot {
+  readonly phaseLabel: string;
+  readonly currencyLabel: string;
+  readonly sites: readonly ScenarioConstructionSite[];
+  readonly towers: readonly ScenarioConstructionTower[];
+}
+
+export interface ScenarioConstructionResult {
+  readonly ok: boolean;
+  readonly reason: string;
+  readonly eid?: number;
+}
+
+export interface ScenarioConstructionContract<TWorld> {
+  readonly getSnapshot: (world: TWorld) => ScenarioConstructionSnapshot | null;
+  readonly requestBuild: (
+    world: TWorld,
+    siteId: string,
+    towerId: string,
+  ) => ScenarioConstructionResult;
+}
+
 /**
  * One ordered Director-commentary beat, shown strictly between `intro` and
  * `victory`/`timeout`. `id` is the stable identifier the presenting layer
@@ -99,6 +182,17 @@ export interface ScenarioDirectorMilestone<TWorld> {
   readonly id: string;
   readonly copy: string;
   readonly isReached: (world: TWorld) => boolean;
+  /**
+   * Optional acknowledgement surface for milestones that must stop the run
+   * until the player has read the handoff.
+   */
+  readonly blockingModal?: {
+    readonly kind?: string;
+    readonly title: string;
+    readonly subtitle?: string;
+    readonly body: string;
+    readonly confirmLabel: string;
+  };
 }
 
 export interface ScenarioDirectorContract<TWorld> {
@@ -166,11 +260,23 @@ export interface ScenarioPresentationContract<TWorld> {
   /** Copy for the stair-descend confirmation prompt. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
   /**
+   * Per-world override of {@link stairConfirmation}, for scenarios whose single
+   * exit affordance narrates more than one continuation (Floor 4's Green Room
+   * exit opens the next act during acts 1-4 and ends the broadcast on the
+   * terminal intermission). Returning `null` falls back to the static copy, so
+   * scenarios with one fixed prompt need not implement it.
+   */
+  readonly getStairConfirmation?: (world: TWorld) => ScenarioStairConfirmationCopy | null;
+  /**
    * Copy for the starter-loadout picker. Absent for scenarios that present
    * their own loadout surface or offer no starter choice, in which case the
    * generic picker stays closed.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /** Optional live floor-status panel and cue stream, derived by the scenario. */
+  readonly getHudSnapshot?: (world: TWorld) => ScenarioHudSnapshot | null;
+  /** Optional authored construction interaction, consumed by the renderer. */
+  readonly construction?: ScenarioConstructionContract<TWorld>;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }

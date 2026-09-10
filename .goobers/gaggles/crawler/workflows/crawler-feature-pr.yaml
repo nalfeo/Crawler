@@ -8,6 +8,20 @@ spec:
   displayName: Crawler feature (approved issue to reviewed PR)
   triggers:
     - type: manual
+  # maxConcurrentRuns: 1, deliberately. goobers-run.yml gets its concurrency
+  # from four fully isolated instance roots (2 matrix lanes x 2 slots), not
+  # from letting one instance admit several runs, so the "at most four active
+  # issue workflows" ceiling is structural: each slot root is physically
+  # incapable of admitting a second run. Raising this would let a single slot
+  # exceed its share and turn a hard ceiling into arithmetic that can drift.
+  # `readiness.desiredConcurrentRuns` is deliberately absent for the same
+  # reason, and because it only has an effect when a `backlog-item` (or
+  # schedule + update-behind-pr) trigger wires a demand counter the scheduler
+  # polls for auto-refill (Goobers cmd/goobers/runnerwiring_counters.go's
+  # buildBacklogCounter); a `manual`-only trigger never gets one. `goobers run
+  # <workflow>` still dispatches this workflow manually regardless of its
+  # declared trigger type, so keeping `type: manual` does not affect
+  # recovery/manual dispatch.
   readiness:
     maxConcurrentRuns: 1
   runControls:
@@ -16,7 +30,7 @@ spec:
   tasks:
     - name: query-backlog
       type: deterministic
-      goal: Claim one maintainer-approved Crawler feature issue.
+      goal: Claim one Crawler feature issue from the maintainer-approved or legacy-parity intake cohort.
       run:
         script: |
           set -eu
@@ -32,27 +46,57 @@ spec:
             esac
             issue_json="$(gh issue view "${issue}" --repo "${repo}" --json state,title,body,url,labels,assignees)"
             state="$(printf '%s' "${issue_json}" | jq -r '.state')"
-            approved="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | index("goobers:approved") != null')"
             assigned="$(printf '%s' "${issue_json}" | jq -r '[.assignees[]] | length > 0')"
-            if [ "${state}" != "OPEN" ] || [ "${approved}" != "true" ] || [ "${assigned}" != "false" ]; then
-              echo "Issue #${issue} is not an open goobers:approved issue; refusing recovery claim." >&2
+            # The dispatching workflow (.github/workflows/goobers-run.yml) has
+            # already judged this issue with the canonical intake selector and
+            # hands the verdict down as GOOBERS_INTAKE_COHORT, refreshed by its
+            # own race-guard revalidation immediately before this run starts.
+            # Re-deriving the cohort here (e.g. a separate label lookup) would
+            # duplicate the legacy exclusions policy with its own bugs, so
+            # this fence trusts that cohort verdict outright — including the
+            # literal `approved` value the canonical selector emits for
+            # goobers:approved issues — and re-checks only the live state
+            # (open, unassigned) that can still change between resolution and
+            # this claim.
+            claimable=false
+            case "${GOOBERS_INTAKE_COHORT:-}" in
+              (approved|legacy-parity|resume) claimable=true ;;
+            esac
+            if [ "${state}" != "OPEN" ] || [ "${claimable}" != "true" ] || [ "${assigned}" != "false" ]; then
+              echo "Issue #${issue} is not an open, unassigned issue in the Goobers intake cohort; refusing recovery claim." >&2
               exit 1
             fi
             gh issue edit "${issue}" --repo "${repo}" --add-label 'goobers/status:in-review'
-            printf '%s' "${issue_json}" | jq --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" '{
-              id: ((.number // '"${issue}"') | tostring),
-              title,
-              body,
-              url,
-              workspaceBranch: $workspaceBranch
-            }' > claimed-item.json
+            printf '%s' "${issue_json}" | jq \
+              --arg workspaceBranch "${GOOBERS_RESUME_BRANCH:-}" \
+              --arg resumeCheckpointSha "${GOOBERS_RESUME_CHECKPOINT_SHA:-}" \
+              --arg resumeFailure "${GOOBERS_RESUME_FAILURE:-}" \
+              '{
+                id: ((.number // '"${issue}"') | tostring),
+                title,
+                body,
+                url,
+                workspaceBranch: $workspaceBranch,
+                resumeCheckpointSha: $resumeCheckpointSha,
+                resumeFailure: $resumeFailure
+              }' > claimed-item.json
+          elif [ "${GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED:-false}" = "true" ]; then
+            echo "Hosted Goobers slots require an explicit issue assignment; refusing the pinned runtime's nested backlog-query path." >&2
+            exit 1
           else
             goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"
           fi
       inputs:
         trustLabel: 'goobers:approved'
         requireUnassigned: 'true'
-        excludeLabel: 'goobers/status:in-review'
+        # Plural `excludeLabels` is the key `goobers backlog-query` actually
+        # reads (cmd/goobers/backlogquery.go's providerInput("excludeLabels")).
+        # It keeps a local/manual fallback claim off an issue already reserved
+        # by the hosted workflow. Hosted slots always receive explicit issues
+        # and cannot enter the fallback claim branch above.
+        # completed-existing-work is excluded for the same reason the Actions
+        # preflight excludes it: that issue is finished, not claimable.
+        excludeLabels: 'goobers/status:in-review,goobers/status:completed-existing-work'
         maxItems: '1'
         resultFile: 'claimed-item.json'
       capabilities:
@@ -67,6 +111,8 @@ spec:
         # Goobers' well-known branch-rebinding contract: a recovered PR head
         # is emitted here so every later stage uses that existing branch.
         - workspaceBranch
+        - resumeCheckpointSha
+        - resumeFailure
       next: hydrate-requirements
     - name: hydrate-requirements
       type: deterministic
@@ -75,6 +121,8 @@ spec:
         issueTitle: query-backlog.title
         issueBody: query-backlog.body
         issueUrl: query-backlog.url
+        resumeCheckpointSha: query-backlog.resumeCheckpointSha
+        resumeFailure: query-backlog.resumeFailure
       goal: Fetch the full claimed issue body into deterministic requirements context.
       run:
         script: |
@@ -99,6 +147,13 @@ spec:
             echo "## Body"
             echo
             printf '%s\n' "${body:-"(empty)"}"
+            if [ -n "${GOOBERS_INPUT_RESUMECHECKPOINTSHA:-}" ] || [ -n "${GOOBERS_INPUT_RESUMEFAILURE:-}" ]; then
+              echo
+              echo "## Resume contract"
+              echo
+              echo "- Checkpoint SHA: ${GOOBERS_INPUT_RESUMECHECKPOINTSHA:-none}"
+              echo "- Latest failure: ${GOOBERS_INPUT_RESUMEFAILURE:-none}"
+            fi
           } > requirements.md
 
           jq -n \
@@ -127,6 +182,7 @@ spec:
     - name: plan
       type: agentic
       goober: producer
+      timeoutMinutes: 20
       contextFrom:
         - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
@@ -195,6 +251,7 @@ spec:
     - name: implement
       type: agentic
       goober: coder
+      timeoutMinutes: 50
       contextFrom:
         - hydrate-requirements
         - materialize-plan
@@ -229,6 +286,69 @@ spec:
       policyActions:
         - push-repository-branch
       next: local-ci
+    - name: prepare-close-out-summary
+      type: deterministic
+      goal: Set the successful terminal completion state on the human-readable close-out summary.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: close-out
+    - name: prepare-park-needs-human-summary
+      type: deterministic
+      goal: Set the incomplete terminal completion state before parking for a human decision.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: park-needs-human
+    - name: prepare-needs-remediation-summary
+      type: deterministic
+      goal: Set the incomplete terminal completion state before escalating remediation.
+      run:
+        script: |
+          set -eu
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = (process.env.GOOBERS_INPUT_SUMMARY || '').replace(/\r\n/g, '\n').trim().split('\n');
+          const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
+          if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
+          lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          NODE
+      inputs:
+        resultFile: 'terminal-summary-result.json'
+      inputsFrom:
+        summary: implement.summary
+      expectedOutputs:
+        - summary
+      next: needs-remediation
     - name: local-ci
       type: deterministic
       goal: Run the configured Crawler local verification command.
@@ -256,10 +376,19 @@ spec:
       type: deterministic
       goal: Mark the source issue as awaiting review and link the PR.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'in-review'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: prepare-close-out-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -268,10 +397,19 @@ spec:
       type: deterministic
       goal: Park an issue that requires a maintainer product decision.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'needs-human'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: prepare-park-needs-human-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -281,10 +419,19 @@ spec:
       type: deterministic
       goal: Mark an issue that requires remediation and human escalation.
       run:
+        # Keep this a direct `goobers` command: the pinned runtime injects the
+        # operational run context (run id, workflow, repository, instance root)
+        # only when the declared command's first argv is `goobers`, and this
+        # stage holds a `github:issues:write` credential, so no branch-authored
+        # JavaScript may execute here. The structured-summary requirement is
+        # enforced upstream by the contract validator and the coder
+        # instructions, before any credential is in scope.
         command: ['goobers', 'issue-close-out']
       inputs:
         status: 'needs-remediation'
         resultFile: 'issue-close-out-result.json'
+      inputsFrom:
+        summary: prepare-needs-remediation-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -302,8 +449,8 @@ spec:
       branches:
         pass: push-branch
         needs-changes: implement
-        fail: park-needs-human
-        escalate: needs-remediation
+        fail: prepare-park-needs-human-summary
+        escalate: prepare-needs-remediation-summary
     - name: local-gate
       evaluator: automated
       automated:
@@ -312,7 +459,7 @@ spec:
         pass: open-pr
         fail: implement
         infra: local-ci
-        escalate: needs-remediation
+        escalate: prepare-needs-remediation-summary
     - name: pr-opened-gate
       evaluator: automated
       automated:
@@ -321,5 +468,5 @@ spec:
           key: opened
           equals: 'true'
       branches:
-        pass: close-out
-        fail: close-out
+        pass: prepare-close-out-summary
+        fail: prepare-needs-remediation-summary

@@ -8,7 +8,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -151,6 +159,21 @@ describe('mirrorBriefToStore / materializeBriefFromStore', () => {
     const outside = path.join(tmpdir(), `crawler-outside-materialize-${process.pid}.yaml`);
     expect(await materializeBriefFromStore(store, root, outside)).toBe(false);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'materialize refuses a dangling symlink destination',
+    async () => {
+      const rel = 'briefs/draft/tiles/linked.yaml';
+      const abs = path.join(root, rel);
+      const outside = path.join(tmpdir(), `crawler-brief-symlink-target-${process.pid}.yaml`);
+      mkdirSync(path.dirname(abs), { recursive: true });
+      symlinkSync(outside, abs);
+      await store.put(workflowBriefKey(rel), Buffer.from('name: escaped\n', 'utf8'));
+
+      await expect(materializeBriefFromStore(store, root, abs)).rejects.toThrow(/symbolic link/);
+      expect(existsSync(outside)).toBe(false);
+    },
+  );
 
   it('mirror then materialize round-trips a brief after a wipe', async () => {
     const rel = 'briefs/draft/tiles/roundtrip.yaml';

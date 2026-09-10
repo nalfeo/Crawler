@@ -77,6 +77,7 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { selectBossSpawnPlacement } from '../../src/game/boss-spawn-placement.js';
 import { floor1Config } from '../../src/shared/floor-config.js';
+import { getSpawnerArchetypeIndex } from '../../src/game/spawners/registry.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 
 function roomPerimeterEntryCandidates(room: {
@@ -689,11 +690,10 @@ describe('floor1Scenario', () => {
     }
   });
 
-  it('places no static spawners on Floor 1 (spawner-free by config)', () => {
-    // Floor 1's static-spawner spawn table is intentionally empty
-    // (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS in floorScenario.ts), so no Spawner
-    // entities are placed on any seed. Repopulating that table is the single
-    // config lever that re-enables Floor 1 static spawners.
+  it('places no static spawners on Floor 1 by default (spawner-free by config)', () => {
+    // Floor 1's static spawners are default-off (`floor1Spawners` option,
+    // default false — ADR 0049) unless explicitly enabled, so no Spawner
+    // entities are placed on any seed when the option is omitted.
     for (const seed of [42, 7, 99, 123, 2024]) {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
@@ -701,6 +701,27 @@ describe('floor1Scenario', () => {
 
       const spawners = query(world.ecs, [Spawner, Position]);
       expect(spawners).toHaveLength(0);
+    }
+  });
+
+  it('places two rats-nest and two slime-pool spawners when floor1Spawners is enabled', () => {
+    for (const seed of [42, 7, 99]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player, { floor1Spawners: true });
+
+      const spawners = query(world.ecs, [Spawner, Position]);
+      expect(spawners).toHaveLength(4);
+
+      const ratsNestIndex = getSpawnerArchetypeIndex('rats-nest');
+      const slimePoolIndex = getSpawnerArchetypeIndex('slime-pool');
+      const countsByArchetype = new Map<number, number>();
+      for (const eid of spawners) {
+        const defIndex = world.stores.spawner.defIndex[eid]!;
+        countsByArchetype.set(defIndex, (countsByArchetype.get(defIndex) ?? 0) + 1);
+      }
+      expect(countsByArchetype.get(ratsNestIndex)).toBe(2);
+      expect(countsByArchetype.get(slimePoolIndex)).toBe(2);
     }
   });
 

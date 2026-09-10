@@ -7,7 +7,10 @@
 
 ## Agent
 
-[`producer`](../../../.github/agents/producer.agent.md)
+[`producer`](../../../.github/agents/producer.agent.md) — plus one specialist
+sibling: [`floor-factory`](../../../.github/agents/floor-factory.agent.md) for
+end-to-end floor epic planning (spawn-to-win completion plans; it never tunes
+balance or fun).
 
 ## Responsibilities
 

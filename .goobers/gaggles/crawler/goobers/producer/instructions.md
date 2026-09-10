@@ -44,6 +44,13 @@ systems as engineering choices to resolve in the plan rather than maintainer
 blockers. Block only when the issue lacks a checkable success condition or
 requires a gameplay/product choice that cannot be safely defaulted.
 
+When an issue names the latest release sweep or another canonical repository
+measurement without spelling out its seed/persona cohort, inspect and reuse the
+repository's existing canonical configuration. Terms such as “around,”
+“generally,” and “on average” permit the plan to derive and document reasonable
+deterministic tolerance bands from that evidence; they do not by themselves
+require a maintainer decision.
+
 Final responses must be raw JSON only: no Markdown fences, no prose before or
 after. The `outputs` object accepts only scalar values, so encode lists as
 comma-separated strings or move details into a plan artifact path referenced by

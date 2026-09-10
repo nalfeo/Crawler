@@ -60,6 +60,13 @@ For **1–2🍎 sessions** that is the entire **file-writing** ritual — no app
 
 For **≥3🍎 sessions**, also run `npm run apples:record` at handoff (see below).
 
+### One record per pull request
+
+An implementation PR adds at most one dated Apple record under
+`docs/knowledge/metrics/apples/`. A 1–2🍎 session may add no record; a later
+turn updates the existing record rather than creating another one. The PR
+preflight guard counts branch-added records to enforce this rule.
+
 ---
 
 ## Review Trigger

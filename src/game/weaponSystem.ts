@@ -8,6 +8,7 @@ import {
   Owner,
   Player,
   Position,
+  ProjectileVisualKind,
 } from '../core/components.js';
 import {
   spawnAoeProjectile,
@@ -513,6 +514,8 @@ function fireRangedAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): number {
+  const visualKind =
+    def.weaponTypeSkillId === 'pistol' ? ProjectileVisualKind.BULLET : ProjectileVisualKind.ARROW;
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
   if (def.bounceCount > 0) {
@@ -527,6 +530,7 @@ function fireRangedAttack(
       def.pierce,
       def.range,
       player,
+      visualKind,
     );
   }
   return spawnProjectile(
@@ -540,6 +544,7 @@ function fireRangedAttack(
     def.range,
     1,
     player,
+    visualKind,
   );
 }
 

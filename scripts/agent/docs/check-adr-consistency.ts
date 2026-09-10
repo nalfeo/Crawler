@@ -18,6 +18,10 @@ const ALLOWLIST = new Set<string>([
   // Runtime-generated coverage artifact produced by the Governor sweep.
   'coverage/balance-metrics.json',
 ]);
+const RETIRED_HISTORICAL_PATH_PREFIXES = [
+  'docs/knowledge/review-ledgers/',
+  'scripts/agent/review/',
+];
 
 function looksLikePath(s: string): boolean {
   if (s.includes(' ')) return false;
@@ -81,7 +85,12 @@ async function main(): Promise<void> {
         // is checkable on disk.
         const candidate = stripSymbolSuffix(raw.replace(/[.,;)\]]+$/, ''));
         if (!looksLikePath(candidate)) continue;
-        if (ALLOWLIST.has(candidate)) continue;
+        if (
+          ALLOWLIST.has(candidate) ||
+          RETIRED_HISTORICAL_PATH_PREFIXES.some((prefix) => candidate.startsWith(prefix))
+        ) {
+          continue;
+        }
         const ok =
           candidate.includes('*') || candidate.includes('{')
             ? parentExists(candidate)

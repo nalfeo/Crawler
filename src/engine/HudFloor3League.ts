@@ -12,9 +12,9 @@ const X = GAME.WIDTH / 2 - WIDTH / 2;
 /**
  * Floor 3 keeps the shared floor timer visible (unlike Floor 4, whose scenario
  * sets `hideFloorTimer`), so this panel starts below the timer panel's
- * `TOP_Y (12) + PANEL_HEIGHT (42) = 54` bottom edge instead of overlapping it.
+ * `TOP_Y (20) + PANEL_HEIGHT (42) = 62` bottom edge instead of overlapping it.
  */
-const Y = 58;
+const Y = 66;
 const FONT = '"Press Start 2P", "Courier New", monospace';
 
 export interface HudFloor3LeagueState extends Floor3LeagueViewModel {

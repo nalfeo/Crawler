@@ -131,6 +131,22 @@ describe('floor2VictorySystem', () => {
     expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).not.toBe(true);
   });
 
+  it('does not trigger either win when no families are present', () => {
+    const world = createTestWorld({ seed: 1206, floor: 2 });
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'glimmercap' as import('../../src/core/faction-relations.js').ResourceId,
+        betrayerFlag: false,
+      },
+    };
+
+    floor2VictorySystem(world);
+
+    expect(world.goalFlags.get(FLOOR2_VICTORY_GOAL_ID)).not.toBe(true);
+    expect(world.goalFlags.get(FLOOR2_STAIRS_POPPED_GOAL_ID)).not.toBe(true);
+  });
+
   it('latches floor2-victory for Win B (all bosses dead)', () => {
     const seed = 1203;
     const world = createTestWorld({ seed, floor: 2 });

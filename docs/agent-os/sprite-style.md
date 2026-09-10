@@ -273,9 +273,14 @@ npm run sprites:gallery
 Then open `http://localhost:3000/lab.html?lab=sprite-gallery`. (The
 sidecar binds 127.0.0.1 only - it is never reachable from the LAN.)
 
-> Policy: sidecar launches are Azure-first by default (`azure-blob` + `azure-queue`).
+> Policy: **all** generation entrypoints are Azure-first by default — the sidecar
+> (`azure-blob` + `azure-queue`) and the direct `sprites:run` / `sprites:batch`
+> CLIs alike. Each run durably persists its brief, exact prompt, raw sheets and
+> sliced candidates before any art can be approved into git, and `sprites:approve`
+> refuses to publish (exit 5) when that content is missing.
 > Do not switch to `SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop` unless a human
-> explicitly requests local/offline mode.
+> explicitly requests local/offline mode; runs generated that way must be durably
+> backfilled before publication.
 
 What the gallery shows, per candidate:
 

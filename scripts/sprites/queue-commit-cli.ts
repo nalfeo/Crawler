@@ -87,6 +87,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         favorite: candidate.favorite as boolean,
         disliked: candidate.disliked as boolean,
         comment: candidate.comment as string,
+        ...(candidate.sourceRun === undefined ? {} : { sourceRun: candidate.sourceRun }),
+        ...(candidate.variantIndex === undefined ? {} : { variantIndex: candidate.variantIndex }),
+        ...(candidate.tombstone === undefined ? {} : { tombstone: candidate.tombstone }),
+        ...(candidate.reconciliation === undefined
+          ? {}
+          : { reconciliation: candidate.reconciliation }),
       });
     } else {
       throw new Error(`Unknown argument: ${arg}`);

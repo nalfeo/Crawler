@@ -686,6 +686,7 @@ function controlDeps(exec: Exec, overrides: Partial<QueueCommitDeps> = {}): Queu
   return {
     exec,
     copyArtSurface: () => Promise.resolve(),
+    mergeSpriteAnnotations: () => Promise.resolve(),
     makeTempDir: () => Promise.resolve('/tmp/qc-xyz'),
     removeDir: () => Promise.resolve(),
     withCrossProcessLock: (fn) => fn(),

@@ -49,7 +49,9 @@ import {
   Health,
   Damage,
   Projectile,
+  ProjectileVisual,
   XpGem,
+  BuildCurrencyPickup,
   Sprite,
   EnemyBehavior,
   Spawner,
@@ -59,7 +61,11 @@ import {
   Team,
   SiegeHero,
   SiegeMinion,
+  SiegeRam,
+  SiegeRouteMarker,
   SiegeStructure,
+  BroadcastRelayRaider,
+  Floor6Tower,
   Lifetime,
   AreaDamage,
   AoeOnImpact,
@@ -105,6 +111,7 @@ import type {
   Floor3PoachOffer,
   Floor4ArenaState,
   Floor4GreenRoomState,
+  Floor6DefenseState,
 } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
@@ -148,6 +155,8 @@ export interface FloorExtendedState {
   ambientEnemyArchetypes?: Map<number, string>;
   /** Floor 3 Studios + Final Four + objective-tick state (slice 8). */
   floor3Studios?: Floor3StudiosState;
+  /** Floor 3 wild mobs currently inside the player-anchored hostility band. */
+  floor3HostileWildEnemyEids?: Set<number>;
   /** ECS entity id of Floor 3's Professor-like onboarding host NPC. */
   floor3CompanionProfessorNpcEid?: number;
   /**
@@ -170,6 +179,8 @@ export interface FloorExtendedState {
   floor4GreenRoom?: Floor4GreenRoomState;
   /** Floor 5 siege phase/latch skeleton state. */
   floor5Siege?: Floor5SiegeState;
+  /** Floor 6 authored defense geometry and phase skeleton. */
+  floor6Defense?: Floor6DefenseState;
 }
 
 /**
@@ -210,18 +221,24 @@ export interface GoldLedger {
   earnedFromDrops: number;
   /** Gold granted by claimed achievement loot boxes. */
   earnedFromLootBoxes: number;
+  /** Gold paid for Floor 4 Headliner appearances. */
+  earnedFromAppearanceFees: number;
   /** Gold spent on the Floor 1 merchant's charm. */
   spentOnCharm: number;
   /** Gold spent on post-quest merchant weapons. */
   spentOnMerchantWeapon: number;
   /** Gold spent at the Floor 1 Spell Broker. */
   spentOnSpell: number;
+  /** Gold spent at Floor 4 Green Room sponsor tables. */
+  spentOnGreenRoom: number;
   /** Number of charm purchases (0 or 1 per run). */
   charmPurchases: number;
   /** Number of post-quest merchant weapon purchases. */
   merchantWeaponPurchases: number;
   /** Number of Spell Broker spell purchases. */
   spellPurchases: number;
+  /** Number of Floor 4 Green Room purchases. */
+  greenRoomPurchases: number;
   /**
    * Gold earned at the moment the floor exit was confirmed, i.e. the income the
    * run could still convert into power at a Floor 1 vendor. `null` until the
@@ -240,12 +257,15 @@ export function createGoldLedger(): GoldLedger {
   return {
     earnedFromDrops: 0,
     earnedFromLootBoxes: 0,
+    earnedFromAppearanceFees: 0,
     spentOnCharm: 0,
     spentOnMerchantWeapon: 0,
     spentOnSpell: 0,
+    spentOnGreenRoom: 0,
     charmPurchases: 0,
     merchantWeaponPurchases: 0,
     spellPurchases: 0,
+    greenRoomPurchases: 0,
     earnedBeforeExit: null,
   };
 }
@@ -258,7 +278,9 @@ export function createGoldLedger(): GoldLedger {
 export function markGoldLedgerFloorExit(world: GameWorld): void {
   if (world.goldLedger.earnedBeforeExit !== null) return;
   world.goldLedger.earnedBeforeExit =
-    world.goldLedger.earnedFromDrops + world.goldLedger.earnedFromLootBoxes;
+    world.goldLedger.earnedFromDrops +
+    world.goldLedger.earnedFromLootBoxes +
+    world.goldLedger.earnedFromAppearanceFees;
 }
 
 /** One item a vendor had on offer at the moment it was visited. */
@@ -417,8 +439,10 @@ export interface GameWorld {
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
   /**
-   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
-   * recycled entities without consulting or mutating gameplay state.
+   * Monotonic spawn identity per EID. Deterministic sprite variant selection
+   * includes it so recycled entities cannot inherit appearance or weapon-anchor
+   * state; because authored weapon anchors feed projectile origins, this value
+   * is simulation-load-bearing and must be assigned identically in every runtime.
    */
   entityRenderGeneration: Uint32Array;
   /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
@@ -994,6 +1018,13 @@ export interface CreateWorldOptions {
   floor?: number;
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
+  /**
+   * Accepted generated-sprite variants available at spawn time. The visual
+   * runtime injects the manifest-backed registry; default Node headless runs
+   * load the same committed shard tree. Explicit `null` is reserved for tests
+   * that intentionally exercise the no-registry path.
+   */
+  generatedSpriteRegistry?: GeneratedSpriteRegistry | null;
   /** Explicit immutable run identity required before generated equipment can be created. */
   generatedEquipmentRunKey?: string;
   /** Frozen-content generation policy; omitted to use the v1 contract policy. */
@@ -1042,7 +1073,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Health, stores.health);
   wireStore(ecs, Damage, stores.damage);
   wireStore(ecs, Projectile, stores.projectile);
+  wireStore(ecs, ProjectileVisual, stores.projectileVisual);
   wireStore(ecs, XpGem, stores.xpGem);
+  wireStore(ecs, BuildCurrencyPickup, stores.buildCurrencyPickup);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, Spawner, stores.spawner);
@@ -1053,6 +1086,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, SiegeMinion, stores.siegeMinion);
   wireStore(ecs, SiegeStructure, stores.siegeStructure);
   wireStore(ecs, SiegeHero, stores.siegeHero);
+  wireStore(ecs, SiegeRam, stores.siegeRam);
+  wireStore(ecs, SiegeRouteMarker, stores.siegeRouteMarker);
+  wireStore(ecs, BroadcastRelayRaider, stores.broadcastRelayRaider);
+  wireStore(ecs, Floor6Tower, stores.floor6Tower);
   wireStore(ecs, Lifetime, stores.lifetime);
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
@@ -1159,7 +1196,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     enemyProjectileArchetypeKeys: new Map(),
-    generatedSpriteRegistry: null,
+    generatedSpriteRegistry: options.generatedSpriteRegistry ?? null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),
     questEvents: [],

@@ -25,22 +25,37 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { query, removeEntity } from 'bitecs';
+import { addComponent, entityExists, query, removeEntity, set } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
-import { Enemy, Glowing, Harvestable, Homing, Position, Prop } from '../../core/components.js';
+import {
+  Companion,
+  Enemy,
+  Glowing,
+  Harvestable,
+  Health,
+  Homing,
+  PartySlot,
+  Position,
+  Projectile,
+  Prop,
+  Team,
+} from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
 import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
 import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
-import { spawnBossChestEntity } from '../../core/spawners/world-objects.js';
-import { spawnEnemy } from '../../core/spawners/combatants.js';
+import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objects.js';
+import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
+import { AI_TYPE } from '../../game/enemyAISystem.js';
+import { speciesTokenForId } from '../../shared/data/floor3/species.js';
+import { TeamId } from '../../shared/constants.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
 import type { VfxEvent } from '../../shared/vfx-events.js';
 import {
@@ -50,9 +65,11 @@ import {
 } from '../../core/systems/bossChestRewards.js';
 import { itemPickupSystem } from '../../core/systems/itemPickupSystem.js';
 import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
-import { acceptQuest, setTrackedQuest } from '../../core/systems/questSystem.js';
+import { acceptQuest, getActiveQuests, setTrackedQuest } from '../../core/systems/questSystem.js';
+import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   getQuestDef,
@@ -64,9 +81,17 @@ import {
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
-import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
+import {
+  generatedBriefIdForHarvestable,
+  PROJECTILE_OBJECT_NAME_PREFIX,
+  resolveRenderKind,
+} from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
-import type { _CornerButtonProbe as CornerButtonProbe } from '../../engine/scenes/MainGameScene.js';
+import type {
+  _CornerButtonProbe as CornerButtonProbe,
+  _AchievementToastProbe,
+  _ScenarioHudProbe,
+} from '../../engine/scenes/MainGameScene.js';
 import { ABILITY_FLOATER_NAME_PREFIX } from '../../engine/CombatVfx.js';
 import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 import {
@@ -87,7 +112,7 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/inde
 import type { UsageMetric } from '../../shared/skills.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
-import { setActiveWeapon } from '../../game/weaponSystem.js';
+import { setActiveWeapon, weaponSystem } from '../../game/weaponSystem.js';
 import { CARRIED_WEAPON_OBJECT_NAME_PREFIX } from '../../engine/phaser-bridge/carried-weapon.js';
 import {
   addItem,
@@ -99,11 +124,17 @@ import type {
   ModalPickerLayoutSnapshot,
 } from '../../engine/ModalPickerUI.js';
 import type { BossIntroLayoutSnapshot, BossIntroScrollState } from '../../engine/BossIntroUI.js';
+import { PROP_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createAbilityState, forceActivateAbility } from '../../game/systems/abilitySystem.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
+import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
+import { getFloor4ArenaRunStats, getFloor4GreenRoomExitMarker } from '../../game/floor4Scenario.js';
+import { openFloor4GreenRoomVisit } from '../../game/floor4GreenRoom.js';
+import { listStaticInventorySlots } from '../../shared/inventory.js';
+import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 
 const LAB_ID = 'main-scene-probe-lab';
 const SCENE_KEY = 'MainGameScene';
@@ -139,9 +170,20 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' {
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor6' {
   const raw = new URLSearchParams(window.location.search).get('floor');
-  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' ? raw : 'floor1';
+  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' || raw === 'floor6'
+    ? raw
+    : 'floor1';
+}
+
+function readSeedOverride(): number {
+  const raw = new URLSearchParams(window.location.search).get('seed');
+  if (raw === null) {
+    return PROBE_SEED;
+  }
+  const seed = Number(raw);
+  return Number.isInteger(seed) ? seed : PROBE_SEED;
 }
 
 /** The single shared status-aura Graphics layer, if the bridge has created it. */
@@ -182,6 +224,10 @@ interface MainSceneInternals {
     sourceIntensity?: number;
   }): void;
   getInteractionHintBounds?(): ScreenBounds | null;
+  getAchievementToastLayout?(): _AchievementToastProbe;
+  queueDirectorCommentary?(text: string): void;
+  flashAchievementToast?(message: string): void;
+  getScenarioHudState?(): ScenarioHudProbeState;
   getFloorSummaryState?(): FloorSummaryProbeState;
   getFloor3RosterState?(): {
     open: boolean;
@@ -251,6 +297,7 @@ interface MainSceneInternals {
   };
   equipmentUI?: {
     isOpen(): boolean;
+    getPanelScreenBounds(): ScreenBounds;
     getGeneratedBagCellScreenBounds(
       instanceKey: GeneratedEquipmentInstanceKey,
     ): ScreenBounds | null;
@@ -335,8 +382,27 @@ interface MainSceneInternals {
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
-  issueReportPicker?: { isOpen(): boolean };
+  issueReportPicker?: {
+    isOpen(): boolean;
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+    getContentSnapshot(): ModalPickerContentSnapshot | null;
+  };
+  /**
+   * The shared transient hint text object (`flashHint()` target). For
+   * `submitIssueReport()` issue/run telemetry feedback, see the separate
+   * `actionStatusText` probe. Read-only probe surface.
+   */
+  interactionHint?: { readonly visible: boolean; readonly text: string };
+  /**
+   * One-shot latch for the #4209 Command-explainer toast. Read-only probe
+   * surface: proves the explainer condition was satisfied and fired even
+   * though the shared `interactionHint` text is transient and can be
+   * clobbered by an unrelated nearby-NPC "Talk" hint on the very next frame
+   * (see `interactionHint` above).
+   */
+  floor3CommandUnlockNotified?: boolean;
   getIssueButtonBounds?(): ScreenBounds | null;
+  getIssueButtonCompactLabel?(): string;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
   getAchievementsButtonBounds?(): ScreenBounds | null;
   modalPicker?: {
@@ -345,6 +411,7 @@ interface MainSceneInternals {
     getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
     getContentSnapshot(): ModalPickerContentSnapshot | null;
   };
+  gameOverUI?: { isVisible(): boolean; handleKeyDown(event: KeyboardEvent): void };
   bossIntroUI?: {
     isOpen(): boolean;
     dismiss(): void;
@@ -355,6 +422,7 @@ interface MainSceneInternals {
   };
   openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
+  activeConversationLines?: readonly string[];
   queuedInteraction?: boolean;
   queuedAbilitiesToggle?: boolean;
   requestInventoryToggle?(): void;
@@ -419,7 +487,28 @@ interface MainSceneInternals {
     renderableClosedCount: number;
     renderableOpenCount: number;
   };
-  getStaircaseMarkerRenderInfo(): { usesGeneratedArt: boolean; visible: boolean };
+  getStaircaseMarkerRenderInfo(): {
+    usesGeneratedArt: boolean;
+    visible: boolean;
+    footprintPx: number;
+    spriteWidthPx: number;
+    spriteHeightPx: number;
+  };
+  /**
+   * Last observed outcome of the terminal run-bundle (RunStats payload)
+   * upload kicked off by `emitRunBundle()`, or `undefined` before any
+   * terminal outcome has been reached. Public getter (not a raw field cast)
+   * because the underlying private field is otherwise write-only within
+   * `MainGameScene` and would trip `noUnusedLocals`. See
+   * `MainGameScene.reportRunBundleUploadResult`.
+   */
+  getRunBundleUploadStatus?(): 'ok' | 'failed' | 'disabled' | undefined;
+  /**
+   * The player-visible terminal action-status confirmation toast (shared by
+   * run-bundle upload completion AND issue-filing submission results). Read-only
+   * probe surface — real rendered projection, not internal upload state.
+   */
+  actionStatusText?: { readonly visible: boolean; readonly text: string };
 }
 
 /** A 2-D point in some coordinate space (feet for world, pixels for camera). */
@@ -481,7 +570,12 @@ export interface ItemIconRenderInfo {
   readonly briefId: string | null;
   /** Resolved Phaser texture key, or null when nothing resolved. */
   readonly textureKey: string | null;
-  /** True when the resolved entry is placeholder art rather than approved art. */
+  /**
+   * True when the resolved entry is placeholder art rather than approved art.
+   * Structurally always false under the current registry contract (placeholders
+   * are excluded from `registry.entries()`); it is reported so an e2e probe can
+   * FAIL if that eligibility filter ever regresses.
+   */
   readonly isPlaceholder: boolean;
   /** True when Phaser actually has that texture loaded (i.e. boot preload queued it). */
   readonly textureLoaded: boolean;
@@ -532,6 +626,8 @@ export interface MainSceneState {
   readonly bridgePresent: boolean;
   /** True while the loadout / modal picker overlay is open. */
   readonly modalOpen: boolean;
+  /** True while the terminal game-over picker is open. */
+  readonly gameOverOpen: boolean;
   /** True while the dedicated abilities management surface is open. */
   readonly abilityLoadoutOpen: boolean;
   /** Rendered loadout rows currently visible in the list viewport. */
@@ -570,6 +666,8 @@ export interface MainSceneState {
   readonly conversationOpen: boolean;
   /** Active NPC dialogue line index, or null when no conversation is open. */
   readonly conversationLineIndex: number | null;
+  /** Active NPC dialogue lines as rendered by the real scene. */
+  readonly conversationLines: readonly string[];
   /** Current corner-button visibility (safe-room panel shortcuts). */
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
@@ -588,6 +686,27 @@ export interface MainSceneState {
   readonly simulationPaused: boolean;
   /** Number of top-level Phaser display objects on the scene. */
   readonly displayObjectCount: number;
+  /** Live world seed used by the real MainGameScene boot path. */
+  readonly worldSeed: number | null;
+  /** Live fixed-step simulation frame count. */
+  readonly frameCount: number | null;
+  /** Live fixed-step simulation elapsed milliseconds. */
+  readonly elapsedMs: number | null;
+  /** Live ECS entities with the Enemy tag. */
+  readonly enemyCount: number;
+  /** Live ECS entities with Enemy + Health and positive HP. */
+  readonly livingEnemyCount: number;
+  /** Floor 4 arena telemetry, when the probe booted Floor 4. */
+  readonly floor4Arena: Floor4ArenaRunStats | null;
+  readonly floor4GreenRoom: {
+    readonly playerGold: number;
+    readonly purchases: number;
+    readonly spentGold: number;
+    readonly vendorVisits: number;
+    readonly vendorPurchases: number;
+    readonly inventory: readonly { readonly itemId: string; readonly quantity: number }[];
+    readonly stock: readonly { readonly offerId: string; readonly quantity: number }[];
+  } | null;
   /** Live player position in FEET (sim space), or null before spawn. */
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
@@ -598,6 +717,38 @@ export interface MainSceneState {
   readonly settlementRoomCount: number;
   /** Live Floor 2 settlement shop archetype ids in snapshot order. */
   readonly settlementShopArchetypeIds: readonly string[];
+  /**
+   * Outcome of the terminal run-bundle (RunStats payload) upload, or `null`
+   * before any terminal outcome (death/victory/timeout/quit) has emitted a
+   * run bundle. `'disabled'` means no ingest endpoint is configured for this
+   * build — not a failed upload attempt.
+   */
+  readonly runBundleUploadStatus: 'ok' | 'failed' | 'disabled' | null;
+  /**
+   * Whether the terminal action-status toast is currently visible. Shared by
+   * run-bundle upload completion AND issue-filing submission results — see
+   * `MainGameScene.flashActionStatus`.
+   */
+  readonly actionStatusToastVisible: boolean;
+  /** Exact text of the terminal action-status toast, or `null` when hidden/unset. */
+  readonly actionStatusToastText: string | null;
+  /**
+   * Whether the shared transient hint text (`flashHint()` target) is
+   * currently visible. NOT used by run-bundle/issue-filing feedback (see
+   * `actionStatusToastVisible`/`actionStatusToastText` instead) because
+   * `updateInteractions()` clobbers this slot every frame the player isn't
+   * near an NPC/staircase.
+   */
+  readonly interactionHintVisible: boolean;
+  /** Exact text of the shared transient hint, or `null` when hidden/unset. */
+  readonly interactionHintText: string | null;
+  /**
+   * Whether the #4209 Command-explainer toast has fired at least once this
+   * session. See {@link MainSceneInternals.floor3CommandUnlockNotified} for
+   * why this latch, not `interactionHintText`, is the reliable way to prove
+   * the toast fired.
+   */
+  readonly floor3CommandUnlockNotified: boolean;
 }
 
 /**
@@ -674,6 +825,9 @@ export interface FamilyHudProbeState {
   readonly panelVisible: boolean;
 }
 
+/** Real rendered state of the generic scenario HUD strip — see `MainGameScene._ScenarioHudProbe`. */
+export type ScenarioHudProbeState = _ScenarioHudProbe;
+
 /**
  * Per-def render tally for a single harvestable node type. Lets the e2e assert
  * that *each* type with live nodes renders all of them as sprites — a
@@ -717,6 +871,48 @@ export interface PropRenderSize {
   readonly textureKey: string;
   readonly displayWidthPx: number;
   readonly displayHeightPx: number;
+}
+
+export interface Floor3CompanionPropDepthProbe {
+  readonly companionEid: number;
+  readonly backPropEid: number;
+  readonly frontPropEid: number;
+  readonly companionDepth: number | null;
+  readonly backPropDepth: number | null;
+  readonly frontPropDepth: number | null;
+  readonly companionDisplayIndex: number | null;
+  readonly backPropDisplayIndex: number | null;
+  readonly frontPropDisplayIndex: number | null;
+  readonly companionCameraPosition: ProbePoint | null;
+  readonly backPropCameraPosition: ProbePoint | null;
+  readonly frontPropCameraPosition: ProbePoint | null;
+  readonly backgroundOverlapsCompanion: boolean;
+  readonly foregroundOverlapsCompanion: boolean;
+}
+
+/**
+ * Real-render-bridge state of one live `Projectile` entity (issue #4274).
+ * The render bridge names bullet/arrow display objects
+ * `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`, so this looks the sprite up by its
+ * exact name (mirrors `getCarriedWeaponRenderInfo`'s named-object lookup)
+ * instead of guessing by nearest on-screen distance — a HUD icon, the probe's
+ * own spawned target enemy, or a carried-weapon sprite could otherwise sit
+ * closer to the projectile's feet position than its own display object.
+ */
+export interface ProjectileRenderInfo {
+  readonly eid: number;
+  /** `resolveRenderKind(world, eid)` result: 'bullet' or 'arrow'. */
+  readonly renderKind: string;
+  /** Texture key backing the named display object, or null if not found. */
+  readonly textureKey: string | null;
+  /** Whether a display object named `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>` was found. */
+  readonly foundNamedObject: boolean;
+}
+
+/** Result of {@link MainSceneProbeApi.spawnFloor3RangedCompanionProbe}. */
+export interface Floor3RangedCompanionProbeResult {
+  readonly companionEid: number;
+  readonly targetEid: number;
 }
 
 /**
@@ -878,6 +1074,11 @@ export interface StaircaseMarkerRenderInfo {
   readonly usesGeneratedArt: boolean;
   /** Whether the marker (sprite or fallback circle) is currently visible. */
   readonly visible: boolean;
+  /** Marker footprint (2 * radius) in render px — the square the art fits into. */
+  readonly footprintPx: number;
+  /** Drawn size of the stairs art in render px. */
+  readonly spriteWidthPx: number;
+  readonly spriteHeightPx: number;
 }
 
 export interface BloodSurfaceProbeSummary {
@@ -932,6 +1133,8 @@ export interface MainSceneProbeApi {
   }[];
   /** Select an Awards scope filter through the scene-owned UI. */
   setAchievementsFilter(filter: 'all' | 'global' | `floor:${number}`): void;
+  /** Seed a catalog entry for presentation-only layout observations. */
+  seedAchievementForPresentation(achievementId: string): void;
   /** Expand or collapse an achievement through the scene-owned UI. */
   setAchievementExpanded(achievementId: string, expanded: boolean): void;
   setAchievementsScrollIndex(index: number): void;
@@ -947,6 +1150,10 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Real rendered generic scenario HUD strip (see `MainGameScene._ScenarioHudProbe`). */
+  getScenarioHudState(): ScenarioHudProbeState;
+  /** Trigger the real commentary and achievement-toast render paths in order. */
+  primeAchievementToastWithCommentary(): _AchievementToastProbe | null;
   /** Mounted Floor-3 party HUD rows plus the roster overlay's live cursor state. */
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
@@ -968,6 +1175,11 @@ export interface MainSceneProbeApi {
    */
   primeFloor1StairTransition(): void;
   /**
+   * Complete the live Floor-1 quota objective so the real Director update path
+   * presents its configured progression handoff modal.
+   */
+  primeFloor1QuotaCompletion(): void;
+  /**
    * Arrange the live Floor-2 world at its unlocked exit stairs, the Floor-2
    * mirror of {@link MainSceneProbeApi.primeFloor1StairTransition}. The test
    * still drives the real interaction modal, `onStairDescend`, the
@@ -984,6 +1196,18 @@ export interface MainSceneProbeApi {
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Text currently rendered by the open real modal picker, else null. */
   getModalPickerContent(): ModalPickerContentSnapshot | null;
+  /**
+   * Text currently rendered by the F8 issue-report picker (a SEPARATE
+   * `ModalPickerUI` instance from the shared `modalPicker` above — see
+   * `MainGameScene.issueReportPicker`), else `null` when it is closed.
+   */
+  getIssueReportPickerContent(): ModalPickerContentSnapshot | null;
+  /**
+   * Arrange the live Floor-1 world with the initial shopkeeper dialogue ready
+   * and park the player on the merchant. The test still drives the real
+   * interaction and conversation path.
+   */
+  primeShopkeeperInitialDialogue(): ProbePoint | null;
   /**
    * Arrange the live Floor-1 world so the shipped shopkeeper is at its
    * `ready-to-buy` stage with `gold` in the player's purse, and park the player
@@ -1015,6 +1239,8 @@ export interface MainSceneProbeApi {
     readonly firstSpellId: string | null;
     readonly offerCount: number;
   } | null;
+  /** Arrange the unlocked Broker before the merchant errand, then park at the Broker. */
+  primeSpellBrokerQuestIntro(): ProbePoint | null;
   /**
    * Design-space safe-area insets currently in force plus the bounds of every
    * edge-anchored screen-space surface, so an e2e gate can assert none of them
@@ -1054,6 +1280,21 @@ export interface MainSceneProbeApi {
     readonly y: number;
     readonly rotation: number;
   }>;
+  /**
+   * Active quest ids from the real world's quest log (`world.questLog`) — the
+   * same source `HudQuestTracker` reads (issue #4208: proves a floor's
+   * objective is driven through the canonical quest system, not a bespoke
+   * one-off HUD surface).
+   */
+  getActiveQuestIds(): string[];
+  /** Canonical waypoint projections for active quests in the real world. */
+  getQuestWaypointIds(): string[];
+  /** Canonical waypoint positions for active quests in the real world. */
+  getQuestWaypointStates(): ReadonlyArray<{
+    readonly questId: string;
+    readonly x: number;
+    readonly y: number;
+  }>;
   /** Seed all active merchant + Spell Broker NPC-return arrows through the real scene's world. */
   primeMerchantAndSpellBrokerQuestArrows(): void;
   /** Minimap radar waypoint-edge arrow quest ids on the real MainGameScene HUD. */
@@ -1082,6 +1323,10 @@ export interface MainSceneProbeApi {
   requestQuartermasterToggle(): void;
   /** Bounds of the live Issue button, or null when it is unavailable. */
   getIssueButtonBounds(): ScreenBounds | null;
+  /** Scene-owned compact Issue label used while full-screen panels are open. */
+  getIssueButtonCompactLabel(): string;
+  /** Bounds of the open Equipment panel, or null when it is closed/unavailable. */
+  getEquipmentPanelBounds(): ScreenBounds | null;
   /** Live label/visibility/bounds of every on-screen corner button, in stack order. */
   getCornerButtonLayout(): readonly CornerButtonProbe[];
   /** Rendered bounds of each bottom-left vitals row present in the live scene. */
@@ -1108,6 +1353,68 @@ export interface MainSceneProbeApi {
    * Returns false when the scene/player is not ready.
    */
   equipPlayerActiveAbility(abilityId: string): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+   * directly, so an e2e spec can assert the scenario HUD's one-shot `vfx`
+   * cue behavior without driving the entire wave/break/finale progression.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6FinaleVfxCue(): boolean;
+  /**
+   * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+   * directly, so an e2e spec can assert the scenario HUD's break-safety
+   * presentation line without driving a full wave-clear through the sim.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6BreakPhase(): boolean;
+  /**
+   * Test-only Floor 6 setup: occupies the first authored build site with the
+   * first roster tower directly on the defense state (bypassing the
+   * currency/phase transaction gates in `buildFloor6Tower`), so an e2e spec
+   * can assert the scenario HUD's occupied-site and tower range/tier
+   * presentation lines without a full economy grind. Returns false when not
+   * booted on Floor 6 or when it has no authored build sites/towers.
+   */
+  primeFloor6OccupiedSite(): { siteId: string; towerId: string } | null;
+  /**
+   * Test-only Floor 6 setup: opens the Relay victory exit directly on the
+   * defense state (`phase.kind = 'VICTORY'`, `exit.opened = true`) and moves
+   * the player to the exit marker position, so an e2e spec can assert the
+   * "Descend" interaction hint actually renders (and that the scenario HUD
+   * strip reflows to avoid it) without grinding a full defense win. Returns
+   * false when not booted on Floor 6 or the exit geometry/map isn't ready.
+   */
+  primeFloor6VictoryExitHint(): boolean;
+  /**
+   * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL danger
+   * level directly on the defense state, so an e2e spec can assert the
+   * Relay danger text renders without scripting a full raider assault.
+   * Returns false when not booted on Floor 6.
+   */
+  primeFloor6RelayCriticalDanger(): boolean;
+  /**
+   * Test-only Floor 6 setup: ensure an affordable DEFEND-phase build target
+   * exists and return its tap point in game-space pixels.
+   */
+  prepareFloor6ConstructionTap(): {
+    readonly siteId: string;
+    readonly affordableTowerId: string;
+    readonly tapGameX: number;
+    readonly tapGameY: number;
+  } | null;
+  /** Emit a real scene-input pointer tap on an authored Floor 6 construction site. */
+  tapFloor6ConstructionSite(siteId: string, pointerType?: 'mouse' | 'touch'): boolean;
+  /**
+   * Read real-scene render state for the tower currently occupying `siteId`.
+   * Looks up the display object by the bridge-assigned `floor6-tower:<eid>` name.
+   */
+  getFloor6TowerRenderInfo(siteId: string): {
+    readonly eid: number;
+    readonly towerId: string;
+    readonly hasSprite: boolean;
+    readonly visible: boolean;
+    readonly textureKey: string | null;
+  } | null;
   /**
    * Spawn a live enemy a few feet from the player for the status-effect aura
    * observation. Arrangement affordance only — the aura itself is drawn by the
@@ -1154,6 +1461,8 @@ export interface MainSceneProbeApi {
   }>;
   /** Override the live world state machine value for targeted scene-flow probes. */
   setWorldState(state: GameWorld['state']): void;
+  /** Drive the real game-over picker keyboard path with a synthetic key event. */
+  pressGameOverKey(code: string): void;
   /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Floor-3 roster corner button. */
@@ -1166,6 +1475,13 @@ export interface MainSceneProbeApi {
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
   queueInteraction(): void;
+  /**
+   * Arrange the live Floor 4 world at the first authored intermission, then
+   * return the real Green Room marker position for the interaction probe.
+   * This only seeds deterministic fixture state; the scene interaction and
+   * shop panel remain production code paths.
+   */
+  primeFloor4GreenRoomIntermission(): ProbePoint | null;
   /** Live world-camera center in PIXELS, or null before the camera exists. */
   getCameraCenter(): ProbePoint | null;
   /** Floor map size in FEET (camera bounds === ftToPx of this), or null. */
@@ -1185,6 +1501,9 @@ export interface MainSceneProbeApi {
    * display list, keyed by texture (`DecorationDef.spriteId`).
    */
   getPropRenderSizes(): PropRenderSize[];
+  /** Arrange/read a Floor-3 companion overlapped by real background/front Prop renders. */
+  primeFloor3CompanionPropDepthProbe(): Floor3CompanionPropDepthProbe | null;
+  getFloor3CompanionPropDepthProbe(): Floor3CompanionPropDepthProbe | null;
   /**
    * Equip a static weapon def into the player's main hand through the shipped
    * equip path, so the carried-weapon render can be observed for a chosen
@@ -1197,6 +1516,40 @@ export interface MainSceneProbeApi {
    * swings, not only for the duration of a `MeleeSwing`.
    */
   getCarriedWeaponRenderInfo(): CarriedWeaponRenderInfo;
+  /**
+   * Fires the player's currently-equipped weapon once through the real
+   * `weaponSystem` (issue #4274), spawning a nearby target enemy first so a
+   * ranged weapon actually fires. Returns the eids of any `Projectile`
+   * entities the shot spawned; call `getProjectileRenderInfo()` on a
+   * subsequent rendered frame to read their real bridge texture.
+   */
+  fireActiveWeaponForProjectileProbe(): number[];
+  /**
+   * Real render-bridge texture for every live `Projectile` entity (issue
+   * #4274), resolved by exact display-object name
+   * (`${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`, mirrors
+   * `getCarriedWeaponRenderInfo`'s named-object lookup). Proves — in the REAL
+   * booted scene, not a lab-only unit assertion — that pistol shots render as
+   * bullets while bow/crossbow shots keep the arrow texture.
+   */
+  getProjectileRenderInfo(): ProjectileRenderInfo[];
+  /**
+   * Spawns a real Floor-3 `ember-slinger` Companion (the shipped
+   * `aiType: "ranged"` species, `enemies.floor3.json`) at the player's
+   * position on the Player team, plus a nearby Enemy-team target, then
+   * unpauses the sim (issue #4426 review). Unlike
+   * `fireActiveWeaponForProjectileProbe` this does NOT force-call the combat
+   * system directly — it only places the two entities and lets the real,
+   * scenario-wired `companionCombatSystem` (run every frame through the
+   * shipped Floor 3 bootstrap, same as in the live game) decide when to
+   * fire, so the projectile spawn, its render texture, and the eventual
+   * damage/cleanup are all observed through the REAL booted scene rather
+   * than a direct system call. Returns `null` off Floor 3 (the system is a
+   * floor3-only gate) or with no live player entity.
+   */
+  spawnFloor3RangedCompanionProbe(): Floor3RangedCompanionProbeResult | null;
+  /** Current `Health.current` for any live entity, or null if it has none. */
+  getEntityHealth(eid: number): number | null;
   /**
    * Tile-provenance counts from the last terrain bake. Used by the
    * terrain-generated-tiles e2e to prove — in the REAL booted scene — that
@@ -1397,7 +1750,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   let autoDrivenForProbe = false;
   const sceneOptions = {
     ...baseOptions,
-    worldSeed: PROBE_SEED,
+    worldSeed: readSeedOverride(),
     isAutoDriven: () => autoDrivenForProbe,
     ...(ambientOverride !== null
       ? { lightingConfig: { ...baseOptions.lightingConfig, ambient: ambientOverride } }
@@ -1409,6 +1762,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       : createFloorGameConfig(gameHost, sceneOptions, floorId);
   const game = new Phaser.Game(config);
   let primedNpcEid: number | null = null;
+  let projectileProbeTargetEid: number | null = null;
+  let floor3DepthProbe: { companionEid: number; backPropEid: number; frontPropEid: number } | null =
+    null;
 
   const getScene = (): MainSceneInternals | null =>
     (game.scene.getScene(SCENE_KEY) as unknown as MainSceneInternals | null) ?? null;
@@ -1446,6 +1802,106 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return null;
     }
     return { x: floorMap.widthFt, y: floorMap.heightFt };
+  };
+
+  const findDisplayObjectAt = (
+    phaserScene: Phaser.Scene,
+    x: number,
+    y: number,
+    predicate: (obj: Phaser.GameObjects.GameObject) => boolean,
+  ): (Phaser.GameObjects.GameObject & { x: number; y: number; depth: number }) | null => {
+    for (const obj of phaserScene.children.list) {
+      const maybePositioned = obj as Phaser.GameObjects.GameObject & {
+        x?: unknown;
+        y?: unknown;
+        depth?: unknown;
+      };
+      if (
+        typeof maybePositioned.x === 'number' &&
+        typeof maybePositioned.y === 'number' &&
+        typeof maybePositioned.depth === 'number' &&
+        Math.abs(maybePositioned.x - x) < 0.5 &&
+        Math.abs(maybePositioned.y - y) < 0.5 &&
+        predicate(obj)
+      ) {
+        return maybePositioned as Phaser.GameObjects.GameObject & {
+          x: number;
+          y: number;
+          depth: number;
+        };
+      }
+    }
+    return null;
+  };
+
+  const objectCameraPosition = (
+    phaserScene: Phaser.Scene,
+    obj: (Phaser.GameObjects.GameObject & { x: number; y: number }) | null,
+  ): ProbePoint | null => {
+    const cam = phaserScene.cameras?.main;
+    if (!cam || !obj) return null;
+    return {
+      x: (obj.x - cam.scrollX) * cam.zoom,
+      y: (obj.y - cam.scrollY) * cam.zoom,
+    };
+  };
+
+  const readFloor3CompanionPropDepthProbe = (): Floor3CompanionPropDepthProbe | null => {
+    const world = getScene()?.world;
+    const phaserScene = getPhaserScene();
+    const probe = floor3DepthProbe;
+    if (!world || !phaserScene || probe === null) {
+      return null;
+    }
+
+    const x = ftToPx(world.stores.position.x[probe.companionEid] ?? 0);
+    const y = ftToPx(world.stores.position.y[probe.companionEid] ?? 0);
+    const backSpriteId = getDecorationDef('cave-rubble')?.spriteId;
+    const frontSpriteId = getDecorationDef('void-tendril')?.spriteId;
+    const companion = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image || obj instanceof Phaser.GameObjects.Sprite) &&
+        obj.texture?.key !== backSpriteId &&
+        obj.texture?.key !== frontSpriteId,
+    );
+    const backProp = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image && obj.texture?.key === backSpriteId) ||
+        (obj instanceof Phaser.GameObjects.Rectangle && obj.depth === PROP_DEPTH.back),
+    );
+    const frontProp = findDisplayObjectAt(
+      phaserScene,
+      x,
+      y,
+      (obj) =>
+        (obj instanceof Phaser.GameObjects.Image && obj.texture?.key === frontSpriteId) ||
+        (obj instanceof Phaser.GameObjects.Rectangle && obj.depth === PROP_DEPTH.front),
+    );
+    const displayIndex = (obj: Phaser.GameObjects.GameObject | null): number | null =>
+      obj === null ? null : phaserScene.children.getIndex(obj);
+
+    return {
+      companionEid: probe.companionEid,
+      backPropEid: probe.backPropEid,
+      frontPropEid: probe.frontPropEid,
+      companionDepth: companion?.depth ?? null,
+      backPropDepth: backProp?.depth ?? null,
+      frontPropDepth: frontProp?.depth ?? null,
+      companionDisplayIndex: displayIndex(companion),
+      backPropDisplayIndex: displayIndex(backProp),
+      frontPropDisplayIndex: displayIndex(frontProp),
+      companionCameraPosition: objectCameraPosition(phaserScene, companion),
+      backPropCameraPosition: objectCameraPosition(phaserScene, backProp),
+      frontPropCameraPosition: objectCameraPosition(phaserScene, frontProp),
+      backgroundOverlapsCompanion: companion !== null && backProp !== null,
+      foregroundOverlapsCompanion: companion !== null && frontProp !== null,
+    };
   };
 
   const getRewardOpeningState = (): RewardOpeningProbeState => {
@@ -1510,6 +1966,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const abilityLoadoutSectionHeaderLabel =
         scene?.abilityLoadoutUI?.getVisibleSectionHeaderLabel?.() ?? null;
       const currentAnnouncement = scene?.hudUi?.getCurrentAnnouncement?.() ?? null;
+      const enemyEids = world ? query(world.ecs, [Enemy]) : [];
+      const livingEnemyEids = world
+        ? query(world.ecs, [Enemy, Health]).filter(
+            (enemyEid) => (world.stores.health.current[enemyEid] ?? 0) > 0,
+          )
+        : [];
       const equippedActiveAbilityIds =
         eid >= 0
           ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
@@ -1524,12 +1986,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         conversationNpcEid !== null
           ? (world?.npcs.get(conversationNpcEid)?.dialogueIndex ?? 0)
           : null;
+      const conversationLines = scene?.activeConversationLines ?? [];
       return {
         worldState: world?.state ?? null,
         playerEid: eid,
         hudPresent: scene?.hudUi != null,
         bridgePresent: scene?.bridge != null,
         modalOpen,
+        gameOverOpen: scene?.gameOverUI?.isVisible() ?? false,
         abilityLoadoutOpen,
         abilityLoadoutVisibleEntries,
         abilityLoadoutRowLayouts,
@@ -1544,6 +2008,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         quartermasterOpen,
         conversationOpen: conversationNpcEid !== null,
         conversationLineIndex,
+        conversationLines: [...conversationLines],
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
@@ -1565,6 +2030,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         safeContext: (world?.playerInSafeRoom ?? false) || world?.state === 'safe_room',
         simulationPaused: scene?.isSimulationPaused() ?? false,
         displayObjectCount: phaserScene?.children.list.length ?? 0,
+        worldSeed: world?.seed ?? null,
+        frameCount: world?.frameCount ?? null,
+        elapsedMs: world?.elapsedMs ?? null,
+        enemyCount: enemyEids.length,
+        livingEnemyCount: livingEnemyEids.length,
+        floor4Arena: world ? (getFloor4ArenaRunStats(world) ?? null) : null,
+        floor4GreenRoom: (() => {
+          const visit = world?.floorExtendedState?.floor4GreenRoom?.currentVisit;
+          if (!world || !visit) return null;
+          return {
+            playerGold: world.playerGold,
+            purchases: world.floorExtendedState?.floor4GreenRoom?.purchases ?? 0,
+            spentGold: world.goldLedger.spentOnGreenRoom,
+            vendorVisits: world.vendorLedger.visits.filter(
+              (entry) => entry.vendorId === 'floor4-green-room',
+            ).length,
+            vendorPurchases: world.vendorLedger.decisions.filter(
+              (entry) => entry.vendorId === 'floor4-green-room' && entry.outcome === 'purchased',
+            ).length,
+            inventory: listStaticInventorySlots(world.inventories.get(eid) ?? { slots: [] }),
+            stock: visit.tables.flatMap((table) =>
+              table.offers.map((offer) => ({
+                offerId: `${table.tableId}:${offer.itemId}`,
+                quantity: offer.stock,
+              })),
+            ),
+          };
+        })(),
         playerFeet,
         cameraCenter: cameraCenter(),
         floorId: world?.floorId ?? null,
@@ -1575,6 +2068,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
             : []),
           ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
         ],
+        runBundleUploadStatus: scene?.getRunBundleUploadStatus?.() ?? null,
+        actionStatusToastVisible: scene?.actionStatusText?.visible ?? false,
+        actionStatusToastText: scene?.actionStatusText?.text ?? null,
+        interactionHintVisible: scene?.interactionHint?.visible ?? false,
+        interactionHintText: scene?.interactionHint?.text ?? null,
+        floor3CommandUnlockNotified: scene?.floor3CommandUnlockNotified ?? false,
       };
     },
 
@@ -1655,6 +2154,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.velocity.y[playerEid] = 0;
       scene.setSimulationPaused(true);
     },
+    primeFloor1QuotaCompletion: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const objective = world?.floorScenario?.objective;
+      if (!scene || !world || !objective) {
+        throw new Error('Floor 1 quota path is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+      objective.ratsKilled = objective.requiredRats;
+      objective.slimesKilled = objective.requiredSlimes;
+    },
 
     primeFloor2StairTransition: () => {
       const scene = getScene();
@@ -1703,6 +2218,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     getModalPickerContent: () => getScene()?.modalPicker?.getContentSnapshot() ?? null,
 
+    getIssueReportPickerContent: () => getScene()?.issueReportPicker?.getContentSnapshot() ?? null,
+
     getFloorSummaryState: (): FloorSummaryProbeState =>
       getScene()?.getFloorSummaryState?.() ?? {
         visible: false,
@@ -1749,6 +2266,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       push('interactionHint', scene?.getInteractionHintBounds?.());
       push('modalFooter', scene?.modalPicker?.getLayoutSnapshot()?.footer);
       push('modalPanel', scene?.modalPicker?.getLayoutSnapshot()?.panel);
+      push('issueButton', scene?.getIssueButtonBounds?.());
       return {
         insets: phaserScene ? getSafeAreaInsets(phaserScene) : ZERO_SAFE_AREA_INSETS,
         surfaces,
@@ -1760,6 +2278,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (world) {
         world.state = state;
       }
+    },
+    pressGameOverKey: (code: string) => {
+      getScene()?.gameOverUI?.handleKeyDown(new KeyboardEvent('keydown', { code }));
     },
     unlockSafeRoomSurfaces: () => {
       const scene = getScene();
@@ -1862,6 +2383,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         panelVisible: family?.panelVisible ?? false,
       };
     },
+
+    getScenarioHudState: (): ScenarioHudProbeState =>
+      getScene()?.getScenarioHudState?.() ?? {
+        visible: false,
+        text: null,
+        bounds: null,
+        vfxVisible: false,
+        cueLabels: [],
+      },
 
     setSimulationPaused: (paused: boolean) => {
       getScene()?.setSimulationPaused(paused);
@@ -2154,6 +2684,32 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       });
     },
 
+    getActiveQuestIds: (): string[] => {
+      const world = getScene()?.world;
+      if (!world) {
+        return [];
+      }
+      return getActiveQuests(world).map((quest) => quest.questId);
+    },
+    getQuestWaypointIds: (): string[] => {
+      const scene = getScene();
+      if (!scene?.world) {
+        return [];
+      }
+      return getQuestWaypoints(scene.world, playerEidOf(scene)).map((waypoint) => waypoint.questId);
+    },
+    getQuestWaypointStates: () => {
+      const scene = getScene();
+      if (!scene?.world) {
+        return [];
+      }
+      return getQuestWaypoints(scene.world, playerEidOf(scene)).map((waypoint) => ({
+        questId: waypoint.questId,
+        x: waypoint.x,
+        y: waypoint.y,
+      }));
+    },
+
     getMinimapRadarWaypointArrowIds: (): string[] =>
       getScene()
         ?.hudUi?.getMinimapRadarWaypointArrowStates?.()
@@ -2223,7 +2779,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
       return {
         skill: read('hud-skill-panel-bounds'),
-        loot: read('hud-loot-panel-bounds'),
+        loot: null,
         xp: read('hud-xp-panel-bounds'),
         health: read('hud-health-panel-bounds'),
       };
@@ -2231,6 +2787,16 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getAchievementsButtonBounds: () => getScene()?.getAchievementsButtonBounds?.() ?? null,
 
     getInteractionHintBounds: () => getScene()?.getInteractionHintBounds?.() ?? null,
+
+    getIssueButtonCompactLabel: () => getScene()?.getIssueButtonCompactLabel?.() ?? '',
+
+    getEquipmentPanelBounds: () => {
+      const equipment = getScene()?.equipmentUI;
+      if (!equipment?.isOpen()) {
+        return null;
+      }
+      return equipment.getPanelScreenBounds();
+    },
 
     requestInventoryToggle: () => {
       getScene()?.requestInventoryToggle?.();
@@ -2308,6 +2874,221 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return {
         inFlightCount: glowingEntities.length,
         emitterLight: field.values[y * field.widthCells + x] ?? null,
+      };
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `FINALE`
+     * directly (the real phase the sim reaches after clearing all defense
+     * acts), so an e2e spec can assert the scenario HUD's one-shot `vfx` cue
+     * behavior without driving the entire wave/break/finale progression
+     * through the real simulation.
+     */
+    primeFloor6FinaleVfxCue: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'FINALE' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: latches the defense state's phase to `BREAK`
+     * directly, mirroring `primeFloor6FinaleVfxCue`, so an e2e spec can
+     * assert the scenario HUD's break-safety presentation line without
+     * driving a full wave-clear through the sim.
+     */
+    primeFloor6BreakPhase: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'BREAK' };
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: occupies the first authored build site with
+     * the first roster tower directly on the defense state (bypassing the
+     * currency/phase transaction gates in `buildFloor6Tower`), so an e2e
+     * spec can assert the scenario HUD's occupied-site and tower range/tier
+     * presentation lines without a full economy grind.
+     */
+    primeFloor6OccupiedSite: (): { siteId: string; towerId: string } | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const site = defense?.geometry.buildSites[0];
+      const tower = _getFloor6TowerRoster()[0];
+      if (!scene || !world || !defense || !site || !tower) {
+        return null;
+      }
+      scene.setSimulationPaused(true);
+      defense.towerInstances = defense.towerInstances.filter(
+        (instance) => instance.siteId !== site.id,
+      );
+      defense.towerInstances.push({ siteId: site.id, towerId: tower.id, eid: -1 });
+      return { siteId: site.id, towerId: tower.id };
+    },
+
+    /**
+     * Test-only Floor 6 setup: opens the Relay victory exit and places the
+     * player on its marker, mirroring the authoritative
+     * `getFloor6StairMarkerState` projection (same position/tile math), so an
+     * e2e spec can assert the real "Descend" interaction hint renders without
+     * grinding a full defense win through the sim.
+     */
+    primeFloor6VictoryExitHint: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const floorMap = world?.floorMap;
+      if (!scene || !world || playerEid < 0 || !defense || !floorMap) {
+        return false;
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      defense.phase = { kind: 'VICTORY' };
+      defense.exit.opened = true;
+      defense.exit.confirmed = false;
+      const exit = defense.geometry.victoryExit;
+      const tileSizeFt = floorMap.config.tileSizeFt;
+      world.stores.position.x[playerEid] = (exit.bounds.x + exit.bounds.width / 2) * tileSizeFt;
+      world.stores.position.y[playerEid] = (exit.bounds.y + exit.bounds.height / 2) * tileSizeFt;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      scene.setSimulationPaused(true);
+      return true;
+    },
+
+    /**
+     * Test-only Floor 6 setup: drives the Relay's HP down to a CRITICAL
+     * danger level directly on the defense state, so an e2e spec can assert
+     * the Relay danger text (`CRITICAL Relay danger: ...`) renders without
+     * scripting a full raider assault through the sim.
+     */
+    primeFloor6RelayCriticalDanger: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !world || !defense) {
+        return false;
+      }
+      scene.setSimulationPaused(true);
+      defense.relayHp = 1;
+      return true;
+    },
+
+    prepareFloor6ConstructionTap: () => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      if (!scene || !phaserScene || !world || !defense) {
+        return null;
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      scene.setSimulationPaused(true);
+      defense.phase = { kind: 'DEFEND' };
+      const maxTowerCost = _getFloor6TowerRoster().reduce(
+        (maxCost, tower) => Math.max(maxCost, tower.cost),
+        0,
+      );
+      defense.economy.balance = Math.max(defense.economy.balance, maxTowerCost);
+      const snapshot = sceneOptions.scenarioPresentation?.construction?.getSnapshot(world);
+      const site = snapshot?.sites.find((candidate) => !candidate.occupied);
+      const tower = snapshot?.towers.find((candidate) => candidate.affordable);
+      const cam = phaserScene.cameras.main;
+      if (!site || !tower || !cam) {
+        return null;
+      }
+      const centerFtX = site.boundsFt.x + site.boundsFt.width / 2;
+      const centerFtY = site.boundsFt.y + site.boundsFt.height / 2;
+      const zoom = cam.zoom || 1;
+      return {
+        siteId: site.siteId,
+        affordableTowerId: tower.towerId,
+        tapGameX: (ftToPx(centerFtX) - cam.worldView.x) * zoom + cam.x,
+        tapGameY: (ftToPx(centerFtY) - cam.worldView.y) * zoom + cam.y,
+      };
+    },
+
+    tapFloor6ConstructionSite: (siteId: string, pointerType: 'mouse' | 'touch' = 'mouse') => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const construction = sceneOptions.scenarioPresentation?.construction;
+      if (!scene || !phaserScene || !world || !construction) {
+        return false;
+      }
+      const snapshot = construction.getSnapshot(world);
+      const site = snapshot?.sites.find((candidate) => candidate.siteId === siteId);
+      if (!site) {
+        return false;
+      }
+      const centerFtX = site.boundsFt.x + site.boundsFt.width / 2;
+      const centerFtY = site.boundsFt.y + site.boundsFt.height / 2;
+      const worldX = ftToPx(centerFtX);
+      const worldY = ftToPx(centerFtY);
+      const cam = getPhaserScene()?.cameras.main;
+      const zoom = cam?.zoom || 1;
+      const screenX = cam ? (worldX - cam.worldView.x) * zoom + cam.x : worldX;
+      const screenY = cam ? (worldY - cam.worldView.y) * zoom + cam.y : worldY;
+      const makePointer = (eventType: string) =>
+        ({
+          id: 1,
+          x: screenX,
+          y: screenY,
+          worldX,
+          worldY,
+          event: { pointerType, type: eventType },
+          updateWorldPoint: () => ({
+            worldX,
+            worldY,
+          }),
+        }) as unknown as Phaser.Input.Pointer;
+      phaserScene.input.emit('pointerdown', makePointer('pointerdown'));
+      if (pointerType === 'touch') {
+        phaserScene.input.emit('pointerup', makePointer('pointerup'));
+      }
+      return true;
+    },
+
+    getFloor6TowerRenderInfo: (siteId: string) => {
+      const scene = getScene();
+      const phaserScene = getPhaserScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const tower = defense?.towerInstances.find((instance) => instance.siteId === siteId);
+      if (!phaserScene || !tower || tower.eid < 0) {
+        return null;
+      }
+      const named = phaserScene.children.getByName(`floor6-tower:${tower.eid}`);
+      const sprite =
+        named instanceof Phaser.GameObjects.Image || named instanceof Phaser.GameObjects.Sprite
+          ? named
+          : null;
+      return {
+        eid: tower.eid,
+        towerId: tower.towerId,
+        hasSprite: sprite !== null,
+        visible: sprite?.visible ?? false,
+        textureKey: sprite?.texture?.key ?? null,
       };
     },
 
@@ -2446,6 +3227,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.queuedAbilitiesToggle = true;
     },
 
+    primeShopkeeperInitialDialogue: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let shopkeeperEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = false;
+        if (instance.defId === 'shopkeeper') {
+          shopkeeperEid = npcEid;
+          instance.nearbyPlayer = true;
+        }
+      }
+      if (shopkeeperEid === null) {
+        return null;
+      }
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      const x = world.stores.position.x[shopkeeperEid] ?? 0;
+      const y = world.stores.position.y[shopkeeperEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { x, y };
+    },
+
     primeShopkeeperPurchase: (gold: number): ProbePoint | null => {
       const scene = getScene();
       const world = scene?.world;
@@ -2555,11 +3364,70 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return { position: { x, y }, firstSpellId, offerCount: offers.length };
     },
 
+    primeSpellBrokerQuestIntro: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const eid = playerEidOf(scene);
+      if (!world || eid < 0) {
+        return null;
+      }
+      let brokerEid: number | null = null;
+      for (const [npcEid, instance] of world.npcs.entries()) {
+        instance.nearbyPlayer = instance.defId === 'spell-quest-giver';
+        if (instance.nearbyPlayer) {
+          brokerEid = npcEid;
+        }
+      }
+      if (brokerEid === null) {
+        return null;
+      }
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.questLog.delete(FLOOR1_SHOP_QUEST_ID);
+      const x = world.stores.position.x[brokerEid] ?? 0;
+      const y = world.stores.position.y[brokerEid] ?? 0;
+      world.stores.position.x[eid] = x;
+      world.stores.position.y[eid] = y;
+      world.stores.velocity.x[eid] = 0;
+      world.stores.velocity.y[eid] = 0;
+      return { x, y };
+    },
+
     queueInteraction: () => {
       const scene = getScene();
       if (scene) {
         scene.queuedInteraction = true;
       }
+    },
+
+    primeFloor4GreenRoomIntermission: (): ProbePoint | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      const arena = world?.floorExtendedState?.floor4Arena;
+      if (!world || !arena || playerEid < 0 || world.floor !== 4) {
+        return null;
+      }
+      arena.phase = { kind: 'INTERMISSION', act: 1 };
+      arena.phaseElapsedMs = 0;
+      const opened = openFloor4GreenRoomVisit(world, 0);
+      if (!opened.ok) {
+        throw new Error(opened.message);
+      }
+      const marker = getFloor4GreenRoomExitMarker(world);
+      if (!marker) {
+        return null;
+      }
+      world.state = 'playing';
+      world.playerInSafeRoom = true;
+      world.stores.position.x[playerEid] = marker.positionFt.x;
+      world.stores.position.y[playerEid] = marker.positionFt.y;
+      world.stores.velocity.x[playerEid] = 0;
+      world.stores.velocity.y[playerEid] = 0;
+      for (const npc of world.npcs.values()) {
+        npc.nearbyPlayer = false;
+      }
+      scene.setSimulationPaused(true);
+      return marker.positionFt;
     },
 
     getCameraCenter: () => cameraCenter(),
@@ -2655,6 +3523,140 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    fireActiveWeaponForProjectileProbe: (): number[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) {
+        return [];
+      }
+      const player = playerEidOf(scene);
+      if (player < 0) {
+        return [];
+      }
+      // Remove any leftover projectiles from a prior probe call so a stale
+      // named sprite (`${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) can't be read
+      // by `getProjectileRenderInfo`. The render bridge only destroys visuals
+      // for removed entities during its own sync pass, so callers MUST wait
+      // for at least one more rendered frame (see `nextRenderedFrame` in the
+      // e2e suite) between firing and reading render info.
+      for (const eid of query(world.ecs, [Projectile])) {
+        removeEntity(world.ecs, eid);
+      }
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      // Ranged weapons only fire at a nearby target — reuse a single tracked
+      // probe target across calls (repositioned/respawned as needed) instead
+      // of spawning a fresh enemy every call, so target-acquisition state
+      // doesn't accumulate across an `it.each` loop of weapon ids.
+      // 6 (feet) keeps the target within every ranged weapon's acquisition
+      // radius; 20 (HP) keeps it alive across every weapon's `baseDamage` so
+      // repeated probe calls never need to respawn it mid-loop.
+      if (projectileProbeTargetEid === null || !entityExists(world.ecs, projectileProbeTargetEid)) {
+        projectileProbeTargetEid = spawnEnemy(world, px + 6, py, 20);
+      } else {
+        world.stores.position.x[projectileProbeTargetEid] = px + 6;
+        world.stores.position.y[projectileProbeTargetEid] = py;
+        world.stores.health.current[projectileProbeTargetEid] = 20;
+      }
+      weaponSystem(world);
+      return Array.from(query(world.ecs, [Projectile]));
+    },
+
+    getProjectileRenderInfo: (): ProjectileRenderInfo[] => {
+      const scene = getScene();
+      const world = scene?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene) {
+        return [];
+      }
+      // Exact-name lookup (the render bridge names bullet/arrow sprites
+      // `${PROJECTILE_OBJECT_NAME_PREFIX}<eid>`) rather than
+      // nearest-on-screen-distance, which could be fooled by a HUD icon,
+      // carried-weapon sprite, or the probe's own target enemy sitting closer
+      // to the projectile's feet position. A full display-list scan is fine
+      // here (test/probe-only code with a small fixed lab scene); switch to a
+      // dedicated container if the probe lab's display list ever grows large.
+      const named = new Map<string, string>();
+      for (const child of phaserScene.children.list) {
+        if (
+          (child instanceof Phaser.GameObjects.Image ||
+            child instanceof Phaser.GameObjects.Sprite) &&
+          typeof child.name === 'string' &&
+          child.name.startsWith(PROJECTILE_OBJECT_NAME_PREFIX)
+        ) {
+          named.set(child.name, child.texture.key);
+        }
+      }
+      const infos: ProjectileRenderInfo[] = [];
+      for (const eid of query(world.ecs, [Projectile])) {
+        const textureKey = named.get(`${PROJECTILE_OBJECT_NAME_PREFIX}${eid}`) ?? null;
+        infos.push({
+          eid,
+          renderKind: resolveRenderKind(world, eid),
+          textureKey,
+          foundNamedObject: textureKey !== null,
+        });
+      }
+      return infos;
+    },
+
+    spawnFloor3RangedCompanionProbe: (): Floor3RangedCompanionProbeResult | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world || world.floorId !== 'floor3') {
+        return null;
+      }
+      // Bypass the (RNG-seeded) starter-Companion offer entirely, the same
+      // way `primeStatusAuraEnemy` bypasses other Floor 3 loadout gates for
+      // probe determinism — this proves the SHIPPED `companionCombatSystem`
+      // wiring, render bridge, and damage/cleanup pipeline in the real
+      // booted scene without depending on which starter species the random
+      // offer would have picked.
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      const player = playerEidOf(scene);
+      if (player < 0) {
+        return null;
+      }
+      for (const eid of query(world.ecs, [Projectile])) {
+        removeEntity(world.ecs, eid);
+      }
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      // `ember-slinger` (Sparktick) is the real shipped `aiType: "ranged"`
+      // Floor 3 species (enemies.floor3.json) — matches the unit-test choice
+      // in tests/game/floor3-companion-combat.test.ts.
+      const companionEid = spawnBehaviorEnemy(world, px, py, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+      addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
+      addComponent(
+        world.ecs,
+        companionEid,
+        set(Companion, {
+          speciesToken: speciesTokenForId('ember-slinger'),
+          form: 0,
+          level: 1,
+          xp: 0,
+          ownerTeam: TeamId.PLAYER,
+          knockedOut: 0,
+        }),
+      );
+      const targetEid = spawnBehaviorEnemy(world, px + 5, py, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+      addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
+      scene.setSimulationPaused(false);
+      return { companionEid, targetEid };
+    },
+
+    getEntityHealth: (eid: number): number | null => {
+      const world = getScene()?.world;
+      if (!world || !entityExists(world.ecs, eid)) {
+        return null;
+      }
+      return world.stores.health.current[eid] ?? null;
+    },
+
     getHarvestableRenderSummary: (): HarvestableRenderSummary => {
       const world = getScene()?.world;
       const phaserScene = getPhaserScene();
@@ -2703,6 +3705,55 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
       return { nodeEntities, spriteImages, byDef };
     },
+
+    primeFloor3CompanionPropDepthProbe: (): Floor3CompanionPropDepthProbe | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const playerEid = playerEidOf(scene);
+      if (!scene || !world || playerEid < 0 || world.floorId !== 'floor3') {
+        return null;
+      }
+      if (world.state === 'loadout') {
+        sceneOptions.selectLoadoutOption?.(world, 0);
+        scene.modalPicker?.close();
+      }
+      scene.setSimulationPaused(true);
+
+      if (floor3DepthProbe !== null) {
+        for (const eid of [floor3DepthProbe.backPropEid, floor3DepthProbe.frontPropEid]) {
+          if (entityExists(world.ecs, eid)) {
+            clearEntityStores(world, eid);
+            removeEntity(world.ecs, eid);
+          }
+        }
+      }
+
+      const companionEid = query(world.ecs, [Companion, PartySlot, Position])[0];
+      if (companionEid === undefined) {
+        floor3DepthProbe = null;
+        return null;
+      }
+
+      const x = (world.stores.position.x[playerEid] ?? 0) + 6;
+      const y = world.stores.position.y[playerEid] ?? 0;
+      world.stores.position.x[companionEid] = x;
+      world.stores.position.y[companionEid] = y;
+      world.stores.velocity.x[companionEid] = 0;
+      world.stores.velocity.y[companionEid] = 0;
+
+      const backPropEid = spawnProp(world, x, y, 'cave-rubble');
+      const frontPropEid = spawnProp(world, x, y, 'void-tendril');
+      if (backPropEid < 0 || frontPropEid < 0) {
+        floor3DepthProbe = null;
+        return null;
+      }
+
+      floor3DepthProbe = { companionEid, backPropEid, frontPropEid };
+      return readFloor3CompanionPropDepthProbe();
+    },
+
+    getFloor3CompanionPropDepthProbe: (): Floor3CompanionPropDepthProbe | null =>
+      readFloor3CompanionPropDepthProbe(),
 
     getPropRenderSizes: (): PropRenderSize[] => {
       const world = getScene()?.world;
@@ -2793,7 +3844,22 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return {
         usesGeneratedArt: info?.usesGeneratedArt ?? false,
         visible: info?.visible ?? false,
+        footprintPx: info?.footprintPx ?? 0,
+        spriteWidthPx: info?.spriteWidthPx ?? 0,
+        spriteHeightPx: info?.spriteHeightPx ?? 0,
       };
+    },
+
+    primeAchievementToastWithCommentary: (): _AchievementToastProbe | null => {
+      const scene = getScene();
+      if (!scene) return null;
+      // Keep an explicit line break so this fixture is always multiline and can
+      // deterministically regress toast-vs-commentary overlap behavior.
+      scene.queueDirectorCommentary?.(
+        'A long director callout keeps the achievement notification\nbelow its rendered bounds.',
+      );
+      scene.flashAchievementToast?.('🏆 New achievement: Fully Outfitted');
+      return scene.getAchievementToastLayout?.() ?? null;
     },
 
     unlockAchievement: (achievementId: string) => {
@@ -2802,6 +3868,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (!world) return;
       unlockAchievement(world, achievementId);
       scene?.achievementsUI?.refresh(world);
+    },
+
+    seedAchievementForPresentation: (achievementId: string) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      world.achievements.unlockedIds.add(achievementId);
+      scene.achievementsUI?.refresh(world);
     },
 
     openAchievements: () => {
@@ -3033,6 +4107,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         itemId,
         briefId: entry?.briefId ?? null,
         textureKey: entry?.textureKey ?? null,
+        // Real-artifact assertion of the registry contract, not a ranking
+        // input: `resolveItemSprite` reads only runtime-eligible entries, so a
+        // `true` here means the manifest/registry eligibility filter regressed.
+        // `tests/e2e/equipment-art-wiring.test.ts` asserts it stays false.
         isPlaceholder: entry === null ? false : _isPlaceholderEntry(entry),
         textureLoaded: entry !== null && phaserScene?.textures?.exists(entry.textureKey) === true,
       };

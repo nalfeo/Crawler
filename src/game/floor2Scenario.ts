@@ -32,7 +32,6 @@
  */
 import { addComponent, hasComponent, query, removeComponent, set, setComponent } from 'bitecs';
 import {
-  BaseStats,
   BroadcastScore,
   Damage,
   DoorState,
@@ -90,11 +89,7 @@ import { loadFamilies, type FamilyDef } from '../shared/data/families.js';
 import { initializeFloor2Settlement } from './floor2Settlement.js';
 import { isLiveFamilyBoss } from './floor2BossIdentity.js';
 import { spawnBossChestForDefeatedBoss } from './boss-chest-resolver.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
-import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
-import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
-import { statSystem } from '../core/systems/index.js';
-import { addStatModifier, removeStatModifiers, spendPoints } from './systems/statsSystem.js';
+import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
@@ -138,16 +133,36 @@ import {
   pickFromSpawnZones,
   type SpawnZoneWeights,
 } from './spawn-zones.js';
-import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
-import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
-import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import type { AchievementCatalogRegistry } from '../shared/achievements.js';
 
-const FLOOR2_BOSS_HP_SCALE = 0.03;
+/**
+ * Multiplier applied to the authored boss archetype HP for the *live* Floor 2
+ * den encounters (issue #4291).
+ *
+ * The previous 0.03 scale shrank a 220 HP boss to 7 HP — one melee volley — so
+ * a boss died before any telegraphed cycle could read on screen. Full authored
+ * HP is still not enough: measured headless runs (seeds 1–3, `BehaviorTreeAI`)
+ * killed the first den boss in 5.5–6.7 s of game time, while the shortest
+ * signature-ability window in `boss-abilities.floor2.json` is 9.25 s
+ * (`firstEligibleAfterMs` + telegraph duration) and the longest is 12.5 s.
+ *
+ * Measured time-to-kill for every den boss on seeds 1–3 (four dens per run):
+ *   1× → 5.5–6.7 s (first den only; below every ability window)
+ *   3× → 9.4–19.6 s (goblins at level 19 cleared 9.25 s by only 134 ms)
+ *   4× → 12.1–27.0 s (≥ 30 % margin over every ability window)
+ *
+ * 4× is the smallest whole multiplier that keeps every den boss alive past its
+ * own signature-cycle window on the canonical progression baseline without
+ * turning the fight into a slog, and all three seeds still reach `victory`
+ * with the Floor 2 exit completed. Gated by
+ * `tests/headless/floor2-boss-survival-gate.test.ts`. No invulnerability and no
+ * seed-specific exception is used; the arena lab keeps its own debug scaling.
+ */
+const FLOOR2_BOSS_HP_SCALE = 4;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
-const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
@@ -918,7 +933,7 @@ export function confirmFloor2StairDescend(
 
 /**
  * Spawn Floor 2 harvestable ore and gem nodes across passable tiles in normal
- * and spawn rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
+ * rooms. Only the Floor 2 entries in HARVESTABLE_DEFS (indices
  * FLOOR2_HARVESTABLE_START_INDEX and above) are considered — Floor 1 mushroom/
  * flower/lichen defs are never placed here. Each def spawns between 2 and
  * maxPerFloor nodes, spaced ≥3 ft apart.
@@ -931,11 +946,16 @@ function spawnFloor2HarvestableNodes(world: GameWorld, rng: SeededRandom): void 
   const floorMap = world.floorMap;
   if (!floorMap) return;
 
-  const normalRooms = floorMap.roomGraph
+  const harvestableRooms = floorMap.roomGraph
     .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+    .filter(
+      (room) =>
+        room.role !== RoomRole.SPAWN &&
+        room.role !== RoomRole.SAFE &&
+        room.role !== RoomRole.SETTLEMENT,
+    );
 
-  if (normalRooms.length === 0) return;
+  if (harvestableRooms.length === 0) return;
 
   for (
     let defIndex = FLOOR2_HARVESTABLE_START_INDEX;
@@ -949,7 +969,7 @@ function spawnFloor2HarvestableNodes(world: GameWorld, rng: SeededRandom): void 
 
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const room = normalRooms[rng.nextInt(0, normalRooms.length - 1)]!;
+      const room = harvestableRooms[rng.nextInt(0, harvestableRooms.length - 1)]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       const tx = bx + 1 + rng.nextInt(0, Math.max(0, bw - 3));
@@ -1090,8 +1110,7 @@ export function initializeFloor2Scenario(
   // through MainGameScene's settlement shop interaction flow.
   world.floor2EquipmentFlags.floor2EquipmentAiMaintenance = true;
   if (!options?.playerCarryover) {
-    applyFloor2DirectStartPlayerState(world, playerEid);
-    initializePlayerWeaponSkills(world, playerEid);
+    applyFloorSkipBaseline(world, playerEid, manifest);
     ensureBossBattleSpellReward(world, playerEid);
   }
   setGoalFlag(world, 'floor1-drops-unlocked', true);
@@ -1209,36 +1228,6 @@ export function initializeFloor2Scenario(
       : {}),
   });
 
-  if (!options?.playerCarryover) {
-    // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
-    // so player gets the same weapon on the same seed for consistency.
-    const starterWeaponPool = manifest.starterWeapons;
-    let selectedWeaponId: string | null = null;
-    if (starterWeaponPool && starterWeaponPool.length > 0) {
-      const weaponRng = new SeededRandomClass(
-        hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
-      );
-      const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
-      if (picked) {
-        const weaponDef = getWeaponDef(picked);
-        if (weaponDef) {
-          selectedWeaponId = weaponDef.id;
-          equipStarterOrFallback(world, weaponDef.id, weaponDef);
-        }
-      }
-    }
-
-    if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
-      const fallbackId = manifest.starterWeapons[0];
-      if (fallbackId) {
-        const fallbackDef = getWeaponDef(fallbackId);
-        if (fallbackDef) {
-          equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
-        }
-      }
-    }
-  }
-
   if (floor2Config?.governor?.autoVictoryOnStart === true) {
     latchFloor2Victory(world);
   }
@@ -1324,22 +1313,6 @@ function popFloor2ResourceHeartStairs(world: GameWorld): void {
 function latchFloor2Victory(world: GameWorld): void {
   setGoalFlag(world, FLOOR2_VICTORY_GOAL_ID, true);
   popFloor2ResourceHeartStairs(world);
-}
-
-function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number): void {
-  if (!hasComponent(world.ecs, playerEid, BaseStats)) {
-    initializeBaseStats(world, playerEid);
-  }
-
-  applyStartPlayerLevel(world, FLOOR2_DIRECT_START_LEVEL);
-  const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
-  if (Object.keys(allocations).length > 0) {
-    spendPoints(world, allocations);
-  }
-  statSystem(world);
-
-  unequip(world, playerEid, 'neck', { force: true });
-  equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 
 function findResourceHeartStairTile(world: GameWorld): { x: number; y: number } | null {

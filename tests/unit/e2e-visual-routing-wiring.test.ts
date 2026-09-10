@@ -87,13 +87,13 @@ const E2E_JOBS = [
  * Every Playwright-bearing job must carry an explicit, bounded `timeout-minutes`
  * so a hung browser can never occupy a runner indefinitely. The bound is asserted
  * per job rather than as one shared number: `test-e2e-game` runs the whole
- * game/UI suite (~19.5 min of test time) and needs more headroom than the small
+ * game/UI suite and needs more headroom than the small
  * targeted suites, but each job is still pinned to an exact expected value so an
  * accidental removal or open-ended bump still fails this guard.
  */
 const PLAYWRIGHT_JOB_TIMEOUTS: Record<string, number> = {
   'check-lightweight': 20,
-  'test-e2e-game': 30,
+  'test-e2e-game': 40,
   'test-e2e-assets': 20,
   'test-e2e-devtools': 20,
 };

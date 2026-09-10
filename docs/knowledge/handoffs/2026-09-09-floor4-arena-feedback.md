@@ -1,0 +1,75 @@
+# Session Handoff: Floor 4 arena feedback validation
+
+## Systems touched
+
+floor4-arena
+
+## Apples
+
+3🍎 estimated, 4🍎 actual (underestimated by one). The existing arena, Headliner, and Green
+Room transition contracts were validated and the missing authoritative shop
+purchase path was added without changing combat balance or phase timing.
+
+## Kickoff
+
+Recommended: the approved plan had a bounded deterministic completion gate,
+and the reported arena/Headliner/intermission symptoms were reproducible
+against existing telemetry before the remaining shop gap was implemented.
+
+## What was done
+
+- Confirmed the authored Floor 4 geometry and deterministic zero-RNG map path
+  already match the manifest and remain traversable.
+- Confirmed the production headless pipeline releases all authored waves and
+  physically spawns and defeats one Headliner in each of the five acts.
+- Confirmed the shared scenario authority holds during intermission, opens and
+  retires Green Room visits, and resumes each next act through the public marker
+  contract.
+- Added `purchaseFloor4GreenRoomOffer`, which validates the active visit,
+  offer stock, catalog membership, inventory, and wallet before atomically
+  decrementing stock, adding the catalog item, and charging gold.
+- Added purchase-count state and deterministic regression coverage for a
+  successful purchase and an inactive-visit rejection.
+- Added bootstrap-level stock, wallet, and vendor-telemetry coverage, plus
+  authored arena-to-Green-Room traversal coverage.
+- Scoped table-qualified purchases to the selected sponsor table, including
+  the duplicate-item regression and malformed offer-id rejection.
+- Made the Green Room shop optional and once-per-visit for human input;
+  automated input bypasses it so the visual AI can use the same exit marker.
+- Paginated sponsor offers at four rows per page, with `PageUp`/`PageDown`
+  navigation, so every authored offer is reachable inside the panel.
+- Accounted for Headliner appearance fees in the shared gold ledger and CLI
+  breakdown, matching Green Room spending to its income source.
+
+## Real-pipeline evidence
+
+The real `runFloor4(404)` headless artifact and the browser
+`floor4-ai-completion` artifact pass, including all five acts, waves,
+Headliners, Green Room intermissions, and terminal victory. The deterministic
+`floor4-main-scene-spawning` browser capture stages the live scene at the
+authored Green Room marker, opens the sponsor shop, purchases an offer, captures
+both pages, closes it, re-interacts, confirms the real stair modal, and observes
+Act 2. Before the repair the visual AI artifact remained in Act 1 intermission;
+afterward it completes because automated input bypasses the optional human shop
+surface while human input sees it once per visit.
+
+## Follow-up lock fix
+
+The Green Room tunnel is now sealed by the shared barrier overlay outside
+intermission. After a public Green Room confirmation, sealing waits until the
+player has crossed back into the arena, preventing both active-wave retreat and
+the transition edge that could trap a player on the shop side. The director
+owns barrier lifecycle; no headless-only mutation was added.
+
+## Validation
+
+- `npx vitest run --project headless tests/headless/floor4-arena-completion.test.ts`
+- `npx vitest run tests/unit/floor4-green-room-stock.test.ts tests/unit/floor4-arena-director.test.ts tests/unit/floor4-arena-map.test.ts`
+- `npx vitest run --project unit tests/unit/floor4-green-room-stock.test.ts tests/unit/floor4-arena-director.test.ts tests/unit/floor4-arena-map.test.ts`
+- `npx vitest run --project e2e-game tests/e2e/floor4-main-scene-spawning.deterministic.test.ts tests/e2e/floor4-ai-completion.deterministic.test.ts`
+- `npm run typecheck`
+- `git diff --check`
+- `bash scripts/agent/verify-fast.sh`
+- `npm run verify:pr-prereqs`
+- `npx vitest run tests/headless/floor4-arena-completion.test.ts` (seed 404
+  real-pipeline completion and deterministic replay)

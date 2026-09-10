@@ -47,11 +47,17 @@ on:
 
 concurrency:
   group: crawler-ci-pr-${{ inputs.pr_number }}
+  # Keep a dispatched reconciliation queued until the per-PR lane can run.
+  # Without an explicit false value, a burst of router/sweep dispatches can
+  # cancel the pending harvest before it ever creates a job.
+  cancel-in-progress: false
   queue: max
 
 permissions:
   actions: write
   contents: read
+  issues: read
+  pull-requests: read
 
 jobs:
   reconcile:
@@ -81,8 +87,18 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+      - name: Observe legacy CI recovery without mutation
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY == 'goobers' || vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED != 'true'
+        run: |
+          echo "Legacy CI recovery is observe-only. LIFECYCLE_OWNER_CI_RECOVERY=${{ vars.LIFECYCLE_OWNER_CI_RECOVERY || 'legacy' }}; bridge=${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}; no direct PR mutation is permitted."
+
       - name: Reconcile PR or update shepherd lease
+        id: legacy-reconcile
+        if: vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
         env:
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
+          LIFECYCLE_OWNER_REVIEW_THREADS: ${{ vars.LIFECYCLE_OWNER_REVIEW_THREADS || 'legacy' }}
           CI_RECOVERY_READ_TOKEN: ${{ steps.app-token.outputs.token }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,4 +112,50 @@ jobs:
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           EXPECTED_BASE_REF: ${{ inputs.expected_base_ref }}
           LEASE_ID: ${{ inputs.lease_id }}
-        run: node .github/scripts/ci-recovery/reconcile.mjs
+        run: |
+          set -o pipefail
+          mkdir -p .legacy-lifecycle
+          node .github/scripts/ci-recovery/reconcile.mjs | tee .legacy-lifecycle/reconcile.log
+
+      - name: Capture immutable CI Recovery decision
+        id: capture-legacy-decision
+        if: always() && vars.LIFECYCLE_OWNER_CI_RECOVERY != 'goobers' && vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          READ_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          RECOVERY_TRIGGER: ${{ inputs.trigger }}
+          LEGACY_OUTCOME: ${{ steps.legacy-reconcile.outcome }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const capture = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/capture-legacy-lifecycle.mjs',
+            )));
+            const count = await capture.captureCiRecovery({
+              github,
+              token: process.env.READ_TOKEN,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              prNumber: Number(process.env.PR_NUMBER),
+              runId: context.runId,
+              trigger: process.env.RECOVERY_TRIGGER,
+              outcome: process.env.LEGACY_OUTCOME,
+              logPath: path.join(process.env.GITHUB_WORKSPACE, '.legacy-lifecycle/reconcile.log'),
+              outputPath: path.join(process.env.GITHUB_WORKSPACE, '.legacy-lifecycle/records.json'),
+            });
+            core.setOutput('record-count', String(count));
+
+      - name: Upload immutable CI Recovery decision
+        if: always() && steps.capture-legacy-decision.outcome == 'success' && steps.capture-legacy-decision.outputs.record-count != '0'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-lifecycle-${{ github.run_id }}
+          path: .legacy-lifecycle/records.json
+          if-no-files-found: error
+          retention-days: 14

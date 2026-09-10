@@ -292,6 +292,74 @@ deliberately NOT applied to tidy-up retirement: art reverted off `main` is
 
 See `docs/knowledge/handoffs/2026-08-06-sprite-reconciler-ping-pong.md`.
 
+## Amendment 2026-09-01 — landed-fix amnesty for retirement (duplicate PR #4043)
+
+PR #4043 duplicated already-merged PR #4031: both promoted the same stale
+`player-walk-cycle-male.png` bytes from `assets/queue`. Root cause traced via
+git blob SHAs: a bad edit reached `assets/queue` only; before PR #4031 merged,
+a follow-up commit fixed the bytes directly **on the `assets/promote`
+branch**, so the squash-merge landed the good bytes and `main`'s history
+**never once held the bad blob**. That broke both existing guards at once,
+in opposite directions:
+
+- `filterPromotablePaths`'s staleness check asks whether `main`'s **history**
+  ever carried the source's exact blob. Since it never did, the (still-stale)
+  path stayed "promotable" and reopened a new promotion every cycle.
+- `sourceAddsNothingToBase`'s retirement check requires the source's
+  **current** bytes to equal `main`'s current bytes. Queue's current bytes
+  still held the bad edit, so retirement correctly refused — leaving queue
+  permanently "dirty" and unable to converge.
+
+Neither guard was wrong on its own terms; the combination created a stable,
+self-reinforcing stuck state with no path to convergence.
+
+**Amended decision:** `sourceAddsNothingToBase` gained an optional
+`landedRef` — the just-landed promotion's own **un-squashed** final tree
+(`LANDED_SCRATCH_REF`, already fetched by `findLandedPromotion`). When a
+source's bytes at a path diverge from `main`'s current bytes, the divergence
+is now **amnestied** (dropped from the retirement-blocking set) if the landed
+promotion's own tree at that path is byte-identical to `main`'s current
+bytes — i.e., the exact fix that is now live on `main` was already applied,
+and verified, inside the very promotion whose merge is authorizing this
+retirement. This is deliberately narrow: it fails closed (no amnesty) if
+`main` lacks the path or any blob lookup fails, and it only ever looks at the
+landed promotion already in hand — it does not reason about `main`'s full
+history or about any other PR. `filterPromotablePaths` is unchanged: once
+retirement resets queue to `main`, the two sources agree and the staleness
+question is moot for that path going forward.
+
+Process rule (see `.github/workflows/sprite-queue-reconciler.yml` header): a
+fix applied to bad art **after** a promotion has already merged (i.e. not
+inside the fix-then-merge window the amnesty covers) must still be mirrored
+onto `assets/queue` by hand, or the same stuck state recurs.
+
+See `docs/knowledge/handoffs/2026-09-01-sprite-reconciler-landed-fix-amnesty.md`.
+
+## Amendment 2026-09-06 — isolate and surface unsafe source snapshots
+
+The reconciler now interprets each immutable source snapshot independently.
+Unreadable history, a candidate shard that fails the generated-entry schema, or
+a shard whose safe authored PNG path is absent from that snapshot quarantines
+that source's complete contribution. The result records its ref, reason, and
+withheld paths without aborting healthy queue or sibling-orphan promotion. A
+quarantined `assets/queue` snapshot cannot authorize lifecycle deletions in the
+same cycle; deletion authority resumes only when the snapshot is fully
+interpretable.
+
+PNG-only source deltas are not a legacy escape hatch: the reconciler locates the
+single owner shard by its authored `assetPath`, validates that shard, and checks
+the source-snapshot PNG bytes against its SHA-256. Missing, duplicate, unhashed,
+or mismatched owners quarantine the source. Pre-sharding check-in branches that
+cannot prove this identity remain visible as quarantined sources rather than
+opening an integrity-failing promotion PR.
+
+CLI exit 32 identifies source quarantine, while exit 33 identifies a cycle that
+also refused lifecycle deletion convergence. The workflow surfaces both
+conditions independently. Candidate shard reads and durable queue inspection
+run in deterministic batches of eight to cap Git subprocess pressure.
+
+See `docs/knowledge/handoffs/2026-09-05-disliked-sprite-lifecycle.md`.
+
 ## References
 
 - Feature ADR (PR1 + scope split):

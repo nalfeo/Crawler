@@ -35,6 +35,10 @@ import {
   type QuestState,
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
+import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
+import { addItem } from '../../src/shared/inventory.js';
 
 function completeQuestState(questId: string): QuestState {
   return {
@@ -307,6 +311,35 @@ describe('achievementSystem', () => {
     expect(facts.numberFacts.totalKills).toBe(11);
     expect(facts.numberFacts.ratsKilled).toBe(0);
     expect(facts.numberFacts.slimesKilled).toBe(0);
+  });
+
+  it('requires every equipped slot for Fully Outfitted and ignores the inventory bag', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    world.featureUnlocks.equipment = true;
+    addItem(world.inventories.get(player)!, 'iron-ore', 1);
+
+    expect(collectCurrentFloorAchievementFacts(world).booleanFacts.allEquipmentSlotsOccupied).toBe(
+      false,
+    );
+
+    expect(equip(world, player, getEquipmentDefForItem('iron-helm')!, { force: true }).ok).toBe(
+      true,
+    );
+    const equipment = getEquipmentState(world, player)!;
+    for (const slot of SLOT_REGISTRY.slice(0, -1)) {
+      equipment.equipped[slot.id] = 1;
+    }
+    expect(collectCurrentFloorAchievementFacts(world).booleanFacts.allEquipmentSlotsOccupied).toBe(
+      false,
+    );
+
+    for (const slot of SLOT_REGISTRY.slice(-1)) {
+      equipment.equipped[slot.id] = 1;
+    }
+    expect(collectCurrentFloorAchievementFacts(world).booleanFacts.allEquipmentSlotsOccupied).toBe(
+      true,
+    );
   });
 
   it('unlockAchievement fails closed (no throw) on a lootBox achievement when the generated-equipment registry has no run key', () => {

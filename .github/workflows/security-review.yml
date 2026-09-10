@@ -1,19 +1,14 @@
 name: Security Review Loop
 
 on:
-  schedule:
-    # Daily at 06:00 UTC
-    - cron: '0 6 * * *'
   pull_request:
     branches: [main]
     paths:
       - '**'
-  workflow_dispatch:
 
 permissions:
   checks: read
   contents: read
-  issues: write
 
 concurrency:
   group: >-
@@ -28,10 +23,6 @@ jobs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       art_only: ${{ steps.scope.outputs.art_only }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
-      visual_touched: ${{ steps.scope.outputs.visual_touched }}
-      sim_touched: ${{ steps.scope.outputs.sim_touched }}
-      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
-      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       ai_code_touched: ${{ steps.scope.outputs.ai_code_touched }}
       codeowners_touched: ${{ steps.scope.outputs.codeowners_touched }}
@@ -61,72 +52,46 @@ jobs:
           codeowners_touched='${{ steps.detect.outputs.codeowners_touched }}'
           source_code_touched='${{ steps.detect.outputs.source_code_touched }}'
           train_promoted='false'
-          visual_touched='${{ steps.detect.outputs.visual_touched }}'
-          sim_touched='${{ steps.detect.outputs.sim_touched }}'
-          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
-          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
-          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
-          if [ '${{ github.event_name }}' != 'pull_request' ]; then
-            # Scheduled and workflow_dispatch runs must execute the full security
-            # suite. Force all flags so every check runs regardless of what the
-            # classifier saw (which may be empty for non-PR events).
-            docs_only='false'
-            art_only='false'
-            visual_touched='true'
-            sim_touched='true'
-            coverage_touched='true'
-            sprite_pipeline_touched='true'
-            dependencies_touched='true'
-            ai_code_touched='true'
-            codeowners_touched='true'
-            source_code_touched='true'
-          else
-            # Only trust promotion provenance while the merge train is
-            # actually enabled, so rollback (MERGE_TRAIN_ENABLED=false)
-            # restores full security checks even if a leftover "merge-train"
-            # check-run is still present on the head.
-            if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
-              check_runs_stderr="$(mktemp)"
-              if ! check_runs_json="$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" 2>"$check_runs_stderr")"; then
-                check_runs_error="$(cat "$check_runs_stderr")"
-                echo "Could not fetch check-runs for ${PR_HEAD_SHA}: ${check_runs_error}" >&2
-                check_runs_json=''
+          # Only trust promotion provenance while the merge train is actually
+          # enabled, so rollback restores full security checks even if a
+          # leftover "merge-train" check-run is still present on the head.
+          if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
+            check_runs_stderr="$(mktemp)"
+            if ! check_runs_json="$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" 2>"$check_runs_stderr")"; then
+              check_runs_error="$(cat "$check_runs_stderr")"
+              echo "Could not fetch check-runs for ${PR_HEAD_SHA}: ${check_runs_error}" >&2
+              check_runs_json=''
+            fi
+            rm -f "$check_runs_stderr"
+            if [ -n "$check_runs_json" ]; then
+              promotion_checks="$(
+                printf '%s' "$check_runs_json" |
+                  jq --arg app_id "$MERGE_TRAIN_APP_ID" \
+                    '($app_id | tonumber?) as $trusted_id |
+                      ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
+                      if ($check != null and
+                          $check.status == "completed" and
+                          $check.conclusion == "success" and
+                          $trusted_id != null and
+                          $check.app.id == $trusted_id and
+                          ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
+                      then 1 else 0 end' \
+                    2>/dev/null || true
+              )"
+              if [[ "$promotion_checks" =~ ^[0-9]+$ ]] && [ "$promotion_checks" -gt 0 ]; then
+                docs_only='true'
+                train_promoted='true'
+                echo "Train-promoted head has an attested successful merge-train check."
+              elif [ -z "$promotion_checks" ]; then
+                echo "Could not parse check-runs JSON for ${PR_HEAD_SHA}; leaving train_promoted=false." >&2
               fi
-              rm -f "$check_runs_stderr"
-              if [ -n "$check_runs_json" ]; then
-                promotion_checks="$(
-                  printf '%s' "$check_runs_json" |
-                    jq --arg app_id "$MERGE_TRAIN_APP_ID" \
-                      '($app_id | tonumber?) as $trusted_id |
-                        ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
-                        if ($check != null and
-                            $check.status == "completed" and
-                            $check.conclusion == "success" and
-                            $trusted_id != null and
-                            $check.app.id == $trusted_id and
-                            ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
-                        then 1 else 0 end' \
-                      2>/dev/null || true
-                )"
-                if [[ "$promotion_checks" =~ ^[0-9]+$ ]] && [ "$promotion_checks" -gt 0 ]; then
-                  docs_only='true'
-                  train_promoted='true'
-                  echo "Train-promoted head has an attested successful merge-train check."
-                elif [ -z "$promotion_checks" ]; then
-                  echo "Could not parse check-runs JSON for ${PR_HEAD_SHA}; leaving train_promoted=false." >&2
-                fi
-              else
-                echo "Could not fetch check-runs for ${PR_HEAD_SHA}; leaving train_promoted=false." >&2
-              fi
+            else
+              echo "Could not fetch check-runs for ${PR_HEAD_SHA}; leaving train_promoted=false." >&2
             fi
           fi
           echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
           echo "art_only=${art_only}" >>"$GITHUB_OUTPUT"
           echo "train_promoted=${train_promoted}" >>"$GITHUB_OUTPUT"
-          echo "visual_touched=${visual_touched}" >>"$GITHUB_OUTPUT"
-          echo "sim_touched=${sim_touched}" >>"$GITHUB_OUTPUT"
-          echo "coverage_touched=${coverage_touched}" >>"$GITHUB_OUTPUT"
-          echo "sprite_pipeline_touched=${sprite_pipeline_touched}" >>"$GITHUB_OUTPUT"
           echo "dependencies_touched=${dependencies_touched}" >>"$GITHUB_OUTPUT"
           echo "ai_code_touched=${ai_code_touched}" >>"$GITHUB_OUTPUT"
           echo "codeowners_touched=${codeowners_touched}" >>"$GITHUB_OUTPUT"
@@ -169,24 +134,21 @@ jobs:
         if: needs.changes.outputs.train_promoted != 'true' && (needs.changes.outputs.docs_only == 'true' || needs.changes.outputs.art_only == 'true') && !cancelled()
         run: bash scripts/agent/security/scan-secrets.sh
 
-      # Non-docs path: wrap for structured scheduled-run reporting.
+      # Non-docs path.
       - name: Scan for committed secrets
         if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.art_only != 'true' && !cancelled()
-        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
+        run: bash scripts/agent/security/scan-secrets.sh
 
       # ── Dependency checks ────────────────────────────────────────────────────
       # Run only when dependency manifests or the dep-allowlist validator changed.
       # Fail-safe: runs when dependencies_touched is absent or not explicitly 'false'.
       - name: npm audit
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.dependencies_touched != 'false' && !cancelled()
-        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm run security:audit
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
+        run: npm run security:audit
 
       - name: Dependency allowlist
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.dependencies_touched != 'false' && !cancelled()
         run: npx tsx scripts/agent/security/check-deps.ts
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       # ── CODEOWNERS validation ────────────────────────────────────────────────
       # Run only when CODEOWNERS, workflows, or the CODEOWNERS validator changed.
@@ -194,7 +156,6 @@ jobs:
       - name: CODEOWNERS coverage
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.codeowners_touched != 'false' && !cancelled()
         run: npx tsx scripts/agent/security/check-codeowners.ts
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       # ── Dynamic-execution patterns ───────────────────────────────────────────
       # Scans src/core, src/engine, src/game, src/shared for forbidden eval/Function
@@ -203,8 +164,7 @@ jobs:
       # Fail-safe: runs when source_code_touched is absent or not explicitly 'false'.
       - name: Dynamic-execution patterns
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.source_code_touched != 'false' && !cancelled()
-        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
+        run: bash scripts/agent/security/check-dynamic-patterns.sh
 
       # ── AI prompt-injection scan ─────────────────────────────────────────────
       # Run only when AI source surfaces (src/game/ai/**) or the validator changed.
@@ -212,46 +172,3 @@ jobs:
       - name: AI prompt-injection scan
         if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.ai_code_touched != 'false' && !cancelled()
         run: npx tsx scripts/agent/security/check-ai-prompts.ts
-        continue-on-error: ${{ github.event_name != 'pull_request' }}
-
-  # Aggregation job (scheduled runs only — PRs don't file issues)
-  aggregate-results:
-    name: Aggregate & file issues
-    runs-on: ubuntu-latest
-    if: always() && github.event_name != 'pull_request'
-    needs: [security-checks]
-    timeout-minutes: 10
-    env:
-      AUTOMATION_REPORT_DIR: ${{ github.workspace }}/.automation-reports
-      AUTOMATION_TITLE: 'security-review: scheduled report'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-node
-
-      - name: Prepare report directory
-        run: mkdir -p "$AUTOMATION_REPORT_DIR"
-
-      - name: Aggregate report
-        id: aggregate
-        run: |
-          set +e
-          npx tsx scripts/agent/shared/aggregate-report.ts > report.md
-          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
-        continue-on-error: true
-
-      - name: File tracking issue
-        if: steps.aggregate.outputs.exitcode != '0'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          labels='automation'
-          if gh api "repos/${{ github.repository }}/labels/security" >/dev/null 2>&1; then
-            labels='automation,security'
-          fi
-          gh issue create \
-            --title "security-review: $(date -u +%Y-%m-%d) findings" \
-            --label "$labels" \
-            --body-file report.md

@@ -96,6 +96,25 @@ function isAlive(pid: number): boolean {
   }
 }
 
+/**
+ * `stop_worker_group` escalates to `kill -KILL -- -<pgid>` and returns without
+ * waiting: the descendant it targets has been orphaned by its own launcher, so
+ * it is reparented to init and only init can reap it. SIGKILL delivery plus
+ * that reap is asynchronous, which means `process.kill(pid, 0)` can still
+ * succeed for a short window after the coordinator exits — an assertion taken
+ * at the instant `spawnSync` returns is a race that flakes under CI load
+ * (run 34028158304). Poll for the descendant to disappear instead; a survivor
+ * still fails the test once the budget is spent.
+ */
+async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isAlive(pid)) {
+    if (Date.now() >= deadline) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return false;
+}
+
 describe.skipIf(!hasBash)('asset-request pipeline coordinator', () => {
   it('marks producer completion only after ingest and keeps provider secrets worker-scoped', () => {
     const { result, log, marker } = run('success');
@@ -126,18 +145,18 @@ describe.skipIf(!hasBash)('asset-request pipeline coordinator', () => {
     expect(log).not.toContain('worker-marker');
   });
 
-  it('kills worker descendants when the producer fails', () => {
+  it('kills worker descendants when the producer fails', async () => {
     const { workerChildPid } = run('producer-fail');
 
     expect(Number.isInteger(workerChildPid)).toBe(true);
-    expect(isAlive(workerChildPid)).toBe(false);
+    expect(await waitForExit(workerChildPid)).toBe(false);
   });
 
-  it('kills worker descendants when the launcher exits before producer completion', () => {
+  it('kills worker descendants when the launcher exits before producer completion', async () => {
     const { workerChildPid } = run('worker-preexit');
 
     expect(Number.isInteger(workerChildPid)).toBe(true);
-    expect(isAlive(workerChildPid)).toBe(false);
+    expect(await waitForExit(workerChildPid)).toBe(false);
   });
 
   it('maps TERM to 143 and cleans up the worker and marker', () => {

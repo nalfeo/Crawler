@@ -685,7 +685,27 @@ function triggerUptime(ability: AbilityDefinition, fixture: EquipmentEncounterFi
         : 0;
     case 'skill_usage':
       return fixture.skillTriggerRatePerSecond > 0 ? 1 : 0;
+    case 'player_damage':
+      return fixture.incomingHitsPerSecond > 0 ? 1 : 0;
   }
+}
+
+/**
+ * Expected number of incoming hits that actually land on the player AND clear
+ * the trigger's `minDamage` floor. Dodged hits never reach the damage pipeline,
+ * and armor-reduced hits below `minDamage` never arm the ability, so both are
+ * excluded — otherwise a damage-triggered ability is valued at full cooldown
+ * uptime off an arbitrarily small `incomingHitsPerSecond`.
+ */
+function expectedQualifyingIncomingHits(
+  minDamage: number,
+  stats: Readonly<Record<StatId, number>>,
+  fixture: EquipmentEncounterFixture,
+): number {
+  const landedDamage = computeArmorReducedDamage(fixture.incomingHitDamage, stats.armor);
+  if (landedDamage < minDamage || landedDamage <= 0) return 0;
+  const landRate = Math.min(1, Math.max(0, 1 - stats.dodgeChance));
+  return fixture.incomingHitsPerSecond * fixture.durationSeconds * landRate;
 }
 
 function expectedSpellDamage(baseDamage: number, stats: Readonly<Record<StatId, number>>): number {
@@ -789,7 +809,9 @@ function expectedActiveAbilityValue(
     const triggerLimitedActivations =
       ability.trigger.kind === 'skill_usage'
         ? fixture.skillTriggerRatePerSecond * fixture.durationSeconds
-        : Number.POSITIVE_INFINITY;
+        : ability.trigger.kind === 'player_damage'
+          ? expectedQualifyingIncomingHits(ability.trigger.minDamage ?? 0, stats, fixture)
+          : Number.POSITIVE_INFINITY;
     const activations = Math.min(cooldownLimitedActivations, triggerLimitedActivations);
     for (const effect of ability.effects) {
       const effectValue = activeEffectValue(effect, stats, fixture);

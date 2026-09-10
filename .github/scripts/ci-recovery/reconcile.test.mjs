@@ -27,7 +27,12 @@ import {
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
 import { DISPATCH_ACTION, selectTerminalAction } from './dispatch-table.mjs';
-import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
+import {
+  GOOBERS_IN_REVIEW_LABEL,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+} from './issue-intake-lib.mjs';
+import { PHASE, renderLifecycleComment } from './pr-lifecycle.mjs';
 import {
   REVIEW_CONFLICT_MARKER,
   REVIEW_REQUEST_MARKER,
@@ -1909,6 +1914,102 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
   );
 });
 
+test('residual fence from a partial exhausted release is cleaned up as an orphaned artifact and the run skips without redispatch', async (t) => {
+  // Production-path coverage for the PR #4392 incident shape: a prior exhausted
+  // release persisted the terminal owner:none/idle state but crashed before it
+  // removed the repository fence (and its PR attachment).  The next reconcile
+  // must clean up the residual fence and skip, never re-dispatch the same
+  // blocker task on a reset attempt budget.
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 902,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  let repositoryLabelDeleted = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // The partial release left the fence attached to the PR as well.
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL, node_id: 'LBL_exhausted_orphan' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        repositoryLabelDeleted = true;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The residual fence is cleaned up as an orphaned ownership artifact...
+  assert.match(stdout, /orphaned-fence-cleanup pr=#42 status=idle/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.variables?.labelId || '') === 'LBL_exhausted_orphan',
+    ),
+    'residual repository fence must be deleted by node ID',
+  );
+  // ...and the run then converges on the persisted exhausted state.
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task for an exhausted unchanged blocker set',
+  );
+});
+
 test('D5 wiring proof: the live terminal-cascade exit for stale-automation-exhausted matches selectTerminalAction, not a parallel inline code path', async (t) => {
   // This test exists specifically to satisfy the "terminal selection is
   // actually wired into reconcile.mjs rather than existing only in tests"
@@ -3772,7 +3873,7 @@ test('narrative text and comments cannot trigger session continuation', async (t
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  if (!assertSuccessfulExit(t, code, stderr)) return;
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
   assert.doesNotMatch(stdout, /session-continuation/);
   assert.doesNotMatch(stdout, /would-assign copilot/);
@@ -4337,21 +4438,14 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
 });
 
 test('failed job-level continue-on-error checks (including matrix-suffixed report-only legs) never become ci-failure blockers (PR #3032)', async (t) => {
-  // "Advisory coverage" and "Headless Multi-Floor Legs (report-only)" run with
+  // "Headless Multi-Floor Legs (report-only)" runs with
   // `continue-on-error: true` at the job level in .github/workflows/ci.yml, and
-  // `merge-gate`'s `needs` list deliberately omits both, so their failure can never
-  // block or unblock merge. Recovery previously flagged a red Advisory coverage
+  // `merge-gate`'s `needs` list deliberately omits it, so its failure can never
+  // block or unblock merge. Recovery previously flagged a red advisory
   // check-run as a `ci-failure` blocker and dispatched Copilot to "fix" it, but a
-  // transient infra failure (e.g. a 429 downloading an action) in an advisory job
-  // gives the agent nothing to fix that changes the PR's mergeable state -- the
-  // recovery loop spun with no progress across repeated attempts.
-  const advisoryFailedCheck = {
-    id: 1,
-    name: 'Advisory coverage',
-    status: 'completed',
-    conclusion: 'failure',
-    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
-  };
+  // transient infra failure in an advisory job gives the agent nothing to fix that
+  // changes the PR's mergeable state -- the recovery loop spun with no progress
+  // across repeated attempts.
   const matrixAdvisoryFailedCheck = {
     id: 2,
     name: 'Headless Multi-Floor Legs (report-only) (floor2, --floor floor2 --seed 42)',
@@ -4368,7 +4462,7 @@ test('failed job-level continue-on-error checks (including matrix-suffixed repor
     }),
     [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [advisoryFailedCheck, matrixAdvisoryFailedCheck] },
+      body: { check_runs: [matrixAdvisoryFailedCheck] },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });
@@ -4825,7 +4919,7 @@ test('live reconcile calls update-branch for a clean-BEHIND PR at QUEUE_MERGE_TR
   );
 });
 
-test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
+test('human-gated PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: {
@@ -4834,7 +4928,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
         auto_merge: { enabled_at: '2026-07-16T00:00:00Z' },
         head: {
           ...basePr().head,
-          ref: 'copilot/balance-telemetry-driven-improvement-sweep',
+          ref: 'copilot/human-gated-change',
         },
         labels: [
           { name: 'merge-train' },
@@ -6641,7 +6735,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile files unassigned follow-up backlog issue and resolves matching review thread', async (t) => {
+test('live reconcile keeps follow-up backlog writes off legacy and dispatches migrated review-threads lane', async (t) => {
   const sourceIssueNumber = 3120;
   const followupReviewCommentId = '3810312490';
   const threadId = 'PRRT_kwDOSvo2Ms6aWzBs';
@@ -6729,20 +6823,25 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
 
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, {
+  const { code, stdout } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
+    LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
   });
 
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // With the lane migrated, this test intentionally leaves the thread unresolved
+  // so legacy can dispatch Goobers and stop writing. Reconcile may continue down
+  // its normal blocker path; this test validates write/dispatch ownership only.
+  void code;
 
   const issueCreateCall = mutatingCalls.find(
     (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
   );
-  assert.ok(issueCreateCall, 'expected a follow-up backlog issue to be created');
-  assert.match(issueCreateCall.body.body, /crawler-ci-followup-backlog:v1 sourceIssue=3120/);
-  assert.deepEqual(issueCreateCall.body.assignees, []);
-  assert.ok(issueCreateCall.body.labels.includes('automation'));
+  assert.equal(
+    issueCreateCall,
+    undefined,
+    'legacy must not create follow-up backlog issues on migrated lane',
+  );
 
   const replyCall = mutatingCalls.find(
     (call) =>
@@ -6750,9 +6849,11 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
       call.url ===
         `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${followupReviewCommentId}/replies`,
   );
-  assert.ok(replyCall, 'expected a marker reply on the exact review-thread comment');
-  assert.match(replyCall.body.body, new RegExp(`✅ Addressed in ${HEAD_SHA}`));
-  assert.match(replyCall.body.body, /#4001/);
+  assert.equal(
+    replyCall,
+    undefined,
+    'legacy must not post follow-up backlog marker replies on migrated lane',
+  );
 
   const resolveCall = mutatingCalls.find(
     (call) =>
@@ -6760,9 +6861,27 @@ test('live reconcile files unassigned follow-up backlog issue and resolves match
       String(call.body?.query || '').includes('resolveReviewThread') &&
       call.body?.variables?.threadId === threadId,
   );
-  assert.ok(resolveCall, 'expected the review thread to be resolved after filing the issue');
+  assert.equal(
+    resolveCall,
+    undefined,
+    'legacy must not resolve follow-up backlog threads on migrated lane',
+  );
   assert.doesNotMatch(stdout, /assigned copilot pr=#42/);
-  assert.match(stdout, /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/);
+  assert.doesNotMatch(
+    stdout,
+    /resolved followup-backlog thread=PRRT_kwDOSvo2Ms6aWzBs issues=#4001/,
+  );
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    1,
+    'follow-up backlog handling must dispatch goobers-review-threads exactly once on migrated lane',
+  );
+  assert.equal(reviewThreadsDispatchCalls[0].body?.inputs?.pr_number, String(PR_NUM));
 });
 
 test('live reconcile does not file a follow-up backlog issue for a cross-repository closing issue', async (t) => {
@@ -7664,7 +7783,7 @@ test('task body includes human-approval note when pendingHumanApproval is true',
         ...basePr(),
         head: {
           ...basePr().head,
-          ref: 'copilot/balance-telemetry-improvement-sweep',
+          ref: 'copilot/human-gated-review-fix',
         },
         labels: [{ name: 'human-approval-required' }],
       },
@@ -7768,131 +7887,6 @@ test('task body includes human-approval note when pendingHumanApproval is true',
   assert.ok(
     taskCommentCall.body.body.includes('merge step only'),
     'task body must clarify that the human-approval gate applies to merge only',
-  );
-});
-
-test('balance-sweep branch prefix alone (no label) triggers human-approval gate', async (t) => {
-  // Stale-prefix regression: the old NIGHTLY_BALANCE_BRANCH_PREFIX was
-  // 'copilot/balance-telemetry-driven-improvement-sweep'; branches produced by
-  // current agents use 'copilot/balance-telemetry-improvement-sweep' (no
-  // "driven" infix).  Verify the broader prefix catches the new branch name
-  // even when the PR carries no human-approval-required label (the label path
-  // would short-circuit and mask a broken prefix check).
-  const reviewCommentId = '3608157950';
-  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
-  const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: {
-        ...basePr(),
-        head: {
-          ...basePr().head,
-          ref: 'copilot/balance-telemetry-improvement-sweep',
-        },
-        // No human-approval-required label — approval gate must be triggered by
-        // branch prefix alone.
-        labels: [],
-      },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/reviews`]: () => ({ body: [] }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
-    [`POST /graphql`]: (_url, parsed) => {
-      const query = String(parsed?.query ?? '');
-      if (query.includes('closingIssuesReferences')) {
-        return {
-          body: {
-            data: {
-              repository: {
-                pullRequest: {
-                  closingIssuesReferences: {
-                    pageInfo: { hasNextPage: false, endCursor: null },
-                    nodes: [],
-                  },
-                },
-              },
-            },
-          },
-        };
-      }
-      if (query.includes('suggestedActors')) {
-        return {
-          body: {
-            data: {
-              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
-            },
-          },
-        };
-      }
-      if (query.includes('replaceActorsForAssignable')) {
-        return {
-          body: {
-            data: {
-              replaceActorsForAssignable: {
-                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
-              },
-            },
-          },
-        };
-      }
-      return {
-        body: gqlReviewThreads([
-          {
-            id: 'PRRT_balance_prefix_thread',
-            isResolved: false,
-            isOutdated: false,
-            path: 'docs/knowledge/balance-ledgers/sweep.md',
-            line: 5,
-            comments: {
-              nodes: [
-                {
-                  id: 'comment-balance-prefix-thread',
-                  body: 'Please update the balance table.',
-                  author: { login: 'copilot-pull-request-reviewer' },
-                  authorAssociation: 'NONE',
-                  url: threadUrl,
-                },
-              ],
-            },
-          },
-        ]),
-      };
-    },
-    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [] },
-    }),
-    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-  });
-
-  t.after(() => server.close());
-
-  const { code, stdout, stderr } = await runScript(port, {
-    RECOVERY_OPERATION: 'reconcile',
-    CI_RECOVERY_MODE: 'live',
-  });
-
-  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(
-    stdout,
-    /blocked pr=#42 reason=human-approval-required/,
-    'branch prefix alone must trigger the human-approval gate',
-  );
-  const taskCommentCall = mutatingCalls.find(
-    (call) =>
-      call.method === 'POST' &&
-      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
-      typeof call.body?.body === 'string' &&
-      call.body.body.includes('crawler-ci-task:v1'),
-  );
-  assert.ok(
-    taskCommentCall,
-    'reconciler must post a recovery task even when approval gate is triggered via branch prefix',
-  );
-  assert.ok(
-    taskCommentCall.body.body.includes('merge step only'),
-    'task body must include the human-approval clarification note',
   );
 });
 
@@ -12611,6 +12605,79 @@ test('a failed linked-issue restart keeps the pending intent for the next run', 
   );
 });
 
+test('a Goobers-owned pending restart is cleared and does not fail reconciliation', async (t) => {
+  // Regression: if a linked issue acquires the Goobers in-review label between
+  // abandonment and the restart attempt, runIssueIntake throws
+  // IssueClaimedByGoobersError. That error must be treated the same as
+  // IssueNoLongerOpenError — clear the pending intent and continue — rather
+  // than recording a retry failure and looping on it forever.
+  const stateComment = {
+    id: 773,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint: blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'scope-mismatch-abandoned',
+        pendingIssueRestarts: [3199],
+        updatedAt: new Date().toISOString(),
+      }),
+    ),
+    user: { login: 'nalfeo' },
+  };
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199`]: () => ({
+      body: { number: 3199, node_id: 'ISSUE_3199', state: 'open' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3199/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+    [`POST /graphql`]: () => ({
+      body: {
+        data: {
+          repository: {
+            suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+            issue: {
+              id: 'ISSUE_3199',
+              state: 'OPEN',
+              labels: { nodes: [{ name: GOOBERS_IN_REVIEW_LABEL }] },
+              assignees: { nodes: [] },
+            },
+          },
+        },
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /skipped restart for linked issue #3199/);
+  assert.equal(
+    parseStateComment(stateComment.body)?.pendingIssueRestarts,
+    undefined,
+    'Goobers-owned pending restart must be cleared from recovery state',
+  );
+});
+
 test('trusted scope-mismatch review finding quarantines instead of dispatching Copilot', async (t) => {
   const thread = {
     id: 'PRRT_scope_mismatch',
@@ -12734,6 +12801,260 @@ test('trusted scope-mismatch review finding quarantines instead of dispatching C
     ),
     false,
     'scope mismatch must not post a Copilot repair task',
+  );
+});
+
+test('closing feature issue with planning-only diff quarantines before lifecycle admission', async (t) => {
+  const comments = [];
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Plan full CI Recovery acceptance-scope feature',
+        body: 'Fixes nalfeo/Crawler#3915',
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [
+        { filename: 'docs/knowledge/epics/ci-recovery-scope/ci-recovery-scope.epic.json' },
+        { filename: 'docs/knowledge/handoffs/2026-09-03-ci-recovery-scope-plan.md' },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7000 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: 'ISSUE_3915',
+                        number: 3915,
+                        title: 'Full CI Recovery acceptance-scope feature',
+                        body: '## Acceptance criteria\n- Compare closing-issue acceptance scope before admission.\n- Add deterministic regression tests.',
+                        state: 'OPEN',
+                        labels: { nodes: [{ name: 'enhancement' }] },
+                        repository: { nameWithOwner: `${OWNER}/${REPO}` },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        assert.fail('acceptance mismatch must not discover/assign Copilot');
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        assert.fail('acceptance mismatch must not run assignment mutations');
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /quarantined closing-issue-acceptance pr=#42/);
+  assert.ok(
+    comments.some((comment) => String(comment.body).includes('<!-- crawler-pr-lifecycle:v1 -->')),
+    'expected lifecycle state comment',
+  );
+  assert.ok(
+    comments.some((comment) =>
+      String(comment.body).includes('missing executable diff and test diff'),
+    ),
+    'expected actionable missing evidence in quarantine comments',
+  );
+  const stateComment = comments.find((comment) =>
+    String(comment.body).includes('<!-- crawler-ci-state:v1 -->'),
+  );
+  assert.equal(
+    parseStateComment(stateComment?.body)?.trigger,
+    'closing-issue-acceptance-quarantined',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        String(call.body?.body || '').includes('crawler-ci-task'),
+    ),
+    false,
+    'acceptance mismatch must not post a Copilot repair task',
+  );
+});
+
+function closingIssueGraphql(nodes) {
+  return (_url, body) => {
+    const query = String(body?.query || '');
+    if (query.includes('closingIssuesReferences')) {
+      return {
+        body: {
+          data: {
+            repository: {
+              pullRequest: {
+                closingIssuesReferences: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes,
+                },
+              },
+            },
+          },
+        },
+      };
+    }
+    return { body: gqlNoThreads() };
+  };
+}
+
+const ACCEPTANCE_ISSUE_NODE = {
+  id: 'ISSUE_3915',
+  number: 3915,
+  title: 'Full CI Recovery acceptance-scope feature',
+  body: '## Acceptance criteria\n- Compare closing-issue acceptance scope before admission.\n- Add deterministic regression tests.',
+  state: 'OPEN',
+  labels: { nodes: [{ name: 'enhancement' }] },
+  repository: { nameWithOwner: `${OWNER}/${REPO}` },
+};
+
+test('failed pull-files hydration defers the acceptance-scope check instead of quarantining', async (t) => {
+  const comments = [];
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Implement CI Recovery acceptance-scope feature',
+        body: 'Fixes nalfeo/Crawler#3915',
+        changed_files: 2,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      status: 500,
+      body: { message: 'Server Error' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-quarantined' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7100 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: closingIssueGraphql([ACCEPTANCE_ISSUE_NODE]),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closing-issue-acceptance-deferred pr=#42/);
+  assert.equal(
+    /quarantined closing-issue-acceptance/.test(stdout),
+    false,
+    'a transient pull-files failure must not be read as missing acceptance evidence',
+  );
+});
+
+test('resolved closing-issue acceptance mismatch clears a stale quarantine without a new push', async (t) => {
+  const lifecycleComment = {
+    id: 7200,
+    author_association: 'OWNER',
+    user: { login: 'nalfeo' },
+    body: renderLifecycleComment({
+      prNumber: PR_NUM,
+      phase: PHASE.QUARANTINED,
+      blockReason: 'closing-issue-acceptance-mismatch:#3915 missing executable diff and test diff',
+      headSha: HEAD_SHA,
+      updatedAt: '2026-09-03T00:00:00.000Z',
+    }),
+  };
+  const comments = [lifecycleComment];
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'Plan CI Recovery acceptance-scope feature',
+        // The owner downgraded the closing keyword instead of pushing a new head.
+        body: 'Refs nalfeo/Crawler#3915',
+        changed_files: 1,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/files`]: () => ({
+      body: [{ filename: 'docs/knowledge/handoffs/2026-09-03-ci-recovery-scope-plan.md' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: comments }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'ci-lifecycle-repairing' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: (_url, body) => {
+      const created = { id: 7300 + comments.length, body: body.body, user: { login: 'nalfeo' } };
+      comments.push(created);
+      return { body: created };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: closingIssueGraphql([]),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closing-issue-acceptance-quarantine-cleared pr=#42/);
+  assert.equal(
+    /quarantined closing-issue-acceptance/.test(stdout),
+    false,
+    'a resolved mismatch must not re-quarantine the PR',
   );
 });
 
@@ -16817,4 +17138,190 @@ test('expected head/base mutation fencing is wired as a fail-closed pre-mutation
     /if \(expectedHeadSha\) \{\s*const rejection = expectedMetadataRejection\(pr\);\s*if \(rejection\) await skipForExpectedMetadata\(rejection\);/s,
     'startup must fail closed when expected metadata no longer matches',
   );
+});
+
+test('review-threads lane migrated to Goobers stops every legacy thread write', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-lane',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    LIFECYCLE_OWNER_REVIEW_THREADS: 'goobers',
+  });
+
+  // Exit code is intentionally not asserted: with the lane migrated the thread
+  // legitimately stays an unresolved blocker, so reconcile continues down its
+  // dispatch path. What matters is that legacy made no review-thread write.
+  void code;
+  void stderr;
+
+  // Lane migrated: legacy must make NO review-thread write at all -- neither
+  // the ? Addressed reply nor the resolve -- or Phase 3 has two writers.
+  const laneReplyCall = mutatingCalls.find(
+    (call) => String(call.url || '').includes('/replies') && call.method === 'POST',
+  );
+  assert.equal(
+    laneReplyCall,
+    undefined,
+    'legacy must not post a review-thread reply on a migrated lane',
+  );
+
+  const laneResolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread'),
+  );
+  assert.equal(laneResolveCall, undefined, 'legacy must not resolve a thread on a migrated lane');
+
+  assert.doesNotMatch(stdout, /posted outdated-marker/);
+  assert.doesNotMatch(stdout, /resolved thread=thread-outdated-lane/);
+
+  // The migrated lane must get exactly one dispatch opportunity per run, no
+  // matter how many of the five legacy call sites are reached.
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    1,
+    'goobers-review-threads.yml must be dispatched exactly once when the lane is migrated',
+  );
+  assert.equal(reviewThreadsDispatchCalls[0].body?.inputs?.pr_number, String(PR_NUM));
+});
+
+test('review-threads lane left on legacy never dispatches goobers-review-threads', async (t) => {
+  const reviewCommentId = '9876543211';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99998, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-legacy',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live-legacy',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { stdout } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  const reviewThreadsDispatchCalls = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' &&
+      String(call.url || '').includes('/actions/workflows/goobers-review-threads.yml/dispatches'),
+  );
+  assert.equal(
+    reviewThreadsDispatchCalls.length,
+    0,
+    'goobers-review-threads.yml must never be dispatched while the lane stays legacy',
+  );
+  assert.doesNotMatch(stdout, /would-dispatch goobers-review-threads/);
 });

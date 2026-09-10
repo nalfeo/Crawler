@@ -146,12 +146,14 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Visual review (equip.)      | `npm run review:visual:equipment`                                                                                                           |
 | Producer agent              | `npm run producer`                                                                                                                          |
 | Epic status                 | `npm run epic:status`                                                                                                                       |
+| Floor epic lint             | `npm run epics:lint-floor` (pass `-- <path-to-epic.json>`)                                                                                  |
 | Perf find baseline          | `npm run perf:find-baseline`                                                                                                                |
 | Merge train protection      | `npm run train:protection`                                                                                                                  |
 | Train protection status     | `npm run train:protection:status`                                                                                                           |
 | Train protection enable     | `npm run train:protection:enable`                                                                                                           |
 | Train protection rollback   | `npm run train:protection:rollback`                                                                                                         |
 | Conflict overlap scan       | `npm run velocity:conflict-scan`                                                                                                            |
+| Legacy decommission gate    | `npm run check:legacy-decommission`                                                                                                         |
 
 `npm run velocity:conflict-scan` reports a **same-day file co-touch proxy** — how often
 two squash-merged commits touched the same file on the same day on mainline history.

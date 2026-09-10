@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 150 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 43 date-prefixed
+- **Count:** 151 ADR files — 107 numbered (0001–0072, with number reuse and gaps in this index — see below) + 44 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -176,6 +176,7 @@ hundreds of inbound references.
 - [Generic VFX effects pipeline](0025-vfx-effects-pipeline.md)
 - [Reward-opening audio as a reusable, deterministic cue layer](0071-reward-opening-audio-cues.md) — the first `AudioCueEngine`-based procedural synth cue layer.
 - [Combat/loot audio cues as a second reuse of the reward-opening cue pattern](2026-08-23-combat-loot-audio-cues.md) — weapon/spell/ability/damage/pickup SFX sourced from the existing `combatEvents`/`abilityActivations`/`vfxEvents` queues, no new core plumbing.
+- [Generated-sprite animation registration self-heals a texture-not-ready race](2026-09-02-generated-sprite-animation-self-healing.md) — skips (instead of poisoning) an animation key when the texture isn't loaded yet, retrying per-frame until it is; fixes a fast-scene-restart render-loop freeze that made the visual AI-runner lab unobservable.
 
 ### Process, CI & telemetry
 
@@ -294,6 +295,7 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0064 | [In-Process Floor Transition Carryover](0064-in-process-floor-transition-carryover.md)                                                             | Accepted                 | 2026-07-17 |
 | 0064 | [Data-Driven Boss Ability Catalog and Separate Delivery Evidence](0064-data-driven-boss-ability-catalog.md)                                        | Accepted                 | 2026-07-17 |
 | 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |
+| 0106 | [Floor 4 Green Room interaction and economy accounting](0106-floor4-green-room-interaction-and-economy.md)                                         | Accepted                 | 2026-09-09 |
 | 0066 | [Unique Equipment Schema, Acquisition, and Duplicate Policy](0066-unique-equipment-schema-and-acquisition.md)                                      | Accepted                 | 2026-07-19 |
 | 0068 | [Generator-Only Floor 2 Equipment Catalog Boundary](0068-generator-only-floor2-equipment-catalog-boundary.md)                                      | Accepted                 | 2026-07-22 |
 | 0071 | [Floor 3 — Companion League (commander / auto-battler floor)](0071-floor3-companion-league.md)                                                     | Proposed                 | 2026-07-24 |

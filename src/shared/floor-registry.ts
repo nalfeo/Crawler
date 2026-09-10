@@ -10,6 +10,7 @@ import {
   floor3Manifest,
   floor4Manifest,
   floor5Manifest,
+  floor6Manifest,
   type FloorManifestDef,
 } from './floor-manifest.js';
 
@@ -22,6 +23,7 @@ const FLOOR_REGISTRY = new Map<string, FloorManifestDef>([
   ['floor3', floor3Manifest],
   ['floor4', floor4Manifest],
   ['floor5', floor5Manifest],
+  ['floor6', floor6Manifest],
 ]);
 
 /**

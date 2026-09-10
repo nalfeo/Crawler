@@ -161,6 +161,21 @@ describe('RunSurveyUI', () => {
     ui.destroy();
   });
 
+  it('stops background keyboard handlers from firing while the modal is active', () => {
+    const onDocumentKeydown = vi.fn();
+    document.addEventListener('keydown', onDocumentKeydown);
+    const ui = createRunSurveyUI({ onSubmit: () => true });
+    ui.show();
+
+    document.body
+      .querySelector('input[data-field="enjoyment"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(onDocumentKeydown).not.toHaveBeenCalled();
+    ui.destroy();
+    document.removeEventListener('keydown', onDocumentKeydown);
+  });
+
   it('removes the dialog from the DOM on destroy', () => {
     const ui = createRunSurveyUI({ onSubmit: () => true });
     ui.show();

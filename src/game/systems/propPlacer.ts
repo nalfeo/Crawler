@@ -8,6 +8,13 @@
  * Only defs that match the provided `biomeTag` AND appear in `allowedCategories`
  * are considered. Density is expressed as count-per-1000-sq-ft and scaled by a
  * per-floor multiplier from the floor manifest.
+ *
+ * `allowedCategories` can only ever NARROW the biome's def set — it cannot pull
+ * in a def from another biome. When a floor needs a specific subset of one
+ * biome (e.g. Floor 3's bright overworld wants the vegetation from `organic`
+ * but none of that biome's bone/pustule body-horror props, which share the same
+ * `organic` category), it declares `allowedPropIds`: an explicit, exhaustive
+ * allowlist of decoration IDs applied after the biome/category filters.
  */
 
 import { TerrainType, RoomRole } from '../../shared/map-types.js';
@@ -23,7 +30,13 @@ import type { SeededRandom } from '../../shared/random.js';
 export interface PropPlacerConfig {
   biomeTag: BiomeTag;
   densityMultiplier?: number;
-  allowedCategories?: PropCategory[];
+  allowedCategories?: readonly PropCategory[];
+  /**
+   * Explicit decoration-ID allowlist. When present, ONLY these defs are placed
+   * (after the biome/category filters still apply). Use it when a floor needs a
+   * curated subset of a biome that category filtering cannot express.
+   */
+  allowedPropIds?: readonly string[];
 }
 
 /**
@@ -168,7 +181,7 @@ export function placePropsForFloor(
   config: PropPlacerConfig,
   rng: SeededRandom,
 ): number[] {
-  const { biomeTag, densityMultiplier = 1.0, allowedCategories } = config;
+  const { biomeTag, densityMultiplier = 1.0, allowedCategories, allowedPropIds } = config;
   const tileSizeFt = floorMap.config.tileSizeFt;
   const tileAreaSqFt = tileSizeFt * tileSizeFt;
 
@@ -180,6 +193,9 @@ export function placePropsForFloor(
   for (const decorationDef of DECORATION_DEFS.values()) {
     if (decorationDef.biomeTag !== biomeTag) continue;
     if (allowedCategories !== undefined && !allowedCategories.includes(decorationDef.category)) {
+      continue;
+    }
+    if (allowedPropIds !== undefined && !allowedPropIds.includes(decorationDef.id)) {
       continue;
     }
 

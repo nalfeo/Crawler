@@ -1,0 +1,424 @@
+name: Goobers Lifecycle Owner
+run-name: Goobers implementation claim ${{ inputs.operation || 'handoff' }} for issue #${{ inputs.issue_number || 'auto' }}
+
+# Phase 2 boundary: Goobers owns the PRE-PR implementation claim only --
+# approved-issue intake through PR publication. It deliberately does NOT hold a
+# PR-lifecycle lease. At publication the claim is handed off (released) and
+# legacy automation owns CI recovery, review threads, rebasing, and the merge
+# train with no gap and no dual writer.
+on:
+  # Publication is the handoff point, not a lease-acquisition point.
+  pull_request_target:
+    types: [opened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Implementation claim operation
+        required: true
+        default: acquire
+        type: choice
+        options:
+          - acquire
+          - heartbeat
+          - handoff
+          - release
+      issue_number:
+        description: Approved issue being implemented
+        required: true
+        type: string
+      pr_url:
+        description: Published PR URL (required for handoff)
+        required: false
+        default: ''
+        type: string
+      lease_id:
+        description: Existing lease identifier for heartbeat, handoff, or release
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  # Scoped to the claim subject (the issue), NOT to a PR, so this workflow can
+  # never serialize behind or stall PR-lifecycle automation.
+  group: crawler-implementation-claim-${{ inputs.issue_number || github.event.pull_request.number || 'invalid' }}
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GOOBERS_VERSION: v0.3.3
+      GOOBERS_SHA256: 47b09d6bff1578726b52716ca7b8fba0f416171723090663c0b25ae924d36a82
+      LIFECYCLE_LEASE_TTL_SECONDS: ${{ vars.LIFECYCLE_LEASE_TTL_SECONDS || '300' }}
+    steps:
+      - name: Checkout trusted ownership implementation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Capture immutable ownership input
+        id: ownership-input
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_OPERATION: ${{ inputs.operation || 'handoff' }}
+          REQUESTED_ISSUE: ${{ inputs.issue_number }}
+          REQUESTED_PR_URL: ${{ inputs.pr_url }}
+          REQUESTED_LEASE: ${{ inputs.lease_id }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
+          LEGACY_CI_MUTATION_BRIDGE_ENABLED: ${{ vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false' }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const ownership = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/lifecycle-ownership.mjs',
+            )));
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const operation = process.env.REQUESTED_OPERATION;
+            let issueNumber = Number(process.env.REQUESTED_ISSUE);
+            let prUrl = process.env.REQUESTED_PR_URL || '';
+            // workflow_dispatch requires repository write access, so that path
+            // is trusted; a pull_request_target run must prove the head is not
+            // a fork before it may touch a claim.
+            let headRepository = repository;
+
+            async function claimMarkers(issue) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue,
+                per_page: 100,
+              });
+              return ownership
+                .selectLifecycleLeaseComments(comments)
+                .map(comment => ({ id: comment.id, body: comment.body }));
+            }
+
+            // On a publication event the claim subject is the approved issue the
+            // PR closes. Resolving it from GitHub's own closing references (not
+            // free-text parsing) keeps the handoff deterministic.
+            if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+              const prNumber = Number(process.env.EVENT_PR_NUMBER);
+              if (!Number.isInteger(prNumber) || prNumber < 1) {
+                throw new Error('No issue_number input and no pull request in context.');
+              }
+              const linked = await github.graphql(
+                `query($owner:String!,$repo:String!,$pr:Int!){
+                  repository(owner:$owner,name:$repo){
+                    pullRequest(number:$pr){
+                      url
+                      headRepository { nameWithOwner }
+                      closingIssuesReferences(first:100){
+                        nodes { number repository { nameWithOwner } }
+                        pageInfo { hasNextPage }
+                      }
+                    }
+                  }
+                }`,
+                { owner: context.repo.owner, repo: context.repo.repo, pr: prNumber },
+              );
+              const pull = linked.repository.pullRequest;
+              prUrl = prUrl || pull.url;
+              headRepository = pull.headRepository?.nameWithOwner || '';
+
+              // A PR may close several issues; hand off the one that actually
+              // holds a claim rather than assuming the first reference. Only
+              // issues in THIS repository count -- a cross-repository reference
+              // can otherwise alias a same-numbered local issue.
+              const candidates = pull.closingIssuesReferences.nodes
+                .filter(node =>
+                  String(node.repository?.nameWithOwner || '').toLowerCase() ===
+                  repository.toLowerCase(),
+                )
+                .map(node => node.number);
+              const claimed = [];
+              for (const candidate of candidates) {
+                if ((await claimMarkers(candidate)).length > 0) claimed.push(candidate);
+              }
+              function skip(reason) {
+                // The artifact upload runs with `if-no-files-found: error`, so an
+                // expected no-op must still produce a decision record.
+                fs.mkdirSync('.goobers-lifecycle', { recursive: true });
+                const decision = { status: 'observe-only', reason, writeAction: 'none', observable: true };
+                fs.writeFileSync(
+                  '.goobers-lifecycle/decision.json',
+                  `${JSON.stringify({ decision }, null, 2)}\n`,
+                );
+                core.info(`LIFECYCLE_OWNERSHIP_DECISION ${JSON.stringify(decision)}`);
+                core.setOutput('skip', 'true');
+              }
+              // Check truncation BEFORE classifying candidates: a claim that only
+              // appears past the first page would otherwise be misreported as
+              // "no claim" instead of the honest fail-closed reason.
+              if (pull.closingIssuesReferences.pageInfo?.hasNextPage) {
+                core.warning('PR has more closing references than one page; refusing to hand off.');
+                skip('unbounded-closing-references');
+                return;
+              }
+              if (claimed.length > 1) {
+                // Ambiguous: refuse to guess which claim this publication ends.
+                core.warning(`PR closes multiple claimed issues (${claimed.join(', ')}); refusing to hand off.`);
+                skip('ambiguous-claimed-issues');
+                return;
+              }
+              if (claimed.length === 0) {
+                // Nothing was claimed, so there is nothing to hand off. Legacy
+                // PR-lifecycle automation is already live either way.
+                skip('no-claimed-issue');
+                return;
+              }
+              issueNumber = claimed[0];
+            }
+
+            const markerComments = await claimMarkers(issueNumber);
+            const currentLease = markerComments.length === 1
+              ? ownership.parseLifecycleLease(markerComments[0].body)
+              : null;
+            const leaseId = process.env.REQUESTED_LEASE ||
+              (operation === 'release' || operation === 'handoff' ? currentLease?.leaseId : '') ||
+              `goobers:${context.runId}:${process.env.GITHUB_RUN_ATTEMPT || '1'}`;
+            const input = {
+              owner: process.env.LIFECYCLE_MUTATION_OWNER,
+              legacyBridgeEnabled: process.env.LEGACY_CI_MUTATION_BRIDGE_ENABLED,
+              repository,
+              headRepository,
+              issueNumber,
+              prUrl,
+              leaseId,
+              operation,
+              now: '',
+              ttlSeconds: process.env.LIFECYCLE_LEASE_TTL_SECONDS,
+              markerComments,
+            };
+            fs.mkdirSync('.goobers-lifecycle', { recursive: true });
+            fs.writeFileSync(
+              '.goobers-lifecycle/input.json',
+              `${JSON.stringify(input, null, 2)}\n`,
+            );
+            core.setOutput('skip', 'false');
+            core.setOutput('issue-number', String(issueNumber));
+
+      - name: Download pinned Goobers release
+        if: steps.ownership-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/goobers-lifecycle-bin"
+          curl -fsSL -o "$RUNNER_TEMP/goobers-lifecycle.tar.gz" \
+            "https://github.com/Agent-Clubhouse/Goobers/releases/download/${GOOBERS_VERSION}/goobers_${GOOBERS_VERSION}_linux_amd64.tar.gz"
+          echo "${GOOBERS_SHA256}  $RUNNER_TEMP/goobers-lifecycle.tar.gz" | sha256sum --check --strict -
+          tar -xzf "$RUNNER_TEMP/goobers-lifecycle.tar.gz" -C "$RUNNER_TEMP/goobers-lifecycle-bin" goobers
+          chmod +x "$RUNNER_TEMP/goobers-lifecycle-bin/goobers"
+          echo "$RUNNER_TEMP/goobers-lifecycle-bin" >> "$GITHUB_PATH"
+
+      - name: Materialize ownership-only Goobers instance
+        if: steps.ownership-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          GOOBERS_SOURCE="$RUNNER_TEMP/goobers-lifecycle-source"
+          export GOOBERS_INSTANCE
+          mkdir -p "$GOOBERS_INSTANCE/config" "$GOOBERS_SOURCE/gaggles/crawler/workflows"
+          cp .goobers/manifest.yaml "$GOOBERS_SOURCE/manifest.yaml"
+          cp .goobers/gaggles/crawler/gaggle.yaml "$GOOBERS_SOURCE/gaggles/crawler/gaggle.yaml"
+          cp .goobers/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml \
+            "$GOOBERS_SOURCE/gaggles/crawler/workflows/crawler-lifecycle-owner.yaml"
+          cat > "$GOOBERS_SOURCE/instance.yaml.example" <<EOF
+          apiVersion: goobers.dev/v1alpha1
+          kind: Instance
+          repos:
+            - provider: github
+              owner: ${GITHUB_REPOSITORY_OWNER}
+              name: ${GITHUB_REPOSITORY#*/}
+              token:
+                env: GOOBERS_GITHUB_TOKEN
+          runner:
+            envPassthrough:
+              - GOOBERS_LIFECYCLE_INPUT_FILE
+          runConditions:
+            maxParallelRuns: 1
+          EOF
+          cp "$GOOBERS_SOURCE/instance.yaml.example" "$GOOBERS_INSTANCE/instance.yaml"
+          cat >> "$GOOBERS_INSTANCE/instance.yaml" <<EOF
+          workflowSource:
+            kind: local-dir
+            path: ${GOOBERS_SOURCE}
+          EOF
+          goobers config materialize "$GOOBERS_INSTANCE"
+          goobers validate "$GOOBERS_INSTANCE"
+
+      - name: Refresh lease clock from GitHub server
+        if: steps.ownership-input.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const response = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const serverDate = response.headers.date;
+            if (!serverDate || !Number.isFinite(Date.parse(serverDate))) {
+              throw new Error('GitHub API response did not include a valid Date header.');
+            }
+            const inputPath = '.goobers-lifecycle/input.json';
+            const input = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
+            input.now = new Date(serverDate).toISOString();
+            fs.writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
+
+      - name: Run authoritative Goobers ownership decision
+        if: steps.ownership-input.outputs.skip != 'true'
+        env:
+          GOOBERS_GITHUB_TOKEN: ${{ github.token }}
+          GOOBERS_LIFECYCLE_INPUT_FILE: ${{ github.workspace }}/.goobers-lifecycle/input.json
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          export GOOBERS_INSTANCE
+          goobers run crawler-lifecycle-owner "$GOOBERS_INSTANCE"
+
+      - name: Extract ownership decision
+        if: steps.ownership-input.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          GOOBERS_INSTANCE="$RUNNER_TEMP/goobers-lifecycle-instance"
+          export GOOBERS_INSTANCE
+          events_file="$(find "$GOOBERS_INSTANCE/gaggles" -path '*/runs/*/events.jsonl' -type f | sort | tail -n 1)"
+          jq -r 'select(.type == "stage.finished" and .stage == "decide-ownership") | .outputs.decision' \
+            "$events_file" | tail -n 1 | jq '{ decision: . }' > .goobers-lifecycle/decision.json
+          if [ ! -s .goobers-lifecycle/decision.json ]; then
+            echo "::error::No stage.finished/decide-ownership event found in ${events_file}."
+            exit 1
+          fi
+          if ! jq -e '.decision | type == "object" and (.status | type == "string")' \
+            .goobers-lifecycle/decision.json >/dev/null; then
+            echo "::error::The decide-ownership event did not contain a valid decision object."
+            exit 1
+          fi
+
+      - name: Apply fenced ownership lease
+        uses: actions/github-script@v7
+        if: steps.ownership-input.outputs.skip != 'true'
+        env:
+          ISSUE_NUMBER: ${{ steps.ownership-input.outputs.issue-number }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const ownership = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              '.github/scripts/lifecycle-ownership.mjs',
+            )));
+            const { decision } = JSON.parse(fs.readFileSync(
+              '.goobers-lifecycle/decision.json',
+              'utf8',
+            ));
+            core.info(`LIFECYCLE_OWNERSHIP_DECISION ${JSON.stringify(decision)}`);
+            if (decision.writeAction === 'none') return;
+
+            async function variable(name) {
+              try {
+                return (await github.rest.actions.getRepoVariable({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                })).data.value;
+              } catch (error) {
+                if (error.status === 404) return '';
+                throw error;
+              }
+            }
+            const [selectedOwner, bridgeEnabled] = await Promise.all([
+              variable('LIFECYCLE_MUTATION_OWNER'),
+              variable('LEGACY_CI_MUTATION_BRIDGE_ENABLED'),
+            ]);
+            // Mirrors the `vars.LEGACY_CI_MUTATION_BRIDGE_ENABLED || 'false'`
+            // default used when the decision input was captured, so both trust
+            // checks read an unset variable identically (bridge disabled).
+            if (!ownership.lifecycleWriterEnabled({
+              owner: selectedOwner,
+              legacyBridgeEnabled: bridgeEnabled || 'false',
+            }, 'goobers')) {
+              core.warning('Ownership changed before lease write; skipping mutation.');
+              return;
+            }
+
+            // The claim subject is the issue, so the apply-time fence is the
+            // issue identity plus the marker identity checked below. There is no
+            // PR head fence because this lease never covers a PR lifecycle.
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            if (!Number.isInteger(issueNumber) || issueNumber < 1) {
+              core.warning('Missing issue scope before lease write; skipping mutation.');
+              return;
+            }
+            const repository = `${context.repo.owner}/${context.repo.repo}`.toLowerCase();
+            if (String(decision.lockKey || '') !== `${repository}#issue-${issueNumber}`) {
+              core.warning('Decision scope does not match the requested issue; skipping mutation.');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const markers = ownership.selectLifecycleLeaseComments(comments);
+            if (decision.writeAction === 'create') {
+              if (markers.length !== 0) {
+                core.warning('Lease marker changed after decision; acquisition is contended.');
+                return;
+              }
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: ownership.renderLifecycleLease(decision.lease),
+              });
+              return;
+            }
+            const current = markers.find(comment => comment.id === decision.expectedCommentId);
+            const currentLease = ownership.parseLifecycleLease(current?.body);
+            if (
+              markers.length !== 1 ||
+              !currentLease ||
+              currentLease.leaseId !== decision.expectedLeaseId
+            ) {
+              core.warning('Lease marker changed after decision; refusing stale mutation.');
+              return;
+            }
+            if (decision.writeAction === 'delete') {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: current.id,
+              });
+            } else {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: current.id,
+                body: ownership.renderLifecycleLease(decision.lease),
+              });
+            }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goobers-lifecycle-${{ github.run_id }}
+          path: .goobers-lifecycle/
+          if-no-files-found: error
+          include-hidden-files: true

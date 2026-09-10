@@ -2,13 +2,15 @@ import type { GameWorld } from '../core/world.js';
 import type { CoreSimulationSystem } from '../core/simulation-core-step.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
-import { FLOOR2_STAIR_MARKER_RADIUS_FT } from '../shared/constants.js';
+import { FLOOR2_STAIR_MARKER_RADIUS_FT, STAIR_FOOTPRINT_RADIUS_FT } from '../shared/constants.js';
 import type { NpcQuestIndicatorState, ShopkeeperStage } from '../shared/quest-types.js';
 import type {
   ScenarioCompletionCopy,
   ScenarioCompletionVariant,
+  ScenarioConstructionContract,
   ScenarioDirectorContract,
   ScenarioDirectorMilestone,
+  ScenarioHudSnapshot,
   ScenarioPresentationContract,
   ScenarioRunOutcome,
   ScenarioStairConfirmationCopy,
@@ -58,20 +60,40 @@ import {
 import {
   FLOOR4_STALL_BACKSTOP_GOAL_ID,
   arenaDirectorSystem,
-  confirmFloor4StairDescend,
+  confirmFloor4GreenRoomInteraction,
+  getFloor4GreenRoomExitMarker,
   initializeFloor4Scenario,
   isFloor4ArenaVictory,
 } from './floor4Scenario.js';
 import {
-  confirmFloor5StairDescend,
+  getFloor5CaptureMarkerState,
   getFloor5RunOutcome,
   initializeFloor5Scenario,
+  requestFloor5ThroneCapture,
   siegeDirectorSystem,
+  siegeFinaleSystem,
   siegeHeroSystem,
   siegeMinionSystem,
+  siegeRamSystem,
 } from './floor5Scenario.js';
+import {
+  confirmFloor6StairDescend,
+  floor6CombatContributionSystem,
+  getFloor6HudPresentation,
+  getFloor6RunOutcome,
+  buildFloor6Tower,
+  _getFloor6TowerRoster,
+  initializeFloor6Scenario,
+  isFloor6ExitDescendable,
+  floor6RaiderSystem,
+  floor6TowerSystem,
+  floor6DefenseDirectorSystem,
+} from './floor6Scenario.js';
 import { emergentEventSystem } from './systems/emergentEventSystem.js';
 import { companionAISystem } from './systems/companionAISystem.js';
+import { companionCombatSystem } from './systems/companionCombatSystem.js';
+import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
+import { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
@@ -80,6 +102,23 @@ import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
 export interface ScenarioInitializationOptions {
   readonly playerCarryover?: PlayerCarryoverSnapshot;
+  /**
+   * Enable the default-off periodic rat attack-wave system. Applied to
+   * `world.attackWaveFlags.attackWaves` (via `configureAttackWaves`) before
+   * `configureWorld` runs, independent of which floor is active — a floor
+   * whose manifest doesn't declare the `trashAttackWaves` behavior flag (see
+   * `floor-behavior.ts`) stays inert regardless of this setting. Default
+   * `false`.
+   */
+  readonly attackWaves?: boolean;
+  /**
+   * Enable Floor 1's static spawners (two `rats-nest` + two `slime-pool`
+   * spawner archetypes, placed by `spawnFloor1StaticSpawners`). Only consulted
+   * by Floor 1's `initializeFloor1Scenario`; every other floor ignores this
+   * field. Default `false` — Floor 1 stays spawner-free per ADR 0049 unless
+   * explicitly enabled here.
+   */
+  readonly floor1Spawners?: boolean;
 }
 
 function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
@@ -90,10 +129,26 @@ function getFloor5CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCo
       body: 'The Command Post could not hold the siege line.\nThe Director has written off the acquisition.',
     };
   }
+
   return {
     title: 'Floor 5 Complete!',
     subtitle: 'Hostile Takeover complete!',
     body: 'The throne is captured and the Winner’s Balcony is ready for the press conference.',
+  };
+}
+
+function getFloor6CompletionCopy(variant: ScenarioCompletionVariant): ScenarioCompletionCopy {
+  if (variant === 'failed_timeout') {
+    return {
+      title: 'Relay Lost',
+      subtitle: 'Floor 6 went off-air',
+      body: 'The Broadcast Relay did not survive the renovation.',
+    };
+  }
+  return {
+    title: 'Floor 6 Complete!',
+    subtitle: 'Broadcast Relay secured',
+    body: 'The set survived its Deadline and the exit is clear.',
   };
 }
 
@@ -191,6 +246,7 @@ export interface ScenarioDefinition {
   readonly beforeWeaponSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly beforeEnemyAISystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly afterSpawnerSystems?: ReadonlyArray<CoreSimulationSystem>;
+  readonly afterCoreSystems?: ReadonlyArray<CoreSimulationSystem>;
   readonly configureWorld: (
     world: GameWorld,
     playerEid: number,
@@ -246,12 +302,17 @@ export interface ScenarioDefinition {
   readonly getStairMarkerState?: (world: GameWorld) => ScenarioStairMarkerState | null;
   /** Presentation copy for the stair-descend confirmation prompt. Optional for the same reason as `getStairMarkerState`. */
   readonly stairConfirmation?: ScenarioStairConfirmationCopy;
+  /** Local alias of `ScenarioPresentationContract.getStairConfirmation` — per-world prompt copy for multi-continuation exits. */
+  readonly getStairConfirmation?: ScenarioPresentationContract<GameWorld>['getStairConfirmation'];
   /**
    * Presentation copy for the generic starter-loadout picker. Omitted by
    * scenarios that present their own loadout surface (Floor 3) or offer no
    * starter choice at all.
    */
   readonly starterLoadout?: ScenarioStarterLoadoutCopy;
+  /** Local alias of `ScenarioPresentationContract.getHudSnapshot` (see `src/shared/scenario-presentation.ts`) for this floor's typed `ScenarioDefinition`. */
+  readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
+  readonly construction?: ScenarioConstructionContract<GameWorld>;
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
@@ -273,7 +334,10 @@ export function getScenarioPresentationContract(
     getCompletionCopy: scenario.getCompletionCopy,
     getStairMarkerState: scenario.getStairMarkerState,
     stairConfirmation: scenario.stairConfirmation,
+    getStairConfirmation: scenario.getStairConfirmation,
     starterLoadout: scenario.starterLoadout,
+    getHudSnapshot: scenario.getHudSnapshot,
+    construction: scenario.construction,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -312,7 +376,10 @@ function getFloor1StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
   }
   return {
     positionFt: objective.staircasePos,
-    radiusFt: objective.markerRadiusFt,
+    // Stair-specific footprint radius, NOT the floor's generic
+    // `objective.markerRadiusFt` (which also drives safe-room discovery): the
+    // stairs render as — and are interactable across — a 2x2-tile square.
+    radiusFt: STAIR_FOOTPRINT_RADIUS_FT,
     visible: objective.staircaseSpawned && !objective.staircaseDiscovered,
     // `locked` must mean exactly "descent is barred", because the presentation
     // layer withholds the descend prompt while it is set and
@@ -359,6 +426,69 @@ function getFloor3StairMarkerState(world: GameWorld): ScenarioStairMarkerState |
     locked:
       studiosState.staircaseUnlocked !== true || !floor3KeptCompanionDescendGateSatisfied(world),
     label: '▼ EXIT',
+  };
+}
+
+/**
+ * Floor 4's exit marker is the public Green Room affordance, shown during EVERY
+ * intermission: acts 1-4 confirm the next act, the terminal intermission
+ * confirms the broadcast exit. Projected straight off
+ * `getFloor4GreenRoomExitMarker`, the same source the confirmation and the AI
+ * auto-driver use, so prompt and action can never disagree.
+ */
+function getFloor4StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
+  const marker = getFloor4GreenRoomExitMarker(world);
+  if (!marker) {
+    return null;
+  }
+  return {
+    positionFt: marker.positionFt,
+    radiusFt: marker.radiusFt,
+    visible: true,
+    // Never locked while the marker exists: the confirmation accepts anywhere
+    // inside `radiusFt`, which is exactly the proximity test the scene applies
+    // before offering the prompt.
+    locked: false,
+    label: marker.nextAct === null ? '▼ FLOOR EXIT' : '▶ NEXT ACT',
+  };
+}
+
+/** Floor 4's prompt narrates the continuation the Green Room exit actually performs. */
+function getFloor4StairConfirmation(world: GameWorld): ScenarioStairConfirmationCopy | null {
+  const marker = getFloor4GreenRoomExitMarker(world);
+  if (!marker) {
+    return null;
+  }
+  if (marker.nextAct === null) {
+    return FLOOR_4_STAIR_CONFIRMATION;
+  }
+  return {
+    kind: 'floor4-green-room-exit',
+    title: `Start act ${marker.nextAct}?`,
+    subtitle: 'You are at the Green Room exit.',
+    body: 'The Green Room is settled. Step back out to open the next act of the broadcast.',
+    confirmLabel: 'Yes, start the next act',
+    confirmDescription: `Begin act ${marker.nextAct}.`,
+  };
+}
+
+/** Floor 6's exit marker, projected from the authoritative defense exit state. */
+function getFloor6StairMarkerState(world: GameWorld): ScenarioStairMarkerState | null {
+  const defense = world.floorExtendedState?.floor6Defense;
+  if (!defense || !world.floorMap) {
+    return null;
+  }
+  const exit = defense.geometry.victoryExit;
+  const tileSizeFt = world.floorMap.config.tileSizeFt;
+  return {
+    positionFt: {
+      x: (exit.bounds.x + exit.bounds.width / 2) * tileSizeFt,
+      y: (exit.bounds.y + exit.bounds.height / 2) * tileSizeFt,
+    },
+    radiusFt: FLOOR2_STAIR_MARKER_RADIUS_FT,
+    visible: defense.exit.opened === true && defense.phase.kind === 'VICTORY',
+    locked: !isFloor6ExitDescendable(world),
+    label: '▼ RELAY EXIT',
   };
 }
 
@@ -453,11 +583,41 @@ const FLOOR_2_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
 };
 
 const FLOOR_3_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  kind: 'floor3-stair-descend',
   title: 'Victory! Ready to exit?',
   subtitle: 'You are at the extraction point.',
   body: 'The Final Four are defeated. Are you ready to exit the Companion League?',
   confirmLabel: 'Yes, exit now',
   confirmDescription: 'You win!',
+};
+
+const FLOOR_4_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  kind: 'floor4-stair-descend',
+  title: 'Claim the Main Event victory?',
+  subtitle: 'You are at the Green Room exit.',
+  body: 'The fifth Headliner is defeated. Confirm the terminal broadcast exit to end Floor 4.',
+  confirmLabel: 'Yes, end the broadcast',
+  confirmDescription: 'Complete Floor 4.',
+};
+
+/**
+ * Floor 5's exit prompt is the throne capture. The copy is deliberately explicit
+ * that this is a SEPARATE act from defeating Regent Emeritus (spec `FR7.4`).
+ */
+const FLOOR_5_CAPTURE_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  title: 'Claim the throne?',
+  subtitle: 'Regent Emeritus has been deposed.',
+  body: "Capturing the throne ends the siege and opens the Winner's Balcony.",
+  confirmLabel: 'Yes, capture the castle',
+  confirmDescription: 'Complete Floor 5.',
+};
+
+const FLOOR_6_STAIR_CONFIRMATION: ScenarioStairConfirmationCopy = {
+  title: 'Exit the renovated set?',
+  subtitle: 'The Broadcast Relay is secured.',
+  body: 'The Deadline is defeated, the payout has cleared, and the Relay exit is open.',
+  confirmLabel: 'Yes, exit now',
+  confirmDescription: 'Complete Floor 6.',
 };
 
 function buildDirectorIntroVariants(
@@ -553,6 +713,141 @@ const FLOOR_5_INTRO_VARIANTS = buildDirectorIntroVariants(
   ],
 );
 
+const FLOOR_6_INTRO_VARIANTS = buildDirectorIntroVariants(
+  [
+    'Floor 6 opens on the Hold for Renovation set: protect the Broadcast Relay through crew waves, service breaks, and the Deadline.',
+    'Floor 6 goes live around the Broadcast Relay; fixed routes feed renovation crews toward the set while maintenance plinths support towers.',
+    'Floor 6 starts inside a compact renovation set with two readable approach routes and a Broadcast Relay that must stay on-air.',
+    'Floor 6 is on-air around the Broadcast Relay with construction choices, requisition drops, and a Deadline inspection waiting after the defense acts.',
+    'Floor 6 begins at the player ingress beside the Broadcast Relay defense set; the exit opens only after the Deadline is defeated.',
+  ],
+  [
+    'First objective: identify the Broadcast Relay, route entrances, vacant maintenance plinths, and safe break enclosure.',
+    'First objective: defend the opening crew wave, collect requisitions, then place a tower on a vacant plinth.',
+    'First objective: keep the Broadcast Relay safe while reading incoming route arrows, site labels, and non-color danger cues.',
+    'First objective: clear the first act so the service break proves safe before the Deadline segment.',
+  ],
+);
+
+const FLOOR_6_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = [
+  {
+    id: 'floor6-defense-briefed',
+    copy: 'Relay briefing complete. The routes are marked; the plinths are fixed; the contractors are not.',
+    isReached: (world: GameWorld) => world.goalFlags.get('floor6.defense.briefed') === true,
+  },
+  {
+    id: 'floor6-first-wave-cleared',
+    copy: 'Opening crew cleared. Requisitions are for towers, not souvenirs.',
+    isReached: (world: GameWorld) =>
+      world.goalFlags.get('floor6.defense.firstWaveCleared') === true,
+  },
+  {
+    id: 'floor6-first-build-placed',
+    copy: 'Maintenance plinth occupied. The set now has exactly one more safety feature than planned.',
+    isReached: (world: GameWorld) =>
+      world.goalFlags.get('floor6.defense.firstBuildPlaced') === true,
+  },
+  {
+    id: 'floor6-first-upgrade-chosen',
+    copy: 'Upgrade logged. It resets after the run, which Legal insists makes it character building.',
+    isReached: (world: GameWorld) =>
+      world.goalFlags.get('floor6.defense.firstUpgradeChosen') === true,
+  },
+  {
+    id: 'floor6-break-cleared',
+    copy: 'Service break confirmed hostile-free. Please enjoy this brief illusion of compliance.',
+    isReached: (world: GameWorld) => world.goalFlags.get('floor6.defense.breakCleared') === true,
+  },
+  {
+    id: 'floor6-deadline-started',
+    copy: 'The Deadline is on set. This is the inspection segment, not a metaphor.',
+    isReached: (world: GameWorld) =>
+      world.floorExtendedState?.floor6Defense?.phase.kind === 'FINALE',
+  },
+  {
+    id: 'floor6-deadline-defeated',
+    copy: 'Deadline defeated. The Relay survives, which makes this renovation technically educational.',
+    isReached: (world: GameWorld) =>
+      world.goalFlags.get('floor6.defense.deadlineDefeated') === true,
+  },
+];
+
+function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
+  // Pure per-frame HUD projection: NOT `getFloor6DefenseRunStats`, which
+  // clones the entire telemetry object (phaseTrace, upgradeOffers,
+  // selectionTrace, ...) every call — wasted allocation for a HUD hook that
+  // only needs the presentation lines/cues, and it must never write goal
+  // flags as a side effect of merely being rendered.
+  const presentation = getFloor6HudPresentation(world);
+  if (!presentation) {
+    return null;
+  }
+
+  const state = world.floorExtendedState?.floor6Defense;
+  const id = state
+    ? `floor6-${state.phase.kind}-${state.nextReleaseIndex}-${state.relayHp}-${state.economy.selectedOfferIds.join('-')}`
+    : 'floor6';
+  return {
+    id,
+    lines: [
+      presentation.objectiveLabel,
+      `${presentation.phaseLabel} · ${presentation.relayDangerLabel}`,
+      `Routes: ${presentation.routes.map((route) => route.directionLabel).join(' | ')}`,
+      `Sites: ${presentation.buildSites.map((site) => site.label).join(' | ')}`,
+      `Towers: ${
+        presentation.towers.length > 0
+          ? presentation.towers
+              .map(
+                (tower) =>
+                  `${tower.towerId} at ${tower.siteId}: ${tower.rangeFt}ft, ${tower.tierLabel}`,
+              )
+              .join(' | ')
+          : 'no towers built'
+      }`,
+      `${presentation.buildCurrencyLabel} · ${presentation.lootLabel}`,
+      `${presentation.upgradeChoiceLabel} · ${presentation.breakSafetyLabel}`,
+      presentation.deadlineLabel,
+    ],
+    cues: presentation.cues,
+  };
+}
+
+function getFloor6ConstructionSnapshot(world: GameWorld) {
+  const presentation = getFloor6HudPresentation(world);
+  const state = world.floorExtendedState?.floor6Defense;
+  if (!presentation || !state) return null;
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  return {
+    phaseLabel: presentation.phaseLabel,
+    currencyLabel: presentation.buildCurrencyLabel,
+    sites: state.geometry.buildSites.map((site) => ({
+      siteId: site.id,
+      label:
+        presentation.buildSites.find((candidate) => candidate.siteId === site.id)?.label ??
+        `VACANT ${site.id}`,
+      occupied: state.towerInstances.some((tower) => tower.siteId === site.id),
+      boundsFt: {
+        x: site.bounds.x * tileSizeFt,
+        y: site.bounds.y * tileSizeFt,
+        width: site.bounds.width * tileSizeFt,
+        height: site.bounds.height * tileSizeFt,
+      },
+    })),
+    towers: _getFloor6TowerRoster().map((tower) => ({
+      towerId: tower.id,
+      label: tower.id,
+      cost: tower.cost,
+      affordable: state.economy.balance >= tower.cost,
+    })),
+  };
+}
+
+const FLOOR6_CONSTRUCTION: ScenarioConstructionContract<GameWorld> = {
+  getSnapshot: getFloor6ConstructionSnapshot,
+  requestBuild: (world: GameWorld, siteId: string, towerId: string) =>
+    buildFloor6Tower(world, siteId, towerId),
+};
+
 /**
  * Ordered Floor 1 Director milestones, exact copy match for
  * `FLOOR_1_COMMENTARY` in `src/engine/scenes/MainGameScene.ts` (minus
@@ -567,7 +862,13 @@ const FLOOR_1_MILESTONES: ReadonlyArray<ScenarioDirectorMilestone<GameWorld>> = 
   },
   {
     id: 'floor1-quest-completed',
-    copy: 'Quota complete. Boss room is live for the next segment.',
+    copy: 'The first leg is complete. Return to the Broker for your next quests.',
+    blockingModal: {
+      kind: 'floor1-quest-completed',
+      title: 'First leg complete',
+      body: 'Return to the Broker for your next quests.',
+      confirmLabel: 'Continue',
+    },
     isReached: (world: GameWorld) => world.floorScenario?.objective.questCompleted === true,
   },
   {
@@ -636,6 +937,18 @@ const FLOOR_5_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
     world.floorExtendedState?.floor5Siege?.phase.kind === 'CAPTURED',
   isTimeoutReached: (world: GameWorld) =>
     world.floorExtendedState?.floor5Siege?.phase.kind === 'DEFEAT',
+};
+
+const FLOOR_6_DIRECTOR: ScenarioDirectorContract<GameWorld> = {
+  intro: FLOOR_6_INTRO_VARIANTS[0]!,
+  introVariants: FLOOR_6_INTRO_VARIANTS,
+  victory: 'Floor 6 secured. The Broadcast Relay survived the Deadline.',
+  timeout: 'The Broadcast Relay went dark. The Director cuts the renovation feed.',
+  milestones: FLOOR_6_MILESTONES,
+  isVictoryReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'VICTORY',
+  isTimeoutReached: (world: GameWorld) =>
+    world.floorExtendedState?.floor6Defense?.phase.kind === 'DEFEAT',
 };
 
 const FLOOR_1_NPCS: ScenarioNpcCallbacks = {
@@ -724,7 +1037,12 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       selectKeptCompanion: selectFloor3KeptCompanion,
       autoSelectKeptCompanion: autoDefaultFloor3KeptCompanion,
       onStairDescend: confirmFloor3StairDescend,
-      beforeEnemyAISystems: [companionAISystem],
+      beforeWeaponSystems: [floor3NonCombatantSystem],
+      beforeEnemyAISystems: [
+        companionAISystem,
+        floor3WildTargetRedirectSystem,
+        companionCombatSystem,
+      ],
       afterSpawnerSystems: [floor3WildDirectorSystem],
       director: FLOOR_3_DIRECTOR,
       getRunOutcome: getFloor3RunOutcome,
@@ -741,13 +1059,16 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       configureWorld: initializeFloor4Scenario,
       // No `nextFloorId`: Floor 4 is currently the last authored floor, and its
       // stairs are barred until the slice-5 intermission exists anyway.
-      onStairDescend: confirmFloor4StairDescend,
+      onStairDescend: confirmFloor4GreenRoomInteraction,
       beforeEnemyAISystems: [companionAISystem],
       afterSpawnerSystems: [arenaDirectorSystem],
       director: FLOOR_4_DIRECTOR,
       getRunOutcome: getFloor4RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor4CompletionCopy,
+      getStairMarkerState: getFloor4StairMarkerState,
+      stairConfirmation: FLOOR_4_STAIR_CONFIRMATION,
+      getStairConfirmation: getFloor4StairConfirmation,
     },
   ],
   [
@@ -755,13 +1076,46 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
     {
       floorId: 'floor5',
       configureWorld: initializeFloor5Scenario,
-      onStairDescend: confirmFloor5StairDescend,
-      beforeEnemyAISystems: [companionAISystem, siegeMinionSystem, siegeHeroSystem],
+      onStairDescend: (world: GameWorld) => requestFloor5ThroneCapture(world) === 'accepted',
+      beforeEnemyAISystems: [
+        companionAISystem,
+        siegeMinionSystem,
+        siegeHeroSystem,
+        // Ratings Ram spawn/movement/protection runs AFTER the minion and Hero
+        // systems so its protection evaluation reads this frame's committed
+        // lane state, and BEFORE `enemyAISystem`/movement so the velocity it
+        // sets is consumed the same tick.
+        siegeRamSystem,
+        // Courtyard/throne stance runs last in the Floor 5 block: it reads the
+        // breach latch the ram system can still set this frame.
+        siegeFinaleSystem,
+      ],
       afterSpawnerSystems: [siegeDirectorSystem],
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
+      getStairMarkerState: getFloor5CaptureMarkerState,
+      stairConfirmation: FLOOR_5_CAPTURE_CONFIRMATION,
+    },
+  ],
+  [
+    'floor6',
+    {
+      floorId: 'floor6',
+      configureWorld: initializeFloor6Scenario,
+      onStairDescend: confirmFloor6StairDescend,
+      beforeEnemyAISystems: [floor6RaiderSystem],
+      afterSpawnerSystems: [floor6TowerSystem, floor6DefenseDirectorSystem],
+      afterCoreSystems: [floor6CombatContributionSystem],
+      director: FLOOR_6_DIRECTOR,
+      getRunOutcome: getFloor6RunOutcome,
+      isTerminalRunVictory: true,
+      getCompletionCopy: getFloor6CompletionCopy,
+      getStairMarkerState: getFloor6StairMarkerState,
+      stairConfirmation: FLOOR_6_STAIR_CONFIRMATION,
+      getHudSnapshot: getFloor6HudSnapshot,
+      construction: FLOOR6_CONSTRUCTION,
     },
   ],
 ]);

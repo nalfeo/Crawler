@@ -21,14 +21,18 @@
  * This module does NO filesystem IO. The caller (`generate-one.ts`) pre-filters
  * candidates to those whose PNG exists on disk, then passes the survivors here.
  */
-import type { ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  generatedManifestConceptId,
+  isPlaceholderManifestEntry,
+  type ManifestEntry,
+} from '../../src/shared/generated-assets.js';
+import { normalizeGeneratedSpriteConceptId } from '../../src/shared/sprite-concepts.js';
 import { hashStringToSeed, SeededRandom } from '../../src/shared/random.js';
 import { isSpriteType, type SpriteType } from '../../src/shared/sprite-types.js';
 import { isSafeGeneratedAssetPath } from './generated-asset-path.js';
-import { isPlaceholderManifestEntry, normalizeConcept } from './placeholder-audit.js';
 
 /** Bump when the selection algorithm changes in a way that alters output. */
-export const SELECTOR_VERSION = 'v1' as const;
+export const SELECTOR_VERSION = 'v2' as const;
 
 /** Default number of reference sprites to send (matches the judge's cap). */
 export const REFERENCE_COUNT = 3 as const;
@@ -45,7 +49,7 @@ const WEIGHT_FLOOR = 0.05 as const;
 export interface SelectReferencesInput {
   /** Manifest entries to choose from (typically every manifest entry). */
   readonly candidates: readonly ManifestEntry[];
-  /** The brief being generated — used for exact-briefId self-exclusion. */
+  /** The brief being generated — used for exact brief-lineage self-exclusion. */
   readonly briefName: string;
   /** The brief's declared type — same-type candidates are favoured. */
   readonly briefType: SpriteType;
@@ -55,6 +59,14 @@ export interface SelectReferencesInput {
   readonly seed: number;
   /** Asset-level negative annotations that make a sprite ineligible as a reference. */
   readonly dislikedSpriteNames?: ReadonlySet<string>;
+  /**
+   * Normalized concepts excluded wholesale because a dislike naming them could
+   * not be pinned to one exact accepted key (a stale or ambiguous annotation
+   * key). Read-only hygiene: excluding a concept from the reference pool is
+   * free, so this fails SAFE where deletion authority deliberately fails
+   * CLOSED — see `resolveDislikedReferenceExclusions` in `disliked-lifecycle.ts`.
+   */
+  readonly dislikedConceptIds?: ReadonlySet<string>;
 }
 
 export interface ReferenceSelection {
@@ -105,17 +117,43 @@ interface EligibleEntry {
 
 /**
  * Apply the hard eligibility floor + compute a sampling weight. Returns `null`
- * for entries that must never be sent (placeholders, self, off-`generated/`,
- * untyped, or below the quality floor).
+ * for entries that must never be sent (placeholders, self — by selectable
+ * concept AND by brief lineage — off-`generated/`, untyped, or below the
+ * quality floor).
  */
 function toEligible(
   entry: ManifestEntry,
   briefName: string,
   dislikedSpriteNames: ReadonlySet<string>,
+  dislikedConceptIds: ReadonlySet<string>,
 ): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
+  if (entry.disliked === true) return null;
   if (dislikedSpriteNames.has(entry.spriteName)) return null;
-  if (entry.briefId === briefName) return null; // exact self — a v2 may still ref v1
+  const conceptId = generatedManifestConceptId(entry);
+  if (dislikedConceptIds.has(conceptId)) return null;
+  const briefConcept = normalizeGeneratedSpriteConceptId(briefName);
+  if (conceptId === briefConcept) {
+    return null;
+  }
+  // Self-exclusion needs BOTH keys, not just the selectable concept.
+  //
+  // `generatedManifestConceptId` resolves an icon-batch row to the CELL's own
+  // concept (`fireball`), because that is what the runtime selects. But an icon
+  // batch is generated as ONE run from ONE brief, so a regeneration of that
+  // batch would otherwise be handed its OWN previous cells as style references
+  // — the model copying last week's output, which is exactly the inbreeding the
+  // self-exclusion exists to stop. The brief-lineage key catches that; it is a
+  // strict no-op for every non-icon row, whose `briefId` already normalizes to
+  // the same value as its concept.
+  //
+  // This is deliberately NOT `generatedManifestConceptId` (see the classified
+  // exception in `tests/unit/sprites/manifest-concept-grouping.test.ts`): it is
+  // an exclusion PREDICATE about generation lineage, not a grouping key. The
+  // grouping key one line above is, and must stay, the shared helper.
+  if (normalizeGeneratedSpriteConceptId(entry.briefId || entry.spriteName) === briefConcept) {
+    return null;
+  }
   // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`
   // path. `startsWith('generated/')` alone would let `generated/../kenney/...`
   // through and resolve outside the generated tree.
@@ -139,7 +177,12 @@ function toEligible(
   const quality = 0.65 * sensorRatio + 0.35 * judgeQuality;
   return {
     entry,
-    concept: normalizeConcept(entry.briefId),
+    // The SAME normalized concept id used for the dislike/self exclusions above.
+    // A second normalization here would let a design remap (`angry-roomba-v2` ↔
+    // `angry-roomba-mk2`) collapse under one key and be excluded under another,
+    // so a 3-ref set could ship two variants of one concept while a disliked
+    // concept slipped back into the pool.
+    concept: conceptId,
     type: entry.type,
     weight: WEIGHT_FLOOR + quality,
   };
@@ -219,10 +262,11 @@ function weightedSampleWithoutReplacement(
 export function selectReferences(input: SelectReferencesInput): ReferenceSelection {
   const { candidates, briefName, briefType, count, seed } = input;
   const dislikedSpriteNames = input.dislikedSpriteNames ?? new Set<string>();
+  const dislikedConceptIds = input.dislikedConceptIds ?? new Set<string>();
 
   const eligible: EligibleEntry[] = [];
   for (const candidate of candidates) {
-    const result = toEligible(candidate, briefName, dislikedSpriteNames);
+    const result = toEligible(candidate, briefName, dislikedSpriteNames, dislikedConceptIds);
     if (result !== null) eligible.push(result);
   }
   const collapsed = collapseByConcept(eligible);

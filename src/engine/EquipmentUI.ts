@@ -139,8 +139,8 @@ const EQUIPMENT_UI_SLOT_LABELS: Readonly<Record<(typeof EQUIPMENT_UI_SLOT_IDS)[n
 };
 
 const LEGACY_RING_SLOT_IDS: Readonly<Record<string, EquipmentSlotId>> = {
-  ring1: 'ringLeft',
-  ring2: 'ringRight',
+  ringLeft: 'ring1',
+  ringRight: 'ring2',
 };
 
 const EQUIPMENT_UI_SLOT_POSITIONS: Readonly<
@@ -912,7 +912,7 @@ export function createEquipmentUI(
       fontSize: '12px',
       color: '#9ca3af',
     });
-    fallback.setOrigin(0.5, 0.5);
+    centerTextOnPixels(fallback, x, y);
     return fallback;
   }
 
@@ -1172,22 +1172,16 @@ export function createEquipmentUI(
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
 
-  /**
-   * Conservative advance width for 12px pixel-font stats-column text.
-   *
-   * Press Start 2P advances at roughly 1em; this lower estimate leaves room for
-   * the value column while retaining the full common stat names.
-   * fitted text leaves a small safety margin. The e2e gate measures real glyph
-   * boxes, so this remains intentionally conservative.
-   */
-  const STATS_FONT_PX = 12;
   function measureStatsText(text: string): number {
-    return text.length * STATS_FONT_PX;
+    // Arial's average glyph advance is materially narrower than its font size.
+    // Budgeting every character at 12px needlessly truncates ordinary labels
+    // such as "Cooldown Reduction" despite visibly available row space.
+    return Math.ceil(text.length * 7.5);
   }
 
   /** Truncate `text` (with an ellipsis) so it fits `maxWidth` design px. */
   function fitStatsText(text: string, maxWidth: number): string {
-    const budget = Math.max(3, Math.floor(maxWidth / STATS_FONT_PX));
+    const budget = Math.max(3, Math.floor(maxWidth / 7.5));
     if (text.length <= budget) return text;
     return `${text.slice(0, Math.max(1, budget - 1))}…`;
   }
@@ -2529,7 +2523,7 @@ export function createEquipmentUI(
         selectedSlotFilter ? 'NO MATCHING GEAR' : 'NO EQUIPPABLE ITEMS',
         { fontFamily: FONT_FAMILY, fontSize: '12px', color: hex(COLORS.textSecondary) },
       );
-      empty.setOrigin(0.5, 0.5);
+      centerTextOnPixels(empty, bagX + bagW / 2, gridTop + 40);
       container.add(empty);
       bagObjects.push(empty);
       return;
@@ -2583,14 +2577,15 @@ export function createEquipmentUI(
           )
         : def
           ? createItemIcon(itemId, def, cx, cy, cell - 12)
-          : crispText(snap(cx), snap(cy), '?', {
-              fontFamily: FONT_FAMILY,
-              fontSize: '12px',
-              color: '#9ca3af',
-            });
-      if (!def && 'setOrigin' in icon) {
-        (icon as Phaser.GameObjects.Text).setOrigin(0.5, 0.5);
-      }
+          : centerTextOnPixels(
+              crispText(cx, cy, '?', {
+                fontFamily: FONT_FAMILY,
+                fontSize: '12px',
+                color: '#9ca3af',
+              }),
+              cx,
+              cy,
+            );
 
       box.on('pointerover', () => {
         box.setFillStyle(COLORS.slotHover);

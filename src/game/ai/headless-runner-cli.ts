@@ -182,10 +182,10 @@ async function main(): Promise<void> {
     console.log('');
     console.log('💰 Gold Economy');
     console.log(
-      `  Earned:       ${ge.earnedTotal} (drops ${ge.earnedFromDrops}, loot boxes ${ge.earnedFromLootBoxes})`,
+      `  Earned:       ${ge.earnedTotal} (drops ${ge.earnedFromDrops}, loot boxes ${ge.earnedFromLootBoxes}, appearance fees ${ge.earnedFromAppearanceFees})`,
     );
     console.log(
-      `  Spent:        ${ge.spentTotal} (charm ${ge.spentOnCharm}, weapon ${ge.spentOnMerchantWeapon}, spell ${ge.spentOnSpell})`,
+      `  Spent:        ${ge.spentTotal} (charm ${ge.spentOnCharm}, weapon ${ge.spentOnMerchantWeapon}, spell ${ge.spentOnSpell}, green room ${ge.spentOnGreenRoom})`,
     );
     console.log(
       `  Unspent:      ${ge.unspentAtExit} (${(ge.unspentFraction * 100).toFixed(1)}% of earned)`,
@@ -194,7 +194,7 @@ async function main(): Promise<void> {
       `  Spendable:    ${ge.spendableEarned} earned before exit — unspent ${ge.unspentSpendable} (${(ge.unspentSpendableFraction * 100).toFixed(1)}%)`,
     );
     console.log(
-      `  Purchases:    ${ge.distinctPurchases} vendors (charm ${ge.charmPurchases}, weapon ${ge.merchantWeaponPurchases}, spell ${ge.spellPurchases})`,
+      `  Purchases:    ${ge.distinctPurchases} vendors (charm ${ge.charmPurchases}, weapon ${ge.merchantWeaponPurchases}, spell ${ge.spellPurchases}, green room ${ge.greenRoomPurchases})`,
     );
   }
   if (stats.vendors) {

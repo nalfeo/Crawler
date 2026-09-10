@@ -50,8 +50,8 @@ threads with a second model, use
 - Complement, don't duplicate, the existing automation:
   - **`parallel_validation`** (harness Code Review + CodeQL Security Scan) — run
     on PR changes; read its output before adding human-judgment findings.
-  - **`security-review.yml`** — npm audit, secret scan, CODEOWNERS, dependency
-    allowlist, dynamic-execution patterns, AI prompt-injection scan.
+  - **`security-review.yml`** — per-PR npm audit, secret scan, CODEOWNERS,
+    dependency allowlist, dynamic-execution patterns, AI prompt-injection scan.
   - **`nightly-mutation.yml`** — mutation score guards test effectiveness.
   - **`ci-recovery.yml`** — consolidates below-goal coverage, failed checks,
     merge conflicts, and exact review threads into one deduplicated Copilot task.

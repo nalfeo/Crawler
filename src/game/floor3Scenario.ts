@@ -4,6 +4,7 @@ import {
   Companion,
   Enemy,
   Health,
+  Invincible,
   Player,
   PartySlot,
   Position,
@@ -27,6 +28,7 @@ import {
 import { addSetPieceProp, spawnNpc } from '../core/spawners/world-objects.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { _isEncounterTeamsWiped, _isPartyWiped } from '../core/systems/companionKOSystem.js';
+import { acceptQuest } from '../core/systems/questSystem.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   getFloorEnemyPack,
@@ -50,9 +52,13 @@ import {
   FLOOR3_FINAL_FOUR_SET_PIECE_ID,
   floor3SetPieceIdForStudio,
 } from '../shared/data/floor3/set-pieces.js';
-import { selectFloor3FinalFour, selectFloor3Studios } from '../shared/data/floor3/studios.js';
+import {
+  floor3StudioDefeatGoalId,
+  floor3StudioQuestId,
+  selectFloor3FinalFour,
+  selectFloor3Studios,
+} from '../shared/data/floor3/studios.js';
 import { getSetPieceDef, isStructuralSetPieceProp } from '../shared/set-piece-types.js';
-import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import {
   BiomeType,
@@ -76,7 +82,6 @@ import {
   pruneAmbientOutOfRange,
   resolveAmbientSpawnPoint,
   scaleAmbientSpawnStats,
-  initializePlayerWeaponSkills,
 } from './floorScenario.js';
 import {
   mixSpawnZoneWeights,
@@ -92,14 +97,17 @@ import {
   _recruitCompanion,
 } from './floor3Recruiting.js';
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
+import { FLOOR3_WILD_AGGRO_RANGE_FT } from './systems/floor3WildHostility.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
-import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
+import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { AI_TYPE } from './enemyAISystem.js';
+import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js';
 import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { createLogger } from '../shared/logger.js';
 import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../shared/npc-types.js';
+import tuning from '../shared/data/tuning.json';
 
 const logger = createLogger('game:floor3-scenario');
 
@@ -109,11 +117,32 @@ const FLOOR3_WILD_TEAM_ID = TeamId.ENEMY;
 /** World-unit offset (one map tile) so the starter Companion doesn't spawn stacked on the player. */
 const FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES = 1;
 const FLOOR3_COMPANION_PROFESSOR_OFFSET_TILES = 1;
+/**
+ * Floor-3-ONLY: initial level of the player's starter Companion (spec R5
+ * §6.1), tunable via `tuning.floor3Companion.starterLevel` instead of a
+ * hardcoded `1`. Raising this crosses into higher stat-scale forms
+ * (`FORM_MIN_LEVELS`), giving the lone starter a fighting chance while the
+ * party is still size-1 against multi-Companion Studio/wild encounters.
+ * See `floor3-companion-lab` for the explorable knob.
+ */
+const FLOOR3_STARTER_COMPANION_LEVEL = tuning.floor3Companion.starterLevel;
+/**
+ * Floor-3-ONLY HP multiplier applied only to the player's own recruited
+ * party Companions (`recruitFloor3PartyCompanion`, both the starter pick
+ * and every Trainer poach), on top of the species/form `statScale` every
+ * Companion already uses. Wild/Studio/Final-Four Companion HP is untouched.
+ */
+const FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER = tuning.floor3Companion.playerCompanionHpMultiplier;
+const FLOOR3_WILD_RANGED_ATTACK_RANGE_SHARE = 0.65;
 export const FLOOR3_TIMEOUT_GOAL_ID = 'floor3-timeout';
 export const FLOOR3_VICTORY_GOAL_ID = 'floor3-victory';
 export const FLOOR3_STAIRS_POPPED_GOAL_ID = 'floor3-stairs-popped';
 export const FLOOR3_STAIRS_DISCOVERED_GOAL_ID = 'floor3-stairs-discovered';
 export const FLOOR3_FINAL_FOUR_UNLOCK_GOAL_ID = 'floor3-final-four-unlock';
+// Re-exported for existing callers/tests — definition lives in the shared
+// data layer so `src/core/systems/questWaypoints.ts` can resolve it too
+// without violating the core → game layer boundary.
+export { floor3StudioDefeatGoalId };
 /** First Team id used by Studio trainers — two per Studio, none overlap `TeamId`'s 0..2. */
 const FLOOR3_STUDIO_TEAM_BASE = 10;
 /** First Team id used by Final Four handlers — one per handler. */
@@ -129,11 +158,6 @@ const FLOOR3_FINAL_FOUR_TEAM_BASE = 30;
  * reachable at floor start (threshold 0).
  */
 const FLOOR3_STUDIO_UNLOCK_LEVELS: readonly number[] = [0, 2, 4, 6, 8, 10];
-
-/** Per-Studio goal flag latched true once that Studio's rosters are wiped. */
-export function floor3StudioDefeatGoalId(studioId: string): string {
-  return `floor3-studio-${studioId}-defeated`;
-}
 
 /** Per-Studio goal flag latched true once that Studio's unlock threshold is met and its roster has spawned. */
 function floor3StudioUnlockGoalId(studioId: string): string {
@@ -296,6 +320,15 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     speed = scaled.speed;
   }
 
+  // Floor 3 wild hostility is player-anchored by design: the per-archetype
+  // detectRange values still document/reuse species behavior for roster
+  // Companions, but wild ambient mobs all use the floor-tuned aggro radius.
+  // Keep ranged/support standoff inside that same radius so a wild never tries
+  // to hold position beyond the range where it is allowed to be hostile.
+  const wildAttackRange =
+    archetype.aiType === 'ranged' || archetype.aiType === 'support'
+      ? FLOOR3_WILD_AGGRO_RANGE_FT * FLOOR3_WILD_RANGED_ATTACK_RANGE_SHARE
+      : 0;
   const eid = spawnBehaviorEnemy(
     world,
     x,
@@ -303,10 +336,8 @@ function spawnFloor3WildArchetype(world: GameWorld, x: number, y: number): numbe
     hp,
     resolveFloor3ArchetypeAiType(archetype),
     speed,
-    archetype.detectRange,
-    archetype.aiType === 'ranged' || archetype.aiType === 'support'
-      ? archetype.detectRange * 0.65
-      : 0,
+    FLOOR3_WILD_AGGRO_RANGE_FT,
+    wildAttackRange,
   );
   addComponent(world.ecs, eid, set(Team, { id: FLOOR3_WILD_TEAM_ID }));
   setComponent(world.ecs, eid, Sprite, {
@@ -790,6 +821,20 @@ function spawnFloor3StudioRoster(world: GameWorld, studio: Floor3EncounterState)
   studio.pendingSpawns = [];
 }
 
+/**
+ * Convert Floor 3's floor-local Studio progression thresholds into absolute
+ * player levels after direct-start or carryover progression has been restored.
+ */
+function rebaseFloor3StudioUnlockLevels(world: GameWorld): void {
+  const studios = world.floorExtendedState?.floor3Studios?.studios;
+  if (studios === undefined) return;
+
+  const startingLevel = Math.max(1, Math.floor(world.playerLevel.level));
+  for (const studio of studios) {
+    studio.unlockLevel = startingLevel + Math.max(0, studio.unlockLevel - 1);
+  }
+}
+
 /** Pops the exit staircase at the player's spawn point (spec R6 win path). */
 function popFloor3ExitStairs(world: GameWorld): void {
   const studiosState = world.floorExtendedState?.floor3Studios;
@@ -803,10 +848,7 @@ function popFloor3ExitStairs(world: GameWorld): void {
   setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, true);
 }
 
-/**
- * Explicit deterministic kept-companion path for non-interactive/headless
- * completion. Real play must call `selectFloor3KeptCompanion` instead.
- */
+/** Deterministically selects the first valid party Companion through the public scenario callback. */
 export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
   const studiosState = world.floorExtendedState?.floor3Studios;
   if (
@@ -821,8 +863,7 @@ export function autoDefaultFloor3KeptCompanion(world: GameWorld): boolean {
     .sort((a, b) => (world.stores.partySlot.slot[a] ?? 0) - (world.stores.partySlot.slot[b] ?? 0));
   const firstEid = party[0];
   if (firstEid === undefined) return false;
-  studiosState.keptCompanionEid = firstEid;
-  return true;
+  return selectFloor3KeptCompanion(world, firstEid);
 }
 
 function latchFloor3Victory(world: GameWorld): void {
@@ -1151,6 +1192,7 @@ export function floor3ObjectiveTick(world: GameWorld): void {
         if (world.playerLevel.level < studio.unlockLevel) continue;
         studio.unlocked = true;
         setGoalFlag(world, floor3StudioUnlockGoalId(studio.id), true);
+        acceptQuest(world, floor3StudioQuestId(studio.id));
         spawnFloor3StudioRoster(world, studio);
       }
       if (!_isEncounterTeamsWiped(world, studio.teamIds)) continue;
@@ -1203,6 +1245,8 @@ export function initializeFloor3Scenario(
     readonly floorMapOverride?: FloorMap;
   },
 ): void {
+  const isDefaultDirectStart =
+    options?.playerCarryover === undefined && world.playerLevel.level <= 1;
   const manifest = getFloorManifest('floor3');
   if (!manifest) {
     throw new Error('Missing floor3 manifest');
@@ -1250,6 +1294,7 @@ export function initializeFloor3Scenario(
   world.floorExtendedState = {
     floor3BiomeAffinities: AFFINITY_RING.slice(),
     ambientEnemyArchetypes: new Map<number, string>(),
+    floor3HostileWildEnemyEids: new Set<number>(),
     floor3Studios: initializeFloor3Studios(world, floorMap),
     floor3StarterOffer: starterOffer,
   };
@@ -1296,38 +1341,26 @@ export function initializeFloor3Scenario(
       value: manifest.player.pickupRangeBonus,
     });
   }
-  if (!options?.playerCarryover && hasComponent(world.ecs, playerEid, Health)) {
-    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
-  }
   if (options?.playerCarryover) {
     restorePlayerCarryover(world, playerEid, options.playerCarryover);
-    initializePlayerWeaponSkills(world, playerEid);
   } else {
-    const starterWeaponPool = manifest.starterWeapons;
-    if (starterWeaponPool.length > 0) {
-      const weaponRng = new SeededRandomClass(
-        hashStringToSeed(`${world.seed}:floor3-starter-weapon`),
-      );
-      const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
-      if (picked) {
-        const weaponDef = getWeaponDef(picked);
-        if (weaponDef) {
-          equipStarterOrFallback(world, weaponDef.id, weaponDef);
-          initializePlayerWeaponSkills(world, playerEid);
-        } else {
-          const fallbackId = starterWeaponPool[0];
-          if (fallbackId) {
-            const fallbackDef = getWeaponDef(fallbackId);
-            if (fallbackDef) {
-              equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
-              initializePlayerWeaponSkills(world, playerEid);
-            }
-          }
-        }
-      }
+    applyFloorSkipBaseline(world, playerEid, manifest);
+    // Seed weapon skills through the normal baseline path, then enforce the
+    // Wrangler's non-combatant contract before the headless AI's first poll.
+    floor3NonCombatantSystem(world);
+    // Apply the manifest HP bonus after the baseline: applyFloorSkipBaseline
+    // calls initializeBaseStats for a fresh direct-start player, which
+    // reseeds Health.current/max from derived max HP and would otherwise
+    // silently discard this bonus (see review thread on PR #4392).
+    if (hasComponent(world.ecs, playerEid, Health)) {
+      const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+      setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
     }
   }
+  if (isDefaultDirectStart) {
+    rebaseFloor3StudioUnlockLevels(world);
+  }
+  addComponent(world.ecs, playerEid, Invincible);
   if (manifest.props !== undefined) {
     const propsRng = new SeededRandomClass(hashStringToSeed(`${world.seed}:floor3-props`));
     placePropsForFloor(world, world.floorMap!, manifest.props, propsRng);
@@ -1386,7 +1419,7 @@ function selectFloor3StarterCompanion(world: GameWorld, optionIndex: number): vo
     }
   }
   if (species !== undefined) {
-    recruitFloor3PartyCompanion(world, species, 1);
+    recruitFloor3PartyCompanion(world, species, FLOOR3_STARTER_COMPANION_LEVEL);
   }
 
   if (world.floorExtendedState) {
@@ -1416,7 +1449,15 @@ function recruitFloor3PartyCompanion(
 
   const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
   const form = formForLevel(species, level);
-  const hp = archetype ? Math.max(1, Math.round(archetype.hp * form.statScale)) : 1;
+  // Floor-3-ONLY companion buff (human-authorized, session 2026-09-03):
+  // the player's own recruited party Companions get an HP multiplier on top
+  // of the shared species/form statScale, compensating for the party's
+  // numbers disadvantage against multi-Companion Studio/Final-Four rosters.
+  // Wild and rival roster Companions (spawnRosterCompanion) never pass
+  // through this function, so they are unaffected.
+  const hp = archetype
+    ? Math.max(1, Math.round(archetype.hp * form.statScale * FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER))
+    : 1;
   const attackRange =
     archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
       ? archetype.detectRange * 0.65

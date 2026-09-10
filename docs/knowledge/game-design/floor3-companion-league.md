@@ -70,8 +70,9 @@ framing are drawn from any existing property.
 Floor 3 replaces the swing-a-weapon verb with a **positioning + command** verb.
 
 1. **Your Companions auto-battle.** They follow you, engage nearby hostiles, and never target
-   you or other Wranglers. (This is the Floor 2 friendly-family ally AI generalized to a
-   team-tagged roster — see ADR 0071 D2.)
+   you or other Wranglers. Wild creatures count as hostile only while the player is close enough
+   to aggro them (§7); neutral wilds are ignored. (This is the Floor 2 friendly-family ally AI
+   generalized to a team-tagged roster — see ADR 0071 D2.)
 2. **You position.** Where you stand pulls your team's engagement; you kite fights toward or
    away from clusters, funnel enemies, and vacuum the **XP gems / gold / loot** that defeated
    creatures drop (your persistent progression — §9).
@@ -92,15 +93,15 @@ Final Four opens.
 
 Seven original affinities, each anchored to a biome (§8):
 
-| Affinity  | Flavor                            | Home biome           |
-| --------- | --------------------------------- | -------------------- |
-| **Ember** | heat, ash, forge-fire             | Cinder Barrens       |
-| **Bloom** | overgrowth, spores, fast-root     | Verdant Snarl        |
-| **Stone** | rock, grit, tremor                | The Quarryworks      |
-| **Gale**  | wind, squall, static              | Skirling Heights     |
-| **Tide**  | water, brine, flood               | Sump Shallows        |
-| **Gloom** | shadow, rot, murk                 | The Murkwood         |
-| **Lumen** | light, glare, radiance            | Glare Flats          |
+| Affinity  | Flavor                        | Home biome       |
+| --------- | ----------------------------- | ---------------- |
+| **Ember** | heat, ash, forge-fire         | Cinder Barrens   |
+| **Bloom** | overgrowth, spores, fast-root | Verdant Snarl    |
+| **Stone** | rock, grit, tremor            | The Quarryworks  |
+| **Gale**  | wind, squall, static          | Skirling Heights |
+| **Tide**  | water, brine, flood           | Sump Shallows    |
+| **Gloom** | shadow, rot, murk             | The Murkwood     |
+| **Lumen** | light, glare, radiance        | Glare Flats      |
 
 ### 4.1 Effectiveness matrix (complete, every pair defined)
 
@@ -149,15 +150,15 @@ Every species also has one **fighting style** drawn from a fixed set of **seven*
 (`{ CHASE, SWARM, RANGED, LEAPER }` in `src/game/enemyAISystem.ts`). Style is a **species-line
 trait**: constant across a creature's three forms; only the numbers scale.
 
-| Style        | Role                | Behavior (persona)                                                | HP  | DMG      | SPD  | Range      | Seeds `AI_TYPE`          |
-| ------------ | ------------------- | ----------------------------------------------------------------- | --- | -------- | ---- | ---------- | ------------------------ |
-| **Charger**  | fast melee harasser | rush nearest hostile, light fast hits, reposition                 | Low-Med | Med  | High | Melee      | `CHASE` (fast params)    |
-| **Bruiser**  | heavy melee anchor  | slow advance, heavy slow hits, holds the line                     | High | High    | Low  | Melee      | `CHASE` (slow/heavy)     |
-| **Slinger**  | ranged skirmisher   | keep distance, fire single-target shots, kite when approached     | Low | Med      | Med  | Long       | `RANGED`                 |
-| **Burster**  | AoE crowd-clear     | lob area attacks at clusters, slow cadence, avoid melee           | Low-Med | High (AoE) | Low | Medium | `RANGED` (AoE payload)   |
-| **Pouncer**  | ambush assassin     | hold, leap in for a burst on a priority target, retreat           | Med | High (burst) | High (burst) | Gap-close | `LEAPER`      |
-| **Warden**   | guardian / tank     | position between allies and hostiles, draw aggro (taunt), low dmg | Very High | Low | Low | Melee    | **new `GUARDIAN`**       |
-| **Kindler**  | support             | stay back, heal / buff allies, minimal direct attack              | Med | Very Low | Med  | Medium     | **new `SUPPORT`**        |
+| Style       | Role                | Behavior (persona)                                                | HP        | DMG          | SPD          | Range     | Seeds `AI_TYPE`        |
+| ----------- | ------------------- | ----------------------------------------------------------------- | --------- | ------------ | ------------ | --------- | ---------------------- |
+| **Charger** | fast melee harasser | rush nearest hostile, light fast hits, reposition                 | Low-Med   | Med          | High         | Melee     | `CHASE` (fast params)  |
+| **Bruiser** | heavy melee anchor  | slow advance, heavy slow hits, holds the line                     | High      | High         | Low          | Melee     | `CHASE` (slow/heavy)   |
+| **Slinger** | ranged skirmisher   | keep distance, fire single-target shots, kite when approached     | Low       | Med          | Med          | Long      | `RANGED`               |
+| **Burster** | AoE crowd-clear     | lob area attacks at clusters, slow cadence, avoid melee           | Low-Med   | High (AoE)   | Low          | Medium    | `RANGED` (AoE payload) |
+| **Pouncer** | ambush assassin     | hold, leap in for a burst on a priority target, retreat           | Med       | High (burst) | High (burst) | Gap-close | `LEAPER`               |
+| **Warden**  | guardian / tank     | position between allies and hostiles, draw aggro (taunt), low dmg | Very High | Low          | Low          | Melee     | **new `GUARDIAN`**     |
+| **Kindler** | support             | stay back, heal / buff allies, minimal direct attack              | Med       | Very Low     | Med          | Medium    | **new `SUPPORT`**      |
 
 Only two genuinely new personas (**Guardian** taunt/protect, **Support** heal/buff) are added
 to `AI_TYPE`; Charger/Bruiser are parameterizations of `CHASE`, Slinger/Burster of `RANGED`,
@@ -213,6 +214,16 @@ team that must answer all seven Temperaments across the Studios and Final Four.
   roster is fully reused across party / Trainer / Studio / wild (ADR 0071 D3).
 - They provide the **combat treadmill**: swarm content that levels your Companions and drops
   the player's XP gems / gold / loot. **Not recruitable** (§6.2).
+- They are **not globally hostile**. A wild creature becomes hostile only when the player is
+  within the tunable Floor 3 wild-aggro range, initially **30 ft** (3/4 of the normal horizontal
+  screen radius: 80 ft visible width → 40 ft radius → 30 ft). Once hostile, it stays engaged
+  through a hysteresis band and reverts to non-hostile only after the player gets more than
+  **2× aggro range** away.
+- A wild creature that disengages heals to full health. This makes off-screen / abandoned wild
+  fights reset cleanly instead of leaving half-dead neutral mobs for Companions to chase later.
+- Player Companions engage **hostile** wild creatures only. They still fight Trainer, Studio,
+  and Final Four Companions as opposing rosters, but they do not start or continue fights with
+  wild mobs that have reverted to neutral.
 - Biome affinity telegraphs the type game: entering the Murkwood, you know Gloom is thick —
   bring an Ember or Gale answer.
 
@@ -223,15 +234,15 @@ team that must answer all seven Temperaments across the Studios and Final Four.
 One large explorable map (reusing the Floor 2 cave-system / open generator and sealed-den
 tech) partitioned into **7 biome regions**, one per affinity:
 
-| Biome              | Affinity | Character                                       |
-| ------------------ | -------- | ----------------------------------------------- |
-| **Cinder Barrens** | Ember    | cracked volcanic flats, ash drifts, forge ruins |
-| **Verdant Snarl**  | Bloom    | overgrown ruins, choking vines, spore clouds    |
-| **The Quarryworks**| Stone    | broken quarry, rockfalls, tremor lanes          |
-| **Skirling Heights**| Gale    | windswept cliffs, updrafts, static storms       |
-| **Sump Shallows**  | Tide     | flooded wetlands, tidal channels, brine pools   |
-| **The Murkwood**   | Gloom    | fungal shadow-forest, low light, rot            |
-| **Glare Flats**    | Lumen    | blinding salt/crystal flats, mirror glare       |
+| Biome                | Affinity | Character                                       |
+| -------------------- | -------- | ----------------------------------------------- |
+| **Cinder Barrens**   | Ember    | cracked volcanic flats, ash drifts, forge ruins |
+| **Verdant Snarl**    | Bloom    | overgrown ruins, choking vines, spore clouds    |
+| **The Quarryworks**  | Stone    | broken quarry, rockfalls, tremor lanes          |
+| **Skirling Heights** | Gale     | windswept cliffs, updrafts, static storms       |
+| **Sump Shallows**    | Tide     | flooded wetlands, tidal channels, brine pools   |
+| **The Murkwood**     | Gloom    | fungal shadow-forest, low light, rot            |
+| **Glare Flats**      | Lumen    | blinding salt/crystal flats, mirror glare       |
 
 - **Roaming Trainers** are scattered across biomes for poaching.
 - **6 Studio dens** are sealed (door-lock tech + `world.goalFlags`), each with an **affinity
@@ -383,22 +394,22 @@ Floor 3 does not fork it.
 Each surface is an implementation slice and — per the lab-gate rule — **needs its own lab**.
 Reuse anchors noted.
 
-| #   | Surface                          | Shows / states                                                        | Reuses                                        |
-| --- | -------------------------------- | --------------------------------------------------------------------- | --------------------------------------------- |
-| 1   | Floor 3 welcome + rules intro    | show format, "you don't fight," recruit/lock rules, win con           | `src/engine/scenes/IntroScene.ts`             |
+| #   | Surface                          | Shows / states                                                        | Reuses                                           |
+| --- | -------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | Floor 3 welcome + rules intro    | show format, "you don't fight," recruit/lock rules, win con           | `src/engine/scenes/IntroScene.ts`                |
 | 2   | Starter selection                | 4 random starters; affinity/style/abilities; pick 1                   | `src/engine/RewardOpeningUI.ts` (3-choice modal) |
-| 3   | Poach-a-Companion picker         | defeated Trainer's 2–3 creatures; remaining slots; 5th-pick lock warn | `RewardOpeningUI.ts`                           |
-| 4   | Party HUD (6 Companions)         | per-pet HP/KO, level, affinity + style icons, ability cooldowns       | HUD (`hud-lab`)                                |
-| 5   | Companion detail / roster screen | stats, affinity, style, abilities, evolution track                    | new (roster panel)                             |
-| 6   | Level-up / evolve / learn notice | leveled / evolved (form change) / learned ability                     | `src/engine/LevelUpUI.ts` + `level-up-lab`     |
-| 7   | Ability command input            | the commander verb — trigger a Companion's signature ability          | new (command binding + HUD affordance)         |
-| 8   | Affinity matchup indicator       | strong/weak read on the current engagement (drives the type game)     | new (combat overlay)                           |
-| 9   | Recruit-window / lock indicator  | recruit slots remaining before party-lock                             | HUD element                                    |
-| 10  | Studio unlock + handler "versus" | announce handler, affinity identity, lineup preview                   | intro/versus banner                            |
-| 11  | Final Four bracket / versus      | the 4-finalist gauntlet bracket + per-round versus                    | versus banner                                  |
-| 12  | Win screen + Lose screen         | "Best in Show" champion / party-wipe fail                             | floor end screens                              |
-| 13  | Overworld markers                | biomes, roaming Trainers, Studio dens, Final Four gate, Rally Points  | minimap/marker layer                           |
-| 14  | Keep-one-companion picker        | end-of-floor: pick the single Companion to carry at ultimate form     | `RewardOpeningUI.ts`                           |
+| 3   | Poach-a-Companion picker         | defeated Trainer's 2–3 creatures; remaining slots; 5th-pick lock warn | `RewardOpeningUI.ts`                             |
+| 4   | Party HUD (6 Companions)         | per-pet HP/KO, level, affinity + style icons, ability cooldowns       | HUD (`hud-lab`)                                  |
+| 5   | Companion detail / roster screen | stats, affinity, style, abilities, evolution track                    | new (roster panel)                               |
+| 6   | Level-up / evolve / learn notice | leveled / evolved (form change) / learned ability                     | `src/engine/LevelUpUI.ts` + `level-up-lab`       |
+| 7   | Ability command input            | the commander verb — trigger a Companion's signature ability          | new (command binding + HUD affordance)           |
+| 8   | Affinity matchup indicator       | strong/weak read on the current engagement (drives the type game)     | new (combat overlay)                             |
+| 9   | Recruit-window / lock indicator  | recruit slots remaining before party-lock                             | HUD element                                      |
+| 10  | Studio unlock + handler "versus" | announce handler, affinity identity, lineup preview                   | intro/versus banner                              |
+| 11  | Final Four bracket / versus      | the 4-finalist gauntlet bracket + per-round versus                    | versus banner                                    |
+| 12  | Win screen + Lose screen         | "Best in Show" champion / party-wipe fail                             | floor end screens                                |
+| 13  | Overworld markers                | biomes, roaming Trainers, Studio dens, Final Four gate, Rally Points  | minimap/marker layer                             |
+| 14  | Keep-one-companion picker        | end-of-floor: pick the single Companion to carry at ultimate form     | `RewardOpeningUI.ts`                             |
 
 ---
 

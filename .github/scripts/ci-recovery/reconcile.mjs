@@ -18,9 +18,12 @@ import {
   isSelfRecoveryCheckRun,
   selfRecoveryWorkflowRunIds,
   effectiveLatestThreadComment,
+  evaluateClosingIssueAcceptanceScope,
+  isClosingIssueAcceptanceBlockReason,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
+  reviewThreadReplyCommentId,
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
   shouldMutateRecoveryState,
@@ -32,6 +35,7 @@ import {
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
+  legacyReviewThreadWritesEnabled,
   shouldSkipSubstantiveReview,
   STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
@@ -66,6 +70,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  IssueClaimedByGoobersError,
   IssueNoLongerOpenError,
   runIssueIntake,
   removeIssueAssignees,
@@ -135,13 +140,9 @@ const workflowRunUrl =
 // are advisory: the `merge-gate` job's `needs` list deliberately omits them, so their
 // failure can never block or unblock the merge gate. Treating one as a `ci-failure`
 // blocker gives the recovery agent nothing it can fix that changes the PR's mergeable
-// state, so the loop spins without making progress (e.g. PR #3032, a transient 429
-// downloading `davelosert/vitest-coverage-report-action` inside `Advisory coverage`).
+// state, so the loop spins without making progress (e.g. PR #3032, a transient report-only job failure).
 // Keep entries lowercase: isAdvisoryCheck() lowercases incoming check names.
-const ADVISORY_CHECK_NAMES = new Set([
-  'advisory coverage',
-  'headless multi-floor legs (report-only)',
-]);
+const ADVISORY_CHECK_NAMES = new Set(['headless multi-floor legs (report-only)']);
 const AGGREGATE_CI_CHECK_NAMES = new Set(['ci', 'merge gate']);
 // Only this explicit, standalone PR-description status line can request a
 // replacement session. Do not derive continuation work from prose, diffs, or comments.
@@ -248,7 +249,6 @@ const RELEASE_CONVERGED_ELSEWHERE = 'converged-elsewhere';
 const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
-const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
 const TASK_COMMENT_MARKER_PATTERN = new RegExp(
   `${TASK_COMMENT_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} fingerprint=([0-9a-f]+)\\b`,
   'i',
@@ -304,11 +304,6 @@ function calculateRebaseFailureBackoffMs(attempt) {
     REBASE_FAILURE_MAX_BACKOFF_MS,
     REBASE_FAILURE_BASE_BACKOFF_MS * 2 ** (safeAttempt - 1),
   );
-}
-
-function reviewThreadReplyCommentId(url) {
-  const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
-  return match?.[1] ?? null;
 }
 
 function extractTaskFingerprint(body) {
@@ -1167,6 +1162,32 @@ async function dispatchWorkflow(workflow, inputs) {
   );
 }
 
+// Phase 3, Lane A: when the review-threads lane is migrated to Goobers, legacy
+// makes zero review-thread writes (see legacyReviewThreadWritesEnabled() call
+// sites below) but must still give the migrated lane a chance to act, or a
+// migrated PR's outdated/resolvable threads would simply never be handled.
+// Dispatched at most once per reconcile run -- guarded by this module-level
+// flag -- regardless of how many of the (mutually exclusive, per-run) legacy
+// call sites are reached, since the early-exit and main-flow passes never
+// both run in the same invocation. Best-effort: a dispatch failure must never
+// crash reconcile.mjs or block release() from running below.
+let reviewThreadsGoobersDispatchAttempted = false;
+async function dispatchReviewThreadsGoobersOnce() {
+  if (reviewThreadsGoobersDispatchAttempted) return;
+  reviewThreadsGoobersDispatchAttempted = true;
+  try {
+    await dispatchWorkflow('goobers-review-threads.yml', { pr_number: String(prNumber) });
+    process.stdout.write(
+      `${live ? 'dispatched' : 'would-dispatch'} goobers-review-threads pr=#${prNumber}\n`,
+    );
+  } catch (dispatchErr) {
+    const safeMsg = String(dispatchErr?.message || dispatchErr)
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 300);
+    process.stderr.write(`goobers-review-threads-dispatch-failed pr=#${prNumber} err=${safeMsg}\n`);
+  }
+}
+
 async function release(reason, nextState = null) {
   const ownershipToRelease = state;
   const releasedState =
@@ -1404,13 +1425,14 @@ async function drainPendingIssueRestarts() {
         `restarted linked issue #${issueNumber} after abandoning pr=#${prNumber}\n`,
       );
     } catch (error) {
-      // A linked issue that is no longer open can never be restarted; drop it
-      // instead of pinning the pending list forever. Any other failure keeps the
-      // issue pending so a later reconciliation retries it, and never aborts the
-      // remaining restarts in this batch.
-      if (error instanceof IssueNoLongerOpenError) {
+      // A linked issue that is no longer open (or is now owned by Goobers) can
+      // never be restarted via CI recovery; drop it instead of pinning the
+      // pending list forever. Any other failure keeps the issue pending so a
+      // later reconciliation retries it, and never aborts the remaining restarts
+      // in this batch.
+      if (error instanceof IssueNoLongerOpenError || error instanceof IssueClaimedByGoobersError) {
         process.stdout.write(
-          `skipped restart for closed linked issue #${issueNumber} pr=#${prNumber}\n`,
+          `skipped restart for linked issue #${issueNumber} pr=#${prNumber}: ${error.message}\n`,
         );
         continue;
       }
@@ -1858,6 +1880,14 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   // with no trusted marker so the resolution pass below can resolve them.
   for (const thread of earlyUnresolved) {
     if (!thread.isOutdated) continue;
+    // Posting an ✅ Addressed reply is a review-thread write, so it belongs
+    // to the review-threads lane. Skipping the whole iteration (rather than
+    // just the POST) also avoids injecting the synthetic marker comment, which
+    // would otherwise make the resolution pass believe the thread was handled.
+    if (!legacyReviewThreadWritesEnabled()) {
+      await dispatchReviewThreadsGoobersOnce();
+      continue;
+    }
     if (shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
     const comments = thread.comments?.nodes ?? [];
     const last = comments[comments.length - 1];
@@ -1908,6 +1938,13 @@ async function resolveOutdatedThreadsBeforeEarlyExit() {
   // Thread-resolution pass: resolve any unresolved thread with a trusted marker.
   for (const thread of earlyUnresolved) {
     if (!shouldResolveThread(thread, earlyHeadSha, emptyReachable)) continue;
+    // Gate BEFORE the in-memory `isResolved` write below: skipping only the
+    // GraphQL call would mark the thread resolved locally without resolving it,
+    // dropping a genuine blocker and admitting the PR prematurely.
+    if (!legacyReviewThreadWritesEnabled()) {
+      await dispatchReviewThreadsGoobersOnce();
+      continue;
+    }
     if (live) {
       try {
         await assertExpectedMetadataUnchanged('resolve-thread');
@@ -2311,6 +2348,11 @@ function shouldAutoPostOutdatedMarker(candidate) {
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
+  // Review-thread write: gated on the review-threads lane (see pass above).
+  if (!legacyReviewThreadWritesEnabled()) {
+    await dispatchReviewThreadsGoobersOnce();
+    continue;
+  }
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {
@@ -2360,6 +2402,11 @@ for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
 for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
+  // Gate before the in-memory resolution write (see the early pass).
+  if (!legacyReviewThreadWritesEnabled()) {
+    await dispatchReviewThreadsGoobersOnce();
+    continue;
+  }
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
@@ -2420,108 +2467,111 @@ const localClosingIssues = closingIssues.filter(
     String(issue?.repository?.nameWithOwner || '').toLowerCase() === repository.toLowerCase(),
 );
 const closingIssueByNumber = new Map(localClosingIssues.map((issue) => [issue.number, issue]));
-for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
-  const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
-    thread,
-    localClosingIssues,
-    repository,
-  );
-  if (sourceIssueNumbers.length === 0) continue;
+if (!legacyReviewThreadWritesEnabled()) {
+  await dispatchReviewThreadsGoobersOnce();
+} else {
+  for (const thread of unresolvedThreads.filter((candidate) => !candidate.isResolved)) {
+    const sourceIssueNumbers = reviewThreadFollowupBacklogIssueNumbers(
+      thread,
+      localClosingIssues,
+      repository,
+    );
+    if (sourceIssueNumbers.length === 0) continue;
 
-  const root = thread.comments?.nodes?.[0];
-  const replyCommentId = reviewThreadReplyCommentId(root?.url);
-  if (!replyCommentId) {
-    process.stdout.write(`skip followup-backlog thread=${thread.id} reason=no-reply-target\n`);
-    continue;
-  }
-  if (!live) {
-    process.stdout.write(`would-file followup-backlog thread=${thread.id}\n`);
-    continue;
-  }
-
-  const followupIssues = [];
-  try {
-    for (const sourceIssueNumber of sourceIssueNumbers) {
-      const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
-      if (!sourceIssue) continue;
-      const { issue: followupIssue, action } = await getOrCreateFollowupBacklogIssue({
-        sourceIssue,
-        thread,
-      });
-      followupIssues.push({ sourceIssueNumber, followupIssue });
-      process.stdout.write(
-        `${action} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
-      );
+    const root = thread.comments?.nodes?.[0];
+    const replyCommentId = reviewThreadReplyCommentId(root?.url);
+    if (!replyCommentId) {
+      process.stdout.write(`skip followup-backlog thread=${thread.id} reason=no-reply-target\n`);
+      continue;
     }
-  } catch (issueErr) {
-    const safeMsg = String(issueErr?.message || issueErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(
-      `followup-backlog-issue-failed thread=${thread.id} status=${issueErr?.status ?? 'n/a'} err=${safeMsg}\n`,
-    );
-    continue;
-  }
-  if (followupIssues.length === 0) continue;
+    if (!live) {
+      process.stdout.write(`would-file followup-backlog thread=${thread.id}\n`);
+      continue;
+    }
 
-  const sourceList = followupIssues
-    .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
-    .join(', ');
-  const followupList = followupIssues
-    .map(({ followupIssue }) => `#${followupIssue.number}`)
-    .join(', ');
-  const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
-  try {
-    await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
-    await request(
-      pat,
-      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
-      {
-        method: 'POST',
-        body: { body: markerBody },
-      },
-    );
-  } catch (replyErr) {
-    const safeMsg = String(replyErr?.message || replyErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(
-      `followup-backlog-reply-failed thread=${thread.id} status=${replyErr?.status ?? 'n/a'} err=${safeMsg}\n`,
-    );
-    continue;
-  }
-  try {
-    await assertExpectedMetadataUnchanged('resolve-thread');
-    await graphql(
-      pat,
-      `
-        mutation ($threadId: ID!) {
-          resolveReviewThread(input: { threadId: $threadId }) {
-            thread {
-              isResolved
+    const followupIssues = [];
+    try {
+      for (const sourceIssueNumber of sourceIssueNumbers) {
+        const sourceIssue = closingIssueByNumber.get(sourceIssueNumber);
+        if (!sourceIssue) continue;
+        const { issue: followupIssue, action } = await getOrCreateFollowupBacklogIssue({
+          sourceIssue,
+          thread,
+        });
+        followupIssues.push({ sourceIssueNumber, followupIssue });
+        process.stdout.write(
+          `${action} followup-backlog source=#${sourceIssueNumber} issue=#${followupIssue.number}\n`,
+        );
+      }
+    } catch (issueErr) {
+      const safeMsg = String(issueErr?.message || issueErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `followup-backlog-issue-failed thread=${thread.id} status=${issueErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      continue;
+    }
+    if (followupIssues.length === 0) continue;
+    const sourceList = followupIssues
+      .map(({ sourceIssueNumber }) => `#${sourceIssueNumber}`)
+      .join(', ');
+    const followupList = followupIssues
+      .map(({ followupIssue }) => `#${followupIssue.number}`)
+      .join(', ');
+    const markerBody = `✅ Addressed in ${headSha}: filed unassigned follow-up backlog issue ${followupList} for ${sourceList}.`;
+    try {
+      await assertExpectedMetadataUnchanged('followup-backlog-thread-reply');
+      await request(
+        pat,
+        `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+        {
+          method: 'POST',
+          body: { body: markerBody },
+        },
+      );
+    } catch (replyErr) {
+      const safeMsg = String(replyErr?.message || replyErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(
+        `followup-backlog-reply-failed thread=${thread.id} status=${replyErr?.status ?? 'n/a'} err=${safeMsg}\n`,
+      );
+      continue;
+    }
+    try {
+      await assertExpectedMetadataUnchanged('resolve-thread');
+      await graphql(
+        pat,
+        `
+          mutation ($threadId: ID!) {
+            resolveReviewThread(input: { threadId: $threadId }) {
+              thread {
+                isResolved
+              }
             }
           }
-        }
-      `,
-      { threadId: thread.id },
-    );
-  } catch (resolveErr) {
-    const safeMsg = String(resolveErr?.message || resolveErr)
-      .replace(/[\r\n]/g, ' ')
-      .slice(0, 300);
-    process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
-    continue;
+        `,
+        { threadId: thread.id },
+      );
+    } catch (resolveErr) {
+      const safeMsg = String(resolveErr?.message || resolveErr)
+        .replace(/[\r\n]/g, ' ')
+        .slice(0, 300);
+      process.stderr.write(`resolve-thread-failed thread=${thread.id} err=${safeMsg}\n`);
+      continue;
+    }
+    if (!thread.comments) thread.comments = { nodes: [] };
+    thread.comments.nodes.push({
+      id: `reconciler-followup-backlog-marker:${thread.id}`,
+      body: markerBody,
+      url: '',
+      author: { login: '' },
+      authorAssociation: 'OWNER',
+    });
+    thread.isResolved = true;
+    process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
   }
-  if (!thread.comments) thread.comments = { nodes: [] };
-  thread.comments.nodes.push({
-    id: `reconciler-followup-backlog-marker:${thread.id}`,
-    body: markerBody,
-    url: '',
-    author: { login: '' },
-    authorAssociation: 'OWNER',
-  });
-  thread.isResolved = true;
-  process.stdout.write(`resolved followup-backlog thread=${thread.id} issues=${followupList}\n`);
 }
 
 // Detect threads whose last trusted comment carries a ✅ Addressed marker that
@@ -3046,6 +3096,10 @@ const retriggerableRuns = [...latestRunsByKey.values()].filter((candidate) =>
   ['action_required', 'cancelled'].includes(String(candidate.conclusion || '')),
 );
 let changedFiles = [];
+// Distinguishes "this PR really changed nothing relevant" from "the pull-files
+// request failed". A transient API failure must never be read as absent
+// evidence, or a healthy feature PR gets quarantined instead of retried.
+let changedFilesHydrated = true;
 if (Number(pr.changed_files || 0) > 0) {
   try {
     changedFiles = await paginate(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}/files`);
@@ -3055,9 +3109,29 @@ if (Number(pr.changed_files || 0) > 0) {
       `warn pull-files pr=#${prNumber} status=${status} reason=${String(error?.message || error || 'unknown')}\n`,
     );
     changedFiles = [];
+    changedFilesHydrated = false;
   }
 }
 const skipSubstantiveReview = shouldSkipSubstantiveReview(pr, changedFiles);
+const closingIssueAcceptanceMismatch = changedFilesHydrated
+  ? evaluateClosingIssueAcceptanceScope({
+      pr,
+      closingIssues,
+      changedFiles,
+    })
+  : null;
+if (!changedFilesHydrated) {
+  process.stdout.write(
+    `closing-issue-acceptance-deferred pr=#${prNumber} reason=pull-files-hydration-failed\n`,
+  );
+}
+if (closingIssueAcceptanceMismatch) {
+  blockers.push({
+    kind: closingIssueAcceptanceMismatch.kind,
+    id: closingIssueAcceptanceMismatch.id,
+    summary: closingIssueAcceptanceMismatch.summary,
+  });
+}
 for (const run of retriggerableRuns) {
   const rejection = workflowApprovalRejection({
     run,
@@ -3321,6 +3395,61 @@ if (shouldQuarantineProtectedPathBlockers(normalized)) {
   process.exit(0);
 }
 
+if (closingIssueAcceptanceMismatch && latestOwnerDispositionCommand() !== 'KEEP') {
+  const reason = closingIssueAcceptanceMismatch.blockReason;
+  await applyPrLifecycle(PHASE.QUARANTINED, reason);
+  const quarantineBody = makeQuarantineComment(prNumber, {
+    reason,
+    explanation:
+      'This PR has been quarantined before lifecycle admission because its closing issue declares acceptance criteria, but the current head does not carry the executable and test evidence needed to satisfy that scope. CI Recovery cannot deterministically choose between removing the closing keyword, splitting the branch, or implementing the missing acceptance scope.',
+    nextActions: [
+      `Add the missing evidence for ${closingIssueAcceptanceMismatch.issueNumber ? `issue #${closingIssueAcceptanceMismatch.issueNumber}` : 'the closing issue'}: ${closingIssueAcceptanceMismatch.missing.join(', ')}.`,
+      'Or remove the closing keyword and use a non-closing reference such as `Related to` / `Refs` if this PR is only planning or partial work.',
+      'After updating the PR head or metadata, CI Recovery will re-evaluate this head-bound quarantine.',
+    ],
+    keepOutcome:
+      'resume this PR despite the missing acceptance evidence; automated repair resumes without changing the closing reference',
+  });
+  if (
+    !comments.some((comment) => hasLeadingMarker(comment.body, '<!-- crawler-ci-quarantine:v1 -->'))
+  ) {
+    if (live) {
+      await assertExpectedMetadataUnchanged('closing-issue-acceptance-quarantine-comment');
+      const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+        method: 'POST',
+        body: { body: quarantineBody },
+      });
+      comments.push({ ...created.data, body: quarantineBody });
+    } else {
+      process.stdout.write(
+        `dry-run would-post closing-issue-acceptance quarantine pr=#${prNumber}\n`,
+      );
+    }
+  }
+  const quarantinedState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint,
+    owner: 'none',
+    status: 'idle',
+    trigger: 'closing-issue-acceptance-quarantined',
+    blockers: normalized.filter((blocker) => blocker.id === closingIssueAcceptanceMismatch.id),
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
+    stopIfReleaseConvergedElsewhere(
+      await release('closing-issue-acceptance-quarantined', quarantinedState),
+    );
+  } else {
+    await updateState(quarantinedState);
+  }
+  process.stdout.write(
+    `quarantined closing-issue-acceptance pr=#${prNumber} blocker=${closingIssueAcceptanceMismatch.id}\n`,
+  );
+  process.exit(0);
+}
+
 const scopeMismatchBlocker =
   latestOwnerDispositionCommand() === 'KEEP' ? null : normalized.find(isScopeMismatchReviewBlocker);
 if (scopeMismatchBlocker) {
@@ -3454,6 +3583,7 @@ if (
 // comments are logged; a malformed trusted comment keeps currentLifecyclePhase null
 // (evaluatePhase derives phase from live facts, which is safe and conservative).
 let currentLifecyclePhase = null;
+let staleClosingIssueAcceptanceQuarantine = false;
 {
   const isTrustedLifecycleAuthor = (comment) => {
     if (!comment) return false;
@@ -3471,7 +3601,22 @@ let currentLifecyclePhase = null;
   } else if (trustedLifecycleComments.length === 1) {
     try {
       const record = parseLifecycleComment(trustedLifecycleComments[0].body);
-      currentLifecyclePhase = record?.phase ?? null;
+      // Lifecycle phases are head-bound: a new push must re-run head-scoped
+      // admission checks instead of inheriting a stale quarantine/queue verdict.
+      currentLifecyclePhase = record?.headSha === pr.head.sha ? (record?.phase ?? null) : null;
+      // A closing-issue acceptance quarantine can also be cleared by metadata
+      // alone (downgrading `Fixes` to `Refs` keeps the same head SHA). Once the
+      // mismatch is gone, the recorded quarantine is stale and must not pin the
+      // PR out of admission forever. Every other quarantine branch exits before
+      // this point, so reaching here with such a record means it is resolved.
+      if (
+        currentLifecyclePhase === PHASE.QUARANTINED &&
+        !closingIssueAcceptanceMismatch &&
+        isClosingIssueAcceptanceBlockReason(record?.blockReason)
+      ) {
+        currentLifecyclePhase = null;
+        staleClosingIssueAcceptanceQuarantine = true;
+      }
     } catch {
       // Malformed lifecycle comment from a trusted source — log and continue.
       // evaluatePhase will receive null and derive the phase from live facts.
@@ -3493,6 +3638,18 @@ const lifecyclePrFacts = {
   skipSubstantiveReview,
 };
 const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
+if (staleClosingIssueAcceptanceQuarantine) {
+  // The recorded quarantine is stale, so hand the record back to the phase the
+  // live facts derive (which still accounts for any other blocker) rather than
+  // forcing a phase of our own.
+  process.stdout.write(
+    `closing-issue-acceptance-quarantine-cleared pr=#${prNumber} reason=mismatch-resolved\n`,
+  );
+  await applyPrLifecycle(
+    lifecycleEvaluation.phase,
+    lifecycleEvaluation.blockReason || 'closing-issue-acceptance-resolved',
+  );
+}
 process.stdout.write(
   `${formatLifecycleOutcome(prNumber, { acted: false, noOp: true, phase: lifecycleEvaluation.phase, reason: `evaluated:${lifecycleEvaluation.phase}` })}\n`,
 );

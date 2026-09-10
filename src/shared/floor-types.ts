@@ -4,6 +4,7 @@ import type {
   GeneratedEquipmentRarity,
 } from './generated-equipment-types.js';
 import type { CombatEvent } from './combat-events.js';
+import type { ScenarioHudCue } from './scenario-presentation.js';
 
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
@@ -573,6 +574,8 @@ export interface Floor4ArenaState {
   readonly headlinerCard: readonly Floor4HeadlinerCardEntry[];
   /** Live Headliner encounter for the current HEADLINE/OVERTIME act. */
   activeHeadliner?: Floor4HeadlinerEncounterState;
+  /** Barrier handle sealing the Green Room tunnel outside intermission. */
+  greenRoomBarrierId?: number;
   /** True when Floor 4 successfully re-hosted an optional kept-companion co-star. */
   keptCompanionCoStarActive: boolean;
   /** Cumulative wave counters, retained across acts for RunStats. */
@@ -784,6 +787,18 @@ export interface Floor5SiegeWaveManifestEntry {
   readonly count: number;
 }
 
+export interface Floor5SiegeWaveAccounting {
+  readonly manifestIndex: number;
+  readonly waveId: string;
+  readonly team: Floor5SiegeTeam;
+  readonly scheduled: number;
+  physicalReleased: number;
+  debtCleared: number;
+  firstReleaseFrame: number | null;
+  lastReleaseFrame: number | null;
+  maxReleaseDelayFrames: number;
+}
+
 export interface Floor5SiegeLaneTelemetry {
   waveCyclesCompleted: number;
   checkpointContests: number;
@@ -792,6 +807,9 @@ export interface Floor5SiegeLaneTelemetry {
   pathStalls: number;
   spawned: Record<Floor5SiegeTeam, number>;
   spawnDebtPeak: Record<Floor5SiegeTeam, number>;
+  activeCap: number;
+  liveMinionPeak: Record<Floor5SiegeTeam, number>;
+  waveAccounting: Floor5SiegeWaveAccounting[];
 }
 
 export type Floor5RatingsRamState =
@@ -804,6 +822,213 @@ export type Floor5RatingsRamState =
   | 'DESTROYED';
 
 export type Floor5RamComponentClass = 'chassis' | 'plating' | 'broadcast-array';
+
+/**
+ * Floor 5 · Ratings Ram (slice 5) — semantic escort-route landmarks.
+ *
+ * The manifest authors an ORDERED list of these ids; the concrete world
+ * positions are DERIVED from the authored `SiegeCastleGenerator` tile layout
+ * (never hardcoded coordinates), so re-authoring the castle moves the route
+ * with it. `build-site` is always first (the staging tile in front of the
+ * Command Post) and `breach-approach` is always last (the traversable
+ * lane-side attack anchor one tile short of the outer wall).
+ */
+export type Floor5RamRouteLandmark =
+  | 'build-site'
+  | 'siege-yard-junction'
+  | 'checkpoint-junction'
+  | 'breach-approach';
+
+/** One resolved escort-route waypoint (position derived from the tile layout). */
+export interface Floor5RamRouteMarkerState {
+  readonly landmark: Floor5RamRouteLandmark;
+  /** 0-based position in the authored landmark order. */
+  readonly index: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  /** Derived world position in feet. */
+  readonly x: number;
+  readonly y: number;
+  /** Marker entity id, or 0 when not spawned / already retired. */
+  eid: number;
+  /** Frame the ram first arrived at this landmark, else null. */
+  reachedFrame: number | null;
+}
+
+/** One recorded `engineState` transition — the hard-gate observation trace. */
+export interface Floor5RamStateTraceEntry {
+  readonly state: Floor5RatingsRamState;
+  readonly frame: number;
+  readonly reason: string;
+}
+
+/**
+ * Floor 5 · Ratings Ram (slice 5) — typed ram runtime state.
+ *
+ * Holds the ram entity, its derived escort route, protection evaluation, the
+ * strike/counter-battery ledger and the rebuild schedule. `wallAuthorizedHealth`
+ * is the ONLY sanctioned source of outer-wall damage: anything that lowers the
+ * wall's ECS health without a ram strike is restored and counted in
+ * `rejectedWallDamage` (spec FR5.5 — minions can neither prioritise nor damage
+ * the outer wall).
+ */
+export interface Floor5RamState {
+  /** Ram entity id, or 0 when the ram is not currently on the field. */
+  eid: number;
+  health: number;
+  maxHealth: number;
+  /** Index of the landmark the ram is currently travelling TOWARD. */
+  routeIndex: number;
+  readonly route: Floor5RamRouteMarkerState[];
+  protectionMet: boolean;
+  /** Live allied siege minions inside the protection radius this frame. */
+  escorts: number;
+  /** Live hostile threats (enemy minions + field Hero) inside the radius. */
+  threats: number;
+  strikes: number;
+  lastStrikeMs: number;
+  spawnedFrame: number | null;
+  destroyedFrame: number | null;
+  /** Frame at which a destroyed ram may re-enter `BUILDING`, else null. */
+  rebuildAvailableFrame: number | null;
+  builds: number;
+  destructions: number;
+  wallDamageDealt: number;
+  counterDamageTaken: number;
+  /** Outer-wall health the scenario has authorised (ram strikes only). */
+  wallAuthorizedHealth: number;
+  /** Total non-ram damage rejected by the wall-damage authority guard. */
+  rejectedWallDamage: number;
+  advanceFrames: number;
+  /** Frames spent holding position because protection was unmet. */
+  holdFrames: number;
+  readonly stateTrace: Floor5RamStateTraceEntry[];
+}
+
+/** One-shot outer-wall breach latch + its cleanup receipt. */
+export interface Floor5BreachCleanupState {
+  ramRetired: boolean;
+  markersRetired: number;
+  wallRetired: boolean;
+  heroesCleared: number;
+  minionsCleared: number;
+  waveDebtCleared: number;
+}
+
+export interface Floor5BreachState {
+  /** True once the breach has been committed — never un-latches. */
+  latched: boolean;
+  committedFrame: number | null;
+  /** Poly-barrier handle sealing the carved breach ingress, or null once dropped. */
+  barrierId: number | null;
+  /** True once the lane front is frozen at the courtyard (no further waves). */
+  frontFrozen: boolean;
+  /** Number of times commit was ATTEMPTED (proves the one-shot latch). */
+  commitAttempts: number;
+  readonly cleanup: Floor5BreachCleanupState;
+}
+
+/**
+ * Floor 5 · courtyard-to-throne finale (slice 6, spec `R7`).
+ *
+ * Every fixed actor in the finale — the Crown Auditor, the authored courtyard
+ * defenders, Regent Emeritus and its bounded summons — is described by this one
+ * kind so the encounter cap, the cleanup receipt and the run-stats projection
+ * can all be expressed without a per-actor bespoke shape.
+ */
+export type Floor5FinaleActorKind =
+  | 'crown-auditor'
+  | 'courtyard-defender'
+  | 'regent-emeritus'
+  | 'regent-summon';
+
+/** One live (or already defeated) fixed finale actor. */
+export interface Floor5FinaleActorState {
+  readonly kind: Floor5FinaleActorKind;
+  /** Entity id, or 0 once the actor is defeated / retired. */
+  eid: number;
+  health: number;
+  readonly maxHealth: number;
+  readonly spawnedFrame: number;
+  defeatedFrame: number | null;
+  /** Authored room anchor the actor leashes to; derived from the layout. */
+  readonly anchorX: number;
+  readonly anchorY: number;
+}
+
+/**
+ * Why a throne-capture interaction was refused. `accepted` is the only value
+ * that latches a pending capture; every other value is a counted rejection so
+ * "cannot capture early" is observable rather than inferred (spec `FR7.4`).
+ */
+export type Floor5CaptureAttemptResult =
+  | 'accepted'
+  | 'already-captured'
+  | 'already-pending'
+  | 'regent-alive'
+  | 'not-available';
+
+/** One telegraphed-but-unreleased Regent summon wave (spec `FR7.3`). */
+export interface Floor5PendingSummonWave {
+  /** Authored health-fraction trigger ordinal that telegraphed this wave. */
+  readonly triggerIndex: number;
+  /** Frame the wave was telegraphed. */
+  readonly telegraphedFrame: number;
+  /** Frame the wave's summons appear; always after `telegraphedFrame`. */
+  readonly releaseFrame: number;
+  /** Summons this wave will release; already reserved against the cap. */
+  readonly count: number;
+}
+
+/** Runtime state of the courtyard → throne → capture finale. */
+export interface Floor5FinaleState {
+  /** Frame the breach latch was observed and the courtyard opened (`FR7.1`). */
+  courtyardEnteredFrame: number | null;
+  /** Live/defeated courtyard encounter: the Auditor plus authored defenders. */
+  readonly courtyardActors: Floor5FinaleActorState[];
+  courtyardCleared: boolean;
+  courtyardClearedFrame: number | null;
+  auditorDefeatedFrame: number | null;
+  defendersDefeated: number;
+  /** Poly-barrier sealing the throne doors, or null once dropped (`FR7.2`). */
+  throneDoorBarrierId: number | null;
+  throneDoorOpenedFrame: number | null;
+  /** Live/defeated throne encounter: the Regent plus its bounded summons. */
+  readonly throneActors: Floor5FinaleActorState[];
+  regentSpawnedFrame: number | null;
+  regentDefeatedFrame: number | null;
+  /** Total summons released this run; never exceeds the authored cap. */
+  summonsReleased: number;
+  /** Summons retired with the encounter rather than defeated. */
+  summonsRetired: number;
+  /** Index of the next authored health-fraction trigger to fire. */
+  nextSummonTriggerIndex: number;
+  /**
+   * Telegraphed summon waves awaiting their authored release frame (`FR7.3`).
+   * Queued counts are reserved against the encounter cap the moment they are
+   * telegraphed, and the queue is discarded if the Regent falls first.
+   */
+  readonly pendingSummonWaves: Floor5PendingSummonWave[];
+  /** Total summons telegraphed this run, released or not. */
+  summonsTelegraphed: number;
+  /** Throne capture point, derived from the authored throne room. */
+  capturePoint: { readonly x: number; readonly y: number } | null;
+  captureAvailable: boolean;
+  captureAvailableFrame: number | null;
+  captureAttempts: number;
+  /** Attempts refused because the capture was not yet enabled (`FR7.4`). */
+  rejectedCaptureAttempts: number;
+  /** Frame an accepted interaction latched, resolved by the objective tick. */
+  pendingCaptureFrame: number | null;
+  captured: boolean;
+  capturedFrame: number | null;
+  royalAuthorityDisabled: boolean;
+  /** Hostile actors cleared by the capture transaction. */
+  hostilesClearedOnCapture: number;
+  /** Poly-barrier sealing the Winner's Balcony, or null once dropped. */
+  balconyBarrierId: number | null;
+  balconyOpenedFrame: number | null;
+}
 
 export type Floor5RequisitionMilestone =
   | 'opening-push'
@@ -835,7 +1060,10 @@ export interface Floor5SiegeState {
   lastWorldElapsedMs: number;
   commandPostHealth: number;
   engineState: Floor5RatingsRamState;
-  breachState: string;
+  breachState: 'SEALED' | 'BREACHED';
+  ram: Floor5RamState;
+  breach: Floor5BreachState;
+  finale: Floor5FinaleState;
   /**
    * Derived display/trace projection of {@link Floor5SiegeState.heroes}:
    * `PENDING` | `ACTIVE:<heroId>` | `DOWN:<heroId>@<respawnFrame>` | `RETIRED`.
@@ -855,6 +1083,7 @@ export interface Floor5SiegeState {
     readonly rewards: string;
   };
   readonly trace: Floor5SiegePhaseTraceEntry[];
+  runEndAchievementsEvaluated: boolean;
   readonly structures: Record<Floor5SiegeStructureId, Floor5SiegeStructureState>;
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   waveCursor: Record<Floor5SiegeTeam, number>;
@@ -872,7 +1101,70 @@ export interface Floor5SiegeRunStats {
   readonly phase: Floor5SiegePhase;
   readonly commandPostHealth: number;
   readonly engineState: Floor5RatingsRamState;
-  readonly breachState: string;
+  readonly breachState: 'SEALED' | 'BREACHED';
+  readonly ram: {
+    readonly eid: number;
+    readonly health: number;
+    readonly maxHealth: number;
+    readonly routeIndex: number;
+    readonly routeLandmarks: readonly Floor5RamRouteLandmark[];
+    readonly routeReached: readonly Floor5RamRouteLandmark[];
+    readonly protectionMet: boolean;
+    readonly escorts: number;
+    readonly threats: number;
+    readonly strikes: number;
+    readonly builds: number;
+    readonly destructions: number;
+    readonly wallDamageDealt: number;
+    readonly counterDamageTaken: number;
+    readonly rejectedWallDamage: number;
+    readonly advanceFrames: number;
+    readonly holdFrames: number;
+    readonly rebuildAvailableFrame: number | null;
+    readonly stateSequence: readonly Floor5RatingsRamState[];
+    readonly stateTrace: readonly Floor5RamStateTraceEntry[];
+  };
+  readonly breach: {
+    readonly latched: boolean;
+    readonly committedFrame: number | null;
+    readonly barrierSealed: boolean;
+    readonly frontFrozen: boolean;
+    readonly commitAttempts: number;
+    readonly cleanup: Floor5BreachCleanupState;
+  };
+  readonly finale: {
+    readonly courtyardEnteredFrame: number | null;
+    readonly courtyardCleared: boolean;
+    readonly courtyardClearedFrame: number | null;
+    readonly auditorDefeatedFrame: number | null;
+    readonly auditorHealth: number;
+    readonly auditorMaxHealth: number;
+    readonly defendersSpawned: number;
+    readonly defendersDefeated: number;
+    readonly throneDoorOpen: boolean;
+    readonly throneDoorOpenedFrame: number | null;
+    readonly regentSpawnedFrame: number | null;
+    readonly regentDefeatedFrame: number | null;
+    readonly regentHealth: number;
+    readonly regentMaxHealth: number;
+    readonly summonsTelegraphed: number;
+    readonly summonsReleased: number;
+    readonly summonsRetired: number;
+    readonly pendingSummonWaves: number;
+    readonly summonCap: number;
+    readonly liveSummons: number;
+    readonly captureAvailable: boolean;
+    readonly captureAvailableFrame: number | null;
+    readonly captureAttempts: number;
+    readonly rejectedCaptureAttempts: number;
+    readonly captured: boolean;
+    readonly capturedFrame: number | null;
+    readonly royalAuthorityDisabled: boolean;
+    readonly hostilesClearedOnCapture: number;
+    readonly balconyOpen: boolean;
+    readonly balconyOpenedFrame: number | null;
+    readonly capturePoint: { readonly x: number; readonly y: number } | null;
+  };
   readonly heroState: string;
   readonly heroes: {
     readonly card: readonly Floor5FieldHeroCardEntry[];
@@ -925,6 +1217,500 @@ export interface Floor5SiegeRunStats {
   readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
   readonly checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
+  readonly releaseGate: {
+    readonly activeTimeBudgetMs: number | null;
+    readonly frameBudget: number | null;
+    readonly completionRateTarget: number;
+    readonly maxMedianDurationFrames: number;
+    readonly maxP95DurationFrames: number;
+    readonly minimumCommandPostHealthPct: number;
+    readonly minimumRamSurvivalRate: number;
+    readonly maxLiveHostilesOnTerminal: number;
+    readonly maxPathStalls: number;
+    readonly maxFrameCostMs: number;
+    readonly observedFrameCostMs: number | null;
+    readonly stallBackstopFrames: number;
+    readonly maxReleaseDelayFrames: number;
+    readonly cleanSweepMinCommandPostHealthPct: number;
+    readonly commandPostHealthPct: number;
+    readonly ramSurvivedBreach: boolean;
+    readonly liveHostilesOnTerminal: number;
+    readonly phaseDurations: readonly {
+      readonly kind: Floor5SiegePhaseKind;
+      readonly enteredFrame: number;
+      readonly exitedFrame: number;
+      readonly durationFrames: number;
+    }[];
+    readonly terminalIntegrity: {
+      readonly terminal: boolean;
+      readonly terminalOutcomeCount: number;
+      readonly capturedCount: number;
+      readonly defeatCount: number;
+    };
+    readonly structuralViolations: {
+      readonly unreachableObjectives: number;
+      readonly phaseOrderViolations: number;
+      readonly invalidTargetAllegianceEvents: number;
+      readonly navigationMismatchCount: number;
+      readonly unboundedSpawnDebt: number;
+      readonly nonTerminalRuns: number;
+    };
+  };
+}
+
+export type Floor6DefensePhaseKind = 'SETUP' | 'DEFEND' | 'BREAK' | 'FINALE' | 'VICTORY' | 'DEFEAT';
+
+export interface Floor6DefensePhase {
+  readonly kind: Floor6DefensePhaseKind;
+}
+
+export interface Floor6DefensePhaseTraceEntry {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly toKind: Floor6DefensePhaseKind;
+  readonly reason: string;
+  readonly frame: number;
+  readonly worldElapsedMs: number;
+  readonly relayHp: number;
+  readonly manifestIndex: number;
+  readonly activeSites: readonly string[];
+  readonly buildCurrencyBalance: number;
+  readonly selectedOfferIds: readonly string[];
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+}
+
+export interface Floor6TilePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface Floor6SemanticArea {
+  readonly id: string;
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+export interface Floor6Route {
+  readonly id: string;
+  readonly entranceId: string;
+  readonly widthTiles: number;
+  readonly waypoints: readonly Floor6TilePoint[];
+}
+
+export interface Floor6SupportedFootprint {
+  readonly id: string;
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+}
+
+/** Immutable authored geometry consumed by later Floor 6 systems. */
+export interface Floor6DefenseGeometry {
+  readonly widthTiles: number;
+  readonly heightTiles: number;
+  readonly playerIngress: Floor6SemanticArea;
+  readonly broadcastRelay: Floor6SemanticArea & { readonly target: Floor6TilePoint };
+  readonly entrances: readonly (Floor6SemanticArea & { readonly spawn: Floor6TilePoint })[];
+  readonly routes: readonly Floor6Route[];
+  readonly buildSites: readonly Floor6SemanticArea[];
+  readonly pickupAccess: Floor6SemanticArea;
+  readonly breakAccess: Floor6SemanticArea;
+  readonly breakEnclosure: Floor6SemanticArea;
+  readonly victoryExit: Floor6SemanticArea;
+  readonly supportedFootprints: readonly Floor6SupportedFootprint[];
+}
+
+export interface Floor6DefenseState {
+  phase: Floor6DefensePhase;
+  readonly phaseTrace: Floor6DefensePhaseTraceEntry[];
+  readonly rngStreamKeys: {
+    readonly waves: string;
+    readonly routes: string;
+    readonly rewards: string;
+    readonly upgrades: string;
+    readonly dressing: string;
+    readonly bosses: string;
+  };
+  readonly geometry: Floor6DefenseGeometry;
+  /** Immutable wave schedule built at SETUP→DEFEND. Null before first transition. */
+  waveManifest: readonly Floor6WaveManifestEntry[] | null;
+  /** Seeded without-replacement upgrade offer manifest. Null before first transition. */
+  upgradeOfferManifest: readonly Floor6UpgradeOfferManifestEntry[] | null;
+  /** Runtime tracking per released wave entry. Entries are appended; never reordered. */
+  readonly liveEnemies: Floor6LiveEnemyRecord[];
+  /** Cumulative stalled-raider count retained after terminal cleanup. */
+  stalledRaiderCount: number;
+  /** Cumulative stalled-raider count by authored route, retained after cleanup. */
+  routeStallCounts: Record<string, number>;
+  /** Successful spawned-raider count by authored route, retained after cleanup. */
+  routeReleaseCounts: Record<string, number>;
+  /** Index into waveManifest of next entry to release. */
+  nextReleaseIndex: number;
+  /** Entries whose releaseTick has passed but weren't spawned due to live cap. Cleared at break/terminal. */
+  spawnDebt: number;
+  /** Authoritative relay HP — decremented when raiders reach the relay target. */
+  relayHp: number;
+  /** Consecutive frames of zero wave-release progress used for stall backstop. */
+  stallFrames: number;
+  /** Total enemies released across all waves. */
+  totalReleased: number;
+  /** Frame on which the last enemy was released (used for stall tracking). */
+  lastReleaseFrame: number;
+  /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
+  economy: Floor6EconomyState;
+  /** Built towers, ordered by authored build site. Never changes map topology. */
+  towerInstances: Floor6TowerInstance[];
+  /** Number of tower entities removed through sell or terminal teardown. */
+  towersTornDown: number;
+  /** Cursor into world.combatEvents for Floor 6 hero/tower contribution telemetry. */
+  combatEventCursor: number;
+  /** Last combat event observed at combatEventCursor - 1; detects render-queue drains. */
+  lastCombatEvent?: CombatEvent;
+  /** Damage dealt to Floor 6 raiders by normal non-tower combat paths. */
+  heroDamageDealt: number;
+  /** Damage dealt to Floor 6 raiders by Floor 6 towers. */
+  towerDamageDealt: number;
+  /** Zero-based authored defense act currently being resolved. */
+  currentActIndex: number;
+  /** Frame the current break started, or null outside BREAK. */
+  breakStartedFrame: number | null;
+  /** Bounded build breaks entered after cleared defense acts. */
+  breaksEntered: number;
+  /** Bounded build breaks exited back to pressure/finale. */
+  breaksExited: number;
+  /** Hostile raider count observed during BREAK; must remain zero. */
+  hostileActivityDuringBreak: number;
+  /** Finale boss/add release state and authoritative defeat latch. */
+  finale: Floor6FinaleState;
+  /** Terminal outcome latch; written once by the defense director. */
+  terminalOutcome: 'victory' | 'defeat' | null;
+  /** Count of terminal outcome writes; should never exceed one. */
+  terminalOutcomeCount: number;
+  /** Victory payout transaction state; never inferred from presentation. */
+  victoryPayout: Floor6VictoryPayoutState;
+  /** Exit-open transaction state; separate from boss entity absence. */
+  exit: Floor6ExitState;
+}
+
+export interface Floor6TowerDef {
+  readonly id: string;
+  readonly footprintId: string;
+  readonly cost: number;
+  readonly sellRefund: number;
+  readonly attackRangeFt: number;
+  readonly attackDamage: number;
+  readonly attackCooldownMs: number;
+}
+
+export interface Floor6TowerInstance {
+  readonly siteId: string;
+  readonly towerId: string;
+  readonly eid: number;
+}
+
+export type Floor6TowerBuildFailureReason =
+  | 'not-floor6'
+  | 'phase-locked'
+  | 'invalid-site'
+  | 'unknown-tower'
+  | 'occupied'
+  | 'unaffordable';
+
+export interface Floor6TowerBuildResult {
+  readonly ok: boolean;
+  readonly reason: Floor6TowerBuildFailureReason | 'built';
+  readonly eid?: number;
+}
+
+export interface Floor6TowerSellResult {
+  readonly ok: boolean;
+  readonly reason: 'not-floor6' | 'phase-locked' | 'vacant' | 'sold';
+}
+
+export interface Floor6EconomyState {
+  balance: number;
+  totalEarned: number;
+  totalSpent: number;
+  earnedFromPickups: number;
+  earnedFromWaves: number;
+  pickupsSpawned: number;
+  pickupsCollected: number;
+  rewardedWaveIndexes: number[];
+  unlockedOfferIds: string[];
+  selectedOfferIds: string[];
+  selectionTrace: Floor6UpgradeSelectionTraceEntry[];
+  terminalResetCount: number;
+}
+
+export interface Floor6UpgradeSelectionTraceEntry {
+  readonly frame: number;
+  readonly offerId: string;
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+  readonly balanceBefore: number;
+  readonly balanceAfter: number;
+}
+
+export type Floor6UpgradeSelectionFailureReason =
+  | 'not-floor6'
+  | 'phase-locked'
+  | 'unknown-offer'
+  | 'duplicate'
+  | 'unaffordable';
+
+export interface Floor6UpgradeSelectionResult {
+  readonly ok: boolean;
+  readonly reason: Floor6UpgradeSelectionFailureReason | 'purchased';
+}
+
+export interface Floor6FinaleBossManifestEntry {
+  readonly bossId: string;
+  readonly displayName: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly hp: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleAddManifestEntry {
+  readonly addId: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  readonly releaseTick: number;
+  readonly buildCurrencyReward: number;
+}
+
+export interface Floor6FinaleState {
+  bossManifest: Floor6FinaleBossManifestEntry | null;
+  addManifest: readonly Floor6FinaleAddManifestEntry[];
+  bossEid: number;
+  bossDefeated: boolean;
+  startedFrame: number | null;
+  bossDefeatedFrame: number | null;
+  timeoutFrames: number;
+}
+
+export interface Floor6VictoryPayoutState {
+  awarded: boolean;
+  count: number;
+  gold: number;
+  broadcastScore: number;
+}
+
+export interface Floor6ExitState {
+  opened: boolean;
+  openCount: number;
+  /**
+   * True only after the player has actually confirmed descent through the
+   * Relay exit marker's confirmation modal. `opened` alone means the exit
+   * transaction fired (Deadline defeated); `confirmed` gates the terminal
+   * completion screen so it does not preempt the marker/confirmation flow.
+   */
+  confirmed: boolean;
+}
+
+export interface Floor6QuestProjectionSnapshot {
+  readonly 'floor6.defense.briefed': boolean;
+  readonly 'floor6.defense.firstWaveCleared': boolean;
+  readonly 'floor6.defense.firstBuildPlaced': boolean;
+  readonly 'floor6.defense.firstUpgradeChosen': boolean;
+  readonly 'floor6.defense.breakCleared': boolean;
+  readonly 'floor6.defense.deadlineDefeated': boolean;
+  readonly 'floor6.defense.relaySecured': boolean;
+}
+
+export type Floor6HudCue = ScenarioHudCue;
+
+export interface Floor6HudRouteSnapshot {
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly directionLabel: string;
+  readonly nextReleaseTick: number | null;
+}
+
+export interface Floor6HudBuildSiteSnapshot {
+  readonly siteId: string;
+  readonly occupied: boolean;
+  readonly label: string;
+  readonly towerId: string | null;
+}
+
+export interface Floor6HudTowerSnapshot {
+  readonly siteId: string;
+  readonly towerId: string;
+  readonly rangeFt: number;
+  readonly tierLabel: string;
+}
+
+export interface Floor6PresentationSnapshot {
+  readonly objectiveLabel: string;
+  readonly phaseLabel: string;
+  readonly relayDangerLabel: string;
+  readonly questGoals: Floor6QuestProjectionSnapshot;
+  readonly routes: readonly Floor6HudRouteSnapshot[];
+  readonly buildSites: readonly Floor6HudBuildSiteSnapshot[];
+  readonly towers: readonly Floor6HudTowerSnapshot[];
+  readonly buildCurrencyLabel: string;
+  readonly lootLabel: string;
+  readonly upgradeChoiceLabel: string;
+  readonly breakSafetyLabel: string;
+  readonly deadlineLabel: string;
+  readonly cues: readonly Floor6HudCue[];
+}
+
+export type Floor6UpgradeEffectKind =
+  | 'relayMaxHpBonus'
+  | 'towerFireRateBonus'
+  | 'towerDamageBonus'
+  | 'relayRepair'
+  | 'raiderSlowBonus';
+
+export interface Floor6UpgradeEffect {
+  readonly kind: Floor6UpgradeEffectKind;
+  readonly value: number;
+}
+
+export interface Floor6UpgradeOfferManifestEntry {
+  readonly offerId: string;
+  readonly stableIndex: number;
+  readonly cost: number;
+  readonly effect: Floor6UpgradeEffect;
+}
+
+/**
+ * One authored wave schedule entry — immutable once built at SETUP→DEFEND.
+ * Stable by `manifestIndex`; reordering is seed-breaking (FR3.4).
+ */
+export interface Floor6WaveManifestEntry {
+  readonly kind: 'wave' | 'finale-boss' | 'finale-add';
+  readonly addId?: string;
+  readonly manifestIndex: number;
+  readonly waveIndex: number;
+  readonly waveLabel: string;
+  readonly routeId: string;
+  readonly entranceId: string;
+  readonly archetypeId: string;
+  /** Absolute frame at which this entry is eligible to release. */
+  readonly releaseTick: number;
+  /** Collectible floor-scoped build currency spawned when this raider dies. */
+  readonly buildCurrencyReward: number;
+}
+
+/** Per-entry mutable runtime tracking. Index mirrors manifestIndex. */
+export interface Floor6LiveEnemyRecord {
+  /** 0 = not yet spawned, -1 = stalled/missing, positive = live ECS eid. */
+  eid: number;
+  /** Current waypoint index in route.waypoints; incremented as raider advances. */
+  waypointIndex: number;
+  /** Consecutive frames the raider has not moved (for stall detection). */
+  stillFrames: number;
+  /** True once the stall was detected and logged — prevents repeated telemetry. */
+  stallResolved: boolean;
+  /** True once this entry is dead or missing and can count toward wave-clear rewards. */
+  defeated: boolean;
+  /** True once this manifest entry has spawned its Floor 6 build-currency reward. */
+  rewardSpawned: boolean;
+}
+
+export interface Floor6PhaseDurationStats {
+  readonly kind: Floor6DefensePhaseKind;
+  readonly enteredFrame: number;
+  readonly exitedFrame: number;
+  readonly durationFrames: number;
+}
+
+export interface Floor6RoutePressureStats {
+  readonly routeId: string;
+  readonly released: number;
+  readonly stalled: number;
+}
+
+export interface Floor6CleanupStats {
+  readonly liveEnemyCount: number;
+  readonly spawnDebt: number;
+  readonly terminalResetCount: number;
+  readonly towersTornDown: number;
+}
+
+export interface Floor6TerminalIntegrityStats {
+  readonly terminal: boolean;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutCount: number;
+  readonly exitOpenCount: number;
+}
+
+export interface Floor6ReleaseGateStats {
+  readonly activeTimeBudgetMs: number | null;
+  readonly frameBudget: number | null;
+  readonly completionRateTarget: number;
+  readonly minimumRelayHealthPct: number;
+  readonly maxLiveEnemies: number;
+  readonly maxStalledRaiders: number;
+  readonly maxFrameCostMs: number;
+  readonly observedFrameCostMs: number | null;
+  readonly phaseDurations: readonly Floor6PhaseDurationStats[];
+  readonly routePressure: readonly Floor6RoutePressureStats[];
+  readonly cleanup: Floor6CleanupStats;
+  readonly terminalIntegrity: Floor6TerminalIntegrityStats;
+}
+
+/** Telemetry snapshot emitted by the director at every phase transition. */
+export interface Floor6DefenseRunStats {
+  readonly phase: Floor6DefensePhase;
+  readonly phaseTrace: readonly Floor6DefensePhaseTraceEntry[];
+  readonly relayHp: number;
+  readonly relayMaxHp: number;
+  readonly nextReleaseIndex: number;
+  readonly spawnDebt: number;
+  readonly totalReleased: number;
+  readonly liveEnemyCount: number;
+  readonly stalledCount: number;
+  readonly waveManifestLength: number;
+  readonly buildCurrencyBalance: number;
+  readonly buildCurrencyEarned: number;
+  readonly buildCurrencySpent: number;
+  readonly buildCurrencyEarnedFromPickups: number;
+  readonly buildCurrencyEarnedFromWaves: number;
+  readonly buildCurrencyPickupsSpawned: number;
+  readonly buildCurrencyPickupsCollected: number;
+  readonly upgradeOffers: readonly Floor6UpgradeOfferManifestEntry[];
+  readonly unlockedOfferIds: readonly string[];
+  readonly selectedOfferIds: readonly string[];
+  readonly upgradeSelectionTrace: readonly Floor6UpgradeSelectionTraceEntry[];
+  readonly terminalResetCount: number;
+  readonly towers: readonly Pick<Floor6TowerInstance, 'siteId' | 'towerId'>[];
+  readonly towersTornDown: number;
+  readonly heroDamageDealt: number;
+  readonly towerDamageDealt: number;
+  readonly currentActIndex: number;
+  readonly breaksEntered: number;
+  readonly breaksExited: number;
+  readonly hostileActivityDuringBreak: number;
+  readonly finaleBossDefeated: boolean;
+  readonly finaleBossEid: number;
+  readonly finaleBossManifest: Floor6FinaleBossManifestEntry | null;
+  readonly finaleAddManifestLength: number;
+  readonly terminalOutcome: 'victory' | 'defeat' | null;
+  readonly terminalOutcomeCount: number;
+  readonly victoryPayoutAwarded: boolean;
+  readonly victoryPayoutCount: number;
+  readonly victoryPayoutGold: number;
+  readonly victoryPayoutBroadcastScore: number;
+  readonly exitOpened: boolean;
+  readonly exitOpenCount: number;
+  readonly releaseGate: Floor6ReleaseGateStats;
+  readonly presentation: Floor6PresentationSnapshot;
 }
 
 /**
@@ -975,9 +1761,8 @@ export interface Floor4GreenRoomVisitStock {
  * on `world.floorExtendedState.floor4GreenRoom`. Deliberately NOT the Floor-2
  * settlement/quartermaster state: the Green Room re-rolls every table every
  * visit and retires unsold stock, which the Floor-2 single-restock model does
- * not express. Transaction (purchase) and UI are owned by later slices; this
- * state only holds the current visit's immutable offer and the lifecycle
- * bookkeeping needed to guard against re-rolls and reopens.
+ * not express. The game-layer purchase transaction owns wallet/inventory
+ * mutation; this state holds the current visit's offer and lifecycle guards.
  */
 export interface Floor4GreenRoomState {
   /** The open visit's rolled, immutable stock; undefined between visits. */
@@ -989,6 +1774,8 @@ export interface Floor4GreenRoomState {
    * against re-rolling an open visit and against reopening a retired one.
    */
   lastOpenedVisitIndex: number;
+  /** Number of successful Green Room purchases in this run. */
+  purchases?: number;
 }
 
 // Backward compatibility exports

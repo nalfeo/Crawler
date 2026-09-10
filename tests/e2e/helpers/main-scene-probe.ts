@@ -20,6 +20,8 @@ import type {
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
   Floor3LeagueHudProbeState,
+  Floor3RangedCompanionProbeResult,
+  Floor3CompanionPropDepthProbe,
   FloatingTextProbe,
   FloorSummaryProbeState,
   ItemIconRenderInfo,
@@ -27,9 +29,11 @@ import type {
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
+  ProjectileRenderInfo,
   RewardAudioCueLogEntryProbe,
   RewardOpeningProbeState,
   SafeAreaLayoutProbe,
+  ScenarioHudProbeState,
   StatusAuraEnemyProbe,
   StatusAuraRenderSummary,
   TerrainRenderSummary,
@@ -37,7 +41,10 @@ import type {
   StaircaseMarkerRenderInfo,
   VitalsStackProbe,
 } from '../../../src/labs/main-scene-probe-lab/index.js';
-import type { _CornerButtonProbe as CornerButtonProbe } from '../../../src/engine/scenes/MainGameScene.js';
+import type {
+  _AchievementToastProbe as AchievementToastProbe,
+  _CornerButtonProbe as CornerButtonProbe,
+} from '../../../src/engine/scenes/MainGameScene.js';
 import type { GeneratedEquipmentInstanceKey } from '../../../src/shared/generated-equipment-types.js';
 import type { UsageMetric } from '../../../src/shared/skills.js';
 import type { ScreenBounds } from '../../../src/engine/ui-scale.js';
@@ -102,6 +109,22 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.activateFamilyRelationships()),
   getFamilyHudState: (page: Page): Promise<FamilyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFamilyHudState()),
+  getScenarioHudState: (page: Page): Promise<ScenarioHudProbeState> =>
+    page.evaluate(() => window.__mainSceneProbe!.getScenarioHudState()),
+  primeAchievementToastWithCommentary: (page: Page): Promise<AchievementToastProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeAchievementToastWithCommentary()),
+  getAchievementsLayoutRegions: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getAchievementsLayoutRegions()),
+  seedAchievementForPresentation: (page: Page, achievementId: string): Promise<void> =>
+    page.evaluate(
+      (id) => window.__mainSceneProbe!.seedAchievementForPresentation(id),
+      achievementId,
+    ),
+  setAchievementsFilter: (
+    page: Page,
+    filter: 'all' | 'global' | `floor:${number}`,
+  ): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.setAchievementsFilter(value), filter),
   getFloor3PartyHudState: (page: Page): Promise<Floor3PartyHudProbeState> =>
     page.evaluate(() => window.__mainSceneProbe!.getFloor3PartyHudState()),
   getFloor3LeagueHudState: (page: Page): Promise<Floor3LeagueHudProbeState> =>
@@ -112,6 +135,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.startStaircaseBossBattle()),
   primeFloor1StairTransition: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.primeFloor1StairTransition()),
+  primeFloor1QuotaCompletion: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor1QuotaCompletion!()),
   primeFloor2StairTransition: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.primeFloor2StairTransition()),
   getBossIntroState: (page: Page): Promise<BossIntroProbeState> =>
@@ -126,6 +151,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   getModalPickerContent: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerContent()),
+  getIssueReportPickerContent: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getIssueReportPickerContent()),
+  primeShopkeeperInitialDialogue: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeShopkeeperInitialDialogue()),
   primeShopkeeperPurchase: (page: Page, gold: number): Promise<ProbePoint | null> =>
     page.evaluate((value) => window.__mainSceneProbe!.primeShopkeeperPurchase(value), gold),
   primeShopkeeperPostQuestStock: (
@@ -154,6 +183,8 @@ export const mainSceneProbe = {
       ({ value, learn }) => window.__mainSceneProbe!.primeSpellBrokerStock(value, learn),
       { value: gold, learn: learnFirstOffer },
     ),
+  primeSpellBrokerQuestIntro: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeSpellBrokerQuestIntro()),
   getSafeAreaLayout: (page: Page): Promise<SafeAreaLayoutProbe> =>
     page.evaluate(() => window.__mainSceneProbe!.getSafeAreaLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
@@ -169,6 +200,29 @@ export const mainSceneProbe = {
   },
   primeStatusAuraEnemy: (page: Page): Promise<StatusAuraEnemyProbe | null> =>
     page.evaluate(() => window.__mainSceneProbe!.primeStatusAuraEnemy()),
+  primeFloor6FinaleVfxCue: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6FinaleVfxCue()),
+  primeFloor6BreakPhase: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6BreakPhase()),
+  primeFloor6OccupiedSite: (page: Page): Promise<{ siteId: string; towerId: string } | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6OccupiedSite()),
+  primeFloor6VictoryExitHint: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6VictoryExitHint()),
+  primeFloor6RelayCriticalDanger: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor6RelayCriticalDanger()),
+  prepareFloor6ConstructionTap: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.prepareFloor6ConstructionTap()),
+  tapFloor6ConstructionSite: (
+    page: Page,
+    siteId: string,
+    pointerType: 'mouse' | 'touch' = 'mouse',
+  ): Promise<boolean> =>
+    page.evaluate(({ id, kind }) => window.__mainSceneProbe!.tapFloor6ConstructionSite(id, kind), {
+      id: siteId,
+      kind: pointerType,
+    }),
+  getFloor6TowerRenderInfo: (page: Page, siteId: string) =>
+    page.evaluate((id) => window.__mainSceneProbe!.getFloor6TowerRenderInfo(id), siteId),
   getEntityCameraPosition: (page: Page, eid: number): Promise<ProbePoint | null> =>
     page.evaluate((id) => window.__mainSceneProbe!.getEntityCameraPosition(id), eid),
   applyStatusAuraDebuff: (page: Page, enemyEid: number): Promise<boolean> =>
@@ -198,6 +252,12 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowIds()),
   getVisibleQuestArrowStates: (page: Page) =>
     page.evaluate(() => window.__mainSceneProbe!.getVisibleQuestArrowStates()),
+  getActiveQuestIds: (page: Page): Promise<string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getActiveQuestIds()),
+  getQuestWaypointIds: (page: Page): Promise<string[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getQuestWaypointIds()),
+  getQuestWaypointStates: (page: Page) =>
+    page.evaluate(() => window.__mainSceneProbe!.getQuestWaypointStates()),
   getMinimapRadarWaypointArrowIds: (page: Page): Promise<string[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getMinimapRadarWaypointArrowIds()),
   getMinimapOverlayWaypointArrowIds: (page: Page): Promise<string[]> =>
@@ -210,6 +270,10 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestQuartermasterToggle()),
   getIssueButtonBounds: (page: Page): Promise<ScreenBounds | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getIssueButtonBounds()),
+  getIssueButtonCompactLabel: (page: Page): Promise<string> =>
+    page.evaluate(() => window.__mainSceneProbe!.getIssueButtonCompactLabel()),
+  getEquipmentPanelBounds: (page: Page): Promise<ScreenBounds | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getEquipmentPanelBounds()),
   getCornerButtonLayout: (page: Page): Promise<readonly CornerButtonProbe[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getCornerButtonLayout()),
   getVitalsStackBounds: (page: Page): Promise<VitalsStackProbe> =>
@@ -263,6 +327,8 @@ export const mainSceneProbe = {
         ),
       state,
     ),
+  pressGameOverKey: (page: Page, code: string): Promise<void> =>
+    page.evaluate((value) => window.__mainSceneProbe!.pressGameOverKey(value), code),
   tapAbilitiesButton: (page: Page): Promise<boolean> =>
     page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
   tapFloor3RosterButton: (page: Page): Promise<boolean> =>
@@ -275,6 +341,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
   queueInteraction: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueInteraction()),
+  primeFloor4GreenRoomIntermission: (page: Page): Promise<ProbePoint | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor4GreenRoomIntermission()),
   getPrimedNpcScreenPoint: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.getPrimedNpcScreenPoint()),
   getCameraCenter: (page: Page): Promise<ProbePoint | null> =>
@@ -289,10 +357,22 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getHarvestableRenderSummary()),
   getPropRenderSizes: (page: Page): Promise<PropRenderSize[]> =>
     page.evaluate(() => window.__mainSceneProbe!.getPropRenderSizes()),
+  primeFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.primeFloor3CompanionPropDepthProbe()),
+  getFloor3CompanionPropDepthProbe: (page: Page): Promise<Floor3CompanionPropDepthProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3CompanionPropDepthProbe()),
   equipMainHandWeapon: (page: Page, weaponId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.equipMainHandWeapon(id), weaponId),
   getCarriedWeaponRenderInfo: (page: Page): Promise<CarriedWeaponRenderInfo> =>
     page.evaluate(() => window.__mainSceneProbe!.getCarriedWeaponRenderInfo()),
+  fireActiveWeaponForProjectileProbe: (page: Page): Promise<number[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.fireActiveWeaponForProjectileProbe()),
+  getProjectileRenderInfo: (page: Page): Promise<ProjectileRenderInfo[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getProjectileRenderInfo()),
+  spawnFloor3RangedCompanionProbe: (page: Page): Promise<Floor3RangedCompanionProbeResult | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.spawnFloor3RangedCompanionProbe()),
+  getEntityHealth: (page: Page, eid: number): Promise<number | null> =>
+    page.evaluate((id) => window.__mainSceneProbe!.getEntityHealth(id), eid),
   getTerrainRenderSummary: (page: Page): Promise<TerrainRenderSummary> =>
     page.evaluate(() => window.__mainSceneProbe!.getTerrainRenderSummary()),
   getDoorRenderSummary: (page: Page): Promise<DoorRenderSummary> =>

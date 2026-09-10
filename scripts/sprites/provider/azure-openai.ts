@@ -23,6 +23,7 @@
  */
 
 import { PNG } from 'pngjs';
+import { sheetPixelDimensions } from '../brief-schema.js';
 import type { GenerateSheetRequest, ImageProvider, ProviderErrorKind } from './types.js';
 import { ProviderError } from './types.js';
 import {
@@ -84,10 +85,16 @@ export class AzureOpenAIImageProvider implements ImageProvider {
       this.deployment,
     )}/images/edits?api-version=${encodeURIComponent(this.apiVersion)}`;
 
-    const size = request.size ?? request.brief.generation.sheet.nativeCanvas;
+    const fallback = sheetPixelDimensions(request.brief.generation.sheet);
+    const size =
+      request.size === undefined
+        ? fallback
+        : typeof request.size === 'number'
+          ? { width: request.size, height: request.size }
+          : request.size;
     const form = new FormData();
     form.set('prompt', request.prompt);
-    form.set('size', `${size}x${size}`);
+    form.set('size', `${size.width}x${size.height}`);
     form.set('n', '1');
     // gpt-image-1 always returns base64 and rejects `response_format`; do
     // not send it. (The original code targeted dall-e-3, which required it.)

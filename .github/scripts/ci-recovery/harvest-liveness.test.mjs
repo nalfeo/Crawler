@@ -5,12 +5,14 @@ import test from 'node:test';
 import YAML from 'yaml';
 
 import {
+  assignCopilotToIncident,
   buildDispatchLivenessIncidentBody,
   collectRecentWorkflowDispatchRuns,
   collectRecentReconcileHarvestRuns,
   DEFAULT_HARVEST_THRESHOLD_MINUTES,
   DEFAULT_DISPATCH_LIVENESS_WINDOW_HOURS,
   DEFAULT_PR_DISPATCH_GAP_HOURS,
+  DEFAULT_LIVENESS_REDISPATCH_CAP,
   DISPATCH_LIVENESS_INCIDENT_LABEL,
   DISPATCH_LIVENESS_INCIDENT_MARKER,
   DISPATCH_LIVENESS_INCIDENT_TITLE,
@@ -25,6 +27,11 @@ import {
   reconcileHarvestIncident,
   summarizeDispatchLiveness,
   summarizeHarvestRuns,
+  isLivenessRedispatchEligible,
+  selectLivenessRedispatchCandidates,
+  protectedLivenessPullNumbers,
+  dispatchLivenessRedispatches,
+  parsePositiveIntEnv,
 } from './harvest-liveness.mjs';
 
 const NOW = new Date('2026-07-30T17:00:00Z');
@@ -83,6 +90,72 @@ test('summarizeHarvestRuns counts cancelled and timed-out runs as failures', () 
   // Only failures newer than the last success count; the older one does not.
   assert.equal(summary.consecutiveFailures, 3);
   assert.equal(summary.lastSuccessAt, '2026-07-30T16:40:00.000Z');
+});
+
+// Incident #4404 (2026-09-07): the harvester did not fail, it was never
+// dispatched. The last reconcile run succeeded at 03:29:58 and the next one did
+// not start until 04:52:55, because the scheduled CI Liveness Sweep -- the only
+// quiet-window dispatcher -- did not fire between 01:09 and 04:52. So the
+// sampled window is full of completed runs, every non-success run predates the
+// last success, and `consecutiveFailures` is 0.
+test('a silent dispatch gap with zero failures still trips the harvest threshold', () => {
+  const summary = summarizeHarvestRuns(
+    [
+      run({ updated_at: '2026-09-07T03:29:58Z', html_url: 'https://example.test/34079815898' }),
+      run({
+        conclusion: 'cancelled',
+        updated_at: '2026-09-07T02:05:18Z',
+        html_url: 'https://example.test/34073228341',
+      }),
+      run({ updated_at: '2026-09-07T01:41:00Z' }),
+    ],
+    new Date('2026-09-07T04:52:52Z'),
+  );
+
+  assert.equal(summary.completedCount, 3);
+  assert.equal(summary.lastSuccessAt, '2026-09-07T03:29:58.000Z');
+  assert.equal(summary.minutesSinceSuccess, 82);
+  // The cancelled run predates the last success, so it is not a failure streak.
+  assert.equal(summary.consecutiveFailures, 0);
+  assert.deepEqual(evaluateHarvestLiveness({ summary, backlogCount: 6 }), {
+    stalled: true,
+    reason: 'last-success-older-than-threshold',
+  });
+});
+
+test('a silent dispatch gap incident names the scheduled sweep as the first cause', () => {
+  const summary = summarizeHarvestRuns(
+    [run({ updated_at: '2026-09-07T03:29:58Z' })],
+    new Date('2026-09-07T04:52:52Z'),
+  );
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'last-success-older-than-threshold',
+  });
+
+  assert.match(body, /No harvest run failed/);
+  assert.match(body, /ci-liveness-sweep\.yml/);
+});
+
+test('a failing-harvest incident does not claim a silent dispatch gap', () => {
+  const summary = summarizeHarvestRuns(
+    [
+      run({ conclusion: 'failure', updated_at: '2026-09-07T04:40:00Z' }),
+      run({ updated_at: '2026-09-07T03:29:58Z' }),
+    ],
+    new Date('2026-09-07T04:52:52Z'),
+  );
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'last-success-older-than-threshold',
+  });
+
+  assert.equal(summary.consecutiveFailures, 1);
+  assert.doesNotMatch(body, /No harvest run failed/);
 });
 
 test('summarizeHarvestRuns tolerates empty and malformed input', () => {
@@ -363,10 +436,406 @@ test('buildDispatchLivenessIncidentBody includes histogram and never-summoned bl
     workflowRunUrl: 'https://example.test/sweep',
     repository: 'nalfeo/Crawler',
   });
+
   assert.ok(body.startsWith(DISPATCH_LIVENESS_INCIDENT_MARKER));
   assert.match(body, /skip-merge-train-owned/);
   assert.match(body, /#2193/);
   assert.match(body, /https:\/\/github\.com\/nalfeo\/Crawler\/pull\/2193/);
+});
+
+function blockedPull(number, overrides = {}) {
+  return {
+    number,
+    state: 'open',
+    draft: false,
+    mergeable_state: 'blocked',
+    blocked_since: '2026-07-30T10:00:00Z',
+    head: { sha: `sha-${number}`, repo: { full_name: 'nalfeo/Crawler' } },
+    base: { ref: 'main' },
+    labels: [],
+    ...overrides,
+  };
+}
+
+test('liveness eligibility and selection handle the incident fixture deterministically', () => {
+  const quarantinedIncidentPull = blockedPull(4217, {
+    mergeable_state: 'dirty',
+    labels: [
+      { name: 'merge-train-blocked' },
+      { name: 'human-approval-required' },
+      { name: 'ci-lifecycle-quarantined' },
+    ],
+  });
+  const mergeTrainIncidentPull = blockedPull(4214, {
+    mergeable_state: 'dirty',
+    labels: [{ name: 'merge-train' }, { name: 'human-approval-required' }],
+  });
+
+  assert.equal(
+    isLivenessRedispatchEligible(quarantinedIncidentPull, 'nalfeo', 'Crawler'),
+    false,
+    'quarantined PRs are intentionally excluded from the liveness dispatch backlog',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(mergeTrainIncidentPull, 'nalfeo', 'Crawler'),
+    false,
+    'merge-train-owned PRs are intentionally excluded from the liveness dispatch backlog',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler'),
+    true,
+    'discovery payloads may omit state',
+  );
+  assert.equal(
+    isLivenessRedispatchEligible(blockedPull(4225, { state: undefined }), 'nalfeo', 'Crawler', {
+      requireExplicitOpenState: true,
+    }),
+    false,
+    'hydrated PRs must explicitly remain open before redispatch',
+  );
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      quarantinedIncidentPull,
+      mergeTrainIncidentPull,
+      blockedPull(4224),
+      blockedPull(4220, { draft: true }),
+      blockedPull(4221, { state: 'closed' }),
+      blockedPull(4222, { head: { repo: { full_name: 'external/fork' } } }),
+      blockedPull(4223, { blocked_since: '2026-07-30T16:59:00Z' }),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedLivenessPullNumbers([
+      { pr: 4217, action: 'skip-merge-train-owned' },
+    ]),
+    now: NOW,
+    cap: DEFAULT_LIVENESS_REDISPATCH_CAP,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4224],
+    'only dispatch-eligible stale PRs enter the liveness backstop; real incident ownership states are excluded',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes actively owned PRs from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4217, action: 'skip-active-shepherd' },
+    { pr: 4214, action: 'skip-active-copilot-progress' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4217), blockedPull(4214), blockedPull(4224)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4224],
+    'active shepherd and Copilot ownership decisions must prevent redispatch',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes conflict-order and rebase backoff waits', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4225, action: 'skip-ci-conflict-order-wait' },
+    { pr: 4226, action: 'wait-conflict-rebase-backoff' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4225), blockedPull(4226), blockedPull(4227)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4227],
+  );
+});
+
+test('protectedLivenessPullNumbers does not fence stale no-op decisions from redispatch', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4251, action: 'skip-duplicate-fingerprint' },
+    { pr: 4252, action: 'skip-merge-train-owned' },
+    { pr: 4253, action: 'queue-merge-train' },
+    { pr: 4254, action: 'wait-admission' },
+    { pr: 4255, action: 'skip-active-shepherd' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4251),
+      blockedPull(4252),
+      blockedPull(4253),
+      blockedPull(4254),
+      blockedPull(4255),
+      blockedPull(4256),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+    cap: 10,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4251, 4252, 4253, 4254, 4256],
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes current ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4228, { labels: [{ name: 'ci-owner-pr-4228' }] }),
+      blockedPull(4229, { labels: [{ name: 'ci-recovery-waiting-transition' }] }),
+      blockedPull(4230),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4230],
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes current merge-train ownership metadata', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4233, { labels: [{ name: 'merge-train' }] }),
+      blockedPull(4234, { labels: [{ name: 'merge-train-blocked' }] }),
+      blockedPull(4235, { labels: [{ name: 'merge-train-recovery-pending' }] }),
+      blockedPull(4236, { labels: [{ name: 'merge-train-validation-failed' }] }),
+      blockedPull(4237, { labels: [{ name: 'ci-conflict-order-wait' }] }),
+      blockedPull(4238),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4238],
+    'current merge-train ownership and wait labels must prevent redispatch',
+  );
+});
+
+test('selectLivenessRedispatchCandidates excludes lifecycle quarantine/abandon and opt-out labels', () => {
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [
+      blockedPull(4241, { labels: [{ name: 'ci-lifecycle-quarantined' }] }),
+      blockedPull(4242, { labels: [{ name: 'ci-lifecycle-abandoned' }] }),
+      blockedPull(4243, { labels: [{ name: 'ci-recovery-opt-out' }] }),
+      blockedPull(4244),
+    ],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4244],
+    'quarantined, abandoned, and opt-out PRs must mirror the router exclusions and never be dispatched',
+  );
+});
+
+test('protectedLivenessPullNumbers excludes PRs whose automation budget is intentionally exhausted', () => {
+  const protectedNumbers = protectedLivenessPullNumbers([
+    { pr: 4245, action: 'skip-stale-automation-exhausted' },
+  ]);
+
+  const candidates = selectLivenessRedispatchCandidates({
+    pulls: [blockedPull(4245), blockedPull(4246)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    protectedPullNumbers: protectedNumbers,
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    candidates.map((pull) => pull.number),
+    [4246],
+    'a terminal exhausted decision must keep suppressing redispatch even after it ages out of the sampling window',
+  );
+});
+
+test('dispatchLivenessRedispatches re-fetches state and carries current head/base guards', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4217), blockedPull(4217), blockedPull(4218)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data:
+        number === 4217
+          ? blockedPull(4217, { head: { sha: 'new-head', repo: { full_name: 'nalfeo/Crawler' } } })
+          : blockedPull(4218, { state: 'closed' }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4217, headSha: 'new-head', baseRef: 'main' }]);
+  assert.deepEqual(result.skipped, [{ number: 4218, reason: 'state-changed' }]);
+  assert.equal(dispatches.length, 1);
+  assert.deepEqual(dispatches[0].inputs, {
+    operation: 'reconcile',
+    pr_number: '4217',
+    trigger: 'ci-liveness-sweep',
+    expected_head_sha: 'new-head',
+    expected_base_ref: 'main',
+  });
+});
+
+test('dispatchLivenessRedispatches dispatches stale PRs targeting non-default base refs', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4240, { base: { ref: 'release/1.2' } })],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    ref: 'main',
+    getPull: async () => ({
+      data: blockedPull(4240, {
+        base: { ref: 'release/1.2' },
+        head: { sha: 'release-head', repo: { full_name: 'nalfeo/Crawler' } },
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [
+    { number: 4240, headSha: 'release-head', baseRef: 'release/1.2' },
+  ]);
+  assert.deepEqual(dispatches[0], {
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    workflow_id: 'ci-recovery.yml',
+    ref: 'main',
+    inputs: {
+      operation: 'reconcile',
+      pr_number: '4240',
+      trigger: 'ci-liveness-sweep',
+      expected_head_sha: 'release-head',
+      expected_base_ref: 'release/1.2',
+    },
+  });
+});
+
+test('dispatchLivenessRedispatches skips current ownership metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4231), blockedPull(4232)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels:
+          number === 4231
+            ? [{ name: 'ci-owner-pr-4231' }]
+            : [{ name: 'ci-recovery-waiting-transition' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4231, reason: 'state-changed' },
+    { number: 4232, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches skips merge-train metadata after re-fetch', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4238), blockedPull(4239)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({
+      data: blockedPull(number, {
+        labels: [{ name: number === 4238 ? 'merge-train' : 'merge-train-validation-failed' }],
+      }),
+    }),
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, []);
+  assert.deepEqual(result.skipped, [
+    { number: 4238, reason: 'state-changed' },
+    { number: 4239, reason: 'state-changed' },
+  ]);
+  assert.equal(dispatches.length, 0);
+});
+
+test('dispatchLivenessRedispatches continues past a transient hydration failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4247), blockedPull(4248)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => {
+      if (number === 4247) throw new Error('secondary rate limit');
+      return { data: blockedPull(4248) };
+    },
+    dispatch: async (request) => dispatches.push(request),
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4248, headSha: 'sha-4248', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4247);
+  assert.equal(result.skipped[0].reason, 'hydration-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('dispatchLivenessRedispatches continues past a transient dispatch failure', async () => {
+  const dispatches = [];
+  const result = await dispatchLivenessRedispatches({
+    candidates: [blockedPull(4249), blockedPull(4250)],
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    getPull: async (number) => ({ data: blockedPull(number) }),
+    dispatch: async (request) => {
+      if (request.inputs.pr_number === '4249') throw new Error('workflow dispatch failed');
+      dispatches.push(request);
+    },
+  });
+
+  assert.deepEqual(result.dispatched, [{ number: 4250, headSha: 'sha-4250', baseRef: 'main' }]);
+  assert.equal(result.skipped.length, 1);
+  assert.equal(result.skipped[0].number, 4249);
+  assert.equal(result.skipped[0].reason, 'dispatch-failed');
+  assert.equal(dispatches.length, 1);
+});
+
+test('parsePositiveIntEnv rejects unset, non-numeric, zero, and negative overrides', () => {
+  assert.equal(parsePositiveIntEnv(undefined, 3), 3);
+  assert.equal(parsePositiveIntEnv('', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('3junk', 7),
+    7,
+    'trailing garbage must not silently truncate to a number',
+  );
+  assert.equal(parsePositiveIntEnv('junk3', 7), 7);
+  assert.equal(parsePositiveIntEnv('0', 3), 3);
+  assert.equal(
+    parsePositiveIntEnv('-1', 3),
+    3,
+    'a negative cap must not silently disable the backstop',
+  );
+  assert.equal(parsePositiveIntEnv('5', 3), 5);
 });
 
 test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the marker', () => {
@@ -390,7 +859,7 @@ test('buildHarvestIncidentBody names the shared user-PAT bucket and carries the 
   assert.doesNotMatch(body, /\$\{\{ github\.repository \}\}/);
 });
 
-function fakeApi({ existing = [] } = {}) {
+function fakeApi({ existing = [], issueLabels = [], issueAssignees = [] } = {}) {
   const calls = [];
   const graphqlCalls = [];
   return {
@@ -406,7 +875,9 @@ function fakeApi({ existing = [] } = {}) {
             issue: {
               id: 'ISSUE_4242',
               state: 'OPEN',
-              assignees: { nodes: [] },
+              author: { login: 'github-actions[bot]' },
+              labels: { nodes: issueLabels.map((name) => ({ name })) },
+              assignees: { nodes: issueAssignees },
             },
           },
         };
@@ -429,6 +900,52 @@ function fakeApi({ existing = [] } = {}) {
 
 const STALLED = { stalled: true, reason: 'no-successful-run-in-window' };
 const HEALTHY = { stalled: false, reason: 'healthy' };
+
+test('harvest incident assignment loses the race to an active Goobers claim', async () => {
+  const api = fakeApi({
+    issueLabels: ['goobers/status:in-review'],
+    issueAssignees: [{ id: 'USER_1', login: 'nalfeo' }],
+  });
+  const result = await assignCopilotToIncident({
+    graphql: api.graphql,
+    token: 'assignment-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    issueNumber: 4242,
+  });
+
+  assert.equal(result, null);
+  assert.equal(
+    api.graphqlCalls.filter((call) => call.query.includes('replaceActorsForAssignable')).length,
+    0,
+  );
+});
+
+test('reconcileHarvestIncident still creates the issue when Copilot assignment is unavailable', async () => {
+  let graphqlCallCount = 0;
+  const api = {
+    ...fakeApi(),
+    graphql: async () => {
+      graphqlCallCount += 1;
+      throw new Error('assignment token exhausted');
+    },
+  };
+  const result = await reconcileHarvestIncident({
+    ...api,
+    token: 't',
+    assignmentToken: 'fake-assignment-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    verdict: STALLED,
+    summary: summarizeHarvestRuns([], NOW),
+    backlogCount: 21,
+    now: NOW,
+  });
+
+  assert.equal(result.action, 'created');
+  assert.equal(api.calls.filter((call) => call.method === 'POST').length, 1);
+  assert.equal(graphqlCallCount, 1);
+});
 
 test('reconcileHarvestIncident creates a labelled incident when stalled', async () => {
   const api = fakeApi();
@@ -587,6 +1104,10 @@ test('CI Liveness Sweep runs the harvest liveness alarm', () => {
   assert.match(ALARM_STEP.with.script, /collectRecentWorkflowDispatchRuns/);
   assert.match(ALARM_STEP.with.script, /summarizeDispatchLiveness/);
   assert.match(ALARM_STEP.with.script, /reconcileDispatchLivenessIncident/);
+  assert.match(
+    ALARM_STEP.with.script,
+    /isLivenessRedispatchEligible\(details\.data, owner, repo\)/,
+  );
   assert.ok(
     SWEEP_STEPS.some((step) => String(step.uses || '').startsWith('actions/checkout')),
     'alarm imports a repo file, so the sweep must check out the repository',
@@ -612,4 +1133,23 @@ test('CI Liveness Sweep still runs on a schedule', () => {
 
 test('CI Recovery workflow exposes operation in run-name for liveness filtering', () => {
   assert.match(String(RECOVERY_WORKFLOW['run-name'] || ''), /inputs\.operation/);
+});
+
+test('CI Recovery keeps queued harvests instead of cancelling pending runs', () => {
+  assert.equal(RECOVERY_WORKFLOW.concurrency?.['cancel-in-progress'], false);
+  assert.equal(RECOVERY_WORKFLOW.concurrency?.queue, 'max');
+  assert.match(String(RECOVERY_WORKFLOW.concurrency?.group || ''), /inputs\.pr_number/);
+});
+
+test('an unrelated harvest incident reason never claims a silent dispatch gap', () => {
+  const summary = summarizeHarvestRuns([], new Date('2026-09-07T04:52:52Z'));
+  const body = buildHarvestIncidentBody({
+    now: new Date('2026-09-07T04:52:52Z'),
+    summary,
+    backlogCount: 6,
+    reason: 'no-completed-runs-in-window',
+  });
+
+  assert.equal(summary.consecutiveFailures, 0);
+  assert.doesNotMatch(body, /No harvest run failed/);
 });

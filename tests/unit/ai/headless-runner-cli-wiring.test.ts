@@ -87,21 +87,33 @@ describe('headless-runner-cli — runner wiring', () => {
     vi.restoreAllMocks();
   });
 
-  it('passes settlementReturnRouting: true to the runner for --floor floor2', async () => {
-    const config = await captureRunnerConfig(['--floor', 'floor2', '--max-frames', '1']);
+  it('passes settlementReturnRouting: true to the runner for --floor floor2 when explicitly requested', async () => {
+    const config = await captureRunnerConfig([
+      '--floor',
+      'floor2',
+      '--max-frames',
+      '1',
+      '--settlement-return-routing',
+    ]);
 
     expect(config.floorId).toBe('floor2');
     expect(config.settlementReturnRouting).toBe(true);
   });
 
-  it('omits settlementReturnRouting entirely on other floors so the runner keeps its own defaults', async () => {
+  it('omits settlementReturnRouting entirely on every floor (including floor2) so the runner/registry own the defaults', async () => {
     const floor1 = await captureRunnerConfig(['--floor', 'floor1', '--max-frames', '1']);
+    const floor2 = await captureRunnerConfig(['--floor', 'floor2', '--max-frames', '1']);
     const floor3 = await captureRunnerConfig(['--floor', 'floor3', '--max-frames', '1']);
 
     // `in` (not `=== undefined`): an explicit `settlementReturnRouting: undefined`
     // would override `DEFAULT_CONFIG` in the runner's `{ ...DEFAULT_CONFIG, ...config }`
     // spread and defeat its Floor 1 auto-enable branch.
+    //
+    // Regression: the CLI resolver used to force `settlementReturnRouting: true`
+    // into the config whenever `--floor floor2` was passed with no explicit
+    // flag, contradicting the registry's own floor2 default (`false`).
     expect('settlementReturnRouting' in floor1).toBe(false);
+    expect('settlementReturnRouting' in floor2).toBe(false);
     expect('settlementReturnRouting' in floor3).toBe(false);
   });
 
@@ -132,6 +144,41 @@ describe('headless-runner-cli — runner wiring', () => {
 
     expect(config.weaponPersonas).toBe(false);
     expect(config.optionalPurchases).toBe(false);
+  });
+
+  it('omits attackWaves/floor1Spawners unless explicitly overridden so the registry owns the default-off values', async () => {
+    const config = await captureRunnerConfig(['--floor', 'floor1', '--max-frames', '1']);
+
+    expect('attackWaves' in config).toBe(false);
+    expect('floor1Spawners' in config).toBe(false);
+  });
+
+  it('forwards explicit --attack-waves and --floor1-spawners to the runner', async () => {
+    const config = await captureRunnerConfig([
+      '--floor',
+      'floor1',
+      '--max-frames',
+      '1',
+      '--attack-waves',
+      '--floor1-spawners',
+    ]);
+
+    expect(config.attackWaves).toBe(true);
+    expect(config.floor1Spawners).toBe(true);
+  });
+
+  it('forwards explicit --no-attack-waves and --no-floor1-spawners to the runner', async () => {
+    const config = await captureRunnerConfig([
+      '--floor',
+      'floor1',
+      '--max-frames',
+      '1',
+      '--no-attack-waves',
+      '--no-floor1-spawners',
+    ]);
+
+    expect(config.attackWaves).toBe(false);
+    expect(config.floor1Spawners).toBe(false);
   });
 
   it('leaves enforcePlayabilityInvariants unset so Floor 2 CLI runs keep the invariant gate', async () => {

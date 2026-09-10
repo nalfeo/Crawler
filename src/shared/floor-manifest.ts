@@ -20,13 +20,73 @@ import floor2ManifestJson from './data/floors/floor2.manifest.json';
 import floor3ManifestJson from './data/floors/floor3.manifest.json';
 import floor4ManifestJson from './data/floors/floor4.manifest.json';
 import floor5ManifestJson from './data/floors/floor5.manifest.json';
+import floor6ManifestJson from './data/floors/floor6.manifest.json';
 import { npcPlacementDefSchema } from './npc-placements.js';
 import { floorBehaviorSchema } from './floor-behavior.js';
 import { getFloorEnemyPack } from './enemy-packs.js';
 import { BiomeType } from './map-types.js';
 import { runtimeTerrainPackIdSchema } from './terrain-pack-types.js';
+import type { Floor5RamRouteLandmark } from './floor-types.js';
 
 const FLOOR5_RNG_STREAMS = ['waves', 'heroes', 'tasks', 'dressing', 'rewards'] as const;
+const FLOOR6_RNG_STREAMS = [
+  'waves',
+  'routes',
+  'rewards',
+  'upgrades',
+  'dressing',
+  'bosses',
+] as const;
+const FLOOR6_UPGRADE_EFFECT_KINDS = [
+  'relayMaxHpBonus',
+  'towerFireRateBonus',
+  'towerDamageBonus',
+  'relayRepair',
+  'raiderSlowBonus',
+] as const;
+const FLOOR6_BREAK_ACTIONS = ['tower-build', 'tower-sell', 'upgrade-purchase'] as const;
+
+/**
+ * Closed set of semantic Ratings-Ram escort landmarks (spec `FR5.2`).
+ *
+ * Mirrors {@link Floor5RamRouteLandmark}; kept as a const tuple so the Zod
+ * enum and the shared union can never drift (the `satisfies` below fails the
+ * build if they do).
+ */
+const FLOOR5_RAM_ROUTE_LANDMARKS = [
+  'build-site',
+  'siege-yard-junction',
+  'checkpoint-junction',
+  'breach-approach',
+] as const satisfies readonly Floor5RamRouteLandmark[];
+
+/**
+ * Shared combat shape for every fixed Floor 5 finale actor (spec `R7`).
+ *
+ * Crown Auditor, courtyard defenders, Regent Emeritus and Regent summons are
+ * all authored with the same fields so the finale never grows a per-actor
+ * bespoke schema, and so the encounter can be retuned in one place during the
+ * balance slice.
+ */
+const floor5FinaleCombatantSchema = z
+  .object({
+    health: z.number().int().positive(),
+    attackDamage: z.number().int().positive(),
+    attackCooldownMs: z.number().int().positive(),
+    speedFtPerFrame: z.number().positive(),
+    /** Reach at which the actor stops closing and starts attacking. */
+    engageRangeFt: z.number().positive(),
+    /** How far the actor looks for a target from its own position. */
+    aggroRadiusFt: z.number().positive(),
+    /**
+     * How far from the actor's authored room anchor a target may be before the
+     * actor refuses to chase it. Matches the field-Hero leash convention: the
+     * gate is measured on the TARGET's position, not the actor's, so a leashed
+     * actor never oscillates on and off its own leash boundary while chasing.
+     */
+    leashRadiusFt: z.number().positive(),
+  })
+  .strict();
 
 /** Shape {@link validateFloor4Waves} reads out of the parsed `floor4` block. */
 interface Floor4WaveValidationInput {
@@ -398,6 +458,20 @@ export const floorManifestDefSchema = z
         moveSpeedBonus: z.number().nonnegative(),
         /** Additional pickup range. */
         pickupRangeBonus: z.number().nonnegative(),
+        /** Optional cold-start baseline used when entering this floor without carryover. */
+        directStart: z
+          .object({
+            /** Player character level to seed before the floor starts. */
+            level: z.number().int().positive(),
+            /** Skill level for the selected starter weapon's class and type skills. */
+            weaponSkillLevel: z.number().int().min(0).max(20).default(0),
+            /** Additional skill levels keyed by skill id. */
+            skillLevels: z.record(z.string(), z.number().int().min(0).max(20)).default({}),
+            /** Static equipment item ids to force-equip for the skipped-floor baseline. */
+            equipmentItemIds: z.array(z.string().min(1)).default([]),
+          })
+          .strict()
+          .optional(),
       })
       .strict(),
     /** Camera configuration. */
@@ -454,19 +528,30 @@ export const floorManifestDefSchema = z
         allowedCategories: z
           .array(z.enum(['rubbish', 'light-source', 'structural', 'organic', 'tech']))
           .optional(),
+        /**
+         * Explicit decoration-ID allowlist. `allowedCategories` can only narrow
+         * a biome's def set, so it cannot express "the vegetation from
+         * `organic`, but not that biome's bone/pustule props" (they share the
+         * `organic` category). Listing IDs here does that precisely.
+         */
+        allowedPropIds: z.array(z.string().min(1)).nonempty().optional(),
       })
       .strict()
       .optional(),
     /**
      * Per-floor lighting defaults. Only `ambient` (the base light level applied
-     * to visible tiles outside any light source) is authored per floor; all
-     * other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
+     * to visible tiles outside any light source) is authored per floor by
+     * default; `sourceIntensity` may override the player's torch intensity for a
+     * specific floor when a scene needs the player light disabled or reduced.
+     * All other lighting parameters come from the engine's DEFAULT_LIGHTING_CONFIG.
      * Floor 1 ships 0.2; deeper/darker floors can ship lower values.
      */
     lighting: z
       .object({
         /** Base ambient light level in [0,1] applied to visible tiles. */
         ambient: z.number().min(0).max(1),
+        /** Optional override for the player's torch intensity. */
+        sourceIntensity: z.number().min(0).max(2).optional(),
       })
       .strict(),
     /**
@@ -953,6 +1038,7 @@ export const floorManifestDefSchema = z
           .object({
             thicknessTiles: z.number().int().min(1),
             breachWidthTiles: z.number().int().min(1),
+            health: z.number().int().positive(),
           })
           .strict(),
         courtyard: z
@@ -996,6 +1082,115 @@ export const floorManifestDefSchema = z
             terminal: z.array(z.enum(['CAPTURED', 'DEFEAT'])).length(2),
           })
           .strict(),
+        /**
+         * Ratings Ram (spec `R5`, `FR5.1`–`FR5.7`).
+         *
+         * Everything here is authored as SEMANTICS + CADENCE, never as world
+         * coordinates: `routeLandmarks` names an ordered list of layout
+         * landmarks and `floor5Scenario` derives each waypoint's position from
+         * the authored `SiegeCastleGenerator` tile layout. Frame/ms cadence is
+         * fixed-tick on purpose so the escort is replay-deterministic.
+         */
+        ram: z
+          .object({
+            /** Ram hull HP. Consumed by outer-wall counter-battery fire. */
+            health: z.number().int().positive(),
+            /** Ordered semantic escort route (positions are derived, not authored). */
+            routeLandmarks: z.array(z.enum(FLOOR5_RAM_ROUTE_LANDMARKS)).min(2),
+            /**
+             * Advance gating (`FR5.3`). The ram only rolls while the count of
+             * live hostile threats inside `radiusFt` is at or below
+             * `maxThreats` — a THREAT threshold, deliberately not an escort
+             * headcount, so an attrited allied wave can never permanently
+             * soft-lock the escort.
+             */
+            protection: z
+              .object({
+                radiusFt: z.number().positive(),
+                maxThreats: z.number().int().min(0),
+              })
+              .strict(),
+            advanceSpeedFtPerFrame: z.number().positive(),
+            /** Distance at which a waypoint counts as reached. */
+            arrivalToleranceFt: z.number().positive(),
+            /** Ram-vs-outer-wall exchange (`FR5.4`, `FR5.5`). */
+            strike: z
+              .object({
+                damage: z.number().int().positive(),
+                cooldownMs: z.number().int().positive(),
+                rangeFt: z.number().positive(),
+                /** Counter-battery damage the wall deals back per ram strike. */
+                wallCounterDamage: z.number().int().positive(),
+              })
+              .strict(),
+            /** Fixed frame delay from a ram loss to the rebuild (`FR5.6`). */
+            recoveryDelayFrames: z.number().int().positive(),
+          })
+          .strict(),
+        /**
+         * Courtyard → throne finale (spec `R7`, `FR7.1`–`FR7.5`).
+         *
+         * Fixed authored encounters only: the Crown Auditor and Regent
+         * Emeritus are NEVER drawn from the field-Hero roster or its RNG
+         * stream (`FR6.5`), and every summon is bounded by `summons.maxTotal`.
+         * Spawn positions are derived from the authored castle layout, so
+         * nothing here is a world coordinate.
+         */
+        finale: z
+          .object({
+            crownAuditor: floor5FinaleCombatantSchema,
+            /** Authored courtyard defenders cleared alongside the Auditor (`FR7.2`). */
+            courtyardDefenders: floor5FinaleCombatantSchema
+              .extend({
+                count: z.number().int().positive(),
+              })
+              .strict(),
+            regentEmeritus: floor5FinaleCombatantSchema,
+            summons: floor5FinaleCombatantSchema
+              .extend({
+                /** Hard cap on summons for the whole encounter (`FR7.3`). */
+                maxTotal: z.number().int().positive(),
+                /** How many summons each telegraph releases. */
+                perTriggerCount: z.number().int().positive(),
+                /**
+                 * Regent health fractions that release a summon wave, in
+                 * strictly descending order. Fixed thresholds, never RNG.
+                 */
+                healthFractionTriggers: z.array(z.number().gt(0).lt(1)).min(1),
+                /**
+                 * Explicit telegraph window (`FR7.3`): frames between a wave
+                 * being announced and its summons appearing. Fixed, never RNG.
+                 */
+                telegraphFrames: z.number().int().positive(),
+              })
+              .strict(),
+            capture: z
+              .object({
+                /** Interaction reach around the throne capture point (`FR7.4`). */
+                interactionRadiusFt: z.number().positive(),
+              })
+              .strict(),
+          })
+          .strict(),
+        releaseGate: z
+          .object({
+            completionRateTarget: z.number().min(0).max(1),
+            maxMedianDurationFrames: z.number().int().positive(),
+            maxP95DurationFrames: z.number().int().positive(),
+            minimumCommandPostHealthPct: z.number().min(0).max(1),
+            minimumRamSurvivalRate: z.number().min(0).max(1),
+            maxLiveHostilesOnTerminal: z.number().int().nonnegative(),
+            maxPathStalls: z.number().int().nonnegative(),
+            maxFrameCostMs: z.number().positive(),
+            stallBackstopFrames: z.number().int().positive(),
+            /**
+             * Fixed-tick allowance for a scheduled minion to wait behind the
+             * authored live cap before its release is considered unexplained.
+             */
+            maxReleaseDelayFrames: z.number().int().nonnegative(),
+            cleanSweepMinCommandPostHealthPct: z.number().min(0).max(1),
+          })
+          .strict(),
         rngStreams: z.array(z.enum(FLOOR5_RNG_STREAMS)).length(FLOOR5_RNG_STREAMS.length),
       })
       .strict()
@@ -1014,6 +1209,461 @@ export const floorManifestDefSchema = z
             path: ['rngStreams'],
             message: 'Floor 5 RNG stream labels must be unique',
           });
+        }
+        const landmarks = floor5.ram.routeLandmarks;
+        if (new Set(landmarks).size !== landmarks.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks'],
+            message: 'Floor 5 ram route landmarks must be unique',
+          });
+        }
+        if (landmarks[0] !== 'build-site') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks', 0],
+            message: 'Floor 5 ram route must start at the build-site landmark',
+          });
+        }
+        if (landmarks[landmarks.length - 1] !== 'breach-approach') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'routeLandmarks', landmarks.length - 1],
+            message: 'Floor 5 ram route must end at the breach-approach landmark',
+          });
+        }
+        if (floor5.ram.strike.damage > floor5.outerWall.health) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'strike', 'damage'],
+            message: 'Floor 5 ram strike damage must not exceed authored structure health',
+          });
+        }
+        if (floor5.ram.arrivalToleranceFt < floor5.ram.advanceSpeedFtPerFrame) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'arrivalToleranceFt'],
+            message: 'Floor 5 ram arrival tolerance must cover one authored advance step',
+          });
+        }
+        const ramLossStrikes = Math.ceil(floor5.ram.health / floor5.ram.strike.wallCounterDamage);
+        const wallBreachStrikes = Math.ceil(floor5.outerWall.health / floor5.ram.strike.damage);
+        if (ramLossStrikes >= wallBreachStrikes || wallBreachStrikes > ramLossStrikes * 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['ram', 'strike', 'wallCounterDamage'],
+            message:
+              'Floor 5 ram exchange must destroy exactly one ram before the outer wall breaches',
+          });
+        }
+        const summons = floor5.finale.summons;
+        const triggers = summons.healthFractionTriggers;
+        for (let index = 1; index < triggers.length; index += 1) {
+          if (triggers[index]! >= triggers[index - 1]!) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'summons', 'healthFractionTriggers', index],
+              message:
+                'Floor 5 Regent summon triggers must be strictly descending health fractions',
+            });
+            break;
+          }
+        }
+        if (summons.maxTotal < summons.perTriggerCount * triggers.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['finale', 'summons', 'maxTotal'],
+            message:
+              'Floor 5 Regent summon cap must admit every authored trigger wave (maxTotal >= perTriggerCount * triggers)',
+          });
+        }
+        const gate = floor5.releaseGate;
+        if (gate.maxP95DurationFrames < gate.maxMedianDurationFrames) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['releaseGate', 'maxP95DurationFrames'],
+            message: 'Floor 5 release-gate p95 duration must be >= median duration target',
+          });
+        }
+        if (gate.cleanSweepMinCommandPostHealthPct < gate.minimumCommandPostHealthPct) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['releaseGate', 'cleanSweepMinCommandPostHealthPct'],
+            message:
+              'Floor 5 clean-sweep Command Post floor must be >= the general release-gate floor',
+          });
+        }
+      })
+      .optional(),
+    /** Floor-6-specific authored defense geometry and phase skeleton config. */
+    floor6: z
+      .object({
+        geometry: z
+          .object({
+            routeWidthTiles: z.literal(5),
+            buildSiteSizeTiles: z.literal(3),
+            borderThicknessTiles: z.literal(2),
+          })
+          .strict(),
+        supportedFootprints: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                widthTiles: z.number().int().positive(),
+                heightTiles: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .min(1),
+        phase: z
+          .object({
+            initial: z.literal('SETUP'),
+            terminal: z.tuple([z.literal('VICTORY'), z.literal('DEFEAT')]),
+          })
+          .strict(),
+        rngStreams: z.tuple([
+          z.literal(FLOOR6_RNG_STREAMS[0]),
+          z.literal(FLOOR6_RNG_STREAMS[1]),
+          z.literal(FLOOR6_RNG_STREAMS[2]),
+          z.literal(FLOOR6_RNG_STREAMS[3]),
+          z.literal(FLOOR6_RNG_STREAMS[4]),
+          z.literal(FLOOR6_RNG_STREAMS[5]),
+        ]),
+        /**
+         * Slice-3 authored tuning values for wave director and raider AI.
+         * All numeric gates deferred to S9; these are operational defaults.
+         */
+        tuning: z
+          .object({
+            relayMaxHp: z.number().int().positive(),
+            liveCap: z.number().int().positive(),
+            spawnDebtCap: z.number().int().positive(),
+            stallBackstopFrames: z.number().int().positive(),
+            raiderSpeedFtPerFrame: z.number().positive(),
+            raiderAttackRangeFt: z.number().positive(),
+            raiderRelayDamage: z.number().int().positive(),
+            raiderAttackCooldownMs: z.number().int().positive(),
+            waypointArriveThresholdFt: z.number().positive(),
+            stalledFramesThreshold: z.number().int().positive(),
+          })
+          .strict()
+          .optional(),
+        towers: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                footprintId: z.string().min(1),
+                cost: z.number().int().nonnegative(),
+                sellRefund: z.number().int().nonnegative(),
+                attackRangeFt: z.number().positive(),
+                attackDamage: z.number().nonnegative(),
+                attackCooldownMs: z.number().int().positive(),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Authored wave schedule. Each wave is a named group of enemy
+         * releases; entries are stable-ID ordered (reordering is seed-breaking).
+         */
+        waves: z
+          .array(
+            z
+              .object({
+                waveIndex: z.number().int().nonnegative(),
+                label: z.string().min(1),
+                startTick: z.number().int().nonnegative(),
+                entries: z.array(
+                  z
+                    .object({
+                      routeIndex: z.number().int().nonnegative(),
+                      archetypeId: z.string().min(1),
+                      releaseTick: z.number().int().nonnegative(),
+                    })
+                    .strict(),
+                ),
+              })
+              .strict(),
+          )
+          .optional(),
+        economy: z
+          .object({
+            buildCurrencyId: z.string().min(1),
+            enemyRewards: z
+              .array(
+                z
+                  .object({
+                    archetypeId: z.string().min(1),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+            waveRewards: z
+              .array(
+                z
+                  .object({
+                    waveIndex: z.number().int().nonnegative(),
+                    buildCurrency: z.number().int().nonnegative(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        upgrades: z
+          .object({
+            offerCount: z.number().int().positive(),
+            offers: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    cost: z.number().int().nonnegative(),
+                    effect: z
+                      .object({
+                        kind: z.enum(FLOOR6_UPGRADE_EFFECT_KINDS),
+                        value: z.number(),
+                      })
+                      .strict(),
+                  })
+                  .strict(),
+              )
+              .min(1),
+          })
+          .strict()
+          .optional(),
+        finale: z
+          .object({
+            breakDurationFrames: z.number().int().nonnegative(),
+            bossTimeoutFrames: z.number().int().positive(),
+            victoryPayoutGold: z.number().int().nonnegative(),
+            victoryBroadcastScore: z.number().int().nonnegative(),
+            breakAllowedActions: z.array(z.enum(FLOOR6_BREAK_ACTIONS)).min(1),
+            boss: z
+              .object({
+                id: z.string().min(1),
+                displayName: z.string().min(1),
+                routeIndex: z.number().int().nonnegative(),
+                archetypeId: z.string().min(1),
+                releaseTick: z.number().int().nonnegative(),
+                hp: z.number().int().positive(),
+                buildCurrencyReward: z.number().int().nonnegative(),
+              })
+              .strict(),
+            adds: z.array(
+              z
+                .object({
+                  id: z.string().min(1),
+                  routeIndex: z.number().int().nonnegative(),
+                  archetypeId: z.string().min(1),
+                  releaseTick: z.number().int().nonnegative(),
+                  buildCurrencyReward: z.number().int().nonnegative(),
+                })
+                .strict(),
+            ),
+          })
+          .strict()
+          .optional(),
+        releaseGate: z
+          .object({
+            completionRateTarget: z.number().min(0).max(1),
+            minimumRelayHealthPct: z.number().min(0).max(1),
+            maxLiveEnemies: z.number().int().nonnegative(),
+            maxStalledRaiders: z.number().int().nonnegative(),
+            maxFrameCostMs: z.number().positive(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .superRefine((floor6, ctx) => {
+        const ids = new Set<string>();
+        for (const [index, footprint] of floor6.supportedFootprints.entries()) {
+          if (ids.has(footprint.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index, 'id'],
+              message: `duplicate supported footprint id "${footprint.id}"`,
+            });
+          }
+          ids.add(footprint.id);
+          if (
+            footprint.widthTiles > floor6.geometry.routeWidthTiles ||
+            footprint.heightTiles > floor6.geometry.routeWidthTiles
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['supportedFootprints', index],
+              message: `supported footprint "${footprint.id}" exceeds route width`,
+            });
+          }
+        }
+        const towerIds = new Set<string>();
+        const footprintIds = new Set(floor6.supportedFootprints.map((footprint) => footprint.id));
+        for (const [index, tower] of (floor6.towers ?? []).entries()) {
+          if (towerIds.has(tower.id)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'id'],
+              message: `duplicate tower id "${tower.id}"`,
+            });
+          }
+          towerIds.add(tower.id);
+          if (!footprintIds.has(tower.footprintId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'footprintId'],
+              message: `tower "${tower.id}" has unsupported footprint "${tower.footprintId}"`,
+            });
+          }
+          if (tower.sellRefund > tower.cost) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['towers', index, 'sellRefund'],
+              message: `tower "${tower.id}" refund cannot exceed its cost`,
+            });
+          }
+        }
+        for (const [index, offer] of (floor6.upgrades?.offers ?? []).entries()) {
+          if (
+            (offer.effect.kind === 'towerFireRateBonus' ||
+              offer.effect.kind === 'raiderSlowBonus') &&
+            (offer.effect.value < 0 || offer.effect.value > 1)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offers', index, 'effect', 'value'],
+              message: `${offer.effect.kind} must be between 0 and 1`,
+            });
+          }
+        }
+        const waveIndexes = new Set<number>();
+        const pack = getFloorEnemyPack('floor6-renovation-crew');
+        const knownArchetypes = new Set(pack?.archetypes.map((archetype) => archetype.id) ?? []);
+        for (const [index, wave] of (floor6.waves ?? []).entries()) {
+          if (waveIndexes.has(wave.waveIndex)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['waves', index, 'waveIndex'],
+              message: `duplicate waveIndex ${wave.waveIndex}`,
+            });
+          }
+          waveIndexes.add(wave.waveIndex);
+          for (const [entryIndex, entry] of wave.entries.entries()) {
+            if (!knownArchetypes.has(entry.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['waves', index, 'entries', entryIndex, 'archetypeId'],
+                message: `unknown Floor 6 wave archetype "${entry.archetypeId}"`,
+              });
+            }
+          }
+        }
+        if (floor6.economy) {
+          const rewardArchetypeIds = new Set<string>();
+          for (const [index, reward] of floor6.economy.enemyRewards.entries()) {
+            if (rewardArchetypeIds.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `duplicate enemy reward archetype "${reward.archetypeId}"`,
+              });
+            }
+            rewardArchetypeIds.add(reward.archetypeId);
+            if (!knownArchetypes.has(reward.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'enemyRewards', index, 'archetypeId'],
+                message: `unknown Floor 6 reward archetype "${reward.archetypeId}"`,
+              });
+            }
+          }
+          const rewardedWaveIndexes = new Set<number>();
+          for (const [index, reward] of floor6.economy.waveRewards.entries()) {
+            if (rewardedWaveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `duplicate wave reward index ${reward.waveIndex}`,
+              });
+            }
+            rewardedWaveIndexes.add(reward.waveIndex);
+            if (!waveIndexes.has(reward.waveIndex)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['economy', 'waveRewards', index, 'waveIndex'],
+                message: `wave reward references unknown waveIndex ${reward.waveIndex}`,
+              });
+            }
+          }
+        }
+        if (floor6.upgrades) {
+          if (floor6.upgrades.offerCount > floor6.upgrades.offers.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['upgrades', 'offerCount'],
+              message: `offerCount ${floor6.upgrades.offerCount} exceeds ${floor6.upgrades.offers.length} authored offers`,
+            });
+          }
+          const offerIds = new Set<string>();
+          for (const [index, offer] of floor6.upgrades.offers.entries()) {
+            if (offerIds.has(offer.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['upgrades', 'offers', index, 'id'],
+                message: `duplicate upgrade offer id "${offer.id}"`,
+              });
+            }
+            offerIds.add(offer.id);
+          }
+        }
+        if (floor6.finale) {
+          // Must match BroadcastRelaySetGenerator's fixed two-route authored layout.
+          const routeCount = 2;
+          const addIds = new Set<string>();
+          if (!knownArchetypes.has(floor6.finale.boss.archetypeId)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'archetypeId'],
+              message: `unknown Floor 6 finale boss archetype "${floor6.finale.boss.archetypeId}"`,
+            });
+          }
+          if (floor6.finale.boss.routeIndex >= routeCount) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['finale', 'boss', 'routeIndex'],
+              message: `finale boss routeIndex ${floor6.finale.boss.routeIndex} exceeds authored routes`,
+            });
+          }
+          for (const [index, add] of floor6.finale.adds.entries()) {
+            if (addIds.has(add.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'id'],
+                message: `duplicate finale add id "${add.id}"`,
+              });
+            }
+            addIds.add(add.id);
+            if (!knownArchetypes.has(add.archetypeId)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'archetypeId'],
+                message: `unknown Floor 6 finale add archetype "${add.archetypeId}"`,
+              });
+            }
+            if (add.routeIndex >= routeCount) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['finale', 'adds', index, 'routeIndex'],
+                message: `finale add routeIndex ${add.routeIndex} exceeds authored routes`,
+              });
+            }
+          }
         }
       })
       .optional(),
@@ -1049,6 +1699,17 @@ export const floorManifestDefSchema = z
         message: 'implemented.released requires implemented.mvp to be true',
       });
     }
+    if (manifest.floor5) {
+      const attackAnchorDistanceFt =
+        (manifest.floor5.outerWall.thicknessTiles / 2 + 1.5) * manifest.map.tileSizeFt;
+      if (manifest.floor5.ram.strike.rangeFt < attackAnchorDistanceFt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['floor5', 'ram', 'strike', 'rangeFt'],
+          message: 'Floor 5 ram strike range must reach the outer wall from breach-approach',
+        });
+      }
+    }
   });
 
 export type FloorManifestDef = z.infer<typeof floorManifestDefSchema>;
@@ -1071,6 +1732,8 @@ function loadFloorManifest(floorId: string): FloorManifestDef {
     manifestJson = floor4ManifestJson;
   } else if (floorId === 'floor5') {
     manifestJson = floor5ManifestJson;
+  } else if (floorId === 'floor6') {
+    manifestJson = floor6ManifestJson;
   } else {
     throw new Error(`Floor manifest not found: ${floorId}`);
   }
@@ -1088,3 +1751,4 @@ export const floor2Manifest: FloorManifestDef = loadFloorManifest('floor2');
 export const floor3Manifest: FloorManifestDef = loadFloorManifest('floor3');
 export const floor4Manifest: FloorManifestDef = loadFloorManifest('floor4');
 export const floor5Manifest: FloorManifestDef = loadFloorManifest('floor5');
+export const floor6Manifest: FloorManifestDef = loadFloorManifest('floor6');

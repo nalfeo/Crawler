@@ -9,6 +9,7 @@ import floor1EnemyPackJson from './data/enemies.floor1.json';
 import floor2EnemyPackJson from './data/enemies.floor2.json';
 import floor3EnemyPackJson from './data/enemies.floor3.json';
 import floor4EnemyPackJson from './data/enemies.floor4.json';
+import floor6EnemyPackJson from './data/enemies.floor6.json';
 
 /**
  * Single enemy archetype configuration for spawning.
@@ -144,6 +145,9 @@ const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
   // weights live per act in the floor4 manifest's `waves.rosters`, because the
   // same archetype is deliberately weighted differently in act 1 than in act 5.
   ['floor4-arena', loadEnemyPackByJson(floor4EnemyPackJson)],
+  // Floor 6 raiders use a dedicated pack; all archetypes have spawnWeight: 0
+  // because the wave director (not the ambient spawner) owns their release.
+  ['floor6-renovation-crew', loadEnemyPackByJson(floor6EnemyPackJson)],
 ]);
 
 /**

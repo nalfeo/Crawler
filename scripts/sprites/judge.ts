@@ -62,7 +62,7 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v10';
+const PROMPT_TEMPLATE_VERSION = 'v12';
 
 export const JUDGE_HARD_BLOCK_PHRASE = 'I HATE THIS SO MUCH YOU MAY NOT USE THIS IN GAME';
 
@@ -311,7 +311,7 @@ function validateOptionalAxes<T extends LegacyJudgeResponse | JudgeResponse>(
         brief.sensors?.enemy?.facing !== 'front',
     ],
     ['boss_presence', brief.type === 'enemy' && brief.mobRole === 'boss'],
-    ['presentation', ['equipment', 'item', 'prop'].includes(brief.type)],
+    ['presentation', ['equipment', 'item', 'prop', 'tile'].includes(brief.type)],
   ]);
   for (const [axis, required] of expectedOptionalAxes) {
     const axisValue = (data as Record<string, unknown>)[axis];
@@ -622,7 +622,7 @@ function buildSystemInstructions(
   const hasFigureFramingAxis = brief.type === 'enemy' || brief.type === 'character';
   const hasPoseAxis = hasFigureFramingAxis && brief.sensors?.enemy?.facing !== 'front';
   const hasBossAxis = brief.type === 'enemy' && brief.mobRole === 'boss';
-  const hasPresentationAxis = ['equipment', 'item', 'prop'].includes(brief.type);
+  const hasPresentationAxis = ['equipment', 'item', 'prop', 'tile'].includes(brief.type);
   const axisCount =
     4 +
     Number(hasFigureFramingAxis) +
@@ -672,6 +672,10 @@ function buildSystemInstructions(
     '  3. brief_match  — Does the candidate depict the subject described in the brief',
     '                    (provided in the user prompt)? 5 = unambiguously the requested',
     '                    subject. Accidental faces or limbs on an inanimate item score <= 2.',
+    '                    When the brief requires a readable face or names specific facial',
+    '                    features, each required feature must be visibly distinct at 1x game',
+    '                    scale. A missing or indistinguishable required eye, nose, or mouth',
+    '                    is an off-brief defect and scores <= 2.',
     '',
     '  4. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',
@@ -822,7 +826,7 @@ function judgeAxisCount(brief: Brief, hasAddendum: boolean): number | string {
         brief.sensors?.enemy?.facing !== 'front',
     ) +
     Number(brief.type === 'enemy' && brief.mobRole === 'boss') +
-    Number(['equipment', 'item', 'prop'].includes(brief.type)) +
+    Number(['equipment', 'item', 'prop', 'tile'].includes(brief.type)) +
     Number(hasAddendum);
   return count === 4 ? 'four' : count;
 }
@@ -833,6 +837,9 @@ function presentationCriterion(type: Brief['type']): string {
   }
   if (type === 'prop') {
     return 'Is this one grounded world-space object with a readable base, top-down perspective, and appropriate tile footprint rather than a floating inventory icon or scene? Violations score <= 2.';
+  }
+  if (type === 'tile') {
+    return 'Does this tile/terrain tile set convey clear depth and perspective with obvious vertical wall faces, visible wall-to-floor elevation layering, and structural relief rather than reading as flat, top-down stone? Floor 2 terrain sets (industrial cave) are the canonical good example for depth and perspective. Flat top-down tiles with no vertical wall depth cues score <= 2.';
   }
   return 'Is this one isolated inanimate consumable, resource, or quest object with no person, hands, limbs, room, floor, or scene? Violations score <= 2.';
 }

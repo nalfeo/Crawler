@@ -224,7 +224,7 @@ describe('floor3 reward track wiring', () => {
     expect(state).toBeDefined();
     const firstStudio = state!.studios[0];
     expect(firstStudio).toBeDefined();
-    expect(firstStudio!.unlockLevel).toBe(0);
+    expect(firstStudio!.unlockLevel).toBe(world.playerLevel.level);
 
     floor3ObjectiveTick(world); // unlocks + spawns the floor-start Studio
     const roster = query(world.ecs, [Companion, Team]).filter((eid) =>

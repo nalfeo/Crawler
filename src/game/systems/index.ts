@@ -39,8 +39,12 @@ export {
   companionAISystem,
   getCompanionAIDecision,
   resetCompanionAIState,
+  setCompanionAIDecision,
 } from './companionAISystem.js';
 export type { CompanionAIDecision, CompanionTargetKind } from './companionAISystem.js';
+export { companionCombatSystem } from './companionCombatSystem.js';
+export { floor3NonCombatantSystem } from './floor3NonCombatantSystem.js';
+export { floor3WildTargetRedirectSystem } from './floor3WildTargetRedirectSystem.js';
 export {
   familyFeudSystem,
   getFamilyAIDecision,

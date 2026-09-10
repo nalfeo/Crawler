@@ -31,6 +31,7 @@ import {
 } from '../core/map/stampSetPiece.js';
 import { applySolidProps } from '../core/map/applySolidProps.js';
 import { isFloorTimerPaused } from '../core/floor-timer.js';
+import { isPointInSafeSpace } from '../core/safe-space.js';
 import { carveConnectorToReachable, carveSetPieceRoom } from '../core/map/carveSetPieceRoom.js';
 import {
   getSetPieceDef,
@@ -42,7 +43,6 @@ import {
   Rotation,
   Player,
   Health,
-  Harvestable,
   BroadcastScore,
   Size,
   Sprite,
@@ -51,6 +51,7 @@ import {
   Spawner,
   Damage,
   DeathTimer,
+  Harvestable,
   Npc,
 } from '../core/components.js';
 import type { GameWorld, VendorStockEntry } from '../core/world.js';
@@ -86,6 +87,7 @@ import {
   FLOOR1_POST_QUEST_WEAPON_COSTS,
   FLOOR1_POST_QUEST_WEAPON_DEFAULT_COST,
   FLOOR1_SPELL_BROKER_COST,
+  FLOOR1_SPELL_BROKER_MAX_PURCHASES,
   GAME,
   PLAYER_SPEED,
 } from '../shared/constants.js';
@@ -168,13 +170,14 @@ const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
-// Floor 1 is intentionally spawner-free: its static-spawner spawn table is empty,
-// so `spawnFloor1StaticSpawners` places no Spawner entities on Floor 1. The
-// placement machinery below is fully config-driven off this table — repopulate
-// this list (e.g. ['slime-pool', 'rats-nest']) to re-enable Floor 1 static
-// spawners without touching the runtime pipelines.
+// Floor 1 is spawner-free by DEFAULT (ADR 0049): `spawnFloor1StaticSpawners`
+// only places Spawner entities when the caller opts in via
+// `ScenarioInitializationOptions.floor1Spawners` (default false — see
+// `initializeFloor1Scenario`). This table is the archetype set placed when
+// enabled; it stays fully config-driven — repopulate/trim it to change which
+// archetypes ship without touching any pipeline code.
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
-const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = [];
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS: readonly string[] = ['rats-nest', 'slime-pool'];
 const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
@@ -482,15 +485,6 @@ function resolvePassableRoomCenter(
 
 function tileKey(x: number, y: number): string {
   return `${x},${y}`;
-}
-
-function isTileWithinRoomBounds(room: RoomData, tx: number, ty: number): boolean {
-  return (
-    tx >= room.bounds.x &&
-    tx < room.bounds.x + room.bounds.width &&
-    ty >= room.bounds.y &&
-    ty < room.bounds.y + room.bounds.height
-  );
 }
 
 /**
@@ -1073,7 +1067,12 @@ function resolveRoutableNpcSpawnPosition(
  * Spawn harvestable resource nodes (mushrooms, flowers, lichens) across the
  * normal and spawn rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
  * `def.maxPerFloor` nodes, placed at randomly selected passable tiles in rooms
- * with role NORMAL or SPAWN (i.e. not safe room, boss room, or stair room).
+ * with role NORMAL or SPAWN, excluding the slime-rat encounter room because it
+ * becomes runtime safe space after boss clear.
+ *
+ * After base placement, one node is guaranteed in the spawn room by relocating
+ * the farthest existing node into a deterministic legal spawn-room tile.
+ * Relocation still honors the safe-space guard.
  * Uses `world.rng` for all randomness.
  *
  * Only iterates Floor 1 defs (indices 0–FLOOR2_HARVESTABLE_START_INDEX-1).
@@ -1084,12 +1083,24 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
 
-  // Gather candidate tiles from all normal rooms.
-  const normalRooms = floorMap.roomGraph
+  // Gather candidate tiles from normal + spawn rooms, excluding the encounter
+  // room that turns into runtime safe space once the slime-rat boss is cleared.
+  const slimeRatSafeRoomId = (() => {
+    const slimeRatRoomPos = world.floorScenario?.objective.slimeRatRoomPos;
+    if (!slimeRatRoomPos) return null;
+    const tile = floorMap.worldToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
+    const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+    return roomId >= 0 ? roomId : null;
+  })();
+  const candidateRooms = floorMap.roomGraph
     .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+    .filter(
+      (room) =>
+        (room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN) &&
+        room.id !== slimeRatSafeRoomId,
+    );
 
-  if (normalRooms.length === 0) return;
+  if (candidateRooms.length === 0) return;
 
   // Cap loop at FLOOR2_HARVESTABLE_START_INDEX so Floor 2 ore/gem defs are
   // never spawned on Floor 1.
@@ -1104,7 +1115,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
     // We allow multiple attempts per node to avoid clustering.
     const maxAttempts = count * 12;
     for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
-      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
+      const room = candidateRooms[world.rng.nextInt(0, candidateRooms.length - 1)]!;
       const { x: bx, y: by, width: bw, height: bh } = room.bounds;
 
       // Pick a random tile inside the room interior (1 tile margin from walls).
@@ -1132,13 +1143,18 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   if (!spawnRoom) {
     return;
   }
+  const isInSpawnRoom = (tx: number, ty: number): boolean =>
+    tx >= spawnRoom.bounds.x &&
+    tx < spawnRoom.bounds.x + spawnRoom.bounds.width &&
+    ty >= spawnRoom.bounds.y &&
+    ty < spawnRoom.bounds.y + spawnRoom.bounds.height;
   const hasSpawnRoomHarvestable = Array.from(query(world.ecs, [Harvestable, Position])).some(
     (eid) => {
       const tile = floorMap.worldToTile(
         world.stores.position.x[eid] ?? 0,
         world.stores.position.y[eid] ?? 0,
       );
-      return isTileWithinRoomBounds(spawnRoom, tile.x, tile.y);
+      return isInSpawnRoom(tile.x, tile.y);
     },
   );
   if (hasSpawnRoomHarvestable) {
@@ -1151,7 +1167,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
       world.stores.position.x[eid] ?? 0,
       world.stores.position.y[eid] ?? 0,
     );
-    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+    if (isInSpawnRoom(tile.x, tile.y)) {
       blockedTiles.add(tileKey(tile.x, tile.y));
     }
   }
@@ -1178,20 +1194,15 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
         continue;
       }
       const spawnDistanceSq = (tx - spawnTile.x) ** 2 + (ty - spawnTile.y) ** 2;
-      const nearestDoorDistanceSq =
-        doorTiles.length === 0
-          ? Number.POSITIVE_INFINITY
-          : Math.min(...doorTiles.map((door) => (tx - door.x) ** 2 + (ty - door.y) ** 2));
+      let nearestDoorDistanceSq = Number.POSITIVE_INFINITY;
+      for (const door of doorTiles) {
+        const distanceSq = (tx - door.x) ** 2 + (ty - door.y) ** 2;
+        if (distanceSq < nearestDoorDistanceSq) {
+          nearestDoorDistanceSq = distanceSq;
+        }
+      }
       const score = Math.min(spawnDistanceSq, nearestDoorDistanceSq);
-      if (
-        score > bestScore ||
-        (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq) ||
-        (score === bestScore &&
-          spawnDistanceSq === bestSpawnDistanceSq &&
-          (guaranteeTile === null ||
-            ty < guaranteeTile.y ||
-            (ty === guaranteeTile.y && tx < guaranteeTile.x)))
-      ) {
+      if (score > bestScore || (score === bestScore && spawnDistanceSq > bestSpawnDistanceSq)) {
         guaranteeTile = { x: tx, y: ty };
         bestScore = score;
         bestSpawnDistanceSq = spawnDistanceSq;
@@ -1203,6 +1214,9 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
   }
 
   const guaranteePos = floorMap.tileToWorld(guaranteeTile.x, guaranteeTile.y);
+  if (isPointInSafeSpace(world, guaranteePos.x, guaranteePos.y)) {
+    return;
+  }
   let relocatedEid: number | null = null;
   let farthestDistanceSq = Number.NEGATIVE_INFINITY;
   for (const eid of query(world.ecs, [Harvestable, Position])) {
@@ -1210,7 +1224,7 @@ function spawnFloor1HarvestableNodes(world: GameWorld): void {
       world.stores.position.x[eid] ?? 0,
       world.stores.position.y[eid] ?? 0,
     );
-    if (isTileWithinRoomBounds(spawnRoom, tile.x, tile.y)) {
+    if (isInSpawnRoom(tile.x, tile.y)) {
       continue;
     }
     const distanceSq = (tile.x - spawnTile.x) ** 2 + (tile.y - spawnTile.y) ** 2;
@@ -1573,11 +1587,11 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function spawnFloor1StaticSpawners(world: GameWorld): void {
-  // Config-driven no-op: with an empty static-spawner table Floor 1 places no
-  // Spawner entities (see FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS). Bail before
-  // deriving the room stream so we do no wasted work.
-  if (FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
+function spawnFloor1StaticSpawners(world: GameWorld, enabled: boolean): void {
+  // Config-driven no-op: default-off (`enabled` false) or an empty
+  // static-spawner table both mean Floor 1 places no Spawner entities. Bail
+  // before deriving the room stream so we do no wasted work.
+  if (!enabled || FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length === 0) {
     return;
   }
   const floorMap = world.floorMap;
@@ -2058,7 +2072,11 @@ export function initializePlayerWeaponSkills(world: GameWorld, playerEid: number
   }
 }
 
-export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
+export function initializeFloor1Scenario(
+  world: GameWorld,
+  playerEid: number,
+  options?: { readonly floor1Spawners?: boolean },
+): void {
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
@@ -2647,7 +2665,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     questItemPos.y,
     getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
   );
-  spawnFloor1StaticSpawners(world);
+  spawnFloor1StaticSpawners(world, options?.floor1Spawners ?? false);
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
@@ -4616,12 +4634,27 @@ export function getSpellBrokerOffers(world: GameWorld): readonly Floor1SpellBrok
 }
 
 /**
+ * Spells already bought off this run's broker rack, read from the durable
+ * offer list (`offer.purchased`) rather than the AI-only intent state, so the
+ * count is identical for a headless run and a human player.
+ */
+function spellBrokerPurchaseCount(world: GameWorld): number {
+  return getSpellBrokerOffers(world).filter((offer) => offer.purchased).length;
+}
+
+/**
  * True when a holder is eligible to buy a particular broker offer, ignoring
  * gold. Used to distinguish "unavailable" (already purchased/learned, no
  * spell slot, quest not unlocked) from "merely unaffordable right now" —
  * callers that pick a fallback offer must not skip ahead in the priced rack
  * just because the player is momentarily short on gold for their intended
  * pick (see {@link canPurchaseSpellBrokerSpell}).
+ *
+ * The per-run cap ({@link FLOOR1_SPELL_BROKER_MAX_PURCHASES}, canonically
+ * below `FLOOR1_SPELL_BROKER_OFFER_COUNT`) is enforced HERE rather than
+ * only in the AI's broker intent, so clearing the whole three-spell rack is
+ * impossible for a human player too — no matter how much gold achievement
+ * loot boxes paid out before the broker opened (issue #4284).
  */
 export function isSpellBrokerSpellEligibleIgnoringGold(
   world: GameWorld,
@@ -4635,6 +4668,7 @@ export function isSpellBrokerSpellEligibleIgnoringGold(
   ) {
     return false;
   }
+  if (spellBrokerPurchaseCount(world) >= FLOOR1_SPELL_BROKER_MAX_PURCHASES) return false;
   const offer = getSpellBrokerOffers(world).find((entry) => entry.spellId === spellId);
   if (!offer || offer.purchased) return false;
   const state = getOrCreateAbilityState(world, playerEid);

@@ -1,0 +1,9 @@
+{
+  "id": "2026-09-01-floor6-slice3-wave-director",
+  "date": "2026-09-01",
+  "author": "systems-engineer",
+  "task": "Floor 6 Slice 3 — Wave Director, Route AI, Bounded Cap/Debt, Terminal Precedence",
+  "estimated": 4,
+  "actual": 4,
+  "notes": "Implementation was well-scoped. Authored-data manifest approach simplified determinism. Relay HP staying in scenario state (not ECS) was the key tradeoff recorded in ADR 0099. Headless observation confirmed live-cap + debt work correctly at 2000 frames."
+}

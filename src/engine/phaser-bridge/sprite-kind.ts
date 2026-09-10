@@ -4,6 +4,7 @@ import {
   AoeOnImpact,
   AreaDamage,
   BossChestEntity,
+  BuildCurrencyPickup,
   Enemy,
   EnemyProjectile,
   Gold,
@@ -13,7 +14,11 @@ import {
   Npc,
   Player,
   Projectile,
+  ProjectileVisual,
+  ProjectileVisualKind,
   Returning,
+  SiegeHero,
+  SiegeMinion,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -25,6 +30,8 @@ import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import {
   generatedBriefIdForEnemy,
+  pickGeneratedVariantByRoll,
+  resolveGeneratedSpriteVariantForEntity,
   type GeneratedSpriteRegistry,
 } from '../../shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
@@ -55,6 +62,16 @@ const SPRITE_TEX_WELCOME_SIGN = 3;
 export const SLIME_FULL_SPRITE_WIDTH = 3;
 
 /**
+ * Display-object name prefix for player `Projectile` sprites (issue #4274).
+ * Mirrors `CARRIED_WEAPON_OBJECT_NAME_PREFIX`: naming the sprite lets a
+ * real-scene probe identify the exact texture drawn for a given projectile
+ * eid instead of guessing from nearest on-screen distance, which can be
+ * fooled by a HUD icon or nearby enemy/carried-weapon sprite sitting closer
+ * to the projectile's feet position than its own display object.
+ */
+export const PROJECTILE_OBJECT_NAME_PREFIX = 'projectile:';
+
+/**
  * Structural slice of {@link GameWorld} that {@link resolveRenderKind} reads:
  * the ECS handle (for `hasComponent`) plus the `team.id` and `sprite.textureId`
  * stores. A full `GameWorld` is assignable, so callers pass their world as-is
@@ -65,6 +82,7 @@ export interface RenderKindWorld {
   readonly stores: {
     readonly team: { readonly id: ArrayLike<number> };
     readonly sprite: { readonly textureId: ArrayLike<number> };
+    readonly projectileVisual: { readonly kind: ArrayLike<number> };
   };
 }
 
@@ -81,8 +99,11 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Harvestable)) return 'harvestable';
   if (hasComponent(world.ecs, eid, BossChestEntity)) return 'boss_chest';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
+  if (hasComponent(world.ecs, eid, SiegeMinion) || hasComponent(world.ecs, eid, SiegeHero))
+    return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';
+  if (hasComponent(world.ecs, eid, BuildCurrencyPickup)) return 'build_currency';
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
   if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';
@@ -99,8 +120,18 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
     }
     return 'aoe_proj';
   }
-  if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
-  if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
+  if (hasComponent(world.ecs, eid, EnemyProjectile)) {
+    return hasComponent(world.ecs, eid, ProjectileVisual) &&
+      world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
+      ? 'bullet'
+      : 'enemy_proj';
+  }
+  if (hasComponent(world.ecs, eid, Projectile)) {
+    return hasComponent(world.ecs, eid, ProjectileVisual) &&
+      world.stores.projectileVisual.kind[eid] === ProjectileVisualKind.BULLET
+      ? 'bullet'
+      : 'arrow';
+  }
   if (
     hasComponent(world.ecs, eid, Sprite) &&
     world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN
@@ -268,13 +299,6 @@ export function computeEnemyScale(
   return { scaleX, scaleY };
 }
 
-function normalizeVariantRoll(variantRoll: number | undefined): number {
-  if (variantRoll === undefined || !Number.isFinite(variantRoll)) {
-    return 0;
-  }
-  return Math.min(0.999999, Math.max(0, variantRoll));
-}
-
 // generatedBriefIdForEnemy is re-exported from src/shared/generated-assets.ts.
 export { generatedBriefIdForEnemy };
 
@@ -313,6 +337,39 @@ export function generatedBriefIdForHarvestable(defId: string): string | undefine
   return GENERATED_BRIEF_BY_HARVESTABLE[defId];
 }
 
+/**
+ * Reusable structural adapter for {@link resolveGeneratedSpriteVariantForEntity}.
+ *
+ * The renderer resolves enemy textures from values it already holds (the scene
+ * registry plus the entity's `variantRoll`), not from a live `GameWorld`.
+ * Routing through the canonical resolver keeps concept normalization, dislike
+ * filtering, and roll clamping identical to what a headless sweep simulates —
+ * but this runs per rendered entity, so the adapter is a module-local singleton
+ * mutated in place rather than a fresh object per call. Safe because the
+ * resolver is synchronous and never re-enters this function.
+ */
+const ADAPTER_EID = 0;
+/** Slot 0 holds the current roll; the empty array reads back `undefined`. */
+const ROLL_SLOT: number[] = [0];
+const ABSENT_ROLL_SLOT: number[] = [];
+
+const VARIANT_ADAPTER: {
+  generatedSpriteRegistry: GeneratedSpriteRegistry | null;
+  readonly enemyAppearanceKeys: ReadonlyMap<number, string>;
+  readonly stores: { readonly sprite: { variantRoll: ArrayLike<number> } };
+} = {
+  // Unused: the caller always passes an explicit concept id.
+  generatedSpriteRegistry: null,
+  enemyAppearanceKeys: new Map<number, string>(),
+  stores: { sprite: { variantRoll: ABSENT_ROLL_SLOT } },
+};
+
+/**
+ * Resolve the generated-sprite `textureKey` for an enemy render kind, or `null`
+ * when there is no registry, no wired brief, or no approved variant. The brief
+ * is resolved here because the renderer knows the visual type and the
+ * ECS-facing resolver only knows the appearance key.
+ */
 export function pickGeneratedEnemyTextureKey(
   registry: GeneratedSpriteRegistry | null | undefined,
   type: string,
@@ -326,12 +383,22 @@ export function pickGeneratedEnemyTextureKey(
   if (briefId === undefined) {
     return null;
   }
-  const variants = registry.variants(briefId);
-  if (variants.length === 0) {
-    return null;
+  if (variantRoll === undefined) {
+    VARIANT_ADAPTER.stores.sprite.variantRoll = ABSENT_ROLL_SLOT;
+  } else {
+    ROLL_SLOT[0] = variantRoll;
+    VARIANT_ADAPTER.stores.sprite.variantRoll = ROLL_SLOT;
   }
-  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
-  return variants[index]?.textureKey ?? null;
+  VARIANT_ADAPTER.generatedSpriteRegistry = registry;
+  try {
+    return (
+      resolveGeneratedSpriteVariantForEntity(VARIANT_ADAPTER, ADAPTER_EID, briefId)?.textureKey ??
+      null
+    );
+  } finally {
+    // Don't pin a swapped-out scene registry alive between frames.
+    VARIANT_ADAPTER.generatedSpriteRegistry = null;
+  }
 }
 
 /**
@@ -390,10 +457,5 @@ export function pickGeneratedHarvestableTextureKey(
   if (briefId === undefined) {
     return null;
   }
-  const variants = registry.variants(briefId);
-  if (variants.length === 0) {
-    return null;
-  }
-  const index = Math.floor(normalizeVariantRoll(variantRoll) * variants.length);
-  return variants[index]?.textureKey ?? null;
+  return pickGeneratedVariantByRoll(registry, briefId, variantRoll)?.textureKey ?? null;
 }

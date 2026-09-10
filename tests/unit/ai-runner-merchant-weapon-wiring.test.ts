@@ -30,7 +30,9 @@ describe('AI runner optional purchases wiring', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf8');
 
     expect(source).toContain("gui.addFolder('Feature Flags')");
-    expect(source).toContain('for (const control of getAiFeatureFlagControls())');
+    expect(source).toContain(
+      'for (const control of getAiFeatureFlagControls(aiFeatureFlagContext()))',
+    );
     expect(source).toContain('.add(featureFlags, control.key)');
     expect(source).not.toMatch(
       /\.add\(aiConfig,\s*'(optionalPurchases|settlementReturnRouting|weaponPersonas)'\)/,

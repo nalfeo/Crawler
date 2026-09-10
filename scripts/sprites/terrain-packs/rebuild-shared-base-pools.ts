@@ -41,6 +41,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { compositeInto, createImage, decodePng, encodePng, type RgbaImage } from './png-buffer.js';
 import { toPixelArtGround } from './gen/image-ops.js';
+import type { WallMaskFrameAssignment } from './gen/compose-pack.js';
 import {
   ATLAS_GRID_COLS,
   ATLAS_HEIGHT_PX,
@@ -205,7 +206,7 @@ const ACCENT_CHROMA_TOLERANCE = 1;
  * accents are restrained interior detail by design anyway.
  */
 export function processWallAccents(packDir: string = PACK_DIR): readonly WrittenFile[] {
-  const wall = composeCanonicalSilhouetteAtlas();
+  const wall = composeCanonicalSilhouetteAtlas(readWallMaskFrameAssignments());
   const out: WrittenFile[] = [];
   const files = fs
     .readdirSync(packDir)
@@ -435,6 +436,11 @@ const WALL_GROUND_STYLE = {
   maxChroma: 24,
 };
 
+function readWallMaskFrameAssignments(): readonly WallMaskFrameAssignment[] {
+  return JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')).wallAutotile
+    .masks as readonly WallMaskFrameAssignment[];
+}
+
 /**
  * The 47-mask silhouette sheet, alpha-only ground truth for the wall atlas.
  *
@@ -442,10 +448,12 @@ const WALL_GROUND_STYLE = {
  * pass — `restyleWallAtlas` does its own lighting and material sampling, so it
  * only needs the geometry.
  */
-function composeCanonicalSilhouetteAtlas(): RgbaImage {
+function composeCanonicalSilhouetteAtlas(
+  assignments: readonly WallMaskFrameAssignment[] = buildMaskFrameAssignments(),
+): RgbaImage {
   const quadrantKit = generateQuadrantKit();
   const sheet = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
-  for (const { maskId, frameIndex } of buildMaskFrameAssignments()) {
+  for (const { maskId, frameIndex } of assignments) {
     const col = frameIndex % ATLAS_GRID_COLS;
     const row = Math.floor(frameIndex / ATLAS_GRID_COLS);
     compositeInto(
@@ -507,7 +515,7 @@ function composeCanonicalSilhouetteAtlas(): RgbaImage {
  */
 export function restyleWallAtlas(packDir: string = PACK_DIR): readonly WrittenFile[] {
   const atlasPath = path.join(packDir, 'wall-atlas.png');
-  const atlas = composeCanonicalSilhouetteAtlas();
+  const atlas = composeCanonicalSilhouetteAtlas(readWallMaskFrameAssignments());
   // Generated cave-rock art, imported from Azure output by
   // `import-floor2-materials.ts` and committed. Sampled by ABSOLUTE atlas
   // position (see below), so its large facets span several cells rather than
@@ -552,7 +560,7 @@ export function restyleWallAtlas(packDir: string = PACK_DIR): readonly WrittenFi
     return cap + 1;
   };
 
-  const out = composeCanonicalSilhouetteAtlas();
+  const out = composeCanonicalSilhouetteAtlas(readWallMaskFrameAssignments());
   for (let y = 0; y < atlas.height; y++) {
     for (let x = 0; x < atlas.width; x++) {
       const i = (y * atlas.width + x) * 4;

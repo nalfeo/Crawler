@@ -610,6 +610,48 @@ describe('.github/scripts lint wiring', () => {
   });
 });
 
+describe('disliked-lifecycle closure gate wiring', () => {
+  // Regression coverage for the exact-head review finding that the
+  // zero-dangling disliked-sprite closure check was only manually invokable
+  // (`npm run sprites:disliked-lifecycle -- --dry-run`) and had no
+  // deterministic CI/verify gate. These three wiring points are what turn it
+  // into an actual gate; losing any one of them silently re-opens the gap.
+  const packageJson = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+  };
+
+  it('package.json exposes a dedicated, dry-run-only check script', () => {
+    const script = packageJson.scripts['check:disliked-lifecycle-closure'];
+    expect(script).toBeDefined();
+    expect(script).toContain('scripts/sprites/disliked-lifecycle-cli.ts');
+    expect(script).toContain('--closure-only');
+    // Must never be able to mutate the manifest/queue: --apply is a distinct,
+    // manually-invoked path (`npm run sprites:disliked-lifecycle -- --apply`).
+    expect(script).not.toContain('--apply');
+  });
+
+  it('ci.yml runs the check script in the lightweight-checks job', () => {
+    const ciYml = readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const lightweightJob = ciYml.slice(
+      ciYml.indexOf('\n  check-lightweight:'),
+      ciYml.indexOf('\n  check-silent-reverts:'),
+    );
+    expect(lightweightJob).toContain('npm run check:disliked-lifecycle-closure');
+    // Must share the job's docs-only skip convention so it does not force
+    // Node/Playwright setup on a pure documentation PR.
+    const stepStart = lightweightJob.indexOf('npm run check:disliked-lifecycle-closure');
+    const stepBlock = lightweightJob.slice(Math.max(0, stepStart - 200), stepStart);
+    expect(stepBlock).toContain("if: env.DOCS_ONLY != 'true'");
+  });
+
+  it('verify:fast Step 3 runs the same read-only dry-run check locally', () => {
+    const verifyFastSh = readFileSync(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'), 'utf8');
+    expect(verifyFastSh).toContain(
+      'run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --closure-only',
+    );
+  });
+});
+
 /** Intentionally long: must outlast the SIGTERM that interrupts the verifier. */
 const STUB_DURATION_SECONDS = 300;
 /** Brief wait after seeing "Step 1/3" to let background sleep stubs reach their wait state. */
@@ -618,6 +660,76 @@ const STUB_STARTUP_DELAY_MS = 200;
 const CLOSE_TIMEOUT_MS = 5_000;
 /** Bound PID-file wait so the test fails fast if stub descendants never launch. */
 const CHILD_PID_TIMEOUT_MS = 3_000;
+const STEP3_HEALTH_CHECKS = [
+  'physics-defs-sync',
+  'ai-equip-parity',
+  'registry-integrity',
+  'asset-integrity',
+  'allowlist-expiry',
+  'disliked-lifecycle-closure',
+  'size-coverage',
+  'weight-coverage',
+] as const;
+
+function makeStep3StubDir(
+  fixtureDir: string,
+  options: { failingName?: (typeof STEP3_HEALTH_CHECKS)[number]; longRunning?: boolean } = {},
+): string {
+  const stubDir = path.join(fixtureDir, 'step3-stubs');
+  mkdirSync(stubDir, { recursive: true });
+  for (const name of STEP3_HEALTH_CHECKS) {
+    const stubPath = path.join(stubDir, `${name}.sh`);
+    if (options.longRunning) {
+      writeFileSync(
+        stubPath,
+        `#!/usr/bin/env bash
+set -euo pipefail
+child_pid_dir="\${VERIFY_FAST_STEP3_CHILD_PID_DIR:-}"
+sleep_seconds="\${VERIFY_FAST_STEP3_STUB_SECONDS:-300}"
+sleep "$sleep_seconds" &
+child=$!
+if [ -n "$child_pid_dir" ]; then
+  mkdir -p "$child_pid_dir"
+  printf "%s\\n" "$child" > "$child_pid_dir/${name}.pid"
+fi
+wait "$child"
+`,
+      );
+    } else if (name === options.failingName) {
+      writeFileSync(
+        stubPath,
+        `#!/usr/bin/env bash
+echo "stub failing ${name}" >&2
+exit 42
+`,
+      );
+    } else {
+      writeFileSync(
+        stubPath,
+        `#!/usr/bin/env bash
+echo "stub ok ${name}"
+exit 0
+`,
+      );
+    }
+  }
+  return stubDir;
+}
+
+function runStep3Scheduler(fixtureDir: string, stubDir: string) {
+  return spawnSync('bash', [SCRIPT], {
+    cwd: fixtureDir,
+    encoding: 'utf8',
+    timeout: 30_000,
+    env: bashEnv({
+      CI: '1',
+      NODE_ENV: 'test',
+      VERIFY_FAST_SKIP_SILENT_REVERTS: '1',
+      VERIFY_FAST_TEST_STEP3_ONLY: '1',
+      VERIFY_FAST_STEP3_STUB_DIR: toBashScriptPath(stubDir),
+    }),
+  });
+}
 
 function runSignalLifecycleSupervisor(
   fixtureDir: string,
@@ -788,6 +900,181 @@ echo "signal lifecycle ok"
   );
 }
 
+function runStep3SignalLifecycleSupervisor(
+  fixtureDir: string,
+  stubDir: string,
+  childPidDir: string,
+) {
+  const logFile = path.join(fixtureDir, 'verify-fast-step3-signal.log');
+  const supervisorScript = path.join(fixtureDir, 'verify-fast-step3-signal-supervisor.sh');
+  writeFileSync(
+    supervisorScript,
+    `#!/usr/bin/env bash
+set -euo pipefail
+
+script_path="$1"
+log_file="$2"
+child_pid_dir="$3"
+startup_delay_seconds="$4"
+child_pid_timeout_ms="$5"
+close_timeout_ms="$6"
+health_checks="${STEP3_HEALTH_CHECKS.join(' ')}"
+
+assert_pid_file() {
+  local label="$1"
+  local pid_file="$2"
+  local attempts="$3"
+  local attempt=0
+  while [ ! -s "$pid_file" ]; do
+    if [ "$attempt" -ge "$attempts" ]; then
+      echo "Timed out waiting for $label child pid file: $pid_file" >&2
+      exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.05
+  done
+}
+
+kill_recorded_descendants() {
+  local pid_file child_pid
+  for pid_file in "$child_pid_dir"/*.pid; do
+    [ -e "$pid_file" ] || continue
+    child_pid="$(tr -d '[:space:]' < "$pid_file")"
+    [[ "$child_pid" =~ ^[0-9]+$ ]] || continue
+    kill -TERM -- "-$child_pid" 2>/dev/null || true
+    kill -TERM "$child_pid" 2>/dev/null || true
+    sleep 0.05
+    kill -KILL -- "-$child_pid" 2>/dev/null || true
+    kill -KILL "$child_pid" 2>/dev/null || true
+  done
+}
+
+cleanup() {
+  kill_recorded_descendants
+  kill -TERM -- "-$verify_pid" 2>/dev/null || true
+  kill -KILL "$verify_pid" 2>/dev/null || true
+  wait "$verify_pid" 2>/dev/null || true
+}
+
+mkdir -p "$child_pid_dir"
+bash -m "$script_path" > "$log_file" 2>&1 &
+verify_pid=$!
+trap cleanup EXIT
+
+step_attempts=200
+step_attempt=0
+while ! grep -q 'Step 3/3' "$log_file" 2>/dev/null; do
+  if ! kill -0 "$verify_pid" 2>/dev/null; then
+    echo "Process exited before Step 3/3 was printed" >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+  if [ "$step_attempt" -ge "$step_attempts" ]; then
+    echo "Timed out waiting for Step 3/3 output" >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+  step_attempt=$((step_attempt + 1))
+  sleep 0.05
+done
+
+sleep "$startup_delay_seconds"
+pid_attempts=$(( child_pid_timeout_ms / 50 ))
+descendant_pids=()
+for name in $health_checks; do
+  pid_file="$child_pid_dir/$name.pid"
+  assert_pid_file "$name" "$pid_file" "$pid_attempts"
+  child_pid="$(tr -d '[:space:]' < "$pid_file")"
+  if ! [[ "$child_pid" =~ ^[0-9]+$ ]]; then
+    echo "Invalid child pid content for $name: '$child_pid'" >&2
+    exit 1
+  fi
+  kill -0 "$child_pid"
+  descendant_pids+=("$child_pid")
+done
+
+kill -TERM "$verify_pid" 2>/dev/null || true
+kill -TERM -- "-$verify_pid" 2>/dev/null || true
+timeout_marker="$log_file.timeout"
+rm -f "$timeout_marker"
+close_timeout_seconds="$(awk -v ms="$close_timeout_ms" 'BEGIN { printf "%.3f", ms / 1000 }')"
+(
+  sleep "$close_timeout_seconds"
+  if kill -0 "$verify_pid" 2>/dev/null; then
+    printf "timeout\\n" > "$timeout_marker"
+    kill -KILL "$verify_pid" 2>/dev/null || true
+  fi
+) &
+timeout_pid=$!
+
+set +e
+wait "$verify_pid"
+verify_status=$?
+set -e
+kill "$timeout_pid" 2>/dev/null || true
+wait "$timeout_pid" 2>/dev/null || true
+if [ -f "$timeout_marker" ]; then
+  echo "Timed out waiting $close_timeout_ms ms for SIGTERM shutdown" >&2
+  exit 1
+fi
+if [ "$verify_status" -ne 143 ]; then
+  echo "Expected verify-fast exit 143, got $verify_status" >&2
+  cat "$log_file" >&2 || true
+  exit 1
+fi
+
+poll_attempts=20
+poll_attempt=0
+while true; do
+  any_alive=0
+  for child_pid in "\${descendant_pids[@]}"; do
+    if kill -0 "$child_pid" 2>/dev/null; then
+      any_alive=1
+    fi
+  done
+  if [ "$any_alive" -eq 0 ]; then
+    break
+  fi
+  if [ "$poll_attempt" -ge "$poll_attempts" ]; then
+    echo "Step 3 descendant process survived cleanup: \${descendant_pids[*]}" >&2
+    exit 1
+  fi
+  poll_attempt=$((poll_attempt + 1))
+  sleep 0.05
+done
+trap - EXIT
+echo "step3 signal lifecycle ok"
+`,
+  );
+
+  return spawnSync(
+    'bash',
+    [
+      toBashScriptPath(supervisorScript),
+      SCRIPT,
+      toBashScriptPath(logFile),
+      toBashScriptPath(childPidDir),
+      String(STUB_STARTUP_DELAY_MS / 1000),
+      String(CHILD_PID_TIMEOUT_MS),
+      String(CLOSE_TIMEOUT_MS),
+    ],
+    {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: bashEnv({
+        CI: '1',
+        NODE_ENV: 'test',
+        VERIFY_FAST_SKIP_SILENT_REVERTS: '1',
+        VERIFY_FAST_TEST_STEP3_ONLY: '1',
+        VERIFY_FAST_STEP3_STUB_DIR: toBashScriptPath(stubDir),
+        VERIFY_FAST_STEP3_STUB_SECONDS: String(STUB_DURATION_SECONDS),
+        VERIFY_FAST_STEP3_CHILD_PID_DIR: toBashScriptPath(childPidDir),
+      }),
+    },
+  );
+}
+
 describe('verify-fast signal lifecycle', () => {
   it.skipIf(!hasBash)(
     // The supervisor runs verify-fast as an async Bash job; SIGTERM is used here
@@ -812,6 +1099,47 @@ describe('verify-fast signal lifecycle', () => {
         );
       }
       expect(`${result.stdout}\n${result.stderr}`).toContain('signal lifecycle ok');
+    },
+    30_000,
+  );
+});
+
+describe('verify-fast Step 3 scheduler', () => {
+  it.skipIf(!hasBash)('propagates a failed health-check status', () => {
+    const fixture = makeFixture({
+      'src/clean.ts': 'export const sourceValue = 1;\n',
+      'tests/clean.test.ts': 'export const testValue = 1;\n',
+      'scripts/clean.ts': 'export const scriptValue = 1;\n',
+    });
+    const stubDir = makeStep3StubDir(fixture, { failingName: 'asset-integrity' });
+
+    const result = runStep3Scheduler(fixture, stubDir);
+
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      '❌ Health check failed: asset-integrity',
+    );
+  });
+
+  it.skipIf(!hasBash)(
+    'exits 143 on SIGTERM and terminates Step 3 descendant processes',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+      });
+      const stubDir = makeStep3StubDir(fixture, { longRunning: true });
+      const childPidDir = path.join(fixture, 'step3-child-pids');
+
+      const result = runStep3SignalLifecycleSupervisor(fixture, stubDir, childPidDir);
+
+      if (result.status !== 0) {
+        throw new Error(
+          `step3 signal supervisor failed with status ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        );
+      }
+      expect(`${result.stdout}\n${result.stderr}`).toContain('step3 signal lifecycle ok');
     },
     30_000,
   );

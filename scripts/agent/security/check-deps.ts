@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * security/check-deps.ts — Diff package.json deps against an allowlist of
- * trusted scopes / publishers and flag anything new that doesn't match.
+ * security/check-deps.ts — Validate JavaScript and sprite-pipeline Python
+ * dependencies against explicit trusted-package lists.
  *
  * The allowlist is intentionally small. Adding a new dependency from an
  * unlisted source requires either:
  *   (a) extending the allowlist (and explaining why in the same PR), or
- *   (b) adding the exact package to TRUSTED_PACKAGES below.
+ *   (b) adding the exact package to the matching trusted-package list below.
  *
  * Runs as a blocking check on PRs.
  */
@@ -19,6 +19,8 @@ interface PackageJson {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly devDependencies?: Readonly<Record<string, string>>;
 }
+
+const PYTHON_REQUIREMENTS_PATH = fromRepo('scripts/sprites/proper-pixel-art-requirements.txt');
 
 // Trusted scopes / unscoped first-party Node ecosystem packages.
 const TRUSTED_SCOPES = [
@@ -77,6 +79,19 @@ const TRUSTED_PACKAGES = new Set<string>([
   'jsdom',
 ]);
 
+const TRUSTED_PYTHON_PACKAGES = new Map<string, string>([
+  // Mesh-recovery tool and its complete runtime dependency closure. These run
+  // only in the offline sprite authoring pipeline and are installed as wheels.
+  ['proper-pixel-art', '1.7.2'],
+  ['av', '18.1.0'],
+  ['colorama', '0.4.6'],
+  ['numpy', '2.5.3'],
+  ['opencv-python-headless', '5.0.0.93'],
+  ['pillow', '12.1.0'],
+  ['pyyaml', '6.0.3'],
+  ['tqdm', '4.70.0'],
+]);
+
 function isTrusted(name: string): boolean {
   if (TRUSTED_PACKAGES.has(name)) return true;
   return TRUSTED_SCOPES.some((scope) => name.startsWith(scope));
@@ -92,6 +107,48 @@ async function main(): Promise<void> {
         file: 'package.json',
         remediation:
           'Confirm publisher + maintenance status, then add to TRUSTED_PACKAGES (or TRUSTED_SCOPES) in scripts/agent/security/check-deps.ts.',
+      });
+    }
+  }
+
+  const requirements = readFileSync(PYTHON_REQUIREMENTS_PATH, 'utf8')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'));
+  const seen = new Set<string>();
+  for (const requirement of requirements) {
+    const match = /^([A-Za-z0-9_.-]+)==([A-Za-z0-9_.+-]+)$/u.exec(requirement);
+    if (!match) {
+      report.error(`Python dependency must use an exact version: ${requirement}`, {
+        file: 'scripts/sprites/proper-pixel-art-requirements.txt',
+        remediation: 'Use package==version and add the reviewed pin to TRUSTED_PYTHON_PACKAGES.',
+      });
+      continue;
+    }
+    const name = match[1]!.toLowerCase().replace(/[._]+/gu, '-');
+    const actualVersion = match[2]!;
+    if (seen.has(name)) {
+      report.error(`Duplicate Python dependency: ${requirement}`, {
+        file: 'scripts/sprites/proper-pixel-art-requirements.txt',
+        remediation: 'Keep exactly one reviewed pin for each normalized package name.',
+      });
+      continue;
+    }
+    seen.add(name);
+    const expectedVersion = TRUSTED_PYTHON_PACKAGES.get(name);
+    if (expectedVersion !== actualVersion) {
+      report.error(`Untrusted Python dependency: ${requirement}`, {
+        file: 'scripts/sprites/proper-pixel-art-requirements.txt',
+        remediation:
+          'Confirm publisher, maintenance status, and exact version, then update TRUSTED_PYTHON_PACKAGES.',
+      });
+    }
+  }
+  for (const [name, version] of TRUSTED_PYTHON_PACKAGES) {
+    if (!seen.has(name)) {
+      report.error(`Missing pinned Python dependency: ${name}==${version}`, {
+        file: 'scripts/sprites/proper-pixel-art-requirements.txt',
+        remediation: 'Restore the reviewed dependency closure to the requirements file.',
       });
     }
   }

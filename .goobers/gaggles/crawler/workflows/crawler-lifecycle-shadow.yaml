@@ -1,0 +1,29 @@
+apiVersion: goobers.dev/v1alpha1
+kind: Workflow
+dslVersion: '2.0'
+metadata:
+  name: crawler-lifecycle-shadow
+spec:
+  gaggle: crawler
+  displayName: Crawler lifecycle shadow decision
+  triggers:
+    - type: manual
+  readiness:
+    maxConcurrentRuns: 1
+  start: decide
+  tasks:
+    - name: decide
+      type: deterministic
+      goal: Produce read-only lifecycle decisions from the captured legacy input snapshot.
+      run:
+        script: |
+          set -eu
+          node .github/scripts/goobers-shadow.mjs \
+            --input "${GOOBERS_SHADOW_INPUT_FILE:?}" \
+            --emitShadow \
+            --output lifecycle-shadow-result.json
+      inputs:
+        resultFile: lifecycle-shadow-result.json
+      expectedOutputs:
+        - decisions
+        - writesAllowed

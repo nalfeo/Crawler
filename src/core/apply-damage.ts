@@ -309,6 +309,19 @@ export function applyDamage(
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
     }
 
+    // Any landed damage on the player arms damage-triggered abilities. A player
+    // target is only ever hit by an enemy/environment source (see the dodge note
+    // above), so this deliberately does NOT filter on `options.origin` —
+    // hostile scenario damage (e.g. the Floor 5 finale) is authored as
+    // `origin: 'environment'` and must still trigger.
+    if (isPlayerTarget) {
+      world.abilityTriggerEvents.push({
+        holderEid: target,
+        kind: 'player_damage',
+        amount: dealt,
+      });
+    }
+
     // Floor 3 Companion League: attribute damage-weighted combat XP credit.
     // Only Companion-sourced hits on a non-player Enemy target count — player
     // weapon damage and environment damage never feed Companion XP (R7).

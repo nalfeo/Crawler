@@ -23,7 +23,10 @@ import {
   validateCompatibleBoundaries,
   validateWallAutotileImagePath,
   validatePoolAndDoorImages,
+  validateWallAccentTopology,
+  validateTerrainDepthAndPerspective,
   validateGenManifestSchema,
+  type ValidationIssue,
   type ValidationResult,
 } from '../validate.js';
 import type { TerrainPackDef } from '../../../../src/shared/terrain-pack-types.js';
@@ -126,6 +129,21 @@ function readPackPool(packId: string, prefix: string): readonly RgbaImage[] {
   return indices.map((i) => decodePng(fs.readFileSync(path.join(dir, `${prefix}-${i}.png`))));
 }
 
+function readExistingWallMaskFrameAssignments(
+  packId: string,
+): TerrainPackDef['wallAutotile']['masks'] | undefined {
+  const manifestPath = path.join(
+    REPO_ROOT,
+    'src',
+    'shared',
+    'data',
+    'terrain-packs',
+    `${packId}.manifest.json`,
+  );
+  if (!fs.existsSync(manifestPath)) return undefined;
+  return (JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as TerrainPackDef).wallAutotile.masks;
+}
+
 async function loadMaterial(spec: SurfaceMaterialSpec, options: CliOptions): Promise<RgbaImage> {
   const cachePath = path.join(REPO_ROOT, '.cache', 'terrain-gen', `${spec.cacheKey}.png`);
   if (options.composeOnly && !fs.existsSync(cachePath)) {
@@ -158,6 +176,44 @@ function reportValidation(label: string, results: readonly ValidationResult[]): 
   console.error(`  ❌ ${label}: ${issues.length} issue(s)`);
   for (const issue of issues) console.error(`     [${issue.code}] ${issue.message}`);
   return false;
+}
+
+function validateEmittedWallAccentPaths(
+  manifest: TerrainPackDef,
+  emittedPaths: ReadonlySet<string>,
+): ValidationResult {
+  const issues: ValidationIssue[] = [];
+  for (const accent of manifest.wallAccents ?? []) {
+    const context = `wallAccents[${accent.id}]`;
+    const normalized = accent.imagePath.replace(/\\/g, '/');
+    if (normalized.includes('..')) {
+      issues.push({
+        code: 'path-traversal',
+        message: `${context}: imagePath contains '..' (path traversal prevented): ${accent.imagePath}`,
+      });
+      continue;
+    }
+    if (!normalized.startsWith('assets/terrain-packs/')) {
+      issues.push({
+        code: 'path-not-in-allowed-root',
+        message: `${context}: imagePath '${accent.imagePath}' must start with 'assets/terrain-packs/'`,
+      });
+      continue;
+    }
+    if (!emittedPaths.has(normalized)) {
+      issues.push({
+        code: 'image-missing',
+        message: `${context}: imagePath '${accent.imagePath}' was not emitted by composePack`,
+      });
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}
+
+function toAccentAssetPath(specId: string, relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^public\//, '');
+  if (normalized.startsWith('assets/terrain-packs/')) return normalized;
+  return `assets/terrain-packs/${specId}/${normalized.replace(/^\/+/, '')}`;
 }
 
 async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolean> {
@@ -219,6 +275,7 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
       'generation is not byte-reproducible: the committed PNGs are the source of truth. ' +
       'Rebuild with scripts/sprites/terrain-packs/gen/cli.ts.',
     wallTile,
+    wallMaskFrameAssignments: readExistingWallMaskFrameAssignments(spec.id),
     floorVariants,
     corridorVariants,
     specialFloorPools,
@@ -241,6 +298,24 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
   const atlasBytes = files.find((f) => f.relativePath.endsWith('wall-atlas.png'))!.buffer;
   const atlas = decodePng(atlasBytes);
   const typed = manifest as TerrainPackDef;
+  const filesByPath = new Map(
+    files.map((file) => [toAccentAssetPath(spec.id, file.relativePath), file.buffer]),
+  );
+  const accentPathResult = validateEmittedWallAccentPaths(typed, new Set(filesByPath.keys()));
+  const topologyResults: ValidationResult[] = [];
+  const depthResults: ValidationResult[] = [];
+  if (accentPathResult.ok) {
+    const accentAtlases: RgbaImage[] = [];
+    for (const accent of typed.wallAccents ?? []) {
+      const accentPath = accent.imagePath.replace(/\\/g, '/');
+      const accentPng = filesByPath.get(accentPath);
+      if (!accentPng) throw new Error(`Missing emitted accent image: ${accent.imagePath}`);
+      const accentAtlas = decodePng(accentPng);
+      accentAtlases.push(accentAtlas);
+      topologyResults.push(validateWallAccentTopology(typed, atlas, accentAtlas, accent.id));
+    }
+    depthResults.push(validateTerrainDepthAndPerspective(typed, atlas, accentAtlases));
+  }
   return reportValidation(spec.id, [
     // Use the gen-specific schema validator: floor1-dungeon/floor1-cave are now
     // registered in RUNTIME_TERRAIN_PACK_IDS, but validateManifestSchema also
@@ -252,6 +327,9 @@ async function buildPack(spec: PackGenSpec, options: CliOptions): Promise<boolea
     validateCompatibleBoundaries(typed, atlas, { minEdgePassRate: 1.0 }),
     validateWallAutotileImagePath(typed, { repoRoot: REPO_ROOT }),
     validatePoolAndDoorImages(typed, { repoRoot: REPO_ROOT }),
+    accentPathResult,
+    ...topologyResults,
+    ...depthResults,
   ]);
 }
 

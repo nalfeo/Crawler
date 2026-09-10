@@ -34,14 +34,17 @@ import {
   toMaterialTile,
   type MaterialTileOptions,
 } from './image-ops.js';
+import { buildWallReliefAtlases } from '../wall-relief.js';
 
 export interface PackOutputFile {
   readonly relativePath: string;
   readonly buffer: Buffer;
 }
 
+export type WallMaskFrameAssignment = { readonly maskId: number; readonly frameIndex: number };
+
 /** How far in from a silhouette boundary the wall darkening reaches. */
-const WALL_RIM = { rimPx: 3, rimDarken: 0.35, topLift: 0.5 } as const;
+const WALL_RIM = { rimPx: 7, rimDarken: 0.52, topLift: 0.72 } as const;
 
 /**
  * Cut a raw material into 4 quadrants and turn each into an independent
@@ -70,12 +73,12 @@ export function deriveVariantTiles(
 export function composeWallAtlas(
   wallTile: RgbaImage,
   cornerStyle: WallCornerStyle = DEFAULT_WALL_CORNER_STYLE,
+  assignments: readonly WallMaskFrameAssignment[] = buildMaskFrameAssignments(),
 ): {
   readonly atlas: RgbaImage;
-  readonly masks: readonly { readonly maskId: number; readonly frameIndex: number }[];
+  readonly masks: readonly WallMaskFrameAssignment[];
 } {
   const quadrantKit = generateQuadrantKit(cornerStyle);
-  const assignments = buildMaskFrameAssignments();
   const atlas = createImage(ATLAS_WIDTH_PX, ATLAS_HEIGHT_PX);
   for (const { maskId, frameIndex } of assignments) {
     const silhouette = composeWallCellOutput(maskId, quadrantKit);
@@ -103,6 +106,7 @@ export interface ComposePackInput {
   readonly wallTile: RgbaImage;
   readonly floorVariants: readonly RgbaImage[];
   readonly corridorVariants: readonly RgbaImage[];
+  readonly wallMaskFrameAssignments?: readonly WallMaskFrameAssignment[];
   /** Role-keyed floor pools (welcome/safe/boss-stair); walls are shared. */
   readonly specialFloorPools?: readonly SpecialFloorPoolInput[];
 }
@@ -121,7 +125,11 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   const packDir = `assets/terrain-packs/${input.id}`;
   const files: PackOutputFile[] = [];
 
-  const { atlas, masks } = composeWallAtlas(input.wallTile, wallCornerStyleForPack(input.id));
+  const { atlas, masks } = composeWallAtlas(
+    input.wallTile,
+    wallCornerStyleForPack(input.id),
+    input.wallMaskFrameAssignments,
+  );
   const atlasRelPath = `${packDir}/wall-atlas.png`;
   files.push({ relativePath: atlasRelPath, buffer: encodePng(atlas) });
 
@@ -134,6 +142,16 @@ export function composePack(input: ComposePackInput): ComposePackResult {
   // runtime asset. `industrial-cave` ships `wall-material.png` for the same
   // reason.
   files.push({ relativePath: `${packDir}/wall-material.png`, buffer: encodePng(input.wallTile) });
+
+  const wallAccents = buildWallReliefAtlases(input.wallTile, atlas).map(({ id, image }) => {
+    const relPath = `${packDir}/accent-${id}.png`;
+    files.push({ relativePath: relPath, buffer: encodePng(image) });
+    return {
+      id,
+      imagePath: relPath,
+      textureKey: `terrain-pack-${input.id}-accent-${id}`,
+    };
+  });
 
   const buildPool = (
     kind: string,
@@ -173,6 +191,7 @@ export function composePack(input: ComposePackInput): ComposePackResult {
       gridRows: ATLAS_GRID_ROWS,
       masks,
     },
+    wallAccents,
     floorPool,
     corridorPool,
     ...(Object.keys(specialFloorPools).length > 0

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "packId": "floor3",
+  "quests": [
+    {
+      "id": "floor3-studio-emberforge",
+      "title": "Defeat Emberforge Studio",
+      "summary": "Emberforge Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-emberforge",
+          "label": "Defeat Emberforge Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-emberforge-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-bloomhollow",
+      "title": "Defeat Bloomhollow Studio",
+      "summary": "Bloomhollow Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-bloomhollow",
+          "label": "Defeat Bloomhollow Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-bloomhollow-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-stoneward",
+      "title": "Defeat Stoneward Studio",
+      "summary": "Stoneward Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-stoneward",
+          "label": "Defeat Stoneward Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-stoneward-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-galeloft",
+      "title": "Defeat Galeloft Studio",
+      "summary": "Galeloft Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-galeloft",
+          "label": "Defeat Galeloft Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-galeloft-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-tidereach",
+      "title": "Defeat Tidereach Studio",
+      "summary": "Tidereach Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-tidereach",
+          "label": "Defeat Tidereach Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-tidereach-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-gloomvale",
+      "title": "Defeat Gloomvale Studio",
+      "summary": "Gloomvale Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-gloomvale",
+          "label": "Defeat Gloomvale Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-gloomvale-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-lumenspire",
+      "title": "Defeat Lumenspire Studio",
+      "summary": "Lumenspire Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-lumenspire",
+          "label": "Defeat Lumenspire Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-lumenspire-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-cinderveil",
+      "title": "Defeat Cinderveil Studio",
+      "summary": "Cinderveil Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-cinderveil",
+          "label": "Defeat Cinderveil Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-cinderveil-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-verdant-tide",
+      "title": "Defeat Verdant Tide Studio",
+      "summary": "Verdant Tide Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-verdant-tide",
+          "label": "Defeat Verdant Tide Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-verdant-tide-defeated"
+        }
+      ]
+    },
+    {
+      "id": "floor3-studio-skyroot",
+      "title": "Defeat Skyroot Studio",
+      "summary": "Skyroot Studio is holding open tryouts. Beat every Trainer to move on.",
+      "objectives": [
+        {
+          "id": "defeat-skyroot",
+          "label": "Defeat Skyroot Studio",
+          "kind": "goal",
+          "goalId": "floor3-studio-skyroot-defeated"
+        }
+      ]
+    }
+  ]
+}

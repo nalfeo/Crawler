@@ -1,0 +1,76 @@
+{
+  "briefId": "player-walk-cycle-male-south-baseline",
+  "spriteName": "player-walk-cycle-male-south-baseline",
+  "assetPath": "generated/player-walk-cycle-male-south-baseline.png",
+  "approvedAt": "2026-08-20T23:55:19.879Z",
+  "sourceRun": "generated/runs/player-walk-cycle-male-south-baseline/2026-08-20T23-52-13-be9365c8",
+  "variantIndex": 0,
+  "anchor": null,
+  "anchors": {
+    "hold": null,
+    "centerOfGravity": null
+  },
+  "sensorScore": "frame-sequence",
+  "judgeScore": null,
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-center-of-mass",
+      "anchor": {
+        "x": 111,
+        "y": 125
+      }
+    },
+    {
+      "ok": true,
+      "sensor": "silhouette-orientation-axis"
+    }
+  ],
+  "judgeScorecard": null,
+  "type": "character",
+  "contentHash": "1930189edf7b69090aef23a9d4a57e938bcbf9c5301f9c8b23a0428825fa5cc2",
+  "animation": {
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "frameCount": 4,
+    "frameRate": 8,
+    "loop": true
+  },
+  "catalog": {
+    "tags": [
+      "character",
+      "male",
+      "player",
+      "walk-cycle",
+      "fantasy",
+      "medieval",
+      "small",
+      "dungeon",
+      "adventurer"
+    ]
+  }
+}

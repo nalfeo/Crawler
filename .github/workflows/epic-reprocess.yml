@@ -33,4 +33,11 @@ jobs:
       - name: Assign managed epic nodes
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
+          # Epic reprocessing assigns Cloud Copilot to unassigned epic nodes,
+          # which are in the Goobers intake cohort. Without this selector the
+          # shared eligibility library sees an unset lane owner, concludes
+          # legacy still owns intake, and reassigns an issue Goobers is
+          # concurrently claiming — a dual writer. Already-assigned stale
+          # sessions still restart here in every era.
+          LIFECYCLE_MUTATION_OWNER: ${{ vars.LIFECYCLE_MUTATION_OWNER }}
         run: node .github/scripts/epics/epic-reprocess.mjs

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  classifyShepherdRun,
   decompose,
   renderTriage,
   triage,
@@ -110,6 +111,92 @@ describe('renderTriage()', () => {
     expect(output).toContain(
       'Verdict: RECOMMENDED — A feature request is reasonable to plan, but it still needs scope clarification first.',
     );
+  });
+
+  describe('classifyShepherdRun()', () => {
+    it('uses successful run JSON over a non-zero watcher exit and flags the disagreement', () => {
+      expect(
+        classifyShepherdRun(
+          {
+            databaseId: 33730214117,
+            status: 'completed',
+            conclusion: 'success',
+            jobs: [
+              { name: 'CI', conclusion: 'success' },
+              { name: 'Build', conclusion: 'skipped' },
+            ],
+          },
+          1,
+        ),
+      ).toEqual({
+        outcome: 'success',
+        failedJobs: [],
+        watcherJsonDisagreement: true,
+        logsActionable: false,
+      });
+    });
+
+    it('does not treat a failed job in a still-running run as an actionable verdict', () => {
+      expect(
+        classifyShepherdRun({
+          databaseId: 33730214117,
+          status: 'in_progress',
+          jobs: [
+            { name: 'Unit tests', conclusion: 'failure' },
+            { name: 'E2E', conclusion: null as unknown as string },
+          ],
+        }),
+      ).toEqual({
+        outcome: 'pending',
+        failedJobs: ['Unit tests'],
+        watcherJsonDisagreement: false,
+        logsActionable: false,
+      });
+    });
+
+    it('reports genuine failed jobs from authoritative JSON', () => {
+      expect(
+        classifyShepherdRun({
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'Unit tests', conclusion: 'failure' }],
+        }),
+      ).toEqual({
+        outcome: 'failure',
+        failedJobs: ['Unit tests'],
+        watcherJsonDisagreement: false,
+        logsActionable: true,
+      });
+    });
+
+    it('does not make logs actionable for a cancelled run carrying a failed job', () => {
+      expect(
+        classifyShepherdRun({
+          status: 'completed',
+          conclusion: 'cancelled',
+          jobs: [{ name: 'E2E', conclusion: 'failure' }],
+        }),
+      ).toEqual({
+        outcome: 'cancelled',
+        failedJobs: ['E2E'],
+        watcherJsonDisagreement: false,
+        logsActionable: false,
+      });
+    });
+
+    it.each([
+      ['cancelled', 'cancelled'],
+      ['action_required', 'action-required'],
+      ['neutral', 'neutral'],
+      ['skipped', 'skipped'],
+      ['stale', 'stale'],
+    ] as const)('reports %s separately from a failure', (conclusion, outcome) => {
+      expect(classifyShepherdRun({ status: 'completed', conclusion })).toMatchObject({
+        outcome,
+        failedJobs: [],
+        watcherJsonDisagreement: false,
+      });
+    });
   });
 });
 

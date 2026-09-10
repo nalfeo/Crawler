@@ -118,7 +118,30 @@ describe('handleRuns (mocked storage + GitHub)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps explicit bug reports telemetry-only', async () => {
+  it('fails loudly with 500 when CRAWLER_CI_PAT is not configured, instead of silently skipping issue filing', async () => {
+    // Regression test for nalfeo/Crawler#4033: the deployed Function returned
+    // this exact HTTP 500 the first time a player used the in-game Report
+    // Issue flow because CRAWLER_CI_PAT was never set on the Function App.
+    delete process.env.CRAWLER_CI_PAT;
+
+    const result = await handleRuns(
+      makeRequest({
+        ...validRun,
+        meta: { runId: 'missing-credential-run' },
+        file_issue: true,
+        issue_description: 'The player became stuck.',
+      }),
+      context,
+    );
+
+    expect(result.status).toBe(500);
+    expect((result.jsonBody as { error: string }).error).toBe(
+      'missing required configuration: CRAWLER_CI_PAT',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('labels explicit player reports separately from automated telemetry', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ html_url: 'https://github.com/nalfeo/Crawler/issues/104' }),
@@ -136,7 +159,9 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+    const issue = JSON.parse(String(requestInit.body)) as { body: string; labels: string[] };
+    expect(issue.labels).toEqual(['telemetry', 'reported-issue']);
+    expect(issue.body).toContain('Involved: @nalfeo');
   });
 
   it('keeps survey feedback telemetry-only', async () => {
@@ -155,7 +180,9 @@ describe('handleRuns (mocked storage + GitHub)', () => {
 
     expect(result.status).toBe(201);
     const [, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(requestInit.body)).labels).toEqual(['telemetry']);
+    const issue = JSON.parse(String(requestInit.body)) as { body: string; labels: string[] };
+    expect(issue.labels).toEqual(['telemetry']);
+    expect(issue.body).toContain('Involved: @nalfeo');
   });
 
   it('appends survey submissions to the existing runId without rewriting the bundle', async () => {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Partially superseded (2026-08-31)
 
 ## Date
 
@@ -108,3 +108,12 @@ security:check`, `npm run health:check`.
   agent runtime.
 - Have a repo admin add `security-review` to required-status-checks for
   `main`.
+
+## 2026-08-31 amendment
+
+Automated security-review and test-health tracking issues proved too noisy for
+the repository's operating model. The weekly `test-health.yml` workflow and the
+scheduled/manual triggers plus aggregation job in `security-review.yml` were
+retired. Security Review remains a required, deterministic per-PR check, while
+the underlying health and security scripts remain available through
+`npm run health:check` and `npm run security:check`.

@@ -1,5 +1,5 @@
 import { PNG } from 'pngjs';
-import type { Brief } from './brief-schema.js';
+import { sheetPixelDimensions, type Brief } from './brief-schema.js';
 
 /**
  * Content-aware sheet slicer.
@@ -722,7 +722,28 @@ function sliceWithMap(sheetPng: Buffer, options: SliceOptions): BriefSliceResult
  * `variantCount` than expected) when the model omits the required gutter.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): BriefSliceResult {
-  const { rows, cols, emptyCells } = brief.generation.sheet;
+  const sheet = brief.generation.sheet;
+  const declaredGeometry =
+    sheet.nativeWidth !== undefined ||
+    sheet.nativeHeight !== undefined ||
+    sheet.nativeCanvas !== undefined;
+  if (declaredGeometry) {
+    const { width, height } = sheetPixelDimensions(sheet);
+    const actual = PNG.sync.read(sheetPng);
+    const widthScale = actual.width / width;
+    const heightScale = actual.height / height;
+    const isIntegerScale =
+      Number.isInteger(widthScale) &&
+      Number.isInteger(heightScale) &&
+      widthScale === heightScale &&
+      widthScale > 0;
+    if (!isIntegerScale) {
+      throw new Error(
+        `generated sheet dimensions ${actual.width}x${actual.height} do not match the declared ${width}x${height} canvas or an integer scale of it`,
+      );
+    }
+  }
+  const { rows, cols, emptyCells } = sheet;
   return sliceWithMap(sheetPng, { emptyCells, expectedGrid: { rows, cols } });
 }
 

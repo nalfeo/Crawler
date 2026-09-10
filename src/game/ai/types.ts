@@ -8,7 +8,11 @@ import type { WeaponTelemetrySummary } from '../../core/weapon-telemetry.js';
 import type { InputState } from '../../shared/input.js';
 import type { RunPlanSegmentPhase } from './run-planner.js';
 import type { DenBossDiagnostics } from '../../shared/den-boss-telemetry-types.js';
-import type { Floor4ArenaRunStats, Floor5SiegeRunStats } from '../../shared/floor-types.js';
+import type {
+  Floor4ArenaRunStats,
+  Floor5SiegeRunStats,
+  Floor6DefenseRunStats,
+} from '../../shared/floor-types.js';
 import type { EventSummary } from './event-log.js';
 import type { ObjectiveUtilityWeights } from './objective-route-planner.js';
 
@@ -506,6 +510,25 @@ export interface Floor2ProgressionMetrics {
   exitCompleted: boolean;
 }
 
+/** A deterministic Floor 3 progression transition captured by the headless runner. */
+export interface Floor3ProgressionMilestone {
+  frame: number;
+  gameTimeMs: number;
+}
+
+/** Complete production Floor 3 progression evidence captured by the headless runner. */
+export interface Floor3ProgressionMetrics {
+  leftEntrance: Floor3ProgressionMilestone | null;
+  studioVictories: Record<string, Floor3ProgressionMilestone | null>;
+  finalFourRounds: ReadonlyArray<{
+    handlerId: string;
+    victory: Floor3ProgressionMilestone | null;
+  }>;
+  keptCompanionSelected: Floor3ProgressionMilestone | null;
+  exitArrived: Floor3ProgressionMilestone | null;
+  exitCompleted: Floor3ProgressionMilestone | null;
+}
+
 /** End-of-run equipment usability + reward-resolution invariants. */
 export interface EquipmentPlayabilityMetrics {
   /** Total Quartermaster equipment gold observed as spent this run. */
@@ -536,7 +559,9 @@ export interface GoldEconomyMetrics {
   earnedFromDrops: number;
   /** Gold granted by claimed achievement loot boxes. */
   earnedFromLootBoxes: number;
-  /** `earnedFromDrops + earnedFromLootBoxes`. */
+  /** Gold paid for Floor 4 Headliner appearances. */
+  earnedFromAppearanceFees: number;
+  /** `earnedFromDrops + earnedFromLootBoxes + earnedFromAppearanceFees`. */
   earnedTotal: number;
   /** Gold spent on the Floor 1 merchant's charm. */
   spentOnCharm: number;
@@ -544,6 +569,8 @@ export interface GoldEconomyMetrics {
   spentOnMerchantWeapon: number;
   /** Gold spent at the Floor 1 Spell Broker. */
   spentOnSpell: number;
+  /** Gold spent at Floor 4 Green Room sponsor tables. */
+  spentOnGreenRoom: number;
   /** Total gold spent across every vendor. */
   spentTotal: number;
   /** `earnedTotal - spentTotal`, clamped at 0. */
@@ -572,7 +599,9 @@ export interface GoldEconomyMetrics {
   charmPurchases: number;
   merchantWeaponPurchases: number;
   spellPurchases: number;
-  /** Distinct vendors bought from this run (0-2): merchant, spell broker. */
+  /** Number of Floor 4 Green Room purchases. */
+  greenRoomPurchases: number;
+  /** Distinct vendors bought from this run. */
   distinctPurchases: number;
 }
 
@@ -595,6 +624,8 @@ export interface SkillRunMetrics {
   uniqueAbilityCount: number;
   /** Milestone levels reached per skill ID (e.g. `{ swords: [5, 10] }`). */
   milestonesReached: Record<string, number[]>;
+  /** Highest player combat-skill level reached during the run. */
+  maxCombatSkillLevel: number;
 }
 
 /**
@@ -788,10 +819,14 @@ export interface RunStats {
   floor1BossProgression?: Floor1BossProgressionMetrics;
   /** Full production Floor 2 den, encounter, and exit progression evidence. */
   floor2Progression?: Floor2ProgressionMetrics;
+  /** Full production Floor 3 Studio, Final Four, and exit progression evidence. */
+  floor3Progression?: Floor3ProgressionMetrics;
   /** Floor 4 arena clock and phase timeline evidence. */
   floor4Arena?: Floor4ArenaRunStats;
   /** Floor 5 siege phase skeleton and transition trace evidence. */
   floor5Siege?: Floor5SiegeRunStats;
+  /** Floor 6 Relay defense wave/phase lifecycle evidence. */
+  floor6Defense?: Floor6DefenseRunStats;
   /**
    * Shared den-boss diagnostic rollup — the SAME contract emitted as `den`
    * telemetry records by the player / AI Runner session recorder, so a headless
