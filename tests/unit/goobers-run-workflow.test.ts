@@ -2826,7 +2826,7 @@ JSON
     expect(diagnostics?.run).toContain('completed-existing-work-missing-evidence');
   });
 
-  it('separates implementation-stage timeout from planning-stage timeout with staged budgets', () => {
+  it('keeps staged timeout budgets without unsupported Goobers task timeout fields', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const reserveJob = workflow.jobs.reserve;
     const runJob = workflow.jobs.run;
@@ -2846,8 +2846,10 @@ JSON
     );
     const planTask = definition.spec.tasks.find((task) => task.name === 'plan');
     const implementTask = definition.spec.tasks.find((task) => task.name === 'implement');
-    expect(planTask?.timeoutMinutes).toBe(20);
-    expect(implementTask?.timeoutMinutes).toBe(50);
+    expect(planTask).toBeDefined();
+    expect(implementTask).toBeDefined();
+    expect(planTask).not.toHaveProperty('timeoutMinutes');
+    expect(implementTask).not.toHaveProperty('timeoutMinutes');
 
     // New GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES variable exists and is > 30 minutes
     const implementationTimeoutMinutes = Number(
