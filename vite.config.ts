@@ -86,7 +86,7 @@ export default defineConfig(({ mode }) => {
       watch: {
         // Ignore directories written by the sprite pipeline so that creating/updating
         // YAML briefs or generated assets does not trigger a full Vite page reload.
-        ignored: ['**/briefs/**', '**/generated/**'],
+        ignored: ['**/briefs/**', '**/generated/**', '**/files/**'],
       },
     },
     optimizeDeps: {

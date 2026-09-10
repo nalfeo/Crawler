@@ -11,7 +11,7 @@
  * progress — otherwise invisible anywhere in the game — is visible in the
  * same always-on combat HUD widget (see `hud-spell-skill-rows.ts` for the
  * pure row-selection logic). When more trackable spell skills are equipped
- * than there are rows, a "+N" overflow indicator appears in the title strip
+ * than there are rows, a "+N SPELLS" overflow indicator appears in the title strip
  * rather than silently dropping the rest.
  *
  * Reads the active weapon from core active-weapon state, looks up its WeaponDef
@@ -57,11 +57,11 @@ const SKILL_TITLE_FONT_SIZE = '15px';
  */
 const SKILL_ROW_LABEL_FONT_SIZE = '12px';
 /** Width for skill name label (truncated). */
-const NAME_W = 78;
+const NAME_W = 96;
 /** Width for "Lv XX" text. */
 const LV_W = 34;
 /** Width for progress bar. */
-const BAR_W = 64;
+const BAR_W = 56;
 const BAR_H = 10;
 
 /** Max additional rows reserved for the player's equipped spells' skills. */
@@ -90,6 +90,14 @@ const COLORS = {
 } as const;
 
 const truncateCache = new Map<string, string>();
+
+function formatSkillName(skillId: string): string {
+  return skillId
+    .split('-')
+    .filter(Boolean)
+    .map((part) => `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+    .join(' ');
+}
 
 function setTextWithinWidth(
   textObject: Phaser.GameObjects.Text,
@@ -123,6 +131,8 @@ export function createHudSkillTracker(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld, playerEid: number): void;
+  /** Labels currently projected into visible mastery rows, top to bottom. */
+  getVisibleLabels(): readonly string[];
   destroy(): void;
 } {
   const parent = options.parent;
@@ -158,7 +168,7 @@ export function createHudSkillTracker(
     .setDepth(PIXEL_UI_DEPTH.panel + 1);
 
   const titleText = scene.add
-    .text(PANEL_X + PAD, PANEL_BOTTOM - PANEL_MAX_H + 2 + TITLE_H / 2 + 2, 'SKILLS', {
+    .text(PANEL_X + PAD, PANEL_BOTTOM - PANEL_MAX_H + 2 + TITLE_H / 2 + 2, 'MASTERY', {
       fontFamily: HUD_FONT_FAMILY,
       fontSize: SKILL_TITLE_FONT_SIZE,
       fontStyle: 'bold',
@@ -361,7 +371,7 @@ export function createHudSkillTracker(
     updateRow(
       classRow,
       def.weaponClassSkillId,
-      def.weaponClassSkillId,
+      formatSkillName(def.weaponClassSkillId),
       CLASS_SKILL_THRESHOLDS,
       world,
       playerEid,
@@ -370,7 +380,7 @@ export function createHudSkillTracker(
     updateRow(
       typeRow,
       def.weaponTypeSkillId,
-      def.weaponTypeSkillId,
+      formatSkillName(def.weaponTypeSkillId),
       TYPE_SKILL_THRESHOLDS,
       world,
       playerEid,
@@ -404,7 +414,7 @@ export function createHudSkillTracker(
     }
 
     const overflowCount = countMatchingSpellSkills(equippedActiveAbilityIds) - spellRows.length;
-    overflowText.setText(overflowCount > 0 ? `+${overflowCount}` : '');
+    overflowText.setText(overflowCount > 0 ? `+${overflowCount} SPELLS` : '');
   }
 
   function destroy(): void {
@@ -425,5 +435,12 @@ export function createHudSkillTracker(
   // Initially hidden until sync is called.
   setAllVisible(false);
 
-  return { sync, destroy };
+  return {
+    sync,
+    getVisibleLabels: () =>
+      [classRow, typeRow, ...spellRows]
+        .filter((row) => row.nameText.visible)
+        .map((row) => row.nameText.text),
+    destroy,
+  };
 }

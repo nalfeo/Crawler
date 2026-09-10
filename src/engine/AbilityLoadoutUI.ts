@@ -51,7 +51,7 @@ const FOOTER_HEIGHT = 64;
  */
 const MIN_ROW_HEIGHT = 102;
 /** Space kept between the last line of row copy and the row's bottom edge. */
-const ROW_CONTENT_PADDING = 11;
+const ROW_CONTENT_PADDING = 15;
 const ROW_GAP = 8;
 const VISIBLE_ROWS = 3;
 /** List height when every visible row renders at {@link MIN_ROW_HEIGHT}. */
@@ -372,6 +372,25 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       description: Phaser.GameObjects.Text;
     }[] = [];
     let cursorY = viewport.y;
+    const firstVisibleIsPassive = visibleEntries[0]?.canToggle === false;
+    const renderPassiveHeader = (): void => {
+      const headerY = cursorY;
+      const headerLabel = text(viewport.x, headerY + 1, SECTION_HEADER_LABEL, {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: hex(COLORS.textMuted),
+      });
+      const headerRuleLine = scene.add
+        .rectangle(viewport.x, headerY + 15, viewport.width, 1, COLORS.sectionHeader, 1)
+        .setOrigin(0, 0);
+      dynamic.push(headerLabel, headerRuleLine);
+      overlay.add([headerLabel, headerRuleLine]);
+      cursorY += SECTION_HEADER_HEIGHT;
+      visibleSectionHeaderLabel = SECTION_HEADER_LABEL;
+    };
+    if (firstVisibleIsPassive) renderPassiveHeader();
+
     for (let localIndex = 0; localIndex < visibleEntries.length; localIndex += 1) {
       const entry = visibleEntries[localIndex]!;
       const entryIndex = scrollIndex + localIndex;
@@ -384,22 +403,7 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       // visible in any given scroll window.
       const previousEntry = entryIndex > 0 ? entries[entryIndex - 1] : undefined;
       const isSectionBoundary = entry.canToggle === false && previousEntry?.canToggle !== false;
-      if (isSectionBoundary) {
-        const headerY = cursorY;
-        const headerLabel = text(viewport.x, headerY + 1, SECTION_HEADER_LABEL, {
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          fontStyle: 'bold',
-          color: hex(COLORS.textMuted),
-        });
-        const headerRuleLine = scene.add
-          .rectangle(viewport.x, headerY + 15, viewport.width, 1, COLORS.sectionHeader, 1)
-          .setOrigin(0, 0);
-        dynamic.push(headerLabel, headerRuleLine);
-        overlay.add([headerLabel, headerRuleLine]);
-        cursorY += SECTION_HEADER_HEIGHT;
-        visibleSectionHeaderLabel = SECTION_HEADER_LABEL;
-      }
+      if (isSectionBoundary && !firstVisibleIsPassive) renderPassiveHeader();
 
       const rowY = cursorY;
       // The row's content is created before its background rectangle so the
@@ -432,14 +436,14 @@ export function createAbilityLoadoutUI(scene: Phaser.Scene): {
       });
       const details = text(viewport.x + 90, rowY + 41, entry.details, {
         fontFamily: 'monospace',
-        fontSize: '12px',
+        fontSize: '15px',
         color: hex(COLORS.accent),
         wordWrap: { width: viewport.width - 250 },
       });
-      const descriptionY = Math.max(rowY + 76, details.y + details.height + 4);
+      const descriptionY = Math.max(rowY + 76, details.y + details.height + 6);
       const description = text(viewport.x + 90, descriptionY, entry.description, {
         fontFamily: 'monospace',
-        fontSize: '12px',
+        fontSize: '16px',
         color: hex(COLORS.textPrimary),
         wordWrap: { width: viewport.width - 250 },
       });

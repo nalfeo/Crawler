@@ -1,9 +1,22 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildEvaluationImages,
   buildPrompt,
   parseArgs,
 } from '../../scripts/agent/review/visual-review-agent.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const TSX_CLI = path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const VISUAL_REVIEW_CLI = path.join(
+  REPO_ROOT,
+  'scripts',
+  'agent',
+  'review',
+  'visual-review-agent.ts',
+);
 
 describe('visual-review-agent viewport parsing', () => {
   it.each([
@@ -102,6 +115,30 @@ describe('visual-review-agent lineage capture flags', () => {
 describe('visual-review-agent deterministic-only flag', () => {
   it('defaults to false (LLM review runs)', () => {
     expect(parseArgs([]).deterministicOnly).toBe(false);
+  });
+
+  describe('visual-review-agent failure cleanup', () => {
+    it('exits cleanly when browser capture fails before review', () => {
+      const result = spawnSync(
+        process.execPath,
+        [
+          TSX_CLI,
+          VISUAL_REVIEW_CLI,
+          '--deterministic-only',
+          '--url',
+          'http://127.0.0.1:1/unreachable',
+        ],
+        {
+          cwd: REPO_ROOT,
+          encoding: 'utf8',
+          timeout: 20_000,
+        },
+      );
+
+      expect(result.signal).toBeNull();
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}${result.stderr}`).not.toContain('UV_HANDLE_CLOSING');
+    });
   });
 
   it('parses --deterministic-only', () => {

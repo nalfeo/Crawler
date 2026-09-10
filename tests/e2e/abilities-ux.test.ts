@@ -36,8 +36,8 @@ function overlaps(a: ScreenBounds, b: ScreenBounds): boolean {
 
 async function loadAbilitiesLab(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
     try {
+      await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
       await page.waitForFunction(() => Boolean(window.__abilitiesProbe?.ready()), undefined, {
         timeout: 30_000,
         polling: 200,
@@ -189,5 +189,33 @@ describe('abilities hotbar and loadout UX', () => {
     expect(reopened.visibleAbilityIds).toContain(reopened.selectedAbilityId);
 
     await context.close();
+  });
+
+  it('keeps the passive section identified and prevents passive toggles after scrolling', async () => {
+    const page = await browser.newPage({ viewport: VIEWPORTS[0] });
+    await loadAbilitiesLab(page);
+    await openLoadout(page);
+
+    for (let attempt = 0; attempt < 150; attempt += 1) {
+      const snapshot = await page.evaluate(() => window.__abilitiesProbe!.getSnapshot());
+      if (snapshot.visibleSectionHeaderLabel === 'PASSIVE ABILITIES') break;
+      await page.keyboard.press('ArrowDown');
+    }
+    expect(
+      (await page.evaluate(() => window.__abilitiesProbe!.getSnapshot())).visibleSectionHeaderLabel,
+    ).toBe('PASSIVE ABILITIES');
+
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    const passiveSnapshot = await page.evaluate(() => window.__abilitiesProbe!.getSnapshot());
+    expect(passiveSnapshot.visibleSectionHeaderLabel).toBe('PASSIVE ABILITIES');
+
+    await page.keyboard.press('Enter');
+    const afterToggleAttempt = await page.evaluate(() => window.__abilitiesProbe!.getSnapshot());
+    expect(afterToggleAttempt.open).toBe(true);
+    expect(afterToggleAttempt.equippedAbilityIds).toEqual(passiveSnapshot.equippedAbilityIds);
+
+    await page.close();
   });
 });

@@ -196,7 +196,7 @@ describe('loot and skill HUD containment', () => {
           'junk text must remain inside its reserved value column',
         ).toBe(true);
 
-        for (const row of ['class', 'type']) {
+        for (const row of ['class', 'type', 'spell-0', 'spell-1']) {
           const name = region(`hud-skill-${row}-name-text`);
           const level = region(`hud-skill-${row}-level`);
           expect(
@@ -204,6 +204,10 @@ describe('loot and skill HUD containment', () => {
             `${row} skill name must end before its level column`,
           ).toBeLessThanOrEqual(level.x - 3);
         }
+        expect(region('hud-skill-title-text').text).toBe('MASTERY');
+        expect(region('hud-skill-overflow-text').text).toMatch(/^\+\d+ SPELLS$/);
+        expect(region('hud-skill-class-name-text').text).toBe('Smashing');
+        expect(region('hud-skill-type-name-text').text).not.toContain('-');
         expect(region('hud-skill-type-name-text').text).toMatch(/…$/);
 
         const lootPanel = region('hud-health-panel-bounds');

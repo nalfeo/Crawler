@@ -4,6 +4,7 @@ import { getSafeAreaInsets } from './safe-area.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
+import { BLUE_STEEL, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY, hex } from './ui-theme.js';
 import {
   cancelModalPickerSelection,
   confirmModalPickerSelection,
@@ -56,6 +57,7 @@ export interface ModalPickerContentSnapshot {
 export interface ModalPickerLayoutSnapshot {
   readonly panel: ScreenBounds;
   readonly title: ScreenBounds;
+  readonly titleRule: ScreenBounds;
   readonly subtitle: ScreenBounds | null;
   readonly body: ScreenBounds | null;
   readonly rows: ReadonlyArray<{
@@ -79,52 +81,55 @@ const PANEL_PADDING = 18;
 /** Minimum gap between the panel and the canvas edge, before safe-area insets. */
 const PANEL_SCREEN_MARGIN = 16;
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '22px',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '25px',
   fontStyle: 'bold',
-  color: '#fcd34d',
+  color: hex(BLUE_STEEL.accentGold),
+  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const SUBTITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '15px',
-  color: '#cbd5e1',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '16px',
+  fontStyle: 'bold',
+  color: hex(BLUE_STEEL.accent),
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const BODY_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '14px',
-  color: '#cbd5e1',
+  color: hex(BLUE_STEEL.textSecondary),
   lineSpacing: 4,
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
-  fontSize: '17px',
+  fontFamily: UI_FONT_FAMILY,
+  fontSize: '18px',
   fontStyle: 'bold',
-  color: '#f8fafc',
+  color: hex(BLUE_STEEL.textPrimary),
 };
 const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   ...LABEL_STYLE,
   color: '#64748b',
 };
-const ENTRY_TEXT_INDENT = 26;
+const ENTRY_TEXT_INDENT = 30;
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '13px',
-  color: '#cbd5e1',
+  color: hex(BLUE_STEEL.textSecondary),
+  lineSpacing: 3,
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - ENTRY_TEXT_INDENT },
 };
 const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'monospace',
+  fontFamily: UI_FONT_FAMILY,
   fontSize: '13px',
-  color: '#cbd5e1',
+  color: hex(BLUE_STEEL.textSecondary),
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
-const MIN_ROW_HEIGHT = 52;
-const ROW_GAP = 8;
+const MIN_ROW_HEIGHT = 60;
+const ROW_GAP = 10;
 const LABEL_TOP = 8;
-const DESCRIPTION_TOP = 30;
-const ROW_TEXT_BOTTOM_PADDING = 8;
+const DESCRIPTION_TOP = 34;
+const ROW_TEXT_BOTTOM_PADDING = 10;
 
 export function createModalPickerUI(
   scene: Phaser.Scene,
@@ -161,8 +166,9 @@ export function createModalPickerUI(
    * past the panel edge.
    */
   let panelHeight = PANEL_HEIGHT;
+  let titleHeaderHeight = 42;
   let uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
-  let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+  let effectiveResolution = Math.max(MIN_TEXT_RESOLUTION, Math.round(textResolution * uiScale));
   const viewWidth = (): number => GAME.WIDTH / uiScale;
   const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
@@ -179,9 +185,9 @@ export function createModalPickerUI(
   const backdrop = scene.add
     .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);
-  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, PIXEL_UI.panelFill, 0.98);
+  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, BLUE_STEEL.panelBg, 0.99);
   panel.setOrigin(0, 0);
-  panel.setStrokeStyle(2, PIXEL_UI.border, 1);
+  panel.setStrokeStyle(2, BLUE_STEEL.panelBorder, 1);
   const bevelTop = scene.add
     .rectangle(0, 0, PANEL_WIDTH, 2, PIXEL_UI.bevelLight, 1)
     .setOrigin(0, 0);
@@ -195,7 +201,7 @@ export function createModalPickerUI(
     .rectangle(0, 0, 2, PANEL_HEIGHT, PIXEL_UI.bevelDark, 1)
     .setOrigin(0, 0);
   const titleStrip = scene.add
-    .rectangle(0, 0, PANEL_WIDTH - 4, 38, PIXEL_UI.trackFill, 1)
+    .rectangle(0, 0, PANEL_WIDTH - 4, 40, BLUE_STEEL.sectionHeader, 1)
     .setOrigin(0, 0);
   const titleRule = scene.add.rectangle(0, 0, PANEL_WIDTH - 4, 2, PIXEL_UI.gold, 1).setOrigin(0, 0);
   overlay.add([
@@ -270,8 +276,10 @@ export function createModalPickerUI(
     bevelLeft.setPosition(panel.x, panel.y).setSize(2, panelHeight);
     bevelBottom.setPosition(panel.x, panel.y + panelHeight - 2).setSize(PANEL_WIDTH, 2);
     bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, panelHeight);
-    titleStrip.setPosition(panel.x + 2, panel.y + 2).setSize(PANEL_WIDTH - 4, 38);
-    titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
+    titleStrip
+      .setPosition(panel.x + 2, panel.y + 2)
+      .setSize(PANEL_WIDTH - 4, titleHeaderHeight - 4);
+    titleRule.setPosition(panel.x + 2, panel.y + titleHeaderHeight).setSize(PANEL_WIDTH - 4, 2);
   };
 
   // Scene shutdown can tear down `backdrop.scene` before this module's own
@@ -302,7 +310,7 @@ export function createModalPickerUI(
     const previousY = panel.y;
     panelHeight = required;
     uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
-    effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+    effectiveResolution = Math.max(MIN_TEXT_RESOLUTION, Math.round(textResolution * uiScale));
     overlay.setScale(uiScale);
     layoutPanel();
     const dx = panel.x - previousX;
@@ -336,8 +344,9 @@ export function createModalPickerUI(
     // Content height is only known after the text objects are measured below,
     // so start from the authored height and grow the panel in `fitContent()`.
     panelHeight = PANEL_HEIGHT;
+    titleHeaderHeight = 42;
     uiScale = fitUiScale(scene, PANEL_WIDTH, panelHeight, safeMargin());
-    effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+    effectiveResolution = Math.max(MIN_TEXT_RESOLUTION, Math.round(textResolution * uiScale));
     overlay.setScale(uiScale);
 
     layoutPanel();
@@ -378,7 +387,10 @@ export function createModalPickerUI(
     titleNode = title;
     textNodes.push(title);
     overlay.add(title);
-    cursorY += title.height + 6;
+    titleHeaderHeight = Math.max(42, PANEL_PADDING + title.height + 6);
+    titleStrip.setSize(PANEL_WIDTH - 4, titleHeaderHeight - 4);
+    titleRule.setPosition(panelX + 2, panelY + titleHeaderHeight);
+    cursorY = Math.max(cursorY + title.height + 6, panelY + titleHeaderHeight + 4);
 
     if (state.subtitle) {
       const subtitle = crispText(panelX + PANEL_PADDING, cursorY, state.subtitle, SUBTITLE_STYLE);
@@ -421,7 +433,7 @@ export function createModalPickerUI(
         MIN_ROW_HEIGHT,
         Math.ceil(textContentHeight + ROW_TEXT_BOTTOM_PADDING),
       );
-      const bgColor = isSelected ? 0x1d4ed8 : PIXEL_UI.panelFill;
+      const bgColor = isSelected ? 0x355180 : 0x1e2a44;
       const bgAlpha = isDisabled ? 0.4 : isSelected ? 0.95 : 0.85;
       const row = scene.add
         .rectangle(
@@ -433,7 +445,10 @@ export function createModalPickerUI(
           bgAlpha,
         )
         .setOrigin(0, 0);
-      row.setStrokeStyle(isSelected ? 2 : 1, isSelected ? PIXEL_UI.gold : PIXEL_UI.bevelDark);
+      row.setStrokeStyle(
+        isSelected ? 2 : 1,
+        isSelected ? BLUE_STEEL.accentGold : BLUE_STEEL.panelBorder,
+      );
       row.setInteractive({ useHandCursor: !isDisabled });
       row.on('pointerdown', () => {
         if (!state || option.disabled) {
@@ -473,13 +488,13 @@ export function createModalPickerUI(
       cursorY += rowHeight + ROW_GAP;
     }
 
-    const footerY = cursorY + 4;
+    const footerY = cursorY - ROW_GAP + 6;
     const footer = crispText(
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
-        ? 'Tap to select  ·  Tap outside: Cancel  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
-        : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
+        ? 'Click or Enter to choose   Up/Down to navigate   Esc to cancel'
+        : 'Click or Enter to choose   Up/Down to navigate',
       FOOTER_STYLE,
     );
     footerNode = footer;
@@ -617,6 +632,7 @@ export function createModalPickerUI(
       return {
         panel: screenBounds(panel),
         title: screenBounds(titleNode),
+        titleRule: screenBounds(titleRule),
         subtitle: subtitleNode ? screenBounds(subtitleNode) : null,
         body: bodyNode ? screenBounds(bodyNode) : null,
         rows: entries.map((entry) => ({
