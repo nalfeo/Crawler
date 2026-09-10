@@ -135,6 +135,7 @@
     "sovereign-cap:arena-evidence": "tsx scripts/agent/sovereign-cap-arena-evidence.ts",
     "apples:record": "tsx scripts/agent/docs/apple-record-cli.ts",
     "telemetry:capture": "tsx scripts/agent/docs/guard-telemetry.ts --capture-session",
+    "telemetry:token-budget": "tsx scripts/agent/velocity/token-budget.ts",
     "docs:index": "tsx scripts/agent/docs/build-system-index.ts --apply",
     "verify:coverage": "vitest run --project unit --coverage",
     "test:mutate": "node scripts/agent/review/mutation-cli.mjs",
