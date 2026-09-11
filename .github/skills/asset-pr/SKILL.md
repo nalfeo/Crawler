@@ -49,7 +49,7 @@ This skill folds **all** such legacy issues into one branch and one PR.
 ## Loop
 
 1. **Preflight** (persona: **Producer**; declare a 🍎 apple estimate first):
-   `bash scripts/agent/preflight.sh`.
+   `npm run preflight`.
 2. **Survey the queue:**
    `gh issue list --label asset-checkin --state open --json number,title`.
    Also check for orphaned branches:
@@ -75,7 +75,7 @@ This skill folds **all** such legacy issues into one branch and one PR.
    After the legacy drain is complete, the reconciler owns future art landing.
 7. **Wire after merge** — consolidation only ships the files; nothing renders them
    until a consumer references the brief id. Run `npm run sprites:generate-wiring
-   -- --since main` to find replaceable placeholders and open a **separate non-art
+-- --since main` to find replaceable placeholders and open a **separate non-art
    PR** for any matches.
 
 ## Guardrails

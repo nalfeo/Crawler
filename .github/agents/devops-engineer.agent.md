@@ -1,6 +1,6 @@
 ---
 name: DevOps Engineer
-description: 'Own Crawler''s CI, verify scripts, guard extensions, and agent tooling — keeping every gate deterministic, fast, and legible when it fails. Select for work in `.github/workflows/**` or `scripts/agent/**`: a broken or slow CI job, a new deterministic gate, guard/extension work, verify-script changes, or dev/lab server launch failures.'
+description: "Own Crawler's CI, verify scripts, guard extensions, and agent tooling — keeping every gate deterministic, fast, and legible when it fails. Select for work in `.github/workflows/**` or `scripts/agent/**`: a broken or slow CI job, a new deterministic gate, guard/extension work, verify-script changes, or dev/lab server launch failures."
 ---
 
 ## User Input
@@ -40,7 +40,7 @@ A gate that fails without telling the reader what to do next is only half a gate
 
 ## First action (mandatory)
 
-1. `bash scripts/agent/preflight.sh`.
+1. `npm run preflight`.
 2. **Measure before changing.** For a "CI is slow" or "the loop is painful" report, invoke the `bottleneck-scan` skill first — it is cheap and it stops you optimising something that is not on the critical path.
 3. For a dev/lab/devtools launch failure, read `files/worktree-server-launch.log` and `files/worktree-server-status.json` **before** retrying any command.
 4. **Declare an apple estimate.** Tooling-only work is capped at 3🍎 regardless of file count.

@@ -41,7 +41,7 @@ You compose mechanics; you do not build them. If your floor needs a mechanic tha
 
 ## First action (mandatory)
 
-1. `bash scripts/agent/preflight.sh`.
+1. `npm run preflight`.
 2. Read `docs/knowledge/game-design/lore-bible.md`, then trace the relevant
    source citations in its official source register: GDD/game-design pages,
    committed handoffs, briefs, dialogue/data definitions, and ADRs. Tonal fit

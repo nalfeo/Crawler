@@ -236,7 +236,10 @@ compute_lock_hash() {
   echo ""
 }
 lock_hash="$(compute_lock_hash)"
-if [ -n "$lock_hash" ] && [ -d node_modules ] && [ -f "$LOCK_HASH_FILE" ] \
+if [ "${PREFLIGHT_DEPS_ALREADY_READY:-}" = "1" ] && [ -d node_modules ]; then
+  echo "   ✓ Bootstrap just installed dependencies — skipping duplicate npm ci."
+  _phase_skip "bootstrap installed dependencies"
+elif [ -n "$lock_hash" ] && [ -d node_modules ] && [ -f "$LOCK_HASH_FILE" ] \
   && [ "$(cat "$LOCK_HASH_FILE" 2>/dev/null)" = "$lock_hash" ]; then
   echo "   ✓ node_modules already matches package-lock.json — skipping npm ci."
   _phase_skip "lockfile unchanged — npm ci skipped"

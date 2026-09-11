@@ -47,7 +47,7 @@ This skill has two modes. Pick based on the request:
 
 1. **Acquire the shared lease:** dispatch `ci-recovery.yml` with `operation=lease-acquire`, a generated non-secret lease ID, and the PR number. Verify the sticky state comment shows your lease before touching the branch.
 2. **Read state:** `gh pr view <n> --json state,mergeStateStatus,mergeable,reviewDecision,headRefName,isDraft` + `gh pr checks <n>`.
-3. **Preflight locally** (persona: **Producer**, declare a 🍎 apple estimate first): `bash scripts/agent/preflight.sh`, then `npm run verify:fast`.
+3. **Preflight locally** (persona: **Producer**, declare a 🍎 apple estimate first): `npm run preflight`, then `npm run verify:fast`.
 4. **Diagnose every failing/cancelled check before concluding anything.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`. Confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Distinguish a real failure from a concurrency/timing artifact (see playbook §Diagnose).
 5. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`. Heartbeat the lease after each meaningful activity and at least every 20 minutes.
 6. **Resolve review threads:** read inline comments, address actionable ones in code, then reply to + resolve each thread (conversation-resolution gate).

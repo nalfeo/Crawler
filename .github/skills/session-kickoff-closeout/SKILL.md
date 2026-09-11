@@ -16,7 +16,7 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 
 ## Kickoff
 
-1. Run `bash scripts/agent/preflight.sh`.
+1. Run `npm run preflight`.
 2. State the kickoff verdict: **recommended**, **risky**, or **not recommended**.
 3. Select the owning persona from `docs/agent-os/personas/README.md` and read that persona.
 4. Read the relevant `docs/knowledge/handoffs/INDEX.md` section and skim the top recent handoffs for the touched systems.

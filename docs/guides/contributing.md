@@ -14,7 +14,7 @@ This workflow applies to both agents and humans.
 At session start run:
 
 ```bash
-bash scripts/agent/preflight.sh
+npm run preflight
 ```
 
 Then load the relevant persona, recent handoffs, and any needed policy or guide docs.

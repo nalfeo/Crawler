@@ -44,7 +44,7 @@ Pick `issue-wave` when the request names a wave count, a stop condition, or "una
 
 ## First action (mandatory)
 
-1. `bash scripts/agent/preflight.sh`; adopt the Graphics Designer persona (`docs/agent-os/personas/graphics-designer.md`).
+1. `npm run preflight`; adopt the Graphics Designer persona (`docs/agent-os/personas/graphics-designer.md`).
 2. Read `docs/knowledge/game-design/lore-bible.md` and trace the subject's
    narrative premise to its official source citations before writing a brief.
    If the premise conflicts with canon, record the contradiction with provenance
