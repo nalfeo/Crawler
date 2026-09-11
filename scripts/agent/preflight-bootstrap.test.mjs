@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { join } from 'node:path';
+import process from 'node:process';
 import {
   gitBashCandidates,
   main,
