@@ -21,6 +21,7 @@ ci-policy, docs-tooling
 - Replaced the repeated-local-`verify:fast` instruction with a validation-phase rule: run focused unit/type/lint/docs checks after coherent edits or before a risky refactor.
 - Preserved `npm run scope` as the existing, fail-safe selector for extra heavy checks, `npm run verify:fast` before handoff/PR, and `npm run verify:pr-prereqs` before publication.
 - Updated the closeout and DevOps guidance, and added the exact canonical policy line to the deterministic session-instructions check.
+- Recovered the PR's inherited CI lint failure by applying Node globals to the full `scripts/agent/**/*.mjs` tree; the upstream preflight bootstrap test temporarily stubs `console.error`.
 
 No runtime or visual artifact changed; this is documentation/tooling policy only.
 
