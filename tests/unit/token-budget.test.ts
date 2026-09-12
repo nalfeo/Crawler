@@ -36,6 +36,7 @@ describe('token budget rollout summary', () => {
       toolCalls: 2,
       compactions: 1,
       currentInputTokens: 250,
+      firstRequestInputTokens: 100,
       currentContextEstimate: 250,
       largestToolOutputChars: 20,
     });
@@ -95,6 +96,19 @@ describe('token budget rollout summary', () => {
         }),
       ),
     ).toContain('current-context estimate: unavailable');
+    expect(
+      renderReport(
+        'empty.jsonl',
+        summary,
+        checkBudget(summary, {
+          currentInput: null,
+          cumulativeInput: null,
+          responses: null,
+          currentContextEstimate: null,
+          toolOutputChars: null,
+        }),
+      ),
+    ).toContain('first request input: unavailable');
   });
 
   it('returns nonzero when an explicit failure threshold is exceeded', () => {

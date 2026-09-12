@@ -27,6 +27,7 @@ export interface TokenBudgetSummary {
   readonly toolCalls: number;
   readonly compactions: number;
   readonly currentInputTokens: number | null;
+  readonly firstRequestInputTokens: number | null;
   readonly currentContextEstimate: number | null;
   readonly largestToolOutputChars: number;
 }
@@ -87,6 +88,7 @@ export function summarizeRollout(records: readonly JsonRecord[]): TokenBudgetSum
   let toolCalls = 0;
   let compactions = 0;
   let currentInputTokens: number | null = null;
+  let firstRequestInputTokens: number | null = null;
   let largestToolOutputChars = 0;
 
   for (const record of records) {
@@ -101,6 +103,7 @@ export function summarizeRollout(records: readonly JsonRecord[]): TokenBudgetSum
       outputTokens += numberValue(usage['output_tokens']);
       reasoningTokens += numberValue(usage['reasoning_output_tokens']);
       currentInputTokens = input;
+      firstRequestInputTokens ??= input;
       responses += 1;
       continue;
     }
@@ -128,6 +131,7 @@ export function summarizeRollout(records: readonly JsonRecord[]): TokenBudgetSum
     toolCalls,
     compactions,
     currentInputTokens,
+    firstRequestInputTokens,
     // Rollouts do not carry a separate context gauge. Latest request input is
     // the closest observable estimate and remains explicitly labelled as one.
     currentContextEstimate: currentInputTokens,
@@ -237,6 +241,7 @@ export function renderReport(
     `  output: ${summary.outputTokens} (reasoning ${summary.reasoningTokens})`,
     `  responses: ${summary.responses}; tool calls: ${summary.toolCalls}; compactions: ${summary.compactions}`,
     `  current request input: ${summary.currentInputTokens ?? 'unavailable'}`,
+    `  first request input: ${summary.firstRequestInputTokens ?? 'unavailable'}`,
     `  current-context estimate: ${summary.currentContextEstimate ?? 'unavailable'}`,
     `  largest tool output: ${summary.largestToolOutputChars} chars`,
     ...check.warnings.map((warning) => `WARN: ${warning}`),

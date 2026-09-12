@@ -139,6 +139,7 @@
     "apples:record": "tsx scripts/agent/docs/apple-record-cli.ts",
     "telemetry:capture": "tsx scripts/agent/docs/guard-telemetry.ts --capture-session",
     "telemetry:token-budget": "tsx scripts/agent/velocity/token-budget.ts",
+    "handoff:continue": "tsx scripts/agent/docs/continuation-handoff.ts",
     "docs:index": "tsx scripts/agent/docs/build-system-index.ts --apply",
     "handoffs:find": "node scripts/agent/docs/handoff-retrieval-cli.mjs --",
     "verify:coverage": "vitest run --project unit --coverage",
