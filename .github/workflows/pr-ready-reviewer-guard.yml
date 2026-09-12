@@ -14,6 +14,8 @@ permissions:
 jobs:
   enforce-pr-state:
     name: Enforce ready + human reviewer requests
+    # Disabled: empty-draft repair restarts Copilot by reassigning the linked issue.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # For pull_request_target events, scope the concurrency group to the specific

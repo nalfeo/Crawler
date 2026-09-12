@@ -128,7 +128,9 @@ jobs:
     # telemetry, automation provenance, approval override) is decided by the
     # canonical selector in the "Resolve Goobers recovery target" step so the
     # legacy exclusions live in exactly one place.
+    # Disabled: the Goobers reconciler uses Copilot as its execution harness.
     if: >-
+      false &&
       vars.LIFECYCLE_MUTATION_OWNER == 'goobers' &&
       (github.event_name != 'issues' ||
       (github.event.issue.state == 'open' &&
