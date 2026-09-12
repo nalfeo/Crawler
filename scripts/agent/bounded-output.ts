@@ -22,7 +22,10 @@ function clip(value: string, length: number, fromEnd: boolean): string {
 }
 
 /** Keep both the opening context and the final diagnostic tail within hard caps. */
-export function boundOutput(value: string, limits: OutputLimits): { text: string; truncated: boolean } {
+export function boundOutput(
+  value: string,
+  limits: OutputLimits,
+): { text: string; truncated: boolean } {
   const lines = value.split(/\r?\n/u);
   if (value.length <= limits.maxChars && lines.length <= limits.maxLines)
     return { text: value, truncated: false };
@@ -70,7 +73,11 @@ function parseLimit(
   return parsed;
 }
 
-export function parseArgs(argv: readonly string[]): { limits: OutputLimits; command: string; args: string[] } {
+export function parseArgs(argv: readonly string[]): {
+  limits: OutputLimits;
+  command: string;
+  args: string[];
+} {
   let maxChars = DEFAULT_MAX_CHARS;
   let maxLines = DEFAULT_MAX_LINES;
   let index = 0;
@@ -86,7 +93,8 @@ export function parseArgs(argv: readonly string[]): { limits: OutputLimits; comm
     else throw new Error(`Unknown option: ${arg}. Put the command after --.`);
   }
   const command = argv[index];
-  if (!command) throw new Error('Missing command. Usage: npm run agent:run -- [limits] -- <command> [args...]');
+  if (!command)
+    throw new Error('Missing command. Usage: npm run agent:run -- [limits] -- <command> [args...]');
   return { limits: { maxChars, maxLines }, command, args: argv.slice(index + 1) };
 }
 
@@ -96,11 +104,15 @@ export function main(argv = process.argv.slice(2)): number {
     const result = spawnSync(command, args, { encoding: 'utf8', shell: false });
     if (result.error) throw result.error;
     const exitCode = result.status ?? 1;
-    process.stdout.write(`${formatCommandOutput(result.stdout ?? '', result.stderr ?? '', exitCode, limits)}\n`);
+    process.stdout.write(
+      `${formatCommandOutput(result.stdout ?? '', result.stderr ?? '', exitCode, limits)}\n`,
+    );
     return exitCode;
   } catch (error) {
     if (error instanceof Error && error.message === 'HELP') {
-      process.stdout.write('Usage: npm run agent:run -- [--max-chars 64..64000] [--max-lines 2..2000] -- <command> [args...]\n');
+      process.stdout.write(
+        'Usage: npm run agent:run -- [--max-chars 64..64000] [--max-lines 2..2000] -- <command> [args...]\n',
+      );
       return 0;
     }
     process.stderr.write(`agent:run: ${error instanceof Error ? error.message : String(error)}\n`);

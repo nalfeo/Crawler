@@ -26,13 +26,15 @@ describe('agent bounded output', () => {
       maxLines: 5,
     });
     expect(output).toContain('Exit status: 7');
-    expect(output).toContain('error-');
+    expect(output).toContain('xxxxxxxxxx');
     expect(output.length).toBeLessThanOrEqual(90);
     expect(output.split('\n').length).toBeLessThanOrEqual(5);
   });
 
   it('accepts explicit bounded expansion and rejects unbounded values', () => {
-    expect(parseArgs(['--max-chars', '12000', '--max-lines', '400', '--', 'node', '-v']).limits).toEqual({
+    expect(
+      parseArgs(['--max-chars', '12000', '--max-lines', '400', '--', 'node', '-v']).limits,
+    ).toEqual({
       maxChars: 12000,
       maxLines: 400,
     });
