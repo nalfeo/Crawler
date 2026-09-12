@@ -76,16 +76,38 @@ test('marks dependencies as ready after a cold bootstrap so Bash skips duplicate
   const root = 'C:\\repo';
   const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
   const calls = [];
+  let installed = false;
   const status = main({
     root,
     platform: 'win32',
-    exists: (path) => path === bash,
+    exists: (path) => path === bash || (installed && path.endsWith('tsx.cmd')),
     runCommand: (...args) => {
       calls.push(args);
+      if (args[0] === 'npm.cmd') installed = true;
       return 0;
     },
   });
   assert.equal(status, 0);
   assert.equal(calls[0][0], 'npm.cmd');
   assert.equal(calls[1][2].env.PREFLIGHT_DEPS_ALREADY_READY, '1');
+});
+
+test('stops with an actionable error if npm ci reports success without installing tsx', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const errors = [];
+  const originalError = console.error;
+  console.error = (message) => errors.push(message);
+  try {
+    const status = main({
+      root,
+      platform: 'win32',
+      exists: (path) => path === bash,
+      runCommand: () => 0,
+    });
+    assert.equal(status, 1);
+    assert.match(errors.join('\n'), /Another npm install may be running/);
+  } finally {
+    console.error = originalError;
+  }
 });

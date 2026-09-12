@@ -33,6 +33,13 @@ export function needsInstall(root, exists = existsSync) {
   return !exists(bin) && !exists(`${bin}.cmd`);
 }
 
+function missingTsxMessage(root) {
+  return (
+    `Dependency bootstrap completed without ${join(root, 'node_modules', '.bin', 'tsx')}. ` +
+    'Another npm install may be running in this worktree; wait for it to finish, then rerun npm run preflight.'
+  );
+}
+
 export function npmCacheForWorktree(root) {
   return join(root, 'files', 'npm-cache');
 }
@@ -81,6 +88,10 @@ export function main({
       },
     });
     if (installStatus !== 0) return installStatus;
+    if (needsInstall(root, exists)) {
+      console.error(missingTsxMessage(root));
+      return 1;
+    }
     installedDependencies = true;
   }
   const tsx = join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
