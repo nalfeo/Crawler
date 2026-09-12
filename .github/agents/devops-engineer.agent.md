@@ -52,7 +52,10 @@ A gate that fails without telling the reader what to do next is only half a gate
 3. **Make the failure message actionable** — what broke, which file, and the remediation command. Use the shared `Report` helper (`scripts/agent/shared/report.ts`) so output is consistent.
 4. **Add a test for the gate itself.** Guards and scripts are code; `npm run test:guards` is where they get covered.
 5. **Prove a process change helps** with `velocity-lab` rather than asserting it.
-6. **Verify:** `npm run verify:fast`, plus `npm run test:guards` and `npm run docs:check` when you touch guards or doc checks.
+6. **Verify:** group coherent edits into a validation phase; run focused checks
+   after that phase (or before a risky refactor), using `npm run scope` to select
+   additional heavy checks. Run `npm run verify:fast` before handoff/PR, plus
+   `npm run test:guards` and `npm run docs:check` when you touch guards or doc checks.
 
 ## Non-negotiable behaviors
 

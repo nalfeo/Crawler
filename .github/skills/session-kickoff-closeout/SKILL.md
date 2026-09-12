@@ -28,8 +28,11 @@ replace `AGENTS.md`; when there is a conflict, `AGENTS.md` and the policy docs w
 ## Closeout for merge-intent implementation sessions
 
 1. Run the cheapest relevant targeted tests for touched files.
-2. Run `npm run verify:fast` after meaningful changes.
-3. Run `npm run verify:pr-prereqs` before PR publication.
+2. Group coherent edits into a validation phase. Run focused checks after each
+   phase (or before a risky refactor), and use `npm run scope` to select any
+   additional heavy checks.
+3. Run `npm run verify:fast` before handoff/PR, then run `npm run verify:pr-prereqs`
+   before PR publication.
 4. Run one independent post-diff code review for 3🍎 work or two for 4–5🍎 work.
 5. Run code review and CodeQL in the required order when code changed.
 6. Write a handoff under `docs/knowledge/handoffs/` with `## Systems touched`.
