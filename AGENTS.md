@@ -55,9 +55,11 @@ with `gh auth login`. On Windows, install GitHub CLI with
 
 ## Validate and publish
 
-- After each meaningful change, run `npm run verify:fast`. Choose additional
-  checks by change scope (`npm run scope`); run focused unit/type/lint/docs
-  checks for the touched layer. Run `npm run verify:pr-prereqs` before a PR.
+- Group coherent edits into a validation phase. Run focused unit/type/lint/docs
+  checks after each phase (or before a risky refactor), and use `npm run scope`
+  to select any additional heavy checks. `npm run verify:fast` remains required
+  before handoff/PR, and `npm run verify:pr-prereqs` remains required before
+  publication.
   Do not run the full suite by default; CI owns it unless a human asks or
   diagnosis requires it.
 - Before publishing, run `npm run sync:main -- --reason pre-publish`; rerun
