@@ -1,5 +1,44 @@
 [
   {
+    "commit": "0470931fc0d7352ee311493b990ea490ec0daa74",
+    "commitDate": "2026-09-11T21:11:27-07:00",
+    "commitSubject": "chore: synchronize agent environments (#4526)",
+    "capturedAt": "2026-09-12T05:44:49.523Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/34673744163",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0470931fc0d7352ee311493b990ea490ec0daa74.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/0470931fc0d7352ee311493b990ea490ec0daa74.fun-report.json"
+    }
+  },
+  {
     "commit": "f76d5cf7902176ce60343c4ad478e858c3e9e060",
     "commitDate": "2026-09-10T14:01:25-07:00",
     "commitSubject": "Codex/shrink agents startup (#4539)",
