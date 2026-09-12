@@ -40,4 +40,13 @@ describe('agent environment parity', () => {
     expect(bootstrap).toContain("'../../.python-version'");
     expect(bootstrap).toContain('scripts/sprites/proper-pixel-art-requirements.txt');
   });
+
+  it('runs full-project linting as a PR prerequisite', () => {
+    const packageJson = JSON.parse(read('package.json')) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts['verify:pr-prereqs']).toBe(
+      'npm run lint && node scripts/agent/review/pr-prereq-check.mjs',
+    );
+  });
 });

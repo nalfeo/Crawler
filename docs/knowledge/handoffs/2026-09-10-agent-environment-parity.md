@@ -26,6 +26,8 @@ environment, runner wiring, and a deterministic drift gate.
 - Documented how to update and validate the environment contract.
 - Listed Bash and authenticated GitHub CLI as repository prerequisites, including
   the Windows WinGet installation command.
+- Made full-project linting a mandatory part of `verify:pr-prereqs`, with a
+  regression test protecting the command contract.
 
 ## Evidence
 
@@ -35,6 +37,7 @@ environment, runner wiring, and a deterministic drift gate.
 - `npm run verify:fast` passed outside the restricted sandbox. The first attempt
   could not start because Node's host-user lookup returned `ENOMEM` in the
   sandbox before repository validation began.
+- `npm run verify:pr-prereqs` passed with the new full lint gate.
 
 ## Follow-up
 
