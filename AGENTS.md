@@ -11,6 +11,8 @@ with `gh auth login`. On Windows, install GitHub CLI with
 
 ## Start and scope
 
+For three or more independent, read-only repository checks, prefer `npm run agent:inspect -- --manifest <relative-json-file>`: it batches safe file excerpts, literal ripgrep searches, package-script lookups, and worktree-status inspection into one bounded result.
+
 1. Run `npm run preflight`. This bootstraps Git Bash on Windows and installs
    dependencies in a fresh worktree before running the canonical preflight.
 2. Choose a persona from [the routing matrix](docs/agent-os/personas/README.md)
