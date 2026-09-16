@@ -58,5 +58,5 @@ a scalar output.
 
 When planning succeeds, the final JSON must include these exact scalar output
 keys because downstream deterministic stages consume them by name:
-`implementationPlan`, `hardGate`, `verdict`, and `appleEstimate`. Do not use
+`implementationPlan`, `hardGate`, and `verdict`. Do not use
 alternate names such as `plan` or `implementation-plan`.

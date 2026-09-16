@@ -31,7 +31,7 @@ narrow case of gameplay-neutral speed/memory work.
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Implement components and systems in `src/core/` using bitecs 0.4 primitives.
 - Build tests around `createTestWorld()` and deterministic seeded fixtures.
 - Validate system behavior with unit tests, property-based invariants, and a dedicated lab sandbox.
@@ -46,7 +46,7 @@ narrow case of gameplay-neutral speed/memory work.
 - [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)
   — required for any decision affecting 2+ systems.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 
 ## Quality Criteria
 

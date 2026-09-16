@@ -46,8 +46,6 @@ const GAME_LAYER_RE = /^src[\\/]game[\\/]/;
 const ADR_RE = /^docs[\\/]knowledge[\\/]adr[\\/]/;
 const HANDOFF_DATED_RE =
   /^docs[\\/]knowledge[\\/]handoffs[\\/]\d{4}-\d{2}-\d{2}-[a-z0-9][\w-]*\.md$/;
-const APPLE_RECORD_RE =
-  /^docs[\\/]knowledge[\\/]metrics[\\/]apples[\\/]\d{4}-\d{2}-\d{2}-[a-z0-9][\w-]*\.json$/;
 const INDEX_MD_RE = /^docs[\\/]knowledge[\\/]handoffs[\\/]INDEX\.md$/;
 
 // Files we treat as "trivial" for handoff-required purposes.
@@ -67,12 +65,6 @@ function checkHandoff(files, addedFiles) {
   if (allTrivial) return null;
   if (newHandoffs.length === 1) return null;
   return `No new handoff file added in this branch. Per docs/agent-os/policies/memory-policy.md, every session that touches code/config writes a handoff. Create a new \`docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md\` containing: summary, files touched, verification run, unresolved issues, recommended next steps. Editing an existing handoff does not count. Skipped automatically for docs-only / dependency-only diffs.`;
-}
-
-function checkAppleRecord(addedFiles) {
-  const newAppleRecords = addedFiles.filter((f) => APPLE_RECORD_RE.test(f));
-  if (newAppleRecords.length <= 1) return null;
-  return `Branch adds ${newAppleRecords.length} Apple estimate records. Add at most one \`docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json\` per PR; later turns must update the existing record instead of adding another. Sessions estimated at 1–2🍎 may add no Apple record.`;
 }
 
 function checkForbiddenPaths(files) {
@@ -173,9 +165,6 @@ function evaluatePreflightChecks({
   const handoffIssue = checkHandoff(files, addedFiles);
   if (handoffIssue) denyParts.push(handoffIssue);
 
-  const appleRecordIssue = checkAppleRecord(addedFiles);
-  if (appleRecordIssue) denyParts.push(appleRecordIssue);
-
   const forbiddenIssue = checkForbiddenPaths(files);
   if (forbiddenIssue) denyParts.push(forbiddenIssue);
 
@@ -243,7 +232,6 @@ export default {
 
 export {
   checkHandoff,
-  checkAppleRecord,
   checkForbiddenPaths,
   checkLabGate,
   checkCrossSystemAdr,
@@ -251,6 +239,5 @@ export {
   checkIndexMdNotModified,
   evaluatePreflightChecks,
   HANDOFF_DATED_RE,
-  APPLE_RECORD_RE,
   TRIVIAL_PATH_RE,
 };

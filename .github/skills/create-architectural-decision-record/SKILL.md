@@ -46,8 +46,6 @@ YYYY-MM-DD
 
 ## Estimated Complexity
 
-🍎 x N — [one-line reason, e.g. "touches 2 systems but no new lab required"]
-
 ## Context
 
 [Problem statement, technical constraints, business requirements, and environmental factors requiring this decision.]

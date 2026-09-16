@@ -45,12 +45,10 @@ link back to this section instead of restating it.
   cloud sessions have no comment credentials. Never block a session waiting for
   comment access. Do not hide plans in repo files unless the
   human explicitly asks for a file artifact.
-- **Declare an apple estimate** (🍎–🍎🍎🍎🍎🍎) before any code, and score the
-  actual at handoff. See [`docs/agent-os/policies/complexity-policy.md`](../policies/complexity-policy.md).
-- **Run apple-scaled post-diff review:** 1–2🍎 use tests/CI only, 3🍎 requires one
-  independent post-diff code review, and 4–5🍎 requires two. Adversarial design
-  review runs only for architectural changes. GitHub PR reviews and threads are
-  the only audit trail. See the
+- **Run risk-based post-diff review.** Architectural changes and changes with
+  meaningful correctness, security, data-loss, determinism, or release risk
+  require one independent review. Routine changes rely on tests and CI. GitHub
+  PR reviews and threads are the only audit trail. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
   [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is

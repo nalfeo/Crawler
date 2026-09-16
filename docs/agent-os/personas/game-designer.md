@@ -52,7 +52,7 @@ optimizer filling a spreadsheet.
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Prototype mechanics in a lab first, then wire the production system.
 - Expose balance parameters through lil-gui so seeds and edge cases can be explored quickly.
 - Add balance tests and document intended outcomes for key tuning knobs.
@@ -68,7 +68,7 @@ optimizer filling a spreadsheet.
 - [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)
   — a mechanic that doesn't serve a GDD pillar needs a recorded decision.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 
 ## Observe Before Done
 

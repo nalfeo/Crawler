@@ -202,12 +202,6 @@ export const outputV1 = {
           enum: ['recommended', 'risky', 'not-recommended', null],
           description: "Planning verdict; only non-null when task='plan'",
         },
-        appleEstimate: {
-          type: ['number', 'null'],
-          minimum: 1,
-          maximum: 5,
-          description: "Apple complexity estimate; only non-null when task='plan'",
-        },
         idempotencyKey: {
           type: ['string', 'null'],
           description:
@@ -296,7 +290,6 @@ export const outputV1 = {
    * - When status='failure' or 'blocked': error is required and non-null
    * - When status='success' or 'no-work': error must be null or omitted
    * - outputs.verdict only non-null when task='plan'
-   * - outputs.appleEstimate only non-null when task='plan'
    * - outputs.hardGate only non-null when task is 'plan', 'local-gate', 'pr-opened-gate', or 'review'
    * - outputs.disposition='completed-existing-work' only when status='no-work'
    * - outputs.evidenceRef only non-null when outputs.disposition='completed-existing-work'

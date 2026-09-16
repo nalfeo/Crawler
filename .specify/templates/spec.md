@@ -2,7 +2,6 @@
 
 > **Status:** Proposed | Partial | Shipped | Obsolete
 > **Last reconciled:** YYYY-MM-DD
-> **Estimated complexity:** 🍎–🍎🍎🍎🍎🍎 (see `docs/agent-os/policies/complexity-policy.md`)
 > **Related ADRs:** _NNNN-slug_, …
 > **Code source-of-truth:** _paths under `src/` that authoritatively implement this spec_
 > **Labs:** _dirs under `src/labs/` that exercise this system_

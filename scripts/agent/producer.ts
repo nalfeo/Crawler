@@ -36,7 +36,6 @@ interface TriageResult {
 interface Slice {
   name: string;
   persona: string;
-  apple_tier: number;
   dependencies: string[];
   description: string;
   status:
@@ -100,7 +99,6 @@ function isSlice(value: unknown): value is Slice {
   return (
     typeof candidate.name === 'string' &&
     typeof candidate.persona === 'string' &&
-    typeof candidate.apple_tier === 'number' &&
     Array.isArray(candidate.dependencies) &&
     typeof candidate.description === 'string' &&
     typeof candidate.status === 'string'
@@ -538,7 +536,6 @@ interface SliceDecomposition {
   name: string;
   persona: string;
   systems: string[];
-  apples: number;
   description: string;
   dependencies: string[];
 }
@@ -549,7 +546,6 @@ interface SliceDecomposition {
 interface DecompositionResult {
   feature: string;
   slices: SliceDecomposition[];
-  totalApples: number;
   criticalPath: string[];
   parallelizableGroups: string[][];
   escalations: string[];
@@ -599,9 +595,6 @@ export function validateDecomposition(result: DecompositionResult): string[] {
       errors.push(`Duplicate slice id: ${slice.id}`);
     }
     ids.add(slice.id);
-    if (slice.apples < 1 || slice.apples > 3) {
-      errors.push(`${slice.id} exceeds the 1–3🍎 slice limit.`);
-    }
     for (const dependency of slice.dependencies) {
       if (dependency === slice.id) {
         errors.push(`${slice.id} depends on itself.`);
@@ -697,14 +690,11 @@ export function decompose(request: string): DecompositionResult {
   let sliceIndex = 1;
   for (const [persona, systems] of Object.entries(personaWork)) {
     const sid = sliceId(`${persona}-${sliceIndex}`);
-    const apples = systems.length <= 2 ? 2 : 3; // Cap at 3 apples
-
     slices.push({
       id: sid,
       name: `${persona} work (${systems.join(', ')})`,
       persona,
       systems,
-      apples,
       description: `Implement ${systems.join(', ')} for: ${request}`,
       dependencies: [],
     });
@@ -761,12 +751,9 @@ export function decompose(request: string): DecompositionResult {
     }
   }
 
-  const totalApples = slices.reduce((sum, s) => sum + s.apples, 0);
-
   const result: DecompositionResult = {
     feature: request,
     slices,
-    totalApples,
     criticalPath,
     parallelizableGroups,
     escalations: [],
@@ -806,7 +793,6 @@ function handleDecompose(request: string): void {
 
   console.log('\n🎯 PRODUCER DECOMPOSITION\n');
   console.log(`Feature: "${result.feature}"`);
-  console.log(`Total Apple Estimate: ${result.totalApples}🍎`);
   console.log(`Slices: ${result.slices.length}`);
   console.log(`Parallelizable Groups: ${result.parallelizableGroups.length}`);
   console.log(
@@ -819,12 +805,6 @@ function handleDecompose(request: string): void {
   );
   if (!result.contract.readyForDelegation) {
     console.log('Delegation: BLOCKED until the planning contract is complete and valid.');
-  }
-
-  if (result.totalApples > 12) {
-    console.log(
-      '\n⚠️  WARNING: Total apples > 12. Consider further decomposition or human review.',
-    );
   }
 
   if (result.slices.length > 8) {
@@ -840,7 +820,6 @@ function handleDecompose(request: string): void {
     console.log(`  ${slice.id}`);
     console.log(`    Persona: ${slice.persona}`);
     console.log(`    Systems: ${slice.systems.join(', ')}`);
-    console.log(`    Apples: ${slice.apples}🍎`);
     console.log(`    ${slice.description}${deps}\n`);
   }
 
@@ -862,7 +841,6 @@ function handleDecompose(request: string): void {
   const initialSlices: Slice[] = result.slices.map((slice) => ({
     name: slice.name,
     persona: slice.persona,
-    apple_tier: slice.apples,
     dependencies: slice.dependencies,
     description: slice.description,
     status: slice.dependencies.length > 0 ? 'BLOCKED_UPSTREAM' : 'PENDING',
@@ -892,7 +870,6 @@ function handleDecompose(request: string): void {
     feature: request,
     details: {
       slice_count: result.slices.length,
-      total_apples: result.totalApples,
       parallel_groups: result.parallelizableGroups.length,
     },
   };

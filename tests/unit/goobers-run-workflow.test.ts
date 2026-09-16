@@ -1248,18 +1248,12 @@ ${queryScript}
     expect(hydrate?.run?.script).toContain('requirements-result.json');
     expect(hydrate?.capabilities).toBeUndefined();
     expect(hydrate?.retry).toBeUndefined();
-    expect(plan?.expectedOutputs).toEqual([
-      'implementationPlan',
-      'hardGate',
-      'verdict',
-      'appleEstimate',
-    ]);
+    expect(plan?.expectedOutputs).toEqual(['implementationPlan', 'hardGate', 'verdict']);
     expect(plan?.next).toBe('materialize-plan');
     expect(materializePlan?.inputsFrom).toEqual({
       implementationPlan: 'plan.implementationPlan',
       hardGate: 'plan.hardGate',
       verdict: 'plan.verdict',
-      appleEstimate: 'plan.appleEstimate',
     });
     expect(materializePlan?.run?.script).toContain('implementation-plan-result.json');
     expect(materializePlan?.run?.script).toContain('GOOBERS_INPUT_IMPLEMENTATIONPLAN');

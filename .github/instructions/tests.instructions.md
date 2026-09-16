@@ -19,7 +19,6 @@ scripts with exit codes — keep tests reproducible and fast.
   improvement to coverage in any area you touch
 - Use property-based tests (`fast-check`) in `tests/property/` for game
   invariants (e.g. damage never goes negative, totals conserve)
-- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## Suite taxonomy
 

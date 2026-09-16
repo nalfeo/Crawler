@@ -46,7 +46,6 @@ You compose mechanics; you do not build them. If your floor needs a mechanic tha
    source citations in its official source register: GDD/game-design pages,
    committed handoffs, briefs, dialogue/data definitions, and ADRs. Tonal fit
    and provenance are checked before content is written, not after.
-3. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -81,7 +80,7 @@ You compose mechanics; you do not build them. If your floor needs a mechanic tha
       record and are not silently resolved.
 - [ ] Achievement/flavor lines are unique and map to their unlock requirement.
 - [ ] Exercised in a lab across multiple seeds, then observed in the real game.
-- [ ] `npm run verify:fast` green; handoff written; apples scored.
+- [ ] `npm run verify:fast` is green and the handoff is written.
 
 ## Related
 

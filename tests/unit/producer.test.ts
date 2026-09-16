@@ -205,10 +205,9 @@ describe('renderTriage()', () => {
 // ---------------------------------------------------------------------------
 
 describe('decompose()', () => {
-  it('returns a result with slices, totalApples, criticalPath, and parallelizableGroups', () => {
+  it('returns slices, a critical path, and parallelizable groups', () => {
     const result = decompose('Add loot drop animations and sound effects');
     expect(Array.isArray(result.slices)).toBe(true);
-    expect(typeof result.totalApples).toBe('number');
     expect(Array.isArray(result.criticalPath)).toBe(true);
     expect(Array.isArray(result.parallelizableGroups)).toBe(true);
   });
@@ -241,22 +240,6 @@ describe('decompose()', () => {
     const result = decompose('Add runtime wiring for loot drops');
     expect(result.slices.find((s) => s.persona === 'Systems Engineer')).toBeDefined();
     expect(result.slices.find((s) => s.persona === 'Game Designer')).toBeDefined();
-  });
-
-  it('caps apple tier at 3 for slices with many systems', () => {
-    // A request that touches many systems in one persona
-    const result = decompose('Add combat loot progression economy for new floor');
-    for (const slice of result.slices) {
-      expect(slice.apples).toBeLessThanOrEqual(3);
-    }
-  });
-
-  it('assigns 2 apples for slices with 1-2 systems', () => {
-    const result = decompose('Add particle effects for hits');
-    const graphicsSlice = result.slices.find((s) => s.persona === 'Graphics Designer');
-    if (graphicsSlice && graphicsSlice.systems.length <= 2) {
-      expect(graphicsSlice.apples).toBe(2);
-    }
   });
 
   it('UI slices depend on core (Game Designer / Systems Engineer) slices', () => {
@@ -298,12 +281,6 @@ describe('decompose()', () => {
     const result = decompose('Add a new quest with objectives and rewards');
     const contentSlice = result.slices.find((s) => s.persona === 'Content Designer');
     expect(contentSlice).toBeDefined();
-  });
-
-  it('totalApples equals sum of all slice apple tiers', () => {
-    const result = decompose('Add combat loot and audio');
-    const expected = result.slices.reduce((s, sl) => s + sl.apples, 0);
-    expect(result.totalApples).toBe(expected);
   });
 
   it('requires a measurable hard gate before delegation', () => {
@@ -367,7 +344,6 @@ describe('decompose()', () => {
           name: 'A',
           persona: 'Game Designer',
           systems: ['combat'],
-          apples: 2,
           description: 'A',
           dependencies: ['slice-b'],
         },
@@ -376,7 +352,6 @@ describe('decompose()', () => {
           name: 'B',
           persona: 'Systems Engineer',
           systems: ['core'],
-          apples: 2,
           description: 'B',
           dependencies: ['slice-a'],
         },
@@ -386,13 +361,12 @@ describe('decompose()', () => {
     expect(validateDecomposition(result)).toContain('Dependency cycle detected at slice-a.');
   });
 
-  it('reports duplicate ids, dangling dependencies, self edges, and invalid apple tiers', () => {
+  it('reports duplicate ids, dangling dependencies, self edges', () => {
     const duplicateSlice: Slice = {
       id: 'duplicate',
       name: 'Duplicate A',
       persona: 'Game Designer',
       systems: ['loot'],
-      apples: 0,
       description: 'Duplicate A',
       dependencies: ['missing-slice', 'duplicate'],
     };
@@ -405,7 +379,6 @@ describe('decompose()', () => {
           name: 'Duplicate B',
           description: 'Duplicate B',
           dependencies: [],
-          apples: 4,
         },
       ],
     };
@@ -415,7 +388,6 @@ describe('decompose()', () => {
         'Duplicate slice id: duplicate',
         'duplicate depends on unknown slice missing-slice.',
         'duplicate depends on itself.',
-        'duplicate exceeds the 1–3🍎 slice limit.',
       ]),
     );
   });

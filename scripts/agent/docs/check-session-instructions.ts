@@ -21,7 +21,6 @@
  *      - detach from published PRs unless the human pre-declared local ownership
  *      - default broad sweeps (>10 runs) to GitHub workflow infrastructure
  *      - treat investigation-only sessions as lightweight and split landing fixes
- *      - cap tooling-only ceremony at 3 apples
  *   2. `.github/copilot-instructions.md` links to `AGENTS.md` and does NOT
  *      restate those bullets, so the duplication cannot creep back.
  */
@@ -39,7 +38,6 @@ const REQUIRED_LINES = [
   '- **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.',
   '- **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.',
   '- **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight. If a fix should land, spin a separate implementation child session/PR and run the normal full process there.',
-  '- **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.',
   '- Group coherent edits into a validation phase. Run focused unit/type/lint/docs checks after each phase (or before a risky refactor), and use `npm run scope` to select any additional heavy checks. `npm run verify:fast` remains required before handoff/PR, and `npm run verify:pr-prereqs` remains required before publication.',
   '- **Continuation before oversized history:** When `npm run telemetry:token-budget` reports an exceeded context, cumulative-input, or response threshold, create a concise handoff with `npm run handoff:continue` and continue in a fresh thread. This repository workflow does not control platform compaction; include `--rollout` when available to report first-request and cumulative input telemetry.',
 ] as const;

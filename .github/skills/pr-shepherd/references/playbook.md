@@ -101,7 +101,6 @@ comments to address (paste them — the session can't see your context), the
 specific failing CI check + run ID, the merge policy line (the `merge-train`
 label is the only merge path — **never** `gh pr merge --auto`, no review
 required), and the instruction to heartbeat/release the supplied lease, write
-a handoff + apple metric, and report the final merge commit back.
 
 > A single `open_pr_session` call sometimes returns a transient
 > "Policy hook failed" / "Tool result blocked" message even though the session
@@ -299,9 +298,6 @@ branch off `main` normally.
 
 - **Persona:** default **Producer** (`docs/agent-os/personas/producer.md`) for
   multi-layer/ambiguous shepherding work.
-- **Apples:** declare a 🍎–🍎🍎🍎🍎🍎 estimate before writing code; for **≥3🍎 sessions** run
-  `npm run apples:record -- --session <slug> --estimated <n> --actual <n>` at handoff
-  (`docs/agent-os/policies/complexity-policy.md`). 1–2🍎 sessions need no file.
 - **Handoff:** write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending.
   To avoid resetting a green, auto-merging PR, keep the shepherd handoff in your
   session artifacts rather than pushing a fresh commit onto the in-flight branch.

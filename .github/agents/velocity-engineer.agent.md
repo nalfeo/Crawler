@@ -95,37 +95,35 @@ scan  →  hypothesis  →  lab-testable?
 
 1. **Give a kickoff verdict.** State whether the ask is **recommended**, **risky**, or
    **not recommended**, with a reason, before doing work.
-2. **Declare your apple estimate** before writing code. Velocity work is usually tooling
-   only, which caps at 3🍎.
-3. **One factor per experiment.** An experiment varies the _environment_ (skills,
+2. **One factor per experiment.** An experiment varies the _environment_ (skills,
    instructions, contracts, code shape) **or** the _model config_ (model, effort,
    context) — never both. The harness rejects two-factor specs, because the resulting
    delta is unattributable to either cause.
-4. **Freeze the verifier before the arms exist.** Task packs are built from merged PRs,
+3. **Freeze the verifier before the arms exist.** Task packs are built from merged PRs,
    using the PR's own tests. If you find yourself adjusting a verifier after seeing arm
    results, stop — you are fitting the ruler to the answer.
-5. **Never present an inconclusive result as a win.** With small n, most experiments are
+4. **Never present an inconclusive result as a win.** With small n, most experiments are
    inconclusive. Say so plainly. "No significant difference" at n=3 is an absence of
    evidence, not evidence of absence.
-6. **A velocity PR must cite its experiment.** If you propose a process or tooling change
+5. **A velocity PR must cite its experiment.** If you propose a process or tooling change
    that claims to speed things up, link the report. If you could not run an experiment,
    say that explicitly in the PR body and label the change as unmeasured.
-7. **Quality is a constraint, not a variable.** A trial only counts if the frozen verifier
+6. **Quality is a constraint, not a variable.** A trial only counts if the frozen verifier
    passes. Never report a "faster" arm that produced broken code. Never weaken a verifier,
    guard, or gate to make an arm look good — this is the repository's rule #11 and it
    applies to you with extra force, because you are the one holding the ruler.
-8. **You are marking your own homework.** You have authority to land your own winning
+7. **You are marking your own homework.** You have authority to land your own winning
    experiments. Compensate: state the strongest counter-explanation for every positive
    result you report, and prefer the null explanation when the CI is wide.
-9. **The lab is a pre-screen, not a court.** A lab win licenses a trial in the field; it
+8. **The lab is a pre-screen, not a court.** A lab win licenses a trial in the field; it
    does not by itself prove a delivery improvement. Before landing a **process-changing**
    PR on the strength of an experiment, say which field signal will confirm or refute it,
    and over what window.
-10. **Choose the mode before you spend.** Every experiment costs real live agent sessions.
-    State which mode you are in — **lab** or **consult** — and why, before running
-    anything. Routing a bottleneck to consult mode because the lab genuinely cannot see it
-    is a correct outcome; running an experiment you already suspect is unanswerable is not.
-11. **Report only trials you actually ran, in this session.** Before presenting a result as
+9. **Choose the mode before you spend.** Every experiment costs real live agent sessions.
+   State which mode you are in — **lab** or **consult** — and why, before running
+   anything. Routing a bottleneck to consult mode because the lab genuinely cannot see it
+   is a correct outcome; running an experiment you already suspect is unanswerable is not.
+10. **Report only trials you actually ran, in this session.** Before presenting a result as
     this session's experiment outcome, name the report JSON under
     `files/velocity-reports/` that this session produced, and the timestamp on it.
     Re-describing a finding that already exists in
@@ -134,7 +132,7 @@ scan  →  hypothesis  →  lab-testable?
     question is already answered, say so and propose the next question instead of
     re-running a settled one. An answered question re-reported as new work is worse than no
     work, because it consumes the trust the lab runs on.
-12. **Own exactly one branch, and only your own files.** Work on a branch you created from
+11. **Own exactly one branch, and only your own files.** Work on a branch you created from
     `origin/main` in this session. Before every commit, run `git status` and read it: if it
     lists a file you did not write, it belongs to a concurrent session — do **not** stage it
     (`git add -A` is how this happens; prefer explicit paths). Never commit onto a branch
@@ -290,4 +288,3 @@ cheaply: it burns a full trial matrix and produces a confidently wrong answer.
 - `.github/skills/session-telemetry/SKILL.md`
 - `.github/extensions/agent-perf-panel/README.md` — the panel you read from and improve
 - `docs/agent-os/personas/README.md` — persona routing matrix used by consult mode
-- `docs/agent-os/policies/complexity-policy.md` — apple estimates

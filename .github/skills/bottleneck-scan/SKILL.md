@@ -2,7 +2,6 @@
 name: bottleneck-scan
 description: >-
   Find where Crawler feature delivery actually loses time, using merged-PR history plus
-  committed apple and guard-telemetry metrics. Use when asked to "find the bottleneck",
   "why is delivery slow", "where is time going", "scan for process friction", "what
   should we fix to ship faster", or as the first step of any velocity investigation.
   Reports queue-vs-active time per stage, cycle time by change size, estimation accuracy,
@@ -52,7 +51,6 @@ the repo unless you pass `--out`.
 A sharply super-linear curve says the constraint is _batch size_, and the fix is
 decomposition, not tooling.
 
-**Estimation accuracy** from `docs/knowledge/metrics/apples/*.json` — systematic
 under-estimation predicts scope surprises, which are usually a design-clarity problem.
 
 **Guard friction** from `docs/knowledge/metrics/guard-telemetry/*.json` — per-guard

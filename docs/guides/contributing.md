@@ -69,16 +69,14 @@ real-pipeline wiring guard (`check:wired-systems`, ADR 0039) must pass — a lab
 alone is not sufficient proof that the system runs in the real game or headless
 pipeline.
 
-## 5a. Apple-scaled post-diff review
+## 5a. Risk-based post-diff review
 
-After the implementation diff is ready, follow the apple-scaled review policy:
-1–2🍎 use tests/CI only, 3🍎 requires one independent code review, and 4–5🍎
-requires two. Keep the audit trail in GitHub PR reviews and threads only. See
+After the implementation diff is ready, request one independent review when the
+change is architectural or carries meaningful correctness, security, data-loss,
+determinism, or release risk. Routine changes rely on focused tests and CI. Keep
+the audit trail in GitHub PR reviews and threads only. See
 [`.github/skills/review-harness/SKILL.md`](../../.github/skills/review-harness/SKILL.md)
 and [`docs/agent-os/policies/review-harness-policy.md`](../agent-os/policies/review-harness-policy.md).
-Record the apple estimate (declared before writing code) and actuals + verdict
-at handoff time per
-[`docs/agent-os/policies/complexity-policy.md`](../agent-os/policies/complexity-policy.md).
 
 ## 5b. Observe before done (real-artifact validation)
 

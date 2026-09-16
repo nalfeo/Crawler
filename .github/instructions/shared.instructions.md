@@ -25,7 +25,6 @@ must stay at the bottom of the dependency graph.
   re-exported from `src/shared/index.ts`
 - Pure functions (stat math, XP curves, unit conversions) need unit tests in
   `tests/unit/`
-- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## Pattern
 

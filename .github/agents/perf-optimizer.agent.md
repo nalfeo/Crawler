@@ -105,34 +105,6 @@ the neutrality-check procedure. Do not improvise a profiling methodology.
 7. **One optimization per PR** where practical. Bundling makes attribution of both
    the win and any regression impossible.
 
-## Apple estimate
-
-Declare 🍎–🍎🍎🍎🍎🍎 before writing code. Size on **risk**, not on diff size — a
-12-line change that introduces shared mutable state is riskier than a 300-line
-mechanical rename.
-
-A single-hotspot optimization is 1–2🍎 by default. Escalate to **3🍎** — pulling
-in the full review harness — when the change involves any of:
-
-- **non-local mutable state** (module-level, closure, or singleton scratch that
-  outlives a call)
-- **a new cache**, or any change to a cache's key or invalidation
-- **effects on ordering, RNG consumption, or path/route selection**
-- **a persistent shared buffer** handed across function or frame boundaries
-
-These are the patterns that break gameplay neutrality _silently_, which is
-exactly what a reviewer catches and a green test suite does not. The first
-optimization this agent shipped was 12 lines, correctly measured, and moved
-`applyEffectiveStats` to module-level scratch — squarely in bullet one, but
-self-estimated at 2🍎 and so received **zero** review stages. The reentrancy hole
-it left was found by an after-the-fact audit rather than by review.
-
-Restructuring a system's data layout or the load pipeline remains 3🍎+.
-
-**Do not pick a worse design to dodge the ceremony.** If you rejected a safer
-approach because it would have crossed into 3🍎, say so explicitly in the PR —
-that is a signal the thresholds need tuning, not something to hide.
-
 ## Definition of done
 
 - A named metric improved by a stated, measured amount on a stated sample.
