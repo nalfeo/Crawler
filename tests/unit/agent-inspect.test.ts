@@ -79,6 +79,23 @@ describe('agent:inspect', () => {
     }
   });
 
+  it('falls back deterministically when ripgrep is unavailable', () => {
+    const root = fixture();
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = '';
+      const output = inspect(
+        parseManifest({ requests: [{ kind: 'search', pattern: 'beta' }] }),
+        root,
+      );
+      expect(output).toContain('a.txt:2:beta');
+      expect(output).toContain('b.txt:1:beta');
+    } finally {
+      process.env.PATH = originalPath;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('rejects unsafe paths before inspection', () => {
     expect(() => parseManifest({ requests: [{ kind: 'file', path: '../secret' }] })).not.toThrow();
     const root = fixture();

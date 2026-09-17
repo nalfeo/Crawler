@@ -20,6 +20,11 @@ Manifest values are never interpreted by a shell. Paths are confined to the
 repository root (including resolved symlink targets), and the only subprocesses
 use fixed executables and fixed argument shapes.
 
+CI recovery rebased the branch onto current `origin/main` and fixed the Ubuntu
+unit-test failure caused by runners without `rg`. Literal searches still prefer
+ripgrep when available, then use a deterministic bounded native scan when the
+executable is absent.
+
 ## Files touched
 
 - `scripts/agent/inspect.ts`
@@ -36,6 +41,9 @@ use fixed executables and fixed argument shapes.
 - `npm run apples:record -- --session agent-inspect --estimated 3 --actual 3`
 - `npm run verify:fast` (Node 22.23.2)
 - `npm run verify:pr-prereqs` (Node 22.23.2)
+
+The focused suite now includes an explicit no-ripgrep regression and passes 9/9
+tests across `agent-inspect.test.ts` and `bounded-output.test.ts`.
 
 The final repository gates passed using the exact version pinned in
 `.node-version`, with the isolated Node 22.23.2 runtime prepended to `PATH` and

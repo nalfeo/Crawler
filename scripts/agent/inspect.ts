@@ -4,7 +4,7 @@
  * and resolves every file reference beneath the supplied repository root.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 
 import { boundOutput } from './bounded-output.js';
@@ -12,6 +12,8 @@ import { boundOutput } from './bounded-output.js';
 const SECTION_LIMITS = { maxChars: 1_200, maxLines: 40 };
 const AGGREGATE_LIMITS = { maxChars: 7_200, maxLines: 180 };
 const MAX_REQUESTS = 12;
+const MAX_FALLBACK_MATCHES = 200;
+const IGNORED_SEARCH_DIRECTORIES = new Set(['.git', 'node_modules', 'dist', 'coverage']);
 
 type Request =
   | {
@@ -106,6 +108,49 @@ function fileSection(request: Extract<Request, { kind: 'file' }>, repoRoot: stri
     .join('\n')}`;
 }
 
+function fallbackFiles(root: string): string[] {
+  const stat = statSync(root);
+  if (stat.isFile()) return [root];
+  if (!stat.isDirectory()) return [];
+
+  const files: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true }).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    if (entry.isSymbolicLink()) continue;
+    const path = resolve(root, entry.name);
+    if (entry.isDirectory()) {
+      if (!IGNORED_SEARCH_DIRECTORIES.has(entry.name)) files.push(...fallbackFiles(path));
+    } else if (entry.isFile()) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function fallbackLiteralSearch(
+  pattern: string,
+  paths: readonly string[],
+  repoRoot: string,
+): string {
+  const matches: string[] = [];
+  for (const path of paths) {
+    const root = resolve(repoRoot, path);
+    for (const file of fallbackFiles(root)) {
+      const lines = readFileSync(file, 'utf8').split(/\r?\n/u);
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index]!;
+        if (line.includes(pattern))
+          matches.push(`${relative(repoRoot, file)}:${index + 1}:${line}`);
+        if (matches.length >= MAX_FALLBACK_MATCHES) return matches.join('\n');
+      }
+    }
+  }
+  return matches.length
+    ? matches.join('\n')
+    : `[no literal matches for ${JSON.stringify(pattern)}]`;
+}
+
 function searchSection(request: Extract<Request, { kind: 'search' }>, repoRoot: string): string {
   if (!request.pattern) throw new Error('search.pattern must not be empty');
   const paths = request.paths?.length
@@ -131,7 +176,11 @@ function searchSection(request: Extract<Request, { kind: 'search' }>, repoRoot: 
     ],
     { cwd: repoRoot, encoding: 'utf8' },
   );
-  if (result.error) throw result.error;
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === 'ENOENT')
+      return fallbackLiteralSearch(request.pattern, paths, repoRoot);
+    throw result.error;
+  }
   if (result.status === 1) return `[no literal matches for ${JSON.stringify(request.pattern)}]`;
   if (result.status !== 0) throw new Error((result.stderr || 'rg failed').trim());
   return result.stdout;
