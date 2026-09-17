@@ -1,5 +1,44 @@
 [
   {
+    "commit": "7f530bc6ad97593cc050c299e9431f5f870d0d13",
+    "commitDate": "2026-09-16T21:09:56-07:00",
+    "commitSubject": "refactor(agent): replace Apple ceremony with risk review (#4599)",
+    "capturedAt": "2026-09-17T05:44:58.094Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/35183102543",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/7f530bc6ad97593cc050c299e9431f5f870d0d13.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/7f530bc6ad97593cc050c299e9431f5f870d0d13.fun-report.json"
+    }
+  },
+  {
     "commit": "0470931fc0d7352ee311493b990ea490ec0daa74",
     "commitDate": "2026-09-11T21:11:27-07:00",
     "commitSubject": "chore: synchronize agent environments (#4526)",
