@@ -68,6 +68,25 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
+/**
+ * Runs bounded FIFO self-admission without letting one PR-specific API failure
+ * abort reconciliation for later candidates or an already-populated queue.
+ * `admit` returns true only when it attached the queue label.
+ */
+export async function runBoundedSelfAdmission({ candidates, availableSlots, admit }) {
+  const failures = [];
+  let admitted = 0;
+  for (const candidate of candidates) {
+    if (admitted >= availableSlots) break;
+    try {
+      if (await admit(candidate)) admitted += 1;
+    } catch (error) {
+      failures.push({ candidate, error });
+    }
+  }
+  return { admitted, failures };
+}
+
 export async function promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix }) {
   let validationIndex = -1;
   for (let index = 0; index < candidates.length; index += 1) {
