@@ -33,19 +33,21 @@ use fixed executables and fixed argument shapes.
 - `npm run typecheck:src`
 - `npx eslint scripts/agent/inspect.ts tests/unit/agent-inspect.test.ts --max-warnings 0`
 - `git diff --check`
+- `npm run apples:record -- --session agent-inspect --estimated 3 --actual 3`
 
-`npm run scope`, `npm run verify:fast`, and the TypeScript-run command itself
-are blocked on this host before project code runs: Node 24 reports
-`uv_os_get_passwd returned ENOMEM` while tsx initializes its temporary directory.
+`npm run verify:fast` runs under the Windows user token but currently fails on
+pre-existing type errors in `tests/unit/agent/handoff-retrieval.test.ts`: its
+imported `.mjs` module lacks three expected exports and consequently leaves
+three callback parameters implicitly typed as `any`.
 
 ## Unresolved issues
 
-The host-level tsx initialization failure prevents completing `verify:fast` and
-local CLI smoke execution in this worktree. Focused Vitest tests, TypeScript
-typecheck, and ESLint are green.
+No rollout telemetry file exists in this worktree, so first-request and
+cumulative-input telemetry is unavailable. The current token-budget CLI accepts
+a rollout file argument; it does not support the previously attempted
+`--rollout` flag.
 
 ## Recommended next steps
 
-Have CI run the normal PR checks. If the tsx error reproduces outside this
-desktop sandbox, repair the host account-memory/temporary-directory condition
-and rerun `npm run verify:fast`.
+Have CI run the normal PR checks. Separately repair the missing exports in the
+handoff-retrieval module before relying on `verify:fast` as a local green gate.
