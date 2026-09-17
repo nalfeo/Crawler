@@ -133,6 +133,7 @@
     "check:equipment-art-coverage": "tsx scripts/agent/health/check-equipment-art-coverage.ts",
     "check:allowlist-expiry": "tsx scripts/agent/health/check-allowlist-expiry.ts",
     "check:agent-startup-contract": "tsx scripts/agent/docs/check-agent-startup-contract.ts",
+    "agent:context-inventory": "tsx scripts/agent/docs/startup-context-inventory.ts",
     "sprites:sort-assets": "tsx scripts/sprites/sort-assets.ts --apply",
     "sprites:enrich-tags": "tsx scripts/sprites/enrich-tags-cli.ts",
     "sprites:search-telemetry-capture": "tsx scripts/sprites/search-telemetry-capture.ts",
