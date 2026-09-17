@@ -34,20 +34,23 @@ use fixed executables and fixed argument shapes.
 - `npx eslint scripts/agent/inspect.ts tests/unit/agent-inspect.test.ts --max-warnings 0`
 - `git diff --check`
 - `npm run apples:record -- --session agent-inspect --estimated 3 --actual 3`
+- `npm run verify:fast` (Node 22.23.2)
+- `npm run verify:pr-prereqs` (Node 22.23.2)
 
-`npm run verify:fast` runs under the Windows user token but currently fails on
-pre-existing type errors in `tests/unit/agent/handoff-retrieval.test.ts`: its
-imported `.mjs` module lacks three expected exports and consequently leaves
-three callback parameters implicitly typed as `any`.
+The final repository gates passed using the exact version pinned in
+`.node-version`, with the isolated Node 22.23.2 runtime prepended to `PATH` and
+commands executed under the Windows user token.
+
+Token-budget telemetry reported first-request input of 27,453 tokens and
+cumulative input of 5,510,211 tokens (282,691 uncached), with 25,867 output
+tokens, 56 responses, 49 tool calls, zero compactions, and a largest tool output
+of 41,702 characters.
 
 ## Unresolved issues
 
-No rollout telemetry file exists in this worktree, so first-request and
-cumulative-input telemetry is unavailable. The current token-budget CLI accepts
-a rollout file argument; it does not support the previously attempted
-`--rollout` flag.
+None.
 
 ## Recommended next steps
 
-Have CI run the normal PR checks. Separately repair the missing exports in the
-handoff-retrieval module before relying on `verify:fast` as a local green gate.
+Allow the normal PR checks and independent review to complete through the
+repository-managed workflow.
