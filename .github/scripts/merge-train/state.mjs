@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { evaluateAdmission } from '../ci-recovery/state.mjs';
+import { evaluateAdmission, OWNER_LABEL_PREFIX } from '../ci-recovery/state.mjs';
 
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
@@ -96,6 +96,51 @@ export function queueEntries(pullRequests, repository) {
         !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL) &&
         !(pr.labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL),
     )
+    .sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+        left.number - right.number,
+    );
+}
+
+/**
+ * Selects the oldest unqueued PRs that the merge-train reconciler should
+ * evaluate for admission. This is intentionally only a cheap prefilter: the
+ * reconciler must fetch each PR authoritatively and run isAdmissible() before
+ * attaching the queue label.
+ */
+export function selfAdmissionCandidates(pullRequests, repository, capacity = MAX_TRAIN_SIZE) {
+  const queuedCount = queueEntries(pullRequests, repository).length;
+  const availableSlots = Math.max(0, capacity - queuedCount);
+  if (availableSlots === 0) return [];
+
+  const excludedLabels = new Set([
+    QUEUE_LABEL,
+    BLOCKED_LABEL,
+    CI_CONFLICT_ORDER_WAIT_LABEL,
+    RECOVERY_PENDING_LABEL,
+    NOOP_LABEL,
+    VALIDATION_FAILED_LABEL,
+    LANDED_LABEL,
+  ]);
+
+  return pullRequests
+    .filter((pr) => {
+      const labels = pr.labels || [];
+      return (
+        pr.state === 'open' &&
+        !pr.draft &&
+        pr.base?.ref === 'main' &&
+        pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+        !labels.some(
+          (label) =>
+            excludedLabels.has(label.name) ||
+            label.name === 'ci-already-landed' ||
+            label.name === 'ci-lifecycle-abandoned' ||
+            label.name.startsWith(OWNER_LABEL_PREFIX),
+        )
+      );
+    })
     .sort(
       (left, right) =>
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||

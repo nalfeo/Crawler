@@ -18,6 +18,7 @@ import {
   renderLandedComment,
   renderStatus,
   resolveAdmissionChecks,
+  selfAdmissionCandidates,
   squashCommitMessage,
   squashCommitTitle,
   successfulChecks,
@@ -76,6 +77,64 @@ test('orders eligible same-repository PRs by creation time', () => {
     ),
     [1, 2],
   );
+});
+
+test('self-admission scans oldest-first when the train has room', () => {
+  const queued = pr(4);
+  const oldest = pr(1, { labels: [] });
+  const next = pr(2, { labels: [] });
+  const newest = pr(3, { labels: [] });
+
+  assert.deepEqual(
+    selfAdmissionCandidates([newest, queued, next, oldest], 'nalfeo/Crawler', 3).map(
+      (entry) => entry.number,
+    ),
+    [1, 2, 3],
+  );
+});
+
+test('self-admission excludes PRs reserved for recovery or already processed by the train', () => {
+  const labels = [
+    'merge-train',
+    'merge-train-blocked',
+    'merge-train-recovery-pending',
+    'merge-train-noop',
+    'merge-train-validation-failed',
+    'merge-train-landed',
+    'ci-conflict-order-wait',
+    'ci-already-landed',
+    'ci-lifecycle-abandoned',
+    'ci-owner-pr-17',
+  ];
+  const excluded = labels.map((name, index) =>
+    pr(index + 10, { labels: [{ name }], created_at: `2026-06-${index + 1}T00:00:00Z` }),
+  );
+  const admissible = pr(99, { labels: [] });
+
+  assert.deepEqual(
+    selfAdmissionCandidates([...excluded, admissible], 'nalfeo/Crawler').map(
+      (entry) => entry.number,
+    ),
+    [99],
+  );
+});
+
+test('self-admission stops only when the train is full and rejects drafts, forks, and non-main PRs', () => {
+  const candidates = [pr(1, { labels: [] }), pr(2, { labels: [] })];
+  const draft = pr(3, { labels: [], draft: true });
+  const fork = pr(4, {
+    labels: [],
+    head: { sha: 'fork', repo: { full_name: 'fork/Crawler' } },
+  });
+  const stackedBase = pr(5, { labels: [], base: { ref: 'feature/stack' } });
+
+  assert.deepEqual(
+    selfAdmissionCandidates([...candidates, draft, fork, stackedBase], 'nalfeo/Crawler').map(
+      (entry) => entry.number,
+    ),
+    [1, 2],
+  );
+  assert.deepEqual(selfAdmissionCandidates([pr(9), ...candidates], 'nalfeo/Crawler', 1), []);
 });
 
 test('candidate fingerprints bind base, head, title, and order', () => {

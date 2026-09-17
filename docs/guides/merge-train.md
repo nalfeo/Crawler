@@ -14,12 +14,16 @@ for the architectural rationale.
 
 ## How it works
 
-1. CI recovery works the six oldest non-ready PRs and adds `merge-train` after
-   the PR head's admission checks pass, all review threads resolve, and the PR
-   has at least one substantive Copilot code review in its history. Blank and
-   explicit no-files review responses do not count. This admission proof is not
-   tied to the current head; significant-change re-review policy is enforced
-   separately to avoid review churn for trivial updates.
+1. The merge-train reconciler scans open same-repository PRs oldest-first and
+   adds `merge-train` after the PR head's admission checks pass, all review
+   threads resolve, and the PR has at least one substantive Copilot code review
+   in its history. Blank and explicit no-files review responses do not count.
+   It reads the PR again immediately before labeling and fails closed if the
+   immutable head or admission metadata changed. Admission runs on every pass,
+   including while the queue is non-empty, until the bounded six-PR train is
+   full. This keeps admission available when CI Recovery is disabled while
+   preserving the same canonical admission predicate used before candidate
+   construction and promotion.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
 2. `.github/workflows/merge-train.yml` serializes the gated `reconcile` job with

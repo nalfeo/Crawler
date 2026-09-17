@@ -37,6 +37,7 @@ import {
   promotionStaleReason,
   queuePositionAfterRecovery,
   resolveMergeTrainTokens,
+  runBoundedSelfAdmission,
   runTrainBuildLoop,
   sameRepository,
   EMPTY_TRAIN_LIVENESS_THRESHOLD_MS,
@@ -76,6 +77,7 @@ import {
   resolveAdmissionChecks,
   renderLandedComment,
   renderStatus,
+  selfAdmissionCandidates,
   squashCommitMessage,
   squashCommitTitle,
   STATUS_MARKER,
@@ -951,6 +953,74 @@ await ensureLabel(
 await reconcileLandedSignals();
 
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
+
+// Admission belongs to the train that consumes the queue. CI Recovery may be
+// disabled independently (for example, to stop automated Copilot restarts), so
+// relying on it as the sole queue-label writer can leave a fully green PR
+// permanently invisible to the train. Evaluate only enough oldest unqueued PRs
+// to fill the bounded train, then use the same live eligible() predicate that
+// guards candidate construction and promotion.
+const selfAdmissionSlots = MAX_TRAIN_SIZE - queueEntries(pulls, repository).length;
+const selfAdmission = await runBoundedSelfAdmission({
+  candidates: selfAdmissionCandidates(pulls, repository),
+  availableSlots: selfAdmissionSlots,
+  admit: async (candidate) => {
+    const liveCandidate = await request(
+      token,
+      `/repos/${owner}/${repo}/pulls/${candidate.number}`,
+    ).then((response) => response.data);
+    const admission = await eligible(liveCandidate);
+    if (!admission.ok) {
+      process.stdout.write(
+        `self-admission skipped pr=#${candidate.number} reason=${admission.reason}\n`,
+      );
+      return false;
+    }
+
+    // Re-read immediately before the label write. A concurrent synchronize,
+    // close, draft conversion, base edit, or label transition must fail closed;
+    // the next pass can evaluate the new immutable head.
+    const finalCandidate = await request(
+      token,
+      `/repos/${owner}/${repo}/pulls/${candidate.number}`,
+    ).then((response) => response.data);
+    const labels = finalCandidate.labels || [];
+    const changed =
+      finalCandidate.state !== 'open' ||
+      finalCandidate.draft ||
+      finalCandidate.base?.ref !== 'main' ||
+      finalCandidate.head?.sha !== liveCandidate.head?.sha ||
+      finalCandidate.title !== liveCandidate.title ||
+      labels.some((label) =>
+        [
+          QUEUE_LABEL,
+          BLOCKED_LABEL,
+          RECOVERY_PENDING_LABEL,
+          NOOP_LABEL,
+          VALIDATION_FAILED_LABEL,
+          LANDED_LABEL,
+        ].includes(label.name),
+      );
+    if (changed) {
+      process.stdout.write(`self-admission stale pr=#${candidate.number}\n`);
+      return false;
+    }
+
+    await setLabel(candidate.number, QUEUE_LABEL);
+    candidate.labels = [...labels, { name: QUEUE_LABEL }];
+    process.stdout.write(`self-admitted merge-train pr=#${candidate.number}\n`);
+    return true;
+  },
+});
+for (const { candidate, error } of selfAdmission.failures) {
+  process.stderr.write(
+    `self-admission error pr=#${candidate.number} status=${error?.status ?? 'unknown'} message=${String(
+      error?.message || error,
+    )
+      .replace(/[\r\n]/g, ' ')
+      .slice(0, 500)}\n`,
+  );
+}
 const queued = queueEntries(pulls, repository);
 if (queued.length === 0) {
   const now = new Date();
