@@ -1,27 +1,22 @@
-# Review Policy — Apple-Scaled Post-Diff Review
+# Review Policy — Risk-Based Review
 
 ## Purpose
 
-Scale independent review to change complexity without duplicating evidence in
-repository artifacts. Tests and deterministic CI remain the merge gates. Human
-or model review happens after the diff exists, and GitHub pull-request reviews
-and review threads are the only audit trail.
+Apply independent review where failure would have meaningful consequences.
+Tests and deterministic CI remain the merge gates. Human or model review happens
+after the diff exists, and GitHub pull-request reviews and review threads are
+the only audit trail.
 
 No review stage is judged by CI. No review ledger, independent grade, or
 repository-local review record is required or permitted.
 
-## Required review by apple tier
+## Review trigger
 
-| Apples | Required review                         |
-| ------ | --------------------------------------- |
-| 1–2🍎  | Tests and CI only.                      |
-| 3🍎    | One independent post-diff code review.  |
-| 4–5🍎  | Two independent post-diff code reviews. |
-
-An independent review must inspect the complete current diff and relevant
-callers/tests. For two-review tiers, use distinct reviewer contexts; when model
-selection is available, use distinct models. Address valid findings and request
-another review on the updated diff when a fix materially changes it.
+Request one independent post-diff review when the change is architectural or
+carries meaningful correctness, security, data-loss, determinism, or release
+risk. Routine, reversible changes use focused tests and CI. A review must inspect
+the complete current diff and relevant callers/tests. Address valid findings and
+request another review when a fix materially changes the diff.
 
 For published changes, request reviews on the PR and resolve findings in their
 native review threads. GitHub pull-request reviews and review threads are the
@@ -33,22 +28,19 @@ unresolved PR threads only; review paperwork is never a blocker.
 
 Adversarial design review is required **only when the change is architectural**:
 it introduces or changes a load-bearing system boundary, cross-system contract,
-or durable architecture decision. Apple count alone does not trigger it.
+or durable architecture decision.
 
 Run it before implementation, enumerate at least two credible alternatives, and
-record the chosen decision in the applicable ADR or PR discussion. Non-
-architectural 4–5🍎 changes receive two post-diff code reviews but no mandatory
-design review.
+record the chosen decision in the applicable ADR or PR discussion.
 
 ## Workflow
 
-1. Declare the apple estimate before implementation.
-2. If the change is architectural, run the adversarial design review.
-3. Implement and run the deterministic tests appropriate to the diff.
-4. Run `npm run verify:fast` and `npm run verify:pr-prereqs`.
-5. After the diff is complete, obtain the review count required by the matrix.
-6. Fix valid findings and rerun affected tests.
-7. Publish review evidence only through GitHub PR reviews and threads.
+1. If the change is architectural, run the adversarial design review.
+2. Implement and run the deterministic tests appropriate to the diff.
+3. Run `npm run verify:fast` and `npm run verify:pr-prereqs`.
+4. If the risk trigger applies, obtain one independent post-diff review.
+5. Fix valid findings and rerun affected tests.
+6. Publish review evidence only through GitHub PR reviews and threads.
 
 ## 30-PR pilot
 
@@ -80,5 +72,5 @@ evidence of the policy that applied when they were written.
 ## Cross-links
 
 - Operator playbook: [`.github/skills/review-harness/SKILL.md`](../../../.github/skills/review-harness/SKILL.md)
-- Apple scale: [`complexity-policy.md`](complexity-policy.md)
+- Change risk: [`change-risk-policy.md`](change-risk-policy.md)
 - PR review contract: [`.github/instructions/review.instructions.md`](../../../.github/instructions/review.instructions.md)

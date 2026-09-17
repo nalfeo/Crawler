@@ -36,7 +36,6 @@ Immediately invoke the **`pr-shepherd` skill** and follow it — it is the autho
 - **Diagnose before giving up.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`; confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Fix the real failure, then let the train pick the PR back up — do not re-arm auto-merge.
 - **Copilot code-review threads need an owner resolve.** After replying `✅ Addressed in <sha>`, resolve them yourself via GraphQL `resolveReviewThread` — the auto-resolve bot skips them.
 - **Shared lease is mandatory.** Acquire ownership through the trusted `CI Recovery` workflow before touching the branch, heartbeat at least every 20 minutes, and release only after blockers are clear or when abandoning the work. Never create or edit `ci-owner-pr-N` labels/comments directly.
-- **Policy artifacts are shepherdable fixes.** Missing ADRs, review ledgers, apple
   records, handoffs, or ledger evidence are not human blockers by default. Create
   or repair the artifact from the PR context, validate it, reply in-thread, and
   resolve. Escalate only when the missing artifact requires a human decision that
@@ -44,9 +43,7 @@ Immediately invoke the **`pr-shepherd` skill** and follow it — it is the autho
 
 ## Non-negotiable behaviors
 
-- Declare a 🍎 apple estimate before any code fix, acquire the shared shepherd lease, and run `npm run verify:fast` / `bash scripts/agent/lab-gate-check.sh` after changes.
 - Never weaken an explicit requirement or bend gameplay to pass seeds to go green — fix the root cause.
-- Write a handoff and score apples before idling; commit with a conventional message + the `Co-authored-by: Copilot` trailer.
 
 ## Definition of done
 

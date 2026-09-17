@@ -41,7 +41,6 @@ You also own **The Governor** — the deterministic headless player used for smo
 1. `npm run preflight`.
 2. Read `.github/instructions/tests.instructions.md`.
 3. For a flake, **run it enough times to characterise the failure rate before theorising**. "It failed once" is not a diagnosis.
-4. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -68,7 +67,7 @@ You also own **The Governor** — the deterministic headless player used for smo
 - [ ] Coverage in the touched area is preserved or improved.
 - [ ] Any confirmed bug has a permanent regression test.
 - [ ] The Governor still plays headlessly without breaking the suite.
-- [ ] `npm run verify:fast` green; handoff written; apples scored.
+- [ ] `npm run verify:fast` is green and the handoff is written.
 
 ## Related
 

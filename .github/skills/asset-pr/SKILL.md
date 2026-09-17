@@ -48,22 +48,21 @@ This skill folds **all** such legacy issues into one branch and one PR.
 
 ## Loop
 
-1. **Preflight** (persona: **Producer**; declare a 🍎 apple estimate first):
-   `npm run preflight`.
-2. **Survey the queue:**
-   `gh issue list --label asset-checkin --state open --json number,title`.
-   Also check for orphaned branches:
-   `git ls-remote --heads origin 'assets/checkin-*'` cross-referenced with
-   `gh pr list --state open --json headRefName`.
-   If both are empty, report "nothing to consolidate" and stop.
-3. **Consolidate + open the PR:** `npm run sprites:asset-pr`.
-   - It scans both open `asset-checkin` issues **and** orphaned `assets/checkin-*`
-     branches (branches with no open PR). Both are folded into one batch branch.
-   - It prints the batch branch and the PR URL.
-   - It is a no-op (exit 0, notice) when both the issue queue and orphaned branches
-     are empty.
-   - It is **local-only** in spirit but does push + open a PR — run it on a dev
-     box with `gh` authenticated, never inside CI.
+`npm run preflight`. 2. **Survey the queue:**
+`gh issue list --label asset-checkin --state open --json number,title`.
+Also check for orphaned branches:
+`git ls-remote --heads origin 'assets/checkin-*'` cross-referenced with
+`gh pr list --state open --json headRefName`.
+If both are empty, report "nothing to consolidate" and stop. 3. **Consolidate + open the PR:** `npm run sprites:asset-pr`.
+
+- It scans both open `asset-checkin` issues **and** orphaned `assets/checkin-*`
+  branches (branches with no open PR). Both are folded into one batch branch.
+- It prints the batch branch and the PR URL.
+- It is a no-op (exit 0, notice) when both the issue queue and orphaned branches
+  are empty.
+- It is **local-only** in spirit but does push + open a PR — run it on a dev
+  box with `gh` authenticated, never inside CI.
+
 4. **Verify the PR is art-only** so it takes the fast lane:
    `gh pr view <n> --json files` → every path must be under
    `public/assets/generated/**` or `src/shared/data/sprite-catalog.json`. If not,

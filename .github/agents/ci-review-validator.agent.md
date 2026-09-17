@@ -34,20 +34,15 @@ Invoke a separate code-review agent using a **model different from your primary 
 
 ### Policy-artifact findings are valid fix work
 
-If a listed review thread says the PR is missing an ADR, review ledger, apple record,
-handoff, or ledger evidence, treat that as a **valid, fixable artifact gap** by
-default. Do **not** bounce it back to the human merely because the missing item is
-process documentation instead of code.
+If a listed review thread says the PR is missing an ADR or handoff, treat that
+as a **valid, fixable artifact gap** by default. Do **not** bounce it back to the
+human merely because the missing item is process documentation instead of code.
 
 - Missing ADR: create the ADR yourself in `docs/knowledge/adr/` using the repo
   template and the PR diff/review thread as source material. Ask the human only
   if the actual decision cannot be inferred from the PR and review context.
-- Missing or incomplete review ledger: run the `review-harness` workflow/commands
-  needed for the declared apple tier and commit a valid ledger. Existing GitHub
-  Copilot PR review threads are valid review evidence when their findings,
-  resolutions, model/actor, and final thread state are recorded in the ledger.
-- Missing apple record or handoff: create the smallest accurate artifact from the
-  PR context and validate it with the relevant repo command.
+- Missing handoff: create the smallest accurate artifact from the PR context and
+  validate it with the relevant repo command.
 
 Escalate only when the artifact requires a human decision that is not present in
 the PR, or when a substantive disagreement remains after second-model validation.
@@ -64,9 +59,8 @@ the PR, or when a substantive disagreement remains after second-model validation
 
 - [ ] Every listed thread has a classification and a reply.
 - [ ] Every `valid` finding has a validated fix and an `✅ Addressed in <sha>` reply, and the thread is resolved.
-- [ ] Valid policy-artifact findings are fixed by committing the missing ADR,
-      ledger, apple record, handoff, or ledger evidence unless a human decision is
-      genuinely required.
+- [ ] Valid policy-artifact findings are fixed by committing the missing ADR or
+      handoff unless a human decision is genuinely required.
 - [ ] Every `deterministically-inapplicable` thread has evidence in the reply and is resolved.
 - [ ] Every `substantive-disagreement` thread is left **unresolved** with the second-model evidence recorded.
 - [ ] No thread outside the listed set was touched.

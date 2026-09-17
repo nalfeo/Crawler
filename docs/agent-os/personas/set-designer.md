@@ -82,7 +82,7 @@ clarity is not done.
 ## Tools & Workflows
 
 - **Plan-first + review:** output the full plan in-session before writing code,
-  then run the apple-scaled post-diff review required for the declared tier.
+  then run the risk-based post-diff review required for the declared tier.
 - `npm run setpiece:score [-- <id> …] [--json] [--fail-on-violation]` — the gate.
 - The **`set-piece-editor` canvas** (`list_set_pieces`, `apply_layout`) for applying
   and eyeballing layouts.

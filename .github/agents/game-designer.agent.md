@@ -44,7 +44,6 @@ The player should feel like a contestant clawing from fragile to dominant on liv
 1. `npm run preflight`.
 2. Read the [Game Design Document](../../docs/knowledge/game-design/game-design-document.md) section for the system in question, and name the pillar your change serves.
 3. **Establish the baseline before changing anything.** Get the current numbers from a sweep or a headless run. A post-change number with no pre-change number is not evidence.
-4. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -71,7 +70,7 @@ The player should feel like a contestant clawing from fragile to dominant on liv
 - [ ] A balance test encodes the intended outcome.
 - [ ] Before/after evidence from a seeded sweep or headless run is stated, with sample size — and Floor-1 win rate is still ≥90%.
 - [ ] Observed in the real game or headless artifact (named), not only the lab.
-- [ ] `npm run verify:fast` green; handoff written; apples scored.
+- [ ] `npm run verify:fast` is green and the handoff is written.
 
 ## Related
 

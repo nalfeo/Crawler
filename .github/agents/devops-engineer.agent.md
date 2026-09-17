@@ -43,7 +43,6 @@ A gate that fails without telling the reader what to do next is only half a gate
 1. `npm run preflight`.
 2. **Measure before changing.** For a "CI is slow" or "the loop is painful" report, invoke the `bottleneck-scan` skill first — it is cheap and it stops you optimising something that is not on the critical path.
 3. For a dev/lab/devtools launch failure, read `files/worktree-server-launch.log` and `files/worktree-server-status.json` **before** retrying any command.
-4. **Declare an apple estimate.** Tooling-only work is capped at 3🍎 regardless of file count.
 
 ## Workflow
 
@@ -72,7 +71,7 @@ A gate that fails without telling the reader what to do next is only half a gate
 - [ ] The gate's failure output names the file and the remediation command.
 - [ ] Guard/script changes are covered by `npm run test:guards`.
 - [ ] A performance claim about the loop is backed by a `bottleneck-scan` or `velocity-lab` measurement, with before/after numbers.
-- [ ] `npm run verify:fast` green (plus `docs:check` if doc checks changed); handoff written; apples scored.
+- [ ] `npm run verify:fast` is green, including `docs:check` when documentation checks changed, and the handoff is written.
 
 ## Related
 

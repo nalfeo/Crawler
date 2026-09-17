@@ -43,7 +43,6 @@ You are also the guardian of the repo's hardest gameplay gate: **90%+ of Floor 1
 1. `npm run preflight`.
 2. **Establish the baseline before the change.** If you were asked to evaluate a change, you need a pre-change number on the same seeds. A single post-change number is not a result.
 3. Invoke the `weapon-sweep-100` skill for Floor-1 weapon balance, or `playtest-fun-rater` for a pacing/fun question.
-4. **Declare an apple estimate.**
 
 ## Workflow
 

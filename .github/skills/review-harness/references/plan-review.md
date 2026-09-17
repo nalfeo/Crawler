@@ -1,6 +1,6 @@
 # Architectural adversarial design review
 
-Adversarial design review is triggered by **architecture**, not apple count.
+Adversarial design review is triggered by **architecture**.
 Run it only when the change modifies a load-bearing system boundary,
 cross-system contract, or durable architecture decision.
 
@@ -14,5 +14,5 @@ Before implementation, ask an independent reviewer to:
 Resolve the concerns before coding. Record the durable decision in the relevant
 ADR or PR discussion. Do not create a review-specific JSON artifact.
 
-Non-architectural changes, including 4–5🍎 changes, skip this stage and rely on
-their required post-diff code reviews.
+Non-architectural changes skip this stage and use the risk-based post-diff
+review trigger.

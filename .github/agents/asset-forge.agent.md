@@ -50,8 +50,7 @@ Pick `issue-wave` when the request names a wave count, a stop condition, or "una
    If the premise conflicts with canon, record the contradiction with provenance
    in `docs/knowledge/game-design/lore-contradictions.md` and stop/escalate.
 3. Read the canonical style ground-truth `docs/agent-os/sprite-style.md` (it is loaded verbatim into every prompt AND the judge — your accept criteria come from it).
-4. **Declare an apple estimate** for the art scope before generating: pure art (brief+generate+approve) is review-ledger-exempt and typically small; **any wiring / engine change is code-touching** and runs the full gate + apple-scaled review harness + ledger.
-5. Invoke the **`sprite-judge` skill** — it is the authoritative review playbook (the sensors + VLM judge + eyeball decision tree) and you use it for every generated sheet before approval.
+4. Invoke the **`sprite-judge` skill** — it is the authoritative review playbook (the sensors + VLM judge + eyeball decision tree) and you use it for every generated sheet before approval.
 
 ## The pipeline (run it wave-by-wave, never all upfront)
 
@@ -69,7 +68,7 @@ Pick `issue-wave` when the request names a wave count, a stop condition, or "una
    ```
    Verify the promote PR exists and has the `merge-train` label:
    `gh pr list --head assets/promote`.
-7. **Wire** — after the art merges: item icons auto-resolve (`itemId === briefId`); enemies via `mobDefs` + `entity-sprite-mappings.json` or `npm run sprites:generate-wiring -- --since main`; set-piece `custom` refs by catalog/manifest key; tiles/harvestables may need an engine change (single-texture stamp). Wiring is a **code PR**: full gates, `check:wired-systems`, apple-scaled review harness + ledger. If no patches are produced, record "art landed, no replaceable placeholders detected".
+7. **Wire** — after the art merges: item icons auto-resolve (`itemId === briefId`); enemies via `mobDefs` + `entity-sprite-mappings.json` or `npm run sprites:generate-wiring -- --since main`; set-piece `custom` refs by catalog/manifest key; tiles/harvestables may need an engine change (single-texture stamp). Wiring is a **code PR**: full gates, `check:wired-systems`, risk-based review harness + ledger. If no patches are produced, record "art landed, no replaceable placeholders detected".
 8. **Observe before done** — a green lab is NOT proof the game renders it. Confirm in the **real** artifact (`npm run dev` or a headless probe) and state before/after in the PR/handoff (AGENTS.md r9).
 9. **Measure and decide** — re-run the placeholder audit, report the remaining count, and continue only until the stated stop condition is met or a hard blocker needs escalation.
 
@@ -86,8 +85,8 @@ Pick `issue-wave` when the request names a wave count, a stop condition, or "una
 - **Never weaken a gate to go green** — no loosening sensors, no lowering the judge bar, no bending gameplay/requirements. Fix the brief/prompt/post-proc/config, or escalate to the human (AGENTS.md r11/r12, persona constraint).
 - **Keep art PRs art-only.** Wiring goes in a separate code PR, always.
 - **Post every generated sheet inline**, report pipeline transitions to your coordinator, and keep generation flowing rather than sitting idle.
-- Declare the apple estimate up front and run `npm run verify:fast` after any code change. Do **not** run full `npm run verify` merely because you are committing wiring or opening a PR; CI owns the full suite unless a human explicitly requests a local run or targeted diagnosis requires it.
-- Write a dated handoff (`docs/knowledge/handoffs/`) with `## Systems touched` before ending; score apples at handoff.
+- Run `npm run verify:fast` after code changes and write a dated handoff with
+  `## Systems touched` before ending.
 - Conventional commits + the `Co-authored-by: Copilot` trailer.
 
 ## Definition of done

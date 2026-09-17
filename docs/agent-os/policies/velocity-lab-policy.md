@@ -183,7 +183,7 @@ authority safe:
 ## 10. Observational data is not causal
 
 `npm run velocity:scan` mines merged-PR history, closed-unmerged (abandoned) PR history,
-apple estimates, and guard telemetry. It
+and guard telemetry. It
 is excellent at generating hypotheses and incapable of confirming them. A finding from the
 scan is a candidate for an experiment, never a justification on its own.
 
@@ -228,4 +228,4 @@ The velocity engineer is responsible for the instruments as well as the readings
 - `.github/skills/velocity-lab/SKILL.md`
 - `.github/skills/session-telemetry/SKILL.md`
 - `.github/extensions/agent-perf-panel/README.md`
-- `docs/agent-os/policies/complexity-policy.md`
+- `docs/agent-os/policies/change-risk-policy.md`

@@ -255,7 +255,6 @@ describe('crawler.goobers.output/v1 schema', () => {
         status: 'success',
         outputs: {
           verdict: 'recommended',
-          appleEstimate: 3,
           hardGate: 'All tests pass',
           blockedBy: null,
         },
@@ -338,30 +337,6 @@ describe('crawler.goobers.output/v1 schema', () => {
     ).toBe(false);
   });
 
-  it('enforces the appleEstimate range (1-5)', () => {
-    expect(
-      isOutputValid({
-        contractVersion: 'v1',
-        task: 'plan',
-        status: 'success',
-        outputs: { appleEstimate: 5 },
-        summary: 'Done',
-      }),
-    ).toBe(true);
-
-    for (const invalidEstimate of [0, 6]) {
-      expect(
-        isOutputValid({
-          contractVersion: 'v1',
-          task: 'plan',
-          status: 'success',
-          outputs: { appleEstimate: invalidEstimate },
-          summary: 'Done',
-        }),
-      ).toBe(false);
-    }
-  });
-
   it('enforces the verdict enum', () => {
     expect(
       isOutputValid({
@@ -380,7 +355,7 @@ describe('crawler.goobers.output/v1 schema', () => {
         contractVersion: 'v1',
         task: 'plan',
         status: 'success',
-        outputs: { verdict: 'recommended', appleEstimate: 3 },
+        outputs: { verdict: 'recommended' },
         summary: 'Done',
         error: null,
       }),
@@ -465,13 +440,13 @@ describe('crawler.goobers.output/v1 schema', () => {
     ).toBe(false);
   });
 
-  it('rejects a non-planning task carrying a verdict or appleEstimate', () => {
+  it('rejects a non-planning task carrying a verdict', () => {
     expect(
       isOutputValid({
         contractVersion: 'v1',
         task: 'implement',
         status: 'success',
-        outputs: { verdict: 'recommended', appleEstimate: 3 },
+        outputs: { verdict: 'recommended' },
         summary: 'Implementation finished',
       }),
     ).toBe(false);

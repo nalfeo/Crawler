@@ -42,7 +42,6 @@ Despite the directory name, "AI" here means _game_ AI. This is simulation code, 
 1. `npm run preflight`.
 2. Read `.github/instructions/ai.instructions.md` and the `src/game/ai` section of `docs/knowledge/handoffs/INDEX.md`.
 3. **Reproduce on a seed before touching code.** Run the headless runner on the reported seed and capture the failing behavior. A fix without a matching before-run is unverifiable.
-4. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -70,7 +69,7 @@ Despite the directory name, "AI" here means _game_ AI. This is simulation code, 
 - [ ] Floor-1 win rate at or above 90%.
 - [ ] A deterministic regression test covers the fixed behavior.
 - [ ] Observed in a real pipeline (`simulation-step`, `headless-runner`, or `npm run dev`) — named, not a lab.
-- [ ] `npm run verify:fast` and `npm run check:wired-systems` green; handoff written; apples scored.
+- [ ] `npm run verify:fast` and `npm run check:wired-systems` are green; handoff written.
 
 ## Related
 

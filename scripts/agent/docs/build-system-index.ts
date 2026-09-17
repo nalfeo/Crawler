@@ -107,7 +107,7 @@ const HEURISTICS: ReadonlyArray<readonly [RegExp, ReadonlyArray<string>]> = [
   [/azure|github-pages|pages-generated/, ['azure-infra']],
   // ci-policy
   [
-    /\bci\b|verify|review-|reviewer-|pr-shepherd|shepherd-|apple-calibration|complexity|deflake|guard-|anti-shortcut|approve-|auto-resolve|auto-run|auto-rebase|workflow|thread-first|setup-node|streamline|md-only|orphaned|characterization|prettier|playwright|copilot-setup|agent-merge|coverage-gap|coverage-|preexisting-failure|hook-gate|enforcement-hook|automation-loop|automation-speedup|e2e|build-perf|server-launch|harness-gap|lab-feedback|chronicle-telemetry|telemetry|reload-recovery/,
+    /\bci\b|verify|review-|reviewer-|pr-shepherd|shepherd-|deflake|guard-|anti-shortcut|approve-|auto-resolve|auto-run|auto-rebase|workflow|thread-first|setup-node|streamline|md-only|orphaned|characterization|prettier|playwright|copilot-setup|agent-merge|coverage-gap|coverage-|preexisting-failure|hook-gate|enforcement-hook|automation-loop|automation-speedup|e2e|build-perf|server-launch|harness-gap|lab-feedback|chronicle-telemetry|telemetry|reload-recovery/,
     ['ci-policy'],
   ],
   // agent-memory

@@ -114,8 +114,8 @@ describe('globParentDir', () => {
 describe('resolveLinkTarget', () => {
   it('resolves relative targets against the linking document directory', () => {
     expect(
-      resolveLinkTarget('docs/agent-os/personas/README.md', '../policies/complexity-policy.md'),
-    ).toBe('docs/agent-os/policies/complexity-policy.md');
+      resolveLinkTarget('docs/agent-os/personas/README.md', '../policies/change-risk-policy.md'),
+    ).toBe('docs/agent-os/policies/change-risk-policy.md');
     expect(
       resolveLinkTarget('docs/agent-os/personas/README.md', '../../../.github/agents/x.agent.md'),
     ).toBe('.github/agents/x.agent.md');

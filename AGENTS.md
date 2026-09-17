@@ -19,10 +19,9 @@ with `gh auth login`. On Windows, install GitHub CLI with
    [the handoff index](docs/knowledge/handoffs/INDEX.md) to read the relevant
    recent handoffs. Load durable facts from the memory MCP when available; else
    skim [memory](docs/knowledge/memory/README.md). Do not bulk-read either.
-4. Before implementation, read
-   [complexity policy](docs/agent-os/policies/complexity-policy.md), declare an
-   🍎–🍎🍎🍎🍎🍎 estimate, and state a recommendation verdict. For ≥3🍎, record
-   estimated and actual apples at handoff with `npm run apples:record`.
+4. Before implementation, state a recommendation verdict. Use
+   [change-risk policy](docs/agent-os/policies/change-risk-policy.md) to decide
+   whether independent review is warranted.
 5. For an underspecified request, ask one decisive question at a time until it
    has one measurable success gate and ranked tiebreakers. Restate the bounded
    ask and get confirmation before coding. Explicit, bounded requests may proceed.
@@ -32,7 +31,6 @@ with `gh auth login`. On Windows, install GitHub CLI with
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight. If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
-- **Tooling-only ceremony is capped at 3🍎:** Work confined to developer/agent tooling, canvases, automation, or asset-pipeline tooling is estimated at no more than 3🍎 regardless of file count; the cap does not apply when runtime gameplay behavior or shipped game data changes.
 - **Continuation before oversized history:** When `npm run telemetry:token-budget` reports an exceeded context, cumulative-input, or response threshold, create a concise handoff with `npm run handoff:continue` and continue in a fresh thread. This repository workflow does not control platform compaction; include `--rollout` when available to report first-request and cumulative input telemetry.
 - Group coherent edits into a validation phase. Run focused unit/type/lint/docs checks after each phase (or before a risky refactor), and use `npm run scope` to select any additional heavy checks. `npm run verify:fast` remains required before handoff/PR, and `npm run verify:pr-prereqs` remains required before publication.
 
@@ -50,7 +48,7 @@ with `gh auth login`. On Windows, install GitHub CLI with
 - New ECS systems require a lab and sim-side wiring or a documented, justified
   allowlist entry. Visual/runtime work must be observed in the real artifact,
   not only a lab. Follow the relevant persona and the project policies.
-- Use apple-scaled independent review and reply only in existing PR review
+- Use risk-based independent review and reply only in existing PR review
   threads; do not use issue/PR comments to satisfy status or planning rules.
 - Use existing, standard tooling before creating infrastructure. Keep changes
   focused; preserve unrelated working-tree changes.
