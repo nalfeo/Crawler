@@ -46,19 +46,14 @@ and policy links in active sources.
 - Targeted ESLint — pass.
 - Targeted Prettier check initially identified formatting; `prettier --write`
   was applied.
-- The direct `tsx` command and `npm run scope` are blocked in this Windows
-  environment before project code executes by Node 24's
-  `uv_os_get_passwd` ENOMEM error. The same checker logic is exercised by the
-  passing Vitest suite.
-- `npm run verify:fast` is blocked by the same host-level Node error before the
-  repository wrapper starts.
+- `npm run verify:fast` — pass under the elevated Windows user token. The
+  earlier `uv_os_get_passwd` ENOMEM result came from running Node under the
+  sandboxed token, not from repository code or the host environment.
 - Pre-publish main sync rebased the publication branch onto current
   `origin/main`.
-- Repository-wide `typecheck` is blocked by pre-existing errors in
-  `handoff-retrieval.test.ts`; the Apple-related producer errors were removed.
+- Published CI passed, including lightweight checks, unit tests, integration
+  tests, visual checks, security checks, and the merge gate.
 
 ## Remaining
 
-Run `npm run check:agent-startup-contract`, `npm run docs:check`,
-`npm run verify:fast`, and `npm run verify:pr-prereqs` in an environment where
-the `tsx` launcher can initialize, then publish the staged, focused change.
+PR #4599 is published and ready for review.
