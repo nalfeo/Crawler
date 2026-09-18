@@ -845,7 +845,7 @@ test('renderCoordinatorComment round-trips overlapFilesCount through parse', () 
   assert.ok(body.includes(`…and ${hiddenCount} more`));
 });
 
-test('coordination enforcement defaults to OFF (discovery-only)', () => {
+test('coordination enforcement defaults to OFF (cleanup-only)', () => {
   // The fence is a pessimistic lock with ~100:1 asymmetric cost, so absence of
   // the flag must mean "do not serialize" rather than "serialize".
   assert.equal(coordinationEnforcementEnabled({}), false);
