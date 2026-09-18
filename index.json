@@ -1,5 +1,44 @@
 [
   {
+    "commit": "6396a779cde0140e21c43ddd18ae66b5854c38c2",
+    "commitDate": "2026-09-18T10:04:51-07:00",
+    "commitSubject": "feat(agent): add bounded rollout telemetry rollup (#4619)",
+    "capturedAt": "2026-09-18T18:37:30.824Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/35375477377",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/6396a779cde0140e21c43ddd18ae66b5854c38c2.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/6396a779cde0140e21c43ddd18ae66b5854c38c2.fun-report.json"
+    }
+  },
+  {
     "commit": "7f530bc6ad97593cc050c299e9431f5f870d0d13",
     "commitDate": "2026-09-16T21:09:56-07:00",
     "commitSubject": "refactor(agent): replace Apple ceremony with risk review (#4599)",
