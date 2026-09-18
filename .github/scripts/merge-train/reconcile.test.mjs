@@ -27,6 +27,7 @@ import {
   renderStalledQueuePasses,
   renderUnadvanceableStrike,
   resolveMergeTrainTokens,
+  runBoundedSelfAdmission,
   runTrainBuildLoop,
   stalledAdmissionEligiblePulls,
   STALLED_QUEUE_PASS_THRESHOLD,
@@ -273,6 +274,26 @@ test('stalledAdmissionEligiblePulls ignores queued entries and keeps determinist
     stalled.map((pull) => pull.number),
     [19, 20],
   );
+});
+
+test('self-admission isolates a failed PR and continues filling from later candidates', async () => {
+  const attempted = [];
+  const result = await runBoundedSelfAdmission({
+    candidates: [{ number: 10 }, { number: 11 }, { number: 12 }],
+    availableSlots: 2,
+    admit: async (candidate) => {
+      attempted.push(candidate.number);
+      if (candidate.number === 10)
+        throw Object.assign(new Error('GraphQL denied'), { status: 403 });
+      return true;
+    },
+  });
+
+  assert.deepEqual(attempted, [10, 11, 12]);
+  assert.equal(result.admitted, 2);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].candidate.number, 10);
+  assert.equal(result.failures[0].error.status, 403);
 });
 
 test('non-Actions runs fail before mutation when only the non-dispatching App token is present', () => {
@@ -1965,6 +1986,22 @@ test('STALLED_TRAIN_TRACKING_LABEL is provisioned by the startup ensureLabel seq
       'GitHub silently drops the nonexistent label, leaving the record unlabeled and ' +
       'undiscoverable by findStalledTrainIncident() on the next pass',
   );
+});
+
+test('the merge train self-admits live eligible PRs before constructing its queue', () => {
+  const admissionStart = RECONCILE_SOURCE.indexOf(
+    'const selfAdmission = await runBoundedSelfAdmission({',
+  );
+  const queueConstruction = RECONCILE_SOURCE.indexOf(
+    'const queued = queueEntries(pulls, repository);',
+  );
+  const block = RECONCILE_SOURCE.slice(admissionStart, queueConstruction);
+
+  assert.ok(admissionStart > 0 && admissionStart < queueConstruction);
+  assert.match(block, /const admission = await eligible\(liveCandidate\)/);
+  assert.match(block, /finalCandidate\.head\?\.sha !== liveCandidate\.head\?\.sha/);
+  assert.match(block, /await setLabel\(candidate\.number, QUEUE_LABEL\)/);
+  assert.match(block, /for \(const \{ candidate, error \} of selfAdmission\.failures\)/);
 });
 
 test('the zero-admitted exit path evaluates the stalled-queue safeguard before exiting', () => {
