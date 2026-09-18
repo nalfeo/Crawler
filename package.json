@@ -133,6 +133,7 @@
     "check:equipment-art-coverage": "node scripts/agent/run-tsx.mjs scripts/agent/health/check-equipment-art-coverage.ts",
     "check:allowlist-expiry": "node scripts/agent/run-tsx.mjs scripts/agent/health/check-allowlist-expiry.ts",
     "check:agent-startup-contract": "node scripts/agent/run-tsx.mjs scripts/agent/docs/check-agent-startup-contract.ts",
+    "agent:context-inventory": "node scripts/agent/run-tsx.mjs scripts/agent/docs/startup-context-inventory.ts",
     "sprites:sort-assets": "node scripts/agent/run-tsx.mjs scripts/sprites/sort-assets.ts --apply",
     "sprites:enrich-tags": "node scripts/agent/run-tsx.mjs scripts/sprites/enrich-tags-cli.ts",
     "sprites:search-telemetry-capture": "node scripts/agent/run-tsx.mjs scripts/sprites/search-telemetry-capture.ts",

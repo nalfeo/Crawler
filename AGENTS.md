@@ -91,3 +91,6 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 
 For the full project command inventory, use `npm run` or `package.json`; do not
 keep an exhaustive catalog here.
+
+Use `npm run agent:context-inventory` to measure this contract's explicit,
+allowlisted startup-context contributors before a session.
