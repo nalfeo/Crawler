@@ -1055,7 +1055,9 @@ for (const group of groups) {
     if (enforceCoordination) {
       await updateCoordinatorComment(pull, groupComments.get(pull.number), state);
     } else {
-      process.stdout.write(`skip coordinator comment pr=#${pull.number} reason=coordination-disabled\n`);
+      process.stdout.write(
+        `skip coordinator comment pr=#${pull.number} reason=coordination-disabled\n`,
+      );
     }
   }
 
