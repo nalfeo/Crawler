@@ -24,8 +24,8 @@ run_with_timeout() {
 echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 
 # The production verifier always uses the authoritative project, which includes
-# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, functions/**/*.ts,
-# and tools/**/*.ts.
+# root tool configs plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts,
+# functions/**/*.ts, and tools/**/*.ts.
 # TypeScript's existing incremental metadata keeps repeat runs fast without
 # changing compiler context.
 TSC_PROJECT="tsconfig.json"
@@ -44,7 +44,7 @@ elif [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STEP3_ONLY:-}" = "1" 
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|(src|tests|scripts|functions|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|vitest\.mutation\.config\.ts|knip\.config\.ts|(src|tests|scripts|functions|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Returns true for .mjs files that are actively linted in changed-file mode.
@@ -165,7 +165,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     # CI lints them in full-tree mode; verify:fast skips them locally.
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:" >&2
+    echo "❌ verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1

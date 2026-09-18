@@ -61,6 +61,7 @@ function makeFixture(files: Record<string, string>): string {
           'vite.config.ts',
           'vitest.config.ts',
           'vitest.mutation.config.ts',
+          'knip.config.ts',
           'src/**/*.ts',
           'tests/**/*.ts',
           'scripts/**/*.ts',
@@ -124,6 +125,7 @@ describe('verify-fast full-project typecheck', () => {
       'vite.config.ts',
       'vitest.config.ts',
       'vitest.mutation.config.ts',
+      'knip.config.ts',
     ] as const)(
     'fails for a %s-only narrowed property error',
     (directory) => {
@@ -135,6 +137,7 @@ describe('verify-fast full-project typecheck', () => {
         'vite.config.ts': 'export const rootValue = 1;\n',
         'vitest.config.ts': 'export const vitestRootValue = 1;\n',
         'vitest.mutation.config.ts': 'export const vitestMutationValue = 1;\n',
+        'knip.config.ts': 'export const knipRootValue = 1;\n',
       };
       const errorPath = (() => {
         switch (directory) {
@@ -146,6 +149,8 @@ describe('verify-fast full-project typecheck', () => {
             return 'vitest.config.ts';
           case 'vitest.mutation.config.ts':
             return 'vitest.mutation.config.ts';
+          case 'knip.config.ts':
+            return 'knip.config.ts';
           default:
             return `${directory}/narrowing.ts`;
         }
@@ -284,7 +289,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },
@@ -310,7 +315,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.mts');
     },
@@ -355,7 +360,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },
@@ -508,7 +513,7 @@ describe('verify-fast changed .mjs path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain(
         '.github/extensions/my-ext/lib/shared.d.mts',
@@ -539,7 +544,7 @@ describe('verify-fast changed .mjs path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, functions/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside supported root configs, src/, tests/, scripts/, functions/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('infra/shared.d.mts');
     },
