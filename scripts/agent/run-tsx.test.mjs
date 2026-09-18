@@ -1,4 +1,4 @@
-/* global process, URL */
+/* global URL */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -56,9 +56,7 @@ test('rejects an explicit runtime override with the wrong Node version', () => {
 test('resolves npm beside the pinned Node executable', () => {
   assert.equal(
     npmCliForNode('C:\\pinned\\node.exe', 'win32'),
-    process.platform === 'win32'
-      ? 'C:\\pinned\\node_modules\\npm\\bin\\npm-cli.js'
-      : 'C:\\pinned\\node_modules/npm/bin/npm-cli.js',
+    'C:\\pinned\\node_modules\\npm\\bin\\npm-cli.js',
   );
   assert.equal(
     npmCliForNode('/opt/node/bin/node', 'linux'),
@@ -67,11 +65,15 @@ test('resolves npm beside the pinned Node executable', () => {
 });
 
 test('runtime environment prepends pinned Node and preloads the identity shim', () => {
-  const env = runtimeEnvironment('C:\\pinned\\node.exe', {
-    PATH: 'C:\\system',
-    NODE_OPTIONS: '--trace-warnings',
-  });
-  assert.equal(env.PATH, `C:\\pinned${process.platform === 'win32' ? ';' : ':'}C:\\system`);
+  const env = runtimeEnvironment(
+    'C:\\pinned\\node.exe',
+    {
+      PATH: 'C:\\system',
+      NODE_OPTIONS: '--trace-warnings',
+    },
+    'win32',
+  );
+  assert.equal(env.PATH, 'C:\\pinned;C:\\system');
   assert.match(env.NODE_OPTIONS, /^--trace-warnings --require=/);
   assert.match(env.NODE_OPTIONS, /windows-node-identity\.cjs/);
 });

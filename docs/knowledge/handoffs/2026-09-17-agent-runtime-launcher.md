@@ -20,6 +20,8 @@ agent command runtime, Windows preflight bootstrap, npm package scripts
   provisions the exact runtime enforced by the launcher.
 - Added unit coverage for pinned-runtime discovery, npm resolution, preload
   propagation, and the no-direct-`tsx` package-script invariant.
+- CI recovery made simulated Windows path handling independent of the runner OS
+  and updated the existing shell-wrapper contract test for launcher routing.
 
 ## Planning contract
 

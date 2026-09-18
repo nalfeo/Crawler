@@ -2,7 +2,7 @@
 /* global console */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { delimiter, dirname, join, posix, resolve, win32 } from 'node:path';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -22,6 +22,7 @@ export function pinnedNodeCandidates({
   currentVersion = process.versions.node,
 } = {}) {
   const version = pinnedNodeVersion(root);
+  const paths = platform === 'win32' ? win32 : posix;
   const candidates = [];
   if (currentVersion === version) candidates.push(currentExecutable);
   if (env.CRAWLER_NODE_EXECUTABLE) candidates.push(env.CRAWLER_NODE_EXECUTABLE);
@@ -29,23 +30,23 @@ export function pinnedNodeCandidates({
   if (platform === 'win32') {
     if (env.APPDATA) {
       candidates.push(
-        join(env.APPDATA, 'fnm', 'node-versions', `v${version}`, 'installation', 'node.exe'),
+        paths.join(env.APPDATA, 'fnm', 'node-versions', `v${version}`, 'installation', 'node.exe'),
       );
     }
     if (env.FNM_DIR) {
       candidates.push(
-        join(env.FNM_DIR, 'node-versions', `v${version}`, 'installation', 'node.exe'),
+        paths.join(env.FNM_DIR, 'node-versions', `v${version}`, 'installation', 'node.exe'),
       );
     }
   } else {
     if (env.FNM_DIR) {
       candidates.push(
-        join(env.FNM_DIR, 'node-versions', `v${version}`, 'installation', 'bin', 'node'),
+        paths.join(env.FNM_DIR, 'node-versions', `v${version}`, 'installation', 'bin', 'node'),
       );
     }
     if (env.HOME) {
       candidates.push(
-        join(
+        paths.join(
           env.HOME,
           '.local',
           'share',
@@ -83,14 +84,15 @@ export function nodeVersionForExecutable(executable) {
   return String(result.stdout).trim().replace(/^v/, '') || null;
 }
 
-export function runtimeEnvironment(nodeExecutable, env = process.env) {
+export function runtimeEnvironment(nodeExecutable, env = process.env, platform = process.platform) {
+  const paths = platform === 'win32' ? win32 : posix;
   const preload = resolve(scriptDir, 'windows-node-identity.cjs').replaceAll('\\', '/');
   const requireOption = `--require=${JSON.stringify(preload)}`;
   const existingOptions = String(env.NODE_OPTIONS || '').trim();
   return {
     ...env,
     NODE_OPTIONS: [existingOptions, requireOption].filter(Boolean).join(' '),
-    PATH: [dirname(nodeExecutable), env.PATH].filter(Boolean).join(delimiter),
+    PATH: [paths.dirname(nodeExecutable), env.PATH].filter(Boolean).join(paths.delimiter),
   };
 }
 
