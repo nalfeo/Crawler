@@ -36,7 +36,7 @@ jobs:
       - name: Pin Node.js version
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
 
       - name: Publish drafts, repair empty Copilot shells, and request human reviewers
         env:

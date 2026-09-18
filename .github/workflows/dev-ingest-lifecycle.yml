@@ -126,7 +126,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
 
       - name: Build Function
         working-directory: functions/dev-build-ingest
@@ -167,7 +167,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
 
       - name: Run live canary against /runs (file_issue:true)
         run: node .github/scripts/dev-ingest-canary/run-canary.mjs

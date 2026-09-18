@@ -3,4 +3,4 @@
 {"type":"compacted","payload":{}}
 {"type":"unknown.future_event","payload":{"secret":"not emitted"}}
 not-json
-{"type":"token_usage_record","payload":{"usage":{"input_tokens":200,"output_tokens":30,"reasoning_output_tokens":7}}}
+{"type":"token_usage_record","payload":{"usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":30,"reasoning_output_tokens":7}}}

@@ -244,7 +244,7 @@ elif [ -n "$lock_hash" ] && [ -d node_modules ] && [ -f "$LOCK_HASH_FILE" ] \
   echo "   ✓ node_modules already matches package-lock.json — skipping npm ci."
   _phase_skip "lockfile unchanged — npm ci skipped"
 else
-  npm ci --prefer-offline --silent
+  node scripts/agent/run-tsx.mjs --npm ci --prefer-offline --silent
   [ -n "$lock_hash" ] && printf '%s' "$lock_hash" > "$LOCK_HASH_FILE"
   # Any npm ci invalidates the typecheck sentinel (dep types may have changed).
   rm -f "$TYPECHECK_SENTINEL"

@@ -45,10 +45,11 @@ link back to this section instead of restating it.
   cloud sessions have no comment credentials. Never block a session waiting for
   comment access. Do not hide plans in repo files unless the
   human explicitly asks for a file artifact.
-- **Run risk-based post-diff review.** Architectural changes and changes with
-  meaningful correctness, security, data-loss, determinism, or release risk
-  require one independent review. Routine changes rely on tests and CI. GitHub
-  PR reviews and threads are the only audit trail. See the
+- **Run post-diff review.** Every implementation PR gets a fresh local Ducky
+  review of the complete diff, with all blocking and medium findings fixed.
+  Architectural changes and changes with meaningful correctness, security,
+  data-loss, determinism, or release risk require one additional independent
+  review. Routine changes otherwise rely on tests and CI. See the
   [review-harness skill](../../../.github/skills/review-harness/SKILL.md) and
   [`docs/agent-os/policies/review-harness-policy.md`](../policies/review-harness-policy.md).
 - **Observe before done.** For any visual or runtime change, reading the diff is

@@ -15,6 +15,9 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 
 1. Run `npm run preflight`. This bootstraps Git Bash on Windows and installs
    dependencies in a fresh worktree before running the canonical preflight.
+   If pinned-runtime discovery fails, correct the environment and retry once;
+   after a second failure, report it as an environment blocker instead of
+   repeating diagnosis loops.
 2. Choose a persona from [the routing matrix](docs/agent-os/personas/README.md)
    (use **Producer** for multi-layer or ambiguous work) and read that persona.
 3. Before planning a system change, use
@@ -35,6 +38,11 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight. If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 - **Continuation before oversized history:** When `npm run telemetry:token-budget` reports an exceeded context, cumulative-input, or response threshold, create a concise handoff with `npm run handoff:continue` and continue in a fresh thread. This repository workflow does not control platform compaction; include `--rollout` when available to report first-request and cumulative input telemetry.
 - Group coherent edits into a validation phase. Run focused unit/type/lint/docs checks after each phase (or before a risky refactor), and use `npm run scope` to select any additional heavy checks. `npm run verify:fast` remains required before handoff/PR, and `npm run verify:pr-prereqs` remains required before publication.
+- Before every implementation PR, run a fresh local Ducky review of the complete
+  diff and fix every blocking and medium finding. A Codex/Ducky statement that
+  review passed and the change is okay to check in may be recorded in the PR
+  description, a commit message, or a PR comment; substantive Copilot review is
+  not required for merge-train admission.
 
 ## Build safely
 

@@ -92,7 +92,7 @@ test('retired review artifact system is absent from active sources and wiring', 
   );
 });
 
-test('canonical review policy states the risk trigger and PR-native audit trail', () => {
+test('canonical review policy states the risk trigger and local Ducky workflow', () => {
   const policyPath = 'docs/agent-os/policies/review-harness-policy.md';
   const policy = readFileSync(resolve(repoRoot, policyPath), 'utf8');
   const normalizedPolicy = policy.replace(/\s+/g, ' ');
@@ -100,7 +100,9 @@ test('canonical review policy states the risk trigger and PR-native audit trail'
     'meaningful correctness, security, data-loss, determinism, or release risk',
     'Routine, reversible changes use focused tests and CI.',
     'Adversarial design review is required **only when the change is architectural**',
-    'GitHub pull-request reviews and review threads are the only audit trail',
+    'fresh local Ducky review against the complete diff',
+    'PR description, a commit message, or a PR comment',
+    'none is a merge-admission requirement',
     'The first 30 merged PRs governed by this policy form the pilot cohort.',
     '**At least 25% lower median PR cycle time**',
   ]) {

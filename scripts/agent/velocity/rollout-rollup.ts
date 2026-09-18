@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /** Deterministic, bounded rollup for explicitly supplied rollout JSONL files. */
-import { readFileSync } from 'node:fs';
+import { closeSync, openSync, readSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
 export const MAX_FILES = 10;
 export const MAX_LINES_PER_FILE = 100_000;
+export const MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const MAX_DIAGNOSTICS = 5;
 export const MAX_PATH_LENGTH = 160;
 
@@ -36,6 +37,23 @@ export interface RollupReport {
   readonly capped: boolean;
 }
 
+function readBoundedFile(path: string): { text: string; truncated: boolean } {
+  const descriptor = openSync(path, 'r');
+  try {
+    const buffer = Buffer.allocUnsafe(MAX_FILE_BYTES + 1);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.length, 0);
+    const truncated = bytesRead > MAX_FILE_BYTES;
+    let text = buffer.subarray(0, Math.min(bytesRead, MAX_FILE_BYTES)).toString('utf8');
+    if (truncated) {
+      const lastNewline = text.lastIndexOf('\n');
+      text = lastNewline >= 0 ? text.slice(0, lastNewline + 1) : '';
+    }
+    return { text, truncated };
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 const inputSamplesByStats = new WeakMap<RolloutStats, readonly number[]>();
 
 function finiteNonNegative(value: unknown): number | null {
@@ -51,6 +69,10 @@ function record(value: unknown): JsonRecord | null {
 function metricSum(values: readonly Metric[]): Metric {
   const known = values.filter((value): value is number => value !== null);
   return known.length > 0 ? known.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function completeMetricSum(values: readonly Metric[]): Metric {
+  return values.some((value) => value === null) ? null : metricSum(values);
 }
 
 function median(values: readonly number[]): number | null {
@@ -91,6 +113,9 @@ export function parseRolloutFile(text: string, path: string): RolloutStats {
   let cachedInput = 0;
   let output = 0;
   let reasoning = 0;
+  let allCachedKnown = true;
+  let allOutputKnown = true;
+  let allReasoningKnown = true;
   let compactions = 0;
   let tools = 0;
   let hasUsage = false;
@@ -103,7 +128,7 @@ export function parseRolloutFile(text: string, path: string): RolloutStats {
   const lines = text.split(/\r?\n/u);
   for (let index = 0; index < lines.length; index += 1) {
     if (index >= MAX_LINES_PER_FILE) {
-      truncated = lines.slice(index).some((line) => line.trim().length > 0);
+      truncated = lines[index]!.trim().length > 0 || index < lines.length - 1;
       break;
     }
     const line = lines[index]!.trim();
@@ -124,12 +149,19 @@ export function parseRolloutFile(text: string, path: string): RolloutStats {
       type === 'token_usage_record' || type === 'response.completed' || type === 'response';
     if (isUsage && input !== null) {
       const cached = finiteNonNegative(usage?.cached_input_tokens ?? usage?.cachedInputTokens);
+      const outputValue = finiteNonNegative(usage?.output_tokens ?? usage?.outputTokens);
+      const reasoningValue = finiteNonNegative(
+        usage?.reasoning_output_tokens ?? usage?.reasoningTokens,
+      );
       responseCount += 1;
       inputValues.push(input);
       cumulativeInput += input;
       cachedInput += Math.min(input, cached ?? 0);
-      output += finiteNonNegative(usage?.output_tokens ?? usage?.outputTokens) ?? 0;
-      reasoning += finiteNonNegative(usage?.reasoning_output_tokens ?? usage?.reasoningTokens) ?? 0;
+      output += outputValue ?? 0;
+      reasoning += reasoningValue ?? 0;
+      allCachedKnown &&= cached !== null;
+      allOutputKnown &&= outputValue !== null;
+      allReasoningKnown &&= reasoningValue !== null;
       hasUsage = true;
       continue;
     }
@@ -166,12 +198,16 @@ export function parseRolloutFile(text: string, path: string): RolloutStats {
     ...emptyStats(path),
     responseCount: hasUsage ? responseCount : null,
     cumulativeInputTokens: hasUsage ? cumulativeInput : null,
-    cachedInputTokens: hasUsage ? cachedInput : null,
-    uncachedInputTokens: hasUsage ? cumulativeInput - cachedInput : null,
-    outputTokens: hasUsage ? output : null,
-    reasoningTokens: hasUsage ? reasoning : null,
+    cachedInputTokens: hasUsage && allCachedKnown ? cachedInput : null,
+    uncachedInputTokens: hasUsage && allCachedKnown ? cumulativeInput - cachedInput : null,
+    outputTokens: hasUsage && allOutputKnown ? output : null,
+    reasoningTokens: hasUsage && allReasoningKnown ? reasoning : null,
     cacheHitPercentage:
-      hasUsage && cumulativeInput > 0 ? (cachedInput / cumulativeInput) * 100 : hasUsage ? 0 : null,
+      hasUsage && allCachedKnown && cumulativeInput > 0
+        ? (cachedInput / cumulativeInput) * 100
+        : hasUsage && allCachedKnown
+          ? 0
+          : null,
     compactionCount: hasCompactions ? compactions : null,
     toolCallCount: hasTools ? tools : null,
     medianInputTokens: median(inputValues),
@@ -189,7 +225,7 @@ function aggregate(files: readonly RolloutStats[]): RolloutStats {
   const sums = (key: keyof RolloutStats): Metric[] => files.map((file) => file[key] as Metric);
   const response = metricSum(sums('responseCount'));
   const totalInput = metricSum(sums('cumulativeInputTokens'));
-  const cached = metricSum(sums('cachedInputTokens'));
+  const cached = completeMetricSum(sums('cachedInputTokens'));
   const allInputs = files.flatMap((file) => inputSamplesByStats.get(file) ?? []);
   const maxInputs = files
     .map((file) => file.maxInputTokens)
@@ -199,9 +235,9 @@ function aggregate(files: readonly RolloutStats[]): RolloutStats {
     responseCount: response,
     cumulativeInputTokens: totalInput,
     cachedInputTokens: cached,
-    uncachedInputTokens: metricSum(sums('uncachedInputTokens')),
-    outputTokens: metricSum(sums('outputTokens')),
-    reasoningTokens: metricSum(sums('reasoningTokens')),
+    uncachedInputTokens: completeMetricSum(sums('uncachedInputTokens')),
+    outputTokens: completeMetricSum(sums('outputTokens')),
+    reasoningTokens: completeMetricSum(sums('reasoningTokens')),
     cacheHitPercentage:
       totalInput !== null && totalInput > 0 && cached !== null
         ? (cached / totalInput) * 100
@@ -226,13 +262,20 @@ export function rollup(paths: readonly string[]): RollupReport {
   const diagnostics: string[] = [];
   for (const path of [...paths].map((value) => resolve(value)).sort((a, b) => a.localeCompare(b))) {
     try {
-      const stats = parseRolloutFile(readFileSync(path, 'utf8'), compactPath(path));
+      const input = readBoundedFile(path);
+      const parsed = parseRolloutFile(input.text, compactPath(path));
+      const stats = input.truncated ? { ...parsed, truncated: true } : parsed;
+      if (input.truncated) {
+        inputSamplesByStats.set(stats, inputSamplesByStats.get(parsed) ?? []);
+      }
       files.push(stats);
       if (stats.malformedLineCount > 0)
         diagnostics.push(`${basename(path)}: ${stats.malformedLineCount} malformed line(s)`);
       if (stats.unknownEventCount > 0)
         diagnostics.push(`${basename(path)}: ${stats.unknownEventCount} unknown event(s)`);
-      if (stats.truncated)
+      if (input.truncated)
+        diagnostics.push(`${basename(path)}: input capped at ${MAX_FILE_BYTES} bytes`);
+      else if (parsed.truncated)
         diagnostics.push(`${basename(path)}: input capped at ${MAX_LINES_PER_FILE} lines`);
     } catch (error) {
       files.push(emptyStats(compactPath(path)));
