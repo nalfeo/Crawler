@@ -924,8 +924,8 @@ for (const group of groups) {
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
   //
-  // With enforcement disabled (the default) we keep discovery/reporting via the
-  // coordinator comment, but actively UNFENCE and UNLABEL: ORDER_WAIT,
+  // With enforcement disabled (the default) we keep discovery for cleanup but
+  // suppress coordinator comments, and actively UNFENCE and UNLABEL: ORDER_WAIT,
   // COORDINATED and LEADER are all removed from every member. Removing (rather
   // than merely not-adding) is what drains labels stranded by a previous
   // enforcing run — no manual cleanup pass is needed.
@@ -985,7 +985,7 @@ for (const group of groups) {
       // fence to protect, so escalating here would re-apply the very label the
       // member loop above just drained (and would withhold CI-recovery dispatch
       // from PRs that are not actually blocked). Keep the reason in `escalations`
-      // so the coordinator comment still reports it.
+      // so the coordinator can still clean up the derived fence.
       if (enforceCoordination) {
         for (const pull of group.pulls) {
           await addLabel(pull, ESCALATION_LABEL);
@@ -1052,7 +1052,11 @@ for (const group of groups) {
       lastDispatchAt,
       updatedAt: now.toISOString(),
     });
-    await updateCoordinatorComment(pull, groupComments.get(pull.number), state);
+    if (enforceCoordination) {
+      await updateCoordinatorComment(pull, groupComments.get(pull.number), state);
+    } else {
+      process.stdout.write(`skip coordinator comment pr=#${pull.number} reason=coordination-disabled\n`);
+    }
   }
 
   for (const duplicate of selection.duplicates) {

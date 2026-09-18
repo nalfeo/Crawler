@@ -833,7 +833,7 @@ test('coordinator keeps every member fenced and suppresses dispatch when the act
   );
 });
 
-test('coordinator discovers but neither serializes nor labels when enforcement is disabled (default)', async (t) => {
+test('coordinator does not publish comments when enforcement is disabled (default)', async (t) => {
   // Use the non-conflicting fixture so PR1 gets an 'applied' proof and the
   // binding-drift check actually runs (selection.active is non-null). With the
   // original single-line fixture PR1 is 'ambiguous', so selection.active=null
@@ -906,11 +906,9 @@ test('coordinator discovers but neither serializes nor labels when enforcement i
   );
 
   // Discovery must still run, but it must no longer publish grouping-derived
-  // labels. The grouping predicate keys on CI-filename identity rather than any
-  // real conflict test (issue #2180), so `ci-conflict-coordinated` routinely
-  // marks PRs that do not actually conflict. Reporting now happens through the
-  // coordinator comment (which is also the state store, keeping dispatch
-  // de-duplication intact) while the misleading labels are actively drained.
+  // labels or coordinator comments. The grouping predicate keys on CI-filename
+  // identity rather than any real conflict test (issue #2180), so these artifacts
+  // are suppressed while enforcement is disabled.
   const coordinatedAdd = mutatingCalls.find(
     (c) =>
       c.method === 'POST' &&
@@ -932,7 +930,7 @@ test('coordinator discovers but neither serializes nor labels when enforcement i
   const reportComment = mutatingCalls.find(
     (c) => (c.method === 'POST' || c.method === 'PATCH') && /comments/.test(c.url),
   );
-  assert.ok(reportComment, 'discovery/reporting must keep working when enforcement is disabled');
+  assert.equal(reportComment, undefined, 'disabled coordination must not publish comments');
 
   // Removal (not just omission) is what drains labels stranded by a previous
   // enforcing run, so no manual cleanup pass is required.

@@ -163,6 +163,25 @@ describe('ci workflow overhead reduction', () => {
       ).toBe(true);
     }
   });
+
+  it('holds heavy validation behind lightweight checks and unit tests', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const heavyJobs = [
+      'test-integration',
+      'test-headless',
+      'test-headless-multifloor',
+      'set-piece-reachability',
+      'test-e2e-game',
+      'test-e2e-assets',
+      'test-e2e-devtools',
+    ];
+
+    for (const jobName of heavyJobs) {
+      const needs = workflow.jobs[jobName]?.needs ?? [];
+      expect(needs, `${jobName} must wait for check-lightweight`).toContain('check-lightweight');
+      expect(needs, `${jobName} must wait for test-unit`).toContain('test-unit');
+    }
+  });
 });
 
 describe('merge-gate aggregation policy', () => {
