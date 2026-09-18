@@ -143,6 +143,7 @@
     "sovereign-cap:arena-evidence": "node scripts/agent/run-tsx.mjs scripts/agent/sovereign-cap-arena-evidence.ts",
     "telemetry:capture": "node scripts/agent/run-tsx.mjs scripts/agent/docs/guard-telemetry.ts --capture-session",
     "telemetry:token-budget": "node scripts/agent/run-tsx.mjs scripts/agent/velocity/token-budget.ts",
+    "telemetry:rollup": "node scripts/agent/run-tsx.mjs scripts/agent/velocity/rollout-rollup.ts",
     "handoff:continue": "node scripts/agent/run-tsx.mjs scripts/agent/docs/continuation-handoff.ts",
     "agent:run": "node scripts/agent/run-tsx.mjs scripts/agent/bounded-output.ts",
     "agent:inspect": "node scripts/agent/run-tsx.mjs scripts/agent/inspect.ts",
