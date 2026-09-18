@@ -16,6 +16,8 @@ import { toBashScriptPath, bashEnv } from '../helpers/bash-script-path.js';
  *                       unknown paths set sim_touched=true)
  *   - coverage_touched → run the advisory unit-coverage job on PRs (fail-closed:
  *                        unknown paths set coverage_touched=true)
+ *   - integration_touched → run the game integration project only when a
+ *                           production/integration surface changed
  * And four visual-routing outputs added in #1688/#1698:
  *   - visual_touched       → any visual rendering surface was changed
  *   - game_visual_touched  → game/engine/UI visual surface (e2e-game suite)
@@ -44,6 +46,7 @@ interface Scope {
   sprites_touched: boolean;
   sim_touched: boolean;
   coverage_touched: boolean;
+  integration_touched?: boolean;
   visual_touched: boolean;
   game_visual_touched: boolean;
   asset_visual_touched: boolean;
@@ -84,6 +87,7 @@ function run(override: string, extraEnv: Record<string, string> = {}): Scope {
     sprites_touched: read('sprites_touched'),
     sim_touched: read('sim_touched'),
     coverage_touched: read('coverage_touched'),
+    integration_touched: read('integration_touched'),
     visual_touched: read('visual_touched'),
     game_visual_touched: read('game_visual_touched'),
     asset_visual_touched: read('asset_visual_touched'),
@@ -1129,7 +1133,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
   it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
     // A lone newline enters the override branch but strips to empty → fail-safe.
     // sim_touched=true, coverage_touched=true, and all security flags true ensure all gates run.
-    expect(run('\n')).toEqual(
+    expect(run('\n')).toMatchObject(
       F(
         false,
         false,
@@ -1156,7 +1160,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
       // A lone newline enters the override branch but strips to empty.
       // Empty/unknown changeset → we cannot safely skip visual suites, so all
       // surface flags must be true (same fail-safe as the no-base-ref path).
-      expect(run('\n')).toEqual(
+      expect(run('\n')).toMatchObject(
         F(
           false,
           false,
@@ -1181,7 +1185,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
   it.skipIf(!hasBash)('fail-safe: an explicitly empty override enables all visual suites', () => {
     // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
     // Security-impact flags default to true on ambiguous scope so checks always run.
-    expect(run('')).toEqual(
+    expect(run('')).toMatchObject(
       F(
         false,
         false,
@@ -1204,9 +1208,23 @@ describe('detect-art-only.sh change-scope classifier', () => {
 
   for (const c of cases) {
     it.skipIf(!hasBash)(`classifies ${c.name}`, () => {
-      expect(classify(c.files, c.env ?? {})).toEqual(c.expected);
+      expect(classify(c.files, c.env ?? {})).toMatchObject(c.expected);
     });
   }
+
+  it.skipIf(!hasBash)('keeps CI/agent-only changes out of integration and visual gates', () => {
+    const scope = classify(['.github/workflows/ci.yml', 'scripts/agent/docs/startup-context-inventory.ts']);
+    expect(scope.integration_touched).toBe(false);
+    expect(scope.sim_touched).toBe(false);
+    expect(scope.visual_touched).toBe(false);
+  });
+
+  it.skipIf(!hasBash)('keeps agent-only package script wiring out of heavy runtime gates', () => {
+    const scope = classify(['package.json'], { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' });
+    expect(scope.integration_touched).toBe(false);
+    expect(scope.sim_touched).toBe(false);
+    expect(scope.visual_touched).toBe(false);
+  });
 
   // ── security-review.yml workflow YAML regression ──────────────────────────
   // These tests read the real workflow source and assert that art_only is present
