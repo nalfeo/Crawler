@@ -5515,13 +5515,14 @@ test('repeated clean reconciliation of an already queued PR does not dispatch an
   );
 });
 
-test('train mode waits when Copilot produced only a no-files review', async (t) => {
+test('train mode admits without a substantive Copilot review', async (t) => {
   const noFilesReview = substantiveCopilotReview({
     body: "Copilot wasn't able to review any files in this pull request.",
   });
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -5553,23 +5554,23 @@ test('train mode waits when Copilot produced only a no-files review', async (t) 
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /admission=substantive-copilot-review/);
+  assert.doesNotMatch(stdout, /admission=substantive-copilot-review/);
   const labelPosts = mutatingCalls.filter(
     (call) =>
       call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
   );
-  assert.ok(
-    labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
-    'a no-files review should durably mark the PR as waiting',
-  );
   assert.equal(
-    labelPosts.some((call) => call.body?.labels?.includes('merge-train')),
+    labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
     false,
-    'a no-files review must not admit the PR to the merge train',
+    'review-provider evidence should not mark the PR as waiting',
+  );
+  assert.ok(
+    labelPosts.some((call) => call.body?.labels?.includes('merge-train')),
+    'green CI and resolved threads should admit the PR to the merge train',
   );
 });
 
-test('train mode skips substantive-review wait for assets/promote when diff is art+docs only', async (t) => {
+test('train mode admits assets/promote when CI is green and threads are resolved', async (t) => {
   const noFilesReview = substantiveCopilotReview({
     body: "Copilot wasn't able to review any files in this pull request.",
   });

@@ -47,7 +47,7 @@ echo "🔍 Step 5b/10: Orphaned-system wiring guard..."
 # must be referenced by a REAL runtime pipeline (see WIRING_SITES) or be on the
 # documented allowlist. Catches the class of bug where spawnerSystem shipped
 # inert because only its lab force-called it (ADR 0039).
-npx tsx scripts/agent/health/orphaned-systems.ts
+node scripts/agent/run-tsx.mjs scripts/agent/health/orphaned-systems.ts
 
 echo "🔍 Step 5c/10: Equipment art coverage ratchet..."
 # Deterministic art guard: every wired equipment piece (legacy catalog
@@ -55,14 +55,14 @@ echo "🔍 Step 5c/10: Equipment art coverage ratchet..."
 # real approved art through the same resolveItemSprite the panels call. Gaps
 # already recorded in the shrink-only baseline pass; a NEW gap fails, so
 # equipment can no longer ship wired-but-un-arted and be discovered by eye.
-npx tsx scripts/agent/health/check-equipment-art-coverage.ts
+node scripts/agent/run-tsx.mjs scripts/agent/health/check-equipment-art-coverage.ts
 
 echo "🔍 Step 5d/10: Sprite name taxonomy guard..."
 # Deterministic naming guard: every generated brief id must be a BARE concept
 # with `-var-N` variants only. A lineage-tagged id (`rat-v1`) silently splits a
 # concept into a second variant bucket in `loadGeneratedManifest`, stranding
 # approved art that `pickGeneratedVariant` can never draw.
-npx tsx scripts/sprites/normalize-sprite-names.ts --check
+node scripts/agent/run-tsx.mjs scripts/sprites/normalize-sprite-names.ts --check
 
 # v8 coverage instrumentation roughly 5x's the unit-suite wall time (~27s ->
 # ~140s on a typical dev box). Coverage thresholds are authoritatively enforced

@@ -62,9 +62,13 @@ export function main({
   root = process.cwd(),
   env = process.env,
   platform = process.platform,
+  nodeExecutable = process.execPath,
+  nodeVersion = process.versions.node,
+  log = console.log,
   exists = existsSync,
   runCommand = run,
 } = {}) {
+  log(`Agent runtime: Node ${nodeVersion} (${nodeExecutable})`);
   const bash = resolveBootstrapBash(env, platform, exists);
   if (!bash) {
     console.error(

@@ -11,7 +11,6 @@ import { listTrustedAppCheckRunsForRef, resolveCandidateCheckState } from './che
 import {
   isTrainFastPathPushRun,
   parseStateComment,
-  shouldSkipSubstantiveReview,
   STATE_MARKER as RECOVERY_STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
@@ -477,10 +476,6 @@ async function eligible(pr) {
   const review = await listReviewThreads(token, owner, repo, pr.number);
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
   const closingIssues = await listClosingIssues(token, owner, repo, pr.number);
-  const changedFiles =
-    String(pr.head?.ref || '').trim() === 'assets/promote'
-      ? await paginate(token, `/repos/${owner}/${repo}/pulls/${pr.number}/files`)
-      : [];
   const approvalRejection = await resolveHumanApprovalRejection({
     pullRequest: pr,
     closingIssues,
@@ -537,7 +532,7 @@ async function eligible(pr) {
 
   // D1 fix (Issue #1851): evaluate admission from current live facts — no
   // state-comment fingerprint required. A green, mergeable, non-draft PR with
-  // resolved threads and a substantive Copilot review is always admissible
+  // resolved threads is always admissible
   // regardless of whether the CI-recovery state comment fingerprint is current.
   // The old fingerprint gate was the root cause of D1: a PR that recovered its
   // checks could not re-enter the train until a separate CI-recovery run
@@ -558,9 +553,6 @@ async function eligible(pr) {
     reviews: review.reviews || [],
     humanApprovalDisposition: approvalRejection,
     lifecyclePhase,
-    // Scope-constrained escape hatch for asset-promotion PRs where Copilot cannot
-    // review image-only diffs. Mixed diffs do not bypass substantive review.
-    skipSubstantiveReview: shouldSkipSubstantiveReview(pr, changedFiles),
   };
   const admission = isAdmissible(prFacts, requiredAdmissionChecks);
   if (!admission.eligible) {

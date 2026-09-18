@@ -10,7 +10,9 @@ import {
 const [, , script, ...args] = process.argv;
 
 if (!script) {
-  console.error('Usage: tsx scripts/agent/run-bash-wrapper.ts <script.sh> [args...]');
+  console.error(
+    'Usage: node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts <script.sh> [args...]',
+  );
   process.exit(2);
 }
 
