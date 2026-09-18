@@ -56,6 +56,7 @@ test('hands a warm Windows worktree to the existing Bash preflight through tsx',
   const status = main({
     root,
     platform: 'win32',
+    log: () => {},
     exists: (path) => path === bash || path.endsWith('tsx.cmd'),
     runCommand: (...args) => {
       calls.push(args);
@@ -72,6 +73,23 @@ test('hands a warm Windows worktree to the existing Bash preflight through tsx',
   ]);
 });
 
+test('prints the resolved pinned runtime before starting a warm worktree', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const messages = [];
+  const status = main({
+    root,
+    platform: 'win32',
+    nodeExecutable: 'C:\\fnm\\v22.23.2\\node.exe',
+    nodeVersion: '22.23.2',
+    log: (message) => messages.push(message),
+    exists: (path) => path === bash || path.endsWith('tsx.cmd'),
+    runCommand: () => 0,
+  });
+  assert.equal(status, 0);
+  assert.equal(messages[0], 'Agent runtime: Node 22.23.2 (C:\\fnm\\v22.23.2\\node.exe)');
+});
+
 test('marks dependencies as ready after a cold bootstrap so Bash skips duplicate npm ci', () => {
   const root = 'C:\\repo';
   const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
@@ -80,6 +98,7 @@ test('marks dependencies as ready after a cold bootstrap so Bash skips duplicate
   const status = main({
     root,
     platform: 'win32',
+    log: () => {},
     exists: (path) => path === bash || (installed && path.endsWith('tsx.cmd')),
     runCommand: (...args) => {
       calls.push(args);
@@ -102,6 +121,7 @@ test('stops with an actionable error if npm ci reports success without installin
     const status = main({
       root,
       platform: 'win32',
+      log: () => {},
       exists: (path) => path === bash,
       runCommand: () => 0,
     });

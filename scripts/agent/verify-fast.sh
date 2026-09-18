@@ -319,7 +319,7 @@ run_health_check() {
 cleanup_checks() {
   # Same rationale as Step 1's cleanup_parallel: kill each job's whole process
   # group (negative PID, valid because `set -m` at the top of this script gives
-  # every background job its own process group) so no `npx tsx` child outlives
+  # every background job its own process group) so no launcher child outlives
   # an interrupted verify-fast run.
   for pid in "${CHECK_PIDS[@]}"; do
     kill -- -"$pid" 2>/dev/null || true
@@ -332,12 +332,12 @@ trap cleanup_checks EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-run_health_check physics-defs-sync npx tsx scripts/agent/health/check-physics-defs-sync.ts
-run_health_check ai-equip-parity npx tsx scripts/agent/health/check-ai-equip-parity.ts
-run_health_check registry-integrity npx tsx scripts/agent/health/check-registry-integrity.ts
-run_health_check asset-integrity npx tsx scripts/agent/health/check-asset-integrity.ts
-run_health_check allowlist-expiry npx tsx scripts/agent/health/check-allowlist-expiry.ts
-run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --closure-only
+run_health_check physics-defs-sync node scripts/agent/run-tsx.mjs scripts/agent/health/check-physics-defs-sync.ts
+run_health_check ai-equip-parity node scripts/agent/run-tsx.mjs scripts/agent/health/check-ai-equip-parity.ts
+run_health_check registry-integrity node scripts/agent/run-tsx.mjs scripts/agent/health/check-registry-integrity.ts
+run_health_check asset-integrity node scripts/agent/run-tsx.mjs scripts/agent/health/check-asset-integrity.ts
+run_health_check allowlist-expiry node scripts/agent/run-tsx.mjs scripts/agent/health/check-allowlist-expiry.ts
+run_health_check disliked-lifecycle-closure node scripts/agent/run-tsx.mjs scripts/sprites/disliked-lifecycle-cli.ts --closure-only
 
 # size + weight coverage each replay an 800-frame headless Floor-1 sim. That sim
 # imports only src/core, src/shared and src/game/ai, so a change set classified
@@ -361,8 +361,8 @@ if [ -z "${CI:-}" ]; then
 fi
 
 if [ "$run_size_weight" -eq 1 ]; then
-  run_health_check size-coverage npx tsx scripts/agent/health/check-size-coverage.ts
-  run_health_check weight-coverage npx tsx scripts/agent/health/check-weight-coverage.ts
+  run_health_check size-coverage node scripts/agent/run-tsx.mjs scripts/agent/health/check-size-coverage.ts
+  run_health_check weight-coverage node scripts/agent/run-tsx.mjs scripts/agent/health/check-weight-coverage.ts
 else
   echo "   ⏭️  Skipping size + weight coverage: change set is gameplay_safe (headless-sim inputs unchanged)."
   echo "      Force them with 'npm run check:size-coverage' / 'npm run check:weight-coverage'."
@@ -406,7 +406,7 @@ if [ -z "${VERIFY_FAST_SKIP_SILENT_REVERTS:-}" ]; then
     # `main` for offline work, while the guard defaults to `origin/main`; without
     # this the guard would die resolving a ref that does not exist here.
     SILENT_REVERT_BASE_REF="${base_ref:-origin/main}" \
-      npx tsx scripts/agent/health/silent-reverts.ts
+      node scripts/agent/run-tsx.mjs scripts/agent/health/silent-reverts.ts
   elif [ "$can_run" = "can_run=false" ]; then
     echo "   ⏭️  Skipping silent merge-revert guard: history is not resolvable here"
     echo "      (shallow clone or no merge base). CI runs it on every PR with fetch-depth: 0."

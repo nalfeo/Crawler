@@ -647,7 +647,7 @@ describe('disliked-lifecycle closure gate wiring', () => {
   it('verify:fast Step 3 runs the same read-only dry-run check locally', () => {
     const verifyFastSh = readFileSync(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'), 'utf8');
     expect(verifyFastSh).toContain(
-      'run_health_check disliked-lifecycle-closure npx tsx scripts/sprites/disliked-lifecycle-cli.ts --closure-only',
+      'run_health_check disliked-lifecycle-closure node scripts/agent/run-tsx.mjs scripts/sprites/disliked-lifecycle-cli.ts --closure-only',
     );
   });
 });

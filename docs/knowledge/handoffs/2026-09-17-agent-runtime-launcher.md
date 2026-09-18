@@ -21,6 +21,9 @@ policy, CI Recovery admission, merge-train admission
   provisions the exact runtime enforced by the launcher.
 - Added unit coverage for pinned-runtime discovery, npm resolution, preload
   propagation, and the no-direct-`tsx` package-script invariant.
+- Preflight prints the selected Node executable and version before bootstrap
+  work, and local agent shell entry points are guarded against direct `tsx` or
+  `npx tsx` execution.
 - Removed the merge-train requirement for a substantive GitHub Copilot review.
   Admission still requires green configured checks and resolved review threads.
 - Made a fresh local Ducky pass (`codex review --uncommitted`) mandatory before
@@ -38,6 +41,8 @@ policy, CI Recovery admission, merge-train admission
 - Dependencies: runtime discovery -> identity preload -> TSX/npm child process.
 - Human routing corrections: `uv_os_get_passwd ENOMEM` is a runtime/token
   mismatch, not memory pressure.
+- Environment recovery is bounded to one retry; a repeated runtime-selection
+  failure is reported as a blocker rather than entering a diagnosis loop.
 
 ## Validation
 

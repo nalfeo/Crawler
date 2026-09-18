@@ -15,6 +15,9 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 
 1. Run `npm run preflight`. This bootstraps Git Bash on Windows and installs
    dependencies in a fresh worktree before running the canonical preflight.
+   If pinned-runtime discovery fails, correct the environment and retry once;
+   after a second failure, report it as an environment blocker instead of
+   repeating diagnosis loops.
 2. Choose a persona from [the routing matrix](docs/agent-os/personas/README.md)
    (use **Producer** for multi-layer or ambiguous work) and read that persona.
 3. Before planning a system change, use

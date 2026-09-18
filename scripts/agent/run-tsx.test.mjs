@@ -1,6 +1,7 @@
 /* global process, URL */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import test from 'node:test';
 
@@ -81,10 +82,33 @@ test('package scripts route tsx through the pinned runtime launcher', () => {
     readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
   );
   const directTsxScripts = Object.entries(packageJson.scripts)
-    .filter(([, command]) => /(?:^|[;&|]\s*)tsx\s/.test(command))
+    .filter(([, command]) => /(?:^|[;&|]\s*)(?:npx\s+)?tsx\s/.test(command))
     .map(([name]) => name);
 
   assert.deepEqual(directTsxScripts, []);
+});
+
+test('checked-in agent shell entry points route tsx through the pinned runtime launcher', () => {
+  const agentRoot = new URL('.', import.meta.url);
+  const pending = [agentRoot];
+  const violations = [];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const url = new URL(entry.name, directory);
+      if (entry.isDirectory()) {
+        pending.push(new URL(`${entry.name}/`, directory));
+      } else if (extname(entry.name) === '.sh') {
+        const lines = readFileSync(url, 'utf8').split(/\r?\n/);
+        lines.forEach((line, index) => {
+          if (!line.trimStart().startsWith('#') && /(?:^|\s)(?:npx\s+)?tsx\s/.test(line)) {
+            violations.push(`${join('scripts', 'agent', entry.name)}:${index + 1}`);
+          }
+        });
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
 });
 
 test('identity fallback is limited to the failing Windows user lookup', () => {
