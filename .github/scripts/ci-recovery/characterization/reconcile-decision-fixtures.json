@@ -182,7 +182,7 @@
       "dClass": "D1",
       "verdict": "wait",
       "guard": "admission wait state when checks/review missing",
-      "coverageBy": "train mode waits when Copilot produced only a no-files review"
+      "coverageBy": "train mode admits without a substantive Copilot review"
     },
     {
       "id": "R27",
