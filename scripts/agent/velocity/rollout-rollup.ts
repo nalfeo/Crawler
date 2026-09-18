@@ -82,7 +82,6 @@ function emptyStats(path: string): RolloutStats {
     unknownEventCount: 0,
     truncated: false,
   };
-  };
 }
 
 export function parseRolloutFile(text: string, path: string): RolloutStats {
@@ -172,11 +171,7 @@ export function parseRolloutFile(text: string, path: string): RolloutStats {
     outputTokens: hasUsage ? output : null,
     reasoningTokens: hasUsage ? reasoning : null,
     cacheHitPercentage:
-      hasUsage && cumulativeInput > 0
-        ? (cachedInput / cumulativeInput) * 100
-        : hasUsage
-          ? 0
-          : null,
+      hasUsage && cumulativeInput > 0 ? (cachedInput / cumulativeInput) * 100 : hasUsage ? 0 : null,
     compactionCount: hasCompactions ? compactions : null,
     toolCallCount: hasTools ? tools : null,
     medianInputTokens: median(inputValues),
@@ -196,7 +191,9 @@ function aggregate(files: readonly RolloutStats[]): RolloutStats {
   const totalInput = metricSum(sums('cumulativeInputTokens'));
   const cached = metricSum(sums('cachedInputTokens'));
   const allInputs = files.flatMap((file) => inputSamplesByStats.get(file) ?? []);
-  const maxInputs = files.map((file) => file.maxInputTokens).filter((value): value is number => value !== null);
+  const maxInputs = files
+    .map((file) => file.maxInputTokens)
+    .filter((value): value is number => value !== null);
   return {
     ...stats,
     responseCount: response,
@@ -223,16 +220,20 @@ function aggregate(files: readonly RolloutStats[]): RolloutStats {
 
 export function rollup(paths: readonly string[]): RollupReport {
   if (paths.length === 0) throw new Error('Supply at least one rollout JSONL path.');
-  if (paths.length > MAX_FILES) throw new Error(`At most ${MAX_FILES} rollout paths are supported.`);
+  if (paths.length > MAX_FILES)
+    throw new Error(`At most ${MAX_FILES} rollout paths are supported.`);
   const files: RolloutStats[] = [];
   const diagnostics: string[] = [];
   for (const path of [...paths].map(resolve).sort((a, b) => a.localeCompare(b))) {
     try {
       const stats = parseRolloutFile(readFileSync(path, 'utf8'), compactPath(path));
       files.push(stats);
-      if (stats.malformedLineCount > 0) diagnostics.push(`${basename(path)}: ${stats.malformedLineCount} malformed line(s)`);
-      if (stats.unknownEventCount > 0) diagnostics.push(`${basename(path)}: ${stats.unknownEventCount} unknown event(s)`);
-      if (stats.truncated) diagnostics.push(`${basename(path)}: input capped at ${MAX_LINES_PER_FILE} lines`);
+      if (stats.malformedLineCount > 0)
+        diagnostics.push(`${basename(path)}: ${stats.malformedLineCount} malformed line(s)`);
+      if (stats.unknownEventCount > 0)
+        diagnostics.push(`${basename(path)}: ${stats.unknownEventCount} unknown event(s)`);
+      if (stats.truncated)
+        diagnostics.push(`${basename(path)}: input capped at ${MAX_LINES_PER_FILE} lines`);
     } catch (error) {
       files.push(emptyStats(compactPath(path)));
       diagnostics.push(
@@ -249,7 +250,11 @@ export function rollup(paths: readonly string[]): RollupReport {
 }
 
 function display(value: Metric): string {
-  return value === null ? 'unavailable' : Number.isInteger(value) ? String(value) : value.toFixed(2);
+  return value === null
+    ? 'unavailable'
+    : Number.isInteger(value)
+      ? String(value)
+      : value.toFixed(2);
 }
 
 export function renderReport(report: RollupReport): string {
