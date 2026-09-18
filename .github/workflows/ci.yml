@@ -173,7 +173,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
       - name: Install from the registry without caches
         run: |
           npm cache clean --force

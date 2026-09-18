@@ -16,6 +16,8 @@ agent command runtime, Windows preflight bootstrap, npm package scripts
   including the canonical preflight entrypoint.
 - Routed preflight's Bash-side dependency refresh through the launcher's npm
   mode so Git Bash PATH rewriting cannot fall back to system Node.
+- Aligned direct `actions/setup-node` workflow steps with `.node-version` so CI
+  provisions the exact runtime enforced by the launcher.
 - Added unit coverage for pinned-runtime discovery, npm resolution, preload
   propagation, and the no-direct-`tsx` package-script invariant.
 
