@@ -1,0 +1,6 @@
+{"type":"token_usage_record","payload":{"usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":20,"reasoning_output_tokens":5}}}
+{"type":"response_item","payload":{"type":"function_call","name":"shell"}}
+{"type":"compacted","payload":{}}
+{"type":"unknown.future_event","payload":{"secret":"not emitted"}}
+not-json
+{"type":"token_usage_record","payload":{"usage":{"input_tokens":200,"output_tokens":30,"reasoning_output_tokens":7}}}
