@@ -1213,7 +1213,10 @@ describe('detect-art-only.sh change-scope classifier', () => {
   }
 
   it.skipIf(!hasBash)('keeps CI/agent-only changes out of integration and visual gates', () => {
-    const scope = classify(['.github/workflows/ci.yml', 'scripts/agent/docs/startup-context-inventory.ts']);
+    const scope = classify([
+      '.github/workflows/ci.yml',
+      'scripts/agent/docs/startup-context-inventory.ts',
+    ]);
     expect(scope.integration_touched).toBe(false);
     expect(scope.sim_touched).toBe(false);
     expect(scope.visual_touched).toBe(false);
