@@ -605,14 +605,9 @@ function localWorkflowSha(packageLock: string): string {
  * schema/floor/budget-matching artifact from a different build is still
  * rejected — see {@link assertSearchArtifactProvenance}'s doc comment.
  *
- * `nodeVersion` is truncated to the major version (e.g. `'v22'`) rather than
- * the full `process.version` (e.g. `'v22.4.1'`): `.github/actions/setup-node`
- * pins only the major version, so `actions/setup-node@v4` can legitimately
- * resolve a different patch release per job within the SAME multi-hour
- * workflow run (round-DAG jobs run sequentially across rounds). Comparing the
- * full patch version would spuriously reject an otherwise-valid same-run
- * shard the moment a Node patch release lands mid-run; the major version is
- * still a meaningful compatibility signal without that fragility.
+ * `.github/actions/setup-node` resolves the exact version in `.node-version`,
+ * so the full runtime version is part of provenance. A patch-level mismatch is
+ * environment drift and must reject reuse of the artifact.
  */
 export function currentBuildFingerprint(): Pick<
   ShardMeta,
@@ -622,7 +617,7 @@ export function currentBuildFingerprint(): Pick<
   const workflowSha = process.env.GITHUB_SHA?.trim();
   return {
     runnerOs: `${process.platform}-${process.arch}`,
-    nodeVersion: process.version.match(/^v\d+/)?.[0] ?? process.version,
+    nodeVersion: process.version,
     packageLockHash: lockHash,
     workflowSha: workflowSha && workflowSha.length > 0 ? workflowSha : localWorkflowSha(lockHash),
   };

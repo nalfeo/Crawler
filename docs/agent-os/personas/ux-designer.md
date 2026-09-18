@@ -33,7 +33,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Iterate on HUD and menu flows with resolution-aware layouts and input testing.
 - Validate controller, keyboard, and pause interactions under common gameplay stress cases.
 - Use labs and quick gameplay passes to confirm feedback timing and legibility.
@@ -51,7 +51,7 @@
 - [`playwright-generate-test`](../../../.github/skills/playwright-generate-test/SKILL.md)
   — promote a recurring layout/readability bug into a deterministic e2e check.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 
 ## Observe Before Done
 

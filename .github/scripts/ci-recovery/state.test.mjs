@@ -11,8 +11,6 @@ import {
   evaluateClosingIssueAcceptanceScope,
   extractAddressedMarkerSha,
   hasNotApplicableMarker,
-  hasSubstantiveCopilotReview,
-  isApprovedArtOnlyDiff,
   hasTrustedTrainPromotionCheck,
   isAgentSessionRunning,
   isDuplicateDispatch,
@@ -39,7 +37,6 @@ import {
   parseStateComment,
   renderStateComment,
   shouldResolveThread,
-  shouldSkipSubstantiveReview,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
   shouldQuarantineHumanEscalatedBlockers,
@@ -52,54 +49,7 @@ import {
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 
-test('requires a submitted substantive Copilot code review', () => {
-  const review = {
-    author: { login: 'copilot-pull-request-reviewer' },
-    state: 'COMMENTED',
-    body: 'Reviewed 3 files and found no blocking issues.',
-    comments: { nodes: [] },
-  };
-
-  assert.equal(hasSubstantiveCopilotReview([review]), true);
-  assert.equal(
-    hasSubstantiveCopilotReview([
-      {
-        ...review,
-        body: "Copilot wasn't able to review any files in this pull request.",
-      },
-    ]),
-    false,
-  );
-  assert.equal(hasSubstantiveCopilotReview([{ ...review, body: '   ' }]), false);
-  assert.equal(
-    hasSubstantiveCopilotReview([
-      {
-        ...review,
-        body: '',
-        comments: { nodes: [{ body: 'Potential null dereference on this line.' }] },
-      },
-    ]),
-    true,
-  );
-});
-
-test('rejects pending, dismissed, and non-Copilot reviews', () => {
-  const review = {
-    author: { login: 'copilot-pull-request-reviewer[bot]' },
-    state: 'COMMENTED',
-    body: 'Substantive review',
-    comments: { nodes: [] },
-  };
-
-  assert.equal(hasSubstantiveCopilotReview([{ ...review, state: 'PENDING' }]), false);
-  assert.equal(hasSubstantiveCopilotReview([{ ...review, state: 'DISMISSED' }]), false);
-  assert.equal(
-    hasSubstantiveCopilotReview([{ ...review, author: { login: 'some-other-reviewer[bot]' } }]),
-    false,
-  );
-});
-
-test('admission waits for both required checks and a substantive historical review', () => {
+test('admission waits only for required checks, not review-provider evidence', () => {
   const noFilesReview = {
     author: { login: 'copilot-pull-request-reviewer' },
     state: 'COMMENTED',
@@ -111,76 +61,9 @@ test('admission waits for both required checks and a substantive historical revi
     body: 'Reviewed the pull request.',
   };
 
-  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview]), [
-    'ci',
-    'substantive-copilot-review',
-  ]);
+  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview]), ['ci']);
   assert.deepEqual(admissionWaitReasons([], [substantiveReview]), []);
-});
-
-test('skipSubstantiveReview suppresses the substantive-copilot-review wait reason', () => {
-  const noFilesReview = {
-    author: { login: 'copilot-pull-request-reviewer' },
-    state: 'COMMENTED',
-    body: "Copilot wasn't able to review any files in this pull request.",
-    comments: { nodes: [] },
-  };
-
-  // Without skip: stalls even when Copilot can't review
-  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview]), [
-    'ci',
-    'substantive-copilot-review',
-  ]);
-  // With skip: only real CI blockers remain
-  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview], { skipSubstantiveReview: true }), [
-    'ci',
-  ]);
-  // With skip and no CI blockers: empty (immediately admissible)
-  assert.deepEqual(admissionWaitReasons([], [noFilesReview], { skipSubstantiveReview: true }), []);
-  // With skip and no reviews at all: still empty
-  assert.deepEqual(admissionWaitReasons([], [], { skipSubstantiveReview: true }), []);
-});
-
-test('isApprovedArtOnlyDiff accepts art+docs paths and rejects mixed code paths', () => {
-  assert.equal(
-    isApprovedArtOnlyDiff([
-      { filename: 'public/assets/generated/entries/equipment/weapon/bone-saw.json' },
-      { filename: 'public/assets/generated/sprites/bone-saw.png' },
-      { filename: 'src/shared/data/sprite-catalog.json' },
-      { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
-    ]),
-    true,
-  );
-  assert.equal(
-    isApprovedArtOnlyDiff([
-      { filename: 'public/assets/generated/sprites/bone-saw.png' },
-      { filename: 'src/game/systems/spawnerSystem.ts' },
-    ]),
-    false,
-  );
-  assert.equal(isApprovedArtOnlyDiff([]), false);
-});
-
-test('shouldSkipSubstantiveReview requires assets/promote branch and approved art-only diff', () => {
-  const approvedFiles = [
-    { filename: 'public/assets/generated/sprites/bone-saw.png' },
-    { filename: 'docs/knowledge/handoffs/2026-07-31-assets.md' },
-  ];
-  assert.equal(
-    shouldSkipSubstantiveReview({ head: { ref: 'assets/promote' } }, approvedFiles),
-    true,
-  );
-  assert.equal(
-    shouldSkipSubstantiveReview({ head: { ref: 'assets/promote' } }, [
-      ...approvedFiles,
-      { filename: 'src/game/systems/spawnerSystem.ts' },
-    ]),
-    false,
-  );
-  assert.equal(
-    shouldSkipSubstantiveReview({ head: { ref: 'feature/safe-art' } }, approvedFiles),
-    false,
-  );
+  assert.deepEqual(admissionWaitReasons([], []), []);
 });
 
 function featureIssue(overrides = {}) {

@@ -41,9 +41,8 @@ You are not a gameplay designer. You build the machinery that makes a mechanic _
 
 ## First action (mandatory)
 
-1. `bash scripts/agent/preflight.sh`.
+1. `npm run preflight`.
 2. Read `.github/instructions/core.instructions.md` and the relevant section of `docs/knowledge/handoffs/INDEX.md` for the system you are about to touch.
-3. **Declare an apple estimate.** Size on _risk_, not diff size — shared mutable state and execution-order changes are riskier than a large mechanical rename.
 
 ## Workflow
 
@@ -71,7 +70,7 @@ You are not a gameplay designer. You build the machinery that makes a mechanic _
 - [ ] `npm run check:wired-systems` is green — the system is in a real pipeline or documented on the allowlist.
 - [ ] The change was observed in the **game or a headless run** (named explicitly), not only a lab.
 - [ ] `npm run verify:fast` green.
-- [ ] Handoff written with `## Systems touched`; apples scored.
+- [ ] Handoff written with `## Systems touched`.
 
 ## Related
 

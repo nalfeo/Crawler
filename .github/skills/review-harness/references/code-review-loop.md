@@ -2,12 +2,11 @@
 
 Run reviews only after the implementation diff and focused tests are ready.
 
-## Counts
+## Trigger
 
-- 1–2🍎: no independent review requirement; tests and CI only.
-- 3🍎: one independent review.
-- 4–5🍎: two independent reviews using distinct reviewer contexts and, where
-  selectable, distinct models.
+Obtain one independent review for architectural changes or changes with
+meaningful correctness, security, data-loss, determinism, or release risk.
+Routine changes rely on focused tests and CI.
 
 Each reviewer must read `.github/instructions/review.instructions.md` and
 `docs/agent-os/personas/reviewer.md`, inspect the complete diff plus relevant

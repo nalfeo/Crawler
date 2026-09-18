@@ -112,7 +112,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: 'npm'
 
       - name: Install dependencies
@@ -416,7 +416,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
 
       - name: Decide release sweep admission
         id: admission
@@ -510,7 +510,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: npm
 
       - name: Install dependencies
@@ -599,7 +599,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: 'npm'
 
       - name: Install dependencies
@@ -946,7 +946,8 @@ jobs:
         run: npx tsx scripts/agent/perf/baseline-regression-check.ts
 
       - name: File regression issue and assign Copilot
-        if: steps.baseline-regression.outputs.regression == 'true'
+        # Disabled: release diagnostics must not summon Copilot.
+        if: ${{ false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
@@ -958,7 +959,8 @@ jobs:
       # long-lived investigation issue, which is the release-workflow equivalent
       # of the Floor 1 "must be 100%" check above.
       - name: File report-only leg win-rate issue and assign Copilot
-        if: steps.baseline-regression.outputs.legWinRateFloorBreach == 'true'
+        # Disabled: release diagnostics must not summon Copilot.
+        if: ${{ false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}

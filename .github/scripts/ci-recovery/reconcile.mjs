@@ -36,7 +36,6 @@ import {
   renderStateComment,
   shouldResolveThread,
   legacyReviewThreadWritesEnabled,
-  shouldSkipSubstantiveReview,
   STATE_MARKER,
   TRUSTED_ASSOCIATIONS,
   TRUSTED_BOT_LOGINS,
@@ -3112,7 +3111,6 @@ if (Number(pr.changed_files || 0) > 0) {
     changedFilesHydrated = false;
   }
 }
-const skipSubstantiveReview = shouldSkipSubstantiveReview(pr, changedFiles);
 const closingIssueAcceptanceMismatch = changedFilesHydrated
   ? evaluateClosingIssueAcceptanceScope({
       pr,
@@ -3635,7 +3633,6 @@ const lifecyclePrFacts = {
   reviews: review.reviews || [],
   humanApprovalDisposition: approvalRejection,
   lifecyclePhase: currentLifecyclePhase,
-  skipSubstantiveReview,
 };
 const lifecycleEvaluation = evaluatePhase(lifecyclePrFacts, {}, {});
 if (staleClosingIssueAcceptanceQuarantine) {
@@ -3668,7 +3665,7 @@ if (lifecycleEvaluation.readmit && mergeTrainEnabled) {
 // `release()` call already mutates `state`/`labelExists` in place, and the
 // next pass's ctx naturally observes the GC'd lock as cleared.
 const admissionWaiting = [
-  ...admissionWaitReasons(waitingRequiredChecks, review.reviews, { skipSubstantiveReview }),
+  ...admissionWaitReasons(waitingRequiredChecks),
   ...(pendingHumanApproval ? [`human-approval:${approvalRejection}`] : []),
 ];
 const currentProgressKey = automationProgressKey(pr.head.sha, fingerprint);

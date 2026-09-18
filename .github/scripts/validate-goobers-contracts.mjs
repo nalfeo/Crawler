@@ -339,15 +339,6 @@ export function outputSemanticErrors(payload) {
   if (outputs.verdict !== undefined && outputs.verdict !== null && task !== PLANNING_TASK) {
     errors.push(`outputs.verdict is only valid when task='${PLANNING_TASK}' (got task=${task})`);
   }
-  if (
-    outputs.appleEstimate !== undefined &&
-    outputs.appleEstimate !== null &&
-    task !== PLANNING_TASK
-  ) {
-    errors.push(
-      `outputs.appleEstimate is only valid when task='${PLANNING_TASK}' (got task=${task})`,
-    );
-  }
   if (outputs.hardGate !== undefined && outputs.hardGate !== null && !GATE_TASKS.has(task)) {
     errors.push(
       `outputs.hardGate is only valid for gate-bearing tasks (${[...GATE_TASKS].join(', ')}); got task=${task}`,
@@ -687,7 +678,6 @@ function outputFixtures() {
         status: 'success',
         outputs: {
           verdict: 'recommended',
-          appleEstimate: 3,
           hardGate: 'all checks green',
           blockedBy: null,
         },
@@ -703,7 +693,6 @@ function outputFixtures() {
         status: 'blocked',
         outputs: {
           verdict: null,
-          appleEstimate: null,
           hardGate: 'CI contract gate',
           blockedBy: '441,442',
         },
@@ -741,22 +730,9 @@ function outputFixtures() {
       },
     },
     {
-      name: 'apple estimate bounds enforced',
-      shouldPass: false,
-      payload: {
-        contractVersion: 'v1',
-        task: 'plan',
-        status: 'success',
-        outputs: {
-          appleEstimate: 6,
-        },
-        summary: 'Invalid apple estimate',
-      },
-    },
-    {
       // The exact scenario the reviewer flagged: a non-planning task output
-      // must not be able to smuggle a verdict/appleEstimate through.
-      name: 'non-planning task cannot carry a verdict or appleEstimate',
+      // must not be able to smuggle a verdict through.
+      name: 'non-planning task cannot carry a verdict',
       shouldPass: false,
       payload: {
         contractVersion: 'v1',
@@ -764,7 +740,6 @@ function outputFixtures() {
         status: 'success',
         outputs: {
           verdict: 'recommended',
-          appleEstimate: 3,
         },
         summary: 'Implementation finished',
       },

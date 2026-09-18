@@ -22,8 +22,8 @@ project is entirely agent-driven.
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Request intake, Quick Start, Rules, merge policy  | [`AGENTS.md`](../AGENTS.md)                                                                                                                           |
 | Commands, layer rules, environment quirks         | [`AGENTS.md`](../AGENTS.md)                                                                                                                           |
-| Apple complexity scale + accounting               | [`docs/agent-os/policies/complexity-policy.md`](../docs/agent-os/policies/complexity-policy.md)                                                       |
-| Apple-scaled post-diff review                     | [`docs/agent-os/policies/review-harness-policy.md`](../docs/agent-os/policies/review-harness-policy.md)                                               |
+| Change-risk review trigger                        | [`docs/agent-os/policies/change-risk-policy.md`](../docs/agent-os/policies/change-risk-policy.md)                                                     |
+| Risk-based post-diff review                       | [`docs/agent-os/policies/review-harness-policy.md`](../docs/agent-os/policies/review-harness-policy.md)                                               |
 | Lab gating                                        | [`docs/agent-os/policies/lab-gate-policy.md`](../docs/agent-os/policies/lab-gate-policy.md)                                                           |
 | CI policy and runtime-tweakable CI knobs          | [`docs/agent-os/policies/ci-policy.md`](../docs/agent-os/policies/ci-policy.md), [`ci-config-knobs.md`](../docs/agent-os/policies/ci-config-knobs.md) |
 | Memory / handoffs / ADR tiers                     | [`docs/agent-os/policies/memory-policy.md`](../docs/agent-os/policies/memory-policy.md)                                                               |

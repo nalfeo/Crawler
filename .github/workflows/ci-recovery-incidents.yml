@@ -35,7 +35,9 @@ jobs:
     # MERGE_TRAIN_ENABLED), so a scheduled failure is real evidence of a broken
     # `main` whether the train is enabled or not — including during a rollback,
     # when it is the only full run left.
+    # Disabled: incident recovery must not create work that summons Copilot.
     if: >-
+      false &&
       github.event.workflow_run.event != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10

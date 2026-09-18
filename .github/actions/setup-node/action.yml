@@ -2,9 +2,6 @@ name: 'Setup Node with verified dependencies'
 description: 'Set up Node with lockfile-keyed npm caching and verified dependency installs.'
 
 inputs:
-  node-version:
-    description: 'Node.js version to install'
-    default: '22'
   install-playwright:
     description: >
       Whether to install Playwright system dependencies and the Chromium browser.
@@ -19,7 +16,7 @@ runs:
   steps:
     - uses: actions/setup-node@v4
       with:
-        node-version: ${{ inputs.node-version }}
+        node-version-file: '.node-version'
         # Cache npm's content-addressed download store, never node_modules.
         # npm ci remains authoritative and rebuilds node_modules from the lockfile.
         # Only enabled when this job actually installs dependencies, so the

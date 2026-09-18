@@ -37,65 +37,12 @@ const AGENT_SESSION_RUNNING_STATUSES = new Set(['queued', 'in_progress', 'pendin
 // Anyone able to post an untrusted check-run named "merge-train" must not be
 // able to fake promotion evidence.
 const TRAIN_PROMOTION_FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
-const COPILOT_REVIEWER_LOGINS = new Set([
-  'copilot-pull-request-reviewer',
-  'copilot-pull-request-reviewer[bot]',
-]);
-const COPILOT_NO_FILES_REVIEW =
-  /^copilot wasn['’]t able to review any files in this pull request\.\s*$/i;
-const SUBMITTED_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
-const ASSET_PROMOTE_BRANCH = 'assets/promote';
-
-function isSubstantiveReviewText(value) {
-  const body = String(value || '').trim();
-  return body.length > 0 && !COPILOT_NO_FILES_REVIEW.test(body);
-}
-
-export function isSubstantiveCopilotReview(review) {
-  const author = String(review?.author?.login || '').toLowerCase();
-  const state = String(review?.state || '').toUpperCase();
-  if (!COPILOT_REVIEWER_LOGINS.has(author) || !SUBMITTED_REVIEW_STATES.has(state)) {
-    return false;
-  }
-
-  if (isSubstantiveReviewText(review.body)) {
-    return true;
-  }
-
-  return (review.comments?.nodes || []).some((comment) => isSubstantiveReviewText(comment.body));
-}
-
-export function hasSubstantiveCopilotReview(reviews) {
-  return (reviews || []).some(isSubstantiveCopilotReview);
-}
 
 function normalizedChangedPath(file) {
-  const path = String(file?.filename ?? file?.path ?? file ?? '')
+  return String(file?.filename ?? file?.path ?? file ?? '')
     .trim()
     .replace(/^\/+/, '');
-  return path;
 }
-
-function isApprovedArtOnlyPath(path) {
-  return (
-    path.startsWith('public/assets/generated/') ||
-    path === 'src/shared/data/sprite-catalog.json' ||
-    path.startsWith('docs/')
-  );
-}
-
-export function isApprovedArtOnlyDiff(changedFiles) {
-  const paths = (changedFiles || []).map(normalizedChangedPath).filter(Boolean);
-  return paths.length > 0 && paths.every(isApprovedArtOnlyPath);
-}
-
-export function shouldSkipSubstantiveReview(pr, changedFiles) {
-  return (
-    String(pr?.head?.ref || '').trim() === ASSET_PROMOTE_BRANCH &&
-    isApprovedArtOnlyDiff(changedFiles)
-  );
-}
-
 const CLOSING_ISSUE_ACCEPTANCE_BLOCK_PREFIX = 'closing-issue-acceptance-mismatch:';
 
 /**
@@ -259,17 +206,8 @@ export function evaluateClosingIssueAcceptanceScope({ pr, closingIssues, changed
   return null;
 }
 
-export function admissionWaitReasons(
-  requiredChecks,
-  reviews,
-  { skipSubstantiveReview = false } = {},
-) {
-  return [
-    ...(requiredChecks || []),
-    ...(!skipSubstantiveReview && !hasSubstantiveCopilotReview(reviews)
-      ? ['substantive-copilot-review']
-      : []),
-  ];
+export function admissionWaitReasons(requiredChecks) {
+  return [...(requiredChecks || [])];
 }
 
 // Phase enum for the authoritative lifecycle FSM. The lifecycle owner
@@ -349,7 +287,8 @@ export function unsatisfiedChecksFromRuns(checkRuns, requiredNames = DEFAULT_REQ
  *   the PR(s) above it directly onto `main`, dissolving the stack.
  * @param {object[]} [prFacts.checkRuns] - check runs with {name, status, conclusion}
  * @param {object[]} [prFacts.reviewThreads] - review threads with {isResolved}
- * @param {object[]} [prFacts.reviews] - reviews, for hasSubstantiveCopilotReview
+ * @param {object[]} [prFacts.reviews] - retained for caller compatibility; review
+ *   presence is not an admission requirement
  * @param {string[]} [prFacts.requiredChecks] - required check names
  * @param {string|null} [prFacts.humanApprovalDisposition] - non-null means approval pending
  * @returns {{ eligible: boolean, reasons: string[] }}
@@ -368,7 +307,6 @@ export function evaluateAdmission(prFacts, config = {}) {
     allowBottomStackAsync = config.allowBottomStackAsync ?? false,
     lifecyclePhase = null,
     humanApprovalDisposition = null,
-    skipSubstantiveReview = config.skipSubstantiveReview ?? false,
   } = prFacts || {};
 
   const reasons = [];
@@ -405,11 +343,7 @@ export function evaluateAdmission(prFacts, config = {}) {
   // any stacked PR is blocked with `stacked-pr`.
   if (stack && (stack.position !== 1 || !allowBottomStackAsync)) reasons.push('stacked-pr');
 
-  reasons.push(
-    ...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks), reviews, {
-      skipSubstantiveReview,
-    }),
-  );
+  reasons.push(...admissionWaitReasons(unsatisfiedChecksFromRuns(checkRuns, requiredChecks)));
 
   const unresolvedCount = (reviewThreads || []).filter((thread) => !thread.isResolved).length;
   if (unresolvedCount > 0) reasons.push(`unresolved-threads:${unresolvedCount}`);

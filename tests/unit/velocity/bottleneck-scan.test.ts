@@ -326,7 +326,6 @@ function report(overrides: Partial<Omit<BottleneckReport, 'findings'>>) {
     medianLeadTimeH: 10,
     leadTimeBySize: [],
     slowest: [],
-    estimationAccuracy: null,
     guardFriction: [],
     openPrAging: null,
     abandonedWaste: null,
@@ -363,15 +362,6 @@ describe('deriveFindings', () => {
       }),
     );
     expect(findings.join('\n')).toMatch(/batch size is a live bottleneck/);
-  });
-
-  it('flags systematic under-estimation', () => {
-    const findings = deriveFindings(
-      report({
-        estimationAccuracy: { sessions: 10, exact: 2, under: 6, over: 2, medianAbsDelta: 1 },
-      }),
-    );
-    expect(findings.join('\n')).toMatch(/OVER their apple estimate/);
   });
 
   it('reports honestly when the sample shows nothing', () => {

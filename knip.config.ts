@@ -37,6 +37,7 @@ export default {
     'src/game/index.ts',
     'src/game/systems/index.ts',
     'src/game/ai/navmesh/index.ts',
+    'src/game/ai/headless-runner-cli.ts',
     'src/engine/index.ts',
     'src/engine/sprites/index.ts',
     'src/engine/generatedAssets/index.ts',

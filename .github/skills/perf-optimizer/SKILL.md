@@ -128,7 +128,6 @@ method called `compute`.
 This is not hypothetical. A hunt targeted `compute @
 node_modules/rot-js/dist/rot.js:5356` at **19.58% self**, read as
 `RecursiveShadowcasting.compute` (FOV). It is `AStar.compute` (pathfinding).
-`fovSystem` is **1.88%** of the run. A full 4🍎 pass — plan review, differential
 oracle, fingerprint gate, multi-model review — landed a real 2.1x win worth
 ~1% end-to-end, while the actual 25% target sat untouched.
 

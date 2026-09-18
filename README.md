@@ -44,6 +44,16 @@ For the full systems catalogue, ADRs, specs, and agent-OS policies see [`docs/`]
 
 ## Developer docs
 
+Prerequisites: install the Node.js and Python versions pinned by `.node-version`
+and `.python-version`, Bash, and [GitHub CLI](https://cli.github.com/). Authenticate
+GitHub CLI with `gh auth login` before using the repository's PR and workflow
+commands. On Windows:
+
+```powershell
+winget install --id GitHub.cli --exact
+gh auth login
+```
+
 ```bash
 npm run dev            # Vite dev server
 npm run lab            # Labs harness (per-system sandboxes)

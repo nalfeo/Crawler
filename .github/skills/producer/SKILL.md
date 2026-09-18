@@ -80,7 +80,6 @@ Use `decompose()` as the deterministic baseline, then review its output:
 
 - one coherent outcome per slice;
 - one owning persona per slice;
-- 1–3🍎 per slice;
 - explicit source paths or runtime seams;
 - dependencies only when an upstream artifact is genuinely required;
 - no cycles, duplicate IDs, or hidden cross-slice work;
@@ -120,7 +119,7 @@ Before publication:
 
 - run the fast verification appropriate to the changed paths;
 - run `npm run verify:pr-prereqs`;
-- run the apple-scaled post-diff review required for the tier;
+- run the risk-based post-diff review required for the tier;
 - run the lab gate for new or changed systems;
 - write exactly one coordinating handoff.
 
@@ -134,7 +133,6 @@ release local ownership so CI Recovery can take post-publication blockers.
   requirements.
 - **Missing hard gate:** remain in `CLARIFY`.
 - **Invalid DAG:** repair the plan before spawning any session.
-- **More than 8 slices or 12🍎:** escalate for scope reduction.
 - **Gameplay escalation:** present baseline, proposed lever, target metric, and
   alternatives; wait for human approval.
 - **CI/review blocker after publication:** hand off to `pr-shepherd`/CI Recovery,

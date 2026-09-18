@@ -14,6 +14,8 @@ permissions:
 jobs:
   enforce-pr-state:
     name: Enforce ready + human reviewer requests
+    # Disabled: empty-draft repair restarts Copilot by reassigning the linked issue.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # For pull_request_target events, scope the concurrency group to the specific
@@ -34,7 +36,7 @@ jobs:
       - name: Pin Node.js version
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
 
       - name: Publish drafts, repair empty Copilot shells, and request human reviewers
         env:

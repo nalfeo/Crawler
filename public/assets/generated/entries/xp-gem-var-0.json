@@ -1,0 +1,129 @@
+{
+  "briefId": "xp-gem",
+  "spriteName": "xp-gem-var-0",
+  "assetPath": "generated/xp-gem-var-0.png",
+  "approvedAt": "2026-09-10T03:49:19.460Z",
+  "sourceRun": "generated/runs/xp-gem/2026-09-10T03-36-51-80aecba4",
+  "variantIndex": 0,
+  "anchor": {
+    "x": 32,
+    "y": 58,
+    "source": "derived"
+  },
+  "anchors": {
+    "hold": {
+      "x": 32,
+      "y": 58,
+      "source": "derived"
+    },
+    "centerOfGravity": {
+      "x": 32,
+      "y": 32,
+      "source": "derived"
+    }
+  },
+  "sensorScore": "7/7",
+  "judgeScore": "4",
+  "sensorBreakdown": [
+    {
+      "ok": true,
+      "sensor": "dimensions-exact"
+    },
+    {
+      "ok": true,
+      "sensor": "alpha-binary"
+    },
+    {
+      "ok": true,
+      "sensor": "palette-membership"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-bbox-fits"
+    },
+    {
+      "ok": true,
+      "sensor": "opaque-ratio"
+    },
+    {
+      "ok": true,
+      "sensor": "interior-transparency-holes"
+    },
+    {
+      "ok": true,
+      "sensor": "anchor-derivable",
+      "anchor": {
+        "x": 32,
+        "y": 58
+      }
+    }
+  ],
+  "judgeScorecard": {
+    "variantIndex": 0,
+    "modelDeployment": "gpt-4o",
+    "judgedAt": "2026-09-10T03:39:25.100Z",
+    "designLanguage": {
+      "score": 4,
+      "rationale": "The concept aligns well with Crawler's design language. The crystal is a simple, mass-produced reward token with a slightly chipped appearance, fitting the dark-fantasy and reality-show aesthetic. The contradiction between its gem-like appearance and its cheap, utilitarian nature is clear."
+    },
+    "referenceStyleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of outline weight, shading stops, and palette depth. The use of hard outlines and distinct color stops is consistent with the references, though the highlight could be slightly more integrated."
+    },
+    "styleMatch": {
+      "score": 4,
+      "rationale": "The rendering matches the reference style in terms of outline weight, shading stops, and palette depth. The use of hard outlines and distinct color stops is consistent with the references, though the highlight could be slightly more integrated."
+    },
+    "briefMatch": {
+      "score": 5,
+      "rationale": "The sprite clearly depicts a faceted cyan-blue shard with a squat diamond silhouette, a dark outline, and a sharp pale highlight. It matches the description in the brief perfectly."
+    },
+    "readability": {
+      "score": 5,
+      "rationale": "The silhouette is instantly readable at game scale on a dark floor tile. The shape and color contrast make it pop effectively, and there are no visual integrity defects."
+    },
+    "presentation": {
+      "score": 5,
+      "rationale": "The sprite is isolated and depicts a single inanimate item without any extraneous elements like text, glow, or additional objects."
+    },
+    "passed": true,
+    "minScore": 4,
+    "rejectedBy": [],
+    "hardBlockEvaluated": true,
+    "hardBlocked": false,
+    "hardBlockInstruction": null,
+    "hardBlockRationale": null,
+    "confidence": 0.92,
+    "usage": {
+      "promptTokens": 2731,
+      "completionTokens": 352,
+      "totalTokens": 3083
+    }
+  },
+  "type": "item",
+  "contentHash": "1d2bdee265161dfccfa9c705b7b50256ad3f04d42d66cca087a668a2ec5d77d5",
+  "opaqueBounds": {
+    "x": 4,
+    "y": 3,
+    "width": 56,
+    "height": 56,
+    "canvasWidth": 64,
+    "canvasHeight": 64
+  },
+  "effectiveAnchorSource": "derived",
+  "facingDirection": "right",
+  "catalog": {
+    "tags": [
+      "small",
+      "crystal",
+      "glowing",
+      "arcane",
+      "magic",
+      "pristine",
+      "fantasy",
+      "dungeon",
+      "cave",
+      "item"
+    ]
+  }
+}

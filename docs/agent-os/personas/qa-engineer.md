@@ -24,7 +24,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Write unit, integration, property-based, and snapshot tests where each is the best fit.
 - Track game invariants and encode them as deterministic automated checks.
 - Validate that the Governor agent can play the game headlessly for smoke and regression coverage.
@@ -42,7 +42,7 @@
 - [`task-pack-builder`](../../../.github/skills/task-pack-builder/SKILL.md) —
   extract a merged PR's tests into a frozen, replayable verifier.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 
 ## Quality Criteria
 

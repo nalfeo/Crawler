@@ -580,17 +580,9 @@ describe('currentBuildFingerprint', () => {
     vi.unstubAllEnvs();
   });
 
-  it("truncates nodeVersion to the major version only, matching setup-node's major-only pin", () => {
-    // A multi-model review round flagged that comparing the FULL process.version
-    // (e.g. 'v22.4.1') would spuriously reject an otherwise-valid same-run
-    // shard the moment actions/setup-node@v4 resolves a different patch
-    // release between jobs of the same multi-hour round-DAG workflow run —
-    // .github/actions/setup-node only pins the major version ('22'). Truncating
-    // to major-only ('v22') keeps a meaningful compatibility signal without
-    // that false-rejection fragility.
+  it('records the exact Node version pinned by the shared environment contract', () => {
     const fingerprint = currentBuildFingerprint();
-    expect(fingerprint.nodeVersion).toMatch(/^v\d+$/);
-    expect(fingerprint.nodeVersion).toBe(process.version.match(/^v\d+/)?.[0]);
+    expect(fingerprint.nodeVersion).toBe(process.version);
   });
 
   it('reports runnerOs as platform-arch', () => {

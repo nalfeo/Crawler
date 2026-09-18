@@ -48,11 +48,10 @@ Aesthetic polish that costs legibility is a regression, not a trade-off.
    `task` tool), pass `context_tier: "long_context"` explicitly — there is no
    supported agent-frontmatter key for this, so it must be set at the
    invocation call site.
-1. `bash scripts/agent/preflight.sh`.
+1. `npm run preflight`.
 2. **Capture the broken state before you change anything** — invoke the `visual-review` skill or an existing `tests/e2e/helpers/ui-probe.ts` probe. A UX fix with no "before" screenshot or probe reading is unverifiable.
 3. Read `.github/instructions/engine.instructions.md`.
 4. For equipment/inventory/item-tooltip work, read `docs/knowledge/game-design/rpg-inventory-ux-lookbook.md`. It is the durable extracted RPG inventory UX lookbook; do not rely on session-local PDF attachments.
-5. **Declare an apple estimate.**
 
 ## Workflow
 
@@ -125,7 +124,7 @@ review; `files/` is session-local and not durable.
 - [ ] Controls are responsive and predictable, and the pause menu still works.
 - [ ] A recurring bug class has been promoted to a deterministic e2e/pixel/probe check.
 - [ ] Audio changes validated in a real gameplay loop, with no leak or voice-count regression.
-- [ ] `npm run verify:fast` green; handoff written; apples scored.
+- [ ] `npm run verify:fast` is green and the handoff is written.
 
 ## Related
 

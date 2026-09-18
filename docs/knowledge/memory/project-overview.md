@@ -17,7 +17,7 @@ it can be tested and replayed.
 - [stack] TypeScript (strict), Phaser 4, bitecs 0.4, Vite, Vitest, fast-check #tech
 - [repo] GitHub repo is nalfeo/Crawler; default branch is main #repo
 - [principle] All gameplay logic must be deterministic; CI gates are scripts with exit codes, never LLM-as-judge #determinism
-- [process] Work is organized by personas and an "apple" complexity estimate declared before coding #agent-os
+- [process] Work is organized by personas, with review effort selected by change risk #agent-os
 - [entrypoint] Game runs via npm run dev; sandboxes via npm run lab; devtools via npm run devtools #workflow
 
 ## Relations

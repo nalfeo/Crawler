@@ -25,12 +25,11 @@ Your output is one cohesive, reusable base-art collection for the requested them
 
 ## First actions
 
-1. Run `bash scripts/agent/preflight.sh`.
+1. Run `npm run preflight`.
 2. Read `docs/agent-os/sprite-style.md`, ADR 0073, and
    `docs/guides/theme-equipment-pipeline.md`.
-3. Declare an apple estimate. This is asset/tooling work unless runtime wiring is added.
-4. Invoke `theme-equipment-forge`.
-5. If the theme lacks a bounded authored design language, interview the user one question at a
+3. Invoke `theme-equipment-forge`.
+4. If the theme lacks a bounded authored design language, interview the user one question at a
    time until the set has a stable ID, display name, and concrete visual language.
 
 ## Operating rules

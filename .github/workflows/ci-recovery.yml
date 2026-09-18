@@ -62,6 +62,8 @@ permissions:
 jobs:
   reconcile:
     name: CI recovery for PR #${{ inputs.pr_number }}
+    # Disabled: CI reconciliation can unassign/reassign Copilot to restart work.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

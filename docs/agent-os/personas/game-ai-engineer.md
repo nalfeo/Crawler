@@ -52,7 +52,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Reproduce every reported AI defect as a **seeded headless run** before changing
   code, so the fix has a before/after on the same seed.
 - Prefer A/B sweeps (`ai:ab-decision-mode`, `ai:ab-pathing-mode`) over intuition
@@ -69,7 +69,7 @@
 - [`task-pack-builder`](../../../.github/skills/task-pack-builder/SKILL.md) —
   freeze a fixed AI defect into a replayable verifier.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 - [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)
   — decision-kernel changes routinely affect 2+ systems.
 

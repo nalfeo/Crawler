@@ -57,19 +57,19 @@ describe('release baseline regression workflow', () => {
     expect(steps.some((step) => step.run?.includes('nightly-balance-issue'))).toBe(false);
   });
 
-  it('gates filing on the detector output and scopes both required tokens to that step', () => {
+  it('keeps Copilot regression filing disabled', () => {
     const steps = baselineSteps();
     const detect = steps.find((step) => step.name === 'Detect baseline win-rate regression');
     const file = steps.find((step) => step.name === 'File regression issue and assign Copilot');
     expect(detect?.id).toBe('baseline-regression');
     expect(detect?.run).toContain('baseline-regression-check.ts');
-    expect(file?.if).toBe("steps.baseline-regression.outputs.regression == 'true'");
+    expect(file?.if).toBe('${{ false }}');
     expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
     expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');
     expect(file?.run).toContain('baseline-regression-issue.mjs');
   });
 
-  it('files the report-only leg win-rate issue from its own independent verdict', () => {
+  it('keeps Copilot report-only filing disabled', () => {
     // The Floor 2 / chain win-rate ask lives in the release workflow (issue
     // #3293), gated on a SEPARATE output so a Floor 1 loss cannot mask it.
     const steps = baselineSteps();
@@ -85,7 +85,7 @@ describe('release baseline regression workflow', () => {
     );
     const upload = steps.findIndex((step) => step.name === 'Upload baseline as artifact');
     expect(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT).toContain('leg-win-rate-floor.json');
-    expect(file?.if).toBe("steps.baseline-regression.outputs.legWinRateFloorBreach == 'true'");
+    expect(file?.if).toBe('${{ false }}');
     expect(file?.env?.BASELINE_REGRESSION_RESULT).toBe(detect?.env?.LEG_WIN_RATE_FLOOR_RESULT);
     expect(file?.env?.GITHUB_TOKEN).toContain('secrets.GITHUB_TOKEN');
     expect(file?.env?.CRAWLER_CI_PAT).toContain('secrets.CRAWLER_CI_PAT');

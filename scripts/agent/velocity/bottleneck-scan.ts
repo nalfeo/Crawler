@@ -156,13 +156,6 @@ export interface BottleneckReport {
   medianLeadTimeH: number;
   leadTimeBySize: { bucket: string; prs: number; medianLeadTimeH: number }[];
   slowest: StageTiming[];
-  estimationAccuracy: {
-    sessions: number;
-    exact: number;
-    under: number;
-    over: number;
-    medianAbsDelta: number;
-  } | null;
   guardFriction: { guard: string; allow: number; deny: number }[];
   /** Open-PR aging panel. null when the caller does not supply open-PR data. */
   openPrAging: OpenPrAgingPanel | null;
@@ -365,43 +358,6 @@ export function bucketBySize(timings: readonly StageTiming[]): BottleneckReport[
   });
 }
 
-export function readEstimationAccuracy(root: string): BottleneckReport['estimationAccuracy'] {
-  const dir = join(root, 'docs/knowledge/metrics/apples');
-  if (!existsSync(dir)) return null;
-  const deltas: number[] = [];
-  let exact = 0;
-  let under = 0;
-  let over = 0;
-
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.json')) continue;
-    try {
-      const record = JSON.parse(readFileSync(join(dir, name), 'utf8')) as {
-        estimated_apples?: number;
-        actual_apples?: number;
-      };
-      const estimated = record.estimated_apples;
-      const actual = record.actual_apples;
-      if (typeof estimated !== 'number' || typeof actual !== 'number') continue;
-      const delta = actual - estimated;
-      deltas.push(Math.abs(delta));
-      if (delta === 0) exact++;
-      else if (delta > 0) under++;
-      else over++;
-    } catch {
-      // A malformed record should not sink the whole scan.
-    }
-  }
-  if (deltas.length === 0) return null;
-  return {
-    sessions: deltas.length,
-    exact,
-    under,
-    over,
-    medianAbsDelta: median(deltas),
-  };
-}
-
 export function readGuardFriction(root: string): BottleneckReport['guardFriction'] {
   const dir = join(root, 'docs/knowledge/metrics/guard-telemetry');
   if (!existsSync(dir)) return [];
@@ -515,18 +471,6 @@ export function deriveFindings(report: Omit<BottleneckReport, 'findings'>): stri
       findings.push(
         `Large PRs (>2000 lines) take ${ratio.toFixed(1)}× the lead time of small ones — ` +
           `batch size is a live bottleneck; test a decomposition-policy arm in the lab.`,
-      );
-    }
-  }
-
-  const estimation = report.estimationAccuracy;
-  if (estimation && estimation.sessions >= 5) {
-    const underRate = estimation.under / estimation.sessions;
-    if (underRate >= 0.4) {
-      findings.push(
-        `${(underRate * 100).toFixed(0)}% of recorded sessions came in OVER their apple estimate ` +
-          `(median absolute error ${estimation.medianAbsDelta.toFixed(1)}🍎). Systematic ` +
-          `under-estimation inflates queue time downstream because work is scheduled against a fiction.`,
       );
     }
   }
@@ -928,7 +872,6 @@ export function buildReport(
     medianLeadTimeH,
     leadTimeBySize: bucketBySize(timings),
     slowest: [...timings].sort((a, b) => b.leadTimeH - a.leadTimeH).slice(0, 5),
-    estimationAccuracy: readEstimationAccuracy(root),
     guardFriction: readGuardFriction(root),
     openPrAging: openPrRecords ? computeOpenPrAging(openPrRecords, now) : null,
     abandonedWaste: closedPrRecords ? computeAbandonedWaste(closedPrRecords) : null,
@@ -957,14 +900,6 @@ export function render(report: BottleneckReport): string {
   for (const bucket of report.leadTimeBySize) {
     lines.push(
       `  ${bucket.bucket.padEnd(16)} n=${String(bucket.prs).padStart(3)}  ${bucket.medianLeadTimeH.toFixed(1)}h`,
-    );
-  }
-
-  if (report.estimationAccuracy) {
-    const e = report.estimationAccuracy;
-    lines.push(
-      `\nApple estimation: ${e.sessions} sessions · ${e.exact} exact / ${e.under} under-estimated / ` +
-        `${e.over} over-estimated · median |error| ${e.medianAbsDelta.toFixed(1)}🍎`,
     );
   }
 

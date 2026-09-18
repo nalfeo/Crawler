@@ -128,13 +128,13 @@ describe('resolveBashShell', () => {
     };
 
     expect(packageJson.scripts['verify:fast']).toBe(
-      'tsx scripts/agent/run-bash-wrapper.ts scripts/agent/verify-fast.sh',
+      'node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/verify-fast.sh',
     );
     expect(packageJson.scripts['scope']).toBe(
-      'tsx scripts/agent/run-bash-wrapper.ts scripts/agent/ci/local-scope.sh',
+      'node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/ci/local-scope.sh',
     );
     expect(packageJson.scripts['verify']).toBe(
-      'tsx scripts/agent/run-bash-wrapper.ts scripts/agent/verify.sh',
+      'node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/verify.sh',
     );
     expect(packageJson.scripts['security:check']).not.toMatch(/(?:^|&& )bash scripts\/agent\//);
   });

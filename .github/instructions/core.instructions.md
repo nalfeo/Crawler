@@ -15,7 +15,6 @@ This is the pure ECS layer. Reusable ECS primitives and cross-floor simulation s
 - Components are tag identity objects; component data lives in typed-array stores on `world.stores`
 - Every system must have unit tests in `tests/ecs/`
 - Every system must have a lab in `src/labs/`
-- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## Component Pattern (bitecs 0.4)
 

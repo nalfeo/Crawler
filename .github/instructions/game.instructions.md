@@ -13,7 +13,6 @@ Game-specific systems: crafting, loot, floors, AI integration.
 - AI content: **deterministic runtime AI** (headless runner, BT kernels, win-rate sweeps) runs every frame; **LLM/Director content**, when implemented, runs only during floor-load transitions
 - All game randomness uses `world.rng` (SeededRandom) — never `Math.random()`
 - Crafting recipes, loot tables, and floor configs are data-driven (JSON/TS objects)
-- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## AI Content Pipeline
 

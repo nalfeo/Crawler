@@ -18,9 +18,11 @@ concurrency:
 
 jobs:
   reprocess:
+    # Disabled: epic reconciliation must not assign or restart Copilot.
     if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+      false &&
+      (github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

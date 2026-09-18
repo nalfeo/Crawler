@@ -5,7 +5,7 @@ reality-show dungeon (Phaser 4 rendering · bitecs 0.4 ECS · TypeScript strict)
 This is the map of all project documentation and the **source-of-truth registry**
 for governance rules that appear in more than one place.
 
-> New here? Read [`AGENTS.md`](../AGENTS.md) → run `bash scripts/agent/preflight.sh`
+> New here? Read [`AGENTS.md`](../AGENTS.md) → run `npm run preflight`
 > → pick a [persona](agent-os/personas/README.md) → skim
 > [`architecture.md`](architecture.md).
 
@@ -68,7 +68,7 @@ treat the others as pointers.
 | Layer / import boundaries                     | ESLint config + [`.github/instructions/`](../.github/instructions/)                                                                     | [`architecture.md`](architecture.md), `AGENTS.md`, `.github/copilot-instructions.md`, constitution                            |
 | `SeededRandom` only (no `Math.random`)        | constitution + `copilot-guards` extension                                                                                               | instruction files, `AGENTS.md`, `.github/copilot-instructions.md`                                                             |
 | No `Date.now()` in sim (pass delta/frame)     | constitution + `copilot-guards` extension                                                                                               | instruction files, `AGENTS.md`                                                                                                |
-| Apple complexity workflow                     | [`complexity-policy.md`](agent-os/policies/complexity-policy.md)                                                                        | `AGENTS.md`, `.github/copilot-instructions.md`                                                                                |
+| Change-risk review                            | [`change-risk-policy.md`](agent-os/policies/change-risk-policy.md)                                                                      | `AGENTS.md`, `.github/copilot-instructions.md`                                                                                |
 | Apple-scaled post-diff review                 | [`review-harness-policy.md`](agent-os/policies/review-harness-policy.md)                                                                | [`review-harness` skill](../.github/skills/review-harness/SKILL.md), personas, `AGENTS.md`, `.github/copilot-instructions.md` |
 | PR / diff review contract                     | [`../.github/instructions/review.instructions.md`](../.github/instructions/review.instructions.md)                                      | [`code-review` skill](../.github/skills/code-review/SKILL.md), `.github/copilot-instructions.md`                              |
 | Lab-gating (every system needs a lab)         | [`lab-gate-policy.md`](agent-os/policies/lab-gate-policy.md) + [ADR 0002](knowledge/adr/0002-lab-gated-development.md)                  | [labs instructions](../.github/instructions/labs.instructions.md), `AGENTS.md`, constitution                                  |

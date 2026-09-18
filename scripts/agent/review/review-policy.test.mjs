@@ -20,7 +20,11 @@ const activeSourceRoots = [
   'docs/guides',
   'docs/README.md',
   'docs/knowledge/epics',
-  '.specify',
+  'docs/knowledge/memory',
+  'docs/knowledge/agent-memory.jsonl',
+  '.goobers',
+  '.specify/memory',
+  '.specify/templates',
 ];
 const scannedExtensions = new Set(['.json', '.md', '.mjs', '.sh', '.ts', '.yaml', '.yml']);
 const allowedRetirementDocs = new Set([
@@ -38,6 +42,11 @@ const retiredTokens = [
   'independent_grade',
   'review-ledger-lifecycle',
   'docs/knowledge/review-ledgers',
+  'appleEstimate',
+  'apple_tier',
+  'apples:record',
+  'complexity-policy.md',
+  'estimated_apples',
 ];
 
 // path.relative() returns backslash-separated paths on Windows, which would
@@ -83,16 +92,17 @@ test('retired review artifact system is absent from active sources and wiring', 
   );
 });
 
-test('canonical review policy states the approved tier matrix and PR-native audit trail', () => {
+test('canonical review policy states the risk trigger and local Ducky workflow', () => {
   const policyPath = 'docs/agent-os/policies/review-harness-policy.md';
   const policy = readFileSync(resolve(repoRoot, policyPath), 'utf8');
   const normalizedPolicy = policy.replace(/\s+/g, ' ');
   for (const required of [
-    '1–2🍎 | Tests and CI only.',
-    '3🍎 | One independent post-diff code review.',
-    '4–5🍎 | Two independent post-diff code reviews.',
+    'meaningful correctness, security, data-loss, determinism, or release risk',
+    'Routine, reversible changes use focused tests and CI.',
     'Adversarial design review is required **only when the change is architectural**',
-    'GitHub pull-request reviews and review threads are the only audit trail',
+    'fresh local Ducky review against the complete diff',
+    'PR description, a commit message, or a PR comment',
+    'none is a merge-admission requirement',
     'The first 30 merged PRs governed by this policy form the pilot cohort.',
     '**At least 25% lower median PR cycle time**',
   ]) {

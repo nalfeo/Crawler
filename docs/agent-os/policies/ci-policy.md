@@ -235,7 +235,7 @@ produces workflows that "run green" but do nothing.
 - A task fingerprint hashes the latest head SHA and complete normalized blocker
   set. The same fingerprint is never dispatched twice.
 - Recovery treats missing policy artifacts as ordinary fix work. Review threads
-  and guard output may identify a missing ADR, apple record, or handoff. The
+  and guard output may identify a missing ADR or handoff. The
   assigned agent should create or repair that
   artifact from PR/review context and validate it. It should escalate to a human
   only when the artifact requires a decision that is not inferable from the PR.

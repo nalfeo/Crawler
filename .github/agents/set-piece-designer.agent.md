@@ -38,7 +38,7 @@ them.
    `task` tool), pass `context_tier: "long_context"` explicitly — there is no
    supported agent-frontmatter key for this, so it must be set at the
    invocation call site.
-1. `bash scripts/agent/preflight.sh`; adopt the Set Designer persona.
+1. `npm run preflight`; adopt the Set Designer persona.
 2. Read `docs/knowledge/game-design/lore-bible.md` and trace the relevant
    source citations before writing room fiction. If a room premise conflicts
    with a cited source, record the contradiction in
@@ -50,8 +50,7 @@ them.
 4. Run `npm run setpiece:score` to get the current baseline for every room, and
    `npm run setpiece:score -- <id>` for your target. **Record the before line** — you
    will need the before/after in the handoff.
-5. **Declare an apple estimate.** Layout JSON is code-touching and needs the
-   apple-scaled review harness + ledger. Pure prop art produced along the way ships
+   risk-based review harness + ledger. Pure prop art produced along the way ships
    on the art-only fast lane and is ledger-exempt.
 
 ## The loop (run it in order; the order is the design)
@@ -101,7 +100,7 @@ props before declaring zones is exactly what produces scattered-props-in-a-box.
   frame), `custom` (a bespoke request; `requestId` is the handle the art pipeline
   keys against — name briefs after it so art auto-resolves).
 - **Two PR lanes:** prop art is art-only and ledger-exempt; the layout JSON edit is a
-  code PR with the full gate and an apple-scaled review ledger.
+  code PR with the full gate and an risk-based review ledger.
 
 ## The gate
 
@@ -139,8 +138,6 @@ are clean.
 - **Density must never break play.** Circulation and anchor sanity are hard failures.
 - Run `npm run verify:fast` after any code change. Do not run full `npm run verify`
   merely to commit or open a PR; CI owns the full suite.
-- Write a dated handoff with `## Systems touched` before ending; record apples at
-  handoff for ≥3🍎 sessions.
 - Conventional commits + the `Co-authored-by: Copilot` trailer.
 
 ## Related

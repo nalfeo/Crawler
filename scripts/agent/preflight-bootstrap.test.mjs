@@ -1,0 +1,133 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { join } from 'node:path';
+import process from 'node:process';
+import {
+  gitBashCandidates,
+  main,
+  needsInstall,
+  npmCacheForWorktree,
+  resolveBootstrapBash,
+} from './preflight.mjs';
+
+test('uses the standard Git for Windows location even when PATH omits bash', () => {
+  const candidate = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  assert.equal(
+    resolveBootstrapBash({}, 'win32', (path) => path === candidate),
+    candidate,
+  );
+});
+
+test('prefers an explicitly configured Git Bash location', () => {
+  const candidate = 'D:\\Tools\\Git\\bin\\bash.exe';
+  assert.equal(
+    resolveBootstrapBash({ GIT_BASH: candidate }, 'win32', (path) => path === candidate),
+    candidate,
+  );
+});
+
+test('keeps ambient bash for non-Windows hosts', () => {
+  assert.deepEqual(gitBashCandidates({}, 'linux'), ['bash']);
+  assert.equal(
+    resolveBootstrapBash({}, 'linux', () => false),
+    'bash',
+  );
+});
+
+test('requires install only while local tsx is absent', () => {
+  assert.equal(
+    needsInstall('C:/repo', () => false),
+    true,
+  );
+  assert.equal(
+    needsInstall('C:/repo', (path) => path.endsWith('tsx.cmd')),
+    false,
+  );
+});
+
+test('keeps npm cache local to a worktree', () => {
+  assert.equal(npmCacheForWorktree('C:/repo'), join('C:/repo', 'files', 'npm-cache'));
+});
+
+test('hands a warm Windows worktree to the existing Bash preflight through tsx', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const calls = [];
+  const status = main({
+    root,
+    platform: 'win32',
+    log: () => {},
+    exists: (path) => path === bash || path.endsWith('tsx.cmd'),
+    runCommand: (...args) => {
+      calls.push(args);
+      return 0;
+    },
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(calls, [
+    [
+      join(root, 'node_modules', '.bin', 'tsx.cmd'),
+      ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'],
+      { cwd: root, env: { ...process.env, GIT_BASH: bash } },
+    ],
+  ]);
+});
+
+test('prints the resolved pinned runtime before starting a warm worktree', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const messages = [];
+  const status = main({
+    root,
+    platform: 'win32',
+    nodeExecutable: 'C:\\fnm\\v22.23.2\\node.exe',
+    nodeVersion: '22.23.2',
+    log: (message) => messages.push(message),
+    exists: (path) => path === bash || path.endsWith('tsx.cmd'),
+    runCommand: () => 0,
+  });
+  assert.equal(status, 0);
+  assert.equal(messages[0], 'Agent runtime: Node 22.23.2 (C:\\fnm\\v22.23.2\\node.exe)');
+});
+
+test('marks dependencies as ready after a cold bootstrap so Bash skips duplicate npm ci', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const calls = [];
+  let installed = false;
+  const status = main({
+    root,
+    platform: 'win32',
+    log: () => {},
+    exists: (path) => path === bash || (installed && path.endsWith('tsx.cmd')),
+    runCommand: (...args) => {
+      calls.push(args);
+      if (args[0] === 'npm.cmd') installed = true;
+      return 0;
+    },
+  });
+  assert.equal(status, 0);
+  assert.equal(calls[0][0], 'npm.cmd');
+  assert.equal(calls[1][2].env.PREFLIGHT_DEPS_ALREADY_READY, '1');
+});
+
+test('stops with an actionable error if npm ci reports success without installing tsx', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const errors = [];
+  const originalError = console.error;
+  console.error = (message) => errors.push(message);
+  try {
+    const status = main({
+      root,
+      platform: 'win32',
+      log: () => {},
+      exists: (path) => path === bash,
+      runCommand: () => 0,
+    });
+    assert.equal(status, 1);
+    assert.match(errors.join('\n'), /Another npm install may be running/);
+  } finally {
+    console.error = originalError;
+  }
+});

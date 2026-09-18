@@ -69,7 +69,7 @@
 
 ## Tools & Workflows
 
-- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona) — plan-first, apple estimate, apple-scaled post-diff review, observe-before-done, build-vs-buy, and never weakening a gate to go green. They are defined once there and deliberately not restated here.
+- **Standing rules first.** Follow the [standing rules for every persona](./README.md#standing-rules-for-every-persona).
 - Add or edit quest packs in `src/shared/data/` and wire them through the quest
   registry / `installQuestPacks` flow rather than embedding quest logic in code.
 - Use kill/fetch/goal quest templates and the event-driven progression contract
@@ -88,7 +88,7 @@
 - [`create-architectural-decision-record`](../../../.github/skills/create-architectural-decision-record/SKILL.md)
   — when a content pattern needs a system change affecting 2+ systems.
 - [`review-harness`](../../../.github/skills/review-harness/SKILL.md) — required
-  before any code-touching PR at ≥3🍎.
+  for architectural or meaningfully risky code changes.
 - [`visual-review`](../../../.github/skills/visual-review/SKILL.md) — to confirm
   set pieces and safe-room beats read at game scale.
 

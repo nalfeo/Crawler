@@ -22,7 +22,6 @@ swapping renderers should not touch `src/core/`.
 - Rendering may read wall-clock/RAF time, but NEVER feed wall-clock back into the
   sim — systems receive `delta`/`frameCount` from the loop
 - Visual/e2e coverage lives in `tests/e2e/`
-- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## Bridge Pattern
 

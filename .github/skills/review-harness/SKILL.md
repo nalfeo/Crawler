@@ -1,37 +1,27 @@
 ---
 name: review-harness
 description: >-
-  Run Crawler's apple-scaled post-diff review process. Use for review planning
-  and execution: 1–2 apples use tests/CI only, 3 apples require one independent
-  post-diff code review, and 4–5 apples require two. Adversarial design review
-  runs only for architectural changes. GitHub PR reviews and threads are the
-  only audit trail; no review ledger or independent grading artifact is used.
+  Run Crawler's risk-based review process. Architectural or meaningfully risky
+  changes receive one independent post-diff review; routine changes use tests and CI.
 ---
 
 # Review Harness
 
-Apply the canonical policy in
-[`docs/agent-os/policies/review-harness-policy.md`](../../../docs/agent-os/policies/review-harness-policy.md).
+Every implementation PR receives a fresh local Ducky review of the complete
+diff with `codex review --uncommitted`. Fix every blocking and medium finding
+before opening the PR, then rerun the affected checks. Use an additional independent review when a change is
+architectural or carries meaningful correctness, security, data-loss,
+determinism, or release risk. Routine, reversible changes otherwise rely on
+focused tests and CI.
 
-## Tier matrix
+1. Run design review before an architectural change.
+2. Complete and verify the diff.
+3. Run local Ducky review on the complete diff and fix all blocking and medium
+   findings.
+4. If the risk trigger applies, obtain one additional independent review of the
+   current diff and relevant callers and tests.
+5. Fix valid findings and rerun affected checks.
+6. A Codex/Ducky pass may be recorded in the PR description, a commit message,
+   or a PR comment by stating that review passed and the change is okay to check in.
 
-| Apples | Requirement                                      |
-| ------ | ------------------------------------------------ |
-| 1–2🍎  | Run appropriate deterministic tests and CI only. |
-| 3🍎    | Obtain one independent post-diff code review.    |
-| 4–5🍎  | Obtain two independent post-diff code reviews.   |
-
-## Procedure
-
-1. Declare apples before implementation.
-2. Decide whether the change is architectural. Only architectural changes get
-   adversarial design review; see
-   [`references/plan-review.md`](references/plan-review.md).
-3. Implement and verify the complete diff.
-4. Run the required independent review(s) using
-   [`references/code-review-loop.md`](references/code-review-loop.md).
-5. Fix valid findings and rerun affected deterministic checks.
-6. On a PR, keep all review evidence and resolution in native reviews/threads.
-   Do not create a parallel JSON or prose review record.
-
-Never weaken an unrelated deterministic gate to satisfy review policy.
+Do not create repository paperwork solely to prove review occurred.

@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   intake:
+    # Disabled: automated issue intake must not assign or summon Copilot.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
