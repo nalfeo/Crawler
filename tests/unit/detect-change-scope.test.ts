@@ -177,7 +177,7 @@ const cases: Case[] = [
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
     //                          art   docs  gsafe sponly sptch  vis   game  asset devt  deps
-    expected: F(false, false, true, false, false, false, false, true, true, true, true, true),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false, true),
   },
   {
     name: 'package core script wiring (unsafe split)',
