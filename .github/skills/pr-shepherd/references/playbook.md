@@ -190,7 +190,7 @@ reconcile.
   early enough for `gh pr checks` to show before promotion. What batch validation
   publishes is `merge-train-candidate` on the current `main` SHA (not on the PR head).
   **Remedy:** ensure the PR has the `merge-train` admission label (CI recovery adds it
-  once CI, review threads, and code-review admission checks all pass) and CI stays green;
+  once CI and review-thread admission checks pass) and CI stays green;
   the train will pick it up on its next cycle and promote via App bypass. Do **not**
   arm `gh pr merge --auto` as a substitute or safety net — it cannot satisfy the
   required `merge-train` context and only produces false confidence. Do not treat a

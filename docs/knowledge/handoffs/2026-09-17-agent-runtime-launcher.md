@@ -2,7 +2,8 @@
 
 ## Systems touched
 
-agent command runtime, Windows preflight bootstrap, npm package scripts
+agent command runtime, Windows preflight bootstrap, npm package scripts, review
+policy, CI Recovery admission, merge-train admission
 
 ## Summary
 
@@ -16,8 +17,16 @@ agent command runtime, Windows preflight bootstrap, npm package scripts
   including the canonical preflight entrypoint.
 - Routed preflight's Bash-side dependency refresh through the launcher's npm
   mode so Git Bash PATH rewriting cannot fall back to system Node.
+- Aligned direct `actions/setup-node` workflow steps with `.node-version` so CI
+  provisions the exact runtime enforced by the launcher.
 - Added unit coverage for pinned-runtime discovery, npm resolution, preload
   propagation, and the no-direct-`tsx` package-script invariant.
+- Removed the merge-train requirement for a substantive GitHub Copilot review.
+  Admission still requires green configured checks and resolved review threads.
+- Made a fresh local Ducky pass (`codex review --uncommitted`) mandatory before
+  every implementation PR, with all blocking and medium findings fixed.
+- Allowed a Codex/Ducky pass statement in the PR description, a commit message,
+  or a PR comment as human-readable evidence rather than a machine-parsed gate.
 
 ## Planning contract
 
@@ -36,6 +45,9 @@ agent command runtime, Windows preflight bootstrap, npm package scripts
 - `npm run preflight`
 - `npm run telemetry:token-budget -- --help`
 - `npm run verify:fast`
+- Focused CI Recovery admission/lifecycle tests and the review-policy guard.
+- Local Ducky review found a blocking Unix npm-layout issue in the runtime
+  launcher; the platform-aware npm path and its Windows/Linux coverage resolve it.
 
 ## Follow-up
 

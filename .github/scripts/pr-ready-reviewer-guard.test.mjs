@@ -330,7 +330,10 @@ test('workflow runs trusted default-branch script with single global concurrency
   );
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].with['persist-credentials'], false);
   assert.equal(workflow.jobs['enforce-pr-state'].steps[1].uses, 'actions/setup-node@v4');
-  assert.equal(workflow.jobs['enforce-pr-state'].steps[1].with['node-version'], 22);
+  assert.equal(
+    workflow.jobs['enforce-pr-state'].steps[1].with['node-version-file'],
+    '.node-version',
+  );
   assert.equal(
     workflow.jobs['enforce-pr-state'].steps[2].run,
     'node .github/scripts/pr-ready-reviewer-guard.mjs',
