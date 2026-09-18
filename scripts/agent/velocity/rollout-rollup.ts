@@ -224,7 +224,7 @@ export function rollup(paths: readonly string[]): RollupReport {
     throw new Error(`At most ${MAX_FILES} rollout paths are supported.`);
   const files: RolloutStats[] = [];
   const diagnostics: string[] = [];
-  for (const path of [...paths].map(resolve).sort((a, b) => a.localeCompare(b))) {
+  for (const path of [...paths].map((value) => resolve(value)).sort((a, b) => a.localeCompare(b))) {
     try {
       const stats = parseRolloutFile(readFileSync(path, 'utf8'), compactPath(path));
       files.push(stats);
