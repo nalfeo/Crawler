@@ -54,6 +54,7 @@ jobs:
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
       visual_touched: ${{ steps.scope.outputs.visual_touched }}
       sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      integration_touched: ${{ steps.scope.outputs.integration_touched }}
       sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       # Visual surface outputs (#1688/#1698): route E2E to the affected surface only.
@@ -173,7 +174,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
       - name: Install from the registry without caches
         run: |
           npm cache clean --force
@@ -569,12 +570,17 @@ jobs:
   # to be honestly green (AGENTS.md rule #8).
   # NOTE: sprite pipeline integration tests have been moved to the sprites project
   # (test-sprites job below). This job covers game integration tests only.
-  # Skipped for sprites_only changes.
+  # Skipped for sprites_only changes and for CI/tooling/docs changes that do not
+  # touch production or integration-test surfaces.
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    needs: [changes, check-lightweight, test-unit]
+    if: >-
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      needs.changes.outputs.integration_touched == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -629,7 +635,7 @@ jobs:
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     if: >-
       needs.changes.outputs.docs_only != 'true' &&
       (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
@@ -678,7 +684,7 @@ jobs:
   test-headless-multifloor:
     name: Headless Multi-Floor Legs (report-only)
     runs-on: ubuntu-latest
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     continue-on-error: true
     if: >-
       needs.changes.outputs.art_only != 'true' &&
@@ -740,7 +746,7 @@ jobs:
   set-piece-reachability:
     name: Set-piece reachability
     runs-on: ubuntu-latest
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     if: >-
       github.event_name == 'pull_request' &&
       needs.changes.outputs.art_only != 'true' &&
@@ -995,7 +1001,7 @@ jobs:
     # itself passes. This is headroom for a suite that grew, not a relaxed
     # assertion; no test is skipped or shortened.
     timeout-minutes: 40
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read
@@ -1035,7 +1041,7 @@ jobs:
     name: E2E Visual — Asset Smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     if: needs.changes.outputs.asset_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read
@@ -1064,7 +1070,7 @@ jobs:
     name: E2E Visual — Devtools
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [changes]
+    needs: [changes, check-lightweight, test-unit]
     if: needs.changes.outputs.devtool_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read

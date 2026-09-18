@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # detect-art-only.sh — detect change scope and emit orthogonal impact flags
-# (art_only, docs_only, gameplay_safe, sim_touched, coverage_touched, visual
-# surfaces, and security-impact flags).
+# (art_only, docs_only, gameplay_safe, sim_touched, coverage_touched,
+# integration_touched, visual surfaces, and security-impact flags).
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprite PNGs + per-asset manifest shards
@@ -35,6 +35,11 @@
 # surface. Fail-closed: unknown/unclassified paths set coverage_touched=true.
 # ci.yml uses this to gate the advisory unit-coverage job on PRs.
 #
+# integration_touched=true — at least one changed file can affect the game
+# integration suite. CI/tooling, documentation, and agent-only changes do not
+# need to pay for integration tests when no production or integration surface
+# changed. Unknown paths fail closed.
+#
 # dependencies_touched=true — at least one changed file is a dependency manifest
 # (package.json, package-lock.json, yarn.lock, npm-shrinkwrap.json) or the
 # dependency-allowlist security script. Used to gate npm audit and the dep
@@ -62,8 +67,9 @@
 # directly instead of deriving it from git — used by the deterministic unit test.
 # Fail-safe: any ambiguity (no base, no changed files, detached history) yields
 # false for scope-narrowing flags (art_only, docs_only, gameplay_safe,
-# sprites_only), TRUE for sprite/sim/coverage flags (sprites_touched,
-# sim_touched, coverage_touched, sprite_pipeline_touched), and TRUE for
+# sprites_only), TRUE for sprite/sim/coverage/integration flags
+# (sprites_touched, sim_touched, coverage_touched, integration_touched,
+# sprite_pipeline_touched), and TRUE for
 # security-impact flags (dependencies_touched, ai_code_touched,
 # codeowners_touched, source_code_touched) so that all gated checks always
 # run on ambiguous scope. This script never blocks CI.
@@ -80,8 +86,9 @@ emit_output() {
 
 # Emit all scope flags at once (fail-safe path uses this for early exits).
 # Args: art_only docs_only gameplay_safe sprites_only sprites_touched
-#       sim_touched coverage_touched sprite_pipeline_touched dependencies_touched
-#       ai_code_touched codeowners_touched source_code_touched
+#       sim_touched coverage_touched integration_touched
+#       sprite_pipeline_touched dependencies_touched ai_code_touched
+#       codeowners_touched source_code_touched
 emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
@@ -90,11 +97,12 @@ emit_all() {
   emit_output sprites_touched "$5"
   emit_output sim_touched "$6"
   emit_output coverage_touched "$7"
-  emit_output sprite_pipeline_touched "$8"
-  emit_output dependencies_touched "$9"
-  emit_output ai_code_touched "${10}"
-  emit_output codeowners_touched "${11}"
-  emit_output source_code_touched "${12}"
+  emit_output integration_touched "$8"
+  emit_output sprite_pipeline_touched "$9"
+  emit_output dependencies_touched "${10}"
+  emit_output ai_code_touched "${11}"
+  emit_output codeowners_touched "${12}"
+  emit_output source_code_touched "${13}"
 }
 
 # Emit visual surface flags (new in #1688/#1698).
@@ -162,7 +170,7 @@ const changedScripts = [...scriptKeys].filter(
 );
 if (changedScripts.length === 0) process.exit(1);
 
-const safeScriptKey = /^(sprites:|lab$|devtools$|setup:azure(?::|$))/;
+const safeScriptKey = /^(agent:|check:|docs:check$|environment:|handoff:|telemetry:|velocity:|producer$|preflight$|scope$|verify:(fast|flash|pr-prereqs)$|test:(ci-health|guards)$|security:|health:|sync:main$|sprites:|lab$|devtools$|setup:azure(?::|$))/;
 if (changedScripts.every((key) => safeScriptKey.test(key))) process.exit(0);
 process.exit(1);
 ' >/dev/null 2>&1
@@ -196,7 +204,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false true true true true true true true true
+    emit_all false false false false true true true true true true true true true
     # No diff available: fail toward broader validation — run all visual suites.
     emit_visual_all true true true true
     exit 0
@@ -220,7 +228,7 @@ echo "${changed:-<none>}" >&2
 # For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
 # don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false true true true true true true true true
+  emit_all false false false false true true true true true true true true true
   emit_visual_all true true true true
   exit 0
 fi
@@ -393,6 +401,7 @@ while IFS= read -r file; do
     .github/*) ;;
     .specify/*) ;;
     scripts/*) ;;
+    .npmrc | .node-version | .python-version | eslint.config.js) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)
       if package_json_gameplay_safe; then
@@ -454,6 +463,34 @@ while IFS= read -r file; do
     # potentially touched.
     *)
       coverage_touched=true
+      break
+      ;;
+  esac
+done <<<"$changed"
+
+# integration_touched: at least one changed file can affect the game integration
+# project. Agent/CI scripts, docs, and unit-only changes are intentionally safe.
+# Unknown paths fail closed so a new production surface cannot skip integration.
+integration_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    src/core/* | src/engine/* | src/game/* | src/shared/* | src/bootstrap/*)
+      integration_touched=true; break ;;
+    tests/integration/*)
+      integration_touched=true; break ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        integration_touched=true
+        break
+      fi
+      ;;
+    tests/* | scripts/* | .github/* | docs/* | .specify/* | public/* | briefs/* | AGENTS.md | .npmrc | .node-version | .python-version | eslint.config.js | *.md | *.txt)
+      ;;
+    *)
+      integration_touched=true
       break
       ;;
   esac
@@ -569,7 +606,7 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched" "$ai_code_touched" "$codeowners_touched" "$source_code_touched"
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$integration_touched" "$sprite_pipeline_touched" "$dependencies_touched" "$ai_code_touched" "$codeowners_touched" "$source_code_touched"
 
 # ── Visual surface flags (#1688/#1698) ────────────────────────────────────────
 # Classify each changed file into one or more visual surfaces.
@@ -643,11 +680,17 @@ while IFS= read -r file; do
       visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true ;;
     tests/e2e/*)
       visual_touched=true; game_visual_touched=true ;;
-    # ── Game visual: all other src/*, public/* (and root config files) ────────────
-    # Note: root config files (tsconfig.json, package.json, etc.) that are not
-    # explicitly allowlisted above fall through to game_visual here. This is
-    # intentional: they are not provably non-visual, so we fail toward broader
-    # validation (same fail-safe philosophy as the unknown catch-all below).
+    # ── Non-visual tooling/config ────────────────────────────────────────────────
+    # Agent-only package script wiring cannot change browser output. Dependency,
+    # build, and runtime config changes remain fail-closed below.
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true
+      fi ;;
+    .npmrc | .node-version | .python-version | eslint.config.js) ;;
+    # ── Game visual: all other src/* and public/* ─────────────────────────────────
     src/* | public/*)
       visual_touched=true; game_visual_touched=true ;;
     # ── Unknown: fail toward broader validation ───────────────────────────────────

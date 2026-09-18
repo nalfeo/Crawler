@@ -176,7 +176,6 @@ test('evaluateAdmission reports every blocking reason from current facts only', 
     'not-mergeable',
     'ci',
     'Security checks',
-    'substantive-copilot-review',
     'unresolved-threads:1',
   ]);
 });

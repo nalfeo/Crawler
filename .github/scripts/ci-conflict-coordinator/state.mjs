@@ -12,8 +12,8 @@ export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
 /**
  * Enforcement kill switch for CI conflict coordination.
  *
- * When DISABLED (the default) the coordinator still *discovers* and reports
- * overlap groups via the coordinator comment, but it actively drains the
+ * When DISABLED (the default) the coordinator still discovers overlap groups
+ * for cleanup, but it does not publish coordinator comments and actively drains the
  * `ci-conflict-coordinated` and `ci-conflict-leader` labels and suppresses
  * grouping-derived escalation signals (`ambiguous` supersession proofs and
  * selection-binding drift). Only ownership-gated escalation signals keep
