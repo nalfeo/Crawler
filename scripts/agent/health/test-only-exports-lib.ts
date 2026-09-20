@@ -721,6 +721,13 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     expiresOn: '2026-11-22',
   },
   {
+    file: 'src/game/systems/companionCombatSystem.ts',
+    name: 'getCompanionAttackState',
+    reason:
+      'Floor 3 automatic-growth combat observation reads per-world WeakMap state for deterministic tests and excluded lab diagnostics; shipped gameplay drives attacks through companionCombatSystem and does not import the diagnostic accessor.',
+    expiresOn: '2026-11-22',
+  },
+  {
     file: 'src/core/spawners/world-objects.ts',
     name: 'spawnRallyPoint',
     reason:
