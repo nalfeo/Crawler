@@ -322,7 +322,7 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
     }
   }, 60_000);
 
-  it('opens the real construction picker from an authored site tap and renders the built tower', async () => {
+  it('routes real touch controls through the build, upgrade, and sell economy loop', async () => {
     const context = await browser.newContext({ viewport: VIEWPORTS[0] });
     const page = await context.newPage();
     try {
@@ -343,7 +343,9 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       );
       const picker = await mainSceneProbe.getModalPickerContent(page);
       expect(picker?.kind).toBe('floor6-tower-build');
-      expect(picker?.options.some((option) => option.id === prep!.affordableTowerId)).toBe(true);
+      expect(
+        picker?.options.some((option) => option.id === `build:${prep!.affordableTowerId}`),
+      ).toBe(true);
 
       await page.keyboard.press('Enter');
       const rendered = await waitForFloor6TowerRender(page, prep!.siteId);
@@ -359,6 +361,58 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
         'Floor 6 HUD occupied-site state after construction confirm',
       );
       expect(hud.text).toContain(`OCCUPIED ${prep!.siteId}: ${prep!.affordableTowerId}`);
+
+      // Advance the paused real scene once so the scenario-owned offer
+      // projection refreshes after the accepted build transaction.
+      await mainSceneProbe.advanceSimulationFrames(page, 1);
+      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
+        true,
+      );
+      await page.waitForFunction(
+        () => window.__mainSceneProbe?.getState().modalOpen === true,
+        null,
+        {
+          timeout: 10_000,
+        },
+      );
+      const occupiedPicker = await mainSceneProbe.getModalPickerContent(page);
+      expect(occupiedPicker?.options.some((option) => option.id === `sell:${prep!.siteId}`)).toBe(
+        true,
+      );
+      expect(
+        occupiedPicker?.options.some(
+          (option) => option.id.startsWith('upgrade:') && option.disabled === false,
+        ),
+      ).toBe(true);
+
+      // Sell is first; one Down chooses the first authored available upgrade.
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      const upgradedHud = await waitForScenarioHud(
+        page,
+        (probe) => probe.text !== null && probe.text.includes('1/3 upgrade offers chosen'),
+        'Floor 6 HUD to record the accepted upgrade purchase',
+      );
+      expect(upgradedHud.text).toContain('1/3 upgrade offers chosen');
+
+      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
+        true,
+      );
+      await page.waitForFunction(
+        () => window.__mainSceneProbe?.getState().modalOpen === true,
+        null,
+        {
+          timeout: 10_000,
+        },
+      );
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(
+        (siteId) => window.__mainSceneProbe?.getFloor6TowerRenderInfo(siteId) === null,
+        prep!.siteId,
+        { timeout: 10_000 },
+      );
+      const sold = await mainSceneProbe.getState(page);
+      expect(sold.actionStatusToastText).toContain(`Tower sold at ${prep!.siteId}`);
     } finally {
       await context.close();
     }

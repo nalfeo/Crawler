@@ -6337,18 +6337,31 @@ export class MainGameScene extends Phaser.Scene {
       this.flashActionStatus('Construction site is not authored for this floor.');
       return;
     }
-    if (site.occupied) {
-      this.flashActionStatus(`${siteId} is occupied. Choose a vacant site.`);
-      return;
-    }
-    const options = snapshot.towers.map((tower) => ({
-      id: tower.towerId,
-      label: `${tower.label} — ${tower.cost} requisitions`,
-      description: tower.affordable
-        ? 'Build at this authored site.'
-        : 'Unaffordable at current balance.',
-      disabled: !tower.affordable,
-    }));
+    const options = site.occupied
+      ? [
+          {
+            id: `sell:${siteId}`,
+            label: 'Sell installed tower',
+            description: 'Return the authored sell refund and reopen this pad.',
+            disabled: !construction.requestSell,
+          },
+          ...(snapshot.upgrades ?? []).map((upgrade) => ({
+            id: `upgrade:${upgrade.offerId}`,
+            label: `${upgrade.label} — ${upgrade.cost} requisitions`,
+            description: upgrade.available
+              ? 'Purchase this authored Relay-defense upgrade.'
+              : 'Already purchased or not unlocked yet.',
+            disabled: !upgrade.available || !upgrade.affordable || !construction.requestUpgrade,
+          })),
+        ]
+      : snapshot.towers.map((tower) => ({
+          id: `build:${tower.towerId}`,
+          label: `${tower.label} — ${tower.cost} requisitions`,
+          description: tower.affordable
+            ? 'Build at this authored site.'
+            : 'Unaffordable at current balance.',
+          disabled: !tower.affordable,
+        }));
     if (options.every((option) => option.disabled)) {
       this.flashActionStatus('No tower is affordable at this site.');
       return;
@@ -6356,19 +6369,33 @@ export class MainGameScene extends Phaser.Scene {
     this.modalPicker.open(
       {
         kind: 'floor6-tower-build',
-        title: `Build at ${siteId}`,
+        title: site.occupied ? `Inspect ${siteId}` : `Build at ${siteId}`,
         subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
-        body: 'Select an affordable tower. The scenario validates the request atomically.',
+        body: site.occupied
+          ? 'Inspect the installed tower, sell it, or buy an available upgrade. The scenario validates every request atomically.'
+          : 'Select an affordable tower. The scenario validates the request atomically.',
         options,
         allowCancel: true,
         initialSelectedId: options.find((option) => !option.disabled)?.id,
       },
       {
         onConfirm: ({ option }) => {
-          const result = construction.requestBuild(this.world, siteId, option.id);
+          const [action, id] = option.id.split(':', 2);
+          const result =
+            action === 'sell' && construction.requestSell
+              ? construction.requestSell(this.world, siteId)
+              : action === 'upgrade' && construction.requestUpgrade && id
+                ? construction.requestUpgrade(this.world, id)
+                : action === 'build' && id
+                  ? construction.requestBuild(this.world, siteId, id)
+                  : { ok: false, reason: 'invalid-request' };
           this.flashActionStatus(
             result.ok
-              ? `${option.label.split(' — ')[0]} built at ${siteId}.`
+              ? action === 'sell'
+                ? `Tower sold at ${siteId}.`
+                : action === 'build'
+                  ? `${option.label.split(' — ')[0]} built at ${siteId}.`
+                  : `${option.label.split(' — ')[0]} accepted.`
               : this.describeConstructionBuildRejection(result.reason, siteId),
           );
           this.updateOverlayText();
