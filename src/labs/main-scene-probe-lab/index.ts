@@ -55,6 +55,10 @@ import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objec
 import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
 import { AI_TYPE } from '../../game/enemyAISystem.js';
 import { speciesTokenForId } from '../../shared/data/floor3/species.js';
+import { recruitPartyCompanion } from '../../core/spawners/companions.js';
+import { companionLearnedAbilityIds } from '../../core/systems/companionProgressionSystem.js';
+import { getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { TeamId } from '../../shared/constants.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
 import type { VfxEvent } from '../../shared/vfx-events.js';
@@ -201,6 +205,7 @@ function findStatusAuraLayer(
  * so a structural cast exposes them without modifying the engine layer.
  */
 interface MainSceneInternals {
+  input?: { keyboard?: { keys: readonly (Phaser.Input.Keyboard.Key | undefined)[] } };
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
@@ -260,13 +265,12 @@ interface MainSceneInternals {
     };
     getFloor3PartyState?(): {
       visible: boolean;
+      bounds: ScreenBounds | null;
       rows: readonly {
         name: string;
         matchup: string | null;
       }[];
       notices: readonly string[];
-      commandCapacity: number;
-      commandsInUse: number;
     };
     getFloor4ArenaState?(): HudFloor4ArenaProbeState;
     getFloor3LeagueState?(): {
@@ -378,7 +382,6 @@ interface MainSceneInternals {
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   floor3RosterButton?: { visible: boolean; emit(eventName: string): boolean };
-  floor3CommandButton?: { visible: boolean; emit(eventName: string): boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
@@ -393,14 +396,6 @@ interface MainSceneInternals {
    * `actionStatusText` probe. Read-only probe surface.
    */
   interactionHint?: { readonly visible: boolean; readonly text: string };
-  /**
-   * One-shot latch for the #4209 Command-explainer toast. Read-only probe
-   * surface: proves the explainer condition was satisfied and fired even
-   * though the shared `interactionHint` text is transient and can be
-   * clobbered by an unrelated nearby-NPC "Talk" hint on the very next frame
-   * (see `interactionHint` above).
-   */
-  floor3CommandUnlockNotified?: boolean;
   getIssueButtonBounds?(): ScreenBounds | null;
   getIssueButtonCompactLabel?(): string;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
@@ -673,7 +668,6 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly floor3RosterButtonVisible: boolean;
-  readonly floor3CommandButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   readonly issueButtonVisible: boolean;
@@ -742,13 +736,6 @@ export interface MainSceneState {
   readonly interactionHintVisible: boolean;
   /** Exact text of the shared transient hint, or `null` when hidden/unset. */
   readonly interactionHintText: string | null;
-  /**
-   * Whether the #4209 Command-explainer toast has fired at least once this
-   * session. See {@link MainSceneInternals.floor3CommandUnlockNotified} for
-   * why this latch, not `interactionHintText`, is the reliable way to prove
-   * the toast fired.
-   */
-  readonly floor3CommandUnlockNotified: boolean;
 }
 
 /**
@@ -789,10 +776,9 @@ export interface SafeAreaLayoutProbe {
 /** Mounted Floor-3 party-HUD + roster read-back (game-design §15 surfaces 4-8). */
 export interface Floor3PartyHudProbeState {
   readonly hudVisible: boolean;
+  readonly hudBounds: ScreenBounds | null;
   readonly rowNames: readonly string[];
   readonly matchups: readonly (string | null)[];
-  readonly commandCapacity: number;
-  readonly commandsInUse: number;
   readonly notices: readonly string[];
   readonly rosterOpen: boolean;
   readonly rosterCursor: number;
@@ -913,6 +899,20 @@ export interface ProjectileRenderInfo {
 export interface Floor3RangedCompanionProbeResult {
   readonly companionEid: number;
   readonly targetEid: number;
+}
+
+export interface Floor3GrowthProbeState {
+  level: number;
+  form: number;
+  maxHp: number;
+  currentHp: number;
+  speed: number;
+  range: number;
+  sizeScale: number;
+  renderScale: number | null;
+  learnedAbilities: readonly string[];
+  lastAbilityId: string | null;
+  successfulAttacks: number;
 }
 
 /**
@@ -1329,6 +1329,8 @@ export interface MainSceneProbeApi {
   getEquipmentPanelBounds(): ScreenBounds | null;
   /** Live label/visibility/bounds of every on-screen corner button, in stack order. */
   getCornerButtonLayout(): readonly CornerButtonProbe[];
+  /** Registered keys in the real scene, without creating any new bindings. */
+  getBoundKeyboardKeyCodes(): readonly number[];
   /** Rendered bounds of each bottom-left vitals row present in the live scene. */
   getVitalsStackBounds(): VitalsStackProbe;
   /**
@@ -1467,8 +1469,6 @@ export interface MainSceneProbeApi {
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Floor-3 roster corner button. */
   tapFloor3RosterButton(): boolean;
-  /** Emit a pointer tap on the Floor-3 command corner button. */
-  tapFloor3CommandButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -1548,6 +1548,9 @@ export interface MainSceneProbeApi {
    * floor3-only gate) or with no live player entity.
    */
   spawnFloor3RangedCompanionProbe(): Floor3RangedCompanionProbeResult | null;
+  /** Place a wounded L24 companion one automatic kill away from adult evolution. */
+  primeFloor3GrowthProbe(): number | null;
+  getFloor3GrowthProbe(eid: number): Floor3GrowthProbeState | null;
   /** Current `Health.current` for any live entity, or null if it has none. */
   getEntityHealth(eid: number): number | null;
   /**
@@ -2013,7 +2016,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         floor3RosterButtonVisible: scene?.floor3RosterButton?.visible ?? false,
-        floor3CommandButtonVisible: scene?.floor3CommandButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         issueButtonVisible: scene?.issueButton?.visible ?? false,
@@ -2073,7 +2075,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         actionStatusToastText: scene?.actionStatusText?.text ?? null,
         interactionHintVisible: scene?.interactionHint?.visible ?? false,
         interactionHintText: scene?.interactionHint?.text ?? null,
-        floor3CommandUnlockNotified: scene?.floor3CommandUnlockNotified ?? false,
       };
     },
 
@@ -2342,10 +2343,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const roster = scene?.getFloor3RosterState?.() ?? null;
       return {
         hudVisible: party?.visible ?? false,
+        hudBounds: party?.bounds ?? null,
         rowNames: party?.rows.map((row) => row.name) ?? [],
         matchups: party?.rows.map((row) => row.matchup) ?? [],
-        commandCapacity: party?.commandCapacity ?? 0,
-        commandsInUse: party?.commandsInUse ?? 0,
         notices: party?.notices ?? [],
         rosterOpen: roster?.open ?? false,
         rosterCursor: roster?.cursor ?? -1,
@@ -2735,6 +2735,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getIssueButtonBounds: () => getScene()?.getIssueButtonBounds?.() ?? null,
 
     getCornerButtonLayout: () => getScene()?.getCornerButtonLayout?.() ?? [],
+    getBoundKeyboardKeyCodes: () =>
+      (getScene()?.input?.keyboard?.keys ?? [])
+        .filter((key): key is Phaser.Input.Keyboard.Key => key !== undefined)
+        .map((key) => key.keyCode)
+        .sort((left, right) => left - right),
 
     unlockExperienceBar: () => {
       getScene()?.world?.goalFlags.set('floor1-drops-unlocked', true);
@@ -3200,15 +3205,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       return true;
     },
 
-    tapFloor3CommandButton: () => {
-      const button = getScene()?.floor3CommandButton;
-      if (!button?.visible) {
-        return false;
-      }
-      button.emit('pointerdown');
-      return true;
-    },
-
     tapQuartermasterButton: () => {
       const button = getScene()?.quartermasterButton;
       if (!button?.visible) {
@@ -3647,6 +3643,72 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
       scene.setSimulationPaused(false);
       return { companionEid, targetEid };
+    },
+
+    primeFloor3GrowthProbe: (): number | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const player = playerEidOf(scene);
+      if (!scene || !world || world.floorId !== 'floor3' || player < 0) return null;
+      scene.setSimulationPaused(true);
+      for (const eid of query(world.ecs, [Companion, PartySlot])) {
+        world.stores.companion.knockedOut[eid] = 1;
+      }
+      const x = (world.stores.position.x[player] ?? 0) + 6;
+      const y = world.stores.position.y[player] ?? 0;
+      const growth = Math.sqrt(1.6);
+      const eid = recruitPartyCompanion(world, {
+        x,
+        y,
+        hp: 160,
+        speed: 0.1 * growth,
+        aggroRange: 48,
+        attackRange: 10 * growth,
+        aiType: AI_TYPE.RANGED,
+        speciesToken: speciesTokenForId('ember-slinger'),
+        level: 24,
+        form: 1,
+        xp: xpRequiredForLevel(24) - 1,
+        ownerTeam: TeamId.PLAYER,
+      });
+      if (eid === undefined) return null;
+      world.stores.health.current[eid] = 80;
+      world.stores.sprite.sizeScale[eid] = growth;
+      for (const [offset, hp] of [
+        [1, 1],
+        [2, 10000],
+      ]) {
+        const target = spawnBehaviorEnemy(world, x + offset!, y, hp!, AI_TYPE.CHASE, 0, 0, 0);
+        addComponent(world.ecs, target, set(Team, { id: TeamId.ENEMY }));
+      }
+      return eid;
+    },
+
+    getFloor3GrowthProbe: (eid: number): Floor3GrowthProbeState | null => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene || !entityExists(world.ecs, eid)) return null;
+      const obj = findDisplayObjectAt(
+        phaserScene,
+        ftToPx(world.stores.position.x[eid] ?? 0),
+        ftToPx(world.stores.position.y[eid] ?? 0),
+        (child) =>
+          child instanceof Phaser.GameObjects.Image || child instanceof Phaser.GameObjects.Sprite,
+      ) as Phaser.GameObjects.Image | null;
+      const attack = getCompanionAttackState(world, eid);
+      return {
+        level: world.stores.companion.level[eid] ?? 0,
+        form: world.stores.companion.form[eid] ?? 0,
+        maxHp: world.stores.health.max[eid] ?? 0,
+        currentHp: world.stores.health.current[eid] ?? 0,
+        speed: world.stores.enemyBehavior.speed[eid] ?? 0,
+        range: world.stores.enemyBehavior.attackRange[eid] ?? 0,
+        sizeScale: world.stores.sprite.sizeScale[eid] ?? 0,
+        renderScale: obj ? Math.abs(obj.scaleX) : null,
+        learnedAbilities: companionLearnedAbilityIds(world, eid),
+        lastAbilityId: attack?.lastAbilityId ?? null,
+        successfulAttacks: attack?.successfulAttacks ?? 0,
+      };
     },
 
     getEntityHealth: (eid: number): number | null => {

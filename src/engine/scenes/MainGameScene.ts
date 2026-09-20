@@ -93,8 +93,7 @@ import { equipFromBag } from '../../core/systems/equipmentSystem.js';
 import { toggleQuestArrow } from '../../core/systems/questSystem.js';
 import { createAchievementsUI } from '../AchievementsUI.js';
 import { createFloor3RosterUI, type Floor3RosterState } from '../Floor3RosterUI.js';
-import { shouldShowFloor3Party, resolvePartyMemberEids } from '../floor3-party-state.js';
-import { describeCompanionCommandRejection } from '../floor3-ability-command-state.js';
+import { shouldShowFloor3Party } from '../floor3-party-state.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { createRewardOpeningUI } from '../RewardOpeningUI.js';
@@ -950,9 +949,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyAchievements?: Phaser.Input.Keyboard.Key;
   private keyRoster?: Phaser.Input.Keyboard.Key;
-  private keyCommand?: Phaser.Input.Keyboard.Key;
   private queuedRosterToggle = false;
-  private queuedCompanionCommand = false;
 
   private keyQuartermaster?: Phaser.Input.Keyboard.Key;
 
@@ -1027,9 +1024,6 @@ export class MainGameScene extends Phaser.Scene {
   private equipmentUnlockNotified = false;
 
   private spellsUnlockNotified = false;
-
-  /** Latch so the Floor 3 Command-verb explainer toast only shows once (#4209). */
-  private floor3CommandUnlockNotified = false;
 
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
@@ -1153,8 +1147,6 @@ export class MainGameScene extends Phaser.Scene {
   private achievementsButton?: Phaser.GameObjects.Text;
 
   private floor3RosterButton?: Phaser.GameObjects.Text;
-
-  private floor3CommandButton?: Phaser.GameObjects.Text;
 
   /** Touch button for the abilities config modal. */
   private abilitiesButton?: Phaser.GameObjects.Text;
@@ -1353,7 +1345,6 @@ export class MainGameScene extends Phaser.Scene {
     this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.keyQuartermaster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.keyRoster = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.keyCommand = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.C);
     this.keyFloorSummaryAdvanceSpace = this.input.keyboard?.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE,
     );
@@ -1665,8 +1656,6 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsButton = undefined;
       this.floor3RosterButton?.destroy();
       this.floor3RosterButton = undefined;
-      this.floor3CommandButton?.destroy();
-      this.floor3CommandButton = undefined;
       this.abilitiesButton?.destroy();
       this.abilitiesButton = undefined;
       this.issueButton?.destroy();
@@ -1856,7 +1845,6 @@ export class MainGameScene extends Phaser.Scene {
       ['equip', this.equipButton],
       ['achievements', this.achievementsButton],
       ['floor3Roster', this.floor3RosterButton],
-      ['floor3Command', this.floor3CommandButton],
       ['abilities', this.abilitiesButton],
       ['quartermaster', this.quartermasterButton],
       ['issue', this.issueButton],
@@ -1980,7 +1968,6 @@ export class MainGameScene extends Phaser.Scene {
       isCornerButtonHit(this.equipButton) ||
       isCornerButtonHit(this.achievementsButton) ||
       isCornerButtonHit(this.floor3RosterButton) ||
-      isCornerButtonHit(this.floor3CommandButton) ||
       isCornerButtonHit(this.abilitiesButton) ||
       isCornerButtonHit(this.quartermasterButton) ||
       isCornerButtonHit(this.issueButton)
@@ -2061,7 +2048,6 @@ export class MainGameScene extends Phaser.Scene {
       this.keyAbilities,
       this.keyQuartermaster,
       this.keyRoster,
-      this.keyCommand,
       this.keyEsc,
     ]) {
       if (key) {
@@ -2199,11 +2185,6 @@ export class MainGameScene extends Phaser.Scene {
     this.queuedRosterToggle = true;
   }
 
-  /** Touch/e2e entry point for the Floor-3 companion command verb ([C]). */
-  public requestCompanionCommand(): void {
-    this.queuedCompanionCommand = true;
-  }
-
   /** Read-back of the mounted Floor-3 roster overlay for labs/e2e probes. */
   public getFloor3RosterState(): Floor3RosterState | null {
     return this.floor3RosterUI?.getState() ?? null;
@@ -2212,16 +2193,6 @@ export class MainGameScene extends Phaser.Scene {
   private closeFloor3Roster(): void {
     this.floor3RosterUI?.close();
     this.clearPendingInteractionInput();
-  }
-
-  private issueCompanionCommandFromInput(): void {
-    const result = this.hudUi?.issueFloor3Command(this.world, this.playerEid);
-    if (result === undefined) return;
-    if (result.accepted) {
-      this.flashHint(`${result.row.formName} uses ${result.abilityName}!`);
-      return;
-    }
-    this.flashHint(describeCompanionCommandRejection(result.rejection));
   }
 
   public requestQuartermasterToggle(): void {
@@ -3099,7 +3070,6 @@ export class MainGameScene extends Phaser.Scene {
     this.floor3RosterButton
       ?.setDepth(rosterOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(floor3PartyAvailable && (rosterOpen || canOpenNew));
-    this.floor3CommandButton?.setVisible(floor3PartyAvailable && !rosterOpen && canOpenNew);
     this.abilitiesButton
       ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
       .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
@@ -3121,32 +3091,6 @@ export class MainGameScene extends Phaser.Scene {
         'Abilities unlocked! Press [B] or tap Skills in a safe room to configure your bar.',
       );
     }
-    // Explains the Command verb's action *before* first activation (#4209):
-    // the corner button/key have never had any label/help text, so the first
-    // time the button becomes available is the only reliable moment to teach
-    // it without gating on an actual (possibly rejected) command attempt.
-    //
-    // `floor3PartyAvailable` only means "this is Floor 3" — it is true from
-    // the very first frame, before the starter-companion picker has even
-    // been confirmed. Gating on that alone would consume the one-shot latch
-    // while the intro/starter modal is still blocking, and the toast's fixed
-    // display window can expire long before the player actually has a
-    // Companion to command. Require an actual recruited party row (mirrors
-    // the same real party state the Command button and roster act on) and no
-    // blocking surface, so the explainer only fires once the player can
-    // genuinely read it and immediately try the thing it describes.
-    if (
-      floor3PartyAvailable &&
-      !this.floor3CommandUnlockNotified &&
-      !this.isBlockingSurfaceOpen() &&
-      resolvePartyMemberEids(this.world).length > 0
-    ) {
-      this.floor3CommandUnlockNotified = true;
-      this.flashHint(
-        'Command unlocked! Press [C] or tap ⚡ Command to have your ready Companion use its signature ability.',
-      );
-    }
-
     const inventoryToggleRequested =
       this.queuedInventoryToggle ||
       Boolean(this.keyInventory && Phaser.Input.Keyboard.JustDown(this.keyInventory));
@@ -3240,14 +3184,6 @@ export class MainGameScene extends Phaser.Scene {
       this.closeCharacterPanels();
       this.clearPendingInteractionInput();
       this.floor3RosterUI?.open(this.world);
-    }
-
-    const commandRequested =
-      this.queuedCompanionCommand ||
-      Boolean(this.keyCommand && Phaser.Input.Keyboard.JustDown(this.keyCommand));
-    this.queuedCompanionCommand = false;
-    if (commandRequested && !this.isBlockingSurfaceOpen() && floor3PartyAvailable) {
-      this.issueCompanionCommandFromInput();
     }
 
     // Boss chests now appear as physical in-world entities. Surface a one-time
@@ -3635,13 +3571,10 @@ export class MainGameScene extends Phaser.Scene {
     this.floor3RosterButton = makeCornerButton(cornerButtonTop() + 168, '🐾 Roster', () => {
       this.requestFloor3RosterToggle();
     });
-    this.floor3CommandButton = makeCornerButton(cornerButtonTop() + 224, '⚡ Command', () => {
-      this.requestCompanionCommand();
-    });
-    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 280, '🔮 Skills', () => {
+    this.abilitiesButton = makeCornerButton(cornerButtonTop() + 224, '🔮 Skills', () => {
       this.queuedAbilitiesToggle = true;
     });
-    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 336, '✕ Shop', () => {
+    this.quartermasterButton = makeCornerButton(cornerButtonTop() + 280, '✕ Shop', () => {
       this.requestQuartermasterToggle();
     });
     this.issueButton = makeCornerButton(
@@ -3676,7 +3609,6 @@ export class MainGameScene extends Phaser.Scene {
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
       this.floor3RosterButton?.setScale(buttonScale);
-      this.floor3CommandButton?.setScale(buttonScale);
       this.abilitiesButton?.setScale(buttonScale);
       this.quartermasterButton?.setScale(buttonScale);
       this.issueButton?.setScale(buttonScale);
@@ -3688,7 +3620,6 @@ export class MainGameScene extends Phaser.Scene {
         this.equipButton,
         this.achievementsButton,
         this.floor3RosterButton,
-        this.floor3CommandButton,
         this.abilitiesButton,
         this.quartermasterButton,
       ]) {
@@ -3703,11 +3634,9 @@ export class MainGameScene extends Phaser.Scene {
       const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
       this.floor3RosterButton?.setY(top + bagH + gearH + awardsH);
       const rosterH = (this.floor3RosterButton?.height ?? 44) * buttonScale + 8;
-      this.floor3CommandButton?.setY(top + bagH + gearH + awardsH + rosterH);
-      const commandH = (this.floor3CommandButton?.height ?? 44) * buttonScale + 8;
-      this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH);
+      this.abilitiesButton?.setY(top + bagH + gearH + awardsH + rosterH);
       const skillsH = (this.abilitiesButton?.height ?? 44) * buttonScale + 8;
-      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + commandH + skillsH);
+      this.quartermasterButton?.setY(top + bagH + gearH + awardsH + rosterH + skillsH);
       // Keep Issue independent from the left-side stack so it cannot cover
       // the skill HUD or interaction hint as the other buttons are revealed.
       repositionIssueButton();

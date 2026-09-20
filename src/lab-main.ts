@@ -82,7 +82,6 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'floor3-party-hud-lab': '/src/labs/floor3-ux-lab/party-hud/index.ts',
   'floor3-roster-lab': '/src/labs/floor3-ux-lab/roster/index.ts',
   'floor3-level-up-notice-lab': '/src/labs/floor3-ux-lab/level-up-notice/index.ts',
-  'floor3-ability-command-lab': '/src/labs/floor3-ux-lab/ability-command/index.ts',
   'floor3-matchup-lab': '/src/labs/floor3-ux-lab/matchup/index.ts',
   'floor4-arena-lab': '/src/labs/floor4-arena-lab/index.ts',
   'floor5-siege-lab': '/src/labs/floor5-siege-lab/index.ts',

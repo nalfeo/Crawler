@@ -41,6 +41,10 @@ import {
   speciesTokenForId,
 } from '../../shared/data/floor3/species.js';
 import tuning from '../../shared/data/tuning.json';
+import { companionGrowthScales } from '../../shared/data/floor3/growth.js';
+import { getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
+import { collisionSystem } from '../../core/systems/collisionSystem.js';
+import { damageSystem } from '../../core/systems/damageSystem.js';
 import { getFloorEnemyPack } from '../../shared/enemy-packs.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -98,11 +102,12 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       throw new Error('Floor 3 companion lab requires the ember-charger wild archetype.');
     }
     const form = formForLevel(species, state.starterCompanionLevel);
+    const growth = companionGrowthScales(species, state.starterCompanionLevel);
     // Mirror `recruitFloor3PartyCompanion` exactly: wild-pack base HP, current
     // form scale, then the player-party-only tuning multiplier.
     const companionHp = Math.max(
       1,
-      Math.round(archetype.hp * form.statScale * state.playerCompanionHpMultiplier),
+      archetype.hp * growth.statScale * state.playerCompanionHpMultiplier,
     );
     companionEid = spawnBehaviorEnemy(
       world,
@@ -110,10 +115,11 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       state.companionY,
       companionHp,
       labAiTypeValue(state.aiType),
-      0.12,
+      archetype.speed * growth.speedScale,
       999,
-      state.aiType === 'SUPPORT' ? 12 : 0,
+      state.aiType === 'SUPPORT' ? archetype.detectRange * 0.65 * growth.rangeScale : 0,
     );
+    world.stores.sprite.sizeScale[companionEid] = growth.visualScale;
     addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
     addComponent(
       world.ecs,
@@ -167,14 +173,6 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     render();
   }
 
-  function attackRival(): void {
-    if (companionEid < 0 || rivalEid < 0) return;
-    companionAISystem(world);
-    companionCombatSystem(world, state.playerCompanionDamageMultiplier);
-    companionProgressionSystem(world);
-    render();
-  }
-
   function koCompanionNow(): void {
     if (companionEid < 0) return;
     world.stores.health.current[companionEid] = 0;
@@ -185,6 +183,13 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
   function advanceFrames(count: number): void {
     for (let i = 0; i < count; i++) {
       world.frameCount += 1;
+      world.elapsedMs += 1000 / 60;
+      companionAISystem(world);
+      enemyAISystem(world);
+      companionCombatSystem(world, state.playerCompanionDamageMultiplier);
+      movementSystem(world);
+      damageSystem(world, collisionSystem(world));
+      companionProgressionSystem(world);
       companionKOSystem(world);
     }
     render();
@@ -202,11 +207,6 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
   }
 
   function render(): void {
-    const beforeX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
-    const beforeY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
-    companionAISystem(world);
-    enemyAISystem(world);
-    movementSystem(world);
     const decision = companionEid >= 0 ? getCompanionAIDecision(world, companionEid) : undefined;
     const afterX = companionEid >= 0 ? (world.stores.position.x[companionEid] ?? 0) : 0;
     const afterY = companionEid >= 0 ? (world.stores.position.y[companionEid] ?? 0) : 0;
@@ -215,9 +215,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     const lines: string[] = [];
     lines.push(`player eid=${playerEid} @ (${state.playerX}, ${state.playerY})`);
     lines.push(`companion eid=${companionEid} ai=${state.aiType}`);
-    lines.push(
-      `companion step: (${beforeX.toFixed(2)}, ${beforeY.toFixed(2)}) -> (${afterX.toFixed(2)}, ${afterY.toFixed(2)})`,
-    );
+    lines.push(`companion position: (${afterX.toFixed(2)}, ${afterY.toFixed(2)})`);
     lines.push(`velocity: (${velocityX.toFixed(3)}, ${velocityY.toFixed(3)})`);
     lines.push(
       state.spawnRival
@@ -246,6 +244,14 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(`slice 5 — companion progression (ember-charger):`);
       lines.push(`  level=${level} xp=${xp.toFixed(1)} form=${form} (${formName})`);
       lines.push(`  abilities learned: ${abilities.join(', ')}`);
+      const attack = getCompanionAttackState(world, companionEid);
+      lines.push(`  automatic technique: ${attack?.lastAbilityId ?? '(none yet)'}`);
+      lines.push(`  automatic attacks: ${attack?.successfulAttacks ?? 0}`);
+      lines.push(
+        `  speed=${(world.stores.enemyBehavior.speed[companionEid] ?? 0).toFixed(3)} ` +
+          `range=${(world.stores.enemyBehavior.attackRange[companionEid] ?? 0).toFixed(3)} ` +
+          `visual scale=${(world.stores.sprite.sizeScale[companionEid] ?? 1).toFixed(3)}`,
+      );
       lines.push('');
       lines.push('Floor-3-ONLY companion buff (human-authorized 2026-09-03):');
       lines.push(
@@ -322,7 +328,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
     .name('Floor3: companion HP x')
     .onChange(() => reseed());
   gui.add(state, 'playerCompanionDamageMultiplier', 0.5, 10, 0.5).name('Floor3: companion dmg x');
-  gui.add({ attack: () => attackRival() }, 'attack').name('⚔ Companion attacks rival');
+  gui.add({ advance1: () => advanceFrames(1) }, 'advance1').name('⏱ Advance 1 frame');
   gui.add({ koNow: () => koCompanionNow() }, 'koNow').name('💥 KO companion now');
   gui.add({ advance60: () => advanceFrames(60) }, 'advance60').name('⏱ Advance 60 frames (~1s)');
   gui.add({ rally: () => placeRallyPoint() }, 'rally').name('🏳 Place Rally Point at player');

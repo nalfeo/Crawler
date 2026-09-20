@@ -3,7 +3,7 @@
 > **Season episode:** _"Fur, Fangs & Fame"_ (working title). Floor 3 is a **monster-taming
 > game-show** floor. The dungeon's producers have franchised the season into a televised
 > creature-battling circuit: contestants — **Wranglers** — are contractually **barred from
-> throwing a punch on camera** (network liability gag), so they command sponsored auto-battling
+> throwing a punch on camera** (network liability gag), so they lead sponsored auto-battling
 > creatures called **Companions** instead. Win the circuit by toppling **6 sponsor Studios**
 > (gyms) and the network's **Final Four** championship board. The Director: _"They said a
 > reality show couldn't do wholesome family creature-combat. We proved them half right."_
@@ -65,9 +65,9 @@ framing are drawn from any existing property.
 
 ---
 
-## 3. Core loop — the commander / auto-battler verb
+## 3. Core loop — movement and automatic combat
 
-Floor 3 replaces the swing-a-weapon verb with a **positioning + command** verb.
+Floor 3 replaces the swing-a-weapon verb with **movement, equipment, enabled automatic abilities, and party composition**.
 
 1. **Your Companions auto-battle.** They follow you, engage nearby hostiles, and never target
    you or other Wranglers. Wild creatures count as hostile only while the player is close enough
@@ -76,9 +76,9 @@ Floor 3 replaces the swing-a-weapon verb with a **positioning + command** verb.
 2. **You position.** Where you stand pulls your team's engagement; you kite fights toward or
    away from clusters, funnel enemies, and vacuum the **XP gems / gold / loot** that defeated
    creatures drop (your persistent progression — §9).
-3. **You command abilities.** Your Companions' abilities fire on cooldown automatically, but
-   you can **trigger** a Companion's signature ability manually for burst timing (the
-   "commander" verb). Ability command capacity scales with your **player level** (§9).
+3. **You configure automatic combat.** Equipment and enabled automatic abilities shape your
+   build. Companions use their learned abilities automatically; there is no manual command
+   input, command capacity, or burst-timing control.
 4. **You read the type game.** Every creature has a **Temperament (affinity)** and a
    **fighting style**; matchups decide fights (§4–§5). Recruiting to cover your weaknesses is
    the core strategic decision (§6).
@@ -260,8 +260,8 @@ This is the heart of the floor's design (ADR 0071 D5–D6).
 
 ### 9.1 Persistent player track (carries to Floor 4+)
 
-The player advances **exactly like every other floor**, just earned by commanding rather than
-fighting:
+The player advances **exactly like every other floor**, through automatic companion
+combat and collecting its rewards:
 
 - Defeated wild / Trainer / Studio creatures drop **XP gems, gold, and loot/crafting
   materials**, collected by the invulnerable player via the existing `itemPickupSystem`
@@ -269,10 +269,7 @@ fighting:
   `world.playerGold`, and Inventory.
 - This feeds the player's **normal cross-floor character level + gear**, so the player is
   **genuinely stronger going into Floor 4+.** No throwaway per-floor currency.
-- On Floor 3 the player's level also powers **command capability** (e.g., simultaneous ability
-  triggers, gem-magnet radius, Rally-Point recovery speed) — but the growth itself is the real
-  persistent curve.
-- **Vacuuming gems by positioning is the core commander verb.**
+- **Vacuuming gems by positioning is a core player action.**
 
 ### 9.2 Floor-scoped creature track (does NOT carry over)
 
@@ -314,6 +311,14 @@ Standard curve across all species (per-species flavor in the roster doc):
 - **XP curve:** reuses `xpMath` (`XP.BASE_PER_LEVEL` / `XP.SCALING_FACTOR`); creatures share the
   player's leveling math with their own per-entity XP counter.
 - Evolution + level-up + ability-learned events surface via the notification UI (screen #6).
+
+The rehabilitation baseline executes learned abilities as a deterministic rotation
+of automatic attack techniques, with milestone damage/recovery profiles. Species
+keep their affinity and style's melee/projectile delivery; bespoke roster effects
+(such as novas and healing tides) remain future content. Form stat scales affect
+HP/damage, and their square roots affect speed, reach, and visible size. Evolution
+preserves the living health fraction and never revives a KO. See
+[ADR 0108](../adr/0108-floor3-automatic-companion-growth.md).
 
 ---
 
@@ -402,7 +407,7 @@ Reuse anchors noted.
 | 4   | Party HUD (6 Companions)         | per-pet HP/KO, level, affinity + style icons, ability cooldowns       | HUD (`hud-lab`)                                  |
 | 5   | Companion detail / roster screen | stats, affinity, style, abilities, evolution track                    | new (roster panel)                               |
 | 6   | Level-up / evolve / learn notice | leveled / evolved (form change) / learned ability                     | `src/engine/LevelUpUI.ts` + `level-up-lab`       |
-| 7   | Ability command input            | the commander verb — trigger a Companion's signature ability          | new (command binding + HUD affordance)           |
+| 7   | Retired: manual ability command  | no command control; learned Companion abilities fire automatically    | removed                                          |
 | 8   | Affinity matchup indicator       | strong/weak read on the current engagement (drives the type game)     | new (combat overlay)                             |
 | 9   | Recruit-window / lock indicator  | recruit slots remaining before party-lock                             | HUD element                                      |
 | 10  | Studio unlock + handler "versus" | announce handler, affinity identity, lineup preview                   | intro/versus banner                              |

@@ -48,7 +48,7 @@ exposes is larger than the ~5 leaf types this project actually needs.
   `SeededRandom` from `ctx`.
 - No `Date.now()` — timers use the runner's `frameCount * FRAME_MS`.
 
-This satisfies the build-vs-buy fit-gap rule (`docs/agent-os/policies/complexity-policy.md`):
+This satisfies the build-vs-buy fit-gap rule (`docs/agent-os/personas/systems-engineer.md`):
 the third-party API surface exceeds what we need, the determinism cost is
 non-negotiable, and the hand-roll is small enough to own.
 

@@ -682,7 +682,7 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/shared/data/floor3/species.ts',
     name: 'learnedAbilityIds',
     reason:
-      'Floor 3 slice 1: resolves the abilities learned by a given level; wired into per-creature leveling and the ability-command UX surface by slice 5.',
+      'Floor 3 slice 1: resolves the abilities learned by a given level for per-creature progression, roster presentation, and automatic combat.',
     expiresOn: '2026-11-15',
   },
   {
@@ -717,7 +717,7 @@ export const TEST_SCAFFOLD_ALLOWLIST_ENTRIES = [
     file: 'src/core/systems/companionProgressionSystem.ts',
     name: 'companionLearnedAbilityIds',
     reason:
-      'Floor 3 slice 5: derived (species, level) -> learned ability ids read for the ability-command UX (slice 12-14) and ability-selection AI, neither of which has landed yet; only the lab panel and unit tests call it until those consumers land.',
+      'Floor 3 slice 5: derived (species, level) -> learned ability ids exposed for progression lab inspection and deterministic tests; production automatic combat derives its behavior through the shared companion growth profile.',
     expiresOn: '2026-11-22',
   },
   {

@@ -29,7 +29,7 @@ const FLOOR3_INTRO_ACKNOWLEDGE_ID = 'floor3-intro-ack';
  * the win condition.
  */
 const FLOOR3_INTRO_RULES: readonly string[] = [
-  'Professor Thistle: you are a Wrangler in the Companion League. Your Companions battle; you command.',
+  'Professor Thistle: you are a Wrangler in the Companion League. Your Companions battle automatically; guide them with movement, equipment, enabled abilities, and party composition.',
   'You never fight. Wranglers and handlers are insured non-combatants — only Companions take damage.',
   'Recruit: pick 1 starter now, then poach 1 Companion from every Trainer you beat.',
   'The lock: starter + 5 poaches = 6 Companions, then your roster signs for the season.',
