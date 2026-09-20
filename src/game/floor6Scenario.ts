@@ -690,7 +690,7 @@ function selectedFloor6TowerModifierCount(state: Floor6DefenseState): number {
   ).length;
 }
 
-function floor6RelayMaxHp(state: Floor6DefenseState): number {
+export function floor6RelayMaxHp(state: Floor6DefenseState): number {
   return (
     (getFloor6Config().tuning?.relayMaxHp ?? 100) +
     selectedFloor6UpgradeValue(state, 'relayMaxHpBonus')
@@ -859,7 +859,7 @@ type Floor6BreakAction = NonNullable<
   NonNullable<typeof floor6Manifest.floor6>['finale']
 >['breakAllowedActions'][number];
 
-function isFloor6TransactionAllowed(
+export function isFloor6TransactionAllowed(
   state: Floor6DefenseState,
   breakAction: Floor6BreakAction,
 ): boolean {
