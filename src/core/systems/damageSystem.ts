@@ -14,6 +14,8 @@ import {
   Player,
   Projectile,
   Returning,
+  SiegeHero,
+  SiegeMinion,
   Team,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
@@ -216,6 +218,11 @@ function applyPlayerEnemyHit(
   enemy: number,
   hitTimestamps: Float64Array,
 ): void {
+  // These hostile actors carry Enemy for player weapon hits, but their siege
+  // systems exclusively own attacks and cooldowns against objective targets.
+  if (hasComponent(world.ecs, enemy, SiegeMinion) || hasComponent(world.ecs, enemy, SiegeHero)) {
+    return;
+  }
   // Dead enemies keep their Enemy component during the death-linger window
   // (deathTimerSystem removes them once the corpse animation finishes). A
   // corpse must not deal contact damage just because the player walks over it.

@@ -88,6 +88,7 @@ hundreds of inbound references.
 
 ### Combat & damage
 
+- [Floor 5 hostile combat and siege presentation](0108-floor5-hostile-combat-presentation.md) — hostile targeting with siege-owned attacks/rewards and live scenario presentation.
 - [Guard AI / contact damage against death-linger corpses](0017-dead-enemy-corpse-collision-guard.md)
 - [Wire secondary stats (crit/dodge) into the damage path](0018-secondary-stats-into-combat.md) — superseded by the primary-stat overhaul (see Stats, mana & progression below).
 - [Line-of-sight melee hits & AI loot-reachability gating](0023-line-of-sight-melee-and-loot-reachability.md)
@@ -305,3 +306,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0091 | [Floor 4 Slice 2 — Arena Director Rehearsal](0091-floor4-slice2-arena-director-rehearsal.md)                                                       | Accepted                 | 2026-08-24 |
 | 0094 | [Floor 5 — Hostile Takeover (castle siege floor)](0094-floor5-hostile-takeover.md)                                                                 | Proposed                 | 2026-08-30 |
 | 0097 | [Floor 6 — Hold for Renovation (compact defense floor)](0097-floor6-hold-for-renovation.md)                                                        | Proposed                 | 2026-08-31 |
+| 0108 | [Floor 5 hostile combat and siege presentation](0108-floor5-hostile-combat-presentation.md)                                                        | Accepted                 | 2026-09-20 |
