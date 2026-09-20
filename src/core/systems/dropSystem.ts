@@ -16,6 +16,8 @@ import {
   Health,
   Knockback,
   Owner,
+  SiegeHero,
+  SiegeMinion,
   Size,
   SpawnAnim,
   Spawner,
@@ -385,6 +387,11 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     processed.add(eid);
 
+    // Siege actors opt into Enemy for targeting only. Preserve their original
+    // no-reward, immediate-removal lifecycle while emitting normal death VFX.
+    const siegeOwnedDeath =
+      hasComponent(world.ecs, eid, SiegeMinion) || hasComponent(world.ecs, eid, SiegeHero);
+
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
     const archetypeId = world.floorScenario?.enemyArchetypes.get(eid);
@@ -443,7 +450,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       }
     }
 
-    if (spawnLoot) {
+    if (spawnLoot && !siegeOwnedDeath) {
       // Resolve and roll loot tables
       const tables = getEnemyLootTables(world, eid);
       const entries = resolveLootTables(
@@ -569,7 +576,9 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     });
 
     // Add death linger timer so entity persists for knockback/death animation
-    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: deathLingerMs }));
+    if (!siegeOwnedDeath) {
+      addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: deathLingerMs }));
+    }
   }
 }
 

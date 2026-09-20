@@ -19,6 +19,9 @@ import {
   Returning,
   SiegeHero,
   SiegeMinion,
+  SiegeRam,
+  SiegeRouteMarker,
+  SiegeStructure,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -70,6 +73,8 @@ export const SLIME_FULL_SPRITE_WIDTH = 3;
  * to the projectile's feet position than its own display object.
  */
 export const PROJECTILE_OBJECT_NAME_PREFIX = 'projectile:';
+/** Exact object identity for real-scene siege presentation probes. */
+export const SIEGE_OBJECT_NAME_PREFIX = 'siege:';
 
 /**
  * Structural slice of {@link GameWorld} that {@link resolveRenderKind} reads:
@@ -83,6 +88,7 @@ export interface RenderKindWorld {
     readonly team: { readonly id: ArrayLike<number> };
     readonly sprite: { readonly textureId: ArrayLike<number> };
     readonly projectileVisual: { readonly kind: ArrayLike<number> };
+    readonly siegeStructure: { readonly kind: ArrayLike<number> };
   };
 }
 
@@ -98,9 +104,26 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Npc)) return 'npc';
   if (hasComponent(world.ecs, eid, Harvestable)) return 'harvestable';
   if (hasComponent(world.ecs, eid, BossChestEntity)) return 'boss_chest';
+  // Siege identity wins over the combat Enemy marker. Rendering allegiance
+  // reads Team, the same authoritative team used by combat.
+  if (hasComponent(world.ecs, eid, SiegeHero)) return 'enemy_siege_hero';
+  if (hasComponent(world.ecs, eid, SiegeMinion)) {
+    return world.stores.team.id[eid] === TeamId.SIEGE_ALLIED
+      ? 'siege_allied_minion'
+      : 'enemy_siege_minion';
+  }
+  if (hasComponent(world.ecs, eid, SiegeRam)) return 'siege_ram';
+  if (hasComponent(world.ecs, eid, SiegeRouteMarker)) return 'siege_route_marker';
+  if (hasComponent(world.ecs, eid, SiegeStructure)) {
+    // The structure-kind contract is authored by Floor 5's scenario spawner.
+    const kind = world.stores.siegeStructure.kind[eid];
+    if (kind === 1) return 'siege_command_post';
+    if (kind === 4) return 'siege_outer_wall';
+    return world.stores.team.id[eid] === TeamId.SIEGE_ALLIED
+      ? 'siege_allied_checkpoint'
+      : 'siege_enemy_checkpoint';
+  }
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
-  if (hasComponent(world.ecs, eid, SiegeMinion) || hasComponent(world.ecs, eid, SiegeHero))
-    return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';
   if (hasComponent(world.ecs, eid, BuildCurrencyPickup)) return 'build_currency';
@@ -138,6 +161,13 @@ export function resolveRenderKind(world: RenderKindWorld, eid: number): string {
   )
     return 'welcome_sign';
   return 'default';
+}
+
+/** Siege combatants keep the bridge's established FOV, status and corpse treatment. */
+export function isSiegeActorRenderKind(kind: string): boolean {
+  return (
+    kind === 'siege_allied_minion' || kind === 'enemy_siege_minion' || kind === 'enemy_siege_hero'
+  );
 }
 
 /**

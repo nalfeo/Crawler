@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { createLogger } from '../../shared/logger.js';
+import { generateSiegeTextures, SIEGE_TEXTURE_KEYS } from './siege-textures.js';
 
 /**
  * Procedural fallback textures for {@link createPhaserBridge}.
@@ -37,6 +38,7 @@ export const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
 const TEX_GOLD = '__cw_gold';
 const TEX_BUILD_CURRENCY = '__cw_build_currency';
 export const PROCEDURAL_TEXTURE_KEYS = {
+  ...SIEGE_TEXTURE_KEYS,
   default: TEX_BULLET,
   player: TEX_PLAYER,
   enemy: TEX_ENEMY,
@@ -78,6 +80,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   if (scene.textures.exists(TEX_PLAYER)) return;
 
   const g = scene.add.graphics();
+  generateSiegeTextures(g);
 
   // Player — green diamond
   g.clear();

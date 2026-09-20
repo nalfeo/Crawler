@@ -179,8 +179,13 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(startupMinionSnapshot!.minionEnemy).toBeGreaterThan(0);
     expect(startupMinionSnapshot!.renderKinds.length).toBeGreaterThan(0);
     expect(startupMinionSnapshot!.renderKinds).toEqual(
-      Array(startupMinionSnapshot!.renderKinds.length).fill('enemy'),
+      expect.arrayContaining(['siege_allied_minion', 'enemy_siege_minion']),
     );
+    expect(
+      startupMinionSnapshot!.renderKinds.every((kind) =>
+        ['siege_allied_minion', 'enemy_siege_minion', 'enemy_siege_hero'].includes(kind),
+      ),
+    ).toBe(true);
     expect(getFloorManifest('floor5')?.terrainPackId).toBe('floor1-dungeon');
     expect(startupMinionSnapshot!.announcements).toEqual(
       expect.arrayContaining([
