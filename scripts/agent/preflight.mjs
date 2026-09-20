@@ -79,9 +79,14 @@ export function main({
   let installedDependencies = false;
   if (needsInstall(root, exists)) {
     console.log('Fresh worktree: installing dependencies once before preflight…');
-    const npm = platform === 'win32' ? 'npm.cmd' : 'npm';
+    // Use npm belonging to the selected Node runtime.  npm.cmd on Windows
+    // hard-links back to the system Node installation, bypassing PATH.
+    const npm = env.CRAWLER_NPM_CLI ? nodeExecutable : platform === 'win32' ? 'npm.cmd' : 'npm';
+    const npmArgs = env.CRAWLER_NPM_CLI
+      ? [env.CRAWLER_NPM_CLI, 'ci', '--prefer-offline']
+      : ['ci', '--prefer-offline'];
     // The normal preflight owns browser provisioning. Avoid downloading it twice.
-    const installStatus = runCommand(npm, ['ci', '--prefer-offline'], {
+    const installStatus = runCommand(npm, npmArgs, {
       cwd: root,
       env: {
         ...env,
@@ -98,8 +103,19 @@ export function main({
     }
     installedDependencies = true;
   }
-  const tsx = join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
-  return runCommand(tsx, ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'], {
+  // As with npm.cmd, tsx.cmd is a Windows wrapper that can escape the selected
+  // runtime. Invoke tsx's JS entrypoint with that runtime directly.
+  const tsx = env.CRAWLER_NPM_CLI
+    ? nodeExecutable
+    : join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const tsxArgs = env.CRAWLER_NPM_CLI
+    ? [
+        join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        'scripts/agent/run-bash-wrapper.ts',
+        'scripts/agent/preflight.sh',
+      ]
+    : ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'];
+  return runCommand(tsx, tsxArgs, {
     cwd: root,
     // Reuse the bootstrap's answer so the wrapper does not depend on Codex
     // forwarding ProgramFiles or adding Git Bash to PATH.
