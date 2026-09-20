@@ -9,6 +9,9 @@ policy, CI Recovery admission, merge-train admission
 
 - Added a checked-in launcher that resolves the Node version pinned by
   `.node-version` before running TypeScript agent tools or npm.
+- When neither the current runtime nor fnm supplies the pin, the launcher now
+  provisions the official Node archive into the ignored worktree cache and
+  verifies it against Node's published SHA-256 manifest before use.
 - Added a Windows-only preload for managed execution tokens where
   `os.userInfo()` fails with libuv's misleading `uv_os_get_passwd ENOMEM`.
   The preload steers `tsx` away from that lookup without changing process

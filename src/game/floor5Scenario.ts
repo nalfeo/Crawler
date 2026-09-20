@@ -728,6 +728,9 @@ function spawnFloor5Minion(
   );
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
   addComponent(world.ecs, eid, set(Team, { id: FLOOR5_TEAM_CODE[team] }));
+  // Enemy is the player weapon eligibility contract, not the siege AI owner.
+  // Allied actors stay outside hostile hit queries; no EnemyBehavior is added.
+  if (team === 'enemy') addComponent(world.ecs, eid, Enemy);
   addComponent(
     world.ecs,
     eid,
@@ -1142,6 +1145,8 @@ function spawnFloor5Hero(
   );
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
   addComponent(world.ecs, eid, set(Team, { id: FLOOR5_TEAM_CODE.enemy }));
+  // Weapons use Enemy; the SiegeHero marker retains steering/attack ownership.
+  addComponent(world.ecs, eid, Enemy);
   addComponent(
     world.ecs,
     eid,

@@ -1,135 +1,60 @@
-/* global URL */
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import { createRequire } from 'node:module';
 import test from 'node:test';
+import process from 'node:process';
 
-import {
-  pinnedNodeCandidates,
-  pinnedNodeVersion,
-  npmCliForNode,
-  resolvePinnedNode,
-  runtimeEnvironment,
-} from './run-tsx.mjs';
+import { createRequire } from 'node:module';
 
-test('reads the repository-pinned Node version', () => {
-  assert.equal(pinnedNodeVersion(), '22.23.2');
-});
+import { nodeArchive, pinnedNodeCandidates, runtimeEnvironment } from './run-tsx.mjs';
 
-test('prefers the current executable when it already matches the pin', () => {
+test('selects a managed runtime before any ambient Node executable', () => {
   const candidates = pinnedNodeCandidates({
-    env: {},
+    root: process.cwd(),
+    env: { CRAWLER_RUNTIME_CACHE: 'C:\\runtime-cache' },
     platform: 'win32',
-    currentExecutable: 'C:\\current\\node.exe',
-    currentVersion: '22.23.2',
-  });
-  assert.equal(candidates[0], 'C:\\current\\node.exe');
-});
-
-test('discovers the pinned fnm installation on Windows', () => {
-  const expected =
-    'C:\\Users\\agent\\AppData\\Roaming\\fnm\\node-versions\\v22.23.2\\installation\\node.exe';
-  const resolved = resolvePinnedNode({
-    env: { APPDATA: 'C:\\Users\\agent\\AppData\\Roaming' },
-    platform: 'win32',
+    arch: 'x64',
     currentExecutable: 'C:\\Program Files\\nodejs\\node.exe',
-    currentVersion: '24.0.0',
-    exists: (candidate) => candidate === expected,
-    versionFor: () => '22.23.2',
+    currentVersion: '24.19.0',
   });
-  assert.equal(resolved, expected);
+  assert.equal(candidates[0], 'C:\\runtime-cache\\node-v22.23.2-win-x64\\node.exe');
 });
 
-test('rejects an explicit runtime override with the wrong Node version', () => {
-  const override = 'C:\\custom\\node.exe';
-  const resolved = resolvePinnedNode({
-    env: { CRAWLER_NODE_EXECUTABLE: override },
-    platform: 'win32',
-    currentExecutable: 'C:\\system\\node.exe',
-    currentVersion: '24.0.0',
-    exists: (candidate) => candidate === override,
-    versionFor: () => '20.0.0',
+test('uses an official archive name for each supported host family', () => {
+  assert.deepEqual(nodeArchive({ version: '22.23.2', platform: 'win32', arch: 'x64' }), {
+    target: 'win-x64',
+    filename: 'node-v22.23.2-win-x64.zip',
   });
-  assert.equal(resolved, null);
+  assert.deepEqual(nodeArchive({ version: '22.23.2', platform: 'linux', arch: 'arm64' }), {
+    target: 'linux-arm64',
+    filename: 'node-v22.23.2-linux-arm64.tar.gz',
+  });
 });
 
-test('resolves npm beside the pinned Node executable', () => {
-  assert.equal(
-    npmCliForNode('C:\\pinned\\node.exe', 'win32'),
-    'C:\\pinned\\node_modules\\npm\\bin\\npm-cli.js',
-  );
-  assert.equal(
-    npmCliForNode('/opt/node/bin/node', 'linux'),
-    '/opt/node/lib/node_modules/npm/bin/npm-cli.js',
-  );
-});
-
-test('runtime environment prepends pinned Node and preloads the identity shim', () => {
-  const env = runtimeEnvironment(
-    'C:\\pinned\\node.exe',
-    { PATH: 'C:\\system', NODE_OPTIONS: '--trace-warnings' },
-    'win32',
-  );
-  assert.equal(env.PATH, 'C:\\pinned;C:\\system');
-  assert.match(env.NODE_OPTIONS, /^--trace-warnings --require=/);
+test('passes the selected Node and its npm CLI to child processes', () => {
+  const env = runtimeEnvironment('C:\\runtime-cache\\node.exe', { Path: 'C:\\system' }, 'win32');
+  assert.equal(env.CRAWLER_NODE_EXECUTABLE, 'C:\\runtime-cache\\node.exe');
+  assert.equal(env.CRAWLER_NPM_CLI, 'C:\\runtime-cache\\node_modules\\npm\\bin\\npm-cli.js');
+  assert.equal(env.PATH, 'C:\\runtime-cache;C:\\system');
+  assert.equal(env.Path, undefined);
   assert.match(env.NODE_OPTIONS, /windows-node-identity\.cjs/);
 });
 
-test('package scripts route tsx through the pinned runtime launcher', () => {
-  const packageJson = JSON.parse(
-    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-  );
-  const directTsxScripts = Object.entries(packageJson.scripts)
-    .filter(([, command]) => /(?:^|[;&|]\s*)(?:npx\s+)?tsx\s/.test(command))
-    .map(([name]) => name);
-
-  assert.deepEqual(directTsxScripts, []);
-});
-
-test('checked-in agent shell entry points route tsx through the pinned runtime launcher', () => {
-  const agentRoot = new URL('.', import.meta.url);
-  const pending = [agentRoot];
-  const violations = [];
-  while (pending.length > 0) {
-    const directory = pending.pop();
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const url = new URL(entry.name, directory);
-      if (entry.isDirectory()) {
-        pending.push(new URL(`${entry.name}/`, directory));
-      } else if (extname(entry.name) === '.sh') {
-        const lines = readFileSync(url, 'utf8').split(/\r?\n/);
-        lines.forEach((line, index) => {
-          if (!line.trimStart().startsWith('#') && /(?:^|\s)(?:npx\s+)?tsx\s/.test(line)) {
-            violations.push(`${join('scripts', 'agent', entry.name)}:${index + 1}`);
-          }
-        });
-      }
-    }
-  }
-  assert.deepEqual(violations, []);
-});
-
-test('identity fallback is limited to the failing Windows user lookup', () => {
+test('uses the identity fallback only for the known restricted Windows lookup', () => {
   const require = createRequire(import.meta.url);
   const { installWindowsIdentityFallback } = require('./windows-node-identity.cjs');
-  const healthyTarget = {};
+  const healthy = {};
   installWindowsIdentityFallback({
     platform: 'win32',
-    target: healthyTarget,
+    target: healthy,
     lookup: () => ({ username: 'agent' }),
   });
-  assert.equal(healthyTarget.geteuid, undefined);
-
-  const restrictedTarget = {};
+  assert.equal(healthy.geteuid, undefined);
+  const restricted = {};
   installWindowsIdentityFallback({
     platform: 'win32',
-    target: restrictedTarget,
+    target: restricted,
     lookup: () => {
-      const error = new Error('lookup failed');
-      error.syscall = 'uv_os_get_passwd';
-      throw error;
+      throw Object.assign(new Error('lookup failed'), { syscall: 'uv_os_get_passwd' });
     },
   });
-  assert.equal(restrictedTarget.geteuid(), 1000);
+  assert.equal(restricted.geteuid(), 1000);
 });

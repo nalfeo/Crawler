@@ -1,0 +1,80 @@
+import type { GameWorld } from '../core/world.js';
+import type { Floor5SiegeState } from '../shared/floor-types.js';
+import type { ScenarioHudSnapshot } from '../shared/scenario-presentation.js';
+
+function currentObjective(state: Floor5SiegeState): string {
+  if (state.engineState === 'DESTROYED' && state.phase.kind !== 'DEFEAT') {
+    return 'Defend the Command Post during rebuild';
+  }
+  switch (state.phase.kind) {
+    case 'MUSTER':
+      return 'Defend the Command Post';
+    case 'CONTEST':
+      if (!state.tasks.yardSecured) return 'Secure the siege yard';
+      if (state.tasks.recoveredComponents.length < 3) return 'Recover Ram components';
+      if (!state.tasks.checkpointCleared) return 'Clear the enemy checkpoint';
+      return 'Prepare the Ratings Ram';
+    case 'BUILD':
+      if (state.engineState === 'READY') return 'Clear threats near the Ram';
+      if (state.heroes.buildStallMs > 0) return 'Defend the build site through disruption';
+      return state.construction.buildSiteUnderAttack
+        ? 'Clear attackers from the build site'
+        : 'Defend the Ram build site';
+    case 'ESCORT':
+      return state.ram.protectionMet ? 'Escort the Ram to the wall' : 'Clear threats near the Ram';
+    case 'BREACH':
+      return 'Protect the Ram as it breaks the wall';
+    case 'COURTYARD':
+      return 'Clear the courtyard defenders';
+    case 'THRONE':
+      return state.finale.captureAvailable ? 'Capture the throne' : 'Defeat the Regent';
+    case 'CAPTURED':
+      return 'Castle captured';
+    case 'DEFEAT':
+      return 'Command Post lost';
+  }
+}
+
+function readable(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+}
+
+function ramProgress(state: Floor5SiegeState): string {
+  if (state.engineState === 'BUILDING') {
+    const percent = Math.min(
+      100,
+      Math.max(
+        0,
+        Math.floor(
+          (100 * state.construction.progressMs) / Math.max(1, state.construction.requiredMs),
+        ),
+      ),
+    );
+    return `build ${percent}%${state.construction.buildSiteUnderAttack || state.heroes.buildStallMs > 0 ? ' (paused)' : ''}`;
+  }
+  if (state.engineState === 'LOCKED') return 'awaiting components';
+  if (state.engineState === 'DESTROYED') return 'rebuild pending';
+  if (state.engineState === 'BREACHED') return 'wall breached';
+  if (state.engineState === 'ATTACKING') {
+    const wall = state.structures['outer-wall'];
+    return `wall ${Math.ceil(Math.max(0, wall.health))}/${Math.ceil(wall.maxHealth)} HP`;
+  }
+  const routeSteps = Math.max(0, state.ram.route.length - 1);
+  const reached = state.ram.route.filter(
+    (marker) => marker.index > 0 && marker.reachedFrame !== null,
+  ).length;
+  return `route ${reached}/${routeSteps} · ${state.ram.protectionMet ? 'protected' : 'holding'}`;
+}
+
+/** Read-only projection of committed siege state; the scene owns layout and rendering. */
+export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
+  const state = world.floorExtendedState?.floor5Siege;
+  if (world.floorId !== 'floor5' || !state) return null;
+  const post = state.structures['command-post'];
+  const lines = [
+    `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
+    `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
+    `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}`,
+  ];
+  return { id: `floor5:${lines.join('|')}`, lines, cues: [] };
+}
