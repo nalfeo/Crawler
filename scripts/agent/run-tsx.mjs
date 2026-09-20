@@ -45,7 +45,8 @@ export function managedNodePath({
 } = {}) {
   const archive = nodeArchive({ version: pinnedNodeVersion(root), platform, arch });
   if (!archive) return null;
-  return join(
+  const paths = platform === 'win32' ? win32 : posix;
+  return paths.join(
     runtimeCacheDirectory(root, env),
     `node-v${pinnedNodeVersion(root)}-${archive.target}`,
     platform === 'win32' ? 'node.exe' : 'bin/node',
@@ -156,7 +157,9 @@ export async function provisionPinnedNode({
 export function npmCliForNode(nodeExecutable, platform = process.platform) {
   const paths = platform === 'win32' ? win32 : posix;
   const installationRoot =
-    platform === 'win32' ? dirname(nodeExecutable) : paths.resolve(dirname(nodeExecutable), '..');
+    platform === 'win32'
+      ? paths.dirname(nodeExecutable)
+      : paths.resolve(paths.dirname(nodeExecutable), '..');
   return platform === 'win32'
     ? paths.join(installationRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js')
     : paths.join(installationRoot, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -177,7 +180,7 @@ export function runtimeEnvironment(nodeExecutable, env = process.env, platform =
     NODE_OPTIONS: [existingOptions, `--require=${JSON.stringify(preload)}`]
       .filter(Boolean)
       .join(' '),
-    PATH: [dirname(nodeExecutable), inheritedPath].filter(Boolean).join(paths.delimiter),
+    PATH: [paths.dirname(nodeExecutable), inheritedPath].filter(Boolean).join(paths.delimiter),
   };
 }
 
