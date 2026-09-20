@@ -18,6 +18,15 @@
     }
   },
   "renderKinds": {
+    "siege_allied_minion": { "proceduralTexture": "siege_allied_minion" },
+    "enemy_siege_minion": { "proceduralTexture": "enemy_siege_minion" },
+    "enemy_siege_hero": { "proceduralTexture": "enemy_siege_hero" },
+    "siege_ram": { "proceduralTexture": "siege_ram" },
+    "siege_command_post": { "proceduralTexture": "siege_command_post" },
+    "siege_allied_checkpoint": { "proceduralTexture": "siege_allied_checkpoint" },
+    "siege_enemy_checkpoint": { "proceduralTexture": "siege_enemy_checkpoint" },
+    "siege_outer_wall": { "proceduralTexture": "siege_outer_wall" },
+    "siege_route_marker": { "proceduralTexture": "siege_route_marker" },
     "default": {
       "proceduralTexture": "default"
     },

@@ -25,7 +25,7 @@
  * a known player feet-position and reading the world camera center is a stable,
  * wall-clock-free probe of the `centerOn(ftToPx(px), ftToPx(py))` invariant.
  */
-import { addComponent, entityExists, query, removeEntity, set } from 'bitecs';
+import { addComponent, entityExists, hasComponent, query, removeEntity, set } from 'bitecs';
 import Phaser from 'phaser';
 import {
   createFloor1GameConfig,
@@ -39,10 +39,13 @@ import {
   Harvestable,
   Health,
   Homing,
+  MeleeSwing,
   PartySlot,
   Position,
   Projectile,
   Prop,
+  SiegeMinion,
+  SiegeHero,
   Team,
 } from '../../core/components.js';
 import { applyStatusEffect, getStatusEffects } from '../../core/status-effects.js';
@@ -131,6 +134,7 @@ import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
 import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
+import { siegeMinionSystem, siegeHeroSystem, siegeRamSystem } from '../../game/floor5Scenario.js';
 import { getFloor4ArenaRunStats, getFloor4GreenRoomExitMarker } from '../../game/floor4Scenario.js';
 import { openFloor4GreenRoomVisit } from '../../game/floor4GreenRoom.js';
 import { listStaticInventorySlots } from '../../shared/inventory.js';
@@ -170,9 +174,13 @@ function readAmbientOverride(): number | null {
   return Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
 }
 
-function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor6' {
+function readFloorId(): 'floor1' | 'floor2' | 'floor3' | 'floor4' | 'floor5' | 'floor6' {
   const raw = new URLSearchParams(window.location.search).get('floor');
-  return raw === 'floor2' || raw === 'floor3' || raw === 'floor4' || raw === 'floor6'
+  return raw === 'floor2' ||
+    raw === 'floor3' ||
+    raw === 'floor4' ||
+    raw === 'floor5' ||
+    raw === 'floor6'
     ? raw
     : 'floor1';
 }
@@ -1109,7 +1117,23 @@ export interface BossIntroProbeState {
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
  */
+export interface Floor5ActorProbe {
+  kind: 'minion' | 'hero' | 'ally' | 'command-post' | 'ram';
+  eid: number;
+  hp: number;
+  enemy: boolean;
+  team: number;
+  textureKey: string | null;
+  visible: boolean;
+}
+
 export interface MainSceneProbeApi {
+  /** Spawn actual scenario actors; only health/clock are staged for combat observation. */
+  prepareFloor5Combat(): boolean;
+  resetFloor5WeaponAttacks(): void;
+  stageFloor5CombatTarget(kind: 'minion' | 'hero'): void;
+  stageFloor5Presentation(escort: boolean): void;
+  getFloor5Actors(): Floor5ActorProbe[];
   /** True once the real scene has booted a world and spawned the player. */
   ready(): boolean;
   /** Snapshot of boot facts + live camera/player readings. */
@@ -1939,6 +1963,133 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   const probeWindow = window as unknown as { __mainSceneProbe?: MainSceneProbeApi };
 
   const api: MainSceneProbeApi = {
+    prepareFloor5Combat: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const siege = world?.floorExtendedState?.floor5Siege;
+      if (!scene || !world || !siege) return false;
+      api.resolveLoadout();
+      world.frameCount = 600;
+      world.elapsedMs = 10_000;
+      siegeMinionSystem(world);
+      siegeHeroSystem(world);
+      siege.engineState = 'READY';
+      siegeRamSystem(world);
+      for (const eid of [
+        playerEidOf(scene),
+        ...query(world.ecs, [SiegeMinion]),
+        ...query(world.ecs, [SiegeHero]),
+      ]) {
+        if (eid !== playerEidOf(scene) && world.stores.team.id[eid] === TeamId.SIEGE_ALLIED)
+          continue;
+        world.stores.health.current[eid] = 10_000;
+        world.stores.health.max[eid] = 10_000;
+      }
+      return true;
+    },
+    resetFloor5WeaponAttacks: () => {
+      const world = getScene()?.world;
+      if (!world) return;
+      for (const eid of [...query(world.ecs, [Projectile]), ...query(world.ecs, [MeleeSwing])]) {
+        clearEntityStores(world, eid);
+        removeEntity(world.ecs, eid);
+      }
+    },
+    stageFloor5CombatTarget: (kind) => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!world) return;
+      const player = playerEidOf(scene);
+      const x = world.stores.position.x[player]!;
+      const y = world.stores.position.y[player]!;
+      const actors = api.getFloor5Actors();
+      const selected = actors.find((actor) => actor.kind === kind);
+      for (const eid of [...query(world.ecs, [SiegeMinion]), ...query(world.ecs, [SiegeHero])]) {
+        world.stores.position.x[eid] = x + 100;
+        world.stores.position.y[eid] = y;
+        world.stores.damage.lastFireMs[eid] = 1_000_000;
+      }
+      for (const actor of actors) {
+        if (
+          actor.eid === selected?.eid ||
+          (!actor.enemy && actor.kind !== 'hero' && actor.kind !== 'minion')
+        ) {
+          world.stores.position.x[actor.eid] = x + (actor.eid === selected?.eid ? 2 : 1);
+          world.stores.position.y[actor.eid] = y;
+        }
+      }
+    },
+    getFloor5Actors: () => {
+      const world = getScene()?.world;
+      const siege = world?.floorExtendedState?.floor5Siege;
+      const phaserScene = getPhaserScene();
+      if (!world || !siege || !phaserScene) return [];
+      const entries: { kind: Floor5ActorProbe['kind']; eid: number }[] = [];
+      const minions = [...query(world.ecs, [SiegeMinion])];
+      for (const [kind, team] of [
+        ['ally', 1],
+        ['minion', 2],
+      ] as const) {
+        const eid = minions.find((id) => world.stores.siegeMinion.team[id] === team);
+        if (eid !== undefined) entries.push({ kind, eid });
+      }
+      entries.push(
+        { kind: 'hero', eid: siege.heroes.eid },
+        { kind: 'command-post', eid: siege.structures['command-post'].eid },
+        { kind: 'ram', eid: siege.ram.eid },
+      );
+      return entries
+        .filter(({ eid }) => entityExists(world.ecs, eid))
+        .map(({ kind, eid }) => {
+          const object = phaserScene.children.getByName(`siege:${eid}`);
+          const sprite =
+            object instanceof Phaser.GameObjects.Image ||
+            object instanceof Phaser.GameObjects.Sprite
+              ? object
+              : null;
+          return {
+            kind,
+            eid,
+            hp: world.stores.health.current[eid]!,
+            enemy: hasComponent(world.ecs, eid, Enemy),
+            team: world.stores.team.id[eid]!,
+            textureKey: sprite?.texture.key ?? null,
+            visible: sprite?.visible === true && sprite.active && sprite.alpha > 0,
+          };
+        });
+    },
+    stageFloor5Presentation: (escort) => {
+      const scene = getScene();
+      const world = scene?.world;
+      const siege = world?.floorExtendedState?.floor5Siege;
+      if (!world || !siege) return;
+      api.resetFloor5WeaponAttacks();
+      const player = playerEidOf(scene);
+      const x = world.stores.position.x[player]!;
+      const y = world.stores.position.y[player]!;
+      const offsets: Record<Floor5ActorProbe['kind'], readonly [number, number]> = {
+        ally: [-12, -5],
+        minion: [12, -5],
+        hero: [12, 7],
+        'command-post': [-12, 7],
+        ram: [0, -9],
+      };
+      for (const actor of api.getFloor5Actors()) {
+        const offset = offsets[actor.kind];
+        world.stores.position.x[actor.eid] = x + offset[0];
+        world.stores.position.y[actor.eid] = y + offset[1];
+      }
+      if (escort) {
+        siege.phase = { kind: 'ESCORT' };
+        siege.engineState = 'ADVANCING';
+        siege.ram.protectionMet = true;
+        siege.ram.health = 75;
+        world.stores.health.current[siege.ram.eid] = 75;
+        siege.commandPostHealth = 700;
+        siege.structures['command-post'].health = 700;
+        world.stores.health.current[siege.structures['command-post'].eid] = 700;
+      }
+    },
     ready: () => {
       const scene = getScene();
       return scene?.world != null && playerEidOf(scene) >= 0;

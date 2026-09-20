@@ -111,6 +111,55 @@ test('marks dependencies as ready after a cold bootstrap so Bash skips duplicate
   assert.equal(calls[1][2].env.PREFLIGHT_DEPS_ALREADY_READY, '1');
 });
 
+test('uses npm belonging to the selected runtime instead of Windows npm.cmd', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const calls = [];
+  let installed = false;
+  main({
+    root,
+    platform: 'win32',
+    nodeExecutable: 'C:\\runtime\\node.exe',
+    env: { CRAWLER_NPM_CLI: 'C:\\runtime\\node_modules\\npm\\bin\\npm-cli.js' },
+    exists: (path) => path === bash || (installed && path.endsWith('tsx.cmd')),
+    runCommand: (...args) => {
+      calls.push(args);
+      if (args[0] === 'C:\\runtime\\node.exe') installed = true;
+      return 0;
+    },
+  });
+  assert.deepEqual(calls, [
+    [
+      'C:\\runtime\\node.exe',
+      ['C:\\runtime\\node_modules\\npm\\bin\\npm-cli.js', 'ci', '--prefer-offline'],
+      {
+        cwd: root,
+        env: {
+          CRAWLER_NPM_CLI: 'C:\\runtime\\node_modules\\npm\\bin\\npm-cli.js',
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1',
+          npm_config_cache: join(root, 'files', 'npm-cache'),
+        },
+      },
+    ],
+    [
+      'C:\\runtime\\node.exe',
+      [
+        join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        'scripts/agent/run-bash-wrapper.ts',
+        'scripts/agent/preflight.sh',
+      ],
+      {
+        cwd: root,
+        env: {
+          CRAWLER_NPM_CLI: 'C:\\runtime\\node_modules\\npm\\bin\\npm-cli.js',
+          GIT_BASH: bash,
+          PREFLIGHT_DEPS_ALREADY_READY: '1',
+        },
+      },
+    ],
+  ]);
+});
+
 test('stops with an actionable error if npm ci reports success without installing tsx', () => {
   const root = 'C:\\repo';
   const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';

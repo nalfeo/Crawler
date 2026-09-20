@@ -19,6 +19,9 @@ import {
   Returning,
   SiegeHero,
   SiegeMinion,
+  SiegeRam,
+  SiegeRouteMarker,
+  SiegeStructure,
   SpawnAnim,
   Spawner,
   Sprite,
@@ -45,6 +48,7 @@ import {
   RAT_BRUTE_TINT,
   refineEnemyVisualKind,
   resolveRenderKind,
+  isSiegeActorRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { getNpcDef } from '../../src/shared/npc-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -77,8 +81,10 @@ const DEFINING_COMPONENT: ReadonlyArray<readonly [string, KindBuild]> = [
   ['harvestable', (w, e) => addComponent(w.ecs, e, Harvestable)],
   ['boss_chest', (w, e) => addComponent(w.ecs, e, BossChestEntity)],
   ['enemy', (w, e) => addComponent(w.ecs, e, Enemy)],
-  ['enemy', (w, e) => addComponent(w.ecs, e, SiegeMinion)],
-  ['enemy', (w, e) => addComponent(w.ecs, e, SiegeHero)],
+  ['enemy_siege_minion', (w, e) => addComponent(w.ecs, e, SiegeMinion)],
+  ['enemy_siege_hero', (w, e) => addComponent(w.ecs, e, SiegeHero)],
+  ['siege_ram', (w, e) => addComponent(w.ecs, e, SiegeRam)],
+  ['siege_route_marker', (w, e) => addComponent(w.ecs, e, SiegeRouteMarker)],
   ['gem', (w, e) => addComponent(w.ecs, e, XpGem)],
   ['gold', (w, e) => addComponent(w.ecs, e, Gold)],
   ['build_currency', (w, e) => addComponent(w.ecs, e, BuildCurrencyPickup)],
@@ -189,6 +195,37 @@ describe('resolveRenderKind — projectile-split AoE-on-impact', () => {
 });
 
 describe('resolveRenderKind — dispatch order is load-bearing', () => {
+  it.each([
+    [SiegeMinion, TeamId.SIEGE_ENEMY, 'enemy_siege_minion'],
+    [SiegeMinion, TeamId.SIEGE_ALLIED, 'siege_allied_minion'],
+    [SiegeHero, TeamId.SIEGE_ENEMY, 'enemy_siege_hero'],
+  ] as const)(
+    'preserves siege role and team over the combat Enemy tag',
+    (component, team, kind) => {
+      const world = createTestWorld();
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, Enemy);
+      addComponent(world.ecs, eid, component);
+      addComponent(world.ecs, eid, set(Team, { id: team }));
+      expect(resolveRenderKind(world, eid)).toBe(kind);
+      expect(isSiegeActorRenderKind(kind)).toBe(true);
+    },
+  );
+
+  it.each([
+    [1, TeamId.SIEGE_ALLIED, 'siege_command_post'],
+    [2, TeamId.SIEGE_ALLIED, 'siege_allied_checkpoint'],
+    [3, TeamId.SIEGE_ENEMY, 'siege_enemy_checkpoint'],
+    [4, TeamId.SIEGE_ENEMY, 'siege_outer_wall'],
+  ] as const)('gives siege structure kind %s its own silhouette', (kind, team, expected) => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(SiegeStructure, { kind, team }));
+    addComponent(world.ecs, eid, set(Team, { id: team }));
+    expect(resolveRenderKind(world, eid)).toBe(expected);
+    expect(isSiegeActorRenderKind(expected)).toBe(false);
+  });
+
   it('prefers "player" over a co-present Enemy tag', () => {
     const world = createTestWorld();
     const eid = addEntity(world.ecs);

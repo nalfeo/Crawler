@@ -76,6 +76,7 @@ import {
   siegeMinionSystem,
   siegeRamSystem,
 } from './floor5Scenario.js';
+import { getFloor5HudSnapshot } from './floor5Presentation.js';
 import {
   confirmFloor6StairDescend,
   floor6CombatContributionSystem,
@@ -1107,6 +1108,7 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       afterSpawnerSystems: [siegeDirectorSystem],
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,
+      getHudSnapshot: getFloor5HudSnapshot,
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
       getStairMarkerState: getFloor5CaptureMarkerState,

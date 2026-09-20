@@ -92,6 +92,8 @@ import {
   computeEnemyScale,
   enemyAppearanceTint,
   enemyVariantFromTextureId,
+  isSiegeActorRenderKind,
+  SIEGE_OBJECT_NAME_PREFIX,
   generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   pickGeneratedNpcTextureKey,
@@ -1283,7 +1285,9 @@ export function createPhaserBridge(
         }
         activeEntities.add(eid);
 
-        const entityType = resolveRenderKind(world, eid);
+        const renderKind = resolveRenderKind(world, eid);
+        const isSiegeActor = isSiegeActorRenderKind(renderKind);
+        const entityType = isSiegeActor ? 'enemy' : renderKind;
         let isBoss = false;
         let bossKey: string | null = null;
         if (entityType === 'enemy' && world.floorScenario != null) {
@@ -1295,8 +1299,9 @@ export function createPhaserBridge(
             }
           }
         }
-        const visualType =
-          entityType === 'enemy'
+        const visualType = isSiegeActor
+          ? renderKind
+          : entityType === 'enemy'
             ? isBoss
               ? bossKey === 'staircase'
                 ? 'enemy_boss_ratslime'
@@ -1723,6 +1728,11 @@ export function createPhaserBridge(
           // identify the exact display object for a given eid (issue #4274)
           // instead of guessing by nearest on-screen distance.
           if (
+            (isSiegeActor || renderKind.startsWith('siege_')) &&
+            typeof img.setName === 'function'
+          ) {
+            img.setName(`${SIEGE_OBJECT_NAME_PREFIX}${eid}`);
+          } else if (
             (visualType === 'bullet' || visualType === 'arrow') &&
             typeof img.setName === 'function'
           ) {
