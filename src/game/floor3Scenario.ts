@@ -98,6 +98,7 @@ import {
 } from './floor3Recruiting.js';
 import { awardFloor3CompanionDefeatRewards } from './floor3CompanionRewards.js';
 import { FLOOR3_WILD_AGGRO_RANGE_FT } from './systems/floor3WildHostility.js';
+import { companionGrowthScales } from '../shared/data/floor3/growth.js';
 import { restorePlayerCarryover } from './playerCarryover.js';
 import { applyFloorSkipBaseline } from './scenarios/floorSkipBaseline.js';
 import { AI_TYPE } from './enemyAISystem.js';
@@ -403,7 +404,8 @@ function spawnFloor3RosterCompanion(
   if (!archetype) return undefined;
 
   const form = formForLevel(species, level);
-  const hp = Math.max(1, Math.round(archetype.hp * form.statScale));
+  const growth = companionGrowthScales(species, level);
+  const hp = Math.max(1, archetype.hp * growth.statScale);
   const aiType = resolveFloor3ArchetypeAiType(archetype);
   const attackRange =
     archetype.aiType === 'ranged' || archetype.aiType === 'support'
@@ -415,9 +417,9 @@ function spawnFloor3RosterCompanion(
     y,
     hp,
     aiType,
-    speed: archetype.speed,
+    speed: archetype.speed * growth.speedScale,
     aggroRange: archetype.detectRange,
-    attackRange,
+    attackRange: attackRange * growth.rangeScale,
     speciesToken: speciesTokenForId(speciesId),
     level,
     ownerTeam: teamId,
@@ -436,6 +438,8 @@ function spawnFloor3RosterCompanion(
     shape: SHAPE_CIRCLE,
   });
   setEnemyAppearanceKey(world, eid, archetype.id);
+  world.stores.sprite.sizeScale[eid] =
+    (world.stores.sprite.sizeScale[eid] || 1) * growth.visualScale;
   return eid;
 }
 
@@ -1448,7 +1452,7 @@ function recruitFloor3PartyCompanion(
   const spawnOffset = tileSizeFt * FLOOR3_STARTER_COMPANION_SPAWN_OFFSET_TILES;
 
   const archetype = findFloor3ArchetypeForSpecies(getFloor3WildPack(), species);
-  const form = formForLevel(species, level);
+  const growth = companionGrowthScales(species, level);
   // Floor-3-ONLY companion buff (human-authorized, session 2026-09-03):
   // the player's own recruited party Companions get an HP multiplier on top
   // of the shared species/form statScale, compensating for the party's
@@ -1456,7 +1460,7 @@ function recruitFloor3PartyCompanion(
   // Wild and rival roster Companions (spawnRosterCompanion) never pass
   // through this function, so they are unaffected.
   const hp = archetype
-    ? Math.max(1, Math.round(archetype.hp * form.statScale * FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER))
+    ? Math.max(1, archetype.hp * growth.statScale * FLOOR3_PLAYER_COMPANION_HP_MULTIPLIER)
     : 1;
   const attackRange =
     archetype && (archetype.aiType === 'ranged' || archetype.aiType === 'support')
@@ -1467,9 +1471,9 @@ function recruitFloor3PartyCompanion(
     x: playerX + spawnOffset,
     y: playerY,
     hp,
-    speed: archetype?.speed ?? 0.1,
+    speed: (archetype?.speed ?? 0.1) * growth.speedScale,
     aggroRange: archetype?.detectRange ?? 200,
-    attackRange,
+    attackRange: attackRange * growth.rangeScale,
     level,
     ownerTeam: TeamId.PLAYER,
   });
@@ -1487,6 +1491,8 @@ function recruitFloor3PartyCompanion(
       shape: SHAPE_CIRCLE,
     });
     setEnemyAppearanceKey(world, eid, archetype.id);
+    world.stores.sprite.sizeScale[eid] =
+      (world.stores.sprite.sizeScale[eid] || 1) * growth.visualScale;
   }
   return eid;
 }

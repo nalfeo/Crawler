@@ -28,7 +28,6 @@ import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
 import type { FamilyRelationshipsLayout } from './HudFamilyRelationships.js';
 import { createHudFloor3Party, type HudFloor3PartyState } from './HudFloor3Party.js';
-import type { CommandResult } from './floor3-ability-command-state.js';
 import type { ScreenBounds } from './ui-scale.js';
 import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
@@ -77,14 +76,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getAbilityBarScreenTop(): number | null;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
-  /** Floor-3 party HUD read-back (rows, notices, command charges). */
+  /** Floor-3 party HUD read-back (rows, notices). */
   getFloor3PartyState(): HudFloor3PartyState;
   getFloor3LeagueState(): HudFloor3LeagueState;
   getFloor3OverworldMarkers(): readonly Floor3OverworldMarker[];
   /** Floor-4 arena HUD read-back (clock, wave pips, Headliner, notices). */
   getFloor4ArenaState(): HudFloor4ArenaProbeState;
-  /** Fire the Floor-3 companion command verb; no-op off Floor 3. */
-  issueFloor3Command(world: GameWorld, playerEid: number, slot?: number): CommandResult;
   getEncounterProbeBounds(): HudEncounterProbeBounds;
   /**
    * The currently-rendered announcement banner content (kind + exact text),
@@ -405,7 +402,6 @@ export function createHudUI(scene: Phaser.Scene): {
         },
       };
     },
-    issueFloor3Command: floor3Party.issueCommand,
     getEncounterProbeBounds,
     getCurrentAnnouncement: () => (hidden ? null : announcementBanner.getCurrentAnnouncement()),
     setVisible,
