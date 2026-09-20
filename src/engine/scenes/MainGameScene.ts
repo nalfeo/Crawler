@@ -6393,7 +6393,9 @@ export class MainGameScene extends Phaser.Scene {
             result.ok
               ? action === 'sell'
                 ? `Tower sold at ${siteId}.`
-                : `${option.label.split(' — ')[0]} accepted.`
+                : action === 'build'
+                  ? `${option.label.split(' — ')[0]} built at ${siteId}.`
+                  : `${option.label.split(' — ')[0]} accepted.`
               : this.describeConstructionBuildRejection(result.reason, siteId),
           );
           this.updateOverlayText();
