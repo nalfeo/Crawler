@@ -415,7 +415,7 @@ function loadFloor4BossAbilityCatalog(
 }
 
 export const FLOOR2_BOSS_ABILITY_CATALOG = loadFloor2BossAbilityCatalog();
-loadFloor4BossAbilityCatalog();
+export const FLOOR4_BOSS_ABILITY_CATALOG = loadFloor4BossAbilityCatalog();
 
 const ABILITY_BY_ID = new Map(
   FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) => [ability.id, ability]),

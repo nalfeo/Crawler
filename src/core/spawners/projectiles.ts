@@ -78,11 +78,12 @@ export function spawnEnemyProjectile(
   damage: number,
   ownerEid?: number,
   visualKind: ProjectileVisualKind = ProjectileVisualKind.ARROW,
+  maxRange: number = 0,
 ): number {
   // Thread the firing enemy through as Owner so a hit on the player records the
   // shooter (not the transient projectile eid, which is destroyed on impact) as
   // the attacker — Floor 2 Slice 3 ally-defend retaliation targets the shooter.
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, 0, 1, ownerEid, visualKind);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, maxRange, 1, ownerEid, visualKind);
   addComponent(world.ecs, eid, EnemyProjectile);
   // Enemy-sourced damage never scales/crits (see apply-damage.ts) — tagged
   // explicitly (rather than left fail-closed/environment) so it stays correct

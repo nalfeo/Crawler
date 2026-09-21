@@ -1,7 +1,7 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
 import { DeathTimer, Enemy, Health, Player } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
-import { clearMobAbility } from '../mob-abilities/runtime.js';
+import { clearMobAbility, disableMobAbilityEncounter } from '../mob-abilities/runtime.js';
 import type { GameWorld } from '../world.js';
 import { createLogger } from '../../shared/logger.js';
 
@@ -40,6 +40,9 @@ export function healthSystem(world: GameWorld): void {
       }
 
       if (hasComponent(world.ecs, eid, Player)) {
+        // This is the final simulation step: production runners stop advancing
+        // as soon as game_over is set, so encounter cleanup must happen here.
+        disableMobAbilityEncounter(world);
         world.state = 'game_over';
         logger.warn('Player health reached zero; transitioning to game_over', {
           eid,

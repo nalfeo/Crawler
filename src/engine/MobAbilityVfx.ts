@@ -34,7 +34,11 @@ import {
   getMobAbilityActiveAura,
   getStatusEffects,
 } from '../core/index.js';
-import type { MobAbilityCuePhase } from '../core/mob-abilities/types.js';
+import type {
+  MobAbilityCuePhase,
+  MobAbilityConeGeometry,
+  MobAbilityContractingAnnulusGeometry,
+} from '../core/mob-abilities/types.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
@@ -125,9 +129,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
    * naturally — so under normal gameplay the sets stay small. destroy() kills any
    * in-flight tweens and destroys their circles for scene-reset / shutdown safety.
    */
-  const transientCircles = new Set<Phaser.GameObjects.Shape>();
+  const transientCircles = new Set<Phaser.GameObjects.Shape | Phaser.GameObjects.Graphics>();
   /** Tweens driving transient circles. Each entry is also removed on `onComplete`. */
-  const transientTweens = new Map<Phaser.GameObjects.Shape, Phaser.Tweens.Tween>();
+  const transientTweens = new Map<
+    Phaser.GameObjects.Shape | Phaser.GameObjects.Graphics,
+    Phaser.Tweens.Tween
+  >();
 
   function ignoreUi(obj: Phaser.GameObjects.GameObject & { setDepth(d: number): unknown }): void {
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(obj);
@@ -1145,6 +1152,53 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  /** Render the committed solid sector or ring without painting its safe center. */
+  function drawHeadlinerGeometry(
+    gfx: Phaser.GameObjects.Graphics,
+    geometry: MobAbilityConeGeometry | MobAbilityContractingAnnulusGeometry,
+    progress: number,
+  ): void {
+    const p = Math.min(1, Math.max(0, progress));
+    if (geometry.kind === 'cone') {
+      const x = ftToPx(geometry.originX);
+      const y = ftToPx(geometry.originY);
+      const halfAngle = (geometry.angleDeg * Math.PI) / 360;
+      gfx.fillStyle(COLOR_HOSTILE_RED, 0.12 + p * 0.2);
+      gfx.lineStyle(3, COLOR_HOSTILE_RED, 0.9);
+      gfx.beginPath();
+      gfx.moveTo(x, y);
+      gfx.arc(
+        x,
+        y,
+        ftToPx(geometry.rangeFt),
+        geometry.facingRad - halfAngle,
+        geometry.facingRad + halfAngle,
+        false,
+      );
+      gfx.closePath();
+      gfx.fillPath();
+      gfx.strokePath();
+      return;
+    }
+    const x = ftToPx(geometry.x);
+    const y = ftToPx(geometry.y);
+    const endRadius = ftToPx(geometry.endRadiusFt);
+    const halfWidth = ftToPx(geometry.ringWidthFt / 2);
+    // Keep the final hit band visible from frame one. The moving outline is a
+    // countdown, not a filled disk: entering the empty center is counterplay.
+    gfx.lineStyle(halfWidth * 2, COLOR_HOSTILE_RED, 0.15 + p * 0.2);
+    gfx.strokeCircle(x, y, endRadius);
+    gfx.lineStyle(2, COLOR_HOSTILE_RED, 0.95);
+    gfx.strokeCircle(x, y, Math.max(0, endRadius - halfWidth));
+    gfx.strokeCircle(x, y, endRadius + halfWidth);
+    gfx.lineStyle(3, COLOR_CROWN_RUNE, 0.9);
+    gfx.strokeCircle(
+      x,
+      y,
+      ftToPx(geometry.startRadiusFt + (geometry.endRadiusFt - geometry.startRadiusFt) * p),
+    );
+  }
+
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
     const liveCoronationProjectiles = new Set<number>();
@@ -1152,6 +1206,21 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
+      if (cue.geometry.kind === 'cone' || cue.geometry.kind === 'contracting-annulus') {
+        liveCasters.add(cue.casterEid);
+        if (!enabled) continue;
+        let gfx = telegraphGfx.get(cue.casterEid);
+        if (gfx === undefined) {
+          gfx = scene.add.graphics();
+          gfx.setDepth(TELEGRAPH_DEPTH);
+          gfx.setBlendMode('ADD');
+          ignoreUi(gfx);
+          telegraphGfx.set(cue.casterEid, gfx);
+        }
+        gfx.clear();
+        drawHeadlinerGeometry(gfx, cue.geometry, cue.telegraphProgress);
+        continue;
+      }
       // ── Radial-projectile spokes (Roman Candle Coronation) ───────────────
       if (cue.geometry.kind === 'radial-projectiles') {
         liveCasters.add(cue.casterEid);
@@ -1408,6 +1477,27 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         continue;
       }
       const geom = burst.geometry;
+      if (geom.kind === 'cone' || geom.kind === 'contracting-annulus') {
+        if (!enabled) continue;
+        const gfx = scene.add.graphics();
+        gfx.setDepth(BURST_DEPTH);
+        gfx.setBlendMode('ADD');
+        ignoreUi(gfx);
+        drawHeadlinerGeometry(gfx, geom, 1);
+        transientCircles.add(gfx);
+        const tween = scene.tweens.add({
+          targets: gfx,
+          alpha: { from: 1, to: 0 },
+          duration: BURST_LIFETIME_MS,
+          onComplete: () => {
+            transientCircles.delete(gfx);
+            transientTweens.delete(gfx);
+            gfx.destroy();
+          },
+        });
+        transientTweens.set(gfx, tween);
+        continue;
+      }
       if (geom.kind === 'radial-projectiles') {
         // Coronation burst: spoke-tip cinders + central flash.
         spawnCoronationBurst(
@@ -1447,10 +1537,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
     }
 
-    // ── Runtime-owned persistent cloud zones (Sovereign Cap) ───────────────
+    // ── Runtime-owned persistent zones ──────────────────────────────────
     const liveZones = new Set<number>();
     for (const zone of runtime.ownedZones) {
-      if (zone.abilityId !== SOVEREIGN_SPORE_BLOOM_ABILITY_ID) continue;
       liveZones.add(zone.id);
       if (!enabled) continue;
       let gfx = cloudZoneGfx.get(zone.id);
@@ -1464,13 +1553,20 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       gfx.clear();
       const lifeProgress = Math.min(1, Math.max(0, zone.elapsedMs / zone.durationMs));
       for (const circle of circlesForMobAbilityGeometry(zone.geometry)) {
-        drawSporeCloudCircle(
-          gfx,
-          ftToPx(circle.x),
-          ftToPx(circle.y),
-          ftToPx(circle.radiusFt),
-          lifeProgress,
-        );
+        if (zone.abilityId === SOVEREIGN_SPORE_BLOOM_ABILITY_ID) {
+          drawSporeCloudCircle(
+            gfx,
+            ftToPx(circle.x),
+            ftToPx(circle.y),
+            ftToPx(circle.radiusFt),
+            lifeProgress,
+          );
+        } else {
+          gfx.lineStyle(3, COLOR_HOSTILE_RED, 0.9);
+          gfx.strokeCircle(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+          gfx.fillStyle(COLOR_MOLTEN_ORANGE, 0.18 + 0.08 * Math.sin(lifeProgress * Math.PI * 6));
+          gfx.fillCircle(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        }
       }
     }
     for (const [zoneId, gfx] of cloudZoneGfx) {
@@ -1499,16 +1595,34 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
     }
 
-    // ── Active self-buff aura (Big Panda Wei) ──────────────────────────────
+    // ── Active self-buff auras ────────────────────────────────────────────
     const liveAuras = new Set<number>();
     for (const [eid, buff] of runtime.activeBuffsByEntity) {
-      if (buff.abilityId !== BAMBOO_FED_BERSERK_ABILITY_ID) continue;
       const aura = getMobAbilityActiveAura(world, eid);
       if (aura === null || aura.kind !== 'circle') continue;
       liveAuras.add(eid);
       const cx = ftToPx(aura.x);
       const cy = ftToPx(aura.y);
       const radiusPx = ftToPx(aura.radiusFt);
+      if (buff.abilityId !== BAMBOO_FED_BERSERK_ABILITY_ID) {
+        if (!enabled) continue;
+        let gfx = berserkAuraGfx.get(eid);
+        if (gfx === undefined) {
+          gfx = scene.add.graphics();
+          gfx.setDepth(TARNISH_DEPTH);
+          gfx.setBlendMode('ADD');
+          ignoreUi(gfx);
+          berserkAuraGfx.set(eid, gfx);
+        }
+        gfx.clear();
+        gfx.lineStyle(3, COLOR_CROWN_RUNE, 0.95);
+        gfx.strokeCircle(cx, cy, radiusPx);
+        gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.65);
+        gfx.strokeCircle(cx, cy, radiusPx * 0.8);
+        gfx.fillStyle(COLOR_CROWN_RUNE, 0.08);
+        gfx.fillCircle(cx, cy, radiusPx);
+        continue;
+      }
       const lastPos = berserkAuraLastPos.get(eid);
       berserkAuraLastPos.set(eid, { x: cx, y: cy });
       if (!berserkAuraSeen.has(eid)) {

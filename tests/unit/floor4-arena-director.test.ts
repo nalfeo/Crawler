@@ -2,6 +2,7 @@ import { entityExists, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Player } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { healthSystem } from '../../src/core/systems/healthSystem.js';
 import { createBossChestId } from '../../src/game/boss-chest-resolver.js';
 import {
   arenaDirectorSystem,
@@ -506,6 +507,25 @@ describe('arenaDirectorSystem', () => {
     expect(state.phase).toEqual({ kind: 'DEFEAT' });
     expect(world.stores.health.current[playerEid]).toBe(0);
     expect(world.state).toBe('game_over');
+  });
+
+  it('tears down the active Headliner encounter on the player-death frame', () => {
+    const world = setupFloor4(405);
+    const phase = getFloorManifest('floor4')!.floor4!.phase;
+    advance(world, phase.countdownMs);
+    advance(world, phase.waveWindowMs);
+
+    expect(world.mobAbilities.encounterActive).toBe(true);
+    expect(world.mobAbilities.byEntity.size).toBeGreaterThan(0);
+
+    const playerEid = query(world.ecs, [Player])[0]!;
+    world.stores.health.current[playerEid] = 0;
+    healthSystem(world);
+
+    expect(world.state).toBe('game_over');
+    expect(world.mobAbilities.encounterActive).toBe(false);
+    expect(world.mobAbilities.byEntity.size).toBe(0);
+    expect(world.mobAbilities.cues).toHaveLength(0);
   });
 
   it('projects a real, sim-captured per-act delta into the HUD summary (not the run-cumulative total)', () => {

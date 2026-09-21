@@ -3871,6 +3871,67 @@ describe('BehaviorTreeAI', () => {
     expect(dodge.dodgeY).toBe(0);
   });
 
+  it.each([
+    { x: 10, y: 0, dodges: true },
+    { x: 0, y: 10, dodges: false },
+    { x: -10, y: 0, dodges: false },
+    { x: 30, y: 0, dodges: false },
+  ])('uses the locked cone facing for avoidance at $x,$y', ({ x, y, dodges }) => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, x, y);
+    spawnBehaviorEnemy(world, 100, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'headliner-cone',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: { kind: 'cone', originX: 0, originY: 0, facingRad: 0, angleDeg: 90, rangeFt: 20 },
+      dangerColor: 'hostile-red',
+      announcementText: 'Take cover',
+    });
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+    expect(dodge.dodgeX).toBeCloseTo(0);
+    expect(Math.abs(dodge.dodgeY)).toBeCloseTo(dodges ? PROJECTILE_DODGE_VECTOR_SCALE : 0);
+  });
+
+  it.each([
+    { x: 11, direction: -1 },
+    { x: 13, direction: 1 },
+    { x: 0, direction: 0 },
+    { x: 25, direction: 0 },
+  ])('escapes the final annulus band via its nearest safe side at $x', ({ x, direction }) => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, x, 0);
+    spawnBehaviorEnemy(world, 100, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'headliner-ring',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'contracting-annulus',
+        x: 0,
+        y: 0,
+        startRadiusFt: 30,
+        endRadiusFt: 12,
+        ringWidthFt: 4,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'Get inside',
+    });
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+    expect(dodge.dodgeX).toBeCloseTo(direction * PROJECTILE_DODGE_VECTOR_SCALE);
+    expect(dodge.dodgeY).toBeCloseTo(0);
+  });
+
   it('uses committed mob-ability lane geometry to flee sideways from inside the footprint', () => {
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 5000;

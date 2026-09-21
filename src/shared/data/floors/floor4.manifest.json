@@ -155,6 +155,13 @@
       ]
     },
     "headliners": {
+      "finaleSummonRoster": [
+        "floor4-extra",
+        "floor4-usher",
+        "floor4-pyro-tech",
+        "floor4-stunt-double",
+        "floor4-ring-enforcer"
+      ],
       "enemyPackId": "floor4-arena",
       "pool": [
         {

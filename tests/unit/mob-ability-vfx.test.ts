@@ -12,6 +12,7 @@ function createGraphicsStub() {
     beginPath: vi.fn(),
     moveTo: vi.fn(),
     lineTo: vi.fn(),
+    arc: vi.fn(),
     strokePath: vi.fn(),
     fillTriangle: vi.fn(),
     closePath: vi.fn(),
@@ -104,6 +105,151 @@ function mockInstance() {
 }
 
 describe('MobAbilityVfx', () => {
+  it('draws a locked cone sector and retires it when the cue ends', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'headliner-cone',
+      casterEid: 7,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: {
+        kind: 'cone',
+        originX: 10,
+        originY: 20,
+        facingRad: Math.PI / 2,
+        angleDeg: 90,
+        rangeFt: 15,
+      },
+      dangerColor: 'hostile-red',
+      announcementText: 'Take cover',
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const gfx = graphicsObjects[0]!;
+    expect(gfx.moveTo).toHaveBeenCalledWith(ftToPx(10), ftToPx(20));
+    expect(gfx.arc).toHaveBeenCalledWith(
+      ftToPx(10),
+      ftToPx(20),
+      ftToPx(15),
+      Math.PI / 4,
+      (Math.PI * 3) / 4,
+      false,
+    );
+    expect(gfx.fillPath).toHaveBeenCalledOnce();
+    expect(gfx.strokePath).toHaveBeenCalledOnce();
+    world.mobAbilities.cues.length = 0;
+    vfx.update(world);
+    expect(gfx.destroy).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 0.5, 1])(
+    'contracts the ring at progress %s while showing its final band and empty center',
+    (progress) => {
+      const { scene, graphicsObjects } = createSceneStub();
+      const world = createTestWorld();
+      world.mobAbilities.cues.push({
+        abilityId: 'headliner-ring',
+        casterEid: 7,
+        phase: 'telegraph',
+        telegraphProgress: progress,
+        geometry: {
+          kind: 'contracting-annulus',
+          x: 10,
+          y: 20,
+          startRadiusFt: 30,
+          endRadiusFt: 12,
+          ringWidthFt: 4,
+        },
+        dangerColor: 'hostile-red',
+        announcementText: 'Get inside',
+      });
+      const vfx = createMobAbilityVfx(scene);
+      vfx.update(world);
+      const gfx = graphicsObjects[0]!;
+      expect(gfx.strokeCircle).toHaveBeenCalledWith(ftToPx(10), ftToPx(20), ftToPx(10));
+      expect(gfx.strokeCircle).toHaveBeenCalledWith(ftToPx(10), ftToPx(20), ftToPx(14));
+      expect(gfx.strokeCircle).toHaveBeenLastCalledWith(
+        ftToPx(10),
+        ftToPx(20),
+        ftToPx(30 - 18 * progress),
+      );
+      expect(gfx.lineStyle).toHaveBeenCalledWith(ftToPx(4), 0xef4444, expect.any(Number));
+      expect(gfx.fillCircle).not.toHaveBeenCalled();
+      vfx.destroy();
+      expect(gfx.destroy).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('flashes the final annulus on resolution without filling the safe center', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.pendingBursts.push({
+      kind: 'resolution',
+      abilityId: 'headliner-ring',
+      geometry: {
+        kind: 'contracting-annulus',
+        x: 10,
+        y: 20,
+        startRadiusFt: 30,
+        endRadiusFt: 12,
+        ringWidthFt: 4,
+      },
+    });
+    createMobAbilityVfx(scene).update(world);
+    const gfx = graphicsObjects[0]!;
+    expect(gfx.strokeCircle).toHaveBeenLastCalledWith(ftToPx(10), ftToPx(20), ftToPx(12));
+    expect(gfx.fillCircle).not.toHaveBeenCalled();
+    expect(gfx.destroy).toHaveBeenCalledOnce();
+    expect(world.mobAbilities.pendingBursts).toHaveLength(0);
+  });
+
+  it('renders and cleans up Headliner zones and gold defensive buff auras', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    const eid = spawnPlayer(world, 15, 15);
+    world.mobAbilities.activeBuffsByEntity.set(eid, {
+      abilityId: 'headliner-sentinel',
+      sourceId: 'mob-ability:sentinel:1',
+      remainingMs: 3000,
+      movementSpeedMultiplier: 1,
+      meleeDamageMultiplier: 1,
+      knockbackResistanceMultiplier: 1,
+      damageTakenMultiplier: 0.5,
+      auraRadiusFt: 10,
+    });
+    world.mobAbilities.ownedZones.push({
+      id: 1,
+      abilityId: 'headliner-pyro',
+      casterEid: eid,
+      sourceId: 'mob-ability:pyro:1',
+      geometry: { kind: 'circle', x: 30, y: 20, radiusFt: 8 },
+      durationMs: 4000,
+      tickIntervalMs: 500,
+      elapsedMs: 1500,
+      nextTickAtMs: 2000,
+      tick: () => {},
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    expect(graphicsObjects[0]!.strokeCircle).toHaveBeenCalledWith(
+      ftToPx(30),
+      ftToPx(20),
+      ftToPx(8),
+    );
+    expect(graphicsObjects[1]!.strokeCircle).toHaveBeenCalledWith(
+      ftToPx(15),
+      ftToPx(15),
+      ftToPx(10),
+    );
+    expect(graphicsObjects[1]!.lineStyle).toHaveBeenCalledWith(3, 0xffd166, 0.95);
+    world.mobAbilities.ownedZones.length = 0;
+    world.mobAbilities.activeBuffsByEntity.clear();
+    vfx.update(world);
+    expect(graphicsObjects[0]!.destroy).toHaveBeenCalledOnce();
+    expect(graphicsObjects[1]!.destroy).toHaveBeenCalledOnce();
+  });
+
   it('draws the exact committed telegraph geometry footprint', () => {
     const { scene, graphicsObjects } = createSceneStub();
     const world = createTestWorld();

@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 import { query } from 'bitecs';
-import { Companion, createGameWorld, Enemy, spawnPlayer, Team } from '../../core/index.js';
+import { Companion, createGameWorld, Enemy, Player, spawnPlayer, Team } from '../../core/index.js';
 import {
   arenaDirectorSystem,
   getFloor4LiveWaveEnemyCount,
@@ -10,7 +10,9 @@ import {
   capturePlayerCarryover,
   type PlayerCarryoverSnapshot,
 } from '../../game/playerCarryover.js';
-import { TeamId } from '../../shared/constants.js';
+import { GAME, TeamId } from '../../shared/constants.js';
+import { mobAbilitySystem } from '../../core/mob-abilities/runtime.js';
+import { buildFloor4HeadlinerCard } from '../../shared/floor4-headliners.js';
 import { buildKeptCompanionContract } from '../../shared/data/floor3/kept-companion-contract.js';
 import {
   getPetSpecies,
@@ -75,6 +77,7 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     telegraphLeadMs: waves.gates.telegraphLeadMs,
     includeKeptCompanion: false,
     keptCompanionSpeciesId: 'ember-charger',
+    headliner: floor4.headliners.pool[0]!.archetypeId,
   };
 
   const panel = document.createElement('pre');
@@ -124,9 +127,43 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
   }
 
   function step(): void {
-    world.elapsedMs += state.stepMs;
-    arenaDirectorSystem(world);
+    for (let step = 0; step < Math.ceil(state.stepMs / GAME.DELTA_MS); step++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      world.frameCount += 1;
+      arenaDirectorSystem(world);
+      mobAbilitySystem(world);
+    }
     render();
+  }
+
+  function stageHeadliner(): void {
+    // Find a natural card, without patching authored definitions or binding an
+    // ability in the lab. The next director step crosses the production seam.
+    for (let seed = state.seed; seed < state.seed + 100; seed++) {
+      if (
+        !buildFloor4HeadlinerCard(floor4.headliners, seed).some(
+          (card) => card.archetypeId === state.headliner,
+        )
+      )
+        continue;
+      state.seed = seed;
+      setup();
+      const arena = world.floorExtendedState!.floor4Arena!;
+      const card = arena.headlinerCard.find((entry) => entry.archetypeId === state.headliner)!;
+      arena.phase = { kind: 'WAVES', act: card.act };
+      arena.arenaElapsedMs = (card.act - 1) * phase.actDurationMs + phase.waveWindowMs;
+      const map = world.floorMap!;
+      const center = map.tileToWorld(
+        Math.floor(map.config.widthTiles / 2),
+        Math.floor(map.config.heightTiles / 2),
+      );
+      const player = query(world.ecs, [Player])[0]!;
+      world.stores.position.x[player] = center.x + 12;
+      world.stores.position.y[player] = center.y;
+      render();
+      return;
+    }
+    throw new Error(`No seeded card found for ${state.headliner}`);
   }
 
   function previewLines(): string[] {
@@ -180,6 +217,14 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
       `act ${state.previewAct} manifest preview (seed ${state.seed}):`,
       ...previewLines(),
       '',
+      'Headliner signature runtime:',
+      `  enabled=${world.mobAbilities.enabled} encounter=${world.mobAbilities.encounterActive} bindings=${world.mobAbilities.byEntity.size} cues=${world.mobAbilities.cues.length}`,
+      ...[...world.mobAbilities.byEntity.entries()].map(
+        ([eid, instance]) =>
+          `  ${eid}: ${instance.definition.abilityId} ${instance.phase} ${instance.timerMs.toFixed(0)}ms casts=${instance.resolvedCasts} owned=${instance.ownedEntityGenerations.size}`,
+      ),
+      ...world.mobAbilities.cues.map((cue) => `  cue=${JSON.stringify(cue.geometry)}`),
+      '',
       'timeline:',
       ...(arena?.timeline ?? []).map(
         (entry) =>
@@ -194,7 +239,16 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     .name('Seed')
     .onFinishChange(() => setup());
   gui.add(state, 'stepMs', 16, phase.actDurationMs, 16).name('Step ms');
-  gui.add({ step }, 'step').name('Advance director');
+  gui.add({ step }, 'step').name('Advance fixed simulation steps');
+  const signatureFolder = gui.addFolder('Headliner signatures');
+  signatureFolder
+    .add(
+      state,
+      'headliner',
+      floor4.headliners.pool.map((entry) => entry.archetypeId),
+    )
+    .name('Headliner');
+  signatureFolder.add({ stageHeadliner }, 'stageHeadliner').name('Stage authored encounter');
 
   const waveFolder = gui.addFolder('Waves');
   waveFolder
