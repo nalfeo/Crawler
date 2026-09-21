@@ -1,5 +1,44 @@
 [
   {
+    "commit": "266b15920ca688461c5d6eaf971375cb78072eaf",
+    "commitDate": "2026-09-21T18:52:17Z",
+    "commitSubject": "feat(floor4): activate Headliner signature mechanics (#4655)",
+    "capturedAt": "2026-09-21T20:30:00.512Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/35645026318",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/266b15920ca688461c5d6eaf971375cb78072eaf.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/266b15920ca688461c5d6eaf971375cb78072eaf.fun-report.json"
+    }
+  },
+  {
     "commit": "aa7d933a97440e54fe5b4b1fb1a5ea6805bb5616",
     "commitDate": "2026-09-20T10:57:43Z",
     "commitSubject": "fix(floor5): restore hostile targeting and siege presentation (#4635)",
