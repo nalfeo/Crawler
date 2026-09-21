@@ -3201,17 +3201,50 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
           return BTStatus.SUCCESS;
         }
-        if (geometry.kind === 'projectile-fan') {
+        if (geometry.kind === 'contracting-annulus') {
+          const dx = ctx.playerX - geometry.x;
+          const dy = ctx.playerY - geometry.y;
+          const distance = Math.hypot(dx, dy);
+          const bodyRadius = Math.max(
+            getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+            getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+          );
+          const halfWidth = geometry.ringWidthFt / 2 + bodyRadius;
+          if (Math.abs(distance - geometry.endRadiusFt) > halfWidth) continue;
+          // The stationary final band is public from telegraph start. Choose
+          // its nearest safe side, preserving the empty center as counterplay.
+          const direction = distance < geometry.endRadiusFt ? -1 : 1;
+          this.dodgeVecX =
+            (distance > Number.EPSILON ? dx / distance : this.kiteOrbitSign) *
+            direction *
+            PROJECTILE_DODGE_VECTOR_SCALE;
+          this.dodgeVecY =
+            (distance > Number.EPSILON ? dy / distance : 0) *
+            direction *
+            PROJECTILE_DODGE_VECTOR_SCALE;
+          return BTStatus.SUCCESS;
+        }
+        if (geometry.kind === 'projectile-fan' || geometry.kind === 'cone') {
           const dx = ctx.playerX - geometry.originX;
           const dy = ctx.playerY - geometry.originY;
           const distSq = dx * dx + dy * dy;
-          const rangeSq = geometry.rangeFt * geometry.rangeFt;
+          const bodyRadius =
+            geometry.kind === 'cone'
+              ? Math.max(
+                  getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+                  getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+                )
+              : 0;
+          const rangeSq = (geometry.rangeFt + bodyRadius) ** 2;
           const targetAngle = Math.atan2(dy, dx);
           const delta = Math.atan2(
             Math.sin(targetAngle - geometry.facingRad),
             Math.cos(targetAngle - geometry.facingRad),
           );
-          const halfRad = (geometry.coneAngleDeg * Math.PI) / 360;
+          const angleDeg = geometry.kind === 'cone' ? geometry.angleDeg : geometry.coneAngleDeg;
+          const halfRad =
+            (angleDeg * Math.PI) / 360 +
+            Math.asin(Math.min(1, bodyRadius / Math.max(Math.sqrt(distSq), Number.EPSILON)));
           if (distSq <= rangeSq && Math.abs(delta) <= halfRad) {
             const lateralSign =
               Math.abs(delta) <= Number.EPSILON ? this.kiteOrbitSign : Math.sign(delta);

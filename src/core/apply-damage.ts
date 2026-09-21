@@ -265,6 +265,10 @@ export function applyDamage(
     finalAmount *= affinityMultiplier(options.attackerTemperament, options.defenderTemperament);
   }
 
+  const defense = world.mobAbilities.activeBuffsByEntity.get(target);
+  if (defense && defense.remainingMs > 0) {
+    finalAmount *= defense.damageTakenMultiplier ?? 1;
+  }
   const current = world.stores.health.current[target] ?? 0;
   const dealt = Math.min(current, finalAmount);
   world.stores.health.current[target] = current - dealt;

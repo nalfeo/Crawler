@@ -103,13 +103,35 @@ export interface MobAbilityProjectileFanGeometry {
   readonly paths: readonly MobAbilityProjectileFanPath[];
 }
 
+/** Solid sector locked to the caster's facing at telegraph start. */
+export interface MobAbilityConeGeometry {
+  readonly kind: 'cone';
+  readonly originX: number;
+  readonly originY: number;
+  readonly facingRad: number;
+  readonly angleDeg: number;
+  readonly rangeFt: number;
+}
+
+/** Animated warning ring; resolution hits only the band centered on endRadiusFt. */
+export interface MobAbilityContractingAnnulusGeometry {
+  readonly kind: 'contracting-annulus';
+  readonly x: number;
+  readonly y: number;
+  readonly startRadiusFt: number;
+  readonly endRadiusFt: number;
+  readonly ringWidthFt: number;
+}
+
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
   | MobAbilityLaneGeometry
   | MobAbilityMultiCircleGeometry
   | MobAbilityRadialProjectilesGeometry
-  | MobAbilityProjectileFanGeometry;
+  | MobAbilityProjectileFanGeometry
+  | MobAbilityConeGeometry
+  | MobAbilityContractingAnnulusGeometry;
 
 export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -222,6 +244,8 @@ export interface MobAbilityRuntimeDefinition {
   readonly originMode?: MobAbilityOriginMode;
   /** When true, telegraph frames pin caster velocity to zero. */
   readonly lockCasterDuringTelegraph?: boolean;
+  /** Remove surviving summoned entities when this ability's encounter ends. */
+  readonly cleanupOwnedEntities?: boolean;
   /** Optional self-buff payload consumed by runtime helper seams. */
   readonly selfBuff?: MobAbilitySelfBuffDefinition;
   /** Optional active projectile/effect lifecycle driven after telegraph resolution. */
@@ -365,6 +389,8 @@ export interface MobAbilityActiveBuffState {
   readonly movementSpeedMultiplier: number;
   readonly meleeDamageMultiplier: number;
   readonly knockbackResistanceMultiplier: number;
+  /** Incoming damage multiplier; omitted preserves normal damage. */
+  readonly damageTakenMultiplier?: number;
   readonly auraRadiusFt: number;
   remainingMs: number;
 }
@@ -473,6 +499,8 @@ export function circlesForMobAbilityGeometry(
     case 'circle':
       return [geometry];
     case 'lane':
+    case 'cone':
+    case 'contracting-annulus':
       return [];
     case 'spawn-circles':
     case 'multi-circle':

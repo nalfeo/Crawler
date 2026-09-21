@@ -217,6 +217,17 @@ describe('floor4 manifest schema Headliner rules', () => {
     expect(floorManifestDefSchema.safeParse(bad).success).toBe(false);
   });
 
+  it('rejects unknown or duplicate finale summon archetypes', () => {
+    const unknown = cloneFloor4Manifest();
+    unknown.floor4.headliners.finaleSummonRoster[0] = 'floor4-unbooked-add';
+    expect(floorManifestDefSchema.safeParse(unknown).success).toBe(false);
+
+    const duplicate = cloneFloor4Manifest();
+    duplicate.floor4.headliners.finaleSummonRoster[1] =
+      duplicate.floor4.headliners.finaleSummonRoster[0]!;
+    expect(floorManifestDefSchema.safeParse(duplicate).success).toBe(false);
+  });
+
   it('rejects a finale slot whose fixed Headliner is not eligible', () => {
     const bad = cloneFloor4Manifest();
     bad.floor4.headliners.slots[4]!.eligibleGrades = ['warmup'];

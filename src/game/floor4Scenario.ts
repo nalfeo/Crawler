@@ -52,6 +52,14 @@ import {
 import { applyDamage, clearEntityStores } from '../core/helpers.js';
 import { spawnRosterCompanion } from '../core/spawners/companions.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../core/spawners/combatants.js';
+import { createFloor4HeadlinerAbilityDefinition } from '../core/mob-abilities/floor4-headliners.js';
+import {
+  activateMobAbilityEncounter,
+  disableMobAbilityEncounter,
+  registerMobAbility,
+  setMobAbilitiesEnabled,
+} from '../core/mob-abilities/runtime.js';
+import type { MobAbilityResolveContext } from '../core/mob-abilities/types.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
   attachBarriersToFloorMap,
@@ -69,7 +77,10 @@ import {
   type EnemyPackDef,
 } from '../shared/enemy-packs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
-import { buildFloor4HeadlinerCard } from '../shared/floor4-headliners.js';
+import {
+  buildFloor4HeadlinerCard,
+  buildFloor4FinaleSummonRoster,
+} from '../shared/floor4-headliners.js';
 import {
   buildFloor4ActWaveManifests,
   type Floor4WaveScheduleConfig,
@@ -264,6 +275,9 @@ function recordFloor4PhaseTransition(
   // trash is cut when the wave window ends (FR3.6), and outstanding spawn debt
   // plus armed gate telegraphs are discarded at EVERY boundary (FR3.5) so no
   // act can leak pressure into the headline window or the next act.
+  if (phase.kind !== 'HEADLINE' && phase.kind !== 'OVERTIME') {
+    disableMobAbilityEncounter(world);
+  }
   if (state.phase.kind === 'WAVES') {
     cutFloor4WaveEnemies(world, state);
   }
@@ -1020,6 +1034,68 @@ function resolveFloor4HeadlinerSpawnPosition(world: GameWorld): { x: number; y: 
   return floorMap.tileToWorld(centerTile.x, centerTile.y);
 }
 
+function countFloor4LiveHostiles(world: GameWorld): number {
+  return query(world.ecs, [Enemy, Health]).filter(
+    (eid) =>
+      !hasComponent(world.ecs, eid, DeathTimer) && (world.stores.health.current[eid] ?? 0) > 0,
+  ).length;
+}
+
+function resolveFloor4FinaleSummons(
+  world: GameWorld,
+  ctx: MobAbilityResolveContext,
+  roster: readonly string[],
+): void {
+  if (ctx.geometry.kind !== 'spawn-circles') return;
+  const liveCap = getFloor4WaveConfig().concurrency.liveCap;
+  const packId = getFloor4WaveConfig().enemyPackId;
+  const pack = getFloorEnemyPack(packId);
+  if (!pack) throw new Error(`Floor 4 finale summon pack missing: ${packId}`);
+
+  for (let index = 0; index < ctx.geometry.circles.length; index += 1) {
+    if (countFloor4LiveHostiles(world) >= liveCap) break;
+    const circle = ctx.geometry.circles[index]!;
+    const archetypeId = roster[index % roster.length]!;
+    const archetype = pack.archetypes.find((entry) => entry.id === archetypeId);
+    if (!archetype) throw new Error(`Floor 4 finale summon missing from pack: ${archetypeId}`);
+    const radius =
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5;
+    const passable =
+      !world.floorMap ||
+      [-radius, 0, radius].every((offsetX) =>
+        [-radius, 0, radius].every((offsetY) =>
+          world.floorMap!.isPassableAt(circle.x + offsetX, circle.y + offsetY),
+        ),
+      );
+    if (!passable) continue;
+    const isRanged = archetype.aiType === 'ranged' || archetype.aiType === 'support';
+    const eid = spawnBehaviorEnemy(
+      world,
+      circle.x,
+      circle.y,
+      archetype.hp,
+      floor4ArchetypeAiType(archetype),
+      archetype.speed,
+      archetype.detectRange,
+      isRanged ? archetype.detectRange * 0.65 : 0,
+    );
+    markFloor4HostileForCoStarIfNeeded(world, eid);
+    setComponent(world.ecs, eid, Sprite, {
+      textureId: archetype.spriteTexture,
+      width: archetype.spriteWidth,
+      height: archetype.spriteHeight,
+    });
+    setComponent(world.ecs, eid, Size, {
+      radius,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    });
+    setEnemyAppearanceKey(world, eid, archetype.id);
+    ctx.registerOwnedEntity?.(eid);
+  }
+}
+
 function spawnFloor4Headliner(
   world: GameWorld,
   state: Floor4ArenaState,
@@ -1077,6 +1153,16 @@ function spawnFloor4Headliner(
     appliedOvertimeSteps: 0,
     lastKnownPos: spawn,
   };
+  const summonRoster = buildFloor4FinaleSummonRoster(getFloor4HeadlinerConfig(), world.seed);
+  registerMobAbility(
+    world,
+    eid,
+    createFloor4HeadlinerAbilityDefinition(archetype.id, (summonWorld, ctx) =>
+      resolveFloor4FinaleSummons(summonWorld, ctx, summonRoster),
+    ),
+  );
+  setMobAbilitiesEnabled(world, true);
+  activateMobAbilityEncounter(world);
   state.headlinerTelemetry.spawned += 1;
   pushAnnouncement(world.announcements, {
     kind: 'bossAbilityCast',
@@ -1130,6 +1216,7 @@ function resolveFloor4HeadlinerDefeat(world: GameWorld, state: Floor4ArenaState)
     return;
   }
   if (!encounter.defeated) {
+    disableMobAbilityEncounter(world);
     const defeatedEid = encounter.bossEid;
     encounter.defeated = true;
     encounter.bossEid = null;
@@ -1279,11 +1366,15 @@ export function isFloor4ArenaVictory(world: GameWorld): boolean {
  * slices and will hang off this same slot rather than a parallel director.
  */
 export function arenaDirectorSystem(world: GameWorld): void {
-  if (world.floorId !== 'floor4' || world.state !== 'playing') {
+  if (world.floorId !== 'floor4') {
     return;
   }
   const state = floor4ArenaState(world);
   if (!state) {
+    return;
+  }
+  if (world.state !== 'playing') {
+    if (world.mobAbilities.encounterActive) disableMobAbilityEncounter(world);
     return;
   }
   if (state.phase.kind !== 'INTERMISSION') {
