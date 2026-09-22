@@ -150,11 +150,21 @@ export interface ScenarioConstructionTower {
   readonly affordable: boolean;
 }
 
+/** An authored, scenario-owned economy choice exposed by construction UI. */
+export interface ScenarioConstructionUpgrade {
+  readonly offerId: string;
+  readonly label: string;
+  readonly cost: number;
+  readonly affordable: boolean;
+  readonly available: boolean;
+}
+
 export interface ScenarioConstructionSnapshot {
   readonly phaseLabel: string;
   readonly currencyLabel: string;
   readonly sites: readonly ScenarioConstructionSite[];
   readonly towers: readonly ScenarioConstructionTower[];
+  readonly upgrades?: readonly ScenarioConstructionUpgrade[];
 }
 
 export interface ScenarioConstructionResult {
@@ -170,6 +180,9 @@ export interface ScenarioConstructionContract<TWorld> {
     siteId: string,
     towerId: string,
   ) => ScenarioConstructionResult;
+  /** Optional authoritative requests for an occupied site / global upgrade offer. */
+  readonly requestSell?: (world: TWorld, siteId: string) => ScenarioConstructionResult;
+  readonly requestUpgrade?: (world: TWorld, offerId: string) => ScenarioConstructionResult;
 }
 
 /**

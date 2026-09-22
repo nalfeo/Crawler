@@ -63,6 +63,8 @@ import { companionLearnedAbilityIds } from '../../core/systems/companionProgress
 import { _getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { TeamId } from '../../shared/constants.js';
+import { getFloorManifest } from '../../shared/floor-registry.js';
+import type { MobAbilityGeometry } from '../../core/mob-abilities/types.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
 import type { VfxEvent } from '../../shared/vfx-events.js';
 import {
@@ -1127,6 +1129,32 @@ export interface Floor5ActorProbe {
   visible: boolean;
 }
 
+/** Read-only observations of production Headliner ownership and phase state. */
+export interface Floor4HeadlinerAbilityProbe {
+  readonly frame: number;
+  readonly archetypeId: string | null;
+  readonly defeated: boolean;
+  readonly enabled: boolean;
+  readonly encounterActive: boolean;
+  readonly bindings: readonly {
+    abilityId: string;
+    casterEid: number;
+    phase: string;
+    timerMs: number;
+    resolvedCasts: number;
+    announcementsEmitted: number;
+    registrationToken: number;
+    ownedEntities: number[];
+    geometry: MobAbilityGeometry | null;
+    firstEligibleAfterMs: number;
+    telegraphDurationMs: number;
+    cooldownMs: number;
+  }[];
+  readonly cues: readonly { abilityId: string; casterEid: number; geometry: MobAbilityGeometry }[];
+  readonly ownedEffects: number;
+  readonly registrationTokens: number;
+}
+
 export interface MainSceneProbeApi {
   /** Spawn actual scenario actors; only health/clock are staged for combat observation. */
   prepareFloor5Combat(): boolean;
@@ -1508,6 +1536,12 @@ export interface MainSceneProbeApi {
    * shop panel remain production code paths.
    */
   primeFloor4GreenRoomIntermission(): ProbePoint | null;
+  /** Stage a selected natural card entry at its authored WAVES boundary. */
+  primeFloor4Headliner(archetypeId: string): boolean;
+  getFloor4HeadlinerAbilityState(): Floor4HeadlinerAbilityProbe | null;
+  /** Damage only; the normal scene death/director systems own cleanup. */
+  defeatFloor4Headliner(): void;
+  setFloor4HeadlinerHealth(value: number): void;
   /** Live world-camera center in PIXELS, or null before the camera exists. */
   getCameraCenter(): ProbePoint | null;
   /** Floor map size in FEET (camera bounds === ftToPx of this), or null. */
@@ -3559,6 +3593,87 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const scene = getScene();
       if (scene) {
         scene.queuedInteraction = true;
+      }
+    },
+
+    primeFloor4Headliner: (archetypeId: string): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const arena = world?.floorExtendedState?.floor4Arena;
+      const card = arena?.headlinerCard.find((entry) => entry.archetypeId === archetypeId);
+      const player = playerEidOf(scene);
+      if (!scene || !world || !arena || !card || player < 0 || arena.activeHeadliner) return false;
+      const config = getFloorManifest('floor4')!.floor4!;
+      scene.setSimulationPaused(true);
+      world.state = 'playing';
+      arena.phase = { kind: 'WAVES', act: card.act };
+      world.floorExtendedState!.floor4GreenRoom = {
+        lastOpenedVisitIndex: card.act - 2,
+        retiredVisitCount: card.act - 1,
+        purchases: 0,
+      };
+      arena.arenaElapsedMs =
+        (card.act - 1) * config.phase.actDurationMs + config.phase.waveWindowMs;
+      world.stores.health.current[player] = 1_000_000;
+      world.stores.health.max[player] = 1_000_000;
+      const map = world.floorMap!;
+      const center = map.tileToWorld(
+        Math.floor(map.config.widthTiles / 2),
+        Math.floor(map.config.heightTiles / 2),
+      );
+      world.stores.position.x[player] = center.x + 12;
+      world.stores.position.y[player] = center.y;
+      return true;
+    },
+    getFloor4HeadlinerAbilityState: (): Floor4HeadlinerAbilityProbe | null => {
+      const world = getScene()?.world;
+      if (!world || world.floorId !== 'floor4') return null;
+      const runtime = world.mobAbilities;
+      return {
+        frame: world.frameCount,
+        archetypeId: world.floorExtendedState?.floor4Arena?.activeHeadliner?.archetypeId ?? null,
+        defeated: world.floorExtendedState?.floor4Arena?.activeHeadliner?.defeated ?? false,
+        enabled: runtime.enabled,
+        encounterActive: runtime.encounterActive,
+        bindings: [...runtime.byEntity].map(([casterEid, instance]) => ({
+          abilityId: instance.definition.abilityId,
+          casterEid,
+          phase: instance.phase,
+          timerMs: instance.timerMs,
+          resolvedCasts: instance.resolvedCasts,
+          announcementsEmitted: instance.announcementsEmitted,
+          registrationToken: instance.registrationToken,
+          ownedEntities: [...instance.ownedEntityGenerations.keys()],
+          geometry: structuredClone(instance.committedGeometry),
+          firstEligibleAfterMs: instance.definition.firstEligibleAfterMs,
+          telegraphDurationMs: instance.definition.telegraphDurationMs,
+          cooldownMs: instance.definition.cooldownMs,
+        })),
+        cues: runtime.cues.map(({ abilityId, casterEid, geometry }) => ({
+          abilityId,
+          casterEid,
+          geometry: structuredClone(geometry),
+        })),
+        registrationTokens: runtime.registrationTokens.size,
+        ownedEffects:
+          runtime.activeProjectiles.length +
+          runtime.activeZones.length +
+          runtime.ownedZones.length +
+          runtime.activeBuffsByEntity.size +
+          runtime.recoveriesByEntity.size,
+      };
+    },
+    defeatFloor4Headliner: (): void => {
+      const world = getScene()?.world;
+      const boss = world?.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+      if (world && boss !== null && boss !== undefined) world.stores.health.current[boss] = 0;
+    },
+    setFloor4HeadlinerHealth: (value: number): void => {
+      const world = getScene()?.world;
+      const boss = world?.floorExtendedState?.floor4Arena?.activeHeadliner?.bossEid;
+      if (world && boss !== null && boss !== undefined) {
+        world.stores.health.current[boss] = value;
+        world.stores.health.max[boss] = value;
       }
     },
 

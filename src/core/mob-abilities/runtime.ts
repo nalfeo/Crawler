@@ -21,6 +21,7 @@
 import { entityExists, hasComponent, query, removeComponent, removeEntity } from 'bitecs';
 import { GAME } from '../../shared/constants.js';
 import { EnemyProjectile, Health, Knockback, Player, Position, Velocity } from '../components.js';
+import { clearEntityStores } from '../spawners/entity-core.js';
 import { applyDamage } from '../apply-damage.js';
 import { applyStatusEffect, clearStatusEffects } from '../status-effects.js';
 import { pushAnnouncement } from '../../shared/announcement-events.js';
@@ -108,9 +109,12 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const runtime = world.mobAbilities;
   const inst = runtime.byEntity.get(casterEid);
   if (inst === undefined) return;
-  clearOwnedProjectiles(world, inst);
   runtime.byEntity.delete(casterEid);
   runtime.registrationTokens.delete(casterEid);
+  // Owned summons flow through clearEntityStores, which calls back into this
+  // function. Remove the caster registration first so that cleanup is safely
+  // re-entrant even if a future ability owns an entity with the same id.
+  clearOwnedProjectiles(world, inst);
   inst.activeState = null;
   runtime.recoveriesByEntity.delete(casterEid);
 
@@ -164,7 +168,9 @@ function clearOwnedProjectiles(world: GameWorld, inst: MobAbilityInstanceState):
   for (const [eid, generation] of inst.ownedEntityGenerations) {
     if (!entityExists(world.ecs, eid)) continue;
     if ((world.entityRenderGeneration[eid] ?? -1) !== generation) continue;
-    if (!hasComponent(world.ecs, eid, EnemyProjectile)) continue;
+    if (!hasComponent(world.ecs, eid, EnemyProjectile) && !inst.definition.cleanupOwnedEntities)
+      continue;
+    clearEntityStores(world, eid);
     removeEntity(world.ecs, eid);
     world.enemyProjectileArchetypeKeys.delete(eid);
   }
@@ -1064,6 +1070,7 @@ export interface ActivateMobAbilitySelfBuffInput {
   readonly meleeDamageMultiplier: number;
   readonly knockbackResistanceMultiplier: number;
   readonly auraRadiusFt: number;
+  readonly damageTakenMultiplier?: number;
 }
 
 /**
@@ -1091,6 +1098,7 @@ export function activateMobAbilitySelfBuff(
     meleeDamageMultiplier: buff.meleeDamageMultiplier,
     knockbackResistanceMultiplier: buff.knockbackResistanceMultiplier,
     auraRadiusFt: buff.auraRadiusFt,
+    damageTakenMultiplier: buff.damageTakenMultiplier ?? 1,
     remainingMs: buff.durationMs,
   };
   world.mobAbilities.activeBuffsByEntity.set(buff.casterEid, state);

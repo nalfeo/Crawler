@@ -61,6 +61,13 @@ describe('Floor 6 authored tower construction', () => {
       reason: 'occupied',
     });
     expect(defense.economy.balance).toBe(balanceAfterBuild);
+
+    // The presentation seam exposes occupied-site actions without giving the
+    // renderer direct write access to defense state.
+    expect(construction!.getSnapshot(world)!.upgrades).toEqual(
+      expect.arrayContaining([expect.objectContaining({ offerId: expect.any(String) })]),
+    );
+    expect(construction!.requestSell?.(world, siteId)).toEqual({ ok: true, reason: 'sold' });
   });
 
   it('builds every starter tower only on vacant authored sites without changing routes', () => {

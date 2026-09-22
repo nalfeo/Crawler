@@ -64,7 +64,13 @@ export function buildFloor4HeadlinerCard(
   config: Floor4HeadlinerConfig,
   seed: number,
 ): readonly Floor4HeadlinerCardEntry[] {
-  const rng = new SeededRandom(hashStringToSeed(floor4HeadlineStreamKey(seed)));
+  return drawHeadliners(config, new SeededRandom(hashStringToSeed(floor4HeadlineStreamKey(seed))));
+}
+
+function drawHeadliners(
+  config: Floor4HeadlinerConfig,
+  rng: SeededRandom,
+): readonly Floor4HeadlinerCardEntry[] {
   const used = new Set<string>();
   const reserved = new Set(
     config.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
@@ -91,4 +97,21 @@ export function buildFloor4HeadlinerCard(
   }
 
   return Object.freeze(card);
+}
+
+/** The finale consumes only the continuation of the isolated Headliner stream. */
+export function buildFloor4FinaleSummonRoster(
+  config: Floor4HeadlinerConfig & { readonly finaleSummonRoster: readonly string[] },
+  seed: number,
+): readonly string[] {
+  const rng = new SeededRandom(hashStringToSeed(floor4HeadlineStreamKey(seed)));
+  drawHeadliners(config, rng);
+  const remaining = [...config.finaleSummonRoster];
+  const ordered: string[] = [];
+  while (remaining.length) {
+    const picked = rng.pick(remaining);
+    ordered.push(picked);
+    remaining.splice(remaining.indexOf(picked), 1);
+  }
+  return Object.freeze(ordered);
 }

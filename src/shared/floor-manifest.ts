@@ -107,6 +107,7 @@ interface Floor4WaveValidationInput {
   };
   readonly headliners?: {
     readonly enemyPackId: string;
+    readonly finaleSummonRoster: readonly string[];
     readonly pool: readonly {
       readonly archetypeId: string;
       readonly grade: string;
@@ -234,6 +235,24 @@ function validateFloor4Headliners(floor4: Floor4WaveValidationInput, ctx: z.Refi
   }
 
   const knownArchetypes = new Set(pack.archetypes.map((archetype) => archetype.id));
+  const finaleSummonIds = new Set<string>();
+  for (const [index, archetypeId] of headliners.finaleSummonRoster.entries()) {
+    if (finaleSummonIds.has(archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'finaleSummonRoster', index],
+        message: `duplicate finale summon archetype "${archetypeId}"`,
+      });
+    }
+    finaleSummonIds.add(archetypeId);
+    if (!knownArchetypes.has(archetypeId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['headliners', 'finaleSummonRoster', index],
+        message: `finale summon archetype "${archetypeId}" is not in enemy pack "${headliners.enemyPackId}"`,
+      });
+    }
+  }
   const poolIds = new Set<string>();
   const fixedArchetypeIds = new Set(
     headliners.slots.flatMap((slot) => (slot.fixedArchetypeId ? [slot.fixedArchetypeId] : [])),
@@ -766,6 +785,7 @@ export const floorManifestDefSchema = z
         headliners: z
           .object({
             enemyPackId: z.string().min(1),
+            finaleSummonRoster: z.array(z.string().min(1)).length(5),
             pool: z
               .array(
                 z

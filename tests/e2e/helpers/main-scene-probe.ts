@@ -26,6 +26,7 @@ import type {
   FloorSummaryProbeState,
   ItemIconRenderInfo,
   MainSceneProbeApi,
+  Floor4HeadlinerAbilityProbe,
   MainSceneState,
   NpcRenderInfo,
   ProbePoint,
@@ -95,6 +96,14 @@ export async function loadMainSceneProbeLab(
 
 /** Typed wrappers around the in-page `window.__mainSceneProbe` automation API. */
 export const mainSceneProbe = {
+  primeFloor4Headliner: (page: Page, archetypeId: string): Promise<boolean> =>
+    page.evaluate((id) => window.__mainSceneProbe!.primeFloor4Headliner(id), archetypeId),
+  getFloor4HeadlinerAbilityState: (page: Page): Promise<Floor4HeadlinerAbilityProbe | null> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor4HeadlinerAbilityState()),
+  defeatFloor4Headliner: (page: Page): Promise<void> =>
+    page.evaluate(() => window.__mainSceneProbe!.defeatFloor4Headliner()),
+  setFloor4HeadlinerHealth: (page: Page, value: number): Promise<void> =>
+    page.evaluate((health) => window.__mainSceneProbe!.setFloor4HeadlinerHealth(health), value),
   getState: (page: Page): Promise<MainSceneState> =>
     page.evaluate(() => window.__mainSceneProbe!.getState()),
   setSafeContext: (page: Page, enabled: boolean): Promise<void> =>

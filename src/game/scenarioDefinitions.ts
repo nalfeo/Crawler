@@ -81,8 +81,11 @@ import {
   confirmFloor6StairDescend,
   floor6CombatContributionSystem,
   getFloor6HudPresentation,
+  getFloor6UpgradeOffers,
   getFloor6RunOutcome,
   buildFloor6Tower,
+  _sellFloor6Tower,
+  purchaseFloor6UpgradeOffer,
   _getFloor6TowerRoster,
   initializeFloor6Scenario,
   isFloor6ExitDescendable,
@@ -840,6 +843,15 @@ function getFloor6ConstructionSnapshot(world: GameWorld) {
       cost: tower.cost,
       affordable: state.economy.balance >= tower.cost,
     })),
+    upgrades: getFloor6UpgradeOffers(world).map((offer) => ({
+      offerId: offer.offerId,
+      label: offer.offerId,
+      cost: offer.cost,
+      affordable: state.economy.balance >= offer.cost,
+      available:
+        state.economy.unlockedOfferIds.includes(offer.offerId) &&
+        !state.economy.selectedOfferIds.includes(offer.offerId),
+    })),
   };
 }
 
@@ -847,6 +859,8 @@ const FLOOR6_CONSTRUCTION: ScenarioConstructionContract<GameWorld> = {
   getSnapshot: getFloor6ConstructionSnapshot,
   requestBuild: (world: GameWorld, siteId: string, towerId: string) =>
     buildFloor6Tower(world, siteId, towerId),
+  requestSell: (world: GameWorld, siteId: string) => _sellFloor6Tower(world, siteId),
+  requestUpgrade: (world: GameWorld, offerId: string) => purchaseFloor6UpgradeOffer(world, offerId),
 };
 
 /**
