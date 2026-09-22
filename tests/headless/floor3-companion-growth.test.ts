@@ -5,7 +5,7 @@ import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { recruitPartyCompanion } from '../../src/core/spawners/companions.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { getCompanionAttackState } from '../../src/game/systems/companionCombatSystem.js';
+import { _getCompanionAttackState } from '../../src/game/systems/companionCombatSystem.js';
 import { companionLearnedAbilityIds } from '../../src/core/systems/companionProgressionSystem.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { TeamId } from '../../src/shared/constants.js';
@@ -60,7 +60,7 @@ describe('Floor 3 companion growth in the production headless pipeline', () => {
             (world) => {
               if (companion < 0 || world.stores.companion.form[companion] !== 2) return;
               if (
-                getCompanionAttackState(world, companion)?.lastAbilityId !== 'f3.ember-charger.l25'
+                _getCompanionAttackState(world, companion)?.lastAbilityId !== 'f3.ember-charger.l25'
               )
                 return;
               expect(companionLearnedAbilityIds(world, companion)).toHaveLength(4);

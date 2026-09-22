@@ -43,7 +43,7 @@ export interface CompanionAttackState {
 const lastAttackByWorld = new WeakMap<GameWorld, Map<number, CompanionAttackState>>();
 
 /** Read-only combat observation for the production lab; never creates state. */
-export function getCompanionAttackState(
+export function _getCompanionAttackState(
   world: GameWorld,
   eid: number,
 ): CompanionAttackState | undefined {

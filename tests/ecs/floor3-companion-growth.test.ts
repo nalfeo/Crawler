@@ -11,7 +11,7 @@ import { selectFloor3LoadoutOption } from '../../src/game/floor3Scenario.js';
 import { companionAISystem } from '../../src/game/systems/companionAISystem.js';
 import {
   companionCombatSystem,
-  getCompanionAttackState,
+  _getCompanionAttackState,
 } from '../../src/game/systems/companionCombatSystem.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { xpRequiredForLevel } from '../../src/shared/xpMath.js';
@@ -164,7 +164,7 @@ describe('Floor 3 live companion form growth', () => {
     for (let attack = 0; attack < learned.length; attack++) {
       world.elapsedMs = attack * 10_000;
       damage.push(automaticHit(world, target));
-      observed.push(getCompanionAttackState(world, eid)?.lastAbilityId);
+      observed.push(_getCompanionAttackState(world, eid)?.lastAbilityId);
     }
     expect(observed).toEqual(learned);
     expect(damage[0]).toBeCloseTo(30 * 2.4, 4);
@@ -182,6 +182,6 @@ describe('Floor 3 live companion form growth', () => {
     expect(stats(world, eid)).toEqual(before);
     world.elapsedMs += 10_000;
     expect(automaticHit(world, target)).toBe(babyDamage);
-    expect(getCompanionAttackState(world, eid)?.lastAbilityId).toBeUndefined();
+    expect(_getCompanionAttackState(world, eid)?.lastAbilityId).toBeUndefined();
   });
 });

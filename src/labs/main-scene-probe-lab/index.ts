@@ -60,7 +60,7 @@ import { AI_TYPE } from '../../game/enemyAISystem.js';
 import { speciesTokenForId } from '../../shared/data/floor3/species.js';
 import { recruitPartyCompanion } from '../../core/spawners/companions.js';
 import { companionLearnedAbilityIds } from '../../core/systems/companionProgressionSystem.js';
-import { getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
+import { _getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { TeamId } from '../../shared/constants.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
@@ -3938,7 +3938,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         (child) =>
           child instanceof Phaser.GameObjects.Image || child instanceof Phaser.GameObjects.Sprite,
       ) as Phaser.GameObjects.Image | null;
-      const attack = getCompanionAttackState(world, eid);
+      const attack = _getCompanionAttackState(world, eid);
       return {
         level: world.stores.companion.level[eid] ?? 0,
         form: world.stores.companion.form[eid] ?? 0,

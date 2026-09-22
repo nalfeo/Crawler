@@ -7,7 +7,7 @@ import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { setCompanionAIDecision } from '../../src/game/systems/companionAISystem.js';
 import {
   companionCombatSystem,
-  getCompanionAttackState,
+  _getCompanionAttackState,
 } from '../../src/game/systems/companionCombatSystem.js';
 import { TeamId } from '../../src/shared/constants.js';
 import { speciesTokenForId } from '../../src/shared/data/floor3/species.js';
@@ -60,18 +60,18 @@ describe('Floor 3 automatic companion techniques', () => {
     world.stores.companion.level[companion] = 8;
     world.elapsedMs = 624;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)?.successfulAttacks).toBe(1);
+    expect(_getCompanionAttackState(world, companion)?.successfulAttacks).toBe(1);
     world.elapsedMs = 625;
     companionCombatSystem(world);
     expect(world.stores.health.current[target]).toBe(9937);
-    expect(getCompanionAttackState(world, companion)).toMatchObject({
+    expect(_getCompanionAttackState(world, companion)).toMatchObject({
       lastAbilityId: 'f3.ember-charger.l8',
       successfulAttacks: 2,
       cooldownMs: 562.5,
     });
     world.elapsedMs += 562.5;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)?.lastAbilityId).toBe('f3.ember-charger.l1');
+    expect(_getCompanionAttackState(world, companion)?.lastAbilityId).toBe('f3.ember-charger.l1');
   });
 
   it('replays every learned technique and its actual damage deterministically', () => {
@@ -81,7 +81,7 @@ describe('Floor 3 automatic companion techniques', () => {
       for (let i = 0; i < 10; i++) {
         const health = world.stores.health.current[target]!;
         companionCombatSystem(world);
-        const attack = getCompanionAttackState(world, companion)!;
+        const attack = _getCompanionAttackState(world, companion)!;
         result.push({
           ability: attack.lastAbilityId,
           damage: health - world.stores.health.current[target]!,
@@ -105,19 +105,19 @@ describe('Floor 3 automatic companion techniques', () => {
     const { world, companion, target } = encounter(25);
     world.stores.position.x[target] = 20;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     world.stores.position.x[target] = 2;
     world.stores.health.current[companion] = 0;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     world.stores.health.current[companion] = 1;
     world.stores.companion.knockedOut[companion] = 1;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     world.stores.companion.knockedOut[companion] = 0;
     world.stores.health.current[target] = 0;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     world.stores.health.current[target] = 10000;
     addComponent(
       world.ecs,
@@ -132,10 +132,10 @@ describe('Floor 3 automatic companion techniques', () => {
       }),
     );
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     world.stores.companion.knockedOut[target] = 0;
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toMatchObject({
+    expect(_getCompanionAttackState(world, companion)).toMatchObject({
       successfulAttacks: 1,
       lastAbilityId: 'f3.ember-charger.l1',
     });
@@ -157,7 +157,7 @@ describe('Floor 3 automatic companion techniques', () => {
   it('puts evolved and learned attack damage into the actual ranged projectile', () => {
     const { world, companion, target } = encounter(25, true);
     companionCombatSystem(world);
-    world.elapsedMs += getCompanionAttackState(world, companion)!.cooldownMs;
+    world.elapsedMs += _getCompanionAttackState(world, companion)!.cooldownMs;
     companionCombatSystem(world);
     const shots = query(world.ecs, [EnemyProjectile]);
     expect(shots).toHaveLength(2);
@@ -170,9 +170,9 @@ describe('Floor 3 automatic companion techniques', () => {
     const { world, companion } = encounter(34);
     companionCombatSystem(world);
     world.entityRenderGeneration[companion] = (world.entityRenderGeneration[companion] ?? 0) + 1;
-    expect(getCompanionAttackState(world, companion)).toBeUndefined();
+    expect(_getCompanionAttackState(world, companion)).toBeUndefined();
     companionCombatSystem(world);
-    expect(getCompanionAttackState(world, companion)).toMatchObject({
+    expect(_getCompanionAttackState(world, companion)).toMatchObject({
       successfulAttacks: 1,
       lastAbilityId: 'f3.ember-charger.l1',
     });
@@ -183,7 +183,7 @@ describe('Floor 3 automatic companion techniques', () => {
     world.floorId = 'floor4';
     for (let i = 0; i < 5; i++) {
       companionCombatSystem(world);
-      expect(getCompanionAttackState(world, companion)).toMatchObject({
+      expect(_getCompanionAttackState(world, companion)).toMatchObject({
         cooldownMs: 625,
         lastAbilityId: undefined,
       });

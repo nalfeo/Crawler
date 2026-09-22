@@ -42,7 +42,7 @@ import {
 } from '../../shared/data/floor3/species.js';
 import tuning from '../../shared/data/tuning.json';
 import { companionGrowthScales } from '../../shared/data/floor3/growth.js';
-import { getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
+import { _getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
 import { collisionSystem } from '../../core/systems/collisionSystem.js';
 import { damageSystem } from '../../core/systems/damageSystem.js';
 import { getFloorEnemyPack } from '../../shared/enemy-packs.js';
@@ -244,7 +244,7 @@ function createFloor3CompanionLab(canvasHost: HTMLElement, controls: HTMLElement
       lines.push(`slice 5 — companion progression (ember-charger):`);
       lines.push(`  level=${level} xp=${xp.toFixed(1)} form=${form} (${formName})`);
       lines.push(`  abilities learned: ${abilities.join(', ')}`);
-      const attack = getCompanionAttackState(world, companionEid);
+      const attack = _getCompanionAttackState(world, companionEid);
       lines.push(`  automatic technique: ${attack?.lastAbilityId ?? '(none yet)'}`);
       lines.push(`  automatic attacks: ${attack?.successfulAttacks ?? 0}`);
       lines.push(
