@@ -13,8 +13,10 @@ import {
   _completeFloor5FieldTask,
   getFloor5RunOutcome,
   getFloor5SiegeRunStats,
+  getFloor5ObjectiveInteraction,
   _recoverFloor5RamComponent,
   _requestFloor5RamConstruction,
+  requestFloor5ObjectiveInteraction,
   siegeDirectorSystem,
   siegeRamSystem,
 } from '../../src/game/floor5Scenario.js';
@@ -23,6 +25,7 @@ import type { InputState } from '../../src/shared/input.js';
 import { addItem, cloneInventoryBag } from '../../src/shared/inventory.js';
 import { getFloorManifest } from '../../src/shared/floor-registry.js';
 import { getQuestDef, SHOPKEEPER_FETCH_ITEM_ID } from '../../src/shared/quest-types.js';
+import { getQuestWaypoints } from '../../src/core/systems/questWaypoints.js';
 
 const FLOOR5_RAM_COMPONENT_CLASSES = ['chassis', 'plating', 'broadcast-array'] as const;
 const FLOOR5_SIEGE_GOAL_IDS = {
@@ -220,42 +223,69 @@ describe('Floor 5 siege foundation real pipeline', () => {
     expect(headlessMap).toEqual(serializeFloor5Map(windowedWorld.floorMap));
   });
 
-  it('completes every Slice 3 task contract through the real headless pipeline', async () => {
+  it('never advances siege tasks for an idle player at spawn', async () => {
     const headless = await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 260,
       questStallFrames: 0,
-      stopWhen: (world) => world.floorExtendedState?.floor5Siege?.engineState === 'READY',
     });
 
-    expect(headless.floor5Siege?.phase.kind).toBe('BUILD');
-    expect(headless.floor5Siege?.engineState).toBe('READY');
+    expect(headless.floor5Siege?.phase.kind).toBe('MUSTER');
+    expect(headless.floor5Siege?.engineState).toBe('LOCKED');
     expect(headless.floor5Siege?.tasks).toEqual({
-      openingPushRepelled: true,
-      yardSecured: true,
-      recoveredComponents: [...FLOOR5_RAM_COMPONENT_CLASSES],
-      componentsReady: true,
-      checkpointCleared: true,
-      allPrerequisitesMet: true,
+      openingPushRepelled: false,
+      yardSecured: false,
+      recoveredComponents: [],
+      componentsReady: false,
+      checkpointCleared: false,
+      allPrerequisitesMet: false,
     });
     expect(headless.floor5Siege?.requisition).toEqual({
-      milestones: ['opening-push', 'siege-yard', 'components', 'checkpoint'],
-      completedMilestones: 4,
+      milestones: [],
+      completedMilestones: 0,
       requiredMilestones: 4,
-      ready: true,
+      ready: false,
     });
     expect(headless.floor5Siege?.construction).toMatchObject({
-      progressMs: 3000,
+      progressMs: 0,
       requiredMs: 3000,
       buildSiteUnderAttack: false,
       pausedMs: 0,
-      attempts: 1,
+      attempts: 0,
       deniedAttempts: 0,
     });
     for (const questId of FLOOR5_SLICE3_QUEST_IDS) {
-      expect(headless.quests.questLogCompletions[questId]).toBeGreaterThan(0);
+      expect(headless.quests.questLogCompletions[questId] ?? 0).toBe(0);
     }
+  });
+
+  it('projects authored next-objective markers and requires proximity actions for components', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+    expect(getQuestWaypoints(world, player)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ questId: 'floor5-hold-the-line', kind: 'combat' }),
+        expect.objectContaining({ questId: 'floor5-secure-synergy', kind: 'combat' }),
+        expect.objectContaining({ questId: 'floor5-recover-components', kind: 'item' }),
+      ]),
+    );
+
+    _completeFloor5FieldTask(world, 'openingPush');
+    _completeFloor5FieldTask(world, 'siegeYard');
+    const componentRoom = world.floorMap!.rooms.find((room) => room.label === 'component-pocket')!;
+    const componentPos = world.floorMap!.tileToWorld(
+      Math.floor(componentRoom.bounds.x + componentRoom.bounds.width / 2),
+      Math.floor(componentRoom.bounds.y + componentRoom.bounds.height / 2),
+    );
+    world.stores.position.x[player] = componentPos.x;
+    world.stores.position.y[player] = componentPos.y;
+
+    expect(getFloor5ObjectiveInteraction(world, player)?.label).toContain('Recover chassis');
+    expect(requestFloor5ObjectiveInteraction(world, player)).toBe(true);
+    expect(world.floorExtendedState!.floor5Siege!.tasks.recoveredComponents).toEqual(['chassis']);
+    expect(getFloor5ObjectiveInteraction(world, player)?.label).toContain('Recover plating');
   });
 
   it('cannot build the Ratings Ram early and never consumes persistent inventory or gold', () => {

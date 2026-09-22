@@ -130,6 +130,22 @@ export interface ScenarioHudSnapshot {
   readonly cues: readonly ScenarioHudCue[];
 }
 
+/** A scenario-owned proximity action, presented through the shared interact key. */
+export interface ScenarioInteractionSnapshot {
+  readonly label: string;
+  readonly detail: string;
+}
+
+/**
+ * Small generic interaction seam for authored world objectives.  The scenario
+ * remains the authority for proximity and mutation; the renderer only offers
+ * the affordance and forwards an accepted player action.
+ */
+export interface ScenarioInteractionContract<TWorld> {
+  readonly getSnapshot: (world: TWorld, playerEid: number) => ScenarioInteractionSnapshot | null;
+  readonly interact: (world: TWorld, playerEid: number) => boolean;
+}
+
 export interface ScenarioConstructionSite {
   readonly siteId: string;
   readonly label: string;
@@ -290,6 +306,8 @@ export interface ScenarioPresentationContract<TWorld> {
   readonly getHudSnapshot?: (world: TWorld) => ScenarioHudSnapshot | null;
   /** Optional authored construction interaction, consumed by the renderer. */
   readonly construction?: ScenarioConstructionContract<TWorld>;
+  /** Optional proximity interaction for an authored objective. */
+  readonly interaction?: ScenarioInteractionContract<TWorld>;
   /** Identifier of the floor this scenario hands off to, when it has one. */
   readonly nextFloorId?: string;
 }

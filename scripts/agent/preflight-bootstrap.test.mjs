@@ -34,7 +34,7 @@ test('keeps ambient bash for non-Windows hosts', () => {
   );
 });
 
-test('requires install only while local tsx is absent', () => {
+test('requires install only while both local tsx entrypoints are absent', () => {
   assert.equal(
     needsInstall('C:/repo', () => false),
     true,
@@ -43,6 +43,29 @@ test('requires install only while local tsx is absent', () => {
     needsInstall('C:/repo', (path) => path.endsWith('tsx.cmd')),
     false,
   );
+  assert.equal(
+    needsInstall('C:/repo', (path) => path.replaceAll('\\', '/').endsWith('tsx/dist/cli.mjs')),
+    false,
+  );
+});
+
+test('uses the installed tsx entrypoint when a Windows command shim is absent', () => {
+  const root = 'C:\\repo';
+  const bash = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const calls = [];
+  const status = main({
+    root,
+    platform: 'win32',
+    nodeExecutable: 'C:\\runtime\\node.exe',
+    exists: (path) => path === bash || path.replaceAll('\\', '/').endsWith('tsx/dist/cli.mjs'),
+    runCommand: (...args) => {
+      calls.push(args);
+      return 0;
+    },
+  });
+  assert.equal(status, 0);
+  assert.deepEqual(calls[0][0], 'C:\\runtime\\node.exe');
+  assert.deepEqual(calls[0][1][0], join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs'));
 });
 
 test('keeps npm cache local to a worktree', () => {

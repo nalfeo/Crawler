@@ -243,6 +243,17 @@ elif [ -n "$lock_hash" ] && [ -d node_modules ] && [ -f "$LOCK_HASH_FILE" ] \
   && [ "$(cat "$LOCK_HASH_FILE" 2>/dev/null)" = "$lock_hash" ]; then
   echo "   ✓ node_modules already matches package-lock.json — skipping npm ci."
   _phase_skip "lockfile unchanged — npm ci skipped"
+elif [ -n "$lock_hash" ] && [ -f node_modules/.package-lock.json ] \
+  && [ ! package-lock.json -nt node_modules/.package-lock.json ] \
+  && [ -f node_modules/tsx/dist/cli.mjs ]; then
+  # npm itself writes node_modules/.package-lock.json only after completing a
+  # lockfile install. A restored worktree can legitimately lack our advisory
+  # hash marker (for example after a reviewer launches in a separate sandbox).
+  # Seed it from that completed npm artifact rather than tearing down a valid
+  # dependency tree solely to recreate a cache marker.
+  printf '%s' "$lock_hash" > "$LOCK_HASH_FILE"
+  echo "   ✓ npm installed tree is newer than package-lock.json — skipping npm ci."
+  _phase_skip "npm package-lock proves dependencies are current"
 else
   node scripts/agent/run-tsx.mjs --npm ci --prefer-offline --silent
   [ -n "$lock_hash" ] && printf '%s' "$lock_hash" > "$LOCK_HASH_FILE"
