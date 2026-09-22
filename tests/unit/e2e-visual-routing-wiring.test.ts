@@ -93,7 +93,7 @@ const E2E_JOBS = [
  */
 const PLAYWRIGHT_JOB_TIMEOUTS: Record<string, number> = {
   'check-lightweight': 20,
-  'test-e2e-game': 40,
+  'test-e2e-game': 55,
   'test-e2e-assets': 20,
   'test-e2e-devtools': 20,
 };
