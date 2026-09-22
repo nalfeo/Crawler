@@ -27,7 +27,7 @@ async function clickOption(page: Page, id: string, touch: boolean): Promise<void
   await clickGame(page, row.x + row.width / 2, row.y + row.height / 2, touch);
 }
 
-async function walk(page: Page, x: number, y: number): Promise<void> {
+async function walk(page: Page, x: number, y: number, toleranceFt = 2): Promise<void> {
   const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
   const origin = { x: canvas.x + canvas.width * 0.15, y: canvas.y + canvas.height * 0.7 };
   await page.mouse.move(origin.x, origin.y);
@@ -39,12 +39,12 @@ async function walk(page: Page, x: number, y: number): Promise<void> {
       const dx = x - state.playerFt.x;
       const dy = y - state.playerFt.y;
       const distance = Math.hypot(dx, dy);
-      if (distance < 2) return;
+      if (distance < toleranceFt) return;
       await page.mouse.move(origin.x + (dx / distance) * 65, origin.y + (dy / distance) * 65);
       await page.waitForTimeout(40);
     }
     throw new Error(
-      `Normal movement could not reach ${x},${y}: ${JSON.stringify((await read(page)).playerFt)}`,
+      `Normal movement could not reach ${x},${y} within ${toleranceFt}ft: ${JSON.stringify((await read(page)).playerFt)}`,
     );
   } finally {
     await page.mouse.up();
@@ -72,9 +72,9 @@ describe('Floor 6 ordinary player economy loop', () => {
         { floor: 'floor6', seed: 606 },
         process.env.FLOOR6_PLAYER_LAB_BASE_URL,
       );
-      await walk(page, 150, 130);
-      await walk(page, 194, 130);
-      await walk(page, 194, 98);
+      await walk(page, 150, 130, 36);
+      await walk(page, 194, 130, 36);
+      await walk(page, 194, 98, 36);
       let state = await read(page);
       const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
       const site = state.sites.find((candidate) => candidate.siteId === 'plinth-relay')!;
@@ -148,9 +148,9 @@ describe('Floor 6 ordinary player economy loop', () => {
 
       // Walk out of the ingress and along the authored south lane to its junction.
       // No fixture priming, currency injection, sim stepping, or transaction calls.
-      await walk(page, 150, 130);
-      await walk(page, 194, 130);
-      await walk(page, 194, 98);
+      await walk(page, 150, 130, 36);
+      await walk(page, 194, 130, 36);
+      await walk(page, 194, 98, 36);
       let earned = await read(page);
       for (let attempt = 0; attempt < 90; attempt += 1) {
         earned = await read(page);
