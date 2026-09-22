@@ -1,40 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { query } from 'bitecs';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
-import type { GameWorld } from '../../src/core/world.js';
 import { SiegeHero, SiegeMinion, SiegeRam, SiegeRouteMarker } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
-import type { InputState } from '../../src/shared/input.js';
 import type { Floor5RatingsRamState } from '../../src/shared/floor-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-
-/**
- * Idle provider: the escort must complete under the REAL Floor 5 pipeline
- * without any player help, so the hard gate can never be satisfied by a lucky
- * AI run.
- */
-class IdleFloor5Provider implements AIInputProvider {
-  private readonly decision: AIDecision = {
-    state: AIState.EXPLORE,
-    targetEid: null,
-    targetX: null,
-    targetY: null,
-    reason: 'floor5 ratings-ram observation',
-    npcInteraction: null,
-    debug: null,
-  };
-
-  poll(_input: InputState, _world: GameWorld): void {}
-
-  getDecision(): AIDecision {
-    return this.decision;
-  }
-
-  reset(): void {}
-}
+import {
+  Floor5ObjectiveInputProvider,
+  playerRepelsFloor5OpeningPush,
+} from '../helpers/floor5-objective-input.js';
 
 /** The exact sequence the feature's hard gate requires. */
 const REQUIRED_SEQUENCE: readonly Floor5RatingsRamState[] = [
@@ -64,7 +40,7 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     let initialRamRouteIndex: number | null = null;
     let initialMarkerIndices: number[] | null = null;
 
-    const stats = await runHeadless(new IdleFloor5Provider(), {
+    const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 6000,
@@ -72,6 +48,7 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
       simulationOptions: {
         postSystems: [
           (world) => {
+            playerRepelsFloor5OpeningPush(world);
             barrierVersionAtStart ??= world.barriers.version;
             const state = world.floorExtendedState!.floor5Siege!;
             if (initialRamRouteIndex === null && state.ram.eid > 0) {
@@ -173,14 +150,17 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
   }, 120_000);
 
   it('reports a stalled escort when the ram only oscillates without route progress', async () => {
-    const stats = await runHeadless(new IdleFloor5Provider(), {
+    const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
       seed: 505,
-      maxFrames: 1500,
-      questStallFrames: 120,
+      maxFrames: 3000,
+      // The pilot must first traverse the authored requisition route; only
+      // then can this fixture isolate a ram that makes no forward progress.
+      questStallFrames: 1500,
       simulationOptions: {
         postSystems: [
           (world) => {
+            playerRepelsFloor5OpeningPush(world);
             const state = world.floorExtendedState!.floor5Siege!;
             if (state.engineState !== 'ADVANCING' || state.ram.eid <= 0) return;
             const buildSite = state.ram.route[0]!;
@@ -205,7 +185,7 @@ describe('Floor 5 outer-wall seal', () => {
   it('seals the carved breach ingress at init so the courtyard is unreachable before the ram lands', async () => {
     let sealedReachable = true;
     let barrierSealedAtStart = false;
-    await runHeadless(new IdleFloor5Provider(), {
+    await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 2,
