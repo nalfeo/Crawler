@@ -1170,6 +1170,8 @@ export interface MainSceneProbeApi {
   setEquipmentPanelUnlocked(unlocked: boolean): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
+  /** Close the current probe-lab modal without selecting a gameplay option. */
+  dismissProbeModal(): void;
   /** Activate the Floor 2 reputation HUD through the shipped broker callback. */
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
@@ -2243,7 +2245,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         throw new Error('MainGameScene is not ready');
       }
       if (world.state === 'loadout') {
-        scene.modalPicker?.close();
         sceneOptions.selectLoadoutOption?.(world, 0);
       }
       world.state = 'playing';
@@ -2479,6 +2480,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.setSimulationPaused(true);
     },
 
+    dismissProbeModal: () => {
+      getScene()?.modalPicker?.close();
+    },
+
     activateFamilyRelationships: () => {
       const scene = getScene();
       const world = scene?.world;
@@ -2549,7 +2554,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     advanceSimulationFrames: (frames: number) => {
-      getScene()?.advanceSimulationFrames?.(frames);
+      const scene = getScene();
+      if (!scene) return;
+      const safeFrames = Math.max(1, Math.floor(frames));
+      // Phaser's browser RAF can be throttled while Playwright is evaluating
+      // a page callback. Drive the same MainGameScene.update() method once per
+      // requested paused step so an e2e probe observes the complete shipped
+      // system pipeline instead of leaving queued steps stranded behind RAF.
+      for (let frame = 0; frame < safeFrames; frame += 1) {
+        scene.advanceSimulationFrames?.(1);
+        scene.update(0, 1000 / 60);
+      }
     },
 
     setLightingOverlayVisible: (visible: boolean): boolean => {
@@ -3768,15 +3783,74 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (player < 0) {
         return null;
       }
+      // A direct Floor 3 boot can already contain the initial Studio roster
+      // and ambient wilds. They are genuine gameplay entities, but unrelated
+      // to this single-combatant characterization and can kill/recycle the
+      // probe's eids before its shot reaches the target. Clear only combat
+      // actors, not the player, map, scenario wiring, or render bridge.
       for (const eid of query(world.ecs, [Projectile])) {
+        clearEntityStores(world, eid);
+        removeEntity(world.ecs, eid);
+      }
+      for (const eid of query(world.ecs, [Enemy])) {
+        clearEntityStores(world, eid);
         removeEntity(world.ecs, eid);
       }
       const px = world.stores.position.x[player] ?? 0;
       const py = world.stores.position.y[player] ?? 0;
+      // The player can spawn beside a generated room boundary.  A fixed east
+      // offset can therefore put the synthetic rival across a wall: production
+      // combat correctly falls back to its no-LOS instant-hit path, but this
+      // probe specifically needs to observe the real flying projectile. Pick
+      // the first nearby passable position with line of sight instead. The
+      // ordered offsets keep the choice deterministic for the fixed probe map.
+      const targetOffset = [
+        [5, 0],
+        [-5, 0],
+        [0, 5],
+        [0, -5],
+        [5, 5],
+        [5, -5],
+        [-5, 5],
+        [-5, -5],
+      ].find(([offsetX, offsetY]) => {
+        const targetX = px + offsetX!;
+        const targetY = py + offsetY!;
+        const map = world.floorMap;
+        if (!map?.isPassableAt(targetX, targetY) || !map.hasLineOfSight(px, py, targetX, targetY)) {
+          return false;
+        }
+        const distance = Math.hypot(offsetX!, offsetY!);
+        for (let step = 0.25; step <= distance + 0.375; step += 0.25) {
+          if (
+            !map.isPassableAt(px + (offsetX! * step) / distance, py + (offsetY! * step) / distance)
+          ) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (targetOffset === undefined) return null;
+      const targetX = px + targetOffset[0]!;
+      const targetY = py + targetOffset[1]!;
       // `ember-slinger` (Sparktick) is the real shipped `aiType: "ranged"`
       // Floor 3 species (enemies.floor3.json) — matches the unit-test choice
       // in tests/game/floor3-companion-combat.test.ts.
-      const companionEid = spawnBehaviorEnemy(world, px, py, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+      // `getEnemySpeed()` intentionally treats zero as an authored-default
+      // speed. Use a tiny positive value instead, so the real AI/combat path
+      // still runs but neither synthetic actor drifts out of this probe's
+      // map-validated shot lane before the bullet arrives.
+      const probeSpeed = 0.0001;
+      const companionEid = spawnBehaviorEnemy(
+        world,
+        px,
+        py,
+        100,
+        AI_TYPE.RANGED,
+        probeSpeed,
+        48,
+        10,
+      );
       addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
       addComponent(
         world.ecs,
@@ -3790,9 +3864,25 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           knockedOut: 0,
         }),
       );
-      const targetEid = spawnBehaviorEnemy(world, px + 5, py, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+      const targetEid = spawnBehaviorEnemy(
+        world,
+        targetX,
+        targetY,
+        100,
+        AI_TYPE.CHASE,
+        probeSpeed,
+        48,
+        0,
+      );
       addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
-      scene.setSimulationPaused(false);
+      // Model the target as an opposing Companion, matching the Floor 3
+      // combat contract (and keeping it out of the neutral-wild lifecycle).
+      // It intentionally has no species token, so it cannot counterattack.
+      addComponent(world.ecs, targetEid, Companion);
+      // The test advances this paused scene through MainGameScene's normal
+      // production fixed-step loop, preventing wall-clock races with the
+      // Floor 3 director while it observes one automatic shot.
+      scene.setSimulationPaused(true);
       return { companionEid, targetEid };
     },
 

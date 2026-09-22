@@ -66,8 +66,10 @@ describe('Floor 3 ranged Companion attacks render and resolve in the real booted
     const beforeHp = await mainSceneProbe.getEntityHealth(page, targetEid);
     expect(beforeHp).toBe(100);
 
-    // The real per-frame sim (not a forced system call) fires the shot on
-    // the Companion's own cooldown window.
+    // Advance the real scene (not an individually forced combat system) to
+    // the Companion's automatic first attack, keeping the fixture's ids
+    // stable against unrelated wall-clock director updates.
+    await mainSceneProbe.advanceSimulationFrames(page, 2);
     const projectiles = await waitFor(
       () => mainSceneProbe.getProjectileRenderInfo(page),
       (infos) => infos.length > 0,
@@ -82,9 +84,13 @@ describe('Floor 3 ranged Companion attacks render and resolve in the real booted
     expect(shot!.foundNamedObject).toBe(true);
     expect(shot!.textureKey).not.toBeNull();
 
-    // The real sim keeps running: the shot travels, collides, and damages
-    // the target — all through production wiring, not a forced test-only
-    // pipeline call.
+    // The direct-floor baseline can open an unrelated Studio introduction
+    // after the first frame. Dismiss its normal continuation so it cannot
+    // pause the observed projectile pipeline.
+    await mainSceneProbe.dismissProbeModal(page);
+    // The same production pipeline carries the already-rendered shot through
+    // movement, collision, damage, and cleanup.
+    await mainSceneProbe.advanceSimulationFrames(page, 24);
     await waitFor(
       () => mainSceneProbe.getEntityHealth(page, targetEid),
       (hp) => hp !== null && hp < 100,
