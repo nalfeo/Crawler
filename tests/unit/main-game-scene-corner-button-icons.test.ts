@@ -1,7 +1,7 @@
 /**
  * Corner-button icon presentation guard.
  *
- * The shipped Bag/Gear/Awards/Roster/Command/Skills/Shop/Issue buttons in
+ * The shipped Bag/Gear/Awards/Roster/Skills/Shop/Issue buttons in
  * `MainGameScene` share identical Phaser `Text` styling, so any visual size /
  * weight inconsistency between them comes from the *icon glyph* rather than the
  * text style: a code point without the Unicode `Emoji_Presentation` property
@@ -66,7 +66,6 @@ const EXPECTED_LABELS = [
   '⚔️ Gear',
   '🏆 Awards',
   '🐾 Roster',
-  '⚡ Command',
   '🔮 Skills',
   '✕ Shop',
   '🚩 Issue',
