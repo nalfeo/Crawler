@@ -74,7 +74,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       );
       await walk(page, 150, 130, 36);
       await walk(page, 194, 130, 36);
-      await walk(page, 194, 98, 36);
+      await walk(page, 194, 98, 65);
       let state = await read(page);
       const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
       const site = state.sites.find((candidate) => candidate.siteId === 'plinth-relay')!;
@@ -150,7 +150,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       // No fixture priming, currency injection, sim stepping, or transaction calls.
       await walk(page, 150, 130, 36);
       await walk(page, 194, 130, 36);
-      await walk(page, 194, 98, 36);
+      await walk(page, 194, 98, 65);
       let earned = await read(page);
       for (let attempt = 0; attempt < 90; attempt += 1) {
         earned = await read(page);
@@ -160,7 +160,7 @@ describe('Floor 6 ordinary player economy loop', () => {
         const pickup = earned.pickups[0];
         if (pickup) {
           await walk(page, pickup.positionFt.x, pickup.positionFt.y);
-          await walk(page, 194, 98);
+          await walk(page, 194, 98, 65);
         }
         await page.waitForTimeout(500);
       }
@@ -224,7 +224,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       await evidence(page, 'upgrade-purchased');
       await clickOption(page, '__close__', true);
       expect((await read(page)).modal).toBeNull();
-      await walk(page, 210, 98);
+      await walk(page, 210, 98, 65);
       // Use the shipped quest-log collapse control so the world evidence shows
       // the Relay glyph as well as its label, health, and incoming route arrows.
       const questLog = await page.evaluate(
