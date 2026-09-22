@@ -7,7 +7,6 @@ import {
   resolveFloor3PartyRows,
   resolvePartyMemberEids,
   shouldShowFloor3Party,
-  _signatureMilestoneLevel,
 } from '../../src/engine/floor3-party-state.js';
 import { getPetSpecies } from '../../src/shared/data/floor3/species.js';
 import { TeamId } from '../../src/shared/constants.js';
@@ -106,17 +105,6 @@ describe('resolveFloor3PartyRows', () => {
     const eid = spawnTestCompanion(world, { speciesId: 'ember-charger' });
     world.stores.companion.speciesToken[eid] = 0;
     expect(resolveFloor3PartyRows(world)).toEqual([]);
-  });
-});
-
-describe('_signatureMilestoneLevel', () => {
-  it('reports the highest milestone already reached', () => {
-    expect(_signatureMilestoneLevel(1)).toBe(1);
-    expect(_signatureMilestoneLevel(7)).toBe(1);
-    expect(_signatureMilestoneLevel(8)).toBe(8);
-    expect(_signatureMilestoneLevel(24)).toBe(16);
-    expect(_signatureMilestoneLevel(25)).toBe(25);
-    expect(_signatureMilestoneLevel(99)).toBe(34);
   });
 });
 

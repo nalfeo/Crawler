@@ -13,6 +13,8 @@ import { spawnEnemyProjectile } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { STAT_BAND_SCALE, stylePersona } from '../../shared/data/floor3/styles.js';
 import { speciesForToken } from '../../shared/data/floor3/species.js';
+import { companionGrowthScales } from '../../shared/data/floor3/growth.js';
+import { learnedCompanionAttacks } from '../../shared/data/floor3/combat-abilities.js';
 import { TeamId, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import tuning from '../../shared/data/tuning.json';
 import { normalize } from '../../shared/vec.js';
@@ -30,12 +32,27 @@ const BASE_DAMAGE = 10;
  * `floor3-companion-lab` for the explorable knob.
  */
 const PLAYER_COMPANION_DAMAGE_MULTIPLIER = tuning.floor3Companion.playerCompanionDamageMultiplier;
-interface CompanionAttackState {
-  generation: number;
-  lastAttackMs: number;
+export interface CompanionAttackState {
+  readonly generation: number;
+  readonly lastAttackMs: number;
+  readonly cooldownMs: number;
+  readonly successfulAttacks: number;
+  readonly lastAbilityId: string | undefined;
 }
 
 const lastAttackByWorld = new WeakMap<GameWorld, Map<number, CompanionAttackState>>();
+
+/** Read-only combat observation for the production lab; never creates state. */
+export function _getCompanionAttackState(
+  world: GameWorld,
+  eid: number,
+): CompanionAttackState | undefined {
+  const state = lastAttackByWorld.get(world)?.get(eid);
+  return hasComponent(world.ecs, eid, Companion) &&
+    state?.generation === (world.entityRenderGeneration[eid] ?? 0)
+    ? state
+    : undefined;
+}
 
 function lastAttacks(world: GameWorld): Map<number, CompanionAttackState> {
   let attacks = lastAttackByWorld.get(world);
@@ -64,6 +81,7 @@ export function companionCombatSystem(
   for (const eid of companions) {
     if (
       hasComponent(world.ecs, eid, DeathTimer) ||
+      (world.stores.health.current[eid] ?? 0) <= 0 ||
       (world.stores.companion.knockedOut[eid] ?? 0) === 1
     ) {
       continue;
@@ -73,6 +91,9 @@ export function companionCombatSystem(
       target === undefined ||
       !hasComponent(world.ecs, target, Enemy) ||
       hasComponent(world.ecs, target, DeathTimer) ||
+      (world.stores.health.current[target] ?? 0) <= 0 ||
+      (hasComponent(world.ecs, target, Companion) &&
+        (world.stores.companion.knockedOut[target] ?? 0) === 1) ||
       (hasComponent(world.ecs, target, Team) &&
         (world.stores.team.id[target] ?? 0) === (world.stores.team.id[eid] ?? 0))
     ) {
@@ -82,18 +103,35 @@ export function companionCombatSystem(
     const species = speciesForToken(world.stores.companion.speciesToken[eid] ?? 0);
     if (species === undefined) continue;
     const persona = stylePersona(species.fightingStyle);
+    const floor3 = world.floorId === 'floor3';
+    const level = world.stores.companion.level[eid] ?? 1;
+    const growth = floor3 ? companionGrowthScales(species, level) : undefined;
     const storedAttackRange = world.stores.enemyBehavior.attackRange[eid] ?? 0;
     const rangedAttack = storedAttackRange > 0;
-    const attackRange = rangedAttack ? storedAttackRange : MELEE_RANGE_FT;
+    // Ranged reach is already scaled in the spawn/progression pipeline. Keep
+    // the melee store at zero: the targeting AI uses it to identify kiters.
+    const attackRange = rangedAttack
+      ? storedAttackRange
+      : MELEE_RANGE_FT * (growth?.rangeScale ?? 1);
     const dx = (world.stores.position.x[target] ?? 0) - (world.stores.position.x[eid] ?? 0);
     const dy = (world.stores.position.y[target] ?? 0) - (world.stores.position.y[eid] ?? 0);
     if (dx * dx + dy * dy > attackRange * attackRange) continue;
 
-    const cooldownMs = 1000 / persona.cadence;
     const generation = world.entityRenderGeneration[eid] ?? 0;
-    const previous = attacks.get(eid);
-    const lastAttack = previous?.generation === generation ? previous.lastAttackMs : -cooldownMs;
-    if (world.elapsedMs - lastAttack < cooldownMs) continue;
+    const storedPrevious = attacks.get(eid);
+    const previous = storedPrevious?.generation === generation ? storedPrevious : undefined;
+    if (previous && world.elapsedMs - previous.lastAttackMs < previous.cooldownMs) continue;
+    const successfulAttacks = previous?.successfulAttacks ?? 0;
+    const learned = floor3 ? learnedCompanionAttacks(species, level) : [];
+    const ability = learned[successfulAttacks % learned.length];
+    const cooldownMs = (1000 / persona.cadence) * (ability?.cooldownMultiplier ?? 1);
+    const nextAttackState: CompanionAttackState = {
+      generation,
+      lastAttackMs: world.elapsedMs,
+      cooldownMs,
+      successfulAttacks: successfulAttacks + 1,
+      lastAbilityId: ability?.abilityId,
+    };
 
     const defender = hasComponent(world.ecs, target, Companion)
       ? speciesForToken(world.stores.companion.speciesToken[target] ?? 0)
@@ -103,7 +141,11 @@ export function companionCombatSystem(
         ? playerCompanionDamageMultiplier
         : 1;
     const projectileDamage =
-      BASE_DAMAGE * STAT_BAND_SCALE[persona.dmgProfile] * attackerBuffMultiplier;
+      BASE_DAMAGE *
+      STAT_BAND_SCALE[persona.dmgProfile] *
+      attackerBuffMultiplier *
+      (growth?.statScale ?? 1) *
+      (ability?.damageMultiplier ?? 1);
 
     if (rangedAttack) {
       const sourceX = world.stores.position.x[eid] ?? 0;
@@ -148,7 +190,7 @@ export function companionCombatSystem(
           attackerTemperament: species.affinity,
           defenderTemperament: defender?.affinity,
         });
-        attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
+        attacks.set(eid, nextAttackState);
         continue;
       }
     }
@@ -169,7 +211,7 @@ export function companionCombatSystem(
         defenderTemperament: defender?.affinity,
       },
     );
-    attacks.set(eid, { generation, lastAttackMs: world.elapsedMs });
+    attacks.set(eid, nextAttackState);
   }
 
   for (const eid of attacks.keys()) {

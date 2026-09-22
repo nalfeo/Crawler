@@ -13,7 +13,6 @@ const FLOOR3_PARTY_LAB_IDS = [
   ['floor3-party-hud-lab', 'party-hud'],
   ['floor3-roster-lab', 'roster'],
   ['floor3-level-up-notice-lab', 'level-up-notice'],
-  ['floor3-ability-command-lab', 'ability-command'],
   ['floor3-matchup-lab', 'matchup'],
 ] as const;
 
@@ -79,10 +78,10 @@ describe('Floor 3 UX surface wiring', () => {
     expect(hudUi).toContain('floor3Party.destroy();');
   });
 
-  it('exposes the party HUD read-back and command verb from HudUI', () => {
+  it('exposes the party HUD read-back without a command verb from HudUI', () => {
     const hudUi = read('../../src/engine/HudUI.ts');
     expect(hudUi).toContain('getFloor3PartyState: floor3Party.getState,');
-    expect(hudUi).toContain('issueFloor3Command: floor3Party.issueCommand,');
+    expect(hudUi).not.toContain('issueFloor3Command');
   });
 
   it('hides the party HUD while the map overlay is open', () => {
@@ -90,12 +89,12 @@ describe('Floor 3 UX surface wiring', () => {
     expect(hudUi).toContain('floor3Party.setVisible(!hidden && !overlayOpen);');
   });
 
-  it('mounts the roster overlay and binds the [R] and [C] verbs in MainGameScene', () => {
+  it('mounts the roster overlay and binds [R] without a [C] verb in MainGameScene', () => {
     expect(mainGameSceneSource).toContain('this.floor3RosterUI = createFloor3RosterUI(this);');
     expect(mainGameSceneSource).toContain('Phaser.Input.Keyboard.KeyCodes.R');
-    expect(mainGameSceneSource).toContain('Phaser.Input.Keyboard.KeyCodes.C');
+    expect(mainGameSceneSource).not.toContain('Phaser.Input.Keyboard.KeyCodes.C);');
     expect(mainGameSceneSource).toContain('this.floor3RosterUI?.open(this.world);');
-    expect(mainGameSceneSource).toContain('this.issueCompanionCommandFromInput();');
+    expect(mainGameSceneSource).not.toContain('issueCompanionCommand');
   });
 
   it('treats the roster overlay as a blocking surface and destroys it on shutdown', () => {
@@ -106,7 +105,7 @@ describe('Floor 3 UX surface wiring', () => {
     expect(mainGameSceneSource).toContain('this.floor3RosterUI?.destroy();');
   });
 
-  it('gates both verbs on the Floor 3 party being present', () => {
+  it('gates the roster on the Floor 3 party being present', () => {
     expect(mainGameSceneSource).toMatch(
       /import \{[^}]*shouldShowFloor3Party[^}]*\} from '\.\.\/floor3-party-state\.js';/,
     );
@@ -114,14 +113,13 @@ describe('Floor 3 UX surface wiring', () => {
       'const floor3PartyAvailable = shouldShowFloor3Party(this.world);',
     );
     expect(mainGameSceneSource).toMatch(/rosterToggleRequested && floor3PartyAvailable/);
-    expect(mainGameSceneSource).toMatch(/commandRequested &&[\s\S]{0,120}floor3PartyAvailable/);
   });
 
-  it('wires Floor 3 roster and command touch buttons', () => {
+  it('wires the Floor 3 roster touch button without a command control', () => {
     expect(mainGameSceneSource).toContain('this.floor3RosterButton = makeCornerButton');
     expect(mainGameSceneSource).toContain('this.requestFloor3RosterToggle();');
-    expect(mainGameSceneSource).toContain('this.floor3CommandButton = makeCornerButton');
-    expect(mainGameSceneSource).toContain('this.requestCompanionCommand();');
+    expect(mainGameSceneSource).not.toContain('floor3CommandButton');
+    expect(mainGameSceneSource).not.toContain('requestCompanionCommand');
   });
 
   it.each(FLOOR3_PARTY_LAB_IDS)('registers the %s lab module path', (labId, dir) => {

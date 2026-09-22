@@ -30,6 +30,7 @@
 import { hasComponent, query } from 'bitecs';
 import { Companion, Enemy, Team } from '../components.js';
 import type { GameWorld } from '../world.js';
+import { applyCompanionFormGrowth } from '../companion-growth.js';
 import {
   formForLevel,
   learnedAbilityIds,
@@ -131,6 +132,7 @@ function applyCompanionXp(world: GameWorld, companionEid: number, award: number)
   if (species === undefined) return;
   const nextForm = formForLevel(species, nextLevel).form;
   store.form[companionEid] = nextForm;
+  applyCompanionFormGrowth(world, companionEid, previousLevel);
 }
 
 /**

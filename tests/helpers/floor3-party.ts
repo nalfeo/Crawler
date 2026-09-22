@@ -19,7 +19,7 @@ export interface Floor3TestCompanionOptions {
 }
 
 /**
- * Spawn a Floor 3 Companion for HUD/roster/command tests.
+ * Spawn a Floor 3 Companion for HUD/roster tests.
  *
  * Deliberately mirrors what `recruitPartyCompanion`/`spawnRosterCompanion`
  * produce (Companion + Team, plus PartySlot only for recruited party members)

@@ -7,7 +7,7 @@
  * scene mounts them or binds their keys (AGENTS.md rule #9). This suite boots
  * the real `MainGameScene` on Floor 3 through the shipped floor bootstrap
  * (`main-scene-probe-lab`), resolves the real rules briefing and
- * starter-Companion loadout, then drives the real `[R]` / `[C]` key bindings,
+ * starter-Companion loadout, then verifies `[R]` and the absence of active command controls,
  * asserting the mounted HUD and roster overlay respond.
  *
  * Determinism: the probe lab boots with a fixed world seed, every assertion
@@ -76,7 +76,7 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
     await closeQuietly(browser);
   });
 
-  it('mounts the party HUD and binds the roster/command keys in the shipped scene', async () => {
+  it('mounts the automatic party HUD with roster controls and no active command', async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     try {
@@ -90,14 +90,6 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       const beforeStarter = await mainSceneProbe.getFloor3PartyHudState(page);
       expect(beforeStarter.hudVisible).toBe(false);
       expect(beforeStarter.rowNames).toEqual([]);
-
-      // Regression (#4209): the Command explainer toast must never fire
-      // before a Companion is actually recruited — `floorId === 'floor3'`
-      // alone is true from this very first loadout frame, so a floor-only
-      // gate would burn the one-shot latch while the starter modal still
-      // blocks the player from reading it.
-      const loadoutState = await mainSceneProbe.getState(page);
-      expect(loadoutState.floor3CommandUnlockNotified).toBe(false);
 
       // Resolve the real Floor 3 intro, then the starter picker through the shipped modals.
       await page.keyboard.press('Enter');
@@ -135,25 +127,32 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       );
       expect(docked.rowNames.every((name) => name.trim().length > 0)).toBe(true);
       expect(docked.rowNames.some((name) => name.includes('f3.'))).toBe(false);
-      expect(docked.commandCapacity).toBeGreaterThanOrEqual(1);
-      expect(docked.commandsInUse).toBe(0);
+      const controls = await mainSceneProbe.getCornerButtonLayout(page);
+      expect(controls.some((control) => /command/i.test(control.id))).toBe(false);
+      expect(docked.hudBounds).not.toBeNull();
+      const partyBounds = docked.hudBounds!;
+      for (const control of controls.filter((entry) => entry.visible)) {
+        const button = control.bounds;
+        const overlaps =
+          partyBounds.x < button.x + button.width &&
+          partyBounds.x + partyBounds.width > button.x &&
+          partyBounds.y < button.y + button.height &&
+          partyBounds.y + partyBounds.height > button.y;
+        expect(overlaps, `${control.id} covers the party HUD`).toBe(false);
+      }
+      const keys = await page.evaluate(() => window.__mainSceneProbe!.getBoundKeyboardKeyCodes());
+      expect(keys).toContain(82); // R retains its real binding.
+      expect(keys).not.toContain(67); // C has no binding.
+      expect(docked).not.toHaveProperty('commandCapacity');
+      expect(docked).not.toHaveProperty('commandsInUse');
+      expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
+        /command/i,
+      );
 
-      // Regression (#4209): now that a Companion is recruited and the versus
-      // card is dismissed (no blocking surface left), the Command explainer
-      // must actually fire — proving the gate isn't simply permanently
-      // suppressed, only correctly delayed until it is genuinely readable.
-      // The shared `interactionHint` text itself is transient and can be
-      // clobbered by an unrelated nearby-NPC "Talk" hint within a frame or
-      // two, so the one-shot latch is the reliable observation surface.
-      await waitForState(page, (s) => s.floor3CommandUnlockNotified, {
-        timeoutMs: 10_000,
-        label: 'Floor 3 Command-unlocked explainer toast latch',
+      await waitForState(page, (state) => state.floor3RosterButtonVisible, {
+        label: 'Floor 3 roster touch button visible',
       });
-
-      await waitForState(page, (s) => s.floor3RosterButtonVisible && s.floor3CommandButtonVisible, {
-        timeoutMs: 10_000,
-        label: 'Floor 3 touch buttons visible',
-      });
+      await page.screenshot({ path: 'files/floor3-auto-party-main-scene.png' });
 
       // The on-canvas roster button opens the real roster overlay with a live detail column.
       expect(await mainSceneProbe.tapFloor3RosterButton(page)).toBe(true);
@@ -178,19 +177,21 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
         'Floor 3 roster overlay closed by [Escape]',
       );
 
-      // The on-canvas command button spends a command charge on the mounted HUD.
-      expect(await mainSceneProbe.tapFloor3CommandButton(page)).toBe(true);
-      const commanded = await waitForPartyHud(
-        page,
-        (s) => s.commandsInUse > 0,
-        'Floor 3 companion command issued by touch button',
-      );
-      expect(commanded.commandsInUse).toBe(1);
-      expect(commanded.commandsInUse).toBeLessThanOrEqual(commanded.commandCapacity);
-
       await page.waitForTimeout(250);
       const elapsedAfterRosterClosed = await mainSceneProbe.getWorldElapsedMs(page);
       expect(elapsedAfterRosterClosed).not.toBe(elapsedWhileOpen);
+
+      // The removed C input produces no party UI action or hint.
+      const beforeC = await mainSceneProbe.getFloor3PartyHudState(page);
+      await page.keyboard.press('c');
+      await page.waitForTimeout(100);
+      const afterC = await mainSceneProbe.getFloor3PartyHudState(page);
+      expect(afterC.rosterOpen).toBe(beforeC.rosterOpen);
+      expect(afterC.rowNames).toEqual(beforeC.rowNames);
+      expect(afterC).not.toHaveProperty('commandsInUse');
+      expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
+        /command/i,
+      );
 
       await tapKeyUntil(
         page,
