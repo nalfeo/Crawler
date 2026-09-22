@@ -2564,7 +2564,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // system pipeline instead of leaving queued steps stranded behind RAF.
       for (let frame = 0; frame < safeFrames; frame += 1) {
         scene.advanceSimulationFrames?.(1);
-        scene.update(0, 1000 / 60);
+        scene.update?.(0, 1000 / 60);
       }
     },
 
