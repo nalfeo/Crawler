@@ -21,7 +21,7 @@ describe('magic weapons', () => {
     expect(projectiles).toHaveLength(1);
     const p = projectiles[0]!;
     expect(world.stores.aoeOnImpact.radius[p]).toBe(def.aoeRadius);
-    expect(world.stores.aoeOnImpact.damage[p]).toBe(def.baseDamage);
+    expect(world.stores.aoeOnImpact.damage[p]).toBeCloseTo(def.baseDamage);
     expect(world.stores.velocity.x[p]).toBeCloseTo(def.projectileSpeed, 2);
   });
 

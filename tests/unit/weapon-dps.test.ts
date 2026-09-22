@@ -5,7 +5,9 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 function weapon(id: string) {
   const def = getWeaponDef(id);
   if (!def) throw new Error(`Missing weapon fixture: ${id}`);
-  return def;
+  const formulaFixtureDamage =
+    id === 'sword' ? 15 : id === 'fireball' ? 8 : id === 'laser' ? 3 : null;
+  return formulaFixtureDamage === null ? def : { ...def, baseDamage: formulaFixtureDamage };
 }
 
 describe('computeTheoreticalSingleTargetDps', () => {

@@ -123,6 +123,7 @@ describe('Floor 2 weapon content wave A', () => {
       for (const rarity of rarities) {
         const request = {
           baseId: definition.stableId,
+          floor: 2,
           itemLevel: 6,
           rarity,
           enhancementLevel: 1,

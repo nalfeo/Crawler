@@ -683,7 +683,7 @@ export function resolveEquipmentRewardBundle(
   const effectsRng = substreamRng(runKey, achievementId, rarity, 'effects');
   const instance = generateEquipmentInstance(
     { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
-    { baseId, itemLevel, rarity },
+    { baseId, floor: 2, itemLevel, rarity },
     { rng: effectsRng, allowedEffectKinds: ['stat'] },
   );
 

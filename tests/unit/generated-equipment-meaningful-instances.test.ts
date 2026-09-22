@@ -52,6 +52,7 @@ describe('generated equipment never realizes a dead item', () => {
       });
       const instance = generateEquipmentInstance(world, {
         baseId,
+        floor: 2,
         itemLevel: 3,
         rarity: 'common',
         enhancementLevel: 0,
@@ -68,11 +69,13 @@ describe('generated equipment never realizes a dead item', () => {
     });
     const instance = generateEquipmentInstance(world, {
       baseId: 'leather-gloves',
+      floor: 2,
       itemLevel: 1,
       rarity: 'common',
       enhancementLevel: 0,
     });
     expect(instance.resolvedEffects).toHaveLength(0);
-    expect(instance.frozen.statBonuses).toEqual({ attackSpeed: 0.05, dexterity: 1 });
+    expect(instance.frozen.statBonuses).toMatchObject({ attackSpeed: 0.05, dexterity: 1 });
+    expect(instance.frozen.statBonuses.armor).toBeGreaterThan(0);
   });
 });

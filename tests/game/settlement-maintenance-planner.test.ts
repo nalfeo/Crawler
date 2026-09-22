@@ -163,6 +163,7 @@ function addBagEquipment(
 ): GeneratedEquipmentInstanceKey {
   const instance = generateEquipmentInstance(world, {
     baseId,
+    floor: 2,
     itemLevel: world.playerLevel.level,
     rarity,
     enhancementLevel: 0,
@@ -181,6 +182,7 @@ function attachSingleOfferStock(
 ): { stockId: string; offer: Floor2QuartermasterStockOffer; instanceId: string } {
   const instance = generateEquipmentInstance(world, {
     baseId,
+    floor: 2,
     itemLevel: world.playerLevel.level,
     rarity: 'common',
     enhancementLevel: 0,
@@ -513,12 +515,14 @@ describe('runSettlementMaintenancePlanner', () => {
     // — see `Floor2QuartermasterStockOffer['rarity']`.)
     const helmInstance = generateEquipmentInstance(world, {
       baseId: 'iron-helm',
+      floor: 2,
       itemLevel: world.playerLevel.level,
       rarity: 'uncommon',
       enhancementLevel: 0,
     });
     const bootsInstance = generateEquipmentInstance(world, {
       baseId: 'leather-boots',
+      floor: 2,
       itemLevel: world.playerLevel.level,
       rarity: 'common',
       enhancementLevel: 0,
@@ -939,7 +943,10 @@ describe('runEagerMaintenanceTick', () => {
     ).toBeGreaterThan(0);
 
     runEagerMaintenanceTick(world, playerEid);
-    expect(getEquipmentState(world, playerEid)?.equipped).toEqual(equippedAfterFirst);
+    const equippedAfterSecond = getEquipmentState(world, playerEid)?.equipped;
+    expect(equippedAfterSecond).not.toEqual(equippedAfterFirst);
+    expect(equippedAfterSecond?.neck).not.toBeNull();
+    expect(listGeneratedEquipmentReferences(world.inventories.get(playerEid)!)).toHaveLength(0);
   });
 
   it('retries a deferred claim once equipping frees bag capacity', () => {

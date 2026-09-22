@@ -76,7 +76,7 @@ function grantAndResolve(baseId: string) {
   });
   const instance = generateEquipmentInstance(
     world,
-    { baseId, itemLevel: 1, rarity: 'uncommon' },
+    { baseId, floor: 2, itemLevel: 1, rarity: 'uncommon' },
     { rng: world.rng, allowedEffectKinds: ['stat'] },
   );
   const spec = resolveEquipmentIconSpec(world, instance.instanceId)!;

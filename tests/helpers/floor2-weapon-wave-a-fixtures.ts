@@ -88,6 +88,7 @@ export function spawnGeneratedWeaponFixture(
   const enemy = withEnemy ? spawnEnemy(world, attackKind === 'melee' ? 1.25 : 6.25, 0, 200) : null;
   const generated = generateEquipmentInstance(world, {
     baseId: definition.stableId,
+    floor: 2,
     itemLevel: 6,
     rarity: 'common',
     enhancementLevel: 1,
@@ -121,14 +122,14 @@ export function expectSpawnedAttack(
       expect(Array.from(query(world.ecs, [Returning]))).toHaveLength(0);
       expect(Array.from(query(world.ecs, [AoeOnImpact]))).toHaveLength(0);
       const attack = attacks[0]!;
-      expect(world.stores.damage.amount[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.damage.amount[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       return attack;
     }
     case 'bouncing-projectile': {
       const attacks = Array.from(query(world.ecs, [Projectile, Bouncing, Damage]));
       expect(attacks).toHaveLength(1);
       const attack = attacks[0]!;
-      expect(world.stores.damage.amount[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.damage.amount[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       expect(world.stores.bouncing.remainingBounces[attack]).toBe(snapshot.bounceCount);
       return attack;
     }
@@ -136,7 +137,7 @@ export function expectSpawnedAttack(
       const attacks = Array.from(query(world.ecs, [Projectile, Returning, Damage]));
       expect(attacks).toHaveLength(1);
       const attack = attacks[0]!;
-      expect(world.stores.damage.amount[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.damage.amount[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       expect(world.stores.returning.returnSpeed[attack]).toBe(snapshot.returnSpeed);
       expect(world.stores.returning.maxRange[attack]).toBe(snapshot.maxRange);
       return attack;
@@ -145,16 +146,16 @@ export function expectSpawnedAttack(
       const attacks = Array.from(query(world.ecs, [Projectile, AoeOnImpact, Damage]));
       expect(attacks).toHaveLength(1);
       const attack = attacks[0]!;
-      expect(world.stores.damage.amount[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.damage.amount[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       expect(world.stores.aoeOnImpact.radius[attack]).toBe(snapshot.aoeRadius);
-      expect(world.stores.aoeOnImpact.damage[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.aoeOnImpact.damage[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       return attack;
     }
     case 'beam': {
       const attacks = Array.from(query(world.ecs, [LineDamage]));
       expect(attacks).toHaveLength(1);
       const attack = attacks[0]!;
-      expect(world.stores.lineDamage.damage[attack]).toBe(snapshot.baseDamage);
+      expect(world.stores.lineDamage.damage[attack]).toBeCloseTo(snapshot.baseDamage, 5);
       expect(world.stores.lineDamage.length[attack]).toBe(snapshot.beamLength);
       expect(world.stores.lineDamage.tickMs[attack]).toBe(snapshot.beamTickMs);
       return attack;

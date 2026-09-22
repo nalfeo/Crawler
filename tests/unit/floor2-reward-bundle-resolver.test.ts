@@ -169,7 +169,7 @@ describe('resolvePlayerBuildAffinity', () => {
       const effectsRng = new SeededRandom(42);
       const instance = generateEquipmentInstance(
         { generatedEquipmentRegistry: transaction.registry, rng: effectsRng },
-        { baseId: baseWithNonArmorRiders, itemLevel: 1, rarity: 'common' },
+        { baseId: baseWithNonArmorRiders, floor: 2, itemLevel: 1, rarity: 'common' },
         { rng: effectsRng, allowedEffectKinds: ['stat'] },
       );
       expect(() => assertGeneratedRewardInstanceLegal(instance, 'common')).not.toThrow();

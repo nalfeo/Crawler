@@ -8,6 +8,8 @@ import {
 import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
 import { FLOOR2_WEAPON_WAVE_A_BASES } from './data/floor2-weapon-bases.js';
 import { createWeaponDef } from './weapon-def-defaults.js';
+import { getGearScoreTargetRange, type GearScoreRarity } from './gear-score-policy.js';
+import { calibrateWeaponBaseDamage } from './weapon-gear-score.js';
 import { FLOOR2_EQUIPMENT_WAVE_B_WEAPON_DEFS } from './data/floor2-equipment-wave-b.js';
 import { FLOOR2_BASIC_LEATHER_WEAPON_BASES } from './data/floor2-basic-leather-bases.js';
 
@@ -67,8 +69,33 @@ export interface WeaponDef {
   readonly weaponTypeSkillId: WeaponTypeSkillId;
 }
 
-/** @see createWeaponDef in weapon-def-defaults.ts (shared with Floor 2 Wave A bases) */
-const def = createWeaponDef;
+const FLOOR1_EQUIPMENT_RARITY: Readonly<Record<string, GearScoreRarity>> = {
+  sword: 'common',
+  bow: 'uncommon',
+  'baseball-bat': 'common',
+  pistol: 'rare',
+  'throwing-knife': 'common',
+  fireball: 'uncommon',
+  laser: 'rare',
+  punch: 'common',
+  landmine: 'uncommon',
+};
+const FLOOR1_TWO_HANDED = new Set(['bow', 'baseball-bat']);
+
+/** Build canonical definitions and balance equippable Floor 1 weapons to their score band. */
+function def(input: Parameters<typeof createWeaponDef>[0]): WeaponDef {
+  const weapon = createWeaponDef(input);
+  const rarity = FLOOR1_EQUIPMENT_RARITY[weapon.id];
+  if (!rarity) return weapon;
+  const slots = FLOOR1_TWO_HANDED.has(weapon.id)
+    ? (['mainHand', 'offHand'] as const)
+    : (['mainHand'] as const);
+  const target = getGearScoreTargetRange(1, rarity, slots);
+  return {
+    ...weapon,
+    baseDamage: calibrateWeaponBaseDamage(weapon, (target.minimum + target.maximum) / 2),
+  };
+}
 
 export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   // --- Melee ---

@@ -33,11 +33,11 @@ import { createFloorMainSceneOptions } from './floor-main-scene-options.js';
 export const EQUIPMENT_BALANCE_LEVELS = [1, 6, 11] as const;
 export type EquipmentBalanceLevel = (typeof EQUIPMENT_BALANCE_LEVELS)[number];
 
-export const EQUIPMENT_DPS_RATIO_MIN = 1.7;
-export const EQUIPMENT_DPS_RATIO_MAX = 2.3;
 const MEASUREMENT_FRAMES = 600;
 const WARMUP_FRAMES = 2;
 const TARGET_HP = 1_000_000;
+export const EQUIPMENT_DPS_RATIO_MIN = 1.7;
+export const EQUIPMENT_DPS_RATIO_MAX = 2.3;
 
 type EquipmentBalanceBuildId =
   | 'single-target'
@@ -106,7 +106,7 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
       1: COMMON_STAGE,
       6: {
         coreStats: { strength: 3, dexterity: 2 },
-        gear: [{ baseId: 'band-of-fortune' }],
+        gear: [{ baseId: 'band-of-fortune' }, { baseId: 'signet-of-focus' }],
       },
       11: {
         coreStats: { strength: 6, dexterity: 4 },
@@ -134,8 +134,8 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
     stages: {
       1: COMMON_STAGE,
       6: {
-        coreStats: { intelligence: 3, wisdom: 2 },
-        gear: [{ baseId: 'signet-of-focus' }],
+        coreStats: { intelligence: 5 },
+        gear: [{ baseId: 'signet-of-focus' }, { baseId: 'band-of-fortune' }],
       },
       11: {
         coreStats: { intelligence: 6, wisdom: 4 },
@@ -158,11 +158,16 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
       1: COMMON_STAGE,
       6: {
         coreStats: { dexterity: 3, luck: 2 },
-        gear: [{ baseId: 'leather-gloves' }],
+        gear: [{ baseId: 'leather-gloves' }, { baseId: 'band-of-fortune' }],
       },
       11: {
-        coreStats: { dexterity: 6, luck: 4 },
-        gear: [{ baseId: 'leather-gloves' }, { baseId: 'band-of-fortune' }],
+        coreStats: { dexterity: 7, luck: 4 },
+        gear: [
+          { baseId: 'leather-gloves' },
+          { baseId: 'band-of-fortune' },
+          { baseId: 'signet-of-focus' },
+          { baseId: 'accessory.gearwork-locket' },
+        ],
       },
     },
   },
@@ -195,6 +200,7 @@ const BUILDS: Readonly<Record<EquipmentBalanceBuildId, EquipmentBalanceBuild>> =
         gear: [
           { baseId: 'band-of-fortune', rarity: 'rare' },
           { baseId: 'signet-of-focus', rarity: 'rare' },
+          { baseId: 'leather-gloves', rarity: 'rare' },
         ],
       },
     },
@@ -329,6 +335,12 @@ function stageEnhancement(level: EquipmentBalanceLevel): GeneratedEquipmentEnhan
   return 5;
 }
 
+function stageFloor(level: EquipmentBalanceLevel): number {
+  if (level === 1) return 1;
+  if (level === 6) return 2;
+  return 3;
+}
+
 function canEnhance(baseId: string): boolean {
   const def = getEquipmentDefForItem(baseId);
   return def?.weaponId !== undefined || (def?.statBonuses.armor ?? 0) > 0;
@@ -341,6 +353,7 @@ function requestFor(
 ): Parameters<typeof generateEquipmentInstance>[1] {
   return {
     baseId,
+    floor: stageFloor(level),
     itemLevel: level,
     rarity,
     enhancementLevel: canEnhance(baseId) ? stageEnhancement(level) : 0,
@@ -541,7 +554,7 @@ function median(values: readonly number[]): number {
     : (sorted[middle] ?? 0);
 }
 
-function inBand(value: number): boolean {
+function inProgressionEnvelope(value: number): boolean {
   return value >= EQUIPMENT_DPS_RATIO_MIN && value <= EQUIPMENT_DPS_RATIO_MAX;
 }
 
@@ -570,7 +583,7 @@ export function runEquipmentBalanceCohort(
     builds,
     medianLevel1To6,
     medianLevel6To11,
-    passes: inBand(medianLevel1To6) && inBand(medianLevel6To11),
+    passes: inProgressionEnvelope(medianLevel1To6) && inProgressionEnvelope(medianLevel6To11),
   };
 }
 
@@ -639,6 +652,7 @@ export function runGeneratedEquipmentDistributionFixtures(
     const world = worldFactory(config.seed, `distribution-${key.replaceAll(':', '-')}`);
     const instance = generateEquipmentInstance(world, {
       baseId: config.baseId,
+      floor: 2,
       itemLevel: 6,
       rarity: config.rarity,
       enhancementLevel: config.enhancementLevel,

@@ -25,6 +25,14 @@ import {
   getFloor2BasicLeatherWeaponBase,
 } from '../shared/data/floor2-basic-leather-bases.js';
 import type { SeededRandom } from '../shared/random.js';
+import { hashStringToSeed } from '../shared/random.js';
+import { getGearScoreTargetRange } from '../shared/gear-score-policy.js';
+import {
+  GEAR_STAT_WEIGHTS,
+  scoreAbilityGrants,
+  scoreGearStats,
+} from '../shared/gear-score-stats.js';
+import { calibrateWeaponBaseDamage } from '../shared/weapon-gear-score.js';
 import { getAbilityDefinition } from './abilities/registry.js';
 
 export type GeneratedEquipmentGeneratorErrorCode =
@@ -48,6 +56,8 @@ export class _GeneratedEquipmentGeneratorError extends Error {
 
 export interface _GenerateEquipmentInstanceRequest {
   readonly baseId: string;
+  /** Floor whose absolute gear-score ceiling owns this roll. */
+  readonly floor: number;
   readonly itemLevel: number;
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel?: GeneratedEquipmentEnhancementLevel;
@@ -198,6 +208,13 @@ validateEffectCatalog();
 function requireItemLevel(value: number): number {
   if (!Number.isInteger(value) || value < 1) {
     fail('invalid-request', 'Item level must be a positive integer', '$.request.itemLevel');
+  }
+  return value;
+}
+
+function requireFloor(value: number): number {
+  if (!Number.isInteger(value) || value < 1) {
+    fail('invalid-request', 'Floor must be a positive integer', '$.request.floor');
   }
   return value;
 }
@@ -498,6 +515,7 @@ export function generateEquipmentInstance(
     );
   }
 
+  const floor = requireFloor(request.floor);
   const itemLevel = requireItemLevel(request.itemLevel);
   const rarity = requireRarity(request.rarity);
   const policy = world.generatedEquipmentRegistry.generationPolicy;
@@ -554,11 +572,46 @@ export function generateEquipmentInstance(
   const passiveGrants = resolvedEffects.flatMap((effect) =>
     'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
   );
+  let balancedWeaponDamage = normalizeInherent(resolvedInherent);
+  const scoreRange = getGearScoreTargetRange(floor, rarity, resolvedBase.base.slots);
+  const scoreKey = [
+    world.generatedEquipmentRegistry.runKey,
+    floor,
+    resolvedBase.base.baseId,
+    itemLevel,
+    rarity,
+    ...resolvedEffects.map((effect) => effect.effectId),
+  ].join(':');
+  const baseScoreRoll = (hashStringToSeed(scoreKey) >>> 0) / 0xffff_ffff;
+  const enhancementProgress =
+    policy.maximumEnhancementLevel === 0 ? 0 : enhancementLevel / policy.maximumEnhancementLevel;
+  // Enhancement always improves an otherwise identical roll while leaving +0
+  // capable of reaching the full rarity band (and therefore its overlap).
+  const scoreRoll = baseScoreRoll + (1 - baseScoreRoll) * enhancementProgress * 0.25;
+  const targetScore = scoreRange.minimum + (scoreRange.maximum - scoreRange.minimum) * scoreRoll;
+  const grantScore = scoreAbilityGrants(abilityGrants, passiveGrants);
+
+  if (resolvedBase.weaponDef) {
+    balancedWeaponDamage = calibrateWeaponBaseDamage(
+      { ...resolvedBase.weaponDef, baseDamage: resolvedInherent },
+      Math.max(1, targetScore - scoreGearStats(statBonuses) - grantScore),
+    );
+  } else {
+    const filler: StatId = resolvedBase.base.slots.some((slot) =>
+      ['head', 'chest', 'legs', 'feet', 'gloves', 'offHand'].includes(slot),
+    )
+      ? 'armor'
+      : 'damageBonus';
+    const currentScore = scoreGearStats(statBonuses) + grantScore;
+    statBonuses[filler] =
+      (statBonuses[filler] ?? 0) + (targetScore - currentScore) / GEAR_STAT_WEIGHTS[filler]!;
+  }
+
   const activeWeaponSnapshot =
     resolvedBase.weaponDef === null
       ? null
       : createActiveWeaponSnapshotInput(resolvedBase.weaponDef.id, {
-          baseDamage: normalizeInherent(resolvedInherent),
+          baseDamage: balancedWeaponDamage,
         });
 
   return createGeneratedEquipmentInstance(world, {

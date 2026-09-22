@@ -20,6 +20,7 @@ import {
 } from '../../src/game/generated-equipment-generator.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { getEquippableItemIds } from '../../src/shared/equipmentDefs.js';
+import { validateGeneratedGearScore } from '../../src/shared/gear-score.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const LEGAL_RARITIES = ['common', 'uncommon', 'rare'] as const;
@@ -129,6 +130,7 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
         });
         const generated = generateEquipmentInstance(world, {
           baseId: stableId,
+          floor: 2,
           itemLevel: 6,
           rarity,
           enhancementLevel: 0,
@@ -172,17 +174,18 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
       });
       const commonInstance = generateEquipmentInstance(commonWorld, {
         baseId: def.id,
+        floor: 2,
         itemLevel: 6,
         rarity: 'common',
         enhancementLevel: 0,
       });
-      const commonNonArmor = Object.entries(commonInstance.frozen.statBonuses).filter(
-        ([stat, value]) => stat !== 'armor' && (value ?? 0) !== 0,
-      );
-      expect(
-        new Map(commonNonArmor),
-        `${def.id} at common must carry exactly its inherent non-armor line`,
-      ).toEqual(new Map(inherentNonArmor));
+      for (const [stat, value] of inherentNonArmor) {
+        expect(
+          commonInstance.frozen.statBonuses[stat as keyof typeof commonInstance.frozen.statBonuses],
+          `${def.id} at common must preserve its inherent ${stat} line`,
+        ).toBe(value);
+      }
+      expect(validateGeneratedGearScore(commonInstance, 2).withinRarityBand).toBe(true);
 
       // At Uncommon/Rare the frozen non-armor stats must equal the inherent
       // line plus the sum of resolved stat effects.
@@ -193,6 +196,7 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
         });
         const instance = generateEquipmentInstance(world, {
           baseId: def.id,
+          floor: 2,
           itemLevel: 6,
           rarity,
           enhancementLevel: 0,
@@ -206,13 +210,13 @@ describe('Classic Fantasy [Basic Leather] — art resolution and no placeholders
             );
           }
         }
-        for (const [stat, value] of Object.entries(instance.frozen.statBonuses)) {
-          if (stat === 'armor') continue;
+        for (const [stat, value] of expectedNonArmor) {
           expect(
-            value ?? 0,
+            instance.frozen.statBonuses[stat as keyof typeof instance.frozen.statBonuses] ?? 0,
             `${def.id} at ${rarity}: frozen.statBonuses.${stat} must equal inherent + resolved effects`,
-          ).toBe(expectedNonArmor.get(stat) ?? 0);
+          ).toBe(value);
         }
+        expect(validateGeneratedGearScore(instance, 2).withinRarityBand).toBe(true);
       }
     }
   });
