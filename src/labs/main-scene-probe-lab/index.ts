@@ -2245,6 +2245,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         throw new Error('MainGameScene is not ready');
       }
       if (world.state === 'loadout') {
+        scene.modalPicker?.close();
         sceneOptions.selectLoadoutOption?.(world, 0);
       }
       world.state = 'playing';
@@ -3877,7 +3878,8 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
       // Model the target as an opposing Companion, matching the Floor 3
       // combat contract (and keeping it out of the neutral-wild lifecycle).
-      // It intentionally has no species token, so it cannot counterattack.
+      // Its near-zero speed keeps it outside its melee reach during this
+      // one-shot observation.
       addComponent(world.ecs, targetEid, Companion);
       // The test advances this paused scene through MainGameScene's normal
       // production fixed-step loop, preventing wall-clock races with the
