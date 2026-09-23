@@ -1264,6 +1264,9 @@ describe('equipment decision gate (e2e)', () => {
         probe.closeOverlays();
         probe.openEquipmentOnly();
         if (!probe.seedMultiHandReplacement()) throw new Error('Unable to seed hand replacement.');
+        // Seeding replaces the ring-preview loadout; reopen the panel so its
+        // inspector is rebuilt against the new Sword + Shield state.
+        probe.openEquipmentOnly();
         probe.previewEquipmentBagItem('bone-club');
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
