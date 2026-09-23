@@ -89,10 +89,7 @@ describe('Floor 6 ordinary player economy loop', () => {
         { floor: 'floor6', seed: 606 },
         process.env.FLOOR6_PLAYER_LAB_BASE_URL,
       );
-      await walk(page, 128, 170);
-      await walk(page, 128, 130);
-      await walk(page, 194, 130);
-      await walk(page, 194, 98);
+      await walk(page, 172, 107, 8);
       let state = await read(page);
       const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
       const site = state.sites.find((candidate) => candidate.siteId === 'plinth-relay')!;
@@ -164,12 +161,9 @@ describe('Floor 6 ordinary player economy loop', () => {
       expect(initial.snapshot.sites.every((site) => !site.occupied)).toBe(true);
       await evidence(page, 'fresh-zero-currency');
 
-      // Walk from the ingress onto the authored south lane, then to its junction.
+      // Walk from the ingress to the reachable approach beside the Relay route.
       // No fixture priming, currency injection, sim stepping, or transaction calls.
-      await walk(page, 128, 170);
-      await walk(page, 128, 130);
-      await walk(page, 194, 130);
-      await walk(page, 194, 98);
+      await walk(page, 172, 107, 8);
       let earned = await read(page);
       for (let attempt = 0; attempt < 90; attempt += 1) {
         earned = await read(page);
@@ -179,7 +173,7 @@ describe('Floor 6 ordinary player economy loop', () => {
         const pickup = earned.pickups[0];
         if (pickup) {
           await walk(page, pickup.positionFt.x, pickup.positionFt.y);
-          await walk(page, 194, 98);
+          await walk(page, 172, 107, 8);
         }
         await page.waitForTimeout(500);
       }
@@ -243,7 +237,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       await evidence(page, 'upgrade-purchased');
       await clickOption(page, '__close__', true);
       expect((await read(page)).modal).toBeNull();
-      await walk(page, 210, 98);
+      await walk(page, 172, 107, 8);
       // Use the shipped quest-log collapse control so the world evidence shows
       // the Relay glyph as well as its label, health, and incoming route arrows.
       const questLog = await page.evaluate(
