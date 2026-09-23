@@ -33,6 +33,8 @@ async function walk(page: Page, x: number, y: number, toleranceFt = 2): Promise<
   await page.mouse.move(origin.x, origin.y);
   await page.mouse.down();
   try {
+    let previousPosition: { readonly x: number; readonly y: number } | undefined;
+    let stalledSteps = 0;
     for (let step = 0; step < 160; step += 1) {
       const state = await read(page);
       expect(state.modal, 'Movement must not open a construction modal').toBeNull();
@@ -40,6 +42,21 @@ async function walk(page: Page, x: number, y: number, toleranceFt = 2): Promise<
       const dy = y - state.playerFt.y;
       const distance = Math.hypot(dx, dy);
       if (distance < toleranceFt) return;
+      if (
+        previousPosition &&
+        Math.hypot(state.playerFt.x - previousPosition.x, state.playerFt.y - previousPosition.y) <
+          0.25
+      ) {
+        stalledSteps += 1;
+        if (stalledSteps >= 12) {
+          throw new Error(
+            `Normal movement stalled before reaching ${x},${y}: ${JSON.stringify(state.playerFt)}`,
+          );
+        }
+      } else {
+        stalledSteps = 0;
+      }
+      previousPosition = state.playerFt;
       await page.mouse.move(origin.x + (dx / distance) * 65, origin.y + (dy / distance) * 65);
       await page.waitForTimeout(40);
     }
@@ -72,8 +89,8 @@ describe('Floor 6 ordinary player economy loop', () => {
         { floor: 'floor6', seed: 606 },
         process.env.FLOOR6_PLAYER_LAB_BASE_URL,
       );
-      await walk(page, 98, 170);
-      await walk(page, 98, 130);
+      await walk(page, 128, 170);
+      await walk(page, 128, 130);
       await walk(page, 194, 130);
       await walk(page, 194, 98);
       let state = await read(page);
@@ -149,8 +166,8 @@ describe('Floor 6 ordinary player economy loop', () => {
 
       // Walk from the ingress onto the authored south lane, then to its junction.
       // No fixture priming, currency injection, sim stepping, or transaction calls.
-      await walk(page, 98, 170);
-      await walk(page, 98, 130);
+      await walk(page, 128, 170);
+      await walk(page, 128, 130);
       await walk(page, 194, 130);
       await walk(page, 194, 98);
       let earned = await read(page);
