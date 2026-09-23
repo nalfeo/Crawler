@@ -116,6 +116,7 @@ const FLOOR5_MINION_COOLDOWN_MS = 500;
 const FLOOR5_MINION_SPEED_FT_PER_FRAME = 0.85;
 const FLOOR5_MINION_ATTACK_RANGE_FT = 2.5;
 const FLOOR5_CHECKPOINT_RADIUS_FT = 8;
+const FLOOR5_FIELD_OBJECTIVE_RADIUS_FT = 10;
 const FLOOR5_PATH_STALL_FRAMES = 90;
 const FLOOR5_RELEASE_FRAME_BUDGET_SLACK = 1.1;
 /**
@@ -173,6 +174,8 @@ const FLOOR5_SLICE3_QUEST_IDS = [
 ] as const;
 
 export type Floor5FieldTaskId = 'openingPush' | 'siegeYard' | 'checkpoint';
+
+type Floor5FieldObjectiveSite = 'siege-yard' | 'components' | 'checkpoint' | 'ram-build';
 
 function getFloor5Manifest() {
   const manifest = getFloorManifest('floor5');
@@ -1619,17 +1622,122 @@ export function _requestFloor5RamConstruction(world: GameWorld): boolean {
 }
 
 function advanceFloor5FieldTasks(world: GameWorld, state: Floor5SiegeState): void {
-  if (world.elapsedMs < 1_000 || hasFloor5RamPrerequisites(state)) {
+  const playerEid = query(world.ecs, [Player, Position])[0];
+  if (playerEid === undefined) return;
+
+  // The opening push is a player-owned combat result, not a clock latch. A
+  // death event carries the real weapon owner even after the target is reaped.
+  if (!state.tasks.openingPushRepelled) {
+    const repelled = world.combatEvents.some(
+      (event) =>
+        event.type === 'death' && event.sourceEid === playerEid && event.siegeTeam === 'enemy',
+    );
+    if (repelled) _completeFloor5FieldTask(world, 'openingPush');
     return;
   }
 
-  _completeFloor5FieldTask(world, 'openingPush');
-  _completeFloor5FieldTask(world, 'siegeYard');
-  for (const componentClass of FLOOR5_RAM_COMPONENT_CLASSES) {
-    _recoverFloor5RamComponent(world, componentClass);
+  if (!state.tasks.yardSecured && playerAtFloor5Site(world, playerEid, 'siege-yard')) {
+    if (!hostilesAtFloor5Site(world, 'siege-yard')) _completeFloor5FieldTask(world, 'siegeYard');
+    return;
   }
-  _completeFloor5FieldTask(world, 'checkpoint');
-  _requestFloor5RamConstruction(world);
+
+  if (
+    hasAllFloor5RamComponents(state) &&
+    !state.tasks.checkpointCleared &&
+    playerAtFloor5Site(world, playerEid, 'checkpoint') &&
+    !hostilesAtFloor5Site(world, 'checkpoint')
+  ) {
+    _completeFloor5FieldTask(world, 'checkpoint');
+  }
+}
+
+function floor5FieldSitePosition(
+  world: GameWorld,
+  site: Floor5FieldObjectiveSite,
+): { x: number; y: number } {
+  const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
+  const bounds =
+    site === 'siege-yard'
+      ? layout.siegeYard
+      : site === 'components'
+        ? layout.componentPocket
+        : site === 'checkpoint'
+          ? layout.checkpointPocket
+          : null;
+  if (bounds) {
+    const tileSizeFt = world.floorMap?.config.tileSizeFt ?? buildFloor5MapConfig().tileSizeFt;
+    const center = centerOf(bounds);
+    return { x: center.x * tileSizeFt + tileSizeFt / 2, y: center.y * tileSizeFt + tileSizeFt / 2 };
+  }
+  return floor5SiegeState(world)?.ram.route[0] ?? { x: 0, y: 0 };
+}
+
+function playerAtFloor5Site(
+  world: GameWorld,
+  playerEid: number,
+  site: Floor5FieldObjectiveSite,
+): boolean {
+  const target = floor5FieldSitePosition(world, site);
+  return (
+    Math.hypot(
+      (world.stores.position.x[playerEid] ?? 0) - target.x,
+      (world.stores.position.y[playerEid] ?? 0) - target.y,
+    ) <= FLOOR5_FIELD_OBJECTIVE_RADIUS_FT
+  );
+}
+
+function hostilesAtFloor5Site(world: GameWorld, site: Floor5FieldObjectiveSite): boolean {
+  const target = floor5FieldSitePosition(world, site);
+  return liveFloor5Minions(world, 'enemy').some(
+    (eid) =>
+      Math.hypot(
+        (world.stores.position.x[eid] ?? 0) - target.x,
+        (world.stores.position.y[eid] ?? 0) - target.y,
+      ) <= FLOOR5_FIELD_OBJECTIVE_RADIUS_FT,
+  );
+}
+
+/** Read-only interaction projection consumed by the renderer's generic prompt. */
+export function getFloor5ObjectiveInteraction(
+  world: GameWorld,
+  playerEid: number,
+): { label: string; detail: string } | null {
+  const state = floor5SiegeState(world);
+  if (!state || isFloor5Terminal(state)) return null;
+  if (
+    state.tasks.yardSecured &&
+    !hasAllFloor5RamComponents(state) &&
+    playerAtFloor5Site(world, playerEid, 'components')
+  ) {
+    const next = FLOOR5_RAM_COMPONENT_CLASSES.find(
+      (kind) => !state.tasks.recoveredComponents.includes(kind),
+    );
+    return next
+      ? { label: `Recover ${next}`, detail: `${next} secured for the Ratings Ram.` }
+      : null;
+  }
+  if (
+    hasFloor5RamPrerequisites(state) &&
+    state.engineState === 'LOCKED' &&
+    playerAtFloor5Site(world, playerEid, 'ram-build')
+  ) {
+    return { label: 'Authorize Ram construction', detail: 'Ratings Ram construction started.' };
+  }
+  return null;
+}
+
+/** Mutates only the currently offered authored interaction. */
+export function requestFloor5ObjectiveInteraction(world: GameWorld, playerEid: number): boolean {
+  const state = floor5SiegeState(world);
+  const interaction = getFloor5ObjectiveInteraction(world, playerEid);
+  if (!state || !interaction) return false;
+  if (!hasAllFloor5RamComponents(state)) {
+    const next = FLOOR5_RAM_COMPONENT_CLASSES.find(
+      (kind) => !state.tasks.recoveredComponents.includes(kind),
+    );
+    return next ? _recoverFloor5RamComponent(world, next) : false;
+  }
+  return _requestFloor5RamConstruction(world);
 }
 
 function projectFloor5GoalFlags(world: GameWorld, state: Floor5SiegeState): void {

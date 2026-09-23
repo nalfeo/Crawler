@@ -69,6 +69,7 @@ import {
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
 import { confirmFloor4GreenRoomInteraction } from '../floor4Scenario.js';
+import { requestFloor5ObjectiveInteraction } from '../floor5Scenario.js';
 import { confirmFloor6StairDescend, isFloor6ExitDescendable } from '../floor6Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
 import {
@@ -264,6 +265,23 @@ export function autoNpcInteractionSystem(
   // Unknown/unsupported NPC interaction: still advance cooldown so the AI can
   // retarget instead of hammering the same unsupported target every frame.
   return currentFrame;
+}
+
+/**
+ * Headless equivalent of accepting Floor 5's authored world prompt. The
+ * provider must deliberately enter INTERACT at the site; this never advances
+ * an idle run or bypasses the proximity/prerequisite checks owned by the
+ * scenario.
+ */
+export function autoFloor5ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  aiProvider: AIInputProvider,
+): void {
+  if (world.floorId !== 'floor5' || aiProvider.getDecision().state !== AIState.INTERACT) {
+    return;
+  }
+  requestFloor5ObjectiveInteraction(world, playerEid);
 }
 
 export function autoFloor1ProgressionSystem(

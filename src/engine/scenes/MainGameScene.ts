@@ -6468,6 +6468,23 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    // Scenario-owned field objectives (for example Floor 5 component caches)
+    // share the normal interact key but keep both proximity and mutation in the
+    // scenario contract.  This deliberately precedes exits: a nearby objective
+    // must never be shadowed by a generic descent prompt.
+    const scenarioInteraction = this.options.scenarioPresentation?.interaction;
+    const interactionSnapshot =
+      scenarioInteraction?.getSnapshot(this.world, this.playerEid) ?? null;
+    if (interactionSnapshot) {
+      this.interactionHint?.setText(interactionSnapshot.label).setVisible(true);
+      this.dialogueBox?.hide();
+      if (interactionRequested && scenarioInteraction?.interact(this.world, this.playerEid)) {
+        this.flashActionStatus(interactionSnapshot.detail);
+        this.updateOverlayText();
+      }
+      return;
+    }
+
     // Stair proximity, straight off the scenario contract: the exit is
     // offerable while its marker is shown, descent is not barred, and the
     // player stands inside the marker radius.

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { query } from 'bitecs';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { Enemy, Health, applyDamage } from '../../src/core/index.js';
 import {
@@ -9,40 +8,17 @@ import {
   siegeCastleOptionsFromConfig,
 } from '../../src/core/map/generators/SiegeCastleGenerator.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
-import type { InputState } from '../../src/shared/input.js';
 import type { Floor5SiegeState } from '../../src/shared/floor-types.js';
 import { requestFloor5ThroneCapture } from '../../src/game/floor5Scenario.js';
 import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' with { type: 'json' };
+import {
+  Floor5ObjectiveInputProvider,
+  playerRepelsFloor5OpeningPush,
+} from '../helpers/floor5-objective-input.js';
 
 const FINALE_CONFIG = floor5Manifest.floor5.finale;
 /** Frames between damage probes; keeps the encounter longer than a telegraph. */
 const FINALE_CHIP_INTERVAL_FRAMES = 4;
-
-/**
- * Idle provider: the finale must resolve under the REAL Floor 5 pipeline. The
- * only player influence is the explicit damage probe below, which lands through
- * the real `applyDamage` path — so the gate can never be satisfied by a lucky
- * AI run.
- */
-class IdleFloor5Provider implements AIInputProvider {
-  private readonly decision: AIDecision = {
-    state: AIState.EXPLORE,
-    targetEid: null,
-    targetX: null,
-    targetY: null,
-    reason: 'floor5 throne finale observation',
-    npcInteraction: null,
-    debug: null,
-  };
-
-  poll(_input: InputState, _world: GameWorld): void {}
-
-  getDecision(): AIDecision {
-    return this.decision;
-  }
-
-  reset(): void {}
-}
 
 /** Stand-in for player DPS: chip the lowest live finale actor every frame. */
 function chipFinaleActors(world: GameWorld, state: Floor5SiegeState, damage: number): void {
@@ -107,7 +83,7 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     let summonsReleasedAtFirstTelegraph: number | null = null;
     let firstSummonReleaseFrame: number | null = null;
 
-    const stats = await runHeadless(new IdleFloor5Provider(), {
+    const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
       seed: 505,
       maxFrames: 12_000,
@@ -115,6 +91,7 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
       simulationOptions: {
         postSystems: [
           (world) => {
+            playerRepelsFloor5OpeningPush(world);
             const state = world.floorExtendedState?.floor5Siege;
             if (!state) return;
             const finale = state.finale;
