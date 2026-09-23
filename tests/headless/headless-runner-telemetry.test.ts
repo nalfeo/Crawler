@@ -380,19 +380,11 @@ describe('headless runner AI telemetry', () => {
       0,
     );
     expect(attributedDamage).toBeGreaterThan(0);
-    // damageTakenBySource sums per-hit event amounts; damageTaken uses per-frame HP-delta
-    // tracking. They can legitimately diverge when HP is restored within a frame
-    // (level-up max-HP sync, healing effects). The loot-efficiency AI changes (A3)
-    // cause the player to collect more XP, level up more frequently, and receive more
-    // max-HP syncs that mask in-frame damage from the HP-delta tracker. With the new
-    // behaviour the observed divergence is ~31% on this seed/frame budget, so the
-    // tolerance is widened to 50% of total damage taken (or 1 HP, whichever is greater)
-    // to remain deterministic without being artificially tight.
-    // toBeLessThanOrEqual is used (not toBeLessThan) so an exact boundary match does
-    // not cause a spurious failure.
-    expect(Math.abs(attributedDamage - stats.combat.damageTaken)).toBeLessThanOrEqual(
-      Math.max(1, stats.combat.damageTaken * 0.5),
-    );
+    // Source attribution records incoming hit amounts, while damageTaken is the
+    // post-mitigation per-frame HP delta. The equipment score policy can change
+    // mitigation materially, so raw attributed damage need only cover—not closely
+    // approximate—the HP damage that survived mitigation.
+    expect(attributedDamage).toBeGreaterThanOrEqual(stats.combat.damageTaken);
   });
 
   it('attributes the lethal hit via the terminal flush when the run ends in death', async () => {
