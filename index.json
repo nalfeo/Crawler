@@ -1,5 +1,44 @@
 [
   {
+    "commit": "b2752308f7cf0251975f824e39a194079d1be6db",
+    "commitDate": "2026-09-22T22:20:34Z",
+    "commitSubject": "Fix Floor 3 ranged companion projectile E2E (#4665)",
+    "capturedAt": "2026-09-23T00:01:50.664Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/35795653666",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/b2752308f7cf0251975f824e39a194079d1be6db.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/b2752308f7cf0251975f824e39a194079d1be6db.fun-report.json"
+    }
+  },
+  {
     "commit": "266b15920ca688461c5d6eaf971375cb78072eaf",
     "commitDate": "2026-09-21T18:52:17Z",
     "commitSubject": "feat(floor4): activate Headliner signature mechanics (#4655)",
