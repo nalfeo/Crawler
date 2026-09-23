@@ -12,8 +12,8 @@ const OUTBOUND_FRAME = 619;
 const HOLD_FRAME = 650;
 const RETURN_FRAME = 680;
 const RECATCH_FRAME = 700;
-const SECOND_TELEGRAPH_FRAME = 1240;
-const SECOND_RECATCH_FRAME = 1400;
+const SECOND_TELEGRAPH_FRAME = 1550;
+const SECOND_RECATCH_FRAME = 1750;
 
 interface FizzwickArenaScene {
   readonly playerEid: number;
