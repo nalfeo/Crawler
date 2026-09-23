@@ -6,11 +6,10 @@ on:
   pull_request_target:
     types: [labeled, unlabeled, synchronize, edited, closed, ready_for_review]
   workflow_run:
-    workflows: ['Merge Train Validation', 'CI']
+    workflows: ['Merge Train Validation', 'CI', 'Security Review Loop']
     types: [completed]
-    # Candidate validation is dispatched from main; reject PR and non-main CI
-    # completions before they create a Merge Train workflow run.
-    branches: [main]
+    # Admission checks run on PR branches. Filter completions at the job gate
+    # so a green, unqueued PR can wake the self-admission pass.
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
@@ -27,24 +26,11 @@ jobs:
     concurrency:
       group: crawler-merge-train
       queue: single
-    # Fail-closed job gate:
-    #   - pull_request_target: only for PRs from this repo (not forks) that
-    #     currently carry or are transitioning the merge-train queue label.
-    #   - workflow_run named 'CI': allowed only for (a) a push-triggered CI
-    #     completion on the default branch, or (b) a schedule-triggered CI
-    #     completion while the train is enabled. (b) is the wakeup for the
-    #     failure-attribution pause: when the maximal composite is red and
-    #     `mainAttributionVerdict()` (reconcile-lib.mjs) reports 'red',
-    #     reconcile pauses without ejecting anyone, and something must re-wake
-    #     it once main's own full-CI evidence turns green. Without (b) nothing
-    #     re-wakes reconcile in that window, falling back to the unreliable
-    #     */5 cron (which arrives ~hourly in practice). Mirrors the identical
-    #     carve-out already proven in ci-recovery-incidents.yml (only *reads*
-    #     vars.MERGE_TRAIN_ENABLED; never sets it). Every other CI workflow_run
-    #     (PR, or schedule while disabled) remains blocked -- no storm
-    #     regression.
-    #   - Every other event (push, schedule, workflow_dispatch, and the
-    #     'Merge Train Validation' workflow_run) is unaffected.
+    # Only queue-label PR events, trusted main validation/CI, and successful
+    # same-repository PR admission workflows wake reconciliation. PR completions
+    # need no queue label: self-admission creates it after checking live facts.
+    # Failed/fork/unrelated PR admission completions never enter the serialized job queue.
+    # Always execute the default-branch implementation, never the triggering head.
     if: >-
       ${{
         (github.event_name != 'pull_request_target' ||
@@ -52,10 +38,15 @@ jobs:
         (contains(github.event.pull_request.labels.*.name, 'merge-train') ||
         github.event.label.name == 'merge-train'))) &&
         (github.event_name != 'workflow_run' ||
-        github.event.workflow_run.name != 'CI' ||
-        (github.event.workflow_run.event == 'push' &&
+        (github.event.workflow_run.name == 'Merge Train Validation' &&
         github.event.workflow_run.head_branch == github.event.repository.default_branch) ||
-        github.event.workflow_run.event == 'schedule')
+        (github.event.workflow_run.name == 'CI' &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'schedule')) ||
+        ((github.event.workflow_run.name == 'CI' || github.event.workflow_run.name == 'Security Review Loop') &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
