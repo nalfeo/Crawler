@@ -93,7 +93,7 @@ const E2E_JOBS = [
  */
 const PLAYWRIGHT_JOB_TIMEOUTS: Record<string, number> = {
   'check-lightweight': 20,
-  'test-e2e-game': 55,
+  'test-e2e-game': 20,
   'test-e2e-assets': 20,
   'test-e2e-devtools': 20,
 };
@@ -132,6 +132,17 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     expect(runStep!.run, `${jobId} must invoke --project ${project}`).toContain(
       `--project ${project}`,
     );
+  });
+
+  it('splits the game/UI suite into four complete Vitest shards', () => {
+    const { doc } = loadCi();
+    const gameJob = getJob(doc, 'test-e2e-game') as WorkflowJob & {
+      strategy?: { 'fail-fast'?: boolean; matrix?: { shard?: number[] } };
+    };
+    expect(gameJob.strategy?.['fail-fast']).toBe(false);
+    expect(gameJob.strategy?.matrix?.shard).toEqual([1, 2, 3, 4]);
+    const runStep = gameJob.steps?.find((step) => step.run?.includes('--project e2e-game'));
+    expect(runStep?.run).toContain('--shard=${{ matrix.shard }}/4');
   });
 
   it.each(PLAYWRIGHT_JOBS)('%s has an explicit bounded job timeout', (jobId) => {
