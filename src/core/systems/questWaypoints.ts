@@ -91,6 +91,31 @@ function resolveFloor3StudioAnchor(world: GameWorld, goalId: string): Vec2 | nul
   return floorMap.tileToWorld(anchorTile.x, anchorTile.y);
 }
 
+/** Floor 5's authored set-piece labels are the objective-location authority. */
+function resolveFloor5SiegeAnchor(world: GameWorld, goalId: string): Vec2 | null {
+  const roomLabel =
+    goalId === 'floor5.siege.openingPushRepelled'
+      ? 'primary-lane'
+      : goalId === 'floor5.siege.yardSecured'
+        ? 'siege-yard'
+        : goalId === 'floor5.siege.componentsReady'
+          ? 'component-pocket'
+          : goalId === 'floor5.siege.checkpointCleared'
+            ? 'checkpoint-pocket'
+            : goalId === 'floor5.siege.ramBuilt'
+              ? 'siege-yard'
+              : null;
+  const room = roomLabel
+    ? world.floorMap?.rooms.find((candidate) => candidate.label === roomLabel)
+    : null;
+  if (!room || !world.floorMap) return null;
+  const anchorTile = pickRoomAnchorCell(room) ?? {
+    x: Math.floor(room.bounds.x + (room.bounds.width - 1) / 2),
+    y: Math.floor(room.bounds.y + (room.bounds.height - 1) / 2),
+  };
+  return world.floorMap.tileToWorld(anchorTile.x, anchorTile.y);
+}
+
 /** Map a quest goal flag to a known room position. */
 function goalFlagPos(
   world: GameWorld,
@@ -100,6 +125,10 @@ function goalFlagPos(
   const floor3StudioPos = resolveFloor3StudioAnchor(world, goalId);
   if (floor3StudioPos) {
     return floor3StudioPos;
+  }
+  const floor5SiegePos = resolveFloor5SiegeAnchor(world, goalId);
+  if (floor5SiegePos) {
+    return floor5SiegePos;
   }
   switch (goalId) {
     case 'floor2-settlement-found':
@@ -172,7 +201,21 @@ function objectiveTarget(
         goalId === 'floor2.objective.staircaseDiscovered';
       // Studio quests resolve to a Trainer roster to fight, not an NPC to talk to.
       const isFloor3StudioDefeat = goalId?.startsWith('floor3-studio-') ?? false;
-      return { pos, kind: isStairs ? 'stairs' : isFloor3StudioDefeat ? 'combat' : 'npc' };
+      const isFloor5CombatGoal =
+        goalId === 'floor5.siege.openingPushRepelled' ||
+        goalId === 'floor5.siege.yardSecured' ||
+        goalId === 'floor5.siege.checkpointCleared';
+      const isFloor5ComponentGoal = goalId === 'floor5.siege.componentsReady';
+      return {
+        pos,
+        kind: isStairs
+          ? 'stairs'
+          : isFloor3StudioDefeat || isFloor5CombatGoal
+            ? 'combat'
+            : isFloor5ComponentGoal
+              ? 'item'
+              : 'npc',
+      };
     }
     case 'haveEquippable':
     case 'equip':

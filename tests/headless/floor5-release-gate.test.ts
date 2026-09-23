@@ -1,30 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { applyDamage } from '../../src/core/index.js';
-import { runHeadless } from '../../src/game/ai/headless-runner.js';
-import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { floor5Manifest } from '../../src/shared/floor-manifest.js';
+import {
+  Floor5ObjectiveInputProvider,
+  playerRepelsFloor5OpeningPush,
+} from '../helpers/floor5-objective-input.js';
 
 const FLOOR5_RELEASE_SMOKE_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 const FINALE_CHIP_INTERVAL_FRAMES = 4;
-
-class IdleFloor5Provider implements AIInputProvider {
-  private readonly decision: AIDecision = {
-    state: AIState.EXPLORE,
-    targetEid: null,
-    targetX: null,
-    targetY: null,
-    reason: 'floor5 release-gate observation',
-    npcInteraction: null,
-    debug: null,
-  };
-
-  poll(): void {}
-  getDecision(): AIDecision {
-    return this.decision;
-  }
-  reset(): void {}
-}
 
 function chipFinaleActors(world: GameWorld, damage: number): void {
   const state = world.floorExtendedState?.floor5Siege;
@@ -71,7 +56,7 @@ describe('Floor 5 release gate headless telemetry', () => {
 
     const runs = [];
     for (const seed of FLOOR5_RELEASE_SMOKE_SEEDS) {
-      const stats = await runHeadless(new IdleFloor5Provider(), {
+      const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
         floorId: 'floor5',
         seed,
         maxFrames: gate.maxP95DurationFrames + 1_000,
@@ -80,6 +65,7 @@ describe('Floor 5 release gate headless telemetry', () => {
         simulationOptions: {
           postSystems: [
             (world) => {
+              playerRepelsFloor5OpeningPush(world);
               if (world.frameCount % FINALE_CHIP_INTERVAL_FRAMES === 0) {
                 chipFinaleActors(world, 12);
               }
@@ -187,8 +173,8 @@ describe('Floor 5 release gate headless telemetry', () => {
       maxFrames: 120,
       questStallFrames: 0,
     };
-    const first = await runHeadless(new IdleFloor5Provider(), options);
-    const second = await runHeadless(new IdleFloor5Provider(), options);
+    const first = await runHeadless(new Floor5ObjectiveInputProvider(), options);
+    const second = await runHeadless(new Floor5ObjectiveInputProvider(), options);
     expect(second.floor5Siege?.laneTelemetry).toEqual(first.floor5Siege?.laneTelemetry);
   });
 });

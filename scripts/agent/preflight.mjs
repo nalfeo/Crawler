@@ -30,7 +30,13 @@ export function resolveBootstrapBash(env, platform, exists = existsSync) {
 
 export function needsInstall(root, exists = existsSync) {
   const bin = join(root, 'node_modules', '.bin', 'tsx');
-  return !exists(bin) && !exists(`${bin}.cmd`);
+  // `npm ci` owns `.bin`, and a concurrent/terminated Windows wrapper can
+  // leave only its command shim absent while the immutable package payload is
+  // complete. `run-tsx` can execute this entrypoint directly, so reinstalling
+  // the whole dependency tree in that state is both unnecessary and can race
+  // a native binding held by another local tool.
+  const entrypoint = join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  return !exists(bin) && !exists(`${bin}.cmd`) && !exists(entrypoint);
 }
 
 function missingTsxMessage(root) {
@@ -105,16 +111,16 @@ export function main({
   }
   // As with npm.cmd, tsx.cmd is a Windows wrapper that can escape the selected
   // runtime. Invoke tsx's JS entrypoint with that runtime directly.
-  const tsx = env.CRAWLER_NPM_CLI
-    ? nodeExecutable
-    : join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
-  const tsxArgs = env.CRAWLER_NPM_CLI
-    ? [
-        join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
-        'scripts/agent/run-bash-wrapper.ts',
-        'scripts/agent/preflight.sh',
-      ]
-    : ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'];
+  const tsxEntrypoint = join(root, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const hasWindowsShim = exists(join(root, 'node_modules', '.bin', 'tsx.cmd'));
+  const tsx =
+    env.CRAWLER_NPM_CLI || (platform === 'win32' && !hasWindowsShim)
+      ? nodeExecutable
+      : join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const tsxArgs =
+    env.CRAWLER_NPM_CLI || (platform === 'win32' && !hasWindowsShim)
+      ? [tsxEntrypoint, 'scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh']
+      : ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'];
   return runCommand(tsx, tsxArgs, {
     cwd: root,
     // Reuse the bootstrap's answer so the wrapper does not depend on Codex

@@ -11,9 +11,10 @@ function currentObjective(state: Floor5SiegeState): string {
       return 'Defend the Command Post';
     case 'CONTEST':
       if (!state.tasks.yardSecured) return 'Secure the siege yard';
-      if (state.tasks.recoveredComponents.length < 3) return 'Recover Ram components';
+      if (state.tasks.recoveredComponents.length < 3)
+        return `Recover Ram components (${state.tasks.recoveredComponents.length}/3)`;
       if (!state.tasks.checkpointCleared) return 'Clear the enemy checkpoint';
-      return 'Prepare the Ratings Ram';
+      return 'Authorize Ratings Ram construction at the build site';
     case 'BUILD':
       if (state.engineState === 'READY') return 'Clear threats near the Ram';
       if (state.heroes.buildStallMs > 0) return 'Defend the build site through disruption';
@@ -74,7 +75,7 @@ export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | nu
   const lines = [
     `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
     `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
-    `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}`,
+    `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}${state.engineState === 'LOCKED' ? ` · prerequisites ${state.requisitionMilestones.length}/4` : ''}`,
   ];
   return { id: `floor5:${lines.join('|')}`, lines, cues: [] };
 }

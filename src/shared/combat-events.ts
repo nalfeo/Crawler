@@ -81,6 +81,8 @@ export interface CombatEvent {
    * without running a second RNG-divergent encounter.
    */
   fromActiveAbility?: boolean;
+  /** Allegiance snapshot for a siege actor death; survives entity teardown. */
+  siegeTeam?: 'allied' | 'enemy';
   /**
    * Sprite variant id of the entity (mirrors the `Sprite.textureId` store) so
    * the renderer can resolve which corpse texture to cut up for a
