@@ -1259,7 +1259,7 @@ describe('equipment decision gate (e2e)', () => {
       });
       expect(ringRows).toEqual(expect.arrayContaining(['(+1)', '(-5%)', '(+2)', '(-1)', '(-3%)']));
 
-      const handRows = await comparisonPage.evaluate(() => {
+      await comparisonPage.evaluate(() => {
         const probe = window.__uiProbe!;
         probe.closeOverlays();
         probe.openEquipmentOnly();
@@ -1267,6 +1267,12 @@ describe('equipment decision gate (e2e)', () => {
         // Seeding replaces the ring-preview loadout; reopen the panel so its
         // inspector is rebuilt against the new Sword + Shield state.
         probe.openEquipmentOnly();
+      });
+      // Let Phaser complete the open/refresh cycle before asking the equipment
+      // panel to build an inspector preview for the replacement.
+      await comparisonPage.waitForTimeout(250);
+      const handRows = await comparisonPage.evaluate(() => {
+        const probe = window.__uiProbe!;
         probe.previewEquipmentBagItem('bone-club');
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
