@@ -1273,6 +1273,10 @@ describe('equipment decision gate (e2e)', () => {
       await handPage.waitForTimeout(250);
       const handRows = await handPage.evaluate(() => {
         const probe = window.__uiProbe!;
+        // Select the occupied primary hand before previewing the two-hand
+        // candidate, matching the player interaction that establishes the
+        // replacement target in the integrated Bag.
+        if (!probe.selectEquipmentSlot('mainHand')) throw new Error('Unable to select main hand.');
         probe.previewEquipmentBagItem('bone-club');
         return probe.getEquipmentTextRuns().map((run) => run.text);
       });
