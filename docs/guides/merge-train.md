@@ -26,6 +26,11 @@ for the architectural rationale.
    full. This keeps admission available when CI Recovery is disabled while
    preserving the same canonical admission predicate used before candidate
    construction and promotion.
+   Successful same-repository PR completions from `CI` and `Security Review Loop`
+   wake this pass even before a queue label exists, so either admission check can
+   finish last. The workflow always executes trusted default-branch code and
+   rechecks live eligibility; completion events are wakeups, not admission proof.
+   Failed, fork, and unrelated PR admission completion events do not enter the reconcile queue.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
 2. `.github/workflows/merge-train.yml` serializes the gated `reconcile` job with

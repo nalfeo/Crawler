@@ -63,7 +63,13 @@ function loadValidationWorkflow(): ValidationWorkflowDoc {
 
 function evaluatesReconcileCondition(
   condition: string,
-  workflowRun: { name: string; event: string; headBranch: string },
+  workflowRun: {
+    name: string;
+    event: string;
+    headBranch: string;
+    conclusion?: string;
+    headRepository?: string;
+  },
   mergeTrainEnabled = 'false',
 ): boolean {
   const expression = condition
@@ -76,6 +82,14 @@ function evaluatesReconcileCondition(
     .replaceAll('github.event.workflow_run.head_branch', JSON.stringify(workflowRun.headBranch))
     .replaceAll('github.event.workflow_run.event', JSON.stringify(workflowRun.event))
     .replaceAll('github.event.workflow_run.name', JSON.stringify(workflowRun.name))
+    .replaceAll(
+      'github.event.workflow_run.conclusion',
+      JSON.stringify(workflowRun.conclusion ?? 'success'),
+    )
+    .replaceAll(
+      'github.event.workflow_run.head_repository.full_name',
+      JSON.stringify(workflowRun.headRepository ?? 'nalfeo/Crawler'),
+    )
     .replaceAll('vars.MERGE_TRAIN_ENABLED', JSON.stringify(mergeTrainEnabled))
     .replaceAll('github.event_name', JSON.stringify('workflow_run'));
 
@@ -274,18 +288,19 @@ describe('merge-train workflow wake-ups', () => {
     ).toBe(false);
   });
 
-  it('subscribes to only default-branch candidate validation and CI completions', () => {
+  it('subscribes to candidate validation and both PR admission workflows on all branches', () => {
     const workflowRun = loadWorkflow().on.workflow_run;
-    expect(workflowRun?.workflows).toEqual(
-      expect.arrayContaining(['Merge Train Validation', 'CI']),
-    );
+    expect(workflowRun?.workflows).toEqual([
+      'Merge Train Validation',
+      'CI',
+      'Security Review Loop',
+    ]);
     expect(workflowRun?.types).toEqual(['completed']);
-    // This rejects PR and other-branch CI before Actions creates a Merge Train
-    // workflow record; the job condition below remains defense-in-depth.
-    expect(workflowRun?.branches).toEqual(['main']);
+    // A main-only subscription silently drops PR admission completions.
+    expect(workflowRun?.branches).toBeUndefined();
   });
 
-  it('reconciles a completed CI run only when it is a push to the default branch', () => {
+  it('reconciles main CI pushes and successful same-repository PR CI', () => {
     const condition = loadWorkflow().jobs.reconcile?.if;
     if (!condition) throw new Error('reconcile job condition not found');
 
@@ -300,9 +315,9 @@ describe('merge-train workflow wake-ups', () => {
       evaluatesReconcileCondition(condition, {
         name: 'CI',
         event: 'pull_request',
-        headBranch: 'feature/no-reconcile-storm',
+        headBranch: 'feature/admission',
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluatesReconcileCondition(condition, {
         name: 'CI',
@@ -366,28 +381,67 @@ describe('merge-train workflow wake-ups', () => {
     expect(checkoutIdx).toBeLessThan(gateIdx);
   });
 
-  it('still rejects a PR-triggered CI run even while the merge train is enabled (no storm regression)', () => {
-    // Storm guard: enabling the train (MERGE_TRAIN_ENABLED=true) only widens
-    // the carve-out to *scheduled* CI completions -- it must not also let a
-    // PR-triggered CI completion through, or every PR's CI run would wake
-    // reconcile whenever the train happens to be enabled.
-    const condition = loadWorkflow().jobs.reconcile?.if;
-    if (!condition) throw new Error('reconcile job condition not found');
+  it.each(['CI', 'Security Review Loop'])(
+    'wakes self-admission when %s finishes last, without a queue label',
+    (name) => {
+      const condition = loadWorkflow().jobs.reconcile!.if!;
+      expect(
+        evaluatesReconcileCondition(
+          condition,
+          {
+            name,
+            event: 'pull_request',
+            headBranch: 'feature/unqueued',
+          },
+          'true',
+        ),
+      ).toBe(true);
+    },
+  );
 
+  it.each(['CI', 'Security Review Loop'])(
+    'rejects unsuccessful, fork, and non-PR %s admission wakes',
+    (name) => {
+      const condition = loadWorkflow().jobs.reconcile!.if!;
+      const run = { name, event: 'pull_request', headBranch: 'feature/unqueued' };
+      for (const conclusion of ['failure', 'cancelled', 'skipped', 'timed_out', '']) {
+        expect(evaluatesReconcileCondition(condition, { ...run, conclusion }, 'true')).toBe(false);
+      }
+      for (const headRepository of ['fork/Crawler', '']) {
+        expect(evaluatesReconcileCondition(condition, { ...run, headRepository }, 'true')).toBe(
+          false,
+        );
+      }
+      expect(evaluatesReconcileCondition(condition, { ...run, event: 'push' }, 'true')).toBe(false);
+    },
+  );
+
+  it('rejects unrelated workflows and validation outside the default branch', () => {
+    const condition = loadWorkflow().jobs.reconcile!.if!;
     expect(
-      evaluatesReconcileCondition(
-        condition,
-        { name: 'CI', event: 'pull_request', headBranch: 'feature/no-reconcile-storm' },
-        'true',
-      ),
+      evaluatesReconcileCondition(condition, {
+        name: 'Other workflow',
+        event: 'pull_request',
+        headBranch: 'main',
+      }),
+    ).toBe(false);
+    expect(
+      evaluatesReconcileCondition(condition, {
+        name: 'Merge Train Validation',
+        event: 'workflow_dispatch',
+        headBranch: 'feature/other',
+      }),
     ).toBe(false);
   });
 
-  it('leaves non-CI workflow_run completions (e.g. Merge Train Validation) unaffected by the new carve-out', () => {
-    // The schedule/MERGE_TRAIN_ENABLED carve-out only applies when
-    // workflow_run.name == 'CI'; a future edit could accidentally widen or
-    // narrow that scoping. Lock in that 'Merge Train Validation' completions
-    // still pass regardless of event type or the enabled flag.
+  it('executes only trusted default-branch code for admission wakes', () => {
+    const steps = loadWorkflow().jobs.reconcile!.steps!;
+    for (const step of steps.filter((step) => step.uses?.startsWith('actions/checkout'))) {
+      expect(step.with?.ref).toBe('$' + '{{ github.event.repository.default_branch }}');
+    }
+  });
+
+  it('keeps default-branch Merge Train Validation wakeups regardless of the enabled flag', () => {
     const condition = loadWorkflow().jobs.reconcile?.if;
     if (!condition) throw new Error('reconcile job condition not found');
 
