@@ -27,6 +27,7 @@ import {
 import type { SeededRandom } from '../shared/random.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { getGearScoreTargetRange } from '../shared/gear-score-policy.js';
+import { validateGeneratedGearScore } from '../shared/gear-score.js';
 import {
   GEAR_STAT_WEIGHTS,
   scoreAbilityGrants,
@@ -41,6 +42,7 @@ export type GeneratedEquipmentGeneratorErrorCode =
   | 'invalid-effect-catalog'
   | 'invalid-request'
   | 'registry-unconfigured'
+  | 'score-outside-rarity-band'
   | 'unknown-base';
 
 export class _GeneratedEquipmentGeneratorError extends Error {
@@ -614,7 +616,7 @@ export function generateEquipmentInstance(
           baseDamage: balancedWeaponDamage,
         });
 
-  return createGeneratedEquipmentInstance(world, {
+  const instance = createGeneratedEquipmentInstance(world, {
     baseId: resolvedBase.base.baseId,
     itemLevel,
     rarity,
@@ -633,4 +635,13 @@ export function generateEquipmentInstance(
       activeWeaponSnapshot,
     },
   });
+  const scoreValidation = validateGeneratedGearScore(instance, floor);
+  if (!scoreValidation.withinRarityBand) {
+    fail(
+      'score-outside-rarity-band',
+      `Generated score ${scoreValidation.score.toFixed(3)} is outside ${rarity} band`,
+      '$.generatedGearScore',
+    );
+  }
+  return instance;
 }

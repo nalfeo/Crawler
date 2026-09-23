@@ -29,8 +29,10 @@ export const GEAR_STAT_WEIGHTS: Readonly<Partial<Record<StatId, number>>> = {
   projectileCount: 12,
 };
 
-export const ACTIVE_ABILITY_GRANT_SCORE = 4;
-export const PASSIVE_ABILITY_GRANT_SCORE = 3;
+const ACTIVE_ABILITY_GRANT_SCORE = 4;
+const PASSIVE_ABILITY_GRANT_SCORE = 3;
+export const _ACTIVE_ABILITY_GRANT_SCORE_FOR_TEST = ACTIVE_ABILITY_GRANT_SCORE;
+export const _PASSIVE_ABILITY_GRANT_SCORE_FOR_TEST = PASSIVE_ABILITY_GRANT_SCORE;
 
 export function scoreAbilityGrants(
   abilityGrants: readonly string[],

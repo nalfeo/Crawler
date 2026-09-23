@@ -6,7 +6,7 @@
 import type { EquipmentItemDef } from './equipment-types.js';
 import { getWeaponDef } from './weaponDefs.js';
 import type { GeneratedEquipmentInstanceV1 } from './generated-equipment-types.js';
-import { getGearScoreTargetRange } from './gear-score-policy.js';
+import { getGearScoreTargetRange, isGearScoreWithinRarityBand } from './gear-score-policy.js';
 import { scoreWeaponDefinition } from './weapon-gear-score.js';
 import {
   scoreAbilityGrants,
@@ -81,7 +81,7 @@ export function validateGeneratedGearScore(
     score,
     ceiling,
     percentOfCeiling,
-    withinRarityBand: score >= range.minimum && score <= range.maximum,
+    withinRarityBand: isGearScoreWithinRarityBand(instance.rarity, percentOfCeiling),
   };
 }
 

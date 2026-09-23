@@ -6,7 +6,7 @@ export interface GearScoreBand {
   readonly maximumPercentOfCeiling: number;
 }
 
-export const GEAR_SCORE_BANDS: Readonly<Record<GearScoreRarity, GearScoreBand>> = {
+const GEAR_SCORE_BANDS: Readonly<Record<GearScoreRarity, GearScoreBand>> = {
   common: { minimumPercentOfCeiling: 50, maximumPercentOfCeiling: 70 },
   uncommon: { minimumPercentOfCeiling: 65, maximumPercentOfCeiling: 80 },
   rare: { minimumPercentOfCeiling: 75, maximumPercentOfCeiling: 90 },
@@ -14,7 +14,10 @@ export const GEAR_SCORE_BANDS: Readonly<Record<GearScoreRarity, GearScoreBand>> 
   legendary: { minimumPercentOfCeiling: 94, maximumPercentOfCeiling: 100 },
 };
 
-export const GEAR_SLOT_BASE_CEILINGS: Readonly<Record<string, number>> = {
+/** Test seam for the approved rarity-cap and overlap contract. */
+export const _GEAR_SCORE_BANDS_FOR_TEST = GEAR_SCORE_BANDS;
+
+const GEAR_SLOT_BASE_CEILINGS: Readonly<Record<string, number>> = {
   mainHand: 40,
   offHand: 24,
   chest: 28,
@@ -27,9 +30,14 @@ export const GEAR_SLOT_BASE_CEILINGS: Readonly<Record<string, number>> = {
   ring2: 14,
 };
 
-export function getFloorGearScoreMultiplier(floor: number): number {
+function getFloorGearScoreMultiplier(floor: number): number {
   if (!Number.isInteger(floor) || floor < 1) throw new Error(`Invalid gear-score floor: ${floor}`);
   return (29 / 24) ** (floor - 1);
+}
+
+/** Test seam for the floor-growth invariant. */
+export function _getFloorGearScoreMultiplierForTest(floor: number): number {
+  return getFloorGearScoreMultiplier(floor);
 }
 
 export interface GearScoreTargetRange {
@@ -54,7 +62,7 @@ export function getGearScoreTargetRange(
   };
 }
 
-export function getGearScoreCeiling(
+export function _getGearScoreCeilingForTest(
   floor: number,
   slots: readonly EquipmentSlotId[],
   rarity: GearScoreRarity = 'legendary',

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GEAR_SCORE_BANDS,
-  getFloorGearScoreMultiplier,
-  getGearScoreCeiling,
+  _GEAR_SCORE_BANDS_FOR_TEST,
+  _getFloorGearScoreMultiplierForTest,
+  _getGearScoreCeilingForTest,
   getGearScoreTargetRange,
   isGearScoreWithinRarityBand,
   scoreEquipmentDefinition,
@@ -11,15 +11,15 @@ import { getEquipmentDefForItem, getEquippableItemIds } from '../../src/shared/e
 import { scoreWeaponDefinition } from '../../src/shared/weapon-gear-score.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
-  ACTIVE_ABILITY_GRANT_SCORE,
-  PASSIVE_ABILITY_GRANT_SCORE,
+  _ACTIVE_ABILITY_GRANT_SCORE_FOR_TEST,
+  _PASSIVE_ABILITY_GRANT_SCORE_FOR_TEST,
   scoreAbilityGrants,
   scoreEquipmentStatusEffects,
 } from '../../src/shared/gear-score-stats.js';
 
 describe('generic gear score policy', () => {
   it('preserves the approved rarity caps and overlap contract', () => {
-    expect(GEAR_SCORE_BANDS).toEqual({
+    expect(_GEAR_SCORE_BANDS_FOR_TEST).toEqual({
       common: { minimumPercentOfCeiling: 50, maximumPercentOfCeiling: 70 },
       uncommon: { minimumPercentOfCeiling: 65, maximumPercentOfCeiling: 80 },
       rare: { minimumPercentOfCeiling: 75, maximumPercentOfCeiling: 90 },
@@ -32,10 +32,10 @@ describe('generic gear score policy', () => {
   });
 
   it('raises the maximum every floor without adding post-legendary tiers', () => {
-    expect(getFloorGearScoreMultiplier(2)).toBeCloseTo(29 / 24);
+    expect(_getFloorGearScoreMultiplierForTest(2)).toBeCloseTo(29 / 24);
     for (let floor = 2; floor <= 6; floor += 1) {
-      expect(getGearScoreCeiling(floor, ['mainHand'])).toBeGreaterThan(
-        getGearScoreCeiling(floor - 1, ['mainHand']),
+      expect(_getGearScoreCeilingForTest(floor, ['mainHand'])).toBeGreaterThan(
+        _getGearScoreCeilingForTest(floor - 1, ['mainHand']),
       );
     }
   });
@@ -106,7 +106,7 @@ describe('generic gear score policy', () => {
 
   it('prices active and passive grants into the same item budget', () => {
     expect(scoreAbilityGrants(['fireball'], ['veteran-instinct'])).toBe(
-      ACTIVE_ABILITY_GRANT_SCORE + PASSIVE_ABILITY_GRANT_SCORE,
+      _ACTIVE_ABILITY_GRANT_SCORE_FOR_TEST + _PASSIVE_ABILITY_GRANT_SCORE_FOR_TEST,
     );
   });
 
