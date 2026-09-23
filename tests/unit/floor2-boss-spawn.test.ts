@@ -145,10 +145,10 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
     // `floor2Scenario.ts`: importing the shipped constant would make this
     // assertion tautological (it would pass for any scale, including a
     // regression back to the arena lab's 0.03 debug shrink), and the constant
-    // has no production caller outside its own module. 4× is the measured
+    // has no production caller outside its own module. 5× is the measured
     // minimum that clears every signature-cycle window — see
     // `tests/headless/floor2-boss-survival-gate.test.ts` for the evidence.
-    expect(world.stores.health.max[eid]).toBe(archetype!.hp * 4);
+    expect(world.stores.health.max[eid]).toBe(archetype!.hp * 5);
     expect(world.stores.health.current[eid]).toBe(world.stores.health.max[eid]);
     expect(world.stores.health.max[eid]).toBeGreaterThan(archetype!.hp);
   });
