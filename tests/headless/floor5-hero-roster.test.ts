@@ -8,7 +8,12 @@ import { TeamId } from '../../src/shared/constants.js';
 import { applyDamage } from '../../src/core/index.js';
 import type { InputState } from '../../src/shared/input.js';
 import type { Floor5SiegeState } from '../../src/shared/floor-types.js';
-import { getFloor5SiegeRunStats } from '../../src/game/floor5Scenario.js';
+import {
+  _completeFloor5FieldTask,
+  _recoverFloor5RamComponent,
+  _requestFloor5RamConstruction,
+  getFloor5SiegeRunStats,
+} from '../../src/game/floor5Scenario.js';
 import { FLOOR5_FIELD_HERO_ROSTER } from '../../src/shared/floor5-heroes.js';
 import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' with { type: 'json' };
 
@@ -84,6 +89,19 @@ function executeActiveHero(world: GameWorld): void {
     world.stores.position.y[eid] ?? 0,
     { origin: 'environment', affinity: 'physical', scaleWithPrimary: false, canCrit: false },
   );
+}
+
+/** Arrange the prerequisite state for Hero-specific construction probes. */
+function authorizeRamConstruction(world: GameWorld): void {
+  const state = siegeState(world);
+  if (state.engineState !== 'LOCKED') return;
+  _completeFloor5FieldTask(world, 'openingPush');
+  _completeFloor5FieldTask(world, 'siegeYard');
+  _recoverFloor5RamComponent(world, 'chassis');
+  _recoverFloor5RamComponent(world, 'plating');
+  _recoverFloor5RamComponent(world, 'broadcast-array');
+  _completeFloor5FieldTask(world, 'checkpoint');
+  _requestFloor5RamConstruction(world);
 }
 
 describe('Floor 5 field Heroes in the real headless pipeline', () => {
@@ -280,6 +298,7 @@ describe('Floor 5 engine-disruption Heroes', () => {
       questStallFrames: 0,
       stopWhen: withTickProbe({
         before: (world) => {
+          authorizeRamConstruction(world);
           const state = siegeState(world);
           const heroes = state.heroes;
           if (heroes.status !== 'active' || heroes.eid <= 0) return;

@@ -67,9 +67,11 @@ import {
 } from './floor4Scenario.js';
 import {
   getFloor5CaptureMarkerState,
+  getFloor5ObjectiveInteraction,
   getFloor5RunOutcome,
   initializeFloor5Scenario,
   requestFloor5ThroneCapture,
+  requestFloor5ObjectiveInteraction,
   siegeDirectorSystem,
   siegeFinaleSystem,
   siegeHeroSystem,
@@ -317,6 +319,7 @@ export interface ScenarioDefinition {
   /** Local alias of `ScenarioPresentationContract.getHudSnapshot` (see `src/shared/scenario-presentation.ts`) for this floor's typed `ScenarioDefinition`. */
   readonly getHudSnapshot?: ScenarioPresentationContract<GameWorld>['getHudSnapshot'];
   readonly construction?: ScenarioConstructionContract<GameWorld>;
+  readonly interaction?: ScenarioPresentationContract<GameWorld>['interaction'];
   /**
    * Scenario-owned AI task overlay driving the headless/BT run planner. When
    * present, ALL Floor-specific task construction, ordering, prerequisite,
@@ -342,6 +345,7 @@ export function getScenarioPresentationContract(
     starterLoadout: scenario.starterLoadout,
     getHudSnapshot: scenario.getHudSnapshot,
     construction: scenario.construction,
+    interaction: scenario.interaction,
     nextFloorId: scenario.nextFloorId,
   };
 }
@@ -1109,6 +1113,10 @@ const SCENARIOS: ReadonlyMap<string, ScenarioDefinition> = new Map([
       director: FLOOR_5_DIRECTOR,
       getRunOutcome: getFloor5RunOutcome,
       getHudSnapshot: getFloor5HudSnapshot,
+      interaction: {
+        getSnapshot: getFloor5ObjectiveInteraction,
+        interact: requestFloor5ObjectiveInteraction,
+      },
       isTerminalRunVictory: false,
       getCompletionCopy: getFloor5CompletionCopy,
       getStairMarkerState: getFloor5CaptureMarkerState,

@@ -565,6 +565,11 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       timestamp: world.elapsedMs,
       targetEid: eid,
       sourceEid: killingSourceEid,
+      siegeTeam: hasComponent(world.ecs, eid, SiegeMinion)
+        ? (world.stores.siegeMinion.team[eid] ?? 0) === 2
+          ? 'enemy'
+          : 'allied'
+        : undefined,
       overkill,
       knockbackDirX: killDirX,
       knockbackDirY: killDirY,

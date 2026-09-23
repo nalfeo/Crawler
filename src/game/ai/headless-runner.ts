@@ -88,6 +88,7 @@ import {
   autoFloor2ProgressionSystem,
   autoFloor3ProgressionSystem,
   autoFloor4ProgressionSystem,
+  autoFloor5ProgressionSystem,
   autoFloor6ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
@@ -1596,6 +1597,7 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
       autoFloor4ProgressionSystem(world, playerEid);
+      autoFloor5ProgressionSystem(world, playerEid, aiProvider);
       captureFloor3Progression();
       autoFloor6ProgressionSystem(world);
       runFloor6HeadlessStrategy(world, playerEid, floor6AutoStrategyEnabled);
