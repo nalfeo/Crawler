@@ -1,5 +1,5 @@
 /**
- * Shared Phaser harness for the five Floor-3 UX labs.
+ * Shared Phaser harness for the four Floor-3 UX labs.
  *
  * Each surface gets its own registered lab (game-design §15 lists them as
  * separate surfaces); they all mount the *real* `HudUI` — and therefore the
@@ -8,7 +8,7 @@
  *
  * Rule #9/#10 note: these labs are not sufficient validation on their own. The
  * party HUD is also created inside `HudUI` (mounted by `MainGameScene`), and
- * the roster/command verbs are bound in `MainGameScene`.
+ * the roster controls are bound in `MainGameScene`.
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
@@ -34,7 +34,6 @@ export interface Floor3UxProbeApi {
   setPlayerLevel(level: number): void;
   setRivalSpecies(speciesId: string): void;
   setRivalDistanceFt(distanceFt: number): void;
-  command(slot?: number): { accepted: boolean; detail: string };
   advanceFrames(count: number): void;
   openRoster(): void;
   moveRosterCursor(delta: number): void;
@@ -159,14 +158,6 @@ export function createFloor3UxLab(
           setRivalDistanceFt(distanceFt) {
             fixture.world.stores.position.x[fixture.rivalEid] = distanceFt;
             ctx.refresh();
-          },
-          command(slot) {
-            const result = hud.issueFloor3Command(fixture.world, fixture.playerEid, slot);
-            ctx.refresh();
-            return {
-              accepted: result.accepted,
-              detail: result.accepted ? result.abilityName : result.rejection,
-            };
           },
           advanceFrames: (count) => ctx.advanceFrames(count),
           openRoster: () => {

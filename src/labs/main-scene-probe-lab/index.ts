@@ -58,6 +58,10 @@ import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objec
 import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
 import { AI_TYPE } from '../../game/enemyAISystem.js';
 import { speciesTokenForId } from '../../shared/data/floor3/species.js';
+import { recruitPartyCompanion } from '../../core/spawners/companions.js';
+import { companionLearnedAbilityIds } from '../../core/systems/companionProgressionSystem.js';
+import { _getCompanionAttackState } from '../../game/systems/companionCombatSystem.js';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { TeamId } from '../../shared/constants.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import type { MobAbilityGeometry } from '../../core/mob-abilities/types.js';
@@ -211,6 +215,7 @@ function findStatusAuraLayer(
  * so a structural cast exposes them without modifying the engine layer.
  */
 interface MainSceneInternals {
+  input?: { keyboard?: { keys: readonly (Phaser.Input.Keyboard.Key | undefined)[] } };
   world?: GameWorld;
   playerEid?: number;
   bridge?: unknown;
@@ -270,13 +275,12 @@ interface MainSceneInternals {
     };
     getFloor3PartyState?(): {
       visible: boolean;
+      bounds: ScreenBounds | null;
       rows: readonly {
         name: string;
         matchup: string | null;
       }[];
       notices: readonly string[];
-      commandCapacity: number;
-      commandsInUse: number;
     };
     getFloor4ArenaState?(): HudFloor4ArenaProbeState;
     getFloor3LeagueState?(): {
@@ -388,7 +392,6 @@ interface MainSceneInternals {
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
   floor3RosterButton?: { visible: boolean; emit(eventName: string): boolean };
-  floor3CommandButton?: { visible: boolean; emit(eventName: string): boolean };
   abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
   quartermasterButton?: { visible: boolean; emit(eventName: string): boolean };
   issueButton?: { visible: boolean };
@@ -403,14 +406,6 @@ interface MainSceneInternals {
    * `actionStatusText` probe. Read-only probe surface.
    */
   interactionHint?: { readonly visible: boolean; readonly text: string };
-  /**
-   * One-shot latch for the #4209 Command-explainer toast. Read-only probe
-   * surface: proves the explainer condition was satisfied and fired even
-   * though the shared `interactionHint` text is transient and can be
-   * clobbered by an unrelated nearby-NPC "Talk" hint on the very next frame
-   * (see `interactionHint` above).
-   */
-  floor3CommandUnlockNotified?: boolean;
   getIssueButtonBounds?(): ScreenBounds | null;
   getIssueButtonCompactLabel?(): string;
   getCornerButtonLayout?(): readonly CornerButtonProbe[];
@@ -683,7 +678,6 @@ export interface MainSceneState {
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
   readonly floor3RosterButtonVisible: boolean;
-  readonly floor3CommandButtonVisible: boolean;
   readonly abilitiesButtonVisible: boolean;
   readonly quartermasterButtonVisible: boolean;
   readonly issueButtonVisible: boolean;
@@ -752,13 +746,6 @@ export interface MainSceneState {
   readonly interactionHintVisible: boolean;
   /** Exact text of the shared transient hint, or `null` when hidden/unset. */
   readonly interactionHintText: string | null;
-  /**
-   * Whether the #4209 Command-explainer toast has fired at least once this
-   * session. See {@link MainSceneInternals.floor3CommandUnlockNotified} for
-   * why this latch, not `interactionHintText`, is the reliable way to prove
-   * the toast fired.
-   */
-  readonly floor3CommandUnlockNotified: boolean;
 }
 
 /**
@@ -799,10 +786,9 @@ export interface SafeAreaLayoutProbe {
 /** Mounted Floor-3 party-HUD + roster read-back (game-design §15 surfaces 4-8). */
 export interface Floor3PartyHudProbeState {
   readonly hudVisible: boolean;
+  readonly hudBounds: ScreenBounds | null;
   readonly rowNames: readonly string[];
   readonly matchups: readonly (string | null)[];
-  readonly commandCapacity: number;
-  readonly commandsInUse: number;
   readonly notices: readonly string[];
   readonly rosterOpen: boolean;
   readonly rosterCursor: number;
@@ -923,6 +909,20 @@ export interface ProjectileRenderInfo {
 export interface Floor3RangedCompanionProbeResult {
   readonly companionEid: number;
   readonly targetEid: number;
+}
+
+export interface Floor3GrowthProbeState {
+  level: number;
+  form: number;
+  maxHp: number;
+  currentHp: number;
+  speed: number;
+  range: number;
+  sizeScale: number;
+  renderScale: number | null;
+  learnedAbilities: readonly string[];
+  lastAbilityId: string | null;
+  successfulAttacks: number;
 }
 
 /**
@@ -1198,6 +1198,8 @@ export interface MainSceneProbeApi {
   setEquipmentPanelUnlocked(unlocked: boolean): void;
   /** Resolve the opening loadout modal (pick option 0) and freeze the sim. */
   resolveLoadout(): void;
+  /** Close the current probe-lab modal without selecting a gameplay option. */
+  dismissProbeModal(): void;
   /** Activate the Floor 2 reputation HUD through the shipped broker callback. */
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
@@ -1381,6 +1383,8 @@ export interface MainSceneProbeApi {
   getEquipmentPanelBounds(): ScreenBounds | null;
   /** Live label/visibility/bounds of every on-screen corner button, in stack order. */
   getCornerButtonLayout(): readonly CornerButtonProbe[];
+  /** Registered keys in the real scene, without creating any new bindings. */
+  getBoundKeyboardKeyCodes(): readonly number[];
   /** Rendered bounds of each bottom-left vitals row present in the live scene. */
   getVitalsStackBounds(): VitalsStackProbe;
   /**
@@ -1519,8 +1523,6 @@ export interface MainSceneProbeApi {
   tapAbilitiesButton(): boolean;
   /** Emit a pointer tap on the Floor-3 roster corner button. */
   tapFloor3RosterButton(): boolean;
-  /** Emit a pointer tap on the Floor-3 command corner button. */
-  tapFloor3CommandButton(): boolean;
   /** Emit a pointer tap on the Shop corner button. Returns false if unavailable/hidden. */
   tapQuartermasterButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
@@ -1606,6 +1608,9 @@ export interface MainSceneProbeApi {
    * floor3-only gate) or with no live player entity.
    */
   spawnFloor3RangedCompanionProbe(): Floor3RangedCompanionProbeResult | null;
+  /** Place a wounded L24 companion one automatic kill away from adult evolution. */
+  primeFloor3GrowthProbe(): number | null;
+  getFloor3GrowthProbe(eid: number): Floor3GrowthProbeState | null;
   /** Current `Health.current` for any live entity, or null if it has none. */
   getEntityHealth(eid: number): number | null;
   /**
@@ -2198,7 +2203,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
         floor3RosterButtonVisible: scene?.floor3RosterButton?.visible ?? false,
-        floor3CommandButtonVisible: scene?.floor3CommandButton?.visible ?? false,
         abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         quartermasterButtonVisible: scene?.quartermasterButton?.visible ?? false,
         issueButtonVisible: scene?.issueButton?.visible ?? false,
@@ -2258,7 +2262,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         actionStatusToastText: scene?.actionStatusText?.text ?? null,
         interactionHintVisible: scene?.interactionHint?.visible ?? false,
         interactionHintText: scene?.interactionHint?.text ?? null,
-        floor3CommandUnlockNotified: scene?.floor3CommandUnlockNotified ?? false,
       };
     },
 
@@ -2512,6 +2515,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.setSimulationPaused(true);
     },
 
+    dismissProbeModal: () => {
+      getScene()?.modalPicker?.close();
+    },
+
     activateFamilyRelationships: () => {
       const scene = getScene();
       const world = scene?.world;
@@ -2527,10 +2534,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       const roster = scene?.getFloor3RosterState?.() ?? null;
       return {
         hudVisible: party?.visible ?? false,
+        hudBounds: party?.bounds ?? null,
         rowNames: party?.rows.map((row) => row.name) ?? [],
         matchups: party?.rows.map((row) => row.matchup) ?? [],
-        commandCapacity: party?.commandCapacity ?? 0,
-        commandsInUse: party?.commandsInUse ?? 0,
         notices: party?.notices ?? [],
         rosterOpen: roster?.open ?? false,
         rosterCursor: roster?.cursor ?? -1,
@@ -2583,7 +2589,17 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     },
 
     advanceSimulationFrames: (frames: number) => {
-      getScene()?.advanceSimulationFrames?.(frames);
+      const scene = getScene();
+      if (!scene) return;
+      const safeFrames = Math.max(1, Math.floor(frames));
+      // Phaser's browser RAF can be throttled while Playwright is evaluating
+      // a page callback. Drive the same MainGameScene.update() method once per
+      // requested paused step so an e2e probe observes the complete shipped
+      // system pipeline instead of leaving queued steps stranded behind RAF.
+      for (let frame = 0; frame < safeFrames; frame += 1) {
+        scene.advanceSimulationFrames?.(1);
+        scene.update?.(0, 1000 / 60);
+      }
     },
 
     setLightingOverlayVisible: (visible: boolean): boolean => {
@@ -2920,6 +2936,11 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
     getIssueButtonBounds: () => getScene()?.getIssueButtonBounds?.() ?? null,
 
     getCornerButtonLayout: () => getScene()?.getCornerButtonLayout?.() ?? [],
+    getBoundKeyboardKeyCodes: () =>
+      (getScene()?.input?.keyboard?.keys ?? [])
+        .filter((key): key is Phaser.Input.Keyboard.Key => key !== undefined)
+        .map((key) => key.keyCode)
+        .sort((left, right) => left - right),
 
     unlockExperienceBar: () => {
       getScene()?.world?.goalFlags.set('floor1-drops-unlocked', true);
@@ -3378,15 +3399,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
 
     tapFloor3RosterButton: () => {
       const button = getScene()?.floor3RosterButton;
-      if (!button?.visible) {
-        return false;
-      }
-      button.emit('pointerdown');
-      return true;
-    },
-
-    tapFloor3CommandButton: () => {
-      const button = getScene()?.floor3CommandButton;
       if (!button?.visible) {
         return false;
       }
@@ -3887,15 +3899,74 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (player < 0) {
         return null;
       }
+      // A direct Floor 3 boot can already contain the initial Studio roster
+      // and ambient wilds. They are genuine gameplay entities, but unrelated
+      // to this single-combatant characterization and can kill/recycle the
+      // probe's eids before its shot reaches the target. Clear only combat
+      // actors, not the player, map, scenario wiring, or render bridge.
       for (const eid of query(world.ecs, [Projectile])) {
+        clearEntityStores(world, eid);
+        removeEntity(world.ecs, eid);
+      }
+      for (const eid of query(world.ecs, [Enemy])) {
+        clearEntityStores(world, eid);
         removeEntity(world.ecs, eid);
       }
       const px = world.stores.position.x[player] ?? 0;
       const py = world.stores.position.y[player] ?? 0;
+      // The player can spawn beside a generated room boundary.  A fixed east
+      // offset can therefore put the synthetic rival across a wall: production
+      // combat correctly falls back to its no-LOS instant-hit path, but this
+      // probe specifically needs to observe the real flying projectile. Pick
+      // the first nearby passable position with line of sight instead. The
+      // ordered offsets keep the choice deterministic for the fixed probe map.
+      const targetOffset = [
+        [5, 0],
+        [-5, 0],
+        [0, 5],
+        [0, -5],
+        [5, 5],
+        [5, -5],
+        [-5, 5],
+        [-5, -5],
+      ].find(([offsetX, offsetY]) => {
+        const targetX = px + offsetX!;
+        const targetY = py + offsetY!;
+        const map = world.floorMap;
+        if (!map?.isPassableAt(targetX, targetY) || !map.hasLineOfSight(px, py, targetX, targetY)) {
+          return false;
+        }
+        const distance = Math.hypot(offsetX!, offsetY!);
+        for (let step = 0.25; step <= distance + 0.375; step += 0.25) {
+          if (
+            !map.isPassableAt(px + (offsetX! * step) / distance, py + (offsetY! * step) / distance)
+          ) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (targetOffset === undefined) return null;
+      const targetX = px + targetOffset[0]!;
+      const targetY = py + targetOffset[1]!;
       // `ember-slinger` (Sparktick) is the real shipped `aiType: "ranged"`
       // Floor 3 species (enemies.floor3.json) — matches the unit-test choice
       // in tests/game/floor3-companion-combat.test.ts.
-      const companionEid = spawnBehaviorEnemy(world, px, py, 100, AI_TYPE.RANGED, 0.1, 48, 10);
+      // `getEnemySpeed()` intentionally treats zero as an authored-default
+      // speed. Use a tiny positive value instead, so the real AI/combat path
+      // still runs but neither synthetic actor drifts out of this probe's
+      // map-validated shot lane before the bullet arrives.
+      const probeSpeed = 0.0001;
+      const companionEid = spawnBehaviorEnemy(
+        world,
+        px,
+        py,
+        100,
+        AI_TYPE.RANGED,
+        probeSpeed,
+        48,
+        10,
+      );
       addComponent(world.ecs, companionEid, set(Team, { id: TeamId.PLAYER }));
       addComponent(
         world.ecs,
@@ -3909,10 +3980,93 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           knockedOut: 0,
         }),
       );
-      const targetEid = spawnBehaviorEnemy(world, px + 5, py, 100, AI_TYPE.CHASE, 0.1, 48, 0);
+      const targetEid = spawnBehaviorEnemy(
+        world,
+        targetX,
+        targetY,
+        100,
+        AI_TYPE.CHASE,
+        probeSpeed,
+        48,
+        0,
+      );
       addComponent(world.ecs, targetEid, set(Team, { id: TeamId.ENEMY }));
-      scene.setSimulationPaused(false);
+      // Model the target as an opposing Companion, matching the Floor 3
+      // combat contract (and keeping it out of the neutral-wild lifecycle).
+      // Its near-zero speed keeps it outside its melee reach during this
+      // one-shot observation.
+      addComponent(world.ecs, targetEid, Companion);
+      // The test advances this paused scene through MainGameScene's normal
+      // production fixed-step loop, preventing wall-clock races with the
+      // Floor 3 director while it observes one automatic shot.
+      scene.setSimulationPaused(true);
       return { companionEid, targetEid };
+    },
+
+    primeFloor3GrowthProbe: (): number | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const player = playerEidOf(scene);
+      if (!scene || !world || world.floorId !== 'floor3' || player < 0) return null;
+      scene.setSimulationPaused(true);
+      for (const eid of query(world.ecs, [Companion, PartySlot])) {
+        world.stores.companion.knockedOut[eid] = 1;
+      }
+      const x = (world.stores.position.x[player] ?? 0) + 6;
+      const y = world.stores.position.y[player] ?? 0;
+      const growth = Math.sqrt(1.6);
+      const eid = recruitPartyCompanion(world, {
+        x,
+        y,
+        hp: 160,
+        speed: 0.1 * growth,
+        aggroRange: 48,
+        attackRange: 10 * growth,
+        aiType: AI_TYPE.RANGED,
+        speciesToken: speciesTokenForId('ember-slinger'),
+        level: 24,
+        form: 1,
+        xp: xpRequiredForLevel(24) - 1,
+        ownerTeam: TeamId.PLAYER,
+      });
+      if (eid === undefined) return null;
+      world.stores.health.current[eid] = 80;
+      world.stores.sprite.sizeScale[eid] = growth;
+      for (const [offset, hp] of [
+        [1, 1],
+        [2, 10000],
+      ]) {
+        const target = spawnBehaviorEnemy(world, x + offset!, y, hp!, AI_TYPE.CHASE, 0, 0, 0);
+        addComponent(world.ecs, target, set(Team, { id: TeamId.ENEMY }));
+      }
+      return eid;
+    },
+
+    getFloor3GrowthProbe: (eid: number): Floor3GrowthProbeState | null => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene || !entityExists(world.ecs, eid)) return null;
+      const obj = findDisplayObjectAt(
+        phaserScene,
+        ftToPx(world.stores.position.x[eid] ?? 0),
+        ftToPx(world.stores.position.y[eid] ?? 0),
+        (child) =>
+          child instanceof Phaser.GameObjects.Image || child instanceof Phaser.GameObjects.Sprite,
+      ) as Phaser.GameObjects.Image | null;
+      const attack = _getCompanionAttackState(world, eid);
+      return {
+        level: world.stores.companion.level[eid] ?? 0,
+        form: world.stores.companion.form[eid] ?? 0,
+        maxHp: world.stores.health.max[eid] ?? 0,
+        currentHp: world.stores.health.current[eid] ?? 0,
+        speed: world.stores.enemyBehavior.speed[eid] ?? 0,
+        range: world.stores.enemyBehavior.attackRange[eid] ?? 0,
+        sizeScale: world.stores.sprite.sizeScale[eid] ?? 0,
+        renderScale: obj ? Math.abs(obj.scaleX) : null,
+        learnedAbilities: companionLearnedAbilityIds(world, eid),
+        lastAbilityId: attack?.lastAbilityId ?? null,
+        successfulAttacks: attack?.successfulAttacks ?? 0,
+      };
     },
 
     getEntityHealth: (eid: number): number | null => {

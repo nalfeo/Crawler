@@ -174,41 +174,16 @@ describe('Floor 3 party HUD deterministic observation', () => {
     expect(changedPixelRatio(before, after, panelRegion(rect, state.bounds!))).toBeGreaterThan(0);
   });
 
-  it('shows a KO row and refuses to command it', async () => {
+  it('shows a KO row without active command state', async () => {
     await probe(page, 'setKnockedOut', 0, true);
     await settle(page);
     const rows = (await probe(page, 'getPartyState')).rows;
     expect(rows[0]!.knockedOut).toBe(true);
-    expect(rows[0]!.commandReady).toBe(false);
+    expect(rows[0]).not.toHaveProperty('commandReady');
+    expect(rows[0]).not.toHaveProperty('cooldownFraction');
+    expect(await probe(page, 'getPartyState')).not.toHaveProperty('commandCapacity');
 
-    const result = await probe(page, 'command', 0);
-    expect(result).toEqual({ accepted: false, detail: 'knocked-out' });
     await probe(page, 'setKnockedOut', 0, false);
-  });
-
-  it('spends and recharges a command charge', async () => {
-    await probe(page, 'setPlayerLevel', 1);
-    await settle(page);
-    const capacity = (await probe(page, 'getPartyState')).commandCapacity;
-    expect(capacity).toBe(1);
-
-    const accepted = await probe(page, 'command', 0);
-    expect(accepted.accepted).toBe(true);
-
-    const spent = await probe(page, 'getPartyState');
-    expect(spent.commandsInUse).toBe(1);
-    expect(spent.rows[0]!.commandReady).toBe(false);
-    // The single charge is spent, so the other slots are blocked too.
-    expect(spent.rows[1]!.commandReady).toBe(false);
-
-    const blocked = await probe(page, 'command', 1);
-    expect(blocked).toEqual({ accepted: false, detail: 'no-capacity' });
-
-    await probe(page, 'advanceFrames', 600);
-    await settle(page);
-    const recharged = await probe(page, 'getPartyState');
-    expect(recharged.commandsInUse).toBe(0);
-    expect(recharged.rows[0]!.commandReady).toBe(true);
   });
 
   it('flips the matchup chevron when the rival affinity changes', async () => {

@@ -11,8 +11,11 @@
  * player's persistent track (`world.playerLevel.xp` / `world.playerGold`)
  * without any test-only shortcut.
  */
+import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import { applyDamage } from '../../src/core/apply-damage.js';
+import { Companion, PartySlot } from '../../src/core/components.js';
 import { spawnPlayer, spawnRosterCompanion, type GameWorld } from '../../src/core/index.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -90,7 +93,9 @@ describe('floor3 reward track through the shared runtime pipeline', () => {
     const rival = spawnRosterCompanion(world, {
       x: playerX,
       y: playerY,
-      hp: 8,
+      // Keep real automatic combat enabled, while ensuring the evolved starter
+      // cannot defeat this fixture before the explicit reward-triggering hit.
+      hp: 10_000,
       aiType: 0,
       speed: 0.1,
       aggroRange: 10,
@@ -103,12 +108,21 @@ describe('floor3 reward track through the shared runtime pipeline', () => {
 
     // Baseline progression is seeded, but nothing has paid the player yet.
     step(world, 2);
+    expect(world.stores.health.current[rival]).toBeGreaterThan(0);
     expect(world.playerLevel.xp).toBe(baselineXp);
     expect(world.playerGold).toBe(0);
 
-    // Defeat the rival the way combat does — drop it to 0 HP and let the
-    // pipeline's own companionKOSystem/objective tick observe it.
-    world.stores.health.current[rival] = 0;
+    // Defeat the rival through combat's damage path and let the pipeline's own
+    // companionKOSystem/objective tick observe it and award the player.
+    const companion = query(world.ecs, [Companion, PartySlot])[0]!;
+    applyDamage(world, rival, world.stores.health.current[rival]!, playerX, playerY, {
+      origin: 'enemy',
+      affinity: 'physical',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceEid: companion,
+    });
+    expect(world.stores.health.current[rival]).toBe(0);
     step(world, 6);
 
     expect(world.stores.companion.knockedOut[rival]).toBe(1);

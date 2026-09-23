@@ -13,6 +13,7 @@ import { Companion, PartySlot, Team } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { spawnBehaviorEnemy } from './combatants.js';
 import tuning from '../../shared/data/tuning.json';
+import { xpRequiredForLevel } from '../../shared/xpMath.js';
 
 /** Starter pick + 5 Trainer poaches (spec R5), designer-tunable via `tuning.json`. */
 export const _PARTY_MAX_SIZE: number = tuning.floor3Companion.partyMaxSize;
@@ -138,7 +139,7 @@ export function spawnRosterCompanion(
       speciesToken: options.speciesToken,
       form: options.form,
       level: options.level,
-      xp: 0,
+      xp: world.floorId === 'floor3' ? xpRequiredForLevel(Math.max(0, options.level - 1)) : 0,
       ownerTeam: options.ownerTeam,
       knockedOut: 0,
     }),

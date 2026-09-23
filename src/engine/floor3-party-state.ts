@@ -1,7 +1,7 @@
 /**
  * Pure resolvers for the Floor 3 Companion League party surfaces
  * (game-design §15 surface 4 "Party HUD" and the shared party identity the
- * roster/notice/command surfaces key off).
+ * roster/notice surfaces key off).
  *
  * Everything here is derived on read from data the ECS already stores
  * (`Companion`, `PartySlot`, `Team`, `Health`) plus the static species/style
@@ -18,7 +18,6 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId } from '../shared/constants.js';
 import type { Affinity } from '../shared/data/floor3/affinity.js';
 import {
-  ABILITY_MILESTONE_LEVELS,
   formForLevel,
   learnedAbilityIds,
   speciesForToken,
@@ -59,7 +58,7 @@ export const _STYLE_HUD_GLYPHS: Readonly<Record<FightingStyle, string>> = Object
  * Stable identity for one party member across frames.
  *
  * Entity ids are recycled by the ECS, so anything that compares two frames
- * (level-up notices, command cooldowns) must key off this instead of the eid.
+ * (level-up notices) must key off this instead of the eid.
  * Floor 3 never reorders or swaps a filled `PartySlot` — `recruitPartyCompanion`
  * only ever appends the next index — so `slot` plus the species token is a
  * stable, collision-free key for the lifetime of the floor.
@@ -97,8 +96,6 @@ export interface Floor3PartyRow {
   readonly knockedOut: boolean;
   /** Ability ids this Companion has learned, in milestone order. */
   readonly learnedAbilityIds: readonly string[];
-  /** Display name of the highest-milestone ability it can be commanded to use. */
-  readonly signatureAbilityName: string;
 }
 
 /**
@@ -115,18 +112,6 @@ export function abilityDisplayName(species: PetSpeciesDef, milestoneLevel: numbe
   if (milestoneLevel === 25) return species.adultSignatureAbilityName;
   const form = formForLevel(species, milestoneLevel);
   return `${form.name} · L${milestoneLevel}`;
-}
-
-/**
- * The highest milestone this Companion has already reached — the ability the
- * commander verb (surface 7) fires.
- */
-export function _signatureMilestoneLevel(level: number): number {
-  let milestone: number = ABILITY_MILESTONE_LEVELS[0];
-  for (const candidate of ABILITY_MILESTONE_LEVELS) {
-    if (level >= candidate) milestone = candidate;
-  }
-  return milestone;
 }
 
 /** Whether the Floor 3 party surfaces are unlocked for the current world. */
@@ -184,7 +169,6 @@ function resolvePartyRow(world: GameWorld, eid: number): Floor3PartyRow | undefi
     hpFraction: hpMax > 0 ? Math.max(0, Math.min(1, hpCurrent / hpMax)) : 0,
     knockedOut: (store.knockedOut[eid] ?? 0) === 1,
     learnedAbilityIds: learnedAbilityIds(species, level),
-    signatureAbilityName: abilityDisplayName(species, _signatureMilestoneLevel(level)),
   };
 }
 
