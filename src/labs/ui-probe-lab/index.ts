@@ -621,6 +621,9 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       const equipped =
         equip(this.world, this.playerEid, sword, { force: true }).ok &&
         equip(this.world, this.playerEid, shield, { force: true }).ok;
+      // Equip may consume/rearrange the bag while establishing the reference
+      // loadout. Add the candidate afterwards so this probe always exposes it.
+      addItem(bag, 'bone-club', 1);
       this.equipmentUI?.refresh(this.world);
       return equipped;
     }
