@@ -9,9 +9,15 @@ import { loadMainSceneProbeLab } from './helpers/main-scene-probe.js';
 const read = (page: Page): Promise<Floor6PlayerLoopProbe> =>
   page.evaluate(() => window.__mainSceneProbe!.getFloor6PlayerLoop()!);
 
-// This is the walkable end of the ingress lane. The adjacent Relay tile is a
-// collision boundary, so a direct walk toward its centre cannot complete.
-const RELAY_INGRESS_APPROACH = { x: 165, y: 152 } as const;
+// The player ingress reaches the Relay only through its north spur and then
+// the south-loading route. A direct diagonal crosses the surrounding walls.
+const RELAY_PLINTH_ACCESS_ROUTE = [
+  { x: 148, y: 132 },
+  { x: 192, y: 132 },
+  { x: 192, y: 102 },
+  { x: 178, y: 102 },
+] as const;
+const RELAY_COMBAT_ROUTE = [...RELAY_PLINTH_ACCESS_ROUTE, { x: 232, y: 98 }] as const;
 
 async function clickGame(page: Page, x: number, y: number, touch: boolean): Promise<void> {
   const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
@@ -72,6 +78,18 @@ async function walk(page: Page, x: number, y: number, toleranceFt = 2): Promise<
   }
 }
 
+async function walkRoute(
+  page: Page,
+  route: readonly { readonly x: number; readonly y: number }[],
+): Promise<void> {
+  for (const waypoint of route) {
+    await walk(page, waypoint.x, waypoint.y);
+  }
+}
+
+const walkToRelayPlinth = (page: Page): Promise<void> => walkRoute(page, RELAY_PLINTH_ACCESS_ROUTE);
+const walkToRelayCombat = (page: Page): Promise<void> => walkRoute(page, RELAY_COMBAT_ROUTE);
+
 async function evidence(page: Page, name: string): Promise<void> {
   const dir = process.env.FLOOR6_PLAYER_EVIDENCE_DIR;
   if (!dir) return;
@@ -93,7 +111,7 @@ describe('Floor 6 ordinary player economy loop', () => {
         { floor: 'floor6', seed: 606 },
         process.env.FLOOR6_PLAYER_LAB_BASE_URL,
       );
-      await walk(page, RELAY_INGRESS_APPROACH.x, RELAY_INGRESS_APPROACH.y, 8);
+      await walkToRelayPlinth(page);
       let state = await read(page);
       const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
       const site = state.sites.find((candidate) => candidate.siteId === 'plinth-relay')!;
@@ -165,9 +183,9 @@ describe('Floor 6 ordinary player economy loop', () => {
       expect(initial.snapshot.sites.every((site) => !site.occupied)).toBe(true);
       await evidence(page, 'fresh-zero-currency');
 
-      // Walk from the ingress along the reachable approach beside the Relay route.
+      // Walk from the ingress to the Relay by following the authored access route.
       // No fixture priming, currency injection, sim stepping, or transaction calls.
-      await walk(page, RELAY_INGRESS_APPROACH.x, RELAY_INGRESS_APPROACH.y, 8);
+      await walkToRelayCombat(page);
       let earned = await read(page);
       for (let attempt = 0; attempt < 90; attempt += 1) {
         earned = await read(page);
@@ -177,7 +195,7 @@ describe('Floor 6 ordinary player economy loop', () => {
         const pickup = earned.pickups[0];
         if (pickup) {
           await walk(page, pickup.positionFt.x, pickup.positionFt.y);
-          await walk(page, RELAY_INGRESS_APPROACH.x, RELAY_INGRESS_APPROACH.y, 8);
+          await walkToRelayCombat(page);
         }
         await page.waitForTimeout(500);
       }
@@ -190,6 +208,9 @@ describe('Floor 6 ordinary player economy loop', () => {
       await evidence(page, 'earned-requisitions');
 
       const siteId = 'plinth-relay';
+      // Return from the Relay combat position to the nearby build plinth before
+      // using its player-range-gated pointer interaction.
+      await walk(page, 178, 102);
       let state = await read(page);
       const site = state.sites.find((candidate) => candidate.siteId === siteId)!;
       const balanceBeforeBuild = state.economy.balance;
@@ -241,7 +262,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       await evidence(page, 'upgrade-purchased');
       await clickOption(page, '__close__', true);
       expect((await read(page)).modal).toBeNull();
-      await walk(page, RELAY_INGRESS_APPROACH.x, RELAY_INGRESS_APPROACH.y, 8);
+      await walk(page, 232, 98);
       // Use the shipped quest-log collapse control so the world evidence shows
       // the Relay glyph as well as its label, health, and incoming route arrows.
       const questLog = await page.evaluate(
