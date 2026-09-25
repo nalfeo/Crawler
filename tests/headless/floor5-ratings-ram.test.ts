@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { query } from 'bitecs';
+import { applyDamage } from '../../src/core/index.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { SiegeHero, SiegeMinion, SiegeRam, SiegeRouteMarker } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/spawners/combatants.js';
@@ -153,7 +154,9 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
     const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
       seed: 505,
-      maxFrames: 3000,
+      // Objective-triggered pressure extends the authored prelude before the
+      // 1,500-frame ADVANCING stall window can begin.
+      maxFrames: 4500,
       // The pilot must first traverse the authored requisition route; only
       // then can this fixture isolate a ram that makes no forward progress.
       questStallFrames: 1500,
@@ -163,6 +166,37 @@ describe('Floor 5 Ratings Ram real headless pipeline', () => {
             playerRepelsFloor5OpeningPush(world);
             const state = world.floorExtendedState!.floor5Siege!;
             if (state.engineState !== 'ADVANCING' || state.ram.eid <= 0) return;
+            // Isolate route-progress detection from the otherwise continuous
+            // combat score: stop future enemy releases and retire live threats
+            // only in this synthetic oscillation fixture.
+            state.waveCursor.enemy = state.waveManifest.filter(
+              (entry) => entry.team === 'enemy',
+            ).length;
+            state.waveRemainder.enemy = 0;
+            state.spawnDebt.enemy = 0;
+            state.spawnDebtManifestQueue.enemy.length = 0;
+            state.hostileReinforcements.pending = 0;
+            state.heroes.cursor = state.heroes.card.length - 1;
+            for (const eid of [
+              ...query(world.ecs, [SiegeMinion]),
+              ...query(world.ecs, [SiegeHero]),
+            ]) {
+              const health = world.stores.health.current[eid] ?? 0;
+              if (health <= 0) continue;
+              applyDamage(
+                world,
+                eid,
+                health + 1,
+                world.stores.position.x[eid] ?? 0,
+                world.stores.position.y[eid] ?? 0,
+                {
+                  origin: 'environment',
+                  affinity: 'physical',
+                  scaleWithPrimary: false,
+                  canCrit: false,
+                },
+              );
+            }
             const buildSite = state.ram.route[0]!;
             world.stores.position.x[state.ram.eid] =
               buildSite.x + (world.frameCount % 2 === 0 ? 4 : -4);

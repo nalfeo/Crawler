@@ -76,6 +76,7 @@ export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | nu
     `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
     `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
     `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}${state.engineState === 'LOCKED' ? ` · prerequisites ${state.requisitionMilestones.length}/4` : ''}`,
+    `Hostile pressure: ${state.liveMinions.enemy} minions · wave cap ${state.hostileReinforcements.cap}/16 · Heroes ${state.heroes.status === 'active' ? 1 : 0}/${state.hostileReinforcements.heroCap} max · ${state.hostileReinforcements.beats.length} escalation beats`,
   ];
   return { id: `floor5:${lines.join('|')}`, lines, cues: [] };
 }
