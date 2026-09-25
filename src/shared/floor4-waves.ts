@@ -35,6 +35,16 @@ export interface Floor4WaveScheduleConfig {
   };
   readonly concurrency: { readonly liveCap: number; readonly debtCap: number };
   readonly gates: { readonly telegraphLeadMs: number };
+  readonly pressure?: {
+    readonly nearbyTarget: number;
+    readonly averageTarget: number;
+    readonly responseMs: number;
+    readonly radiusFt: number;
+    readonly incomingCap: number;
+    readonly batchSize: number;
+    readonly intervalMs: number;
+    readonly reservePerAct: number;
+  };
   readonly rosters: readonly {
     readonly act: number;
     readonly entries: readonly Floor4WaveRosterEntry[];
@@ -110,6 +120,21 @@ function pickWeighted(
   }
   // Floating-point tail: the last candidate is the only one it can be.
   return candidates[candidates.length - 1]!;
+}
+
+/** Immutable finite reserve, isolated from scheduled-wave and world RNG streams. */
+export function buildFloor4PressureReserve(
+  config: Floor4WaveScheduleConfig,
+  seed: number,
+  act: Floor4ActIndex,
+): readonly Floor4WaveRosterEntry[] {
+  const rng = new SeededRandom(hashStringToSeed(`${seed}:floor4:pressure:${act}`));
+  const roster = floor4ActRoster(config, act);
+  return Object.freeze(
+    Array.from({ length: config.pressure?.reservePerAct ?? 0 }, () =>
+      Object.freeze({ ...pickWeighted(rng, roster) }),
+    ),
+  );
 }
 
 /**
