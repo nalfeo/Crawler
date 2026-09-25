@@ -1710,25 +1710,28 @@ ${queryScript}
   it('uses repository credentials separately from ambient Codex authentication', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
-    const coder = loadYaml<{
-      spec: {
-        harness: string;
-        harnessOptions?: { auth?: string; allowFileBackedCredentials?: boolean };
-      };
-    }>('.goobers', 'gaggles', 'crawler', 'goobers', 'coder', 'goober.yaml');
+    const loadCodexGoober = (name: 'coder' | 'producer' | 'reviewer') =>
+      loadYaml<{
+        spec: {
+          harness: string;
+          harnessOptions?: { auth?: string; allowFileBackedCredentials?: boolean };
+        };
+      }>('.goobers', 'gaggles', 'crawler', 'goobers', name, 'goober.yaml');
     const requireToken = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Require Goobers auth token',
     );
 
     expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
     expect(instance.credentials).toBeUndefined();
-    expect(coder.spec).toMatchObject({
-      harness: 'codex',
-      harnessOptions: {
-        auth: 'ambient-chatgpt',
-        allowFileBackedCredentials: true,
-      },
-    });
+    for (const name of ['coder', 'producer', 'reviewer'] as const) {
+      expect(loadCodexGoober(name).spec).toMatchObject({
+        harness: 'codex',
+        harnessOptions: {
+          auth: 'ambient-chatgpt',
+          allowFileBackedCredentials: true,
+        },
+      });
+    }
     expect(requireToken?.env?.GOOBERS_AUTH_TOKEN_SET).toBe(
       '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
     );
