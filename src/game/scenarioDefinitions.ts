@@ -8,6 +8,7 @@ import type {
   ScenarioCompletionCopy,
   ScenarioCompletionVariant,
   ScenarioConstructionContract,
+  ScenarioConstructionSnapshot,
   ScenarioDirectorContract,
   ScenarioDirectorMilestone,
   ScenarioHudSnapshot,
@@ -83,12 +84,13 @@ import {
   confirmFloor6StairDescend,
   floor6CombatContributionSystem,
   getFloor6HudPresentation,
-  getFloor6UpgradeOffers,
   getFloor6RunOutcome,
   buildFloor6Tower,
   _sellFloor6Tower,
   purchaseFloor6UpgradeOffer,
   _getFloor6TowerRoster,
+  isFloor6TransactionAllowed,
+  floor6RelayMaxHp,
   initializeFloor6Scenario,
   isFloor6ExitDescendable,
   floor6RaiderSystem,
@@ -102,7 +104,7 @@ import { floor3NonCombatantSystem } from './systems/floor3NonCombatantSystem.js'
 import { floor3WildTargetRedirectSystem } from './systems/floor3WildTargetRedirectSystem.js';
 import { familyFeudSystem } from './systems/familyFeudSystem.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
-import type { Floor1SpellBrokerOffer } from '../shared/floor-types.js';
+import type { Floor1SpellBrokerOffer, Floor6UpgradeEffect } from '../shared/floor-types.js';
 import type { ErasedScenarioAiTaskConfig } from './ai/scenario-ai-tasks.js';
 import { FLOOR1_AI_TASK_CONFIG } from './scenarios/floor1AiTasks.js';
 
@@ -800,61 +802,105 @@ function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
     lines: [
       presentation.objectiveLabel,
       `${presentation.phaseLabel} · ${presentation.relayDangerLabel}`,
-      `Routes: ${presentation.routes.map((route) => route.directionLabel).join(' | ')}`,
-      `Sites: ${presentation.buildSites.map((site) => site.label).join(' | ')}`,
-      `Towers: ${
-        presentation.towers.length > 0
-          ? presentation.towers
-              .map(
-                (tower) =>
-                  `${tower.towerId} at ${tower.siteId}: ${tower.rangeFt}ft, ${tower.tierLabel}`,
-              )
-              .join(' | ')
-          : 'no towers built'
-      }`,
       `${presentation.buildCurrencyLabel} · ${presentation.lootLabel}`,
       `${presentation.upgradeChoiceLabel} · ${presentation.breakSafetyLabel}`,
-      presentation.deadlineLabel,
+      `${presentation.deadlineLabel} · Tap a pad to build / inspect / sell; tap the Relay for upgrades.`,
     ],
     cues: presentation.cues,
   };
 }
 
-function getFloor6ConstructionSnapshot(world: GameWorld) {
+function readableConstructionLabel(id: string): string {
+  return id.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function describeFloor6UpgradeEffect(effect: Floor6UpgradeEffect): string {
+  switch (effect.kind) {
+    case 'relayMaxHpBonus':
+      return `Relay maximum health +${effect.value} HP.`;
+    case 'relayRepair':
+      return `Repair the Relay by ${effect.value} HP, up to its maximum.`;
+    case 'towerDamageBonus':
+      return `All towers deal +${effect.value} damage per hit.`;
+    case 'towerFireRateBonus':
+      return `All tower attack cooldowns reduced by ${Math.round(effect.value * 100)}%.`;
+    case 'raiderSlowBonus':
+      return `All raider movement speeds reduced by ${Math.round(effect.value * 100)}%.`;
+  }
+}
+
+function getFloor6ConstructionSnapshot(world: GameWorld): ScenarioConstructionSnapshot | null {
   const presentation = getFloor6HudPresentation(world);
   const state = world.floorExtendedState?.floor6Defense;
   if (!presentation || !state) return null;
   const tileSizeFt = world.floorMap?.config.tileSizeFt ?? 4;
+  const towerRoster = _getFloor6TowerRoster();
+  const toPositionFt = (point: { readonly x: number; readonly y: number }) => ({
+    x: (point.x + 0.5) * tileSizeFt,
+    y: (point.y + 0.5) * tileSizeFt,
+  });
   return {
     phaseLabel: presentation.phaseLabel,
     currencyLabel: presentation.buildCurrencyLabel,
-    sites: state.geometry.buildSites.map((site) => ({
-      siteId: site.id,
-      label:
-        presentation.buildSites.find((candidate) => candidate.siteId === site.id)?.label ??
-        `VACANT ${site.id}`,
-      occupied: state.towerInstances.some((tower) => tower.siteId === site.id),
-      boundsFt: {
-        x: site.bounds.x * tileSizeFt,
-        y: site.bounds.y * tileSizeFt,
-        width: site.bounds.width * tileSizeFt,
-        height: site.bounds.height * tileSizeFt,
-      },
-    })),
-    towers: _getFloor6TowerRoster().map((tower) => ({
+    canBuild: isFloor6TransactionAllowed(state, 'tower-build'),
+    canSell: isFloor6TransactionAllowed(state, 'tower-sell'),
+    canPurchaseUpgrade: isFloor6TransactionAllowed(state, 'upgrade-purchase'),
+    sites: state.geometry.buildSites.map((site) => {
+      const instance = state.towerInstances.find((tower) => tower.siteId === site.id);
+      const tower = towerRoster.find((candidate) => candidate.id === instance?.towerId);
+      return {
+        siteId: site.id,
+        label: readableConstructionLabel(site.id),
+        occupied: instance !== undefined,
+        ...(instance && tower
+          ? {
+              tower: {
+                eid: instance.eid,
+                towerId: tower.id,
+                label: readableConstructionLabel(tower.id),
+                rangeFt: tower.attackRangeFt,
+                sellRefund: tower.sellRefund,
+                tierLabel:
+                  presentation.towers.find((candidate) => candidate.siteId === site.id)
+                    ?.tierLabel ?? 'base tier',
+              },
+            }
+          : {}),
+        boundsFt: {
+          x: site.bounds.x * tileSizeFt,
+          y: site.bounds.y * tileSizeFt,
+          width: site.bounds.width * tileSizeFt,
+          height: site.bounds.height * tileSizeFt,
+        },
+      };
+    }),
+    towers: towerRoster.map((tower) => ({
       towerId: tower.id,
-      label: tower.id,
+      label: readableConstructionLabel(tower.id),
       cost: tower.cost,
       affordable: state.economy.balance >= tower.cost,
+      rangeFt: tower.attackRangeFt,
     })),
-    upgrades: getFloor6UpgradeOffers(world).map((offer) => ({
+    upgrades: (state.upgradeOfferManifest ?? []).map((offer) => ({
       offerId: offer.offerId,
-      label: offer.offerId,
+      label: readableConstructionLabel(offer.offerId),
+      description: describeFloor6UpgradeEffect(offer.effect),
       cost: offer.cost,
       affordable: state.economy.balance >= offer.cost,
-      available:
-        state.economy.unlockedOfferIds.includes(offer.offerId) &&
-        !state.economy.selectedOfferIds.includes(offer.offerId),
+      selected: state.economy.selectedOfferIds.includes(offer.offerId),
+    })),
+    relay: {
+      label: 'Broadcast Relay',
+      positionFt: toPositionFt(state.geometry.broadcastRelay.target),
+      hp: state.relayHp,
+      maxHp: floor6RelayMaxHp(state),
+    },
+    routes: state.geometry.routes.map((route) => ({
+      id: route.id,
+      label:
+        presentation.routes.find((candidate) => candidate.routeId === route.id)?.directionLabel ??
+        `${readableConstructionLabel(route.id)} to Relay`,
+      pointsFt: route.waypoints.map(toPositionFt),
     })),
   };
 }
