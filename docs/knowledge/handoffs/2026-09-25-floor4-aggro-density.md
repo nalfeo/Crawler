@@ -11,7 +11,7 @@ QA regression coverage, and independent Reviewer checks.
 
 ## Systems touched
 
-enemies, ai-combat-balance, floor4-arena
+enemies, ai-combat-balance, floor4-arena, e2e-pointer-controls
 
 ## Recommendation and scope
 
@@ -90,3 +90,24 @@ Publish ready for review linked to #4517, without auto-merge. Release local
 ownership immediately after publication; CI Recovery/merge train own subsequent
 checks and recovery. Diagnostic JSON and screenshots are local under
 `tmp/floor4-density/` and `tmp/e2e-screenshots/floor4-density.png`.
+
+## PR #4722 CI correction
+
+The Game/UI shard 2 failure in run 36189615071 was the existing Floor 6
+small-viewport pointer acceptance test. Its walking helper held a full-strength
+joystick drag even within a few feet of a waypoint, so delayed browser commands
+could repeatedly overshoot the unchanged two-foot arrival radius.
+
+The helper now scales drag strength down near the waypoint. This remains normal
+pointer movement through the real scene; no teleport, simulation stepping,
+currency injection, tolerance change, retry, or timeout increase was added.
+The complete two-test flow passed before the change at normal local speed.
+With a temporary Playwright `slowMo: 300` diagnostic, the original helper
+oscillated around the waypoints and timed out at 60 seconds. The correction
+passed the same delayed small-viewport flow in 26.12 seconds. Diagnostic delay
+and logging were removed before final validation.
+
+The legacy CI Recovery lease workflow has its only job disabled, so dispatch
+36191968440 could not create a lease. At takeover PR #4722 had no owner label,
+sticky recovery comment, or competing head update. This correction was made
+in response to the author's explicit request to fix CI.
