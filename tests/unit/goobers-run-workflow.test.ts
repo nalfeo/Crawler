@@ -84,7 +84,7 @@ interface GoobersDefinition {
     tasks: Array<{
       name: string;
       next?: string;
-      run?: { command?: string[]; script?: string };
+      run?: { command?: string[]; injectRunContext?: boolean; script?: string };
       inputs?: Record<string, string>;
       inputsFrom?: Record<string, string>;
       capabilities?: string[];
@@ -1132,12 +1132,16 @@ ${queryScript}
       'resumeFailure',
     ]);
     expect(tasks.get('query-backlog')?.run?.script).toContain('GOOBERS_RECOVERY_ISSUE');
+    expect(tasks.get('query-backlog')?.run?.injectRunContext).toBe(true);
     // Hosted slots export GOOBERS_INSTANCE and instance.yaml.example passes it
     // through. A local/manual run need not export that Actions-owned identity,
     // so the command still falls back to the runner-injected
     // GOOBERS_INSTANCE_ROOT and finally '.' rather than crashing under `set -eu`.
     expect(tasks.get('query-backlog')?.run?.script).toContain(
       'goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"',
+    );
+    expect(tasks.get('query-backlog')?.run?.script).toContain(
+      'result.resumeCheckpointSha = process.env.GOOBERS_RESUME_CHECKPOINT_SHA || ""',
     );
     expect(tasks.get('query-backlog')?.run?.script).toContain('goobers:approved');
     expect(tasks.get('query-backlog')?.run?.script).toContain('assignees');
