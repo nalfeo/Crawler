@@ -1,6 +1,6 @@
 import { query } from 'bitecs';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
-import { Player, SiegeMinion } from '../../src/core/components.js';
+import { Health, Player, SiegeHero, SiegeMinion } from '../../src/core/components.js';
 import { applyDamage } from '../../src/core/index.js';
 import {
   computeSiegeCastleLayout,
@@ -71,6 +71,56 @@ export class Floor5ObjectiveInputProvider implements AIInputProvider {
       } else if (state.breach.latched && !state.finale.courtyardCleared)
         target = center(layout.courtyard);
       else if (state.breach.latched && !state.finale.captured) target = center(layout.throneRoom);
+
+      // Once construction starts, protect the engine through ordinary combat
+      // input. Objective-triggered reinforcements are real pressure: the pilot
+      // must move to and attack threats near the build site / live Ram rather
+      // than letting the legacy route driver walk past them.
+      if (
+        !state.breach.latched &&
+        state.engineState !== 'LOCKED' &&
+        state.engineState !== 'DESTROYED'
+      ) {
+        const anchorEid = state.ram.eid;
+        const anchor =
+          anchorEid > 0
+            ? {
+                x: world.stores.position.x[anchorEid] ?? state.ram.route[0]!.x,
+                y: world.stores.position.y[anchorEid] ?? state.ram.route[0]!.y,
+              }
+            : state.ram.route[0]!;
+        const threats = [
+          ...Array.from(query(world.ecs, [SiegeMinion, Health])).filter(
+            (eid) =>
+              (world.stores.siegeMinion.team[eid] ?? 0) === 2 &&
+              (world.stores.health.current[eid] ?? 0) > 0,
+          ),
+          ...Array.from(query(world.ecs, [SiegeHero, Health])).filter(
+            (eid) => (world.stores.health.current[eid] ?? 0) > 0,
+          ),
+        ]
+          .map((eid) => ({
+            eid,
+            distance: Math.hypot(
+              (world.stores.position.x[eid] ?? 0) - anchor.x,
+              (world.stores.position.y[eid] ?? 0) - anchor.y,
+            ),
+          }))
+          .filter((entry) => entry.distance <= 24)
+          .sort((a, b) => a.distance - b.distance || a.eid - b.eid);
+        const threat = threats[0];
+        if (threat) {
+          targetEid = threat.eid;
+          target = {
+            x: world.stores.position.x[threat.eid] ?? anchor.x,
+            y: world.stores.position.y[threat.eid] ?? anchor.y,
+          };
+          input.action = true;
+          input.pointerX = target.x;
+          input.pointerY = target.y;
+          interaction = false;
+        }
+      }
     }
     if (!target) return;
 
@@ -119,7 +169,8 @@ export class Floor5ObjectiveInputProvider implements AIInputProvider {
  */
 export function playerRepelsFloor5OpeningPush(world: GameWorld): void {
   const state = world.floorExtendedState?.floor5Siege;
-  if (!state || state.tasks.openingPushRepelled) return;
+  if (!state) return;
+  if (state.tasks.openingPushRepelled) return;
   const player = query(world.ecs, [Player])[0];
   const enemy = query(world.ecs, [SiegeMinion]).find(
     (eid) => (world.stores.siegeMinion.team[eid] ?? 0) === 2,
@@ -132,7 +183,7 @@ export function playerRepelsFloor5OpeningPush(world: GameWorld): void {
     world.stores.position.x[enemy] ?? 0,
     world.stores.position.y[enemy] ?? 0,
     {
-      origin: 'weapon',
+      origin: 'player',
       affinity: 'physical',
       scaleWithPrimary: false,
       canCrit: false,
