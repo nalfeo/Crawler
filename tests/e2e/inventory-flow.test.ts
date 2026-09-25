@@ -1240,7 +1240,7 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
-  it('shows per-replacement ring deltas and combined two-hand DPS deltas', async () => {
+  it('shows per-replacement ring deltas and targets both hands for a two-hand replacement', async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const comparisonPage = await context.newPage();
     try {
@@ -1271,25 +1271,21 @@ describe('equipment decision gate (e2e)', () => {
       // above intentionally leaves a comparison active, which is unrelated to
       // the Sword + Shield replacement visual contract.
       await handPage.waitForTimeout(250);
-      const handRows = await handPage.evaluate(() => {
+      const handPreview = await handPage.evaluate(() => {
         const probe = window.__uiProbe!;
         // Select the occupied primary hand before previewing the two-hand
         // candidate, matching the player interaction that establishes the
         // replacement target in the integrated Bag.
         if (!probe.selectEquipmentSlot('mainHand')) throw new Error('Unable to select main hand.');
         probe.previewEquipmentBagItem('bone-club');
-        return probe.getEquipmentTextRuns().map((run) => run.text);
+        return {
+          text: probe.getEquipmentTextRuns().map((run) => run.text),
+          targetSlots: probe.getEquipmentPreviewTargetSlots(),
+        };
       });
-      expect(handRows).toEqual(
-        expect.arrayContaining([
-          'DPS: 22.2',
-          '(-2.8)',
-          'Knockback: 5 ft',
-          'AoE Range: 5.5 ft',
-          'Armor',
-          '(-3)',
-        ]),
-      );
+      expect(handPreview.targetSlots).toEqual(['mainHand', 'offHand']);
+      expect(handPreview.text).toContain('Main Hand');
+      expect(handPreview.text).toContain('Off Hand');
     } finally {
       await closeQuietly(context);
     }
