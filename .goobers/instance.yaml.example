@@ -6,11 +6,10 @@ repos:
     name: Crawler
     token:
       env: GOOBERS_GITHUB_TOKEN
-credentials:
-  - capability: agent:model
-    token:
-      env: COPILOT_GITHUB_TOKEN
 runner:
+  # Bound one stage independently so a heavy Codex or verification process
+  # cannot OOM-kill the daemon and every other in-flight run.
+  stageMemoryLimit: 8Gi
   envPassthrough:
     - GOOBERS_INSTANCE
     - GOOBERS_RECOVERY_ISSUE

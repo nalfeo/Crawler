@@ -711,12 +711,7 @@ describe('Goobers lifecycle ownership', () => {
     for (const name of Object.keys(terminalSummaries) as Array<keyof typeof terminalSummaries>) {
       const task = tasks[name];
       expect(task.inputs.resultFile).toBe('issue-close-out-result.json');
-      // `inputsFrom` is the runtime's declared input contract: the pinned
-      // runner injects each declared input as GOOBERS_INPUT_<NAME> (the same
-      // mechanism hydrate-requirements relies on for GOOBERS_INPUT_ISSUEBODY),
-      // so the human summary reaches issue-close-out without the stage having
-      // to build it from branch-authored code.
-      expect(task.inputsFrom.summary).toBe(terminalSummaries[name]);
+      expect(task.inputsFrom.comment).toBe(terminalSummaries[name]);
       expect(task.inputsFrom.resultFile).toBeUndefined();
       // These stages hold github:issues:write. They must stay direct `goobers`
       // commands: a script is executed as `sh -c`, which both drops the
@@ -735,8 +730,12 @@ describe('Goobers lifecycle ownership', () => {
       expect(task.expectedOutputs).toEqual(['summary']);
       expect(task.run.script).toContain(completion);
       expect(task.run.script).toContain('terminal-summary-result.json');
+      expect(task.run.workspace).toBe('scratch');
       expect(task.capabilities).toBeUndefined();
     }
+    expect(tasks['prepare-park-needs-human-summary'].run.script).toContain(
+      'What product decision should the next implementation attempt follow?',
+    );
   });
 
   it('resolves closing issues within this repository and bounded', () => {
