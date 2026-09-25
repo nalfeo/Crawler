@@ -762,6 +762,15 @@ const cases: Case[] = [
     files: ['.github/actions/setup-node/action.yml', '.github/instructions/core.instructions.md'],
     expected: F(false, false, true, false, false, false, false, false, false, false, false, true),
   },
+  {
+    name: 'local Goobers orchestration config',
+    files: [
+      '.goobers/gaggles/crawler/gaggle.yaml',
+      '.goobers/gaggles/crawler/goobers/coder/goober.yaml',
+      '.goobers/gaggles/crawler/workflows/crawler-pr-remediation.yaml',
+    ],
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+  },
   // Dependency change: unsafe for both sim, coverage, and deps.
   {
     name: 'dependency change (package.json, deps touched)',

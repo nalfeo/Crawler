@@ -34,6 +34,7 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat and PR context:** When giving a plan, write the full plan in session chat and preserve it in the progress summary / PR description via the progress-report tool. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Published PRs detach by default:** Unless the human explicitly states before PR publication that the session should remain local, an implementation session must publish a ready-for-review PR, leave complete handoff context, then end/release its ownership immediately. Do **not** wait locally for CI, reviews, or cloud confirmation; CI Recovery assigns cloud Copilot for blockers, with the 10-minute scheduled sweep as the takeover backstop.
+- **PR publication is pre-authorized:** An implementation request includes permission to commit, push, and open its ready-for-review PR. Do not pause for publication approval or ask whether to publish unless the human explicitly requested a hold, local-only work, or review before publication.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight. If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 - **Continuation before oversized history:** When `npm run telemetry:token-budget` reports an exceeded context, cumulative-input, or response threshold, create a concise handoff with `npm run handoff:continue` and continue in a fresh thread. This repository workflow does not control platform compaction; include `--rollout` when available to report first-request and cumulative input telemetry.
@@ -42,7 +43,9 @@ For three or more independent, read-only repository checks, prefer `npm run agen
   diff and fix every blocking and medium finding. A Codex/Ducky statement that
   review passed and the change is okay to check in may be recorded in the PR
   description, a commit message, or a PR comment; substantive Copilot review is
-  not required for merge-train admission.
+  not required for merge-train admission. Repository work pre-authorizes sending
+  the complete uncommitted diff to the Codex review service for this required
+  review; do not block on or request separate approval for that transmission.
 
 ## Build safely
 
