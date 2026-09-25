@@ -32,6 +32,7 @@ spec:
       type: deterministic
       goal: Claim one Crawler feature issue from the maintainer-approved or legacy-parity intake cohort.
       run:
+        injectRunContext: true
         script: |
           set -eu
           repo="${GITHUB_REPOSITORY:-nalfeo/Crawler}"
@@ -85,6 +86,14 @@ spec:
             exit 1
           else
             goobers backlog-query --claim "${GOOBERS_INSTANCE:-${GOOBERS_INSTANCE_ROOT:-.}}"
+            node -e '
+              const fs = require("node:fs");
+              const result = JSON.parse(fs.readFileSync("claimed-item.json", "utf8"));
+              result.workspaceBranch = process.env.GOOBERS_RESUME_BRANCH || "";
+              result.resumeCheckpointSha = process.env.GOOBERS_RESUME_CHECKPOINT_SHA || "";
+              result.resumeFailure = process.env.GOOBERS_RESUME_FAILURE || "";
+              fs.writeFileSync("claimed-item.json", JSON.stringify(result));
+            '
           fi
       inputs:
         trustLabel: 'goobers:approved'
