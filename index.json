@@ -1,5 +1,44 @@
 [
   {
+    "commit": "fe7421aaa86bea6e038287cb7643c21e5f88ee08",
+    "commitDate": "2026-09-25T18:08:54Z",
+    "commitSubject": "fix(floor6): restore player economy controls and world cues (#4637)",
+    "capturedAt": "2026-09-25T19:52:53.238Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/36175459347",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/fe7421aaa86bea6e038287cb7643c21e5f88ee08.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.9333333333333333,
+        "totalWins": 140,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": 34.65,
+      "gatePass": false,
+      "path": "by-sha/fe7421aaa86bea6e038287cb7643c21e5f88ee08.fun-report.json"
+    }
+  },
+  {
     "commit": "b2752308f7cf0251975f824e39a194079d1be6db",
     "commitDate": "2026-09-22T22:20:34Z",
     "commitSubject": "Fix Floor 3 ranged companion projectile E2E (#4665)",
