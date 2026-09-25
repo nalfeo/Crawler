@@ -1091,6 +1091,17 @@ export interface Floor5SiegeState {
   spawnDebt: Record<Floor5SiegeTeam, number>;
   spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
   liveMinions: Record<Floor5SiegeTeam, number>;
+  /**
+   * Objective-owned hostile pressure. Starts at the authored opening cap and
+   * rises only when a player-driven siege beat completes.
+   */
+  hostileReinforcements: {
+    cap: number;
+    heroCap: number;
+    released: number;
+    pending: number;
+    beats: string[];
+  };
   checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
   combatEventCursor: number;
@@ -1215,6 +1226,7 @@ export interface Floor5SiegeRunStats {
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
   readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly hostileReinforcements: Readonly<Floor5SiegeState['hostileReinforcements']>;
   readonly checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
   readonly releaseGate: {

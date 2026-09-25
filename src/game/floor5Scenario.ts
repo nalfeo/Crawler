@@ -109,10 +109,16 @@ const FLOOR5_STRUCTURE_KIND: Record<Floor5SiegeStructureId, number> = {
   'outer-wall': 4,
 };
 const FLOOR5_MINION_LIVE_CAP = 4;
+const FLOOR5_HOSTILE_MINION_LIVE_CAP = 16;
+const FLOOR5_HOSTILE_HERO_LIVE_CAP = 2;
+const FLOOR5_OBJECTIVE_REINFORCEMENT_SIZE = 3;
 const FLOOR5_WELCOME_ANNOUNCEMENT_MS = 6000;
 const FLOOR5_MINION_HP = 24;
 const FLOOR5_MINION_DAMAGE = 6;
 const FLOOR5_MINION_COOLDOWN_MS = 500;
+const FLOOR5_REINFORCEMENT_HP = 6;
+const FLOOR5_REINFORCEMENT_DAMAGE = 1;
+const FLOOR5_REINFORCEMENT_COOLDOWN_MS = 1000;
 const FLOOR5_MINION_SPEED_FT_PER_FRAME = 0.85;
 const FLOOR5_MINION_ATTACK_RANGE_FT = 2.5;
 const FLOOR5_CHECKPOINT_RADIUS_FT = 8;
@@ -548,6 +554,13 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     spawnDebt: { allied: 0, enemy: 0 },
     spawnDebtManifestQueue: { allied: [], enemy: [] },
     liveMinions: { allied: 0, enemy: 0 },
+    hostileReinforcements: {
+      cap: FLOOR5_MINION_LIVE_CAP,
+      heroCap: FLOOR5_HOSTILE_HERO_LIVE_CAP,
+      released: 0,
+      pending: 0,
+      beats: [],
+    },
     checkpointOwner: 'enemy',
     laneTelemetry: {
       waveCyclesCompleted: 0,
@@ -557,7 +570,7 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
       pathStalls: 0,
       spawned: { allied: 0, enemy: 0 },
       spawnDebtPeak: { allied: 0, enemy: 0 },
-      activeCap: FLOOR5_MINION_LIVE_CAP,
+      activeCap: FLOOR5_HOSTILE_MINION_LIVE_CAP,
       liveMinionPeak: { allied: 0, enemy: 0 },
       waveAccounting: waveManifest.map((entry, manifestIndex) => ({
         manifestIndex,
@@ -573,6 +586,47 @@ function createFloor5SiegeState(world: GameWorld): Floor5SiegeState {
     },
     combatEventCursor: 0,
   };
+}
+
+function floor5MinionLiveCap(state: Floor5SiegeState, team: Floor5SiegeTeam): number {
+  return team === 'enemy' ? state.hostileReinforcements.cap : FLOOR5_MINION_LIVE_CAP;
+}
+
+/**
+ * This is deliberately called only from committed objective mutations.  It is
+ * not clock-driven: an idle player cannot manufacture a wave or advance a
+ * siege beat.  Debt reuses the established deterministic wave release path.
+ */
+function releaseFloor5ObjectiveReinforcements(
+  world: GameWorld,
+  state: Floor5SiegeState,
+  beat: string,
+  queueLaneMinions = true,
+): void {
+  if (state.hostileReinforcements.beats.includes(beat)) return;
+  state.hostileReinforcements.beats.push(beat);
+  const previousCap = state.hostileReinforcements.cap;
+  state.hostileReinforcements.cap = Math.min(
+    FLOOR5_HOSTILE_MINION_LIVE_CAP,
+    previousCap + FLOOR5_OBJECTIVE_REINFORCEMENT_SIZE,
+  );
+  const released = state.hostileReinforcements.cap - previousCap;
+  state.hostileReinforcements.released += released;
+  if (queueLaneMinions) {
+    state.hostileReinforcements.pending += released;
+  }
+  state.laneTelemetry.spawnDebtPeak.enemy = Math.max(
+    state.laneTelemetry.spawnDebtPeak.enemy,
+    state.spawnDebt.enemy + state.hostileReinforcements.pending,
+  );
+  pushAnnouncement(world.announcements, {
+    kind: 'bossAbilityCast',
+    archetypeIndex: -1,
+    text: `Enemy reinforcements mobilize: ${beat.replaceAll('-', ' ')}.`,
+    eventId: `floor5-reinforcement-${beat}`,
+    durationMs: FLOOR5_WELCOME_ANNOUNCEMENT_MS,
+    elapsedMs: world.elapsedMs,
+  });
 }
 
 function floor5SiegeState(world: GameWorld): Floor5SiegeState | undefined {
@@ -708,6 +762,7 @@ function spawnFloor5Minion(
   state: Floor5SiegeState,
   team: Floor5SiegeTeam,
   manifestIndex: number,
+  accountAsAuthoredWave = true,
 ): number {
   const layout = computeSiegeCastleLayout(siegeCastleOptionsFromConfig(buildFloor5MapConfig()));
   const spawn = tileCenterToWorld(
@@ -717,16 +772,21 @@ function spawnFloor5Minion(
   );
   const eid = createEntity(world);
   const body = PHYSICS_BODIES['mob-baseline'];
+  const hp = accountAsAuthoredWave ? FLOOR5_MINION_HP : FLOOR5_REINFORCEMENT_HP;
+  const damage = accountAsAuthoredWave ? FLOOR5_MINION_DAMAGE : FLOOR5_REINFORCEMENT_DAMAGE;
+  const cooldownMs = accountAsAuthoredWave
+    ? FLOOR5_MINION_COOLDOWN_MS
+    : FLOOR5_REINFORCEMENT_COOLDOWN_MS;
   addComponent(world.ecs, eid, set(Position, spawn));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
-  addComponent(world.ecs, eid, set(Health, { current: FLOOR5_MINION_HP, max: FLOOR5_MINION_HP }));
+  addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(
     world.ecs,
     eid,
     set(Damage, {
-      amount: FLOOR5_MINION_DAMAGE,
-      cooldownMs: FLOOR5_MINION_COOLDOWN_MS,
-      lastFireMs: -FLOOR5_MINION_COOLDOWN_MS,
+      amount: damage,
+      cooldownMs,
+      lastFireMs: -cooldownMs,
     }),
   );
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
@@ -758,17 +818,19 @@ function spawnFloor5Minion(
     }),
   );
   state.laneTelemetry.spawned[team] += 1;
-  const accounting = state.laneTelemetry.waveAccounting[manifestIndex];
-  if (!accounting || accounting.team !== team) {
-    throw new Error(`Floor 5 manifest accounting missing index ${manifestIndex}`);
+  if (accountAsAuthoredWave) {
+    const accounting = state.laneTelemetry.waveAccounting[manifestIndex];
+    if (!accounting || accounting.team !== team) {
+      throw new Error(`Floor 5 manifest accounting missing index ${manifestIndex}`);
+    }
+    accounting.physicalReleased += 1;
+    accounting.firstReleaseFrame ??= world.frameCount;
+    accounting.lastReleaseFrame = world.frameCount;
+    accounting.maxReleaseDelayFrames = Math.max(
+      accounting.maxReleaseDelayFrames,
+      world.frameCount - state.waveManifest[manifestIndex]!.releaseFrame,
+    );
   }
-  accounting.physicalReleased += 1;
-  accounting.firstReleaseFrame ??= world.frameCount;
-  accounting.lastReleaseFrame = world.frameCount;
-  accounting.maxReleaseDelayFrames = Math.max(
-    accounting.maxReleaseDelayFrames,
-    world.frameCount - state.waveManifest[manifestIndex]!.releaseFrame,
-  );
   return eid;
 }
 
@@ -1309,9 +1371,13 @@ export function siegeHeroSystem(world: GameWorld): void {
     resolveFloor5HeroDefeat(world, state);
   }
 
+  const objectiveHeroDue =
+    heroes.status === 'pending' && state.hostileReinforcements.beats.length > 0;
   const dueFrame =
     heroes.status === 'pending'
-      ? config.firstSpawnFrame
+      ? objectiveHeroDue
+        ? world.frameCount
+        : config.firstSpawnFrame
       : heroes.status === 'down'
         ? heroes.respawnFrame
         : null;
@@ -1341,13 +1407,13 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
   for (const team of ['allied', 'enemy'] as const) {
     const entries = floor5WaveEntriesForTeam(state, team);
     while (
-      state.spawnDebt[team] < FLOOR5_MINION_LIVE_CAP &&
+      state.spawnDebt[team] < floor5MinionLiveCap(state, team) &&
       state.waveCursor[team] < entries.length &&
       world.frameCount >= entries[state.waveCursor[team]]!.entry.releaseFrame
     ) {
       const pending = entries[state.waveCursor[team]]!;
       const remaining = state.waveRemainder[team] || pending.entry.count;
-      const queued = Math.min(FLOOR5_MINION_LIVE_CAP - state.spawnDebt[team], remaining);
+      const queued = Math.min(floor5MinionLiveCap(state, team) - state.spawnDebt[team], remaining);
       for (let i = 0; i < queued; i += 1) {
         state.spawnDebtManifestQueue[team].push(pending.manifestIndex);
       }
@@ -1367,7 +1433,10 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
       state.laneTelemetry.liveMinionPeak[team],
       state.liveMinions[team],
     );
-    while (state.spawnDebt[team] > 0 && state.liveMinions[team] < FLOOR5_MINION_LIVE_CAP) {
+    while (
+      state.spawnDebt[team] > 0 &&
+      state.liveMinions[team] < floor5MinionLiveCap(state, team)
+    ) {
       spawnFloor5Minion(world, state, team, state.spawnDebtManifestQueue[team].shift() ?? 0);
       state.spawnDebt[team] -= 1;
       state.liveMinions[team] += 1;
@@ -1376,6 +1445,23 @@ function releaseFloor5WaveDebt(world: GameWorld, state: Floor5SiegeState): void 
         state.liveMinions[team],
       );
     }
+  }
+  const enemyManifestIndex = state.waveManifest.findIndex((entry) => entry.team === 'enemy');
+  if (enemyManifestIndex < 0) {
+    throw new Error('Floor 5 requires an authored enemy wave for reinforcement spawning');
+  }
+  state.liveMinions.enemy = countLiveFloor5Minions(world, 'enemy');
+  while (
+    state.hostileReinforcements.pending > 0 &&
+    state.liveMinions.enemy < floor5MinionLiveCap(state, 'enemy')
+  ) {
+    spawnFloor5Minion(world, state, 'enemy', enemyManifestIndex, false);
+    state.hostileReinforcements.pending -= 1;
+    state.liveMinions.enemy += 1;
+    state.laneTelemetry.liveMinionPeak.enemy = Math.max(
+      state.laneTelemetry.liveMinionPeak.enemy,
+      state.liveMinions.enemy,
+    );
   }
   if (
     state.laneTelemetry.waveCyclesCompleted === 0 &&
@@ -1553,6 +1639,7 @@ export function _completeFloor5FieldTask(world: GameWorld, taskId: Floor5FieldTa
     case 'checkpoint':
       state.tasks.checkpointCleared = true;
       latchFloor5RequisitionMilestone(state, 'checkpoint');
+      releaseFloor5ObjectiveReinforcements(world, state, 'control-point');
       return true;
     default: {
       const exhaustive: never = taskId;
@@ -1577,6 +1664,7 @@ export function _recoverFloor5RamComponent(
   }
   if (hasAllFloor5RamComponents(state)) {
     latchFloor5RequisitionMilestone(state, 'components');
+    releaseFloor5ObjectiveReinforcements(world, state, 'supplies');
   }
   return true;
 }
@@ -1617,6 +1705,7 @@ export function _requestFloor5RamConstruction(world: GameWorld): boolean {
     state.construction.startedFrame = world.frameCount;
     state.construction.completedFrame = null;
     transitionFloor5Phase(world, state, { kind: 'BUILD' }, 'ram-construction-authorized');
+    releaseFloor5ObjectiveReinforcements(world, state, 'ram-construction');
   }
   return true;
 }
@@ -1843,6 +1932,9 @@ function setFloor5EngineState(
   if (state.engineState === next) return;
   state.engineState = next;
   state.ram.stateTrace.push({ state: next, frame: world.frameCount, reason });
+  if (next === 'ADVANCING') {
+    releaseFloor5ObjectiveReinforcements(world, state, 'ram-escort');
+  }
 }
 
 function floor5RamIsOnField(world: GameWorld, state: Floor5SiegeState): boolean {
@@ -2154,7 +2246,8 @@ function destroyFloor5Ram(world: GameWorld, state: Floor5SiegeState, reason: str
 
 /** Zero every outstanding wave/spawn obligation. Returns the units cancelled. */
 function clearFloor5WaveDebt(state: Floor5SiegeState): number {
-  let cleared = 0;
+  let cleared = state.hostileReinforcements.pending;
+  state.hostileReinforcements.pending = 0;
   for (const team of ['allied', 'enemy'] as const) {
     const entries = floor5WaveEntriesForTeam(state, team);
     const remainder = state.waveRemainder[team];
@@ -2205,6 +2298,9 @@ function commitFloor5Breach(world: GameWorld, state: Floor5SiegeState): void {
   if (state.breach.latched) return;
   state.breach.latched = true;
   state.breach.committedFrame = world.frameCount;
+  // Record the final lane escalation before the breach's intentional cleanup.
+  // The courtyard takes over pressure immediately after this transaction.
+  releaseFloor5ObjectiveReinforcements(world, state, 'gate-breach', false);
 
   // 1. Drop the barrier that sealed the carved ingress. Navigation consults the
   //    live blocked-tile registry, so the newly-open lane is visible immediately.
@@ -2730,6 +2826,7 @@ function openFloor5ThroneRoom(world: GameWorld, state: Floor5SiegeState): void {
   const anchor = floor5TileToWorld(throne.x, throne.y, tileSizeFt);
   finale.throneActors.push(spawnFloor5FinaleActor(world, 'regent-emeritus', anchor, anchor));
   finale.regentSpawnedFrame = world.frameCount;
+  releaseFloor5ObjectiveReinforcements(world, state, 'throne-approach', false);
   transitionFloor5Phase(world, state, { kind: 'THRONE' }, 'courtyard-cleared-throne-open');
   pushAnnouncement(world.announcements, {
     kind: 'bossAbilityCast',
@@ -3361,6 +3458,13 @@ export function getFloor5SiegeRunStats(
     waveManifest: state.waveManifest.map((entry) => ({ ...entry })),
     spawnDebt: { ...state.spawnDebt },
     liveMinions: { ...state.liveMinions },
+    hostileReinforcements: {
+      cap: state.hostileReinforcements.cap,
+      heroCap: state.hostileReinforcements.heroCap,
+      released: state.hostileReinforcements.released,
+      pending: state.hostileReinforcements.pending,
+      beats: [...state.hostileReinforcements.beats],
+    },
     checkpointOwner: state.checkpointOwner,
     laneTelemetry: {
       waveCyclesCompleted: state.laneTelemetry.waveCyclesCompleted,

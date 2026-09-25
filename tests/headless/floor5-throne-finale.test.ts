@@ -211,6 +211,25 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     expect(finale.royalAuthorityDisabled).toBe(true);
     expect(liveFinaleEnemiesAtEnd).toBe(0);
 
+    // Objective pressure climbs deterministically through every authored beat,
+    // caps at 16 lane minions / 2 field Heroes, and never leaks past cleanup.
+    expect(siege!.hostileReinforcements).toEqual({
+      cap: 16,
+      heroCap: 2,
+      released: 12,
+      pending: 0,
+      beats: [
+        'supplies',
+        'control-point',
+        'ram-construction',
+        'ram-escort',
+        'gate-breach',
+        'throne-approach',
+      ],
+    });
+    expect(siege!.laneTelemetry.liveMinionPeak.enemy).toBeLessThanOrEqual(16);
+    expect(siege!.liveMinions.enemy).toBe(0);
+
     // --- Winner's Balcony only opens as part of the capture ----------------
     expect(balconyReachableBeforeCapture).toBe(false);
     expect(balconyReachableAtEnd).toBe(true);

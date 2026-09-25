@@ -308,3 +308,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0097 | [Floor 6 — Hold for Renovation (compact defense floor)](0097-floor6-hold-for-renovation.md)                                                        | Proposed                 | 2026-08-31 |
 | 0108 | [Floor 5 hostile combat and siege presentation](0108-floor5-hostile-combat-presentation.md)                                                        | Accepted                 | 2026-09-20 |
 | 0109 | [Floor 5 objective interaction contract](0109-floor5-objective-interaction-contract.md)                                                            | Accepted                 | 2026-09-20 |
+| 0110 | [Floor 5 objective-driven siege escalation](0110-floor5-objective-driven-siege-escalation.md)                                                      | Accepted                 | 2026-09-25 |
