@@ -105,6 +105,23 @@ describe('release baseline index derivation', () => {
     ]);
   });
 
+  it('preserves a report link when its diagnostic score is unmeasured', () => {
+    const current = baseline();
+    const reports = new Map([
+      [
+        current.meta.commit,
+        {
+          report: { schema_version: 2, overall_fun_score: null, gate: { pass: false } },
+        },
+      ],
+    ]);
+    expect(buildBaselineIndex([current], reports)[0]?.fun).toEqual({
+      overallFunScore: null,
+      gatePass: false,
+      path: `by-sha/${current.meta.commit}.fun-report.json`,
+    });
+  });
+
   it('round-trips through the published index into a per-leg comparison', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'baseline-index-'));
     try {

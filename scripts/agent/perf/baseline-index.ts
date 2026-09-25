@@ -21,7 +21,7 @@ import type { BaselineFile, BaselineIndexEntry } from './baseline-regression-che
 
 interface FunReportFile {
   report: {
-    overall_fun_score: number;
+    overall_fun_score: number | null;
     gate: { pass: boolean };
   };
 }
@@ -30,7 +30,11 @@ function parseFunReport(value: unknown): FunReportFile | null {
   if (
     typeof value !== 'object' ||
     value === null ||
-    typeof (value as FunReportFile).report?.overall_fun_score !== 'number' ||
+    !(
+      (value as FunReportFile).report?.overall_fun_score === null ||
+      (typeof (value as FunReportFile).report?.overall_fun_score === 'number' &&
+        Number.isFinite((value as FunReportFile).report.overall_fun_score))
+    ) ||
     typeof (value as FunReportFile).report?.gate?.pass !== 'boolean'
   ) {
     return null;

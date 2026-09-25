@@ -117,15 +117,14 @@ describe('multi-floor progression', () => {
 
       // Concrete carried values are actually restored in the Floor-2 world.
       // `finalLevel > 1` alone proves nothing: a cold Floor-2 start already
-      // begins at level 5 (applyFloor2DirectStartPlayerState). The level ledger
-      // is decisive — its first entry is recorded on the first simulated frame,
-      // so it IS the level the Floor-2 world booted at. A dropped carryover
+      // begins at level 5 (applyFloor2DirectStartPlayerState). Starting-level
+      // telemetry is sampled from the restored world before simulation. A dropped carryover
       // boots the cold Floor-2 baseline instead of the carried level.
       const carriedLevel = captured!.playerLevel.level;
-      const bootLevelUp = floor2Leg.stats.levelUps[0];
-      expect(bootLevelUp, 'Floor 2 records its boot level on frame 1').toBeDefined();
-      expect(bootLevelUp!.frame).toBeLessThanOrEqual(1);
-      expect(bootLevelUp!.level).toBe(carriedLevel);
+      expect(
+        floor2Leg.stats.runStartLevel,
+        'Floor 2 restores the carried level before frame 1',
+      ).toBe(carriedLevel);
 
       // Gold is a second, independent carried value: it is never reset by the
       // Floor-2 boot, so the run cannot end below what Floor 1 handed over.
@@ -173,11 +172,8 @@ describe('multi-floor progression', () => {
       expect(floor2Leg.captured).toBeDefined();
       expect(floor3Leg.startedFrom).toBe(floor2Leg.captured);
       // A carried player boots Floor 3 at the level Floor 2 handed over, not at
-      // a cold level 1 — the level ledger's first entry is the boot level.
-      const bootLevelUp = floor3Leg.stats.levelUps[0];
-      expect(bootLevelUp).toBeDefined();
-      expect(bootLevelUp!.frame).toBeLessThanOrEqual(1);
-      expect(bootLevelUp!.level).toBe(floor2Leg.captured!.playerLevel.level);
+      // a cold level 1 — verify the restored world state before frame 1.
+      expect(floor3Leg.stats.runStartLevel).toBe(floor2Leg.captured!.playerLevel.level);
       // Floor 3 actually simulated (the leg is a real run, not a zero-frame boot).
       expect(floor3Leg.stats.totalFrames).toBeGreaterThan(0);
 

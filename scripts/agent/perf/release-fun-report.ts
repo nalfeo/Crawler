@@ -62,6 +62,7 @@ export function buildReleaseFunReport(baseline: unknown): ReleaseFunReport {
   const sessions = normalizeFunSessions(baseline).map((session) => ({
     ...session,
     id: `${topLevelLegId}:${session.id}`,
+    scenario: topLevelLegId,
   }));
   if (isRecord(baseline.legs)) {
     for (const [legId, leg] of Object.entries(baseline.legs)) {
@@ -70,6 +71,7 @@ export function buildReleaseFunReport(baseline: unknown): ReleaseFunReport {
         ...normalizeFunSessions(leg).map((session) => ({
           ...session,
           id: `${legId}:${session.id}`,
+          scenario: legId,
         })),
       );
     }
@@ -95,7 +97,7 @@ function main(): void {
   const funReport = buildReleaseFunReport(baseline);
   writeFileSync(outPath, serializeReleaseFunReport(funReport));
   process.stdout.write(
-    `fun-eval: overall=${funReport.report.overall_fun_score} ` +
+    `heuristic-diagnostic (uncalibrated): score=${funReport.report.overall_fun_score ?? 'unmeasured'} ` +
       `gate.pass=${funReport.report.gate.pass} runs=${funReport.report.runs}\n`,
   );
 }
