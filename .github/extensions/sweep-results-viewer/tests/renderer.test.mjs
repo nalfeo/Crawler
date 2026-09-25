@@ -1,6 +1,53 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { renderHtml } from '../renderer.mjs';
+
+function renderDiagnostic(report) {
+  const page = renderHtml('diagnostic-test');
+  const start = page.indexOf('  function renderBaselineSweepResults');
+  const end = page.indexOf('  function renderResults', start);
+  const content = { innerHTML: '' };
+  runInNewContext(page.slice(start, end) + '\nrenderBaselineSweepResults(state);', {
+    document: { getElementById: () => content },
+    state: { data: { funReport: report } },
+    esc: (v) => String(v ?? ''),
+    fmtNum: (v, digits = 1) => Number(v).toFixed(digits),
+    fmtPct: () => '0%',
+    winRateClass: () => '',
+  });
+  return content.innerHTML;
+}
+
+test('v2 nullable scores render as unmeasured without confidence or implied enjoyment', () => {
+  const html = renderDiagnostic({
+    schema_version: 2,
+    overall_fun_score: null,
+    confidence: null,
+    confidence_reason: 'No human calibration.',
+    sameness_grade: null,
+    dimensions: { choice_depth: null },
+    gate: { pass: false },
+    observed_surveys: { enjoyment: { responses: 0, mean: null } },
+  });
+  assert.match(html, /Heuristic diagnostic<\/th><td>unmeasured/);
+  assert.match(html, /Human enjoyment<\/th><td>unmeasured/);
+  assert.match(html, /No human calibration/);
+  assert.doesNotMatch(html, /Confidence|0\.00|Overall fun score/);
+});
+
+test('legacy reports remain visible with explicit limits and v2 surveys stay separate', () => {
+  const legacy = renderDiagnostic({ overall_fun_score: 73, confidence: 0.9 });
+  assert.match(legacy, /Legacy uncalibrated heuristic/);
+  assert.match(legacy, /73\.0 \/ 100/);
+  assert.match(legacy, /Human enjoyment<\/th><td>unmeasured/);
+  const current = renderDiagnostic({
+    schema_version: 2,
+    overall_fun_score: 70,
+    observed_surveys: { enjoyment: { responses: 2, mean: 4.5 } },
+  });
+  assert.match(current, /4\.5 \/ 5 \(2 responses\)/);
+});
 
 test('renders cloud run controls, polling state, and existing aggregate views', () => {
   const html = renderHtml('sweep-test');
@@ -65,7 +112,7 @@ test('render includes baseline-sweep section markers and title, with a graceful 
   assert.match(html, /renderBaselineSweepResults/);
   assert.match(html, /Release Baseline Results/);
   assert.match(html, /Release baseline/);
-  assert.match(html, /Fun evaluation/);
+  assert.match(html, /Heuristic diagnostic/);
   assert.match(
     html,
     /Fun evaluation report is not available for this run \(captured before fun evaluation existed, or scoring failed for this release\)\./,

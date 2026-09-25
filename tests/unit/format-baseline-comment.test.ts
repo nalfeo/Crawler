@@ -53,6 +53,39 @@ function funReport(score: number, pass: boolean) {
 }
 
 describe('formatBaselineComment', () => {
+  it('shows unmeasured v2 evidence and rejects legacy comparisons', () => {
+    const current = {
+      ...funReport(75, false).report,
+      schema_version: 2,
+      overall_fun_score: null,
+      observed_surveys: { enjoyment: { responses: 0, mean: null } },
+    };
+    const body = formatBaselineComment({ winRate: 1, totalRuns: 2 }, [entry(10, 1)], {
+      ...options,
+      funReport: { report: current },
+      previousFunReport: funReport(70, true),
+    });
+    expect(body).toContain('**unmeasured**');
+    expect(body).toContain('Human enjoyment: unmeasured');
+    expect(body).toContain('inconclusive (legacy evaluator)');
+    expect(body).not.toContain('improving');
+    expect(body).not.toContain('Confidence');
+  });
+
+  it('reports enjoyment only from direct survey responses', () => {
+    const current = {
+      ...funReport(75, true).report,
+      schema_version: 2,
+      observed_surveys: { enjoyment: { responses: 3, mean: 4 } },
+    };
+    const body = formatBaselineComment({ winRate: 1, totalRuns: 2 }, [entry(10, 1)], {
+      ...options,
+      funReport: { report: current },
+    });
+    expect(body).toContain('Human enjoyment: 4/5 (3 responses)');
+    expect(body).toContain('Uncalibrated heuristic');
+  });
+
   it('renders short history in chronological order with percentage-point deltas', () => {
     const body = formatBaselineComment(
       {
@@ -248,8 +281,10 @@ describe('formatBaselineComment', () => {
     expect(body).toContain('combined **87.5%** (+20.8 pp)');
     expect(body).toContain('### Damage rate');
     expect(body).toContain('**600.0 damage / active min** (+163.6)');
-    expect(body).toContain('### Fun evaluation');
-    expect(body).toContain('**75.0/100** · gate **pass** · 2 runs · Δ +3.0 (improving)');
+    expect(body).toContain('### Heuristic diagnostic');
+    expect(body).toContain(
+      '**75.0/100** · gate **pass** · 2 runs · Δ inconclusive (legacy evaluator)',
+    );
     expect(body).toContain(
       '[Release report](https://example.test/release-baseline-report.html?commit=aaaaaaaa&repo=owner%2Frepo)',
     );
@@ -283,7 +318,7 @@ describe('formatBaselineComment', () => {
     });
 
     expect(body).toContain(
-      '**75.0/100** · gate **pass** · 2 runs · Δ inconclusive (cohort changed)',
+      '**75.0/100** · gate **pass** · 2 runs · Δ inconclusive (legacy evaluator)',
     );
   });
 

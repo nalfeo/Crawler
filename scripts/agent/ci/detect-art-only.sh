@@ -628,6 +628,9 @@ emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_tou
 #   docs/**, .specify/**, *.md, *.txt, AGENTS.md   documentation
 #   scripts/agent/**             CI/automation helper scripts
 #   scripts/sprites/**           sprite GENERATION pipeline (not the generated output)
+#   Explicit telemetry/headless reporting modules below and the standalone
+#   release-baseline-report.html do not exercise the game UX. This exclusion is
+#   visual-only: simulation, coverage, integration, and security flags above stay intact.
 #   briefs/**                    sprite authoring inputs (no runtime/browser UI surface)
 #   tests/unit/**, tests/ecs/**, tests/game/**, tests/property/**,
 #   tests/determinism/**, tests/sensors/**, tests/balance/**,
@@ -664,6 +667,17 @@ while IFS= read -r file; do
     tests/helpers/*) ;;
     tests/bench/*) ;;
     tests/setup.ts) ;;
+    # Dedicated observations / headless execution, not rendered gameplay.
+    # Keep this explicit: AI policies and telemetry edits inside scene/gameplay
+    # files still route to game UX; do not exempt src/game/ai/** wholesale.
+    src/game/ai/headless-runner.ts | src/game/ai/types.ts | src/game/ai/run-stats-collector.ts | \
+    src/game/ai/den-boss-telemetry.ts | src/game/ai/boss-encounter-telemetry.ts | \
+    src/core/weapon-telemetry.ts | src/shared/weapon-telemetry-types.ts | \
+    src/shared/den-boss-telemetry-types.ts | src/shared/run-stats-collector.ts) ;;
+    # run-bundle-telemetry.ts stays visual: its live upload payload is covered
+    # by browser request/completion tests, including player-visible toasts.
+    # Standalone CI report, covered by its own consumer tests, not game UX.
+    public/release-baseline-report.html) ;;
     # ── Asset visual: generated art + sprite catalog ──────────────────────────────
     public/assets/generated/*)
       visual_touched=true; asset_visual_touched=true ;;
