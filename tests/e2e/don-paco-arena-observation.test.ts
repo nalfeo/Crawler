@@ -33,9 +33,16 @@ interface DonPacoArenaScene {
     announcements: Array<{ kind: string; text?: string }>;
     statusEffectsByEntity?: Map<number, Array<{ sourceId: string }>>;
     mobAbilities: {
+      byEntity: Map<number, unknown>;
       cues: unknown[];
       activeProjectiles: unknown[];
       activeZones: Array<{ circle: { x: number; y: number; radiusFt: number } }>;
+    };
+    stores: {
+      health: {
+        current: Int32Array;
+        max: Int32Array;
+      };
     };
   };
 }
@@ -95,6 +102,13 @@ async function configureArena(page: Page): Promise<void> {
   await page.evaluate(() => {
     const scene = (window as unknown as { __arenaScene?: DonPacoArenaScene }).__arenaScene;
     if (!scene) throw new Error('CombatArenaScene missing after respawn');
+    // The arena deliberately uses the short-lived production boss HP scale.
+    // This observation needs a full second cast, so keep only its registered
+    // caster alive without changing runtime balance or ability scheduling.
+    for (const casterEid of scene.world.mobAbilities.byEntity.keys()) {
+      scene.world.stores.health.current[casterEid] = 100_000;
+      scene.world.stores.health.max[casterEid] = 100_000;
+    }
     scene.world.state = 'paused';
   });
 }
