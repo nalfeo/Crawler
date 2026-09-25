@@ -31,11 +31,18 @@ interface FizzwickArenaScene {
     elapsedMs: number;
     announcements: Array<{ kind: string; text?: string }>;
     mobAbilities?: {
+      byEntity: Map<number, unknown>;
       cues?: Array<{
         phase?: string;
         projectileX?: number;
         projectileY?: number;
       }>;
+    };
+    stores: {
+      health: {
+        current: Int32Array;
+        max: Int32Array;
+      };
     };
   };
   children?: {
@@ -99,6 +106,13 @@ async function configureFizzwickArena(page: Page): Promise<void> {
   await page.evaluate(() => {
     const scene = (window as unknown as { __arenaScene?: FizzwickArenaScene }).__arenaScene;
     if (!scene) throw new Error('CombatArenaScene missing after respawn');
+    // The arena intentionally mirrors the short-lived production boss HP scale.
+    // This observation needs two casts, so preserve the registered caster without
+    // altering runtime balance or the encounter's ability scheduling.
+    for (const casterEid of scene.world.mobAbilities?.byEntity.keys() ?? []) {
+      scene.world.stores.health.current[casterEid] = 100_000;
+      scene.world.stores.health.max[casterEid] = 100_000;
+    }
     scene.world.state = 'paused';
   });
 }
