@@ -19,6 +19,7 @@ import type {
   PropRenderSize,
   FamilyHudProbeState,
   Floor3PartyHudProbeState,
+  Floor3FieldTrainerProbe,
   Floor3LeagueHudProbeState,
   Floor3RangedCompanionProbeResult,
   Floor3CompanionPropDepthProbe,
@@ -96,6 +97,10 @@ export async function loadMainSceneProbeLab(
 
 /** Typed wrappers around the in-page `window.__mainSceneProbe` automation API. */
 export const mainSceneProbe = {
+  moveToFloor3FieldTrainer: (page: Page, index: number): Promise<boolean> =>
+    page.evaluate((value) => window.__mainSceneProbe!.moveToFloor3FieldTrainer(value), index),
+  getFloor3FieldTrainers: (page: Page): Promise<readonly Floor3FieldTrainerProbe[]> =>
+    page.evaluate(() => window.__mainSceneProbe!.getFloor3FieldTrainers()),
   primeFloor4Headliner: (page: Page, archetypeId: string): Promise<boolean> =>
     page.evaluate((id) => window.__mainSceneProbe!.primeFloor4Headliner(id), archetypeId),
   getFloor4HeadlinerAbilityState: (page: Page): Promise<Floor4HeadlinerAbilityProbe | null> =>
