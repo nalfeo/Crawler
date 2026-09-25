@@ -23,10 +23,12 @@ describe('Floor 5 HUD presentation', () => {
     expect(initial.lines).toHaveLength(4);
     expect(initial.lines[0]).toContain('Muster | Objective: Defend the Command Post');
     expect(initial.lines[1]).toContain(`Command Post ${state.commandPostHealth}/`);
+    expect(initial.lines[1]).toContain('secure');
     expect(initial.lines[2]).toContain('Ram: Locked');
     expect(initial.lines[3]).toContain('Hostile pressure: 0 minions');
     expect(initial.lines[3]).toContain('wave cap 4/16');
     expect(initial.lines[3]).toContain('Heroes 0/2 max');
+    expect(initial.cues).toEqual([]);
     expect(JSON.stringify(state)).toBe(before);
 
     state.commandPostHealth = 37;
@@ -38,7 +40,34 @@ describe('Floor 5 HUD presentation', () => {
     expect(building.id).not.toBe(initial.id);
     expect(building.lines[0]).toContain('Clear attackers from the build site');
     expect(building.lines[1]).toContain('Command Post 37/');
+    expect(building.lines[1]).toContain('critical — return to the line');
+    expect(building.cues).toEqual([
+      { id: 'floor5-command-post-critical-audio', kind: 'audio', label: 'Command Post critical' },
+      { id: 'floor5-command-post-critical-vfx', kind: 'vfx', label: 'Command Post critical' },
+    ]);
     expect(building.lines[2]).toContain('build 50% (paused)');
+  });
+
+  it('projects a stable, non-color-only command post warning before the critical tier', () => {
+    const world = siegeWorld();
+    const state = world.floorExtendedState!.floor5Siege!;
+    state.commandPostHealth = 700;
+
+    const warning = getFloor5HudSnapshot(world)!;
+
+    expect(warning.lines[1]).toContain('under attack — defend the line');
+    expect(warning.cues).toEqual([
+      {
+        id: 'floor5-command-post-danger-audio',
+        kind: 'audio',
+        label: 'Command Post under attack',
+      },
+      {
+        id: 'floor5-command-post-danger-vfx',
+        kind: 'vfx',
+        label: 'Command Post under attack',
+      },
+    ]);
   });
 
   it('distinguishes route progress, protection, wall damage and terminal objectives', () => {
