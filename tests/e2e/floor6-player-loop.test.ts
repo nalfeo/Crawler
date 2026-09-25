@@ -17,7 +17,11 @@ const RELAY_PLINTH_ACCESS_ROUTE = [
   { x: 192, y: 102 },
   { x: 178, y: 102 },
 ] as const;
-const RELAY_COMBAT_ROUTE = [...RELAY_PLINTH_ACCESS_ROUTE, { x: 232, y: 98 }] as const;
+// The former (232, 98) waypoint lands inside the Relay's collision shell:
+// normal movement resolves at its northwest edge, just outside the test's
+// 2-ft arrival contract. This adjacent walkable point still enters combat
+// range without asking the input path to cross solid scenery.
+const RELAY_COMBAT_ROUTE = [...RELAY_PLINTH_ACCESS_ROUTE, { x: 230, y: 95 }] as const;
 
 async function clickGame(page: Page, x: number, y: number, touch: boolean): Promise<void> {
   const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
