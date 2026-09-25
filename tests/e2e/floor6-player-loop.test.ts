@@ -197,7 +197,11 @@ describe('Floor 6 ordinary player economy loop', () => {
           await walk(page, pickup.positionFt.x, pickup.positionFt.y);
           await walkToRelayCombat(page);
         }
-        await page.waitForTimeout(500);
+        // Keep checking the real pickup / combat state while the autonomous
+        // battle runs. A half-second idle between pointer decisions lets the
+        // Relay lose to an unrelated wave before this economy acceptance path
+        // can respond on a loaded CI shard.
+        await page.waitForTimeout(100);
       }
       expect(
         earned.economy.pickupsCollected,
