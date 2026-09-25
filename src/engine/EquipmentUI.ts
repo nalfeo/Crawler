@@ -35,6 +35,7 @@ import {
 } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import { scoreEquipmentDefinition, scoreGeneratedGear } from '../shared/gear-score.js';
 import {
   PRIMARY_STATS,
   SECONDARY_STATS,
@@ -77,6 +78,7 @@ import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme
 // ---------------------------------------------------------------------------
 
 const PANEL_PADDING = 22;
+const SHOW_INTERNAL_GEAR_SCORE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const EQUIPMENT_FONT_IDENTITY = 'Arial';
 const FONT_FAMILY = UI_FONT_FAMILY;
 const SLOT_W = 64;
@@ -1264,6 +1266,16 @@ export function createEquipmentUI(
     return weapon && weapon.cooldownMs > 0 ? weapon.baseDamage / (weapon.cooldownMs / 1000) : null;
   }
 
+  function internalGearScoreLine(def: EquipmentItemDef): TooltipStatLine[] {
+    if (!SHOW_INTERNAL_GEAR_SCORE) return [];
+    const generated =
+      lastWorld && def.id.startsWith('gei:v1:')
+        ? getGeneratedEquipmentInstance(lastWorld, def.id as GeneratedEquipmentInstanceKey)
+        : undefined;
+    const score = generated ? scoreGeneratedGear(generated) : scoreEquipmentDefinition(def);
+    return [`Gear Score: ${score.toFixed(1)}`];
+  }
+
   function formatDps(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
@@ -1333,14 +1345,22 @@ export function createEquipmentUI(
             },
       );
     }
-    return [...weaponLines, ...weaponEffectTooltipLines(candidate), ...lines];
+    return [
+      ...weaponLines,
+      ...internalGearScoreLine(candidate),
+      ...weaponEffectTooltipLines(candidate),
+      ...lines,
+    ];
   }
 
   function tooltipStatLinesWithDps(def: EquipmentItemDef): TooltipStatLine[] {
     const dps = weaponSingleTargetDps(def);
-    return dps === null
-      ? tooltipStatLines(def)
-      : [`DPS: ${formatDps(dps)}`, ...weaponEffectTooltipLines(def), ...tooltipStatLines(def)];
+    return [
+      ...(dps === null ? [] : [`DPS: ${formatDps(dps)}`]),
+      ...internalGearScoreLine(def),
+      ...weaponEffectTooltipLines(def),
+      ...tooltipStatLines(def),
+    ];
   }
 
   function tooltipIconKey(def: EquipmentItemDef, baseId = def.id): string | undefined {

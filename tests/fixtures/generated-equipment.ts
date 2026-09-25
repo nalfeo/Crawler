@@ -12,6 +12,7 @@ import type { _GenerateEquipmentInstanceRequest as GenerateEquipmentInstanceRequ
 
 export const GENERATED_WEAPON_REQUEST = {
   baseId: 'plasma-pistol',
+  floor: 2,
   itemLevel: 3,
   rarity: 'rare',
   enhancementLevel: 2,
@@ -19,6 +20,7 @@ export const GENERATED_WEAPON_REQUEST = {
 
 export const GENERATED_ARMOR_REQUEST = {
   baseId: 'iron-breastplate',
+  floor: 2,
   itemLevel: 4,
   rarity: 'rare',
   enhancementLevel: 3,
@@ -26,6 +28,7 @@ export const GENERATED_ARMOR_REQUEST = {
 
 export const GENERATED_ACCESSORY_REQUEST = {
   baseId: 'band-of-fortune',
+  floor: 2,
   itemLevel: 2,
   rarity: 'rare',
   enhancementLevel: 0,

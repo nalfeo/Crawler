@@ -12,6 +12,7 @@ describe('generated equipment to loadout evaluator integration', () => {
     });
     const generated = generateEquipmentInstance(world, {
       baseId: 'plasma-pistol',
+      floor: 2,
       itemLevel: 3,
       rarity: 'rare',
       enhancementLevel: 2,

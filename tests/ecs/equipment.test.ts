@@ -565,8 +565,9 @@ describe('equipFromBag', () => {
     expect(hasItem(bag, 'iron-helm')).toBe(false);
     const state = getEquipmentState(world, entity)!;
     expect(state.equipped['head']).not.toBeNull();
-    // iron-helm grants +2 armor, +1 constitution.
-    expect(getEffectiveStats(world, entity).armor).toBe(2);
+    expect(getEffectiveStats(world, entity).armor).toBeCloseTo(
+      getEquipmentDefForItem('iron-helm')!.statBonuses.armor ?? 0,
+    );
   });
 
   it('swaps: returns the previously-equipped item to the bag', () => {

@@ -33,7 +33,7 @@ describe('melee weapons', () => {
     const swing = swings[0]!;
     expect(world.stores.position.x[swing]).toBe(12.5);
     expect(world.stores.position.y[swing]).toBe(12.5);
-    expect(world.stores.meleeSwing.damage[swing]).toBe(def.baseDamage);
+    expect(world.stores.meleeSwing.damage[swing]).toBeCloseTo(def.baseDamage);
     expect(world.stores.meleeSwing.bladeLength[swing]).toBe(def.aoeRadius);
     expect(world.stores.owner.eid[swing]).toBe(player);
   });
@@ -119,7 +119,7 @@ describe('melee weapons', () => {
     }
 
     // Should be hit exactly once: 50 - 15 = 35
-    expect(world.stores.health.current[enemy]).toBe(50 - def.baseDamage);
+    expect(world.stores.health.current[enemy]).toBeCloseTo(50 - def.baseDamage);
   });
 
   it('sword respects cooldown', () => {
@@ -245,7 +245,7 @@ describe('melee weapons', () => {
     }
 
     // Should take full damage since shaftDamageMult defaults to 1.0
-    expect(world.stores.health.current[enemy]).toBe(50 - sword.baseDamage);
+    expect(world.stores.health.current[enemy]).toBeCloseTo(50 - sword.baseDamage);
   });
 
   it('melee swing has Team component for friendly fire prevention', () => {
@@ -397,7 +397,7 @@ describe('unarmed weapons', () => {
 
     // Punch head should have hit the enemy
     expect(world.stores.health.current[enemy]).toBeLessThan(50);
-    expect(world.stores.health.current[enemy]).toBe(50 - def.baseDamage);
+    expect(world.stores.health.current[enemy]).toBeCloseTo(50 - def.baseDamage);
   });
 
   it('punch path still damages because the head overlaps shaft positions', () => {

@@ -154,14 +154,14 @@ import type { AchievementCatalogRegistry } from '../shared/achievements.js';
  *   3× → 9.4–19.6 s (goblins at level 19 cleared 9.25 s by only 134 ms)
  *   4× → 12.1–27.0 s (≥ 30 % margin over every ability window)
  *
- * 4× is the smallest whole multiplier that keeps every den boss alive past its
+ * 5× is the smallest whole multiplier that keeps every den boss alive past its
  * own signature-cycle window on the canonical progression baseline without
  * turning the fight into a slog, and all three seeds still reach `victory`
  * with the Floor 2 exit completed. Gated by
  * `tests/headless/floor2-boss-survival-gate.test.ts`. No invulnerability and no
  * seed-specific exception is used; the arena lab keeps its own debug scaling.
  */
-const FLOOR2_BOSS_HP_SCALE = 4;
+const FLOOR2_BOSS_HP_SCALE = 5;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;

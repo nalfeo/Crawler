@@ -110,6 +110,11 @@ export interface Floor4GreenRoomPanelOffer {
   readonly canPurchase: boolean;
   readonly purchaseFailure: string | null;
   readonly utility: null;
+  /** Player-facing qualitative comparison; numeric values remain dev-only. */
+  readonly gearRecommendation?: 'upgrade' | 'sidegrade' | 'downgrade';
+  readonly gearReasons?: readonly string[];
+  readonly devGearScore?: number;
+  readonly devGearDelta?: number;
 }
 
 export type ShopPanelOfferView =
@@ -343,6 +348,34 @@ export function createShopPanelUI(scene: Phaser.Scene, config: ShopPanelUIConfig
       });
       container.add(utilText);
       rowObjects.push(utilText);
+    }
+
+    if ('gearRecommendation' in offer && offer.gearRecommendation) {
+      const label = offer.gearRecommendation.toUpperCase();
+      const reason = offer.gearReasons?.slice(0, 2).join(' · ');
+      const comparison = crispText(x + 112, y + 48, `${label}${reason ? `: ${reason}` : ''}`, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '11px',
+        color: hex(
+          offer.gearRecommendation === 'upgrade'
+            ? 0x86efac
+            : offer.gearRecommendation === 'downgrade'
+              ? 0xfca5a5
+              : COLORS.textSecondary,
+        ),
+      });
+      container.add(comparison);
+      rowObjects.push(comparison);
+      if (offer.devGearScore !== undefined) {
+        const debug = crispText(
+          x + 112,
+          y + 62,
+          `DEV score ${offer.devGearScore.toFixed(1)} (${offer.devGearDelta! >= 0 ? '+' : ''}${offer.devGearDelta!.toFixed(1)})`,
+          { fontFamily: FONT_FAMILY, fontSize: '10px', color: hex(COLORS.textSecondary) },
+        );
+        container.add(debug);
+        rowObjects.push(debug);
+      }
     }
 
     // Price

@@ -210,6 +210,7 @@ describe('Floor 2 equipment Wave B', () => {
         });
         const generated = generateEquipmentInstance(world, {
           baseId: stableId,
+          floor: 2,
           itemLevel: 6,
           rarity,
           enhancementLevel: 0,

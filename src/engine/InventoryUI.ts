@@ -54,6 +54,7 @@ import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import type { StatId } from '../shared/stats.js';
 import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
+import { scoreEquipmentDefinition, scoreGeneratedGear } from '../shared/gear-score.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { formatStatLabel, formatStatValue, renderItemTooltip } from './item-tooltip.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme.js';
@@ -63,6 +64,7 @@ import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION, UI_FONT_FAMILY } from './ui-theme
 // ---------------------------------------------------------------------------
 
 const PANEL_PADDING = 16;
+const SHOW_INTERNAL_GEAR_SCORE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const TAB_HEIGHT = 36;
 const TAB_GAP = 4;
 const SEARCH_HEIGHT = 48;
@@ -1094,8 +1096,19 @@ export function createInventoryUI(
       generatedInstance !== undefined
         ? generatedEquipmentMetadataStatLine(generatedInstance)
         : undefined;
+    const gearScoreLine = SHOW_INTERNAL_GEAR_SCORE
+      ? `Gear Score: ${(generatedInstance
+          ? scoreGeneratedGear(generatedInstance)
+          : equipmentDef
+            ? scoreEquipmentDefinition(equipmentDef)
+            : 0
+        ).toFixed(1)}`
+      : undefined;
     const statLines = [
       ...(dpsLine !== undefined ? [dpsLine] : []),
+      ...(gearScoreLine !== undefined && (generatedInstance || equipmentDef)
+        ? [gearScoreLine]
+        : []),
       ...(metadataStatLine !== undefined ? [metadataStatLine] : []),
       ...bonusStatLines,
     ];

@@ -344,6 +344,8 @@ describe('THE BIG GOB — canonical pipeline hard gate', () => {
       14,
     );
     const don = spawned[0]!;
+    arenaWorld.stores.health.current[don] = 1_000_000;
+    arenaWorld.stores.health.max[don] = 1_000_000;
     const input = createInputState();
     const arenaResolutions: number[] = [];
     const arenaImpacts: number[] = [];

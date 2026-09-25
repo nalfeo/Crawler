@@ -144,11 +144,11 @@ describe('previewEquipDelta', () => {
   });
 
   it('reports the direct bonuses when equipping into an empty slot', () => {
-    // iron-helm: { armor: 2, constitution: 1 } on the head slot (empty here).
+    const helm = getEquipmentDefForItem('iron-helm')!;
     const preview = previewEquipDelta(world, entity, 'iron-helm')!;
     expect(preview).not.toBeNull();
-    expect(preview.deltas.armor).toBe(2);
-    expect(preview.deltas.constitution).toBe(1);
+    expect(preview.deltas.armor).toBe(helm.statBonuses.armor);
+    expect(preview.deltas.constitution).toBe(helm.statBonuses.constitution);
     expect(preview.swappedOut).toHaveLength(0);
     expect(preview.canEquip).toBe(true);
     // constitution has no secondary derivation, so nothing else moves.
@@ -192,8 +192,8 @@ describe('previewEquipDelta', () => {
     });
 
     expect(preview.swappedOut.map((item) => item.id)).toEqual(['iron-breastplate']);
-    expect(preview.deltas.armor).toBe(2);
-    expect(preview.deltas.constitution).toBe(1);
+    expect(preview.deltas.armor).toBeCloseTo(6 - (current.statBonuses.armor ?? 0));
+    expect(preview.deltas.constitution).toBeCloseTo(2 - (current.statBonuses.constitution ?? 0));
     expect(preview.canEquip).toBe(true);
   });
 

@@ -301,36 +301,43 @@ interface CollisionFingerprint {
 // collision fingerprint (kills / damageDealt / damageTaken / score):
 //   seed 42: 4/216.44999933242798/5/8 → 3/192.44999933242798/5/6
 //   seeds 7 / 13 / 137: unchanged.
+//
+// 2026-09-22 re-baseline — generic equipment score policy.
+//
+// Equipment now rolls through the generic floor/rarity/slot score policy rather
+// than preserving legacy item balance. That intentionally changes early combat
+// damage and kill cadence in this slice. The values below were verified by the
+// paired deterministic assertion in this file.
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 188.2999997138977,
+    damageDealt: 188.0301971435547,
     damageTaken: 5,
     finalScore: 5,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
-    damageDealt: 143.2999997138977,
+    kills: 3,
+    damageDealt: 168.22394561767578,
     damageTaken: 0,
-    finalScore: 2,
+    finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 244.4000015258789,
+    kills: 9,
+    damageDealt: 340.1821173429489,
     damageTaken: 0,
     finalScore: 0,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 3,
-    damageDealt: 159.67999935150146,
+    kills: 12,
+    damageDealt: 353.8908634185791,
     damageTaken: 0,
     finalScore: 0,
   },

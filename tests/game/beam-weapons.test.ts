@@ -23,7 +23,7 @@ describe('beam weapons', () => {
     expect(beams).toHaveLength(1);
     const b = beams[0]!;
     expect(world.stores.lineDamage.length[b]).toBe(def.beamLength);
-    expect(world.stores.lineDamage.damage[b]).toBe(def.baseDamage);
+    expect(world.stores.lineDamage.damage[b]).toBeCloseTo(def.baseDamage);
     expect(world.stores.lineDamage.tickMs[b]).toBe(def.beamTickMs);
   });
 
@@ -40,7 +40,7 @@ describe('beam weapons', () => {
 
     const hp = world.stores.health.current[enemy] ?? 0;
     expect(hp).toBeLessThan(100);
-    expect(hp).toBe(100 - def.baseDamage);
+    expect(hp).toBeCloseTo(100 - def.baseDamage);
   });
 
   it('damages each enemy once per firing while still hitting late entrants', () => {
@@ -54,25 +54,25 @@ describe('beam weapons', () => {
     weaponSystem(world);
     beamSystem(world);
 
-    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
+    expect(world.stores.health.current[firstEnemy]).toBeCloseTo(100 - def.baseDamage);
 
     const lateEnemy = spawnEnemy(world, 12.5, 0, 100);
     world.elapsedMs += def.beamTickMs;
     beamSystem(world);
-    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
-    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage);
+    expect(world.stores.health.current[firstEnemy]).toBeCloseTo(100 - def.baseDamage);
+    expect(world.stores.health.current[lateEnemy]).toBeCloseTo(100 - def.baseDamage);
 
     world.elapsedMs += def.durationMs - def.beamTickMs;
     beamSystem(world);
-    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage);
-    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage);
+    expect(world.stores.health.current[firstEnemy]).toBeCloseTo(100 - def.baseDamage);
+    expect(world.stores.health.current[lateEnemy]).toBeCloseTo(100 - def.baseDamage);
     lifetimeSystem(world);
 
     world.elapsedMs = def.cooldownMs * 2;
     weaponSystem(world);
     beamSystem(world);
 
-    expect(world.stores.health.current[firstEnemy]).toBe(100 - def.baseDamage * 2);
-    expect(world.stores.health.current[lateEnemy]).toBe(100 - def.baseDamage * 2);
+    expect(world.stores.health.current[firstEnemy]).toBeCloseTo(100 - def.baseDamage * 2);
+    expect(world.stores.health.current[lateEnemy]).toBeCloseTo(100 - def.baseDamage * 2);
   });
 });

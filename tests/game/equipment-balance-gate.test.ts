@@ -15,8 +15,7 @@ import type {
   GeneratedEquipmentEnhancementLevel,
   GeneratedEquipmentRarity,
 } from '../../src/shared/generated-equipment-types.js';
-import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
-import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { validateGeneratedGearScore } from '../../src/shared/gear-score.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function worldFactory(seed: number, runKey: string) {
@@ -24,7 +23,7 @@ function worldFactory(seed: number, runKey: string) {
 }
 
 describe('deterministic equipment balance gate', () => {
-  it('keeps both representative-cohort median aggregate-DPS bands within 1.7x-2.3x', () => {
+  it('keeps every representative build progressing as floor ceilings rise', () => {
     const report = runEquipmentBalanceCohort(EQUIPMENT_BALANCE_BUILD_IDS, worldFactory);
     const diagnostics = formatEquipmentBalanceReport(report);
 
@@ -82,13 +81,6 @@ describe('seeded D1 equipment distribution fixtures', () => {
       uncommon: 1,
       rare: 2,
     };
-    const rarityScalar: Readonly<Record<GeneratedEquipmentRarity, number>> = {
-      common: 1,
-      uncommon: 1.05,
-      rare: 1.1,
-    };
-    const baseArmor = getEquipmentDefForItem('iron-breastplate')?.statBonuses.armor ?? 0;
-
     expect(forward.sampleCount).toBe(54);
     expect(forward.rarityCounts).toEqual({ common: 18, uncommon: 18, rare: 18 });
     expect(forward.enhancementCounts).toEqual({ 0: 24, 1: 6, 2: 6, 3: 6, 4: 6, 5: 6 });
@@ -114,55 +106,32 @@ describe('seeded D1 equipment distribution fixtures', () => {
         false,
       );
     }
-    const commonArmorSample = forward.samples.find(
-      (sample) => sample.key === '2101:iron-breastplate:common:0',
-    );
-    expect(commonArmorSample).toBeDefined();
-    expect(commonArmorSample?.inherentValue).toBe(
-      Math.floor(baseArmor * 1.5 * rarityScalar.common + 0.5),
-    );
     expect(replay.replayKey).toBe(forward.replayKey);
     expect(reversed.replayKey).toBe(forward.replayKey);
   });
 
-  it('applies exact rarity scalars and accepts only enhancement +0 through +5', () => {
-    const baseDamage = getWeaponDef('pistol')!.baseDamage;
-    const baseArmor = getEquipmentDefForItem('iron-breastplate')!.statBonuses.armor ?? 0;
-    const rarityScalar: Readonly<Record<GeneratedEquipmentRarity, number>> = {
-      common: 1,
-      uncommon: 1.05,
-      rare: 1.1,
-    };
+  it('applies floor score bands and accepts only enhancement +0 through +5', () => {
     for (const rarity of ['common', 'uncommon', 'rare'] as const) {
       const world = worldFactory(77, `rarity-${rarity}`);
       const generated = generateEquipmentInstance(world, {
         baseId: 'plasma-pistol',
+        floor: 2,
         itemLevel: 6,
         rarity,
         enhancementLevel: 0,
       });
-      expect(generated.frozen.activeWeaponSnapshot?.baseDamage).toBe(
-        Math.floor(baseDamage * 1.5 * rarityScalar[rarity] + 0.5),
-      );
+      expect(validateGeneratedGearScore(generated, 2).withinRarityBand).toBe(true);
       const generatedArmor = generateEquipmentInstance(
         worldFactory(177, `armor-rarity-${rarity}`),
         {
           baseId: 'iron-breastplate',
+          floor: 2,
           itemLevel: 6,
           rarity,
           enhancementLevel: 0,
         },
       );
-      const armorEffect = generatedArmor.resolvedEffects.reduce(
-        (sum, effect) =>
-          'kind' in effect && effect.kind === 'stat' && effect.stat === 'armor'
-            ? sum + effect.value
-            : sum,
-        0,
-      );
-      expect(generatedArmor.frozen.statBonuses.armor).toBe(
-        Math.floor(baseArmor * 1.5 * rarityScalar[rarity] + armorEffect + 0.5),
-      );
+      expect(validateGeneratedGearScore(generatedArmor, 2).withinRarityBand).toBe(true);
     }
 
     for (let enhancement = 0; enhancement <= 5; enhancement += 1) {
@@ -170,6 +139,7 @@ describe('seeded D1 equipment distribution fixtures', () => {
       expect(() =>
         generateEquipmentInstance(world, {
           baseId: 'plasma-pistol',
+          floor: 2,
           itemLevel: 6,
           rarity: 'common',
           enhancementLevel: enhancement as GeneratedEquipmentEnhancementLevel,
@@ -180,6 +150,7 @@ describe('seeded D1 equipment distribution fixtures', () => {
     expect(() =>
       generateEquipmentInstance(invalidUpperWorld, {
         baseId: 'plasma-pistol',
+        floor: 2,
         itemLevel: 6,
         rarity: 'common',
         enhancementLevel: 6 as GeneratedEquipmentEnhancementLevel,
@@ -193,6 +164,7 @@ describe('seeded D1 equipment distribution fixtures', () => {
     expect(() =>
       generateEquipmentInstance(invalidNegWorld, {
         baseId: 'plasma-pistol',
+        floor: 2,
         itemLevel: 6,
         rarity: 'common',
         enhancementLevel: -1 as GeneratedEquipmentEnhancementLevel,
@@ -206,6 +178,7 @@ describe('seeded D1 equipment distribution fixtures', () => {
     expect(() =>
       generateEquipmentInstance(invalidRarityWorld, {
         baseId: 'plasma-pistol',
+        floor: 2,
         itemLevel: 6,
         rarity: 'legendary' as GeneratedEquipmentRarity,
         enhancementLevel: 0,

@@ -41,7 +41,7 @@ describe('weaponSystem', () => {
     expect(projectile).toBeDefined();
     expect(world.stores.position.x[projectile!]).toBe(12.5);
     expect(world.stores.position.y[projectile!]).toBe(15);
-    expect(world.stores.damage.amount[projectile!]).toBe(WEAPON.BASE_DAMAGE);
+    expect(world.stores.damage.amount[projectile!]).toBeCloseTo(pistol.baseDamage);
   });
 
   it('does not fire when there are no enemies', () => {

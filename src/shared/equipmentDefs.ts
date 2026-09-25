@@ -23,6 +23,7 @@ import {
 import { getItemById } from './items.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 import { getWeaponDef } from './weaponDefs.js';
+import { balanceNonWeaponDefinition } from './gear-score-stats.js';
 
 /**
  * Static equipment that was intentionally retired with the ten-slot contract.
@@ -49,7 +50,7 @@ export const RETIRED_EQUIPMENT_ITEM_IDS: ReadonlySet<string> = new Set([
  * framework. The `sourceId` here is a placeholder — `equip()` overrides it with
  * the equipped instance's id so duplicate items track independently.
  */
-export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
+const MERCHANTS_CHARM_BASE_DEF: EquipmentItemDef = {
   id: SHOPKEEPER_EQUIPMENT_ITEM_ID,
   name: "Merchant's Magic Charm",
   slots: ['neck'],
@@ -68,6 +69,10 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
     },
   ],
 };
+export const MERCHANTS_CHARM_DEF: EquipmentItemDef = balanceNonWeaponDefinition(
+  MERCHANTS_CHARM_BASE_DEF,
+  1,
+);
 
 /** Cost (in gold) of the merchant's charm. Tunable via `shopPricing.floor1`. */
 export const MERCHANTS_CHARM_COST: number = FLOOR1_MERCHANTS_CHARM_COST;
@@ -304,7 +309,7 @@ export const STARTER_WEAPON_ID_TO_ITEM_ID: ReadonlyMap<string, string> = new Map
 /** itemId → equipment definition for items that can be worn. */
 const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
   const map = new Map<string, EquipmentItemDef>();
-  map.set(MERCHANTS_CHARM_DEF.id, MERCHANTS_CHARM_DEF);
+  map.set(MERCHANTS_CHARM_DEF.id, balanceNonWeaponDefinition(MERCHANTS_CHARM_DEF, 1));
   for (const def of WEAPON_EQUIPMENT_DEFS) {
     if (map.has(def.id)) {
       throw new Error(`Duplicate equipment def id: ${def.id}`);
@@ -326,7 +331,7 @@ const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = (() => {
     if (map.has(def.id)) {
       throw new Error(`Duplicate equipment def id: ${def.id}`);
     }
-    map.set(def.id, def);
+    map.set(def.id, balanceNonWeaponDefinition(def, def.tags?.includes('floor2') ? 2 : 1));
   }
   // Validate the starter-weapon mapping resolves to real weapon-equipment defs
   // AND to real WeaponDefs. A silent divergence here would ship a starter

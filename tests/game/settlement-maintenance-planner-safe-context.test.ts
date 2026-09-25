@@ -102,6 +102,7 @@ describe('settlement-maintenance-planner: real Floor 2 safe-context integration'
 
     const instance = generateEquipmentInstance(world, {
       baseId: 'iron-breastplate',
+      floor: 2,
       itemLevel: world.playerLevel.level,
       rarity: 'common',
       enhancementLevel: 0,

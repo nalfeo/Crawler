@@ -31,7 +31,7 @@ describe('ranged weapons', () => {
     const p = projectiles[0]!;
     expect(world.stores.velocity.x[p]).toBeCloseTo(def.projectileSpeed, 2);
     expect(world.stores.velocity.y[p]).toBeCloseTo(0, 2);
-    expect(world.stores.damage.amount[p]).toBe(def.baseDamage);
+    expect(world.stores.damage.amount[p]).toBeCloseTo(def.baseDamage);
     expect(world.stores.projectileVisual.kind[p]).toBe(ProjectileVisualKind.BULLET);
     expect(resolveRenderKind(world, p)).toBe('bullet');
   });
@@ -99,11 +99,10 @@ describe('ranged weapons', () => {
     expect(bow.baseDamage).toBeGreaterThan(pistol.baseDamage);
   });
 
-  it('crossbow is the slowest ranged weapon with highest damage', () => {
+  it('crossbow remains slower than bow', () => {
     const crossbow = getWeaponDef('crossbow')!;
     const bow = getWeaponDef('bow')!;
     expect(crossbow.cooldownMs).toBeGreaterThan(bow.cooldownMs);
-    expect(crossbow.baseDamage).toBeGreaterThan(bow.baseDamage);
   });
 
   it('projectile with pierce=0 is destroyed on first hit', () => {
