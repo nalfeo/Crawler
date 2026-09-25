@@ -216,6 +216,10 @@ describe('Floor 6 ordinary player economy loop', () => {
       const balanceBeforeBuild = state.economy.balance;
       await clickGame(page, site.x, site.y, false);
       expect((await read(page)).modal!.kind).toBe('floor6-tower-build');
+      expect(
+        (await read(page)).modal!.options.find((option) => option.id === 'signal-slinger')!
+          .description,
+      ).toContain('Rapid lane response');
       await clickOption(page, 'signal-slinger', false);
       state = await read(page);
       expect(state.economy.balance).toBe(balanceBeforeBuild - 2);
@@ -225,6 +229,9 @@ describe('Floor 6 ordinary player economy loop', () => {
       expect(
         state.renderedLabels.find((label) => label.id === `construction-label:${siteId}`)!.text,
       ).toContain('Signal Slinger');
+      expect(
+        state.renderedLabels.find((label) => label.id === `construction-label:${siteId}`)!.text,
+      ).toContain('Rapid lane response');
       await evidence(page, 'built-world');
 
       // Touch uses the same occupied-site path and actual picker hit areas.
@@ -233,6 +240,7 @@ describe('Floor 6 ordinary player economy loop', () => {
       state = await read(page);
       expect(state.modal!.kind).toBe('construction-inspect');
       expect(`${state.modal!.title} ${state.modal!.body}`).toContain('36');
+      expect(`${state.modal!.title} ${state.modal!.body}`).toContain('Rapid lane response');
       await evidence(page, 'inspect');
       const balanceBeforeSell = state.economy.balance;
       await clickOption(page, '__sell__', true);

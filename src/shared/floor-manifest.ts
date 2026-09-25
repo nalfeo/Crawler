@@ -1374,6 +1374,7 @@ export const floorManifestDefSchema = z
             z
               .object({
                 id: z.string().min(1),
+                roleLabel: z.string().min(1),
                 footprintId: z.string().min(1),
                 cost: z.number().int().nonnegative(),
                 sellRefund: z.number().int().nonnegative(),

@@ -33,6 +33,7 @@ describe('Floor 6 player construction contract', () => {
         eid: built.eid,
         towerId: 'signal-slinger',
         label: 'Signal Slinger',
+        roleLabel: 'Rapid lane response',
         rangeFt: 36,
         sellRefund: 1,
         tierLabel: 'base tier',
@@ -153,6 +154,22 @@ describe('Floor 6 player construction contract', () => {
       );
       expect(snapshot.routes[index]!.pointsFt).not.toBe(route.waypoints);
     }
+  });
+
+  it('projects manifest-owned tower roles without inferring or mutating combat behavior', () => {
+    const { world, state, construction, siteId } = setup();
+    state.economy.balance = 20;
+    expect(construction.getSnapshot(world)!.towers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ towerId: 'signal-slinger', roleLabel: 'Rapid lane response' }),
+        expect.objectContaining({ towerId: 'relay-riveter', roleLabel: 'Heavy Relay guard' }),
+        expect.objectContaining({ towerId: 'crane-caster', roleLabel: 'Wide route coverage' }),
+      ]),
+    );
+    expect(construction.requestBuild(world, siteId, 'signal-slinger').ok).toBe(true);
+    expect(
+      construction.getSnapshot(world)!.sites.find((site) => site.siteId === siteId)!.tower,
+    ).toMatchObject({ roleLabel: 'Rapid lane response' });
   });
 
   it('describes global effects without misrepresenting Relay purchases as tower tiers', () => {

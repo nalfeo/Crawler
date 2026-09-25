@@ -858,6 +858,7 @@ function getFloor6ConstructionSnapshot(world: GameWorld): ScenarioConstructionSn
                 eid: instance.eid,
                 towerId: tower.id,
                 label: readableConstructionLabel(tower.id),
+                roleLabel: tower.roleLabel,
                 rangeFt: tower.attackRangeFt,
                 sellRefund: tower.sellRefund,
                 tierLabel:
@@ -877,6 +878,7 @@ function getFloor6ConstructionSnapshot(world: GameWorld): ScenarioConstructionSn
     towers: towerRoster.map((tower) => ({
       towerId: tower.id,
       label: readableConstructionLabel(tower.id),
+      roleLabel: tower.roleLabel,
       cost: tower.cost,
       affordable: state.economy.balance >= tower.cost,
       rangeFt: tower.attackRangeFt,

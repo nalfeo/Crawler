@@ -154,6 +154,7 @@ export interface ScenarioConstructionSite {
     readonly eid: number;
     readonly towerId: string;
     readonly label: string;
+    readonly roleLabel: string;
     readonly rangeFt: number;
     readonly tierLabel: string;
     readonly sellRefund: number;
@@ -170,6 +171,7 @@ export interface ScenarioConstructionSite {
 export interface ScenarioConstructionTower {
   readonly towerId: string;
   readonly label: string;
+  readonly roleLabel: string;
   readonly cost: number;
   readonly affordable: boolean;
   readonly rangeFt: number;
