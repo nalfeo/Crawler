@@ -994,17 +994,20 @@ jobs:
   # non-devtool E2E source change (game_visual_touched=true). NOT run for art_only
   # changes (those use e2e-assets) or for purely devtool changes.
   test-e2e-game:
-    name: E2E Visual — Game/UI
+    name: E2E Visual — Game/UI (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    # The suite includes long real-scene autonomy coverage. Recent healthy runs
-    # have reached the former 40-minute ceiling and been cancelled before their
-    # assertions completed, causing CI Recovery to retrigger the same work.
-    # Keep the assertions intact and provide enough completion headroom.
-    timeout-minutes: 55
+    # Each shard keeps sequential files because a shard shares one Vite server;
+    # the four independent runners cut the full UI suite wall time substantially
+    # without dropping or shortening any visual assertion.
+    timeout-minutes: 20
     needs: [changes, check-lightweight, test-unit]
     if: needs.changes.outputs.game_visual_touched == 'true' && needs.changes.outputs.docs_only != 'true'
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
@@ -1015,22 +1018,22 @@ jobs:
       - uses: ./.github/actions/host-profile
         with:
           mode: start
-          label: test-e2e-game
+          label: test-e2e-game-${{ matrix.shard }}
 
       - name: E2E visual regression — game/UI surface
-        run: npx vitest run --project e2e-game --reporter=verbose
+        run: npx vitest run --project e2e-game --shard=${{ matrix.shard }}/4 --reporter=verbose
 
       - uses: ./.github/actions/host-profile
         if: always()
         with:
           mode: report
-          label: test-e2e-game
+          label: test-e2e-game-${{ matrix.shard }}
 
       - name: Upload e2e screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-game-screenshots
+          name: e2e-game-screenshots-${{ matrix.shard }}
           path: tmp/e2e-screenshots/
           retention-days: 7
 

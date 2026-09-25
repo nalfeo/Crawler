@@ -150,6 +150,14 @@ export interface ScenarioConstructionSite {
   readonly siteId: string;
   readonly label: string;
   readonly occupied: boolean;
+  readonly tower?: {
+    readonly eid: number;
+    readonly towerId: string;
+    readonly label: string;
+    readonly rangeFt: number;
+    readonly tierLabel: string;
+    readonly sellRefund: number;
+  };
   /** Authored world-space bounds in feet. */
   readonly boundsFt: {
     readonly x: number;
@@ -164,23 +172,37 @@ export interface ScenarioConstructionTower {
   readonly label: string;
   readonly cost: number;
   readonly affordable: boolean;
-}
-
-/** An authored, scenario-owned economy choice exposed by construction UI. */
-export interface ScenarioConstructionUpgrade {
-  readonly offerId: string;
-  readonly label: string;
-  readonly cost: number;
-  readonly affordable: boolean;
-  readonly available: boolean;
+  readonly rangeFt: number;
 }
 
 export interface ScenarioConstructionSnapshot {
   readonly phaseLabel: string;
   readonly currencyLabel: string;
+  /** Match the scenario's transaction gates; inspection remains available when false. */
+  readonly canBuild: boolean;
+  readonly canSell: boolean;
+  readonly canPurchaseUpgrade: boolean;
   readonly sites: readonly ScenarioConstructionSite[];
   readonly towers: readonly ScenarioConstructionTower[];
-  readonly upgrades?: readonly ScenarioConstructionUpgrade[];
+  readonly upgrades: readonly {
+    readonly offerId: string;
+    readonly label: string;
+    readonly description: string;
+    readonly cost: number;
+    readonly affordable: boolean;
+    readonly selected: boolean;
+  }[];
+  readonly relay: {
+    readonly label: string;
+    readonly positionFt: { readonly x: number; readonly y: number };
+    readonly hp: number;
+    readonly maxHp: number;
+  };
+  readonly routes: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly pointsFt: readonly { readonly x: number; readonly y: number }[];
+  }[];
 }
 
 export interface ScenarioConstructionResult {
@@ -196,9 +218,8 @@ export interface ScenarioConstructionContract<TWorld> {
     siteId: string,
     towerId: string,
   ) => ScenarioConstructionResult;
-  /** Optional authoritative requests for an occupied site / global upgrade offer. */
-  readonly requestSell?: (world: TWorld, siteId: string) => ScenarioConstructionResult;
-  readonly requestUpgrade?: (world: TWorld, offerId: string) => ScenarioConstructionResult;
+  readonly requestSell: (world: TWorld, siteId: string) => ScenarioConstructionResult;
+  readonly requestUpgrade: (world: TWorld, offerId: string) => ScenarioConstructionResult;
 }
 
 /**

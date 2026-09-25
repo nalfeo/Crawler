@@ -166,6 +166,7 @@ import {
   buildFloor3StudioVersusModel,
 } from '../../shared/floor3-ux.js';
 import type { ModalPickerConfig } from '../../shared/modal-picker.js';
+import { ConstructionWorldUI } from '../ConstructionWorldUI.js';
 import type { Floor1SpellBrokerOffer, Floor2ShopInstance } from '../../shared/floor-types.js';
 import { getShopArchetype } from '../../shared/data/shop-archetypes.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
@@ -1048,6 +1049,9 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Screen-space floor-owned status panel driven through ScenarioPresentationContract. */
   private scenarioHudText?: Phaser.GameObjects.Text;
+  private constructionWorldUI?: ConstructionWorldUI;
+  private selectedConstructionSiteId: string | null = null;
+  private constructionPointerBlocked = false;
   private scenarioHudVfx?: Phaser.GameObjects.Rectangle;
   private readonly playedScenarioCueIds = new Set<string>();
   private scenarioHudCueLabels: string[] = [];
@@ -1617,6 +1621,9 @@ export class MainGameScene extends Phaser.Scene {
       this.npcQuestIndicators.clear();
       this.interactionHint?.destroy();
       this.scenarioHudText?.destroy();
+      this.constructionWorldUI?.destroy();
+      this.constructionWorldUI = undefined;
+      this.selectedConstructionSiteId = null;
       this.scenarioHudVfx?.destroy();
       this.playedScenarioCueIds.clear();
       this.scenarioHudCueLabels = [];
@@ -1924,9 +1931,17 @@ export class MainGameScene extends Phaser.Scene {
     if (!construction) {
       return null;
     }
+    const labelTarget = this.constructionWorldUI?.getTargetAt(worldX, worldY);
+    if (labelTarget) return labelTarget;
     const worldFtX = pxToFt(worldX);
     const worldFtY = pxToFt(worldY);
     const snapshot = construction.getSnapshot(this.world);
+    if (
+      snapshot &&
+      Math.hypot(worldFtX - snapshot.relay.positionFt.x, worldFtY - snapshot.relay.positionFt.y) <=
+        6
+    )
+      return '__relay__';
     const site = snapshot?.sites.find(
       (candidate) =>
         worldFtX >= candidate.boundsFt.x &&
@@ -1937,7 +1952,10 @@ export class MainGameScene extends Phaser.Scene {
     return site?.siteId ?? null;
   }
 
-  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+  private handlePointerDown(
+    pointer: Phaser.Input.Pointer,
+    currentlyOver: Phaser.GameObjects.GameObject[] = [],
+  ): void {
     if (this.pendingFloorTransition) {
       // The between-floor summary owns every pointer press while it waits,
       // touch included — this is the one screen a touch-only player must be
@@ -1946,6 +1964,33 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     if (this.abilityLoadoutUI?.isOpen()) {
+      return;
+    }
+    // Phaser has already delivered this press to the hit UI object. Nested HUD
+    // children inherit their screen-space ownership from their container.
+    // Do not let a quest/minimap/modal press also select a pad or Relay behind it.
+    if (
+      this.options.scenarioPresentation?.construction &&
+      currentlyOver.some((object) => {
+        for (
+          let node: Phaser.GameObjects.GameObject | null = object;
+          node;
+          node = node.parentContainer
+        ) {
+          if ('depth' in node && typeof node.depth === 'number' && node.depth >= UI_DEPTH_CUTOFF)
+            return true;
+        }
+        return false;
+      })
+    ) {
+      this.pendingTouchConstructionTap = undefined;
+      return;
+    }
+    if (
+      this.constructionPointerBlocked ||
+      (this.conversationNpcEid === null && this.isBlockingSurfaceOpen())
+    ) {
+      this.pendingTouchConstructionTap = undefined;
       return;
     }
     if (this.isTouchPointer(pointer)) {
@@ -2001,11 +2046,13 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer): void {
+    this.constructionPointerBlocked = false;
     if (!this.isTouchPointer(pointer)) {
       return;
     }
     const pendingTap = this.pendingTouchConstructionTap;
     this.pendingTouchConstructionTap = undefined;
+    if (this.isBlockingSurfaceOpen()) return;
     if (!pendingTap || pendingTap.pointerId !== pointer.id) {
       return;
     }
@@ -3480,6 +3527,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
+    this.constructionWorldUI = new ConstructionWorldUI(this);
 
     this.scenarioHudVfx = this.add
       .rectangle(GAME.WIDTH / 2, 0, GAME.WIDTH, 8, 0xf59e0b, 0.75)
@@ -5321,6 +5369,10 @@ export class MainGameScene extends Phaser.Scene {
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateScenarioHudSnapshot(panelOpen);
+    this.constructionWorldUI?.sync(
+      this.options.scenarioPresentation?.construction?.getSnapshot(this.world) ?? null,
+      this.selectedConstructionSiteId,
+    );
     // The ability bar appears/disappears at runtime (spell unlock, modal open),
     // so restack the Talk/Descend hint above it right after the HUD syncs. Both
     // inputs (cached safe-area baseline, cached ability-bar top) are plain
@@ -6257,80 +6309,154 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  private finishConstructionInput(): void {
+    this.clearPendingInteractionInput();
+    // A modal row confirms on pointerdown. Swallow that same press when the
+    // scene input listener runs after the row has closed/replaced the modal.
+    this.constructionPointerBlocked = this.input.activePointer.isDown;
+  }
+
+  private openConstructionUpgrades(): void {
+    const construction = this.options.scenarioPresentation?.construction;
+    const snapshot = construction?.getSnapshot(this.world);
+    if (!construction || !snapshot || !this.modalPicker) return;
+    this.finishConstructionInput();
+    this.modalPicker.open(
+      {
+        kind: 'construction-upgrades',
+        title: 'Relay upgrades',
+        subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
+        body: snapshot.canPurchaseUpgrade
+          ? 'Run-wide improvements. Each offer can be purchased once.'
+          : 'Upgrades are unavailable in this phase. You can still inspect the offers.',
+        options: [
+          ...snapshot.upgrades.map((offer) => ({
+            id: offer.offerId,
+            label: `${offer.label} — ${offer.selected ? 'Purchased' : `${offer.cost} requisitions`}`,
+            description: `${offer.description}${!offer.selected && !offer.affordable ? ' · Need more requisitions.' : ''}`,
+            disabled: offer.selected || !offer.affordable || !snapshot.canPurchaseUpgrade,
+          })),
+          { id: '__close__', label: 'Close', description: 'Return to the defense.' },
+        ],
+        allowCancel: true,
+      },
+      {
+        onCancel: () => this.finishConstructionInput(),
+        onConfirm: ({ option }) => {
+          this.finishConstructionInput();
+          if (option.id === '__close__') return;
+          const result = construction.requestUpgrade(this.world, option.id);
+          this.flashActionStatus(
+            result.ok
+              ? `${snapshot.upgrades.find((offer) => offer.offerId === option.id)?.label ?? 'Upgrade'} purchased.`
+              : this.describeConstructionActionRejection(result.reason),
+          );
+          this.openConstructionUpgrades();
+          this.updateOverlayText();
+          return false;
+        },
+      },
+    );
+  }
+
   private openConstructionPicker(siteId: string): void {
     const construction = this.options.scenarioPresentation?.construction;
     if (!construction || !this.modalPicker || this.modalPicker.isOpen()) return;
+    if (siteId === '__relay__') {
+      this.openConstructionUpgrades();
+      return;
+    }
     const snapshot = construction.getSnapshot(this.world);
     const site = snapshot?.sites.find((candidate) => candidate.siteId === siteId);
     if (!snapshot || !site) {
-      this.flashActionStatus('Construction site is not authored for this floor.');
+      this.flashActionStatus('Construction site is unavailable.');
       return;
     }
-    const options = site.occupied
+    this.selectedConstructionSiteId = siteId;
+    this.finishConstructionInput();
+    const tower = site.tower;
+    const options = tower
       ? [
           {
-            id: `sell:${siteId}`,
-            label: 'Sell installed tower',
-            description: 'Return the authored sell refund and reopen this pad.',
-            disabled: !construction.requestSell,
+            id: '__sell__',
+            label: `Sell tower — +${tower.sellRefund} requisitions`,
+            description: snapshot.canSell
+              ? 'Remove this tower and free the pad.'
+              : 'Selling is unavailable in this phase.',
+            disabled: !snapshot.canSell,
           },
-          ...(snapshot.upgrades ?? []).map((upgrade) => ({
-            id: `upgrade:${upgrade.offerId}`,
-            label: `${upgrade.label} — ${upgrade.cost} requisitions`,
-            description: upgrade.available
-              ? 'Purchase this authored Relay-defense upgrade.'
-              : 'Already purchased or not unlocked yet.',
-            disabled: !upgrade.available || !upgrade.affordable || !construction.requestUpgrade,
-          })),
         ]
-      : snapshot.towers.map((tower) => ({
-          id: `build:${tower.towerId}`,
-          label: `${tower.label} — ${tower.cost} requisitions`,
-          description: tower.affordable
-            ? 'Build at this authored site.'
-            : 'Unaffordable at current balance.',
-          disabled: !tower.affordable,
+      : snapshot.towers.map((entry) => ({
+          id: entry.towerId,
+          label: `${entry.label} — ${entry.cost} requisitions`,
+          description: `${entry.rangeFt} ft range · ${!snapshot.canBuild ? 'Building unavailable in this phase.' : entry.affordable ? 'Build on this pad.' : 'Need more requisitions.'}`,
+          disabled: !entry.affordable || !snapshot.canBuild,
         }));
-    if (options.every((option) => option.disabled)) {
-      this.flashActionStatus('No tower is affordable at this site.');
-      return;
-    }
     this.modalPicker.open(
       {
-        kind: 'floor6-tower-build',
-        title: site.occupied ? `Inspect ${siteId}` : `Build at ${siteId}`,
+        kind: tower ? 'construction-inspect' : 'floor6-tower-build',
+        title: tower ? tower.label : `Build at ${siteId}`,
         subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
-        body: site.occupied
-          ? 'Inspect the installed tower, sell it, or buy an available upgrade. The scenario validates every request atomically.'
-          : 'Select an affordable tower. The scenario validates the request atomically.',
-        options,
+        body: tower
+          ? `${siteId} · ${tower.rangeFt} ft range · ${tower.tierLabel}. Range is marked around the tower.`
+          : 'Collect requisition drops from defeated raiders. Tap a tower to inspect or sell it.',
+        options: [
+          ...options,
+          {
+            id: '__upgrades__',
+            label: 'Relay upgrades',
+            description: 'View run-wide improvements and prices.',
+            disabled: false,
+          },
+          {
+            id: '__close__',
+            label: 'Close',
+            description: 'Return to the defense.',
+            disabled: false,
+          },
+        ],
         allowCancel: true,
-        initialSelectedId: options.find((option) => !option.disabled)?.id,
+        initialSelectedId: options.find((option) => !option.disabled)?.id ?? '__upgrades__',
       },
       {
+        onCancel: () => this.finishConstructionInput(),
         onConfirm: ({ option }) => {
-          const [action, id] = option.id.split(':', 2);
-          const result =
-            action === 'sell' && construction.requestSell
-              ? construction.requestSell(this.world, siteId)
-              : action === 'upgrade' && construction.requestUpgrade && id
-                ? construction.requestUpgrade(this.world, id)
-                : action === 'build' && id
-                  ? construction.requestBuild(this.world, siteId, id)
-                  : { ok: false, reason: 'invalid-request' };
+          this.finishConstructionInput();
+          if (option.id === '__close__') return;
+          if (option.id === '__upgrades__') {
+            this.openConstructionUpgrades();
+            return false;
+          }
+          const selling = option.id === '__sell__';
+          const result = selling
+            ? construction.requestSell(this.world, siteId)
+            : construction.requestBuild(this.world, siteId, option.id);
           this.flashActionStatus(
             result.ok
-              ? action === 'sell'
-                ? `Tower sold at ${siteId}.`
-                : action === 'build'
-                  ? `${option.label.split(' — ')[0]} built at ${siteId}.`
-                  : `${option.label.split(' — ')[0]} accepted.`
-              : this.describeConstructionBuildRejection(result.reason, siteId),
+              ? selling
+                ? `${tower?.label} sold. ${tower?.sellRefund} requisitions refunded.`
+                : `${option.label.split(' — ')[0]} built at ${siteId}.`
+              : this.describeConstructionActionRejection(result.reason),
           );
           this.updateOverlayText();
         },
       },
     );
+  }
+
+  private describeConstructionActionRejection(reason: string): string {
+    switch (reason) {
+      case 'phase-locked':
+        return 'This action is unavailable in the current phase.';
+      case 'unaffordable':
+        return 'Collect more requisitions to afford this purchase.';
+      case 'duplicate':
+        return 'This upgrade has already been purchased.';
+      case 'vacant':
+        return 'This pad is already vacant.';
+      default:
+        return this.describeConstructionBuildRejection(reason, 'This pad');
+    }
   }
 
   private describeConstructionBuildRejection(reason: string, siteId: string): string {

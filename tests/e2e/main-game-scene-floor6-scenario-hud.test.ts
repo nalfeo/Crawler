@@ -244,15 +244,22 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       );
       await mainSceneProbe.setSimulationPaused(page, true);
 
-      // Routes: incoming-wave direction is spelled out as a compass word AND
-      // an arrow glyph, not inferred from route color.
-      expect(initial.text).toMatch(
-        /Routes: .*incoming from (west|east|north|south) route (→|←|↓|↑) Relay/,
+      // Spatial information is rendered on the map instead of filling the HUD.
+      const initialWorld = await page.evaluate(() =>
+        window.__mainSceneProbe!.getFloor6PlayerLoop(),
       );
-      // Build sites: a vacant plinth is explicitly labeled "VACANT ... buildable"
-      // before any tower is placed — readable without occupancy color coding.
-      expect(initial.text).toContain('VACANT');
-      expect(initial.text).toContain('buildable maintenance plinth');
+      const labelText = initialWorld!.renderedLabels
+        .filter((label) => label.visible)
+        .map((label) => label.text)
+        .join('\n');
+      expect(labelText).toMatch(/incoming from west route.*Relay/);
+      expect(labelText).toMatch(/incoming from south route.*Relay/);
+      expect(
+        initialWorld!.renderedLabels.filter((label) => label.text.includes('Tap to build')),
+      ).toHaveLength(5);
+      expect(labelText).toContain('Broadcast Relay');
+      expect(labelText).toContain('Tap for upgrades');
+      expect(initial.text).toContain('Tap a pad to build / inspect / sell');
       // Loot and upgrade/break-safety/Deadline presentation lines are always
       // present, independent of phase.
       expect(initial.text).toMatch(/Requisitions \d+ available/);
@@ -281,17 +288,34 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       // not from a site or tower sprite color.
       const occupied = await mainSceneProbe.primeFloor6OccupiedSite(page);
       expect(occupied).not.toBeNull();
-      const afterBuild = await waitForScenarioHud(
-        page,
-        (state) => state.text !== null && state.text.includes('OCCUPIED'),
-        'Floor 6 scenario HUD to show the occupied build site',
+      await page.waitForFunction(
+        (siteId) =>
+          window
+            .__mainSceneProbe!.getFloor6PlayerLoop()
+            ?.renderedLabels.some(
+              (label) =>
+                label.id === `construction-label:${siteId}` &&
+                label.text.includes('Tap to inspect'),
+            ),
+        occupied!.siteId,
       );
-      expect(afterBuild.text).toContain(`OCCUPIED ${occupied!.siteId}: ${occupied!.towerId}`);
-      expect(afterBuild.text).toMatch(
-        new RegExp(
-          `${occupied!.towerId} at ${occupied!.siteId}: \\d+ft, (base tier|\\+\\d+ global tower modifiers?)`,
-        ),
+      const occupiedWorld = await page.evaluate(() =>
+        window.__mainSceneProbe!.getFloor6PlayerLoop(),
       );
+      const towerLabel = occupiedWorld!.renderedLabels.find(
+        (label) => label.id === `construction-label:${occupied!.siteId}`,
+      );
+      expect(towerLabel?.text).toContain('Signal Slinger');
+      // Inspection exposes authored range/tier through the actual scene picker.
+      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, occupied!.siteId, 'touch')).toBe(
+        true,
+      );
+      await page.waitForFunction(
+        () => window.__mainSceneProbe!.getModalPickerContent()?.kind === 'construction-inspect',
+      );
+      const inspection = await mainSceneProbe.getModalPickerContent(page);
+      expect(inspection?.body).toMatch(/36 ft range.*base tier/);
+      await page.keyboard.press('Escape');
       await captureEvidence(page, VIEWPORTS[0], 'occupied-site-tower-range');
 
       // Break phase: the sealed, non-hostile reset beat states its safety in
@@ -322,99 +346,83 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
     }
   }, 60_000);
 
-  it('routes real touch controls through the build, upgrade, and sell economy loop', async () => {
-    const context = await browser.newContext({ viewport: VIEWPORTS[0] });
-    const page = await context.newPage();
-    try {
-      await loadMainSceneProbeLab(page, { floor: 'floor6' }, LAB_BASE_URL);
-      const prep = await mainSceneProbe.prepareFloor6ConstructionTap(page);
-      expect(prep).not.toBeNull();
+  it.each(['signal-slinger', 'relay-riveter', 'crane-caster'])(
+    'renders distinct %s art after selecting it in the real picker (supplemental funded fixture)',
+    async (towerId) => {
+      const context = await browser.newContext({ viewport: VIEWPORTS[0] });
+      const page = await context.newPage();
+      try {
+        await loadMainSceneProbeLab(page, { floor: 'floor6' }, LAB_BASE_URL);
+        const prep = await mainSceneProbe.prepareFloor6ConstructionTap(page);
+        expect(prep).not.toBeNull();
 
-      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
-        true,
-      );
+        expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
+          true,
+        );
 
-      await page.waitForFunction(
-        () => window.__mainSceneProbe?.getState().modalOpen === true,
-        null,
-        {
-          timeout: 10_000,
-        },
-      );
-      const picker = await mainSceneProbe.getModalPickerContent(page);
-      expect(picker?.kind).toBe('floor6-tower-build');
-      expect(
-        picker?.options.some((option) => option.id === `build:${prep!.affordableTowerId}`),
-      ).toBe(true);
+        await page.waitForFunction(
+          () => window.__mainSceneProbe?.getState().modalOpen === true,
+          null,
+          {
+            timeout: 10_000,
+          },
+        );
+        const picker = await mainSceneProbe.getModalPickerContent(page);
+        expect(picker?.kind).toBe('floor6-tower-build');
+        expect(picker?.options.some((option) => option.id === towerId)).toBe(true);
+        const towerIndex = picker!.options.findIndex((option) => option.id === towerId);
+        const layout = await mainSceneProbe.getModalPickerLayout(page);
+        const row = layout!.rows[towerIndex]!.row;
+        const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
+        await page.mouse.click(
+          canvas.x + ((row.x + row.width / 2) / GAME_W) * canvas.width,
+          canvas.y + ((row.y + row.height / 2) / GAME_H) * canvas.height,
+        );
+        const rendered = await waitForFloor6TowerRender(page, prep!.siteId);
+        expect(rendered.towerId).toBe(towerId);
+        expect(rendered.textureKey).toBeTruthy();
 
-      await page.keyboard.press('Enter');
-      const rendered = await waitForFloor6TowerRender(page, prep!.siteId);
-      expect(rendered.towerId).toBe(prep!.affordableTowerId);
-      expect(rendered.textureKey).toBeTruthy();
+        const state = await mainSceneProbe.getState(page);
+        expect(state.actionStatusToastText).toContain(`built at ${prep!.siteId}`);
 
-      const state = await mainSceneProbe.getState(page);
-      expect(state.actionStatusToastText).toContain(`built at ${prep!.siteId}`);
-
-      const hud = await waitForScenarioHud(
-        page,
-        (probe) => probe.text !== null && probe.text.includes(`OCCUPIED ${prep!.siteId}`),
-        'Floor 6 HUD occupied-site state after construction confirm',
-      );
-      expect(hud.text).toContain(`OCCUPIED ${prep!.siteId}: ${prep!.affordableTowerId}`);
-
-      // Advance the paused real scene once so the scenario-owned offer
-      // projection refreshes after the accepted build transaction.
-      await mainSceneProbe.advanceSimulationFrames(page, 1);
-      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
-        true,
-      );
-      await page.waitForFunction(
-        () => window.__mainSceneProbe?.getState().modalOpen === true,
-        null,
-        {
-          timeout: 10_000,
-        },
-      );
-      const occupiedPicker = await mainSceneProbe.getModalPickerContent(page);
-      expect(occupiedPicker?.options.some((option) => option.id === `sell:${prep!.siteId}`)).toBe(
-        true,
-      );
-      expect(
-        occupiedPicker?.options.some(
-          (option) => option.id.startsWith('upgrade:') && option.disabled === false,
-        ),
-      ).toBe(true);
-
-      // Sell is first; one Down chooses the first authored available upgrade.
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Enter');
-      const upgradedHud = await waitForScenarioHud(
-        page,
-        (probe) => probe.text !== null && probe.text.includes('1/3 upgrade offers chosen'),
-        'Floor 6 HUD to record the accepted upgrade purchase',
-      );
-      expect(upgradedHud.text).toContain('1/3 upgrade offers chosen');
-
-      expect(await mainSceneProbe.tapFloor6ConstructionSite(page, prep!.siteId, 'touch')).toBe(
-        true,
-      );
-      await page.waitForFunction(
-        () => window.__mainSceneProbe?.getState().modalOpen === true,
-        null,
-        {
-          timeout: 10_000,
-        },
-      );
-      await page.keyboard.press('Enter');
-      await page.waitForFunction(
-        (siteId) => window.__mainSceneProbe?.getFloor6TowerRenderInfo(siteId) === null,
-        prep!.siteId,
-        { timeout: 10_000 },
-      );
-      const sold = await mainSceneProbe.getState(page);
-      expect(sold.actionStatusToastText).toContain(`Tower sold at ${prep!.siteId}`);
-    } finally {
-      await context.close();
-    }
-  }, 60_000);
+        await page.waitForFunction(
+          (siteId) =>
+            window
+              .__mainSceneProbe!.getFloor6PlayerLoop()
+              ?.renderedLabels.some(
+                (label) =>
+                  label.id === `construction-label:${siteId}` &&
+                  label.text.includes('Tap to inspect'),
+              ),
+          prep!.siteId,
+        );
+        expect(rendered.textureKey).toBe(`construction-${towerId}`);
+        // Supplemental art fixture only: place the camera's player beside the
+        // built tower so the capture proves on-screen art, not a hidden object.
+        // The separate player-loop acceptance test never uses fixture mutation.
+        const construction = await page.evaluate(
+          () => window.__mainSceneProbe!.getFloor6PlayerLoop()!,
+        );
+        const pad = construction.snapshot.sites.find((entry) => entry.siteId === prep!.siteId)!;
+        await mainSceneProbe.setPlayerFeet(
+          page,
+          pad.boundsFt.x + pad.boundsFt.width / 2,
+          pad.boundsFt.y + pad.boundsFt.height / 2 + 16,
+        );
+        await mainSceneProbe.setSimulationPaused(page, false);
+        await page.waitForTimeout(250);
+        await mainSceneProbe.setSimulationPaused(page, true);
+        const inView = await page.evaluate(() => window.__mainSceneProbe!.getFloor6PlayerLoop()!);
+        const towerPoint = inView.sites.find((entry) => entry.siteId === prep!.siteId)!;
+        expect(towerPoint.x).toBeGreaterThan(0);
+        expect(towerPoint.x).toBeLessThan(GAME_W);
+        expect(towerPoint.y).toBeGreaterThan(0);
+        expect(towerPoint.y).toBeLessThan(GAME_H);
+        await captureEvidence(page, VIEWPORTS[0], `tower-${towerId}`);
+      } finally {
+        await context.close();
+      }
+    },
+    60_000,
+  );
 });

@@ -247,9 +247,16 @@ describe('scenario definitions', () => {
 
       expect(hud).toBeDefined();
       expect(hud?.lines.join('\n')).toContain('Protect the Broadcast Relay');
-      expect(hud?.lines.join('\n')).toContain('incoming from west route');
-      expect(hud?.lines.join('\n')).toContain('incoming from south route');
-      expect(hud?.lines.join('\n')).toContain('VACANT');
+      expect(hud?.lines.join('\n')).toContain('Tap a pad to build / inspect / sell');
+      // Spatial information now lives on labeled world markers, not a dense HUD list.
+      const construction = scenario.construction?.getSnapshot(world);
+      expect(construction?.routes.map((route) => route.label).join('\n')).toContain(
+        'incoming from west route',
+      );
+      expect(construction?.routes.map((route) => route.label).join('\n')).toContain(
+        'incoming from south route',
+      );
+      expect(construction?.sites.every((site) => !site.occupied && !site.tower)).toBe(true);
       expect(hud?.cues.map((cue) => cue.kind)).toContain('hud');
     });
 
