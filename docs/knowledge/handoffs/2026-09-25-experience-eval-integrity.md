@@ -75,5 +75,18 @@ was performed.
 
 ## Publication and ownership
 
+### CI routing follow-up
+
+At the user's request, dedicated telemetry/headless-reporting modules and the
+standalone public release report no longer trigger game UX tests. The classifier
+uses explicit paths; gameplay/scene/AI-policy edits, new unclassified source
+files, and mixed diffs retain visual routing. Simulation, coverage, integration,
+and security decisions are unchanged. This PR's complete scope now emits all
+four visual flags as false. Focused classifier/workflow wiring: 125 tests passed.
+Live run-bundle upload payloads retain browser coverage for requests and visible
+completion toasts. Preflight, fast verification, and PR prerequisites passed.
+Fresh Ducky review found no actionable regressions; review passed and this
+follow-up is okay to check in.
+
 Publish ready for review through the normal merge train. Release ownership after
 publication; CI Recovery handles subsequent CI/review blockers.
