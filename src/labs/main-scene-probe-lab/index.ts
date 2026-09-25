@@ -34,6 +34,7 @@ import {
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import {
   Companion,
+  BuildCurrencyPickup,
   Enemy,
   Glowing,
   Harvestable,
@@ -53,6 +54,7 @@ import { resolveStatusVisual } from '../../engine/status-effect-visuals.js';
 import { _STATUS_AURA_LAYER_NAME } from '../../engine/StatusEffectVfx.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../../shared/decorationDefs.js';
 import type { GameWorld } from '../../core/index.js';
+import type { ScenarioConstructionSnapshot } from '../../shared/scenario-presentation.js';
 import { clearEntityStores, spawnDroppedItem } from '../../core/helpers.js';
 import { spawnBossChestEntity, spawnProp } from '../../core/spawners/world-objects.js';
 import { spawnBehaviorEnemy, spawnEnemy } from '../../core/spawners/combatants.js';
@@ -1155,6 +1157,36 @@ export interface Floor4HeadlinerAbilityProbe {
   readonly registrationTokens: number;
 }
 
+export interface Floor6PlayerLoopProbe {
+  readonly snapshot: ScenarioConstructionSnapshot;
+  readonly phase: string;
+  readonly worldState: string;
+  readonly frame: number;
+  readonly economy: {
+    readonly balance: number;
+    readonly totalEarned: number;
+    readonly pickupsCollected: number;
+  };
+  readonly player: { readonly x: number; readonly y: number; readonly hp: number };
+  readonly playerFt: { readonly x: number; readonly y: number };
+  readonly enemies: readonly { readonly x: number; readonly y: number; readonly hp: number }[];
+  readonly pickups: readonly {
+    readonly x: number;
+    readonly y: number;
+    readonly positionFt: { readonly x: number; readonly y: number };
+  }[];
+  readonly sites: readonly { readonly siteId: string; readonly x: number; readonly y: number }[];
+  readonly relay: { readonly x: number; readonly y: number };
+  readonly renderedLabels: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly visible: boolean;
+    readonly bounds: ScreenBounds;
+  }[];
+  readonly modal: ModalPickerContentSnapshot | null;
+  readonly modalLayout: ModalPickerLayoutSnapshot | null;
+}
+
 export interface MainSceneProbeApi {
   /** Spawn actual scenario actors; only health/clock are staged for combat observation. */
   prepareFloor5Combat(): boolean;
@@ -1162,6 +1194,8 @@ export interface MainSceneProbeApi {
   stageFloor5CombatTarget(kind: 'minion' | 'hero'): void;
   stageFloor5Presentation(escort: boolean): void;
   getFloor5Actors(): Floor5ActorProbe[];
+  /** Read-only real-scene acceptance telemetry; never primes or advances gameplay. */
+  getFloor6PlayerLoop(): Floor6PlayerLoopProbe | null;
   /** True once the real scene has booted a world and spawned the player. */
   ready(): boolean;
   /** Snapshot of boot facts + live camera/player readings. */
@@ -3194,6 +3228,78 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       scene.setSimulationPaused(true);
       defense.relayHp = 1;
       return true;
+    },
+
+    getFloor6PlayerLoop: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      const defense = world?.floorExtendedState?.floor6Defense;
+      const cam = getPhaserScene()?.cameras.main;
+      const snapshot = world && sceneOptions.scenarioPresentation?.construction?.getSnapshot(world);
+      if (!scene || !world || !defense || !cam || !snapshot) return null;
+      const screen = (x: number, y: number) => ({
+        x: (ftToPx(x) - cam.worldView.x) * cam.zoom + cam.x,
+        y: (ftToPx(y) - cam.worldView.y) * cam.zoom + cam.y,
+      });
+      const entityScreen = (eid: number) =>
+        screen(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0);
+      const playerEid = playerEidOf(scene);
+      return {
+        snapshot,
+        phase: defense.phase.kind,
+        worldState: world.state,
+        frame: world.frameCount,
+        economy: {
+          balance: defense.economy.balance,
+          totalEarned: defense.economy.totalEarned,
+          pickupsCollected: defense.economy.pickupsCollected,
+        },
+        player: { ...entityScreen(playerEid), hp: world.stores.health.current[playerEid] ?? 0 },
+        playerFt: {
+          x: world.stores.position.x[playerEid] ?? 0,
+          y: world.stores.position.y[playerEid] ?? 0,
+        },
+        enemies: Array.from(query(world.ecs, [Enemy, Position, Health]))
+          .filter((eid) => (world.stores.health.current[eid] ?? 0) > 0)
+          .map((eid) => ({ ...entityScreen(eid), hp: world.stores.health.current[eid] ?? 0 })),
+        pickups: Array.from(query(world.ecs, [BuildCurrencyPickup, Position])).map((eid) => ({
+          ...entityScreen(eid),
+          positionFt: {
+            x: world.stores.position.x[eid] ?? 0,
+            y: world.stores.position.y[eid] ?? 0,
+          },
+        })),
+        sites: snapshot.sites.map((site) => ({
+          siteId: site.siteId,
+          ...screen(
+            site.boundsFt.x + site.boundsFt.width / 2,
+            site.boundsFt.y + site.boundsFt.height / 2,
+          ),
+        })),
+        relay: screen(snapshot.relay.positionFt.x, snapshot.relay.positionFt.y),
+        renderedLabels: (getPhaserScene()?.children.list ?? [])
+          .filter(
+            (node): node is Phaser.GameObjects.Text =>
+              node instanceof Phaser.GameObjects.Text &&
+              node.name.startsWith('construction-label:'),
+          )
+          .map((node) => {
+            const bounds = node.getBounds();
+            return {
+              id: node.name,
+              text: node.text,
+              visible: node.visible,
+              bounds: {
+                x: (bounds.x - cam.worldView.x) * cam.zoom + cam.x,
+                y: (bounds.y - cam.worldView.y) * cam.zoom + cam.y,
+                width: bounds.width * cam.zoom,
+                height: bounds.height * cam.zoom,
+              },
+            };
+          }),
+        modal: scene.modalPicker?.getContentSnapshot() ?? null,
+        modalLayout: scene.modalPicker?.getLayoutSnapshot() ?? null,
+      };
     },
 
     prepareFloor6ConstructionTap: () => {
