@@ -7,17 +7,19 @@ spec:
   role: implementer
   displayName: Crawler Implementer
   instructions: instructions.md
-  harness: copilot
+  harness: codex
   model: auto
-  harnessOptions: {}
+  harnessOptions:
+    auth: ambient-chatgpt
+    allowFileBackedCredentials: true
   capabilities:
     - repo:push
     - agent:model
   skills:
     - implement
     - run-tests
-  tools:
-    - shell
+  tools: []
   scaleFactor: 1
   workflows:
     - crawler-feature-pr
+    - crawler-pr-remediation

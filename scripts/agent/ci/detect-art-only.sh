@@ -278,8 +278,8 @@ done <<<"$changed"
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
-# .github/** (workflows, actions, extensions, instructions) is safe: CI/workflow YAML
-# cannot affect the deterministic ECS sim the headless runner executes.
+# .github/** and .goobers/** are safe: CI/workflow YAML and local Goobers
+# orchestration config cannot affect the deterministic ECS sim the headless runner executes.
 # src/devtools/** is safe: browser-only devtools UI code; the headless runner never
 # imports it (layer rule: src/game/ai → never src/devtools).
 gameplay_safe=true
@@ -298,6 +298,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)
       if package_json_gameplay_safe; then
@@ -399,6 +400,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     .npmrc | .node-version | .python-version | eslint.config.js) ;;
@@ -444,6 +446,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     src/shared/data/sprite-catalog.json) ;;
@@ -487,7 +490,7 @@ while IFS= read -r file; do
         break
       fi
       ;;
-    tests/* | scripts/* | .github/* | docs/* | .specify/* | public/* | briefs/* | AGENTS.md | .npmrc | .node-version | .python-version | eslint.config.js | *.md | *.txt)
+    tests/* | scripts/* | .github/* | .goobers/* | docs/* | .specify/* | public/* | briefs/* | AGENTS.md | .npmrc | .node-version | .python-version | eslint.config.js | *.md | *.txt)
       ;;
     *)
       integration_touched=true
@@ -579,6 +582,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     AGENTS.md) ;;
@@ -620,7 +624,7 @@ emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_tou
 #   visual_touched — union: any of the three surfaces above was touched
 #
 # Non-visual (never contribute to visual_touched):
-#   .github/**                   CI config / workflow / extensions / instructions
+#   .github/**, .goobers/**      CI and local orchestration configuration
 #   docs/**, .specify/**, *.md, *.txt, AGENTS.md   documentation
 #   scripts/agent/**             CI/automation helper scripts
 #   scripts/sprites/**           sprite GENERATION pipeline (not the generated output)
@@ -639,6 +643,7 @@ while IFS= read -r file; do
   case "$file" in
     # ── Non-visual surfaces ──────────────────────────────────────────────────────
     .github/*) ;;
+    .goobers/*) ;;
     docs/*) ;;
     .specify/*) ;;
     AGENTS.md) ;;

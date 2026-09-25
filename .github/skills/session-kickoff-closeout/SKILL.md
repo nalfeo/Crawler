@@ -23,5 +23,9 @@ description: >-
 4. Run `npm run verify:pr-prereqs` and pre-publish main sync.
 5. Publish a ready-for-review PR and release local ownership.
 
+Implementation work is pre-authorized for commit, push, and ready-for-review PR
+publication. Do not wait for a separate approval unless the human explicitly
+requested a hold, local-only work, or review before publication.
+
 Investigation-only sessions without a landing fix may skip implementation
 closeout. CI owns the full suite and handoff-index regeneration.
