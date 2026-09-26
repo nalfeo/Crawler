@@ -320,6 +320,24 @@ export interface Floor3PoachOffer {
   readonly slotsRemaining: number;
 }
 
+/** A visible, ordered field Trainer encounter in the Floor 3 overworld. */
+export interface Floor3FieldTrainerState {
+  readonly id: string;
+  readonly name: string;
+  readonly title: string;
+  readonly npcEid: number;
+  readonly teamId: number;
+  readonly goldReward: number;
+  readonly roomId: number;
+  readonly x: number;
+  readonly y: number;
+  readonly poachRoster: readonly Floor3PoachCandidate[];
+  pendingSpawns: readonly Floor3PendingRosterSpawn[];
+  started: boolean;
+  defeated: boolean;
+  poachOffered: boolean;
+}
+
 /** A single Companion an encounter gate spawns once it unlocks (deferred, spec R6 soft-gate). */
 export interface Floor3PendingRosterSpawn {
   readonly speciesId: string;
@@ -347,6 +365,10 @@ export interface Floor3FinalFourRoundState {
  * spawn -> unlock -> discover) for the shared stair-descend contract.
  */
 export interface Floor3StudiosState {
+  /** Visible overworld Trainers; each activates only after the prior win. */
+  readonly fieldTrainers?: Floor3FieldTrainerState[];
+  /** Count of field Trainers permanently defeated this run. */
+  fieldTrainersDefeatedCount?: number;
   /** The 6 Studios selected for this run (spec R8: seeded, "6-of-~10"). */
   readonly studios: Floor3EncounterState[];
   /** The single Final Four roster (4 handlers) selected for this run. */

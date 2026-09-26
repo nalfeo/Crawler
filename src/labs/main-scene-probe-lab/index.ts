@@ -1160,6 +1160,18 @@ export interface Floor4HeadlinerAbilityProbe {
   readonly registrationTokens: number;
 }
 
+/** Real-scene projection of the Floor 3 overworld Trainer circuit. */
+export interface Floor3FieldTrainerProbe {
+  readonly id: string;
+  readonly name: string;
+  readonly started: boolean;
+  readonly defeated: boolean;
+  readonly rosterCount: number;
+  readonly npcVisible: boolean;
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface Floor6PlayerLoopProbe {
   readonly snapshot: ScenarioConstructionSnapshot;
   readonly phase: string;
@@ -1648,6 +1660,10 @@ export interface MainSceneProbeApi {
   /** Place a wounded L24 companion one automatic kill away from adult evolution. */
   primeFloor3GrowthProbe(): number | null;
   getFloor3GrowthProbe(eid: number): Floor3GrowthProbeState | null;
+  /** Move onto an authored Trainer; the next real simulation frame starts it. */
+  moveToFloor3FieldTrainer(index: number): boolean;
+  /** Rendered Trainer NPC + live automatic-battle state from the real scene. */
+  getFloor3FieldTrainers(): readonly Floor3FieldTrainerProbe[];
   /** Current `Health.current` for any live entity, or null if it has none. */
   getEntityHealth(eid: number): number | null;
   /**
@@ -4123,6 +4139,45 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       // Floor 3 director while it observes one automatic shot.
       scene.setSimulationPaused(true);
       return { companionEid, targetEid };
+    },
+
+    moveToFloor3FieldTrainer: (index: number): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      const player = playerEidOf(scene);
+      const trainer = world?.floorExtendedState?.floor3Studios?.fieldTrainers?.[index];
+      if (!scene || !world || world.floorId !== 'floor3' || player < 0 || !trainer) return false;
+      world.stores.position.x[player] = trainer.x;
+      world.stores.position.y[player] = trainer.y;
+      world.stores.velocity.x[player] = 0;
+      world.stores.velocity.y[player] = 0;
+      return true;
+    },
+
+    getFloor3FieldTrainers: (): readonly Floor3FieldTrainerProbe[] => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      if (!world || !phaserScene || world.floorId !== 'floor3') return [];
+      return (world.floorExtendedState?.floor3Studios?.fieldTrainers ?? []).map((trainer) => ({
+        id: trainer.id,
+        name: trainer.name,
+        started: trainer.started,
+        defeated: trainer.defeated,
+        rosterCount: query(world.ecs, [Companion, Team]).filter(
+          (eid) => (world.stores.team.id[eid] ?? -1) === trainer.teamId,
+        ).length,
+        npcVisible:
+          findDisplayObjectAt(
+            phaserScene,
+            ftToPx(trainer.x),
+            ftToPx(trainer.y),
+            (child) =>
+              child instanceof Phaser.GameObjects.Image ||
+              child instanceof Phaser.GameObjects.Sprite,
+          ) !== null,
+        x: trainer.x,
+        y: trainer.y,
+      }));
     },
 
     primeFloor3GrowthProbe: (): number | null => {

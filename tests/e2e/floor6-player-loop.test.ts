@@ -12,12 +12,18 @@ const read = (page: Page): Promise<Floor6PlayerLoopProbe> =>
 // The player ingress reaches the Relay only through its north spur and then
 // the south-loading route. A direct diagonal crosses the surrounding walls.
 const RELAY_PLINTH_ACCESS_ROUTE = [
-  { x: 148, y: 132 },
+  // The authored ingress coordinate is within the south edge of nearby
+  // scenery on the Linux renderer; target the adjacent walkable edge instead.
+  { x: 149, y: 136 },
   { x: 192, y: 132 },
-  { x: 192, y: 102 },
+  // The corner at (192, 102) is inside the Relay's north-west collision
+  // shell. Its walkable boundary is immediately south-east of that corner.
+  { x: 195, y: 104 },
   { x: 178, y: 102 },
 ] as const;
-const RELAY_COMBAT_ROUTE = [...RELAY_PLINTH_ACCESS_ROUTE, { x: 232, y: 98 }] as const;
+// Both former combat waypoints were inside the Relay's collision shell. This
+// adjacent walkable point remains in combat range without crossing scenery.
+const RELAY_COMBAT_ROUTE = [...RELAY_PLINTH_ACCESS_ROUTE, { x: 228, y: 97 }] as const;
 
 async function clickGame(page: Page, x: number, y: number, touch: boolean): Promise<void> {
   const canvas = (await page.locator('#lab-canvas canvas').boundingBox())!;
