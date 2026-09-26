@@ -1408,6 +1408,8 @@ export interface Floor6DefenseState {
   spawnDebt: number;
   /** Authoritative relay HP — decremented when raiders reach the relay target. */
   relayHp: number;
+  /** Lowest authoritative Relay health observed this run; retained after terminal cleanup. */
+  minimumRelayHp: number;
   /** Consecutive frames of zero wave-release progress used for stall backstop. */
   stallFrames: number;
   /** Total enemies released across all waves. */
@@ -1416,6 +1418,8 @@ export interface Floor6DefenseState {
   lastReleaseFrame: number;
   /** Floor-scoped construction/economy ledger. Reset at terminal cleanup. */
   economy: Floor6EconomyState;
+  /** Final economy evidence retained after the live ledger is reset. */
+  terminalEconomyTelemetry: Floor6TerminalEconomyTelemetry | null;
   /** Built towers, ordered by authored build site. Never changes map topology. */
   towerInstances: Floor6TowerInstance[];
   /** Number of tower entities removed through sell or terminal teardown. */
@@ -1500,6 +1504,16 @@ export interface Floor6EconomyState {
   selectedOfferIds: string[];
   selectionTrace: Floor6UpgradeSelectionTraceEntry[];
   terminalResetCount: number;
+}
+
+/** Economy evidence retained after terminal cleanup without leaking live run state. */
+export interface Floor6TerminalEconomyTelemetry {
+  readonly totalEarned: number;
+  readonly totalSpent: number;
+  readonly earnedFromPickups: number;
+  readonly earnedFromWaves: number;
+  readonly pickupsSpawned: number;
+  readonly pickupsCollected: number;
 }
 
 export interface Floor6UpgradeSelectionTraceEntry {
@@ -1731,6 +1745,8 @@ export interface Floor6DefenseRunStats {
   readonly phase: Floor6DefensePhase;
   readonly phaseTrace: readonly Floor6DefensePhaseTraceEntry[];
   readonly relayHp: number;
+  /** Lowest Relay health reached before victory or defeat cleanup. */
+  readonly minimumRelayHp: number;
   readonly relayMaxHp: number;
   readonly nextReleaseIndex: number;
   readonly spawnDebt: number;

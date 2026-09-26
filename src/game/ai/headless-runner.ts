@@ -429,6 +429,11 @@ export interface HeadlessRunnerConfig {
    */
   floor6TowerBuildRequests?: readonly { readonly siteId: string; readonly towerId: string }[];
   /**
+   * Enable the deterministic Floor 6 build/upgrade strategy. Defaults to true;
+   * explicit opt-out is reserved for pressure-observation and regression runs.
+   */
+  floor6AutoStrategyEnabled?: boolean;
+  /**
    * Player state carried in from a previous floor, applied during scenario
    * configuration exactly as the visual runner does when descending stairs
    * (`src/bootstrap/floor-main-scene-options.ts`). Omitted starts a fresh run.
@@ -602,6 +607,7 @@ const DEFAULT_CONFIG: Required<
   recordWeaponTelemetry: false,
   enforcePlayabilityInvariants: true,
   floor6TowerBuildRequests: [],
+  floor6AutoStrategyEnabled: true,
 };
 
 function uniqueInFirstSeenOrder(values: readonly string[]): string[] {
@@ -1301,7 +1307,8 @@ export async function runHeadless(
   // frame while a status is held).
   let lastSettlementReturnStatus: string | null = null;
   const pendingFloor6TowerBuilds = [...(mergedConfig.floor6TowerBuildRequests ?? [])];
-  const floor6AutoStrategyEnabled = pendingFloor6TowerBuilds.length === 0;
+  const floor6AutoStrategyEnabled =
+    mergedConfig.floor6AutoStrategyEnabled && pendingFloor6TowerBuilds.length === 0;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
