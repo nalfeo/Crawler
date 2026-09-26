@@ -478,8 +478,17 @@ export interface Floor4WaveWindowState {
   debt: Floor4PendingWaveSpawn[];
   /** Gates currently lit for an imminent wave. */
   armedTelegraphs: Floor4GateTelegraph[];
-  /** Live wave-owned enemies: entity id → owning wave index. */
+  /** Live wave-owned enemies: entity id → spawn generation (safe under ID reuse). */
   ownedEnemies: Map<number, number>;
+  pressure?: {
+    readonly reserve: readonly { readonly archetypeId: string; readonly threatCost: number }[];
+    cursor: number;
+    nextArmAtMs: number;
+    batchIndex: number;
+    averageNearby: number;
+    lastObservedAtMs: number;
+    pending?: Floor4WaveManifest;
+  };
 }
 
 /**

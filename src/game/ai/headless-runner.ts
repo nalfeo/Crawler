@@ -1075,6 +1075,7 @@ export async function runHeadless(
     throw new Error(`Failed to transition from loadout: state is ${world.state}`);
   }
   const runStartXp = world.playerLevel?.xp ?? 0;
+  const runStartLevel = world.playerLevel?.level ?? 0;
   const inputState = createInputState();
   let frameCount = 0;
   // Frames spent in a time-stopping safe room, where the floor-collapse deadline
@@ -1095,13 +1096,13 @@ export async function runHeadless(
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
-  let previousLevel = 0;
+  // Scenario/config starting levels are baseline state, not earned upgrades.
+  let previousLevel = runStartLevel;
   let previousRewardLevel = world.playerLevel?.level ?? 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
   let combatEventCursor = world.combatEvents.length;
   let lastProcessedCombatEvent = world.combatEvents[combatEventCursor - 1];
-  let minHealthPercent = 1.0;
   let closeCallCount = 0;
   let lowHealthCount = 0;
   let combatTimeMs = 0;
@@ -1236,9 +1237,20 @@ export async function runHeadless(
   let lastNpcInteractionFrame = -1000;
   const NPC_INTERACTION_COOLDOWN = 30; // frames
 
-  // Track initial state
-  const playerMaxHealth = world.stores.health.max[playerEid] ?? 100;
-  let lastHealthPercent = 1.0;
+  // Maximum HP can change during progression; every sample uses its current
+  // denominator. Invalid observations make the whole health series unavailable.
+  let healthAvailable = true;
+  const readHealthPercent = (): number => {
+    const maximum = world.stores.health.max[playerEid] ?? 0;
+    const current = world.stores.health.current[playerEid] ?? 0;
+    if (!Number.isFinite(maximum) || maximum <= 0 || !Number.isFinite(current)) {
+      healthAvailable = false;
+      return 0;
+    }
+    return current / maximum;
+  };
+  let lastHealthPercent = readHealthPercent();
+  let minHealthPercent = lastHealthPercent;
 
   // Event-log / telemetry state
   const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
@@ -1767,7 +1779,7 @@ export async function runHeadless(
       }
 
       // 2. Health tracking
-      const currentHealthPercent = playerHealth / playerMaxHealth;
+      const currentHealthPercent = readHealthPercent();
       if (currentHealthPercent < minHealthPercent) {
         minHealthPercent = currentHealthPercent;
       }
@@ -2101,12 +2113,18 @@ export async function runHeadless(
 
     const wallTimeMs = Date.now() - startTime;
     const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
-    const playerHealth = world.stores.health.current[playerEid] ?? 0;
-    const currentHealthPercent = playerHealth / playerMaxHealth;
+    const currentHealthPercent = readHealthPercent();
 
     const observedFloor5FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : null;
     const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
     const crashStats: RunStats = assembleRunStats({
+      evaluationContext: {
+        source: 'headless',
+        seed: mergedConfig.seed,
+        startFloor: mergedConfig.floorId,
+        // A crash interrupts collection, so partial counters are diagnostic only.
+        available: { combat: false, health: false, progression: false, quests: false },
+      },
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
@@ -2145,6 +2163,7 @@ export async function runHeadless(
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
       runStartXp,
+      runStartLevel,
       ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
@@ -2207,8 +2226,7 @@ export async function runHeadless(
   const observedFloor5FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : null;
   const observedFloor6FrameCostMs = frameCount > 0 ? wallTimeMs / frameCount : 0;
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
-  const playerHealth = world.stores.health.current[playerEid] ?? 0;
-  const finalHealthPercent = playerHealth / playerMaxHealth;
+  const finalHealthPercent = readHealthPercent();
 
   // Attribute kills by archetype from the Floor 1 objective tally (accurate).
   if (world.floorScenario) {
@@ -2223,6 +2241,19 @@ export async function runHeadless(
   const xpOnGroundAtEnd = computeXpOnGroundAtEnd(world);
 
   const stats: RunStats = assembleRunStats({
+    evaluationContext: {
+      source: 'headless',
+      seed: mergedConfig.seed,
+      startFloor: mergedConfig.floorId,
+      available: {
+        // Kills/damage are observed. The legacy combat timer tracks enemies
+        // anywhere in the world and must not be used as encounter evidence.
+        combat: true,
+        health: healthAvailable,
+        progression: true,
+        quests: true,
+      },
+    },
     totalFrames: frameCount,
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
@@ -2261,6 +2292,7 @@ export async function runHeadless(
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
     runStartXp,
+    runStartLevel,
     ...(mergedConfig.playerPersona ? { playerPersona: mergedConfig.playerPersona } : {}),
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),

@@ -34,8 +34,11 @@
  * failures is slow; that is expected — correctness, not speed, is the point.
  */
 import { writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
+import { getPersonaConfig } from '../../../src/game/ai/personas.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type SimEvent } from '../../../src/game/ai/event-log.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
@@ -125,9 +128,13 @@ async function runChainedSweepTask(
     (_floorId, legIndex) =>
       // Offset the AI seed per leg so a chained Floor-2 leg does not replay the
       // identical decision stream as its Floor-1 leg on the same seed.
-      new BehaviorTreeAI({ seed: task.seed + legIndex * CHAINED_AI_SEED_STRIDE }),
+      new BehaviorTreeAI({
+        ...getPersonaConfig('experienced_player'),
+        seed: task.seed + legIndex * CHAINED_AI_SEED_STRIDE,
+      }),
     {
       seed: task.seed,
+      playerPersona: 'experienced_player',
       ...(config.forceWeapon ? { forceWeaponId: task.weapon } : {}),
       enemyDamageMultiplier: config.enemyDamageMultiplier,
       eventSampleInterval: 60,
@@ -145,6 +152,22 @@ async function runChainedSweepTask(
   }
   return {
     ...finalLeg.stats,
+    // The flattened record retains last-leg counters with chain-wide time.
+    // Those are not whole-chain measurements. Preserve identity but fail closed
+    // instead of scoring the last floor as though it described every floor.
+    ...(progression.legs.length > 1
+      ? {
+          evaluationContext: {
+            source: 'headless' as const,
+            seed: task.seed,
+            startFloor: config.floorId,
+            available: { combat: false, health: false, progression: false, quests: false },
+          },
+          rewardEvents: undefined,
+          itemInteractions: undefined,
+          runPerformance: undefined,
+        }
+      : {}),
     outcome: progression.reachedFinalVictory ? 'victory' : finalLeg.stats.outcome,
     gameTimeMs: progression.totalGameTimeMs,
     safeRoomMs: progression.totalSafeRoomMs,
@@ -173,7 +196,10 @@ function classifyChainedRun(stats: RunStats): {
   return { outcomeVictory, officialWin, slowVictory: outcomeVictory && !officialWin };
 }
 
-async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise<SweepTaskResult> {
+export async function runSweepTask(
+  task: SweepTask,
+  config: SweepSharedConfig,
+): Promise<SweepTaskResult> {
   const events: SimEvent[] = [];
   const recordEventOption = config.skipEvents
     ? {}
@@ -189,15 +215,19 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
   // baseline runs) keeps working on a single RunStats shape.
   const stats = config.chain
     ? await runChainedSweepTask(task, config, recordEventOption)
-    : await runHeadless(new BehaviorTreeAI({ seed: task.seed }), {
-        seed: task.seed,
-        maxFrames: config.maxFrames,
-        ...(config.forceWeapon ? { forceWeaponId: task.weapon } : {}),
-        enemyDamageMultiplier: config.enemyDamageMultiplier,
-        eventSampleInterval: 60,
-        floorId: config.floorId,
-        ...recordEventOption,
-      });
+    : await runHeadless(
+        new BehaviorTreeAI({ ...getPersonaConfig('experienced_player'), seed: task.seed }),
+        {
+          seed: task.seed,
+          playerPersona: 'experienced_player',
+          maxFrames: config.maxFrames,
+          ...(config.forceWeapon ? { forceWeaponId: task.weapon } : {}),
+          enemyDamageMultiplier: config.enemyDamageMultiplier,
+          eventSampleInterval: 60,
+          floorId: config.floorId,
+          ...recordEventOption,
+        },
+      );
   const { outcomeVictory, officialWin, slowVictory } = config.chain
     ? classifyChainedRun(stats)
     : classifySweepRun(stats, config.floorId);
@@ -564,7 +594,7 @@ function printFailTable(records: FailRecord[]): void {
   }
 }
 
-if (!isMainThread) {
+if (!isMainThread && workerData?.task && workerData?.shared) {
   const payload = workerData as WorkerPoolTaskPayload<SweepTask, SweepSharedConfig>;
   runSweepTask(payload.task, payload.shared)
     .then((result) => {
@@ -579,7 +609,7 @@ if (!isMainThread) {
         error: error instanceof Error ? (error.stack ?? error.message) : String(error),
       } satisfies WorkerTaskFailure);
     });
-} else {
+} else if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let args: CLIArgs;
   try {
     args = parseSweepArgs(process.argv);

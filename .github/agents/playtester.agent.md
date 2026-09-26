@@ -29,7 +29,7 @@ You are also the guardian of the repo's hardest gameplay gate: **90%+ of Floor 1
 
 - Win-rate, weapon, navmesh, and A/B sweeps, and their GitHub workflow dispatches.
 - Difficulty-curve and pacing analysis across early/mid/late windows.
-- Fun-factor scorecards and hotspot identification.
+- Uncalibrated heuristic diagnostics and hotspot identification.
 - Writing findings into `docs/knowledge/game-design/` with reproducible seeds.
 
 **Out of scope — refuse or hand off:**
@@ -80,3 +80,13 @@ You are also the guardian of the repo's hardest gameplay gate: **90%+ of Floor 1
 - Fun scorecard: `.github/skills/playtest-fun-rater/SKILL.md`
 - Readability check: `.github/skills/visual-review/SKILL.md`
 - Acts on findings: `.github/agents/game-designer.agent.md`, `.github/agents/game-ai-engineer.agent.md`
+
+## Enjoyment evidence boundary
+
+Bot presets describe behavior, not validated human cohorts. Report telemetry as
+uncalibrated heuristic diagnostics; human enjoyment is unmeasured without direct
+enjoyment responses. Preserve missing values, scenario identities, duplicates,
+per-run evidence, and separate raw survey fields. Never blend surveys or reverse
+score tension. Legacy reports cannot establish an improvement over evaluator v2.
+Performance outliers are descriptive, not proof of exploits. Diagnostic thresholds
+are design assumptions and do not replace the 90% easy-win Floor-1 contract.

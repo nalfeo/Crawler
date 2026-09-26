@@ -9,6 +9,28 @@ import {
 
 function makeRun(overrides: Partial<RunStats> = {}): RunStats {
   const run: RunStats = {
+    evaluationContext: {
+      source: 'headless',
+      seed: 42,
+      startFloor: 'floor1',
+      available: { combat: true, health: true, progression: true, quests: true },
+    },
+    playerPersona: 'experienced_player',
+    runStartXp: 0,
+    runStartLevel: 1,
+    movementQuality: {
+      wiggleMs: 0,
+      wigglePct: 0,
+      idleMs: 0,
+      idlePct: 0,
+      stuckMs: 0,
+      stuckPct: 0,
+      excludedMs: 0,
+      excludedPct: 0,
+      travelEfficiency: 1,
+      totalPathTravel: 10,
+      totalNetDisp: 10,
+    },
     totalFrames: 20_000,
     wallTimeMs: 3000,
     gameTimeMs: 320_000,
@@ -77,12 +99,11 @@ describe('scoreFunSessions', () => {
     expect(report.overall_fun_score).toBeGreaterThan(70);
     expect(report.gate.pass).toBe(true);
     expect(report.gate.gating_overall_score).toBeGreaterThanOrEqual(70);
-    expect(report.dimensions.choice_depth).toBeGreaterThan(70);
-    expect(report.dimensions.run_distinctness).toBeGreaterThan(15);
-    expect(report.sameness_grade).toBeLessThan(85);
-    expect(Number.isFinite(report.confidence)).toBe(true);
-    expect(report.confidence).toBeGreaterThanOrEqual(0);
-    expect(report.confidence).toBeLessThanOrEqual(1);
+    expect(report.dimensions.choice_depth).toBeNull();
+    expect(report.evidence.starter_weapon_coverage).toBe(100);
+    expect(report.dimensions.run_distinctness).toBeNull();
+    expect(report.sameness_grade).toBeNull();
+    expect(report.confidence).toBeNull();
   });
 
   it('lowers the pacing dimension when movementQuality reports sustained stuck/wiggle time (issue #3198)', () => {
@@ -120,12 +141,15 @@ describe('scoreFunSessions', () => {
     const goodReport = scoreFunSessions([{ id: 'a', run: goodMovement }]);
     const badReport = scoreFunSessions([{ id: 'a', run: badMovement }]);
 
-    expect(badReport.dimensions.pacing).toBeLessThan(goodReport.dimensions.pacing);
+    expect(badReport.dimensions.pacing).toBeLessThan(goodReport.dimensions.pacing!);
 
     // Runs without movementQuality (e.g. pre-existing fixtures/recordings)
-    // must be scored neutrally rather than crashing or being penalized.
-    const noMovementReport = scoreFunSessions([{ id: 'a', run: makeRun() }]);
-    expect(noMovementReport.dimensions.pacing).toBe(goodReport.dimensions.pacing);
+    // must be explicitly unmeasured, not silently awarded perfect movement.
+    const noMovementReport = scoreFunSessions([
+      { id: 'a', run: makeRun({ movementQuality: undefined }) },
+    ]);
+    expect(noMovementReport.dimensions.pacing).toBeNull();
+    expect(noMovementReport.gate.pass).toBe(false);
   });
 
   it('reports and penalizes tutorial-phase deaths', () => {
@@ -153,7 +177,7 @@ describe('scoreFunSessions', () => {
       { id: 'early', run: makeRun({ outcome: 'death', finalFloor: 1 }) },
     ]);
     expect(earlyFloorDeath.dimensions.challenge_balance).toBeLessThan(
-      lateFloorDeath.dimensions.challenge_balance,
+      lateFloorDeath.dimensions.challenge_balance!,
     );
   });
 
@@ -201,95 +225,48 @@ describe('scoreFunSessions', () => {
 
   it('uses only gated dimensions for empty-input gate failures', () => {
     const report = scoreFunSessions([]);
-    expect(report.gate.failing_dimensions).toEqual([...GATED_DIMENSIONS]);
+    expect(report.gate.unmeasured_dimensions).toEqual([...GATED_DIMENSIONS]);
     expect(report.gate.failing_dimensions).not.toContain('run_distinctness');
   });
 
-  it('blends in survey sentiment when available', () => {
-    const baseSessions: FunSession[] = [
-      { id: 'x', run: makeRun() },
-      { id: 'y', run: makeRun({ startingWeapon: 'bow' }) },
-    ];
-    const withSurvey: FunSession[] = [
-      {
-        id: 'x',
-        run: makeRun(),
-        survey: { enjoyment: 5, immersion: 5, mastery: 4, control: 5, tension: 2 },
-      },
-      {
-        id: 'y',
-        run: makeRun({ startingWeapon: 'bow' }),
-        survey: { enjoyment: 5, immersion: 4, mastery: 4, control: 5, tension: 2 },
-      },
-    ];
-
-    const objectiveOnly = scoreFunSessions(baseSessions);
-    const blended = scoreFunSessions(withSurvey);
-
-    expect(objectiveOnly.subjective_score).toBeNull();
-    expect(blended.subjective_score).not.toBeNull();
-    expect(blended.survey_coverage).toBe(1);
-    expect(blended.overall_fun_score).toBeGreaterThanOrEqual(objectiveOnly.overall_fun_score - 5);
+  it('keeps direct human responses separate and tension descriptive', () => {
+    const run = makeRun();
+    run.evaluationContext!.source = 'human';
+    const base = scoreFunSessions([{ id: 'human', run }]);
+    const low = scoreFunSessions([{ id: 'human', run, survey: { enjoyment: 1, tension: 1 } }]);
+    const high = scoreFunSessions([{ id: 'human', run, survey: { enjoyment: 1, tension: 5 } }]);
+    expect(high.overall_fun_score).toBe(base.overall_fun_score);
+    expect(high.gate).toEqual(base.gate);
+    expect(high.subjective_score).toBe(0);
+    expect(high.subjective_score).toBe(low.subjective_score);
+    expect(high.observed_surveys.tension).toEqual({ responses: 1, mean: 5 });
+    expect(high.observed_surveys.enjoyment).toEqual({ responses: 1, mean: 1 });
+    const tensionOnly = scoreFunSessions([{ id: 'human', run, survey: { tension: 5 } }]);
+    expect(tensionOnly.subjective_score).toBeNull();
+    expect(tensionOnly.survey_coverage).toBe(0);
   });
 
-  it('grades repeated identical runs as more samey than varied runs', () => {
-    const samey = scoreFunSessions([
-      { id: 's1', run: makeRun({ startingWeapon: 'sword', outcome: 'victory' }) },
-      { id: 's2', run: makeRun({ startingWeapon: 'sword', outcome: 'victory' }) },
-      { id: 's3', run: makeRun({ startingWeapon: 'sword', outcome: 'victory' }) },
-    ]);
-    const varied = scoreFunSessions([
-      {
-        id: 'v1',
-        run: makeRun({
-          startingWeapon: 'sword',
-          outcome: 'victory',
-          finalLevel: 8,
-          gameTimeMs: 280_000,
-        }),
-      },
-      {
-        id: 'v2',
-        run: makeRun({
-          startingWeapon: 'bow',
-          outcome: 'death',
-          finalLevel: 4,
-          gameTimeMs: 210_000,
-          quests: {
-            questsAccepted: 2,
-            questsCompleted: 1,
-            questsFailed: [],
-            mainQuestAcceptedMs: 20_000,
-            mainQuestCompletedMs: null,
-            firstQuestCompletedMs: 170_000,
-            questLogAccepts: { main: 20_000 },
-            questLogCompletions: { main: 170_000 },
-          },
-        }),
-      },
-      {
-        id: 'v3',
-        run: makeRun({
-          startingWeapon: 'baseball-bat',
-          outcome: 'timeout',
-          finalLevel: 3,
-          gameTimeMs: 360_000,
-          quests: {
-            questsAccepted: 2,
-            questsCompleted: 0,
-            questsFailed: ['main'],
-            mainQuestAcceptedMs: 30_000,
-            mainQuestCompletedMs: null,
-            firstQuestCompletedMs: null,
-            questLogAccepts: { main: 30_000 },
-            questLogCompletions: {},
-          },
-        }),
-      },
-    ]);
-
-    expect(varied.dimensions.run_distinctness).toBeGreaterThan(samey.dimensions.run_distinctness);
-    expect(varied.sameness_grade).toBeLessThan(samey.sameness_grade);
+  it('does not infer build diversity or experience from a sweep weapon mix', () => {
+    const same = scoreFunSessions(
+      ['sword', 'sword', 'sword'].map((startingWeapon, i) => ({
+        id: String(i),
+        run: makeRun({ startingWeapon }),
+      })),
+    );
+    const varied = scoreFunSessions(
+      ['sword', 'bow', 'baseball-bat'].map((startingWeapon, i) => ({
+        id: String(i),
+        run: makeRun({ startingWeapon }),
+      })),
+    );
+    expect(same.overall_fun_score).toBe(varied.overall_fun_score);
+    expect(same.gate).toEqual(varied.gate);
+    expect(same.evidence.starter_weapon_coverage).toBeLessThan(
+      varied.evidence.starter_weapon_coverage,
+    );
+    expect(varied.dimensions.choice_depth).toBeNull();
+    expect(varied.dimensions.run_distinctness).toBeNull();
+    expect(varied.criteria.run_variety.status).toBe('unmeasured');
   });
 
   it('reports measurable criteria and groups runs by evaluator persona', () => {
@@ -301,8 +278,8 @@ describe('scoreFunSessions', () => {
     // combatTimeMs accumulates during safe-room frames too, so uptime stays
     // unmeasured until zone-aware combat time is recorded.
     expect(report.criteria.unsafe_combat_uptime.status).toBe('unmeasured');
-    expect(report.criteria.dopamine_cadence.status).toBe('unmeasured');
-    expect(report.criteria.snowball_frequency.status).toBe('unmeasured');
+    expect(report.criteria.reward_cadence.status).toBe('unmeasured');
+    expect(report.criteria.performance_outlier_frequency.status).toBe('unmeasured');
     expect(report.persona_scores.new_player?.runs).toBe(1);
     expect(report.persona_scores.experienced_player?.runs).toBe(1);
   });
@@ -327,11 +304,11 @@ describe('scoreFunSessions', () => {
         }),
       },
     ]);
-    expect(healthy.criteria.dopamine_cadence).toMatchObject({
+    expect(healthy.criteria.reward_cadence).toMatchObject({
       observed: 60,
       status: 'healthy',
     });
-    expect(healthy.criteria.dopamine_cadence.reason).toContain('100%');
+    expect(healthy.criteria.reward_cadence.reason).toContain('100%');
 
     const sparse = scoreFunSessions([
       {
@@ -344,7 +321,7 @@ describe('scoreFunSessions', () => {
         }),
       },
     ]);
-    expect(sparse.criteria.dopamine_cadence).toMatchObject({
+    expect(sparse.criteria.reward_cadence).toMatchObject({
       observed: 150,
       status: 'needs_attention',
     });
@@ -366,12 +343,12 @@ describe('scoreFunSessions', () => {
       };
     });
     const report = scoreFunSessions(sessions);
-    expect(report.criteria.snowball_frequency).toMatchObject({
+    expect(report.criteria.performance_outlier_frequency).toMatchObject({
       observed: 0.1,
-      status: 'healthy',
+      status: 'descriptive',
     });
-    expect(report.criteria.snowball_frequency.reason).toContain('1/10');
-    expect(report.criteria.snowball_frequency.reason).toContain('3.5');
+    expect(report.criteria.performance_outlier_frequency.reason).toContain('1/10');
+    expect(report.criteria.performance_outlier_frequency.reason).toContain('3.5');
   });
 
   it('requires enough complete official wins before measuring snowball frequency', () => {
@@ -388,8 +365,8 @@ describe('scoreFunSessions', () => {
         }),
       },
     ]);
-    expect(report.criteria.snowball_frequency.status).toBe('unmeasured');
-    expect(report.criteria.snowball_frequency.reason).toContain('at least 10');
+    expect(report.criteria.performance_outlier_frequency.status).toBe('unmeasured');
+    expect(report.criteria.performance_outlier_frequency.reason).toContain('at least 10');
   });
 
   it('flags avoided and inert catalog items while accepting used items', () => {
@@ -498,7 +475,7 @@ describe('scoreFunSessions', () => {
       },
       { id: 'legacy', run: makeRun() },
     ]);
-    expect(mixed.criteria.dopamine_cadence.status).toBe('unmeasured');
+    expect(mixed.criteria.reward_cadence.status).toBe('unmeasured');
     expect(mixed.criteria.item_viability.status).toBe('unmeasured');
     expect(mixed.criteria.meta_progression.status).toBe('unmeasured');
   });
@@ -507,13 +484,13 @@ describe('scoreFunSessions', () => {
     const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
     const candidate = {
       ...baseline,
-      overall_fun_score: baseline.overall_fun_score + 5,
+      overall_fun_score: baseline.overall_fun_score! + 5,
     };
 
     const comparison = compareFunReports(baseline, candidate);
 
     expect(comparison.overall_fun_score.status).toBe('improving');
-    expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
+    expect(comparison.criteria.reward_cadence.status).toBe('unmeasured');
   });
 
   it('downgrades comparisons to inconclusive when the cohorts are not comparable', () => {
@@ -532,31 +509,30 @@ describe('scoreFunSessions', () => {
     expect(comparison.cohort.reasons.length).toBeGreaterThan(0);
     expect(comparison.dimensions.engagement.status).toBe('inconclusive');
     // Unmeasured criteria stay unmeasured rather than being relabelled.
-    expect(comparison.criteria.dopamine_cadence.status).toBe('unmeasured');
+    expect(comparison.criteria.reward_cadence.status).toBe('unmeasured');
   });
 
-  it('treats survivability variance as a band, so runaway volatility is degrading', () => {
-    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
-    const inBand: FunScoreReport = withVariance(baseline, 0.3);
-    const volatile: FunScoreReport = withVariance(baseline, 0.95);
-
-    expect(compareFunReports(inBand, volatile).criteria.survivability_variance.status).toBe(
-      'degrading',
-    );
-    expect(compareFunReports(volatile, inBand).criteria.survivability_variance.status).toBe(
-      'improving',
-    );
+  it('does not call identical victories unhealthy or give outcome dispersion a preferred direction', () => {
+    const base = scoreFunSessions([{ id: 'victory', run: makeRun() }]);
+    expect(base.criteria.survivability_variance).toMatchObject({
+      observed: 0,
+      status: 'descriptive',
+      target: null,
+    });
+    expect(
+      compareFunReports(withVariance(base, 0), withVariance(base, 0.3)).criteria
+        .survivability_variance.status,
+    ).toBe('inconclusive');
   });
 
-  it('uses per-criterion deltas so ratio criteria are not permanently inconclusive', () => {
-    const baseline = scoreFunSessions([{ id: 'baseline', run: makeRun() }]);
-    const candidate = withVariance(baseline, 0.2);
-
-    const comparison = compareFunReports(baseline, candidate);
-
-    // A 0.2 move on a [0,1] ratio would be `inconclusive` under the 2-point
-    // dimension threshold; the per-criterion threshold classifies it.
-    expect(comparison.criteria.survivability_variance.status).toBe('improving');
+  it('never treats duplicate records as enjoyment confidence', () => {
+    const report = scoreFunSessions(
+      Array.from({ length: 300 }, (_, i) => ({ id: String(i), run: makeRun() })),
+    );
+    expect(report.confidence).toBeNull();
+    expect(report.evidence.unique_scenarios).toBe(1);
+    expect(report.evidence.duplicate_scenarios).toBe(299);
+    expect(report.per_run).toHaveLength(300);
   });
 
   it('treats a lower item-viability failure rate as improving', () => {
@@ -576,37 +552,149 @@ describe('scoreFunSessions', () => {
     ).toBe('improving');
   });
 
-  it('scales subjective blending with survey coverage', () => {
-    const objectiveSessions: FunSession[] = [
-      { id: 'o1', run: makeRun({ startingWeapon: 'sword' }) },
-      { id: 'o2', run: makeRun({ startingWeapon: 'bow' }) },
-      { id: 'o3', run: makeRun({ startingWeapon: 'baseball-bat' }) },
-      { id: 'o4', run: makeRun({ startingWeapon: 'sword' }) },
-      { id: 'o5', run: makeRun({ startingWeapon: 'bow' }) },
-    ];
-    const sparseSurveySessions: FunSession[] = objectiveSessions.map((session, index) =>
-      index === 0
-        ? {
-            ...session,
-            survey: { enjoyment: 1, immersion: 1, mastery: 1, control: 1, tension: 5 },
-          }
-        : session,
+  it('counts sparse human survey responses without changing the diagnostic score', () => {
+    const run = makeRun();
+    run.evaluationContext!.source = 'human';
+    const sessions = Array.from({ length: 5 }, (_, i) => ({ id: String(i), run }));
+    const base = scoreFunSessions(sessions);
+    const sparse = scoreFunSessions(
+      sessions.map((session, i) => (i === 0 ? { ...session, survey: { enjoyment: 1 } } : session)),
     );
-
-    const objective = scoreFunSessions(objectiveSessions);
-    const sparse = scoreFunSessions(sparseSurveySessions);
-    const full = scoreFunSessions(
-      objectiveSessions.map((session) => ({
-        ...session,
-        survey: { enjoyment: 1, immersion: 1, mastery: 1, control: 1, tension: 5 },
-      })),
-    );
-
     expect(sparse.survey_coverage).toBe(0.2);
-    expect(full.survey_coverage).toBe(1);
-    expect(sparse.overall_fun_score).toBeGreaterThan(full.overall_fun_score);
-    expect(objective.overall_fun_score - sparse.overall_fun_score).toBeLessThan(
-      objective.overall_fun_score - full.overall_fun_score,
+    expect(sparse.observed_surveys.enjoyment.responses).toBe(1);
+    expect(sparse.overall_fun_score).toBe(base.overall_fun_score);
+  });
+
+  it('does not punish exceeding output and acquired-progression references', () => {
+    const run = makeRun();
+    const stronger = structuredClone(run);
+    stronger.combat.totalKills *= 4;
+    stronger.combat.damageDealt *= 4;
+    stronger.totalXp *= 4;
+    stronger.finalLevel = 25;
+    stronger.levelUps = Array.from({ length: 24 }, (_, i) => ({
+      level: i + 2,
+      gameTimeMs: i * 1000,
+      frame: i * 60,
+    }));
+    stronger.health.finalHealthPercent = 1;
+    const before = scoreFunSessions([{ id: 'before', run }]);
+    const after = scoreFunSessions([{ id: 'after', run: stronger }]);
+    expect(after.overall_fun_score).toBeGreaterThanOrEqual(before.overall_fun_score!);
+    expect(after.dimensions.excitement).toBeGreaterThanOrEqual(before.dimensions.excitement!);
+    expect(after.dimensions.progression).toBeGreaterThanOrEqual(before.dimensions.progression!);
+  });
+
+  it('does not reward an injected starting level or XP', () => {
+    const run = makeRun({
+      totalXp: 2000,
+      runStartXp: 2000,
+      runStartLevel: 8,
+      finalLevel: 8,
+      levelUps: [],
+    });
+    const advanced = makeRun({
+      totalXp: 8000,
+      runStartXp: 8000,
+      runStartLevel: 20,
+      finalLevel: 20,
+      levelUps: [],
+    });
+    expect(scoreFunSessions([{ id: 'a', run }]).dimensions.progression).toBe(
+      scoreFunSessions([{ id: 'b', run: advanced }]).dimensions.progression,
     );
+  });
+
+  it('counts earned levels independently of XP pickup batching', () => {
+    const spread = makeRun({ runStartLevel: 1, finalLevel: 4 });
+    const batched = makeRun({ runStartLevel: 1, finalLevel: 4, levelUps: [spread.levelUps[2]!] });
+    const score = (run: RunStats) => scoreFunSessions([{ id: 'run', run }]).dimensions.progression;
+    expect(score(batched)).toBe(score(spread));
+    expect(score(makeRun({ runStartLevel: undefined }))).toBeNull();
+  });
+
+  it('fails closed for legacy, partially observed, and mixed telemetry', () => {
+    const legacy = makeRun({ evaluationContext: undefined });
+    const report = scoreFunSessions([
+      { id: 'legacy', run: legacy },
+      { id: 'measured', run: makeRun() },
+    ]);
+    expect(report.overall_fun_score).toBeNull();
+    expect(report.gate.pass).toBe(false);
+    expect(report.gate.unmeasured_dimensions).toEqual(GATED_DIMENSIONS);
+    expect(report.evidence.dimension_coverage.engagement).toBe(1);
+    expect(report.evidence.unidentified_runs).toBe(1);
+    expect(report.per_run[0]?.heuristic_score).toBeNull();
+  });
+
+  it('does not use global enemy existence or legacy engagement counters', () => {
+    const run = makeRun();
+    const changed = structuredClone(run);
+    changed.combat.combatTimeMs = run.gameTimeMs;
+    changed.combat.engagementCount = 500;
+    expect(scoreFunSessions([{ id: 'a', run }]).dimensions).toEqual(
+      scoreFunSessions([{ id: 'b', run: changed }]).dimensions,
+    );
+  });
+
+  it('matches scenario multisets independent of IDs/order and rejects seed, floor, persona, weapon, and source drift', () => {
+    const first = makeRun();
+    const second = makeRun({ startingWeapon: 'bow' });
+    const baseline = scoreFunSessions([
+      { id: 'a', run: first },
+      { id: 'b', run: second },
+    ]);
+    const reordered = scoreFunSessions([
+      { id: 'different-id', run: second },
+      { id: 'other-id', run: first },
+    ]);
+    expect(compareFunReports(baseline, reordered).cohort.matched).toBe(true);
+    for (const modify of [
+      (run: RunStats) => {
+        run.evaluationContext!.seed += 1;
+      },
+      (run: RunStats) => {
+        run.evaluationContext!.startFloor = 'floor2';
+      },
+      (run: RunStats) => {
+        run.evaluationContext!.source = 'human';
+      },
+      (run: RunStats) => {
+        run.playerPersona = 'new_player';
+      },
+      (run: RunStats) => {
+        run.startingWeapon = 'baseball-bat';
+      },
+    ]) {
+      const modified = structuredClone(first);
+      modify(modified);
+      const candidate = scoreFunSessions([
+        { id: 'a', run: modified },
+        { id: 'b', run: second },
+      ]);
+      expect(compareFunReports(baseline, candidate).cohort.matched).toBe(false);
+      expect(compareFunReports(baseline, candidate).overall_fun_score.status).toBe('inconclusive');
+    }
+    const duplicates = scoreFunSessions([
+      { id: 'a', run: first },
+      { id: 'b', run: first },
+    ]);
+    expect(compareFunReports(baseline, duplicates).cohort.matched).toBe(false);
+  });
+
+  it('rejects legacy comparisons without undefined deltas or NaN', () => {
+    const current = scoreFunSessions([{ id: 'a', run: makeRun() }]);
+    const legacy = {
+      ...current,
+      schema_version: undefined,
+      per_run: undefined,
+      dimensions: { engagement: 80 },
+      criteria: {},
+    } as unknown as FunScoreReport;
+    const comparison = compareFunReports(legacy, current);
+    expect(comparison.cohort.matched).toBe(false);
+    expect(comparison.dimensions.progression.status).toBe('unmeasured');
+    expect(JSON.stringify(comparison)).not.toContain('NaN');
+    expect(comparison.overall_fun_score.status).toBe('inconclusive');
   });
 });

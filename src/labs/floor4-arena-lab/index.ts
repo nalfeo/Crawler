@@ -48,6 +48,16 @@ interface MutableWaveConfig {
   };
   concurrency: { liveCap: number; debtCap: number };
   gates: { telegraphLeadMs: number };
+  pressure?: {
+    nearbyTarget: number;
+    averageTarget: number;
+    responseMs: number;
+    radiusFt: number;
+    incomingCap: number;
+    batchSize: number;
+    intervalMs: number;
+    reservePerAct: number;
+  };
 }
 
 /** The venue always authors four feed gates (one per arena wall). */
@@ -75,6 +85,14 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     liveCap: waves.concurrency.liveCap,
     debtCap: waves.concurrency.debtCap,
     telegraphLeadMs: waves.gates.telegraphLeadMs,
+    nearbyTarget: waves.pressure?.nearbyTarget ?? 20,
+    averageTarget: waves.pressure?.averageTarget ?? 11,
+    pressureResponseMs: waves.pressure?.responseMs ?? 5000,
+    pressureRadiusFt: waves.pressure?.radiusFt ?? 60,
+    incomingCap: waves.pressure?.incomingCap ?? 24,
+    pressureBatchSize: waves.pressure?.batchSize ?? 4,
+    pressureIntervalMs: waves.pressure?.intervalMs ?? 1000,
+    reservePerAct: waves.pressure?.reservePerAct ?? 320,
     includeKeptCompanion: false,
     keptCompanionSpeciesId: 'ember-charger',
     headliner: floor4.headliners.pool[0]!.archetypeId,
@@ -97,6 +115,16 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     waves.concurrency.liveCap = state.liveCap;
     waves.concurrency.debtCap = state.debtCap;
     waves.gates.telegraphLeadMs = state.telegraphLeadMs;
+    waves.pressure = {
+      nearbyTarget: state.nearbyTarget,
+      averageTarget: state.averageTarget,
+      responseMs: state.pressureResponseMs,
+      radiusFt: state.pressureRadiusFt,
+      incomingCap: state.incomingCap,
+      batchSize: state.pressureBatchSize,
+      intervalMs: state.pressureIntervalMs,
+      reservePerAct: state.reservePerAct,
+    };
     setup();
   }
 
@@ -213,6 +241,8 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
         ` armedGates=${window?.armedTelegraphs.length ?? 0}`,
       `  spawned=${telemetry?.enemiesSpawned ?? 0} cut=${telemetry?.enemiesCut ?? 0}` +
         ` discarded=${telemetry?.debtDiscarded ?? 0} lit=${telemetry?.gateTelegraphsArmed ?? 0}`,
+      `  pressure reserve=${window?.pressure?.cursor ?? 0}/${window?.pressure?.reserve.length ?? 0}` +
+        ` pending=${window?.pressure?.pending?.entries.length ?? 0}`,
       '',
       `act ${state.previewAct} manifest preview (seed ${state.seed}):`,
       ...previewLines(),
@@ -277,6 +307,15 @@ function createFloor4ArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
     .name('Opening wave ×')
     .onFinishChange(applyTunables);
   waveFolder.add(state, 'liveCap', 1, 64, 1).name('Live cap').onFinishChange(applyTunables);
+  const pressureFolder = gui.addFolder('Wave pressure');
+  pressureFolder.add(state, 'nearbyTarget', 1, 24, 1).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'averageTarget', 1, 24, 1).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'pressureResponseMs', 1000, 10000, 500).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'pressureRadiusFt', 20, 100, 1).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'incomingCap', 1, 24, 1).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'pressureBatchSize', 1, 4, 1).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'pressureIntervalMs', 500, 5000, 100).onFinishChange(applyTunables);
+  pressureFolder.add(state, 'reservePerAct', 0, 360, 1).onFinishChange(applyTunables);
   waveFolder.add(state, 'debtCap', 0, 64, 1).name('Debt cap').onFinishChange(applyTunables);
   waveFolder
     .add(state, 'telegraphLeadMs', 0, 5_000, 50)

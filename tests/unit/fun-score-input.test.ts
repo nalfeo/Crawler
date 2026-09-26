@@ -168,6 +168,29 @@ describe('normalizeFunSessions', () => {
     expect(() => normalizeFunSessions({ data: [makeRun()] })).toThrow(/Unsupported input shape/);
   });
 
+  it('preserves explicit scenario context and rejects malformed provenance', () => {
+    const context = {
+      source: 'headless',
+      seed: 42,
+      startFloor: 'floor1',
+      available: { combat: true, health: true, progression: true, quests: true },
+    };
+    const run = { ...makeRun(), evaluationContext: context };
+    expect(
+      normalizeFunSessions({ sessions: [{ id: 'a', scenario: 'floor1-chain', run }] })[0]?.scenario,
+    ).toBe('floor1-chain');
+    for (const malformed of [
+      null,
+      { ...context, seed: '42' },
+      { ...context, source: 'unknown' },
+      { ...context, available: { ...context.available, combat: 'true' } },
+    ]) {
+      expect(() => normalizeFunSessions([{ ...run, evaluationContext: malformed }])).toThrow(
+        /valid RunStats/,
+      );
+    }
+  });
+
   it('normalizes a legacy payload missing safeRoomMs to 0 (array + single-root paths)', () => {
     const legacyRun: Record<string, unknown> = { ...makeRun() };
     delete legacyRun.safeRoomMs;
