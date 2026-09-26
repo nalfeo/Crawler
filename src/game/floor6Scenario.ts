@@ -149,10 +149,12 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     nextReleaseIndex: 0,
     spawnDebt: 0,
     relayHp: tuning?.relayMaxHp ?? 100,
+    minimumRelayHp: tuning?.relayMaxHp ?? 100,
     stallFrames: 0,
     totalReleased: 0,
     lastReleaseFrame: 0,
     economy: createFloor6EconomyState(),
+    terminalEconomyTelemetry: null,
     towerInstances: [],
     towersTornDown: 0,
     combatEventCursor: 0,
@@ -556,7 +558,16 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
       clearEntityStores(world, eid);
     }
   }
-  const resetCount = state.economy.terminalResetCount + 1;
+  const previousEconomy = state.economy;
+  state.terminalEconomyTelemetry ??= {
+    totalEarned: previousEconomy.totalEarned,
+    totalSpent: previousEconomy.totalSpent,
+    earnedFromPickups: previousEconomy.earnedFromPickups,
+    earnedFromWaves: previousEconomy.earnedFromWaves,
+    pickupsSpawned: previousEconomy.pickupsSpawned,
+    pickupsCollected: previousEconomy.pickupsCollected,
+  };
+  const resetCount = previousEconomy.terminalResetCount + 1;
   state.economy = createFloor6EconomyState();
   state.economy.terminalResetCount = resetCount;
   state.upgradeOfferManifest = [];
@@ -739,6 +750,37 @@ function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState
   return `incoming from ${route?.entranceId ?? from.entranceId} route to Relay`;
 }
 
+/**
+ * One concise, state-owned next-action line for the HUD. Route markers retain
+ * their spatial labels; this answers the separate question of what the player
+ * should prepare for now without making the renderer inspect wave state.
+ */
+function floor6WaveStatusLabel(
+  state: Floor6DefenseState,
+  nextByRoute: ReadonlyMap<string, Floor6WaveManifestEntry>,
+): string {
+  if (state.phase.kind === 'BREAK') {
+    return 'Service break active: prepare for the next wave; build, sell, and upgrade safely.';
+  }
+  if (state.phase.kind === 'FINALE') {
+    return 'Final wave active: Broadcast Deadline pressure is advancing on the Relay.';
+  }
+  if (state.phase.kind === 'VICTORY') {
+    return 'All waves cleared: the Relay exit is open.';
+  }
+  if (state.phase.kind === 'DEFEAT') {
+    return 'Defense lost: the Broadcast Relay is offline.';
+  }
+  const next = [...nextByRoute.values()].sort(
+    (left, right) =>
+      left.releaseTick - right.releaseTick || left.manifestIndex - right.manifestIndex,
+  )[0];
+  if (!next) {
+    return 'Wave queue clear: hold the Relay while the next deployment is scheduled.';
+  }
+  return `Next wave ${next.waveIndex + 1} (${next.waveLabel}): ${directionLabel(next, state)}.`;
+}
+
 function buildFloor6PresentationSnapshot(
   world: GameWorld,
   state: Floor6DefenseState,
@@ -797,6 +839,7 @@ function buildFloor6PresentationSnapshot(
   return {
     objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
     phaseLabel: `${state.phase.kind} phase`,
+    waveStatusLabel: floor6WaveStatusLabel(state, nextByRoute),
     relayDangerLabel,
     questGoals: floor6QuestGoalFlagSnapshot(world),
     routes: state.geometry.routes.map((route) => {
@@ -1363,6 +1406,7 @@ export function floor6RaiderSystem(world: GameWorld): void {
       if (world.elapsedMs - lastAttack >= attackCooldownMs) {
         world.stores.broadcastRelayRaider.lastRelayAttackMs[eid] = world.elapsedMs;
         state.relayHp = Math.max(0, state.relayHp - relayDamage);
+        state.minimumRelayHp = Math.min(state.minimumRelayHp, state.relayHp);
       }
 
       // Stop moving
@@ -1769,10 +1813,12 @@ export function getFloor6DefenseRunStats(
   const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
   const stalledCount = state.stalledRaiderCount;
+  const economyTelemetry = state.terminalEconomyTelemetry ?? state.economy;
   return {
     phase: { ...state.phase },
     phaseTrace: state.phaseTrace.map((p) => ({ ...p })),
     relayHp: state.relayHp,
+    minimumRelayHp: state.minimumRelayHp,
     relayMaxHp,
     nextReleaseIndex: state.nextReleaseIndex,
     spawnDebt: state.spawnDebt,
@@ -1781,12 +1827,12 @@ export function getFloor6DefenseRunStats(
     stalledCount,
     waveManifestLength: state.waveManifest?.length ?? 0,
     buildCurrencyBalance: state.economy.balance,
-    buildCurrencyEarned: state.economy.totalEarned,
-    buildCurrencySpent: state.economy.totalSpent,
-    buildCurrencyEarnedFromPickups: state.economy.earnedFromPickups,
-    buildCurrencyEarnedFromWaves: state.economy.earnedFromWaves,
-    buildCurrencyPickupsSpawned: state.economy.pickupsSpawned,
-    buildCurrencyPickupsCollected: state.economy.pickupsCollected,
+    buildCurrencyEarned: economyTelemetry.totalEarned,
+    buildCurrencySpent: economyTelemetry.totalSpent,
+    buildCurrencyEarnedFromPickups: economyTelemetry.earnedFromPickups,
+    buildCurrencyEarnedFromWaves: economyTelemetry.earnedFromWaves,
+    buildCurrencyPickupsSpawned: economyTelemetry.pickupsSpawned,
+    buildCurrencyPickupsCollected: economyTelemetry.pickupsCollected,
     upgradeOffers: (state.upgradeOfferManifest ?? []).map((offer) => ({
       ...offer,
       effect: { ...offer.effect },

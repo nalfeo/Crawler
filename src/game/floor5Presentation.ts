@@ -140,6 +140,22 @@ function fieldHeroPresentation(state: Floor5SiegeState): {
   return { label: 'Field Hero roster exhausted', cues: [] };
 }
 
+/**
+ * Objective payoffs already raise the deterministic hostile-reinforcement
+ * ledger. Surface that committed ledger beside the Command Post so a player
+ * can tell why the siege became more dangerous before a minion has dealt
+ * visible structure damage. Health warnings remain the urgent signal above.
+ */
+function commandPostEscalation(state: Floor5SiegeState): string {
+  if (state.phase.kind === 'CAPTURED') return 'castle secured';
+  if (state.phase.kind === 'DEFEAT') return 'line lost';
+  if (state.breach.latched) return 'breach open — route to throne';
+  const beats = state.hostileReinforcements.beats;
+  if (beats.length === 0) return 'holding line';
+  const latestBeat = beats.at(-1)!.replaceAll('-', ' ');
+  return `siege payoff ${beats.length}/6 — ${latestBeat} applied`;
+}
+
 /** Read-only projection of committed siege state; the scene owns layout and rendering. */
 export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
   const state = world.floorExtendedState?.floor5Siege;
@@ -149,7 +165,7 @@ export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | nu
   const hero = fieldHeroPresentation(state);
   const lines = [
     `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
-    `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP · ${danger.label} | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
+    `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP · ${danger.label} | Escalation: ${commandPostEscalation(state)} | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
     `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}${state.engineState === 'LOCKED' ? ` · prerequisites ${state.requisitionMilestones.length}/4` : ''}`,
     `Hostile pressure: ${state.liveMinions.enemy} minions · wave cap ${state.hostileReinforcements.cap}/16 · Heroes ${state.heroes.status === 'active' ? 1 : 0}/${state.hostileReinforcements.heroCap} max · ${state.hostileReinforcements.beats.length} escalation beats · ${hero.label}`,
   ];

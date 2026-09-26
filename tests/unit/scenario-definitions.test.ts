@@ -247,6 +247,7 @@ describe('scenario definitions', () => {
 
       expect(hud).toBeDefined();
       expect(hud?.lines.join('\n')).toContain('Protect the Broadcast Relay');
+      expect(hud?.lines.join('\n')).toContain('Next wave 1 (opening-crew)');
       expect(hud?.lines.join('\n')).toContain('Tap a pad to build / inspect / sell');
       // Spatial information now lives on labeled world markers, not a dense HUD list.
       const construction = scenario.construction?.getSnapshot(world);

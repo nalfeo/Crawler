@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { initializeFloor5Scenario } from '../../src/game/floor5Scenario.js';
+import {
+  _recoverFloor5RamComponent,
+  initializeFloor5Scenario,
+} from '../../src/game/floor5Scenario.js';
 import { getFloor5HudSnapshot } from '../../src/game/floor5Presentation.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -24,6 +27,7 @@ describe('Floor 5 HUD presentation', () => {
     expect(initial.lines[0]).toContain('Muster | Objective: Defend the Command Post');
     expect(initial.lines[1]).toContain(`Command Post ${state.commandPostHealth}/`);
     expect(initial.lines[1]).toContain('secure');
+    expect(initial.lines[1]).toContain('Escalation: holding line');
     expect(initial.lines[2]).toContain('Ram: Locked');
     expect(initial.lines[3]).toContain('Hostile pressure: 0 minions');
     expect(initial.lines[3]).toContain('wave cap 4/16');
@@ -102,6 +106,21 @@ describe('Floor 5 HUD presentation', () => {
     expect(getFloor5HudSnapshot(world)!.cues).toEqual([]);
   });
 
+  it('makes a field-equipment payoff visible at the Command Post before it takes damage', () => {
+    const world = siegeWorld();
+    const state = world.floorExtendedState!.floor5Siege!;
+
+    _recoverFloor5RamComponent(world, 'chassis');
+    _recoverFloor5RamComponent(world, 'plating');
+    _recoverFloor5RamComponent(world, 'broadcast-array');
+
+    const snapshot = getFloor5HudSnapshot(world)!;
+    expect(state.commandPostHealth).toBe(1000);
+    expect(snapshot.lines[1]).toContain('secure');
+    expect(snapshot.lines[1]).toContain('Escalation: siege payoff 1/6 — supplies applied');
+    expect(snapshot.lines[3]).toContain('1 escalation beats');
+  });
+
   it.each([700, 37])('suppresses danger after capture with %i post health', (health) => {
     const world = siegeWorld();
     const state = world.floorExtendedState!.floor5Siege!;
@@ -132,6 +151,10 @@ describe('Floor 5 HUD presentation', () => {
     state.phase = { kind: 'BREACH' };
     state.structures['outer-wall'].health = 19;
     expect(getFloor5HudSnapshot(world)!.lines[2]).toContain('wall 19/');
+    state.breach.latched = true;
+    expect(getFloor5HudSnapshot(world)!.lines[1]).toContain(
+      'Escalation: breach open — route to throne',
+    );
     state.phase = { kind: 'THRONE' };
     state.finale.captureAvailable = true;
     expect(getFloor5HudSnapshot(world)!.lines[0]).toContain('Capture the throne');
