@@ -138,6 +138,7 @@
     "towers": [
       {
         "id": "signal-slinger",
+        "roleLabel": "Rapid lane response",
         "footprintId": "standard",
         "cost": 2,
         "sellRefund": 1,
@@ -147,6 +148,7 @@
       },
       {
         "id": "relay-riveter",
+        "roleLabel": "Heavy Relay guard",
         "footprintId": "standard",
         "cost": 5,
         "sellRefund": 2,
@@ -156,6 +158,7 @@
       },
       {
         "id": "crane-caster",
+        "roleLabel": "Wide route coverage",
         "footprintId": "large",
         "cost": 7,
         "sellRefund": 3,

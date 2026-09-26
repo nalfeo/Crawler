@@ -6389,7 +6389,7 @@ export class MainGameScene extends Phaser.Scene {
       : snapshot.towers.map((entry) => ({
           id: entry.towerId,
           label: `${entry.label} — ${entry.cost} requisitions`,
-          description: `${entry.rangeFt} ft range · ${!snapshot.canBuild ? 'Building unavailable in this phase.' : entry.affordable ? 'Build on this pad.' : 'Need more requisitions.'}`,
+          description: `${entry.roleLabel} · ${entry.rangeFt} ft range · ${!snapshot.canBuild ? 'Building unavailable in this phase.' : entry.affordable ? 'Build on this pad.' : 'Need more requisitions.'}`,
           disabled: !entry.affordable || !snapshot.canBuild,
         }));
     this.modalPicker.open(
@@ -6398,7 +6398,7 @@ export class MainGameScene extends Phaser.Scene {
         title: tower ? tower.label : `Build at ${siteId}`,
         subtitle: `${snapshot.phaseLabel} · ${snapshot.currencyLabel}`,
         body: tower
-          ? `${siteId} · ${tower.rangeFt} ft range · ${tower.tierLabel}. Range is marked around the tower.`
+          ? `${tower.roleLabel} · ${siteId} · ${tower.rangeFt} ft range · ${tower.tierLabel}. Range is marked around the tower.`
           : 'Collect requisition drops from defeated raiders. Tap a tower to inspect or sell it.',
         options: [
           ...options,
