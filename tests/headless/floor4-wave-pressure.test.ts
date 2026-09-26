@@ -65,6 +65,8 @@ async function observe(seed: number) {
     maxProjectiles: ai.maxProjectiles,
     waveTelemetry: stats.floor4Arena?.waveTelemetry,
     timeline: stats.floor4Arena?.timeline,
+    headlinerCard: stats.floor4Arena?.headlinerCard,
+    headlinerFights: stats.floor4Arena?.headlinerTelemetry.fights,
   };
 }
 

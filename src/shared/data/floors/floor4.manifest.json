@@ -234,32 +234,32 @@
           "act": 1,
           "eligibleGrades": ["warmup"],
           "appearanceFeeGold": 18,
-          "contactDamage": 8
+          "contactDamage": 4
         },
         {
           "act": 2,
           "eligibleGrades": ["warmup", "midcard"],
           "appearanceFeeGold": 28,
-          "contactDamage": 10
+          "contactDamage": 6
         },
         {
           "act": 3,
           "eligibleGrades": ["midcard"],
           "appearanceFeeGold": 40,
-          "contactDamage": 12
+          "contactDamage": 8
         },
         {
           "act": 4,
           "eligibleGrades": ["main-event"],
           "appearanceFeeGold": 55,
-          "contactDamage": 14
+          "contactDamage": 4
         },
         {
           "act": 5,
           "eligibleGrades": ["finale"],
           "fixedArchetypeId": "floor4-showrunner",
           "appearanceFeeGold": 75,
-          "contactDamage": 16
+          "contactDamage": 12
         }
       ]
     },

@@ -110,7 +110,7 @@
     {
       "id": "floor4-stunt-captain",
       "name": "Stunt Captain",
-      "hp": 800,
+      "hp": 350,
       "speed": 0.14,
       "detectRange": 96.0,
       "spriteTexture": 1,
@@ -170,7 +170,7 @@
     {
       "id": "floor4-contract-collector",
       "name": "Contract Collector",
-      "hp": 2400,
+      "hp": 600,
       "speed": 0.115,
       "detectRange": 104.0,
       "spriteTexture": 1,

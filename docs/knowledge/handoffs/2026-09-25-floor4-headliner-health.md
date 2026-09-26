@@ -43,8 +43,17 @@ requires the canonical run to remain a victory.
 The change preserves automatic combat, deterministic replay, safe-room rules,
 phase boundaries, and overtime. No art asset changed.
 
+## CI follow-up
+
+PR #4743 initially failed the mandatory Floor 1 headless job because the
+existing Floor 4 nearby-pressure test's seed-2 automatic run died during the
+extended third Headliner and never observed Acts 4–5. The durability change
+kept the player in contact range longer without compensating the authored
+per-act contact-damage curve. The Headliner contact values are reduced in the
+same authored manifest so the automatic player reaches every wave window while
+the Headliners retain their longer mechanics window. The seed-2 pressure probe
+again passes all five 8–12 nearby-enemy assertions.
+
 ## Recommended next steps
 
-Run the Floor 4 lab gate required by PR preflight, complete the final
-`verify:pr-prereqs` pass and complete-diff Ducky review, then publish the
-ready-for-review PR linked to #4519 without auto-merge.
+Monitor the replacement CI run for PR #4743; do not auto-merge.
