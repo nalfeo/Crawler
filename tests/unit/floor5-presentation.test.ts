@@ -74,6 +74,38 @@ describe('Floor 5 HUD presentation', () => {
     ]);
   });
 
+  it('projects deterministic non-color-only Field Hero deployment and defeat states', () => {
+    const world = siegeWorld();
+    const state = world.floorExtendedState!.floor5Siege!;
+    const card = state.heroes.card[0]!;
+    state.heroes.cursor = 0;
+    state.heroes.status = 'active';
+    state.heroes.health = card.hp;
+    state.heroes.maxHealth = card.hp;
+
+    const active = getFloor5HudSnapshot(world)!;
+    expect(active.lines[3]).toContain(
+      `Field Hero ${card.displayName} · ${card.role.charAt(0).toUpperCase()}${card.role.slice(1)} · active`,
+    );
+    expect(active.cues).toContainEqual({
+      id: `floor5-hero-active-${card.heroId}-audio`,
+      kind: 'audio',
+      label: `${card.displayName} deployed`,
+    });
+
+    state.heroes.status = 'down';
+    const defeated = getFloor5HudSnapshot(world)!;
+    expect(defeated.lines[3]).toContain(`Field Hero ${card.displayName} defeated`);
+    expect(defeated.cues).toContainEqual({
+      id: `floor5-hero-defeated-${card.heroId}-vfx`,
+      kind: 'vfx',
+      label: `${card.displayName} defeated`,
+    });
+
+    state.phase = { kind: 'CAPTURED' };
+    expect(getFloor5HudSnapshot(world)!.cues).toEqual([]);
+  });
+
   it('makes a field-equipment payoff visible at the Command Post before it takes damage', () => {
     const world = siegeWorld();
     const state = world.floorExtendedState!.floor5Siege!;
