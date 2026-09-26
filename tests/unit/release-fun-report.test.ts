@@ -65,7 +65,13 @@ describe('release fun report', () => {
     const baseline = enrichedBaseline(runs);
 
     const funReport = buildReleaseFunReport(baseline);
-    const expectedReport = scoreFunSessions(normalizeFunSessions(baseline));
+    const expectedReport = scoreFunSessions(
+      normalizeFunSessions(baseline).map((session) => ({
+        ...session,
+        id: `floor1:${session.id}`,
+        scenario: 'floor1',
+      })),
+    );
 
     expect(funReport.meta).toEqual(TEST_META);
     expect(funReport.report).toEqual(expectedReport);
@@ -73,7 +79,7 @@ describe('release fun report', () => {
   });
 
   it('scores top-level and report-only leg runs without duplicating the blocking leg', async () => {
-    const actualRun = await capturedRun();
+    const actualRun = { ...(await capturedRun()), playerPersona: 'experienced_player' as const };
     const floor1Runs = [{ ...actualRun, totalFrames: 1 }];
     const floor2Runs = [{ ...actualRun, totalFrames: 2, floorId: 'floor2' as const }];
     const chainedRuns = [{ ...actualRun, totalFrames: 3 }];
@@ -101,7 +107,11 @@ describe('release fun report', () => {
       },
     };
 
-    expect(buildReleaseFunReport(baseline).report.runs).toBe(3);
+    const report = buildReleaseFunReport(baseline).report;
+    expect(report.runs).toBe(3);
+    expect(report.evidence.unique_scenarios).toBe(3);
+    expect(report.evidence.duplicate_scenarios).toBe(0);
+    expect(report.per_run[0]?.identity).not.toEqual(report.per_run[2]?.identity);
   });
 
   it('round-trips through JSON serialization without losing meta or report fields', async () => {

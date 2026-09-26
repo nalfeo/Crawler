@@ -684,23 +684,35 @@ export function renderHtml(instanceId) {
       html += '</tbody></table></div></section>';
     }
 
-    html += '<section><h2>Fun evaluation</h2>';
+    html += '<section><h2>Heuristic diagnostic</h2>';
     const report = data.funReport;
     if (!report) {
       html += '<div class="empty-state">Fun evaluation report is not available for this run (captured before fun evaluation existed, or scoring failed for this release).</div>';
     } else {
       const gatePillClass = report.gate ? (report.gate.pass ? 'success' : 'failure') : '';
+      const diagnosticNumber = (value, digits = 1) => value == null ? 'unmeasured' : fmtNum(value, digits);
+      html += '<p>' + (report.schema_version === 2
+        ? 'Uncalibrated heuristic; thresholds are design assumptions, not evidence of enjoyment.'
+        : 'Legacy uncalibrated heuristic; not comparable with evaluator v2.') + '</p>';
       html += '<div class="table-wrap"><table><tbody>';
-      html += '<tr><th>Overall fun score</th><td>' + fmtNum(report.overall_fun_score, 1) + ' / 100'
+      html += '<tr><th>Heuristic diagnostic</th><td>' + diagnosticNumber(report.overall_fun_score) + (report.overall_fun_score == null ? '' : ' / 100')
         + (report.gate ? ' <span class="pill ' + gatePillClass + '">' + (report.gate.pass ? 'gate pass' : 'gate fail') + '</span>' : '')
         + '</td></tr>';
-      html += '<tr><th>Confidence</th><td>' + fmtNum(report.confidence, 2) + '</td></tr>';
-      html += '<tr><th>Sameness grade</th><td>' + fmtNum(report.sameness_grade, 1) + '</td></tr>';
+      html += '<tr><th>Evidence limits</th><td>' + esc(report.confidence_reason || 'No validated relationship to human enjoyment.') + '</td></tr>';
+      const enjoyment = report.schema_version === 2 ? report.observed_surveys?.enjoyment : null;
+      html += '<tr><th>Human enjoyment</th><td>' + (enjoyment?.responses > 0
+        ? diagnosticNumber(enjoyment.mean) + ' / 5 (' + esc(enjoyment.responses) + ' responses)'
+        : 'unmeasured') + '</td></tr>';
+      html += '<tr><th>Sameness grade</th><td>' + diagnosticNumber(report.sameness_grade) + '</td></tr>';
+      if (report.evidence) {
+        html += '<tr><th>Scenario coverage</th><td>' + esc(report.evidence.unique_scenarios) + ' unique; '
+          + esc(report.evidence.duplicate_scenarios) + ' duplicate; ' + esc(report.evidence.unidentified_runs) + ' unidentified runs</td></tr>';
+      }
       html += '</tbody></table></div>';
       if (report.dimensions) {
         const keys = Object.keys(report.dimensions);
         html += '<div class="table-wrap"><table><thead><tr>' + keys.map((k) => '<th>' + esc(k) + '</th>').join('') + '</tr></thead><tbody><tr>'
-          + keys.map((k) => '<td>' + fmtNum(report.dimensions[k], 1) + '</td>').join('') + '</tr></tbody></table></div>';
+          + keys.map((k) => '<td>' + diagnosticNumber(report.dimensions[k]) + '</td>').join('') + '</tr></tbody></table></div>';
       }
       if (report.criteria) {
         html += '<div class="table-wrap"><table><thead><tr><th>Criterion</th><th>Status</th><th>Observed</th><th>Target</th><th>Reason</th></tr></thead><tbody>';
@@ -708,8 +720,8 @@ export function renderHtml(instanceId) {
           const statusClass = criterion.status === 'healthy' ? 'success' : criterion.status === 'needs_attention' ? 'failure' : '';
           html += '<tr><td><code>' + esc(name) + '</code></td>'
             + '<td><span class="pill ' + statusClass + '">' + esc(criterion.status) + '</span></td>'
-            + '<td>' + fmtNum(criterion.observed, 2) + '</td>'
-            + '<td>' + fmtNum(criterion.target, 2) + '</td>'
+            + '<td>' + diagnosticNumber(criterion.observed, 2) + '</td>'
+            + '<td>' + (criterion.target == null ? 'no calibrated target' : fmtNum(criterion.target, 2)) + '</td>'
             + '<td>' + esc(criterion.reason) + '</td></tr>';
         }
         html += '</tbody></table></div>';

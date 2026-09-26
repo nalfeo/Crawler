@@ -755,6 +755,19 @@ export const floorManifestDefSchema = z
                 telegraphLeadMs: z.number().int().nonnegative(),
               })
               .strict(),
+            pressure: z
+              .object({
+                nearbyTarget: z.number().int().positive().max(24),
+                averageTarget: z.number().positive().max(24),
+                responseMs: z.number().int().min(1000),
+                radiusFt: z.number().positive(),
+                incomingCap: z.number().int().positive().max(24),
+                batchSize: z.number().int().positive().max(4),
+                intervalMs: z.number().int().min(500),
+                reservePerAct: z.number().int().nonnegative().max(360),
+              })
+              .strict()
+              .optional(),
             /**
              * Per-act roster with authored threat costs and composition weights
              * (FR3.3). Ordered by act; entry order inside an act is a data

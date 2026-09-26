@@ -39,6 +39,7 @@ import {
   Glowing,
   Harvestable,
   Health,
+  DeathTimer,
   Homing,
   MeleeSwing,
   PartySlot,
@@ -702,6 +703,8 @@ export interface MainSceneState {
   readonly enemyCount: number;
   /** Live ECS entities with Enemy + Health and positive HP. */
   readonly livingEnemyCount: number;
+  /** Living enemies within 60 feet; excludes friendly co-stars and corpses. */
+  readonly nearbyHostileCount: number;
   /** Floor 4 arena telemetry, when the probe booted Floor 4. */
   readonly floor4Arena: Floor4ArenaRunStats | null;
   readonly floor4GreenRoom: {
@@ -2258,6 +2261,19 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         elapsedMs: world?.elapsedMs ?? null,
         enemyCount: enemyEids.length,
         livingEnemyCount: livingEnemyEids.length,
+        nearbyHostileCount:
+          world && playerFeet
+            ? livingEnemyEids.filter(
+                (enemyEid) =>
+                  !hasComponent(world.ecs, enemyEid, DeathTimer) &&
+                  (!hasComponent(world.ecs, enemyEid, Team) ||
+                    world.stores.team.id[enemyEid] !== TeamId.PLAYER) &&
+                  Math.hypot(
+                    world.stores.position.x[enemyEid]! - playerFeet.x,
+                    world.stores.position.y[enemyEid]! - playerFeet.y,
+                  ) <= 60,
+              ).length
+            : 0,
         floor4Arena: world ? (getFloor4ArenaRunStats(world) ?? null) : null,
         floor4GreenRoom: (() => {
           const visit = world?.floorExtendedState?.floor4GreenRoom?.currentVisit;

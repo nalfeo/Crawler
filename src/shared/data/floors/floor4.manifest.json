@@ -112,6 +112,16 @@
       "gates": {
         "telegraphLeadMs": 1000
       },
+      "pressure": {
+        "nearbyTarget": 20,
+        "averageTarget": 11,
+        "responseMs": 5000,
+        "radiusFt": 60,
+        "incomingCap": 24,
+        "batchSize": 4,
+        "intervalMs": 1000,
+        "reservePerAct": 320
+      },
       "rosters": [
         {
           "act": 1,

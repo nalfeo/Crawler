@@ -7,16 +7,17 @@ spec:
   role: producer
   displayName: Crawler Producer
   instructions: instructions.md
-  harness: copilot
+  harness: codex
   model: auto
-  harnessOptions: {}
+  harnessOptions:
+    auth: ambient-chatgpt
+    allowFileBackedCredentials: true
   capabilities:
     - agent:model
     - repo:read
   skills:
     - producer
-  tools:
-    - shell
+  tools: []
   scaleFactor: 1
   workflows:
     - crawler-feature-pr

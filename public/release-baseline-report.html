@@ -272,16 +272,34 @@
         }
 
         function sameFunCohort(current, previous) {
-          if (!current || !previous || current.runs !== previous.runs) return false;
-          const currentScores = isRecord(current.persona_scores) ? current.persona_scores : {};
-          const previousScores = isRecord(previous.persona_scores) ? previous.persona_scores : {};
-          const keys = new Set([...Object.keys(currentScores), ...Object.keys(previousScores)]);
-          for (const key of keys) {
-            const currentRuns = isRecord(currentScores[key]) ? currentScores[key].runs : 0;
-            const previousRuns = isRecord(previousScores[key]) ? previousScores[key].runs : 0;
-            if (currentRuns !== previousRuns) return false;
+          function identities(value) {
+            if (
+              value?.schema_version !== 2 ||
+              !Array.isArray(value.per_run) ||
+              value.runs <= 0 ||
+              value.per_run.length !== value.runs
+            )
+              return null;
+            if (
+              value.per_run.some(
+                (row) =>
+                  row?.source !== 'headless' ||
+                  typeof row.identity !== 'string' ||
+                  row.identity.length === 0,
+              )
+            )
+              return null;
+            const ids = value.per_run.map((row) => row.identity).sort();
+            return new Set(ids).size === ids.length ? ids : null;
           }
-          return true;
+          const left = identities(current);
+          const right = identities(previous);
+          return (
+            left !== null &&
+            right !== null &&
+            left.length === right.length &&
+            left.every((id, index) => id === right[index])
+          );
         }
 
         async function load() {
@@ -391,31 +409,68 @@
 
           const currentFun = funReport(currentFunPayload);
           const previousFun = funReport(previousFunPayload);
-          const fun = appendSection('Fun evaluation', 'Deterministic evaluation; diagnostic only.');
-          if (currentFun && typeof currentFun.overall_fun_score === 'number') {
+          const fun = appendSection(
+            'Heuristic diagnostic',
+            'Uncalibrated telemetry; thresholds are design assumptions, not evidence of enjoyment.',
+          );
+          if (currentFun) {
             const funComparable =
               compatible &&
               sameLegCohort(current, previous) &&
               sameFunCohort(currentFun, previousFun);
             appendMetric(
               fun,
-              'Overall fun score',
-              `${currentFun.overall_fun_score.toFixed(1)} / 100`,
+              'Heuristic diagnostic',
+              typeof currentFun.overall_fun_score === 'number' &&
+                Number.isFinite(currentFun.overall_fun_score)
+                ? `${currentFun.overall_fun_score.toFixed(1)} / 100`
+                : 'unmeasured',
               funComparable
-                ? delta(currentFun.overall_fun_score, previousFun.overall_fun_score, false)
+                ? (() => {
+                    const change = delta(
+                      currentFun.overall_fun_score,
+                      previousFun.overall_fun_score,
+                      false,
+                    );
+                    return change ? { ...change, className: 'muted' } : null;
+                  })()
                 : null,
             );
             appendMetric(
               fun,
-              'Fun gate',
+              'Diagnostic gate',
               isRecord(currentFun.gate) && currentFun.gate.pass === true ? 'Pass' : 'Attention',
               null,
             );
             appendMetric(fun, 'Evaluated runs', String(currentFun.runs ?? 'Unavailable'), null);
+            appendMetric(
+              fun,
+              'Interpretation',
+              currentFun.schema_version === 2
+                ? 'Uncalibrated heuristic'
+                : 'Legacy uncalibrated heuristic; not comparable with v2',
+              null,
+            );
+            const enjoyment =
+              currentFun.schema_version === 2 ? currentFun.observed_surveys?.enjoyment : null;
+            appendMetric(
+              fun,
+              'Human enjoyment',
+              enjoyment?.responses > 0 && Number.isFinite(enjoyment.mean)
+                ? `${enjoyment.mean.toFixed(1)} / 5 (${enjoyment.responses} responses)`
+                : 'unmeasured',
+              null,
+            );
+            fun.parentElement.append(
+              text(
+                element('p', 'muted'),
+                `Evidence limits: ${currentFun.confidence_reason || 'No validated relationship to human enjoyment.'}`,
+              ),
+            );
             if (previousFun && !funComparable) {
               const note = text(
                 element('p', 'warning'),
-                'Prior fun report exists but its cohort is not compatible.',
+                'Comparison inconclusive: evaluator versions or independent scenario identities are not compatible.',
               );
               fun.parentElement.append(note);
             }

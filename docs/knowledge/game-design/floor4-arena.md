@@ -149,6 +149,27 @@ _budget_, not a fixed list: the budget is spent on archetypes drawn from the act
 
 ### 5.1 Cadence
 
+Issue #4517 adds bounded pressure replenishment during active wave windows.
+Scheduled waves retain their cadence and immutable rosters. Wave enemies pursue
+from the gates throughout the arena, without increasing ranged attack reach.
+A finite, separately seeded reserve refills low nearby pressure through a
+committed pair of nearest gates with a one-second warning. Its high-water mark is 20 living
+hostiles within 60 feet, targeting a time-weighted average of roughly ten after
+travel and combat. Batches contain at most four enemies, are at least one second
+apart, and stop at the incoming/live enemy cap of 24.
+Each act has at most 320 reserve entries; obsolete batches are dropped rather
+than added to the authored debt queue (still capped at 18). Safe rooms, tunnels,
+boss phases, and intermissions never trigger this replenishment. See
+[ADR 0111](../adr/0111-floor4-bounded-wave-pressure.md).
+
+A five-second moving average backs off replenishment when nearby pressure stays
+above eleven, reducing the refill threshold by twice that sustained excess. It
+never raises the authored high-water mark or changes any population cap.
+Scheduled intake also waits above this threshold, banking only bounded FIFO
+debt. Adaptive batches cannot spawn while that authored debt waits. The control
+threshold includes arrival delay; the measured acceptance target remains 8–12
+nearby enemies per act and in MainGameScene automatic combat.
+
 - **10 waves per act**, one every 9s of the act's 90-second wave window
   (`t = 0s, 9s, … 81s`).
 - **50 waves across the floor.**

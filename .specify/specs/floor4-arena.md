@@ -125,7 +125,7 @@ Two constraints shape everything:
   `waveBudget(act, waveIndex) = baseBudget × actMultiplier[act] × (1 + intraActRamp × waveIndex)`,
   with the multipliers and per-archetype threat costs authored in the Floor 4 manifest/data,
   not hardcoded.
-- **FR3.4** Spawn gates are **fixed and indexed**. A manifest entry names its gate index;
+- **FR3.4** Spawn gates are **fixed and indexed**. A scheduled manifest entry names its gate index;
   placement never runs a player-relative or retry-based search, because a retry loop would
   make RNG consumption path-dependent.
 - **FR3.5** A live-enemy **concurrency cap** bounds the arena. Entries that cannot spawn
@@ -139,6 +139,26 @@ Two constraints shape everything:
   are **not** scheduled waves: they are owned by the encounter, are excluded from wave
   manifests and from spawn debt, count against the same live-enemy cap, and are removed with
   the encounter rather than by the cut.
+- **FR3.8** Issue #4517 adds a finite pressure reserve during `WAVES`: isolated
+  seed/act composition, at most one pending gate warning, and no adaptive spawn
+  debt. Alternate entries between the two nearest authored gates at warning
+  time (stable index breaks ties), freeze those gates, and retain the ordinary
+  gate placement from FR3.4.
+  Recheck a living player inside the arena, nearby pressure, and capacity when
+  the warning expires. The authored high-water mark is 20 within 60 feet to
+  average roughly ten through travel and kills; bounds are four per batch,
+  at least 1,000 ms between batches, 24 incoming/live wave enemies, 320 reserve
+  entries per act, and the existing hard cap of 24. Scheduled releases/debt
+  take priority. Safe rooms, tunnels, boss phases, intermissions, and terminal
+  states cancel pending pressure. Reserve enemies pursue from their gates,
+  retain authored ranged attack reach, and use the same normal rewards/cut as
+  scheduled enemies. No catch-up loop may release multiple reserve batches.
+  A simulation-time moving average with authored 5,000 ms response reduces the
+  refill ceiling by twice the positive excess above the feedback threshold of
+  eleven; it never increases the authored high-water mark. Scheduled intake
+  pauses above this threshold too, banking bounded debt; adaptive intake must
+  not bypass any waiting authored debt. The acceptance range remains 8–12 per
+  act and in real MainGameScene combat, including arrival time.
 
 ### R4 — Headliners
 
