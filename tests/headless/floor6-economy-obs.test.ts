@@ -2,7 +2,29 @@ import { describe, expect, it } from 'vitest';
 import type { GameWorld } from '../../src/core/index.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
+import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import type { InputState } from '../../src/shared/input.js';
 import type { Floor6DefenseRunStats } from '../../src/shared/floor-types.js';
+
+class IdleFloor6Provider implements AIInputProvider {
+  private readonly decision: AIDecision = {
+    state: AIState.EXPLORE,
+    targetEid: null,
+    targetX: null,
+    targetY: null,
+    reason: 'Floor 6 route-pressure observation without a player response',
+    npcInteraction: null,
+    debug: null,
+  };
+
+  poll(_input: InputState, _world: GameWorld): void {}
+
+  getDecision(): AIDecision {
+    return this.decision;
+  }
+
+  reset(): void {}
+}
 
 function withoutObservedFrameCost(stats: Floor6DefenseRunStats | undefined) {
   if (!stats) return stats;
@@ -69,6 +91,8 @@ describe('Floor 6 economy real headless pipeline', () => {
     expect(stats.floor6Defense?.towersTornDown).toBeGreaterThanOrEqual(1);
     expect(stats.floor6Defense?.heroDamageDealt).toBeGreaterThan(0);
     expect(stats.floor6Defense?.towerDamageDealt).toBeGreaterThan(0);
+    expect(stats.floor6Defense?.buildCurrencyEarnedFromPickups).toBeGreaterThan(0);
+    expect(stats.floor6Defense?.buildCurrencySpent).toBeGreaterThan(0);
     expect(stats.floor6Defense?.presentation.towerRoster).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'signal-slinger', roleLabel: 'Rapid lane response' }),
@@ -101,6 +125,38 @@ describe('Floor 6 economy real headless pipeline', () => {
     expect(withoutObservedFrameCost(stats.floor6Defense)).toEqual(
       withoutObservedFrameCost(replay.floor6Defense),
     );
+  });
+
+  it('records route pressure without a response, then proves earned-currency strategy preserves the Relay', async () => {
+    const pressureOnly = await runHeadless(new IdleFloor6Provider(), {
+      floorId: 'floor6',
+      seed: 606,
+      maxFrames: 4000,
+      maxWallTimeMs: 30_000,
+      questStallFrames: 0,
+      floor6AutoStrategyEnabled: false,
+    });
+    const response = await runHeadless(new BehaviorTreeAI({ seed: 606 }), {
+      floorId: 'floor6',
+      seed: 606,
+      maxFrames: 7000,
+      maxWallTimeMs: 30_000,
+      questStallFrames: 3000,
+    });
+
+    expect(pressureOnly.floor6Defense?.minimumRelayHp).toBeLessThan(
+      pressureOnly.floor6Defense?.relayMaxHp ?? Number.POSITIVE_INFINITY,
+    );
+    expect(pressureOnly.floor6Defense?.phase.kind).toBe('DEFEAT');
+    expect(pressureOnly.floor6Defense?.terminalOutcome).toBe('defeat');
+    expect(pressureOnly.floor6Defense?.terminalOutcomeCount).toBe(1);
+
+    expect(response.floor6Defense?.buildCurrencyEarnedFromPickups).toBeGreaterThan(0);
+    expect(response.floor6Defense?.buildCurrencySpent).toBeGreaterThan(0);
+    expect(response.floor6Defense?.towerDamageDealt).toBeGreaterThan(0);
+    expect(response.floor6Defense?.minimumRelayHp).toBeGreaterThan(0);
+    expect(response.floor6Defense?.terminalOutcome).toBe('victory');
+    expect(response.floor6Defense?.terminalOutcomeCount).toBe(1);
   });
 
   it('executes deterministic tower requests through the real headless pipeline', async () => {
