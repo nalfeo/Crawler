@@ -70,6 +70,17 @@ describe('Floor 5 HUD presentation', () => {
     ]);
   });
 
+  it.each([700, 37])('suppresses danger after capture with %i post health', (health) => {
+    const world = siegeWorld();
+    const state = world.floorExtendedState!.floor5Siege!;
+    state.commandPostHealth = health;
+    state.phase = { kind: 'CAPTURED' };
+    const snapshot = getFloor5HudSnapshot(world)!;
+    expect(snapshot.lines[0]).toContain('Castle captured');
+    expect(snapshot.lines[1]).toContain('secure');
+    expect(snapshot.cues).toEqual([]);
+  });
+
   it('distinguishes route progress, protection, wall damage and terminal objectives', () => {
     const world = siegeWorld();
     const state = world.floorExtendedState!.floor5Siege!;

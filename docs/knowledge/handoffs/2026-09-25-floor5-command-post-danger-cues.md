@@ -80,3 +80,16 @@ tests/e2e/main-game-scene-floor5-combat.test.ts -t sword` — passed (1 test).
 ## Continuation: reconciliation worktree
 
 2026-09-25: Remote tip 28f5f113a and local pre-repair 0d0f5fc90 have identical trees. Merged remote history into codex/pr4720-ci-reconcile, preserving 5251cd380 and 49ef3fb76 exactly. Resolved only the handoff add/add conflict by retaining the local superset. No push yet. Fresh worktree dependency bootstrap succeeded on elevated retry; preflight still running when continuation prepared. Next: finish preflight, verify merge tree against 49ef3fb76, run focused Floor 6 E2E, sync main, required checks and review, then explicit force-with-lease push to codex/floor5-command-post-danger-cues and verify fresh CI. Systems touched: git history and this handoff only.
+
+## Continuation: terminal-state review correction
+
+2026-09-25: Ducky found that a damaged Command Post retained danger cues after
+castle capture. Suppressed cues for CAPTURED and added warning/critical health
+regression coverage. Focused unit/headless coverage passed (24 tests), the real
+Floor 5 sword scene passed, and the reconciled Floor 6 economy E2E passed (2 tests).
+The merge acknowledgment now uses a contiguous Git trailer block to document
+intentional retention of the repaired pickup loop. Required validation and fresh
+Ducky review are in progress; no repair push yet. No guard telemetry file exists.
+Systems touched: Floor 5 HUD projection, unit coverage, and reconciliation metadata.
+
+Final review: Ducky found no actionable regressions after the correction; okay to check in. Fast verification passed, including the silent merge-revert guard. The parent task independently completed the real Floor 5 browser observation successfully. PR prerequisites remain pending.

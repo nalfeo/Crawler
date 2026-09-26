@@ -73,7 +73,7 @@ function commandPostDanger(state: Floor5SiegeState): {
 } {
   const post = state.structures['command-post'];
   const healthFraction = post.maxHealth > 0 ? state.commandPostHealth / post.maxHealth : 0;
-  if (state.phase.kind === 'DEFEAT' || healthFraction >= 1) {
+  if (state.phase.kind === 'DEFEAT' || state.phase.kind === 'CAPTURED' || healthFraction >= 1) {
     return { label: 'secure', cues: [] };
   }
   if (healthFraction <= 0.25) {
