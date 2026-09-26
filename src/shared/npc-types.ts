@@ -344,6 +344,7 @@ const THE_BROKER_DEF: NpcDef = {
 };
 
 export const FLOOR3_COMPANION_PROFESSOR_NPC_ID = 'floor3-companion-professor';
+export const FLOOR3_FIELD_TRAINER_NPC_ID = 'floor3-field-trainer';
 
 const FLOOR3_COMPANION_PROFESSOR_DEF: NpcDef = {
   id: FLOOR3_COMPANION_PROFESSOR_NPC_ID,
@@ -358,6 +359,18 @@ const FLOOR3_COMPANION_PROFESSOR_DEF: NpcDef = {
     {
       text: 'Choose carefully. The safe-room door stays shut until you have a Companion signed to your roster.',
     },
+  ],
+  quests: [],
+  textureId: 10,
+  widthFt: 2.5,
+  heightFt: 3.5,
+};
+
+const FLOOR3_FIELD_TRAINER_DEF: NpcDef = {
+  id: FLOOR3_FIELD_TRAINER_NPC_ID,
+  name: 'League Trainer',
+  dialogue: [
+    { text: 'My Companions will take the field automatically. Walk close when you are ready.' },
   ],
   quests: [],
   textureId: 10,
@@ -440,6 +453,7 @@ const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
   [THE_BROKER_DEF.id, THE_BROKER_DEF],
   [FLOOR3_COMPANION_PROFESSOR_DEF.id, FLOOR3_COMPANION_PROFESSOR_DEF],
+  [FLOOR3_FIELD_TRAINER_DEF.id, FLOOR3_FIELD_TRAINER_DEF],
   [FLOOR2_DEFECTOR_DEF.id, FLOOR2_DEFECTOR_DEF],
   [SHOP_THE_FENCE_DEF.id, SHOP_THE_FENCE_DEF],
   [SHOP_THE_APOTHECARY_DEF.id, SHOP_THE_APOTHECARY_DEF],

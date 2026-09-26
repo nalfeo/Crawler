@@ -70,6 +70,7 @@ import {
 import { TeamId } from '../shared/constants.js';
 import type {
   Floor3EncounterState,
+  Floor3FieldTrainerState,
   Floor3PendingRosterSpawn,
   Floor3PoachOffer,
   Floor3StudiosState,
@@ -107,7 +108,12 @@ import { addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 import { createLogger } from '../shared/logger.js';
-import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../shared/npc-types.js';
+import {
+  FLOOR3_COMPANION_PROFESSOR_NPC_ID,
+  FLOOR3_FIELD_TRAINER_NPC_ID,
+} from '../shared/npc-types.js';
+import { FLOOR3_FIELD_TRAINERS } from '../shared/data/floor3/trainers.js';
+import { spawnGold } from '../core/helpers.js';
 import tuning from '../shared/data/tuning.json';
 
 const logger = createLogger('game:floor3-scenario');
@@ -148,6 +154,8 @@ export { floor3StudioDefeatGoalId };
 const FLOOR3_STUDIO_TEAM_BASE = 10;
 /** First Team id used by Final Four handlers — one per handler. */
 const FLOOR3_FINAL_FOUR_TEAM_BASE = 30;
+const FLOOR3_FIELD_TRAINER_TEAM_BASE = 50;
+const FLOOR3_FIELD_TRAINER_START_RANGE_FT = 14;
 /**
  * Per-Studio unlock thresholds (`world.playerLevel.level`), one per selected
  * Studio slot in seeded-selection order (spec R6: "any-order soft-gated ...
@@ -716,7 +724,9 @@ function initializeFloor3Studios(
   setGoalFlag(world, FLOOR3_STAIRS_POPPED_GOAL_ID, false);
   setGoalFlag(world, FLOOR3_STAIRS_DISCOVERED_GOAL_ID, false);
 
-  return {
+  const state: Floor3StudiosState = {
+    fieldTrainers: [],
+    fieldTrainersDefeatedCount: 0,
     studios,
     finalFour: {
       id: 'final-four',
@@ -737,6 +747,63 @@ function initializeFloor3Studios(
     finalFourRoundIndex: 0,
     studiosDefeatedCount: 0,
   };
+  initializeFloor3FieldTrainers(world, floorMap, state);
+  return state;
+}
+
+/** Places the visible, ordered Trainer circuit in ordinary overworld rooms. */
+function initializeFloor3FieldTrainers(
+  world: GameWorld,
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  state: Floor3StudiosState,
+): void {
+  const studioRoomIds = new Set(state.studios.map((studio) => studio.roomId));
+  const rooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.TERRITORY && !studioRoomIds.has(room.id));
+  const fallbackRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.TERRITORY);
+  const usableRooms = rooms.length > 0 ? rooms : fallbackRooms;
+  if (usableRooms.length === 0) return;
+
+  FLOOR3_FIELD_TRAINERS.forEach((trainer, index) => {
+    const room = usableRooms[index % usableRooms.length]!;
+    const tiles = collectFloor3RosterSpawnTiles(floorMap, room);
+    // When mapgen offers fewer spare territory rooms than challengers, several
+    // Trainers share a room. Spread their anchors across its deterministic tile
+    // list so walking to one cannot accidentally start the next encounter.
+    const anchor =
+      tiles[Math.floor(((index + 1) * tiles.length) / (FLOOR3_FIELD_TRAINERS.length + 1))]!;
+    const anchorPos = floorMap.tileToWorld(anchor.x, anchor.y);
+    const npcEid = spawnNpc(world, anchorPos.x, anchorPos.y, FLOOR3_FIELD_TRAINER_NPC_ID, {
+      dialogueOverride: [
+        `${trainer.name}, ${trainer.title}: walk close and my Companions take the field. No commands — they fight on instinct.`,
+      ],
+    });
+    const teamId = FLOOR3_FIELD_TRAINER_TEAM_BASE + index;
+    const pendingSpawns = trainer.companions.map((companion, companionIndex) => {
+      const tile = tiles[(companionIndex + 1) % tiles.length]!;
+      const pos = floorMap.tileToWorld(tile.x, tile.y);
+      return { ...companion, teamId, x: pos.x, y: pos.y };
+    });
+    state.fieldTrainers?.push({
+      id: trainer.trainerId,
+      name: trainer.name,
+      title: trainer.title,
+      npcEid,
+      teamId,
+      goldReward: trainer.goldReward,
+      roomId: room.id,
+      x: anchorPos.x,
+      y: anchorPos.y,
+      poachRoster: trainer.companions,
+      pendingSpawns,
+      started: false,
+      defeated: false,
+      poachOffered: false,
+    });
+  });
 }
 
 /** Spawns only the active Final Four handler roster and clears that round's pending list. */
@@ -823,6 +890,53 @@ function spawnFloor3StudioRoster(world: GameWorld, studio: Floor3EncounterState)
     }
   }
   studio.pendingSpawns = [];
+}
+
+function spawnFloor3FieldTrainerRoster(world: GameWorld, trainer: Floor3FieldTrainerState): void {
+  if (trainer.pendingSpawns.length === 0) return;
+  for (const pending of trainer.pendingSpawns) {
+    const eid = spawnFloor3RosterCompanion(
+      world,
+      pending.x ?? trainer.x,
+      pending.y ?? trainer.y,
+      pending.speciesId,
+      pending.level,
+      pending.teamId,
+    );
+    if (eid === undefined) {
+      throw new Error(
+        `floor3: Trainer ${trainer.id} has an unspawnable Companion ${pending.speciesId}`,
+      );
+    }
+  }
+  trainer.pendingSpawns = [];
+}
+
+function startNearbyFloor3FieldTrainer(world: GameWorld, state: Floor3StudiosState): void {
+  const trainer = state.fieldTrainers?.find((entry) => !entry.defeated && !entry.started);
+  const player = query(world.ecs, [Player, Position])[0];
+  if (!trainer || player === undefined) return;
+  const dx = (world.stores.position.x[player] ?? 0) - trainer.x;
+  const dy = (world.stores.position.y[player] ?? 0) - trainer.y;
+  if (dx * dx + dy * dy > FLOOR3_FIELD_TRAINER_START_RANGE_FT ** 2) return;
+  trainer.started = true;
+  spawnFloor3FieldTrainerRoster(world, trainer);
+}
+
+function defeatFloor3FieldTrainer(
+  world: GameWorld,
+  state: Floor3StudiosState,
+  trainer: Floor3FieldTrainerState,
+): void {
+  trainer.defeated = true;
+  state.fieldTrainersDefeatedCount = (state.fieldTrainersDefeatedCount ?? 0) + 1;
+  despawnFloor3EncounterRoster(world, [trainer.teamId]);
+  spawnGold(world, trainer.x, trainer.y, trainer.goldReward);
+  const npc = world.npcs.get(trainer.npcEid);
+  if (npc)
+    npc.dialogueOverride = [
+      `${trainer.name}: your roster earned that win. The next challenger is waiting.`,
+    ];
 }
 
 /**
@@ -1178,6 +1292,15 @@ export function floor3ObjectiveTick(world: GameWorld): void {
     world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true &&
     world.floorExtendedState?.floor3PoachOffer === undefined
   ) {
+    for (const trainer of studiosState.fieldTrainers ?? []) {
+      if (!trainer.defeated || trainer.poachOffered) continue;
+      trainer.poachOffered = true;
+      const offer = buildFloor3PoachOffer(world, trainer);
+      if (offer === undefined) continue;
+      world.floorExtendedState = { ...world.floorExtendedState, floor3PoachOffer: offer };
+      world.state = 'loadout';
+      return;
+    }
     for (const studio of studiosState.studios) {
       if (!studio.defeated || studio.poachOffered) continue;
       studio.poachOffered = true;
@@ -1190,6 +1313,12 @@ export function floor3ObjectiveTick(world: GameWorld): void {
   }
 
   if (world.goalFlags.get(FLOOR3_VICTORY_GOAL_ID) !== true) {
+    startNearbyFloor3FieldTrainer(world, studiosState);
+    for (const trainer of studiosState.fieldTrainers ?? []) {
+      if (!trainer.started || trainer.defeated) continue;
+      if (!_isEncounterTeamsWiped(world, [trainer.teamId])) continue;
+      defeatFloor3FieldTrainer(world, studiosState, trainer);
+    }
     for (const studio of studiosState.studios) {
       if (studio.defeated) continue;
       if (!studio.unlocked) {
@@ -1506,7 +1635,7 @@ function recruitFloor3PartyCompanion(
  */
 function buildFloor3PoachOffer(
   world: GameWorld,
-  encounter: Floor3EncounterState,
+  encounter: Pick<Floor3EncounterState, 'id' | 'name' | 'poachRoster'>,
 ): Floor3PoachOffer | undefined {
   if (encounter.poachRoster.length === 0) return undefined;
   if (_isPartyLocked(world, TeamId.PLAYER)) return undefined;

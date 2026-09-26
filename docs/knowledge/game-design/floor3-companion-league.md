@@ -204,6 +204,14 @@ all six are active combatants and the locked composition is what you take to the
 This makes the **coverage decision permanent and weighty**: you're drafting a six-creature
 team that must answer all seven Temperaments across the Studios and Final Four.
 
+### Deferred Floor 3 TODOs
+
+- Introduce companion equipment: equipable passives that visibly modify a Companion's combat
+  stats, with the normal equipment selection surface remaining outside combat.
+- Introduce player combat skills that level as the player's Companions battle. Skills may grant
+  passive Companion enhancements or player-triggered support effects such as healing; the player
+  must never gain an attack or direct Companion-ability command on Floor 3.
+
 ---
 
 ## 7. Wild creatures & biomes
