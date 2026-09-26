@@ -12,7 +12,9 @@ const read = (page: Page): Promise<Floor6PlayerLoopProbe> =>
 // The player ingress reaches the Relay only through its north spur and then
 // the south-loading route. A direct diagonal crosses the surrounding walls.
 const RELAY_PLINTH_ACCESS_ROUTE = [
-  { x: 148, y: 132 },
+  // The authored ingress coordinate is within the south edge of nearby
+  // scenery on the Linux renderer; target the adjacent walkable edge instead.
+  { x: 149, y: 136 },
   { x: 192, y: 132 },
   // The corner at (192, 102) is inside the Relay's north-west collision
   // shell. Its walkable boundary is immediately south-east of that corner.
