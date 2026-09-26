@@ -136,6 +136,19 @@ The legacy CI Recovery lease dispatch `36272977826` was skipped because its
 job is explicitly disabled. No lease was acquired or requires release; PR
 metadata contained no recovery-owner comment when work began.
 
+### Headless telemetry follow-up
+
+Run `36273193181` passed lightweight/unit checks and all four game/UI browser
+shards, but the headless suite failed one of 333 tests. The Floor 2 telemetry
+fixture assumed seed 42 must take damage within 3,000 frames; improved avoidance
+made its attributed damage zero. Reproduced the exact failure locally.
+
+The fixture now supplies one small named hit through production `applyDamage`
+using the existing post-system test hook. All kill, hunt, positive-damage, and
+mitigation assertions remain. Added exact named-source and total-event-sum
+assertions so missing or misattributed telemetry still fails. No production
+logic, seed, frame budget, or gate threshold changed.
+
 ## Retrospective
 
 ### Lessons Learned

@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { query } from 'bitecs';
+import { Player } from '../../src/core/components.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { getActiveWeaponDef } from '../../src/core/active-weapon.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { GAME } from '../../src/shared/constants.js';
@@ -353,16 +356,42 @@ describe('headless runner AI telemetry', () => {
 
   it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {
     let realEnemyDeaths = -1;
+    let fixtureDamage = 0;
+    let totalEventDamage = 0;
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
       seed: 42,
       floorId: 'floor2',
       maxFrames: 3000,
       maxWallTimeMs: 60_000,
       forceWeaponId: 'sword',
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            // Telemetry needs a real hit, not an assumption that the AI fails
+            // to dodge during this short run. Use the production damage path.
+            if (fixtureDamage > 0) return;
+            const player = query(world.ecs, [Player])[0];
+            if (player === undefined) return;
+            fixtureDamage = applyDamage(
+              world,
+              player,
+              1,
+              world.stores.position.x[player]!,
+              world.stores.position.y[player]!,
+              { ...DEFAULT_DAMAGE_OPTIONS, sourceArchetypeKey: 'telemetry-fixture' },
+            );
+          },
+        ],
+      },
       onFinish: (world) => {
         realEnemyDeaths = world.combatEvents.filter(
           (event) => event.type === 'death' && event.targetType === 'enemy',
         ).length;
+        totalEventDamage = world.combatEvents.reduce(
+          (total, event) =>
+            event.type === 'hit' && event.targetType === 'player' ? total + event.amount : total,
+          0,
+        );
       },
     });
 
@@ -380,6 +409,9 @@ describe('headless runner AI telemetry', () => {
       0,
     );
     expect(attributedDamage).toBeGreaterThan(0);
+    expect(fixtureDamage).toBeGreaterThan(0);
+    expect(stats.combat.damageTakenBySource['telemetry-fixture']).toBe(fixtureDamage);
+    expect(attributedDamage).toBe(totalEventDamage);
     // Source attribution records incoming hit amounts, while damageTaken is the
     // post-mitigation per-frame HP delta. The equipment score policy can change
     // mitigation materially, so raw attributed damage need only cover—not closely
