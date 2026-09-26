@@ -123,6 +123,19 @@ handoff, documentation paths, and ADR consistency checks have no findings.
 After ready-for-review publication, CI Recovery and the merge train own follow-up;
 do not arm auto-merge or keep this session waiting for CI.
 
+## CI follow-up (2026-09-26)
+
+CI run `36268109532` passed Unit Tests but blocked Lightweight Checks because
+`computeGoldEconomy` had only test importers. Its production calls are internal
+to the headless runner. Keep that function private and expose the explicitly
+test-only `_computeGoldEconomy` alias, preserving the robbery regression and
+production calculation unchanged. The test-only-export guard and targeted gold
+restitution test now pass; no CI requirement was relaxed.
+
+The legacy CI Recovery lease dispatch `36272977826` was skipped because its
+job is explicitly disabled. No lease was acquired or requires release; PR
+metadata contained no recovery-owner comment when work began.
+
 ## Retrospective
 
 ### Lessons Learned

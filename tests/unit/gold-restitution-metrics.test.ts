@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeGoldEconomy } from '../../src/game/ai/headless-runner.js';
+import { _computeGoldEconomy as computeGoldEconomy } from '../../src/game/ai/headless-runner.js';
 import { recoverStolenGoldAt } from '../../src/core/spawners/pickups.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';

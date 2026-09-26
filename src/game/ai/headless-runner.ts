@@ -291,7 +291,7 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
   };
 }
 
-export function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
+function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
   const ledger = world.goldLedger;
   const earnedTotal =
     ledger.earnedFromDrops + ledger.earnedFromLootBoxes + ledger.earnedFromAppearanceFees;
@@ -334,6 +334,9 @@ export function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
       (ledger.greenRoomPurchases > 0 ? 1 : 0),
   };
 }
+
+// Test-only access to the same reconstruction used by production run statistics.
+export { computeGoldEconomy as _computeGoldEconomy };
 
 interface EquipmentSpendTelemetry {
   readonly soldOfferKeys: Set<string>;
