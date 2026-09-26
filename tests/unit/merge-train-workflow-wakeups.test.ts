@@ -103,6 +103,7 @@ function evaluatesPullRequestCondition(
     headRepository: string;
     labels: string[];
     transitionedLabel?: string;
+    action?: string;
   },
 ): boolean {
   const expression = condition
@@ -116,6 +117,7 @@ function evaluatesPullRequestCondition(
       JSON.stringify(event.headRepository),
     )
     .replaceAll('github.event.label.name', JSON.stringify(event.transitionedLabel ?? null))
+    .replaceAll('github.event.action', JSON.stringify(event.action ?? null))
     .replaceAll('github.repository', JSON.stringify(event.repository))
     .replaceAll('github.event_name', JSON.stringify('pull_request_target'));
 
@@ -266,6 +268,27 @@ describe('merge-train workflow wake-ups', () => {
         transitionedLabel: 'merge-train',
       }),
     ).toBe(true);
+  });
+
+  it('reconciles a same-repository synchronize even before self-admission restores the queue label', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: ['merge-train-blocked'],
+        action: 'synchronize',
+      }),
+    ).toBe(true);
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'fork/Crawler',
+        labels: [],
+        action: 'synchronize',
+      }),
+    ).toBe(false);
   });
 
   it('rejects unrelated PR wakes and fork PRs', () => {
