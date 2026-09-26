@@ -26,9 +26,10 @@ jobs:
     concurrency:
       group: crawler-merge-train
       queue: single
-    # Only queue-label PR events, trusted main validation/CI, and successful
-    # same-repository PR admission workflows wake reconciliation. PR completions
-    # need no queue label: self-admission creates it after checking live facts.
+    # Queue-label and same-repository synchronize events, trusted main
+    # validation/CI, and successful same-repository PR admission workflows wake
+    # reconciliation. A synchronize is a fresh head, so it must clear stale
+    # train state even before self-admission restores the queue label.
     # Failed/fork/unrelated PR admission completions never enter the serialized job queue.
     # Always execute the default-branch implementation, never the triggering head.
     if: >-
@@ -36,7 +37,8 @@ jobs:
         (github.event_name != 'pull_request_target' ||
         (github.event.pull_request.head.repo.full_name == github.repository &&
         (contains(github.event.pull_request.labels.*.name, 'merge-train') ||
-        github.event.label.name == 'merge-train'))) &&
+        github.event.label.name == 'merge-train' ||
+        github.event.action == 'synchronize'))) &&
         (github.event_name != 'workflow_run' ||
         (github.event.workflow_run.name == 'Merge Train Validation' &&
         github.event.workflow_run.head_branch == github.event.repository.default_branch) ||
