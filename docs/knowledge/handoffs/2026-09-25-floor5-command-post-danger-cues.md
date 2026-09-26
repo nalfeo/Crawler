@@ -62,3 +62,17 @@ tests/e2e/main-game-scene-floor5-combat.test.ts -t sword` — passed (1 test).
   the runtime pressure/objective work in PRs #4659 and #4712.
 - The generic `MainGameScene` cue player deduplicates by cue ID, so warning and
   critical cues use separate stable IDs and cannot replay every HUD frame.
+
+## Continuation: CI repair
+
+- Objective/gate: publish the Floor 6 E2E repair to PR #4720 and obtain a
+  passing fresh CI run.
+- Local commit `5251cd380` extends the first-wave pickup observation window
+  and keeps collection on the real pointer path. The focused Floor 6 browser
+  E2E passed twice after the change (including post-rebase), alongside
+  Prettier, focused ESLint, and the PR prerequisite check.
+- Blocker: the remote PR branch advanced after the local rebase; the
+  force-with-lease push was rejected as stale. The local branch is clean,
+  ahead 6 and behind 2. Fetch and reconcile those two remote commits without
+  dropping `5251cd380`, rerun the focused E2E if HEAD changes, then push with
+  force-with-lease and confirm a new CI run.
