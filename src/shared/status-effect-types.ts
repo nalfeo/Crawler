@@ -21,7 +21,7 @@
  * attacks 25% slower). `getEffectiveCooldownMs` (weaponSystem) divides the base
  * cooldown by this product so a slow debuff lengthens the cooldown.
  */
-export type StatusEffectStat = 'speed' | 'hpRegen' | 'attackSpeed';
+export type StatusEffectStat = 'speed' | 'hpRegen' | 'attackSpeed' | 'outgoingDamage';
 
 /**
  * How a modifier composes with the base value.

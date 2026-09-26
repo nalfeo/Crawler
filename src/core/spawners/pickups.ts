@@ -69,6 +69,24 @@ export function spawnGold(
   return eid;
 }
 
+/** Robbery conserves currency: the exact debit remains recoverable, even if
+ * the caster dies during its dash. Call only after a successful robbery hit. */
+export function recoverStolenGoldAt(
+  world: GameWorld,
+  x: number,
+  y: number,
+  maxAmount = 10,
+): number {
+  const amount = Math.min(Math.max(0, world.playerGold), Math.max(0, maxAmount));
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const eid = spawnGold(world, x, y, amount);
+  world.stores.gold.restitution[eid] = 1;
+  world.lootLedger.goldSpawned -= amount;
+  world.playerGold -= amount;
+  world.goldLedger.stolenByEnemies += amount;
+  return amount;
+}
+
 export function spawnBuildCurrencyPickup(
   world: GameWorld,
   x: number,

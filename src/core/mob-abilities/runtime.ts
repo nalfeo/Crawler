@@ -9,10 +9,9 @@
  * renderer, and calls the ability's named resolve handler at resolution.
  *
  * Safety boundary: nothing happens unless the runtime is explicitly `enabled`
- * AND the encounter is explicitly active. The production game leaves both off
- * and registers no definitions, so it emits zero casts/events (verified by
- * test). Ability clocks only begin at the explicit encounter-active transition,
- * never at spawn/initialization.
+ * AND the encounter is explicitly active. Fresh worlds are disabled; production
+ * scenarios opt in at their encounter boundary. Floor 2 registers only started
+ * bosses, never dormant spawns, without resetting other active casters.
  *
  * Cleanup: death, despawn, encounter disable, recycled ids, and invalid targets
  * all release the caster's instance, its cue, and any status effects it owns.
@@ -422,7 +421,16 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
       targetingMode === 'self' || targetEid === null
         ? null
         : (world.entityRenderGeneration[targetEid] ?? 0);
-    if (def.geometry.kind === 'lane') {
+    const committedGeometry = def.commitGeometry?.({
+      world,
+      casterEid,
+      targetEid: targetingMode === 'self' ? null : targetEid,
+      lockedX: pos.x,
+      lockedY: pos.y,
+    });
+    if (committedGeometry !== undefined) {
+      inst.committedGeometry = committedGeometry;
+    } else if (def.geometry.kind === 'lane') {
       if (casterPos === null) {
         inst.phase = 'cooldown';
         inst.timerMs = def.cooldownMs;
@@ -458,16 +466,7 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
         lengthFt,
       };
     } else {
-      const committedGeometry = def.commitGeometry?.({
-        world,
-        casterEid,
-        targetEid: targetingMode === 'self' ? null : targetEid,
-        lockedX: pos.x,
-        lockedY: pos.y,
-      });
-      if (committedGeometry !== undefined) {
-        inst.committedGeometry = committedGeometry;
-      } else if (def.geometry.kind === 'circle') {
+      if (def.geometry.kind === 'circle') {
         inst.committedGeometry = {
           kind: 'circle',
           x: pos.x,
@@ -715,7 +714,13 @@ function tickOwnedZones(world: GameWorld): void {
       continue;
     }
     zone.elapsedMs += dtMs;
-    while (zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs) {
+    if (zone.sampleGeometry !== undefined) {
+      zone.geometry = zone.sampleGeometry(Math.min(zone.elapsedMs, zone.durationMs));
+    }
+    while (
+      zone.elapsedMs + TIMER_EPSILON_MS >= zone.nextTickAtMs &&
+      zone.nextTickAtMs <= zone.durationMs + TIMER_EPSILON_MS
+    ) {
       zone.tick(world, zone);
       zone.nextTickAtMs += zone.tickIntervalMs;
     }

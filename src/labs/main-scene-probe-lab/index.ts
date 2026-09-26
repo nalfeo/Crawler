@@ -142,6 +142,7 @@ import { createAbilityState, forceActivateAbility } from '../../game/systems/abi
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
 import { BOSS_CHEST_REWARD_BASE_IDS } from '../../game/boss-chest-resolver.js';
 import { resolveEquipmentRewardBundle } from '../../game/floor2-reward-bundle-resolver.js';
+import { denUnlockGoalId } from '../../game/floor2Scenario.js';
 import { _getFloor6TowerRoster } from '../../game/floor6Scenario.js';
 import { siegeMinionSystem, siegeHeroSystem, siegeRamSystem } from '../../game/floor5Scenario.js';
 import { getFloor4ArenaRunStats, getFloor4GreenRoomExitMarker } from '../../game/floor4Scenario.js';
@@ -1160,6 +1161,18 @@ export interface Floor4HeadlinerAbilityProbe {
   readonly registrationTokens: number;
 }
 
+export interface Floor2SignatureProbe {
+  readonly frame: number;
+  readonly familyId: string | null;
+  readonly started: boolean;
+  readonly defeated: boolean;
+  readonly enabled: boolean;
+  readonly encounterActive: boolean;
+  readonly bindings: Floor4HeadlinerAbilityProbe['bindings'];
+  readonly cues: Floor4HeadlinerAbilityProbe['cues'];
+  readonly ownedZones: readonly MobAbilityGeometry[];
+}
+
 /** Real-scene projection of the Floor 3 overworld Trainer circuit. */
 export interface Floor3FieldTrainerProbe {
   readonly id: string;
@@ -1587,6 +1600,10 @@ export interface MainSceneProbeApi {
   primeFloor4GreenRoomIntermission(): ProbePoint | null;
   /** Stage a selected natural card entry at its authored WAVES boundary. */
   primeFloor4Headliner(archetypeId: string): boolean;
+  /** Unlock and enter a natural Floor 2 den; the production objective starts its ability. */
+  primeFloor2Signature(): string | null;
+  getFloor2SignatureState(): Floor2SignatureProbe | null;
+  defeatFloor2Signature(): void;
   getFloor4HeadlinerAbilityState(): Floor4HeadlinerAbilityProbe | null;
   /** Damage only; the normal scene death/director systems own cleanup. */
   defeatFloor4Headliner(): void;
@@ -3732,6 +3749,97 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene) {
         scene.queuedInteraction = true;
       }
+    },
+
+    primeFloor2Signature: (): string | null => {
+      const scene = getScene();
+      const world = scene?.world;
+      const player = playerEidOf(scene);
+      const encounters = world?.floorExtendedState?.familyState?.bossEncounters;
+      if (
+        !scene ||
+        !world ||
+        world.floorId !== 'floor2' ||
+        !world.floorMap ||
+        !encounters ||
+        player < 0
+      )
+        return null;
+      const candidates = [...encounters.values()].filter(
+        (entry) => !entry.started && !entry.defeated && entry.bossEid !== null,
+      );
+      const encounter =
+        candidates.find((entry) =>
+          ['cactusfolk', 'batfolk', 'beetlefolk', 'molefolk', 'snailfolk'].includes(entry.familyId),
+        ) ?? candidates[0];
+      if (!encounter || encounter.bossEid === null) return null;
+      scene.setSimulationPaused(true);
+      world.state = 'playing';
+      world.goalFlags.set(denUnlockGoalId(encounter.familyId), true);
+      const boss = encounter.bossEid;
+      world.stores.health.current[boss] = 1_000_000;
+      world.stores.health.max[boss] = 1_000_000;
+      world.stores.health.current[player] = 1_000_000;
+      world.stores.health.max[player] = 1_000_000;
+      const x = encounter.bossSpawnX ?? world.stores.position.x[boss]!;
+      const y = encounter.bossSpawnY ?? world.stores.position.y[boss]!;
+      const destination = [12, -12, 8, -8, 0]
+        .map((offset) => ({ x: x + offset, y }))
+        .find((point) => {
+          const tile = world.floorMap!.worldToTile(point.x, point.y);
+          return (
+            world.floorMap!.isPassableAt(point.x, point.y) &&
+            world.floorMap!.roomGraph.getRoomAt(tile.x, tile.y) === encounter.roomId
+          );
+        }) ?? { x, y };
+      world.stores.position.x[player] = destination.x;
+      world.stores.position.y[player] = destination.y;
+      world.stores.velocity.x[player] = 0;
+      world.stores.velocity.y[player] = 0;
+      return encounter.familyId;
+    },
+    getFloor2SignatureState: (): Floor2SignatureProbe | null => {
+      const world = getScene()?.world;
+      if (!world || world.floorId !== 'floor2') return null;
+      const encounter = [
+        ...(world.floorExtendedState?.familyState?.bossEncounters?.values() ?? []),
+      ].find((entry) => entry.started);
+      const runtime = world.mobAbilities;
+      return {
+        frame: world.frameCount,
+        familyId: encounter?.familyId ?? null,
+        started: encounter?.started ?? false,
+        defeated: encounter?.defeated ?? false,
+        enabled: runtime.enabled,
+        encounterActive: runtime.encounterActive,
+        bindings: [...runtime.byEntity].map(([casterEid, instance]) => ({
+          abilityId: instance.definition.abilityId,
+          casterEid,
+          phase: instance.phase,
+          timerMs: instance.timerMs,
+          resolvedCasts: instance.resolvedCasts,
+          announcementsEmitted: instance.announcementsEmitted,
+          registrationToken: instance.registrationToken,
+          ownedEntities: [...instance.ownedEntityGenerations.keys()],
+          geometry: structuredClone(instance.committedGeometry),
+          firstEligibleAfterMs: instance.definition.firstEligibleAfterMs,
+          telegraphDurationMs: instance.definition.telegraphDurationMs,
+          cooldownMs: instance.definition.cooldownMs,
+        })),
+        cues: runtime.cues.map(({ abilityId, casterEid, geometry }) => ({
+          abilityId,
+          casterEid,
+          geometry: structuredClone(geometry),
+        })),
+        ownedZones: runtime.ownedZones.map((zone) => structuredClone(zone.geometry)),
+      };
+    },
+    defeatFloor2Signature: (): void => {
+      const world = getScene()?.world;
+      const encounter = [
+        ...(world?.floorExtendedState?.familyState?.bossEncounters?.values() ?? []),
+      ].find((entry) => entry.started && !entry.defeated);
+      if (world && encounter?.bossEid != null) world.stores.health.current[encounter.bossEid] = 0;
     },
 
     primeFloor4Headliner: (archetypeId: string): boolean => {

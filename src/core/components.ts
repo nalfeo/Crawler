@@ -553,6 +553,8 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     gold: {
       value: new Float32Array(maxEntities),
+      /** Returned stolen currency is not newly earned loot. */
+      restitution: new Uint8Array(maxEntities),
     },
     doorState: {
       tileX: new Uint16Array(maxEntities),

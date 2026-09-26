@@ -209,7 +209,8 @@ export function createLootLedger(): LootLedger {
  * Deterministic gold economy accounting: where the run's gold came from and
  * where it went. Purely additive counters (never decremented) so
  * `spentTotal / earnedTotal` is a stable spend-through metric and
- * `earnedTotal - spentTotal` reconstructs the unspent balance independently
+ * `earnedTotal - spentTotal - stolenByEnemies + recoveredStolenGold`
+ * reconstructs the unspent balance independently
  * of `playerGold` (which is also mutated by carryover).
  *
  * Deliberately **not** part of the player carryover snapshot: it measures a
@@ -217,6 +218,10 @@ export function createLootLedger(): LootLedger {
  * pricing gate is written against.
  */
 export interface GoldLedger {
+  /** Currency temporarily removed by hostile robbery (not spending). */
+  stolenByEnemies: number;
+  /** Previously stolen currency recovered (not new income). */
+  recoveredStolenGold: number;
   /** Gold picked up off the floor (drops, chests, piles). */
   earnedFromDrops: number;
   /** Gold granted by claimed achievement loot boxes. */
@@ -255,6 +260,8 @@ export interface GoldLedger {
 /** Create a zeroed gold ledger. */
 export function createGoldLedger(): GoldLedger {
   return {
+    stolenByEnemies: 0,
+    recoveredStolenGold: 0,
     earnedFromDrops: 0,
     earnedFromLootBoxes: 0,
     earnedFromAppearanceFees: 0,

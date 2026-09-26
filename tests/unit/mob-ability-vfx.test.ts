@@ -3,6 +3,11 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { ftToPx } from '../../src/shared/units.js';
 import { createMobAbilityVfx } from '../../src/engine/MobAbilityVfx.js';
 import { applyStatusEffect, spawnPlayer } from '../../src/core/index.js';
+import {
+  LIGHTING_OVERLAY_DEPTH,
+  UI_DEPTH_CUTOFF,
+  ABILITY_TELEGRAPH_DEPTH,
+} from '../../src/shared/render-depths.js';
 
 function createGraphicsStub() {
   return {
@@ -105,6 +110,79 @@ function mockInstance() {
 }
 
 describe('MobAbilityVfx', () => {
+  it('keeps danger above darkness without moving it onto the UI camera', () => {
+    expect(ABILITY_TELEGRAPH_DEPTH).toBeGreaterThan(LIGHTING_OVERLAY_DEPTH);
+    expect(ABILITY_TELEGRAPH_DEPTH + 1).toBeLessThan(UI_DEPTH_CUTOFF);
+  });
+  it('draws a composite lane and annulus without filling the safe hole', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'composite',
+      casterEid: 7,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      dangerColor: 'hostile-red',
+      announcementText: 'Dodge',
+      geometry: {
+        kind: 'composite',
+        shapes: [
+          {
+            kind: 'lane',
+            originX: 0,
+            originY: 0,
+            endX: 30,
+            endY: 0,
+            dirX: 1,
+            dirY: 0,
+            lengthFt: 30,
+            widthFt: 6,
+          },
+          { kind: 'annulus', x: 30, y: 0, innerRadiusFt: 6, outerRadiusFt: 15 },
+        ],
+      },
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const gfx = graphicsObjects[0]!;
+    expect(gfx.lineBetween).toHaveBeenCalled();
+    expect(gfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), 0, ftToPx(6));
+    expect(gfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), 0, ftToPx(15));
+    expect(gfx.fillCircle).not.toHaveBeenCalled();
+    vfx.destroy();
+  });
+
+  it('draws active sampled ring zones and retires them after cleanup', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.ownedZones.push({
+      id: 0,
+      abilityId: 'ring',
+      casterEid: 7,
+      sourceId: 'ring',
+      elapsedMs: 1000,
+      durationMs: 2500,
+      tickIntervalMs: 100,
+      nextTickAtMs: 1100,
+      tick: () => {},
+      geometry: {
+        kind: 'annulus',
+        x: 10,
+        y: 20,
+        innerRadiusFt: 12,
+        outerRadiusFt: 16,
+      },
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+    const gfx = graphicsObjects[0]!;
+    expect(gfx.strokeCircle).toHaveBeenCalledWith(ftToPx(10), ftToPx(20), ftToPx(12));
+    expect(gfx.fillCircle).not.toHaveBeenCalled();
+    world.mobAbilities.ownedZones.length = 0;
+    vfx.update(world);
+    expect(gfx.destroy).toHaveBeenCalledOnce();
+  });
+
   it('draws a locked cone sector and retires it when the cue ends', () => {
     const { scene, graphicsObjects } = createSceneStub();
     const world = createTestWorld();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { removeEntity } from 'bitecs';
+import { addComponent, entityExists, removeEntity, set } from 'bitecs';
 import { GAME } from '../../../src/shared/constants.js';
 import { createInputState } from '../../../src/shared/input.js';
 import {
@@ -16,6 +16,7 @@ import {
   spawnBehaviorEnemy,
   spawnPlayer,
   statusEffectSystem,
+  FamilyMembership,
 } from '../../../src/core/index.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
@@ -185,6 +186,23 @@ describe('Undercity Mob Call — summon and cap ownership', () => {
 });
 
 describe('Undercity Mob Call — cleanup contracts', () => {
+  it('summons inherit the caster run-local family index as regular mobs, and disappear on caster death', () => {
+    const h = buildHarness();
+    addComponent(h.world.ecs, h.squick, set(FamilyMembership, { familyId: 1, isBoss: 1 }));
+    arm(h.world, h.squick);
+    step(h.world, FIRST_RESOLUTION_FRAME);
+    const summons = [...instance(h.world, h.squick).ownedEntityGenerations.keys()];
+    expect(summons).toHaveLength(3);
+    for (const eid of summons) {
+      expect(h.world.stores.familyMembership.familyId[eid]).toBe(1);
+      expect(h.world.stores.familyMembership.isBoss[eid]).toBe(0);
+    }
+    h.world.stores.health.current[h.squick] = 0;
+    step(h.world, 1);
+    expect(summons.every((eid) => !entityExists(h.world.ecs, eid))).toBe(true);
+    expect(h.world.mobAbilities.byEntity.has(h.squick)).toBe(false);
+  });
+
   it('clears owned state and pending cast state when the caster is cleared', () => {
     const h = buildHarness();
     arm(h.world, h.squick);
