@@ -1,5 +1,44 @@
 [
   {
+    "commit": "0dc55c9270ac59671d84e3cebd827126869b6b28",
+    "commitDate": "2026-09-26T20:44:25Z",
+    "commitSubject": "feat(floor5): surface field Hero threat cues (#4749)",
+    "capturedAt": "2026-09-26T21:57:35.304Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/36271852995",
+    "winRate": 1,
+    "totalWins": 300,
+    "totalRuns": 300,
+    "path": "by-sha/0dc55c9270ac59671d84e3cebd827126869b6b28.json",
+    "legs": {
+      "floor1": {
+        "winRate": 1,
+        "totalWins": 300,
+        "totalRuns": 300
+      },
+      "floor2": {
+        "winRate": 0.9533333333333334,
+        "totalWins": 143,
+        "totalRuns": 150
+      },
+      "floor1-chain": {
+        "winRate": 0.96,
+        "totalWins": 144,
+        "totalRuns": 150
+      },
+      "floor6": {
+        "winRate": 1,
+        "totalWins": 150,
+        "totalRuns": 150
+      }
+    },
+    "sweepRevision": 3,
+    "fun": {
+      "overallFunScore": null,
+      "gatePass": false,
+      "path": "by-sha/0dc55c9270ac59671d84e3cebd827126869b6b28.fun-report.json"
+    }
+  },
+  {
     "commit": "fe7421aaa86bea6e038287cb7643c21e5f88ee08",
     "commitDate": "2026-09-25T18:08:54Z",
     "commitSubject": "fix(floor6): restore player economy controls and world cues (#4637)",
