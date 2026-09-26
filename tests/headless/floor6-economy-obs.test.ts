@@ -69,6 +69,13 @@ describe('Floor 6 economy real headless pipeline', () => {
     expect(stats.floor6Defense?.towersTornDown).toBeGreaterThanOrEqual(1);
     expect(stats.floor6Defense?.heroDamageDealt).toBeGreaterThan(0);
     expect(stats.floor6Defense?.towerDamageDealt).toBeGreaterThan(0);
+    expect(stats.floor6Defense?.presentation.towerRoster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'signal-slinger', roleLabel: 'Rapid lane response' }),
+        expect.objectContaining({ id: 'relay-riveter', roleLabel: 'Heavy Relay guard' }),
+        expect.objectContaining({ id: 'crane-caster', roleLabel: 'Wide route coverage' }),
+      ]),
+    );
     expect(stats.floor6Defense?.presentation.questGoals).toMatchObject({
       'floor6.defense.briefed': true,
       'floor6.defense.firstWaveCleared': true,
