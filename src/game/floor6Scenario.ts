@@ -822,11 +822,13 @@ function buildFloor6PresentationSnapshot(
         towerId: tower?.towerId ?? null,
       };
     }),
+    towerRoster: _getFloor6TowerRoster().map(({ id, roleLabel }) => ({ id, roleLabel })),
     towers: state.towerInstances.map((instance) => {
       const tower = towerRoster.get(instance.towerId);
       return {
         siteId: instance.siteId,
         towerId: instance.towerId,
+        roleLabel: tower?.roleLabel ?? 'Unassigned tower role',
         rangeFt: tower?.attackRangeFt ?? 0,
         tierLabel: towerTierLabel,
       };

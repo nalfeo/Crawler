@@ -133,7 +133,7 @@ export class ConstructionWorldUI {
         cx,
         ftToPx(y) - 24,
         site.tower
-          ? `${style?.glyph ?? 'T'} · ${site.tower.label}\n${shortSite} · Tap to inspect`
+          ? `${style?.glyph ?? 'T'} · ${site.tower.label}\n${site.tower.roleLabel}\n${shortSite} · Tap to inspect`
           : `${shortSite} · Tap to build`,
       );
       if (site.tower && selectedSiteId === site.siteId) {
