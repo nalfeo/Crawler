@@ -153,6 +153,52 @@ function pointToSegmentDistSq(
   return dx * dx + dy * dy;
 }
 
+/** Exact distance from a blade segment to an axis-aligned physical box. */
+function segmentBoxDistanceSq(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  hw: number,
+  hh: number,
+): number {
+  const minX = cx - hw;
+  const maxX = cx + hw;
+  const minY = cy - hh;
+  const maxY = cy + hh;
+  let enter = 0;
+  let exit = 1;
+  for (const [origin, delta, min, max] of [
+    [ax, bx - ax, minX, maxX],
+    [ay, by - ay, minY, maxY],
+  ] as const) {
+    if (Math.abs(delta) <= Number.EPSILON) {
+      if (origin < min || origin > max) {
+        enter = 2;
+        break;
+      }
+    } else {
+      const a = (min - origin) / delta;
+      const b = (max - origin) / delta;
+      enter = Math.max(enter, Math.min(a, b));
+      exit = Math.min(exit, Math.max(a, b));
+    }
+  }
+  if (enter <= exit) return 0;
+  const pointBox = (x: number, y: number): number =>
+    Math.max(minX - x, 0, x - maxX) ** 2 + Math.max(minY - y, 0, y - maxY) ** 2;
+  return Math.min(
+    pointBox(ax, ay),
+    pointBox(bx, by),
+    pointToSegmentDistSq(minX, minY, ax, ay, bx, by),
+    pointToSegmentDistSq(minX, maxY, ax, ay, bx, by),
+    pointToSegmentDistSq(maxX, minY, ax, ay, bx, by),
+    pointToSegmentDistSq(maxX, maxY, ax, ay, bx, by),
+  );
+}
+
 const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
 
 function getHitSet(world: GameWorld, eid: number): Set<number> {
@@ -319,6 +365,17 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
 
       const tx = position.x[target]!;
       const ty = position.y[target]!;
+      // Floor 2's large physical enemies must be hittable at their surface.
+      // Enemy-owned swings and other floors retain their existing reach.
+      const bodyHit =
+        world.floorId === 'floor2' &&
+        ownerEid >= 0 &&
+        hasComponent(world.ecs, ownerEid, Player) &&
+        hasComponent(world.ecs, target, Enemy);
+      const bodyRadius = bodyHit ? (world.stores.size.radius[target] ?? 0) : 0;
+      const hw = bodyHit ? (world.stores.size.halfWidth[target] ?? 0) : 0;
+      const hh = bodyHit ? (world.stores.size.halfHeight[target] ?? 0) : 0;
+      const boxHit = bodyHit && bodyRadius <= 0 && hw > 0 && hh > 0;
 
       // Walls block melee. A swing cannot damage a target on the far side of an
       // opaque tile — whether that's the player swinging a sword through a wall
@@ -337,16 +394,20 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
       if (headRadius > 0) {
         const dxHead = tx - tipX;
         const dyHead = ty - tipY;
-        const headDistSq = dxHead * dxHead + dyHead * dyHead;
-        if (headDistSq <= headRadiusSq) {
+        const headDistSq = boxHit
+          ? segmentBoxDistanceSq(tipX, tipY, tipX, tipY, tx, ty, hw, hh)
+          : dxHead * dxHead + dyHead * dyHead;
+        if (headDistSq <= (bodyRadius > 0 ? (headRadius + bodyRadius) ** 2 : headRadiusSq)) {
           hitDamage = damage;
         }
       }
 
       // If no head hit, check shaft hit (line segment)
       if (hitDamage === 0) {
-        const segDist = pointToSegmentDistSq(tx, ty, px, py, tipX, tipY);
-        if (segDist <= hitDistSq) {
+        const segDist = boxHit
+          ? segmentBoxDistanceSq(px, py, tipX, tipY, tx, ty, hw, hh)
+          : pointToSegmentDistSq(tx, ty, px, py, tipX, tipY);
+        if (segDist <= (bodyRadius > 0 ? (BLADE_HIT_HALF_WIDTH + bodyRadius) ** 2 : hitDistSq)) {
           hitDamage = damage * shaftDamageMult;
         }
       }

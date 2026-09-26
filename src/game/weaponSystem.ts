@@ -257,6 +257,7 @@ function getNearestEnemyTarget(
   playerX: number,
   playerY: number,
   ignoreFov: boolean = false,
+  bodyGateRangeFt?: number,
 ): EnemyTarget | undefined {
   const enemies = query(world.ecs, [Enemy, Position]);
   let nearestTarget: EnemyTarget | undefined;
@@ -295,13 +296,15 @@ function getNearestEnemyTarget(
     const deltaX = ex - playerX;
     const deltaY = ey - playerY;
     const distanceSq = deltaX * deltaX + deltaY * deltaY;
+    const enemyRadiusFt = getBodyRadius(world, enemy, 'weaponSystem');
+    if (bodyGateRangeFt !== undefined && distanceSq > (bodyGateRangeFt + enemyRadiusFt) ** 2)
+      continue;
 
     if (distanceSq >= nearestDistanceSq || distanceSq <= 0.0001) {
       continue;
     }
 
     nearestDistanceSq = distanceSq;
-    const enemyRadiusFt = getBodyRadius(world, enemy, 'weaponSystem');
     nearestTarget = {
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
@@ -375,6 +378,7 @@ function findBossTargetInRange(
   playerX: number,
   playerY: number,
   gateRangeFt: number,
+  includeBody: boolean = false,
 ): EnemyTarget | undefined {
   const behavior = world.stores.enemyBehavior;
   if (behavior?.aggroedPermanently === undefined) {
@@ -420,7 +424,10 @@ function findBossTargetInRange(
     const deltaX = ex - playerX;
     const deltaY = ey - playerY;
     const distanceSq = deltaX * deltaX + deltaY * deltaY;
-    if (distanceSq <= 0.0001 || distanceSq > gateSq || distanceSq >= bestDistanceSq) {
+    const bodyGateSq = includeBody
+      ? (gateRangeFt + getBodyRadius(world, enemy, 'weaponSystem')) ** 2
+      : gateSq;
+    if (distanceSq <= 0.0001 || distanceSq > bodyGateSq || distanceSq >= bestDistanceSq) {
       continue;
     }
     bestDistanceSq = distanceSq;
@@ -1014,7 +1021,15 @@ export function weaponSystem(world: GameWorld): void {
       if (!inCombat) {
         return;
       }
-      const target = getNearestEnemyTarget(world, playerX, playerY, false);
+      const gateRangeFt = getWeaponGateRangeFt(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+      const includeBody = world.floorId === 'floor2';
+      const target = getNearestEnemyTarget(
+        world,
+        playerX,
+        playerY,
+        false,
+        includeBody ? gateRangeFt : undefined,
+      );
       if (!target) {
         return;
       }
@@ -1022,8 +1037,7 @@ export function weaponSystem(world: GameWorld): void {
       if (world.elapsedMs - lastFire < cooldownMs) {
         return;
       }
-      const gateRangeFt = getWeaponGateRangeFt(def) * ATTACK_TARGET_GATE_MULTIPLIER;
-      if (target.distanceSq > gateRangeFt * gateRangeFt) {
+      if (target.distanceSq > (gateRangeFt + (includeBody ? target.radiusFt : 0)) ** 2) {
         return;
       }
 
@@ -1031,10 +1045,12 @@ export function weaponSystem(world: GameWorld): void {
       // center the swing on it so the arc reliably lands on the boss instead of a
       // transient add. Falls back to the nearest enemy when no boss is in range,
       // preserving normal add-clearing.
-      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt);
+      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt, includeBody);
       const preferredTarget = getPreferredEnemyTarget(world, playerX, playerY);
       const preferredInRange =
-        preferredTarget && preferredTarget.distanceSq <= gateRangeFt * gateRangeFt
+        preferredTarget &&
+        preferredTarget.distanceSq <=
+          (gateRangeFt + (includeBody ? preferredTarget.radiusFt : 0)) ** 2
           ? preferredTarget
           : undefined;
       const fireTarget = bossTarget ?? preferredInRange ?? target;

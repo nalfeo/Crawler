@@ -1,7 +1,7 @@
 # Spec: Boss Abilities
 
 > **Status:** Partial
-> **Last reconciled:** 2026-07-25
+> **Last reconciled:** 2026-09-26
 > **Estimated complexity:** 🍎🍎🍎🍎
 > **Related ADRs:** [0064-data-driven-boss-ability-catalog](../../docs/knowledge/adr/0064-data-driven-boss-ability-catalog.md)
 > **Code source-of-truth:** `src/shared/data/boss-abilities.floor2.json`,
@@ -10,13 +10,14 @@
 > `scripts/agent/boss-ability-status-lib.ts`
 > **Labs:** the combat arena lab tracked by
 > [PR #1243](https://github.com/nalfeo/Crawler/pull/1243)
-> **Test suites:** `tests/unit/boss-ability-catalog.test.ts`; future runtime work
-> must add integration, headless, and deterministic visual coverage
-> **Known implementation gaps:** the reusable runtime foundation plus the Queen
-> Mab and Big Panda Wei arena-only vertical slices are implemented and
-> browser-observed in the combat arena, but production activation remains gated
-> off by `floor2-boss-production-enable`; the other 16 Floor 2 abilities remain
-> blocked until their own runtime slices land.
+> **Test suites:** `tests/unit/boss-ability-catalog.test.ts`,
+> `tests/headless/floor2-signature-abilities.test.ts`, and
+> `tests/headless/floor2-boss-survival-gate.test.ts`, plus ability ECS and visual tests.
+> **Current implementation:** all 18 Floor 2 signatures have typed runtime
+> handlers and production encounter-start registration. Dormant bosses do not
+> cast; teardown is caster-local. The original arena-only acceptance below is
+> retained as historical staging context, superseded by production activation
+> in [ADR 0112](../../docs/knowledge/adr/0112-floor2-dodge-and-recovery.md).
 
 ## Context
 

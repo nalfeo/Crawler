@@ -55,6 +55,7 @@ const STATUS_EFFECT_GEAR_STATS: Readonly<Record<StatusEffectStat, StatId>> = {
   speed: 'moveSpeed',
   hpRegen: 'hpRegen',
   attackSpeed: 'attackSpeed',
+  outgoingDamage: 'damagePercent',
 };
 
 /**
@@ -67,7 +68,7 @@ export function scoreEquipmentStatusEffects(
   if (!effects || effects.length === 0) return 0;
 
   let total = 0;
-  for (const stat of ['speed', 'hpRegen', 'attackSpeed'] as const) {
+  for (const stat of ['speed', 'hpRegen', 'attackSpeed', 'outgoingDamage'] as const) {
     const matching = effects.filter((effect) => effect.stat === stat);
     if (matching.length === 0) continue;
     const base = stat === 'hpRegen' ? 0 : 1;

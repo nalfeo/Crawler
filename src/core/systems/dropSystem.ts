@@ -43,6 +43,10 @@ import {
   type LootTable,
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
+import {
+  FLOOR2_HEALING_POTION_DROP_CHANCE,
+  HEALING_POTION_ITEM_ID,
+} from '../../shared/healing-potions.js';
 import { createLogger } from '../../shared/logger.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
@@ -460,6 +464,18 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
+      if (world.floorId === 'floor2' && allowFloorDrops && allowEnemyDrops) {
+        const boss =
+          (hasComponent(world.ecs, eid, FamilyMembership) &&
+            world.stores.familyMembership.isBoss[eid] === 1) ||
+          [...(world.floorExtendedState?.familyState?.bossEncounters?.values() ?? [])].some(
+            (encounter) => encounter.bossEid === eid,
+          );
+        const chance = FLOOR2_HEALING_POTION_DROP_CHANCE[boss ? 'boss' : 'mob'];
+        if (world.rng.next() < chance) {
+          spawnDroppedItem(world, x, y, getItemIndex(HEALING_POTION_ITEM_ID));
+        }
+      }
       // Spawner-arena XP intercept (spec `Requirements§4,5,7`): a spawner-owned
       // child NEVER drops an on-map XP gem (requirement 4 — "mobs spawned by
       // spawners do NOT drop experience"). Its XP portion is instead banked on

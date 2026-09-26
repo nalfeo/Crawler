@@ -291,7 +291,7 @@ function computeLootEfficiency(world: GameWorld): LootEfficiencyMetrics {
   };
 }
 
-function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
+export function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
   const ledger = world.goldLedger;
   const earnedTotal =
     ledger.earnedFromDrops + ledger.earnedFromLootBoxes + ledger.earnedFromAppearanceFees;
@@ -300,9 +300,10 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     ledger.spentOnMerchantWeapon +
     ledger.spentOnSpell +
     ledger.spentOnGreenRoom;
-  const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
+  const unrecoveredTheft = Math.max(0, ledger.stolenByEnemies - ledger.recoveredStolenGold);
+  const unspentAtExit = Math.max(0, earnedTotal - spentTotal - unrecoveredTheft);
   const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
-  const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
+  const unspentSpendable = Math.max(0, spendableEarned - spentTotal - unrecoveredTheft);
   return {
     earnedFromDrops: ledger.earnedFromDrops,
     earnedFromLootBoxes: ledger.earnedFromLootBoxes,

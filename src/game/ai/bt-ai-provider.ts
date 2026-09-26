@@ -32,7 +32,12 @@ import {
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
-import { getBodyHalfHeight, getBodyHalfWidth } from '../../core/physics-body.js';
+import { getBodyHalfHeight, getBodyHalfWidth, getBodyRadius } from '../../core/physics-body.js';
+import { HEALING_POTION_ITEM_ID } from '../../shared/healing-potions.js';
+import {
+  flattenMobAbilityGeometry,
+  type MobAbilityLaneGeometry,
+} from '../../core/mob-abilities/types.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
 import type { InputState } from '../../shared/input.js';
 import {
@@ -1101,6 +1106,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Reset to (0,0) before tree.tick() and blended in with {@link AIConfig.dodgeWeight}.
    */
   private dodgeVecX: number = 0;
+  private urgentDodge = false;
+  private urgentCircleDodge = false;
+  private urgentLaneDodge: MobAbilityLaneGeometry | null = null;
   private dodgeVecY: number = 0;
   // Previous fused heading (unit vector) — read by the RISK_REWARD_FUSED scorer
   // for its continuity bonus to reduce oscillation, and written at the end of
@@ -2865,6 +2873,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (const candidate of candidates) {
         for (const eid of candidate.entities) {
           if (eid === undefined) continue;
+          if (this.isUnusablePotion(ctx.world, eid)) continue;
           const ignored = this.ignoredLootUntilFrame.get(eid);
           if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
           const lx = ctx.world.stores.position.x[eid] ?? 0;
@@ -2921,9 +2930,13 @@ export class BehaviorTreeAI implements AIInputProvider {
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
       // NPC interaction must not be deflected from its exact approach target.
-      if (this.decision.state === AIState.INTERACT) {
+      if (this.decision.state === AIState.INTERACT && ctx.world.floorId !== 'floor2') {
         return BTStatus.FAILURE;
       }
+      const urgentDodge = () => {
+        this.urgentDodge = ctx.world.floorId === 'floor2';
+        return BTStatus.SUCCESS;
+      };
 
       const projectiles = query(ctx.world.ecs, [EnemyProjectile, Position, Velocity]);
       const playerVx = ctx.world.stores.velocity.x[ctx.playerEid] ?? 0;
@@ -2977,6 +2990,17 @@ export class BehaviorTreeAI implements AIInputProvider {
           projectileDodgeY = (relativeVx / speed) * this.kiteOrbitSign;
         }
         earliestImpactFrames = impactFrames;
+        this.urgentLaneDodge = {
+          kind: 'lane',
+          originX: projectileX,
+          originY: projectileY,
+          endX: projectileX + projectileVx * PROJECTILE_DODGE_HORIZON_FRAMES,
+          endY: projectileY + projectileVy * PROJECTILE_DODGE_HORIZON_FRAMES,
+          dirX: projectileVx,
+          dirY: projectileVy,
+          widthFt: requiredClearance * 2,
+          lengthFt: Math.hypot(projectileVx, projectileVy) * PROJECTILE_DODGE_HORIZON_FRAMES,
+        };
       }
 
       // Telegraphed-but-not-yet-fired shots: the aim/origin are already
@@ -3108,12 +3132,23 @@ export class BehaviorTreeAI implements AIInputProvider {
           projectileDodgeY = (relativeVx / speed) * this.kiteOrbitSign;
         }
         earliestImpactFrames = totalImpactFrames;
+        this.urgentLaneDodge = {
+          kind: 'lane',
+          originX,
+          originY,
+          endX: originX + dirX * projectileSpeed * PROJECTILE_DODGE_HORIZON_FRAMES,
+          endY: originY + dirY * projectileSpeed * PROJECTILE_DODGE_HORIZON_FRAMES,
+          dirX,
+          dirY,
+          widthFt: requiredClearance * 2,
+          lengthFt: projectileSpeed * PROJECTILE_DODGE_HORIZON_FRAMES,
+        };
       }
 
       if (earliestImpactFrames < Number.POSITIVE_INFINITY) {
         this.dodgeVecX = projectileDodgeX * PROJECTILE_DODGE_VECTOR_SCALE;
         this.dodgeVecY = projectileDodgeY * PROJECTILE_DODGE_VECTOR_SCALE;
-        return BTStatus.SUCCESS;
+        return urgentDodge();
       }
 
       // Mob-ability geometry avoidance: if the player is inside a committed
@@ -3124,8 +3159,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         const dx = ctx.playerX - circle.x;
         const dy = ctx.playerY - circle.y;
         const distSq = dx * dx + dy * dy;
-        const r2 = circle.radiusFt * circle.radiusFt;
+        const clearance =
+          ctx.world.floorId === 'floor2'
+            ? getBodyRadius(ctx.world, ctx.playerEid, 'btAiProvider') + 0.5
+            : 0;
+        const r2 = (circle.radiusFt + clearance) ** 2;
         if (distSq > r2) return false;
+        this.urgentCircleDodge = true;
         const dist = Math.sqrt(distSq);
         if (dist > Number.EPSILON) {
           this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
@@ -3136,157 +3176,191 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         return true;
       };
-      for (const cue of ctx.world.mobAbilities.cues) {
-        const { geometry } = cue;
-        if (geometry.kind === 'radial-projectiles') {
-          const relX = ctx.playerX - geometry.casterX;
-          const relY = ctx.playerY - geometry.casterY;
-          const radialDist = Math.hypot(relX, relY);
-          if (radialDist <= geometry.spokeLengthFt) {
-            const stepDeg = 360 / geometry.count;
-            const playerAngleDeg = ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
-            let nearestDeltaDeg = 180;
-            let nearestSpokeRad = 0;
-            for (let i = 0; i < geometry.count; i += 1) {
-              const spokeDeg = (i / geometry.count) * 360 + geometry.offsetDeg;
-              const deltaDeg = ((playerAngleDeg - spokeDeg + 540) % 360) - 180;
-              const absDeltaDeg = Math.abs(deltaDeg);
-              if (absDeltaDeg < nearestDeltaDeg) {
-                nearestDeltaDeg = absDeltaDeg;
-                nearestSpokeRad = (spokeDeg * Math.PI) / 180;
+      const publicHazards = [
+        ...ctx.world.mobAbilities.cues.filter((cue) => cue.dangerColor === 'hostile-red'),
+        ...ctx.world.mobAbilities.ownedZones,
+      ];
+      for (const hazard of publicHazards) {
+        for (const geometry of flattenMobAbilityGeometry(hazard.geometry)) {
+          if (geometry.kind === 'sweeping-arc') {
+            // The arrow announces a complete sweep, not merely the sector drawn
+            // at this instant. Retreat beyond its public reach before it starts.
+            if (
+              maybeDodgeCircle({
+                x: geometry.originX,
+                y: geometry.originY,
+                radiusFt: geometry.rangeFt,
+              })
+            )
+              return urgentDodge();
+            continue;
+          }
+          if (geometry.kind === 'annulus') {
+            const dx = ctx.playerX - geometry.x;
+            const dy = ctx.playerY - geometry.y;
+            const distance = Math.hypot(dx, dy);
+            const clearance = getBodyRadius(ctx.world, ctx.playerEid, 'btAiProvider') + 0.5;
+            const inner = Math.max(0, geometry.innerRadiusFt - clearance);
+            const outer = geometry.outerRadiusFt + clearance;
+            if (distance < inner || distance > outer) continue;
+            const inward = inner > 0 && distance - inner < outer - distance;
+            const direction = inward ? -1 : 1;
+            this.dodgeVecX =
+              (distance > Number.EPSILON ? dx / distance : this.kiteOrbitSign) *
+              direction *
+              PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY =
+              (distance > Number.EPSILON ? dy / distance : 0) *
+              direction *
+              PROJECTILE_DODGE_VECTOR_SCALE;
+            return urgentDodge();
+          }
+          if (geometry.kind === 'radial-projectiles') {
+            const relX = ctx.playerX - geometry.casterX;
+            const relY = ctx.playerY - geometry.casterY;
+            const radialDist = Math.hypot(relX, relY);
+            if (radialDist <= geometry.spokeLengthFt) {
+              const stepDeg = 360 / geometry.count;
+              const playerAngleDeg =
+                ((((Math.atan2(relY, relX) * 180) / Math.PI) % 360) + 360) % 360;
+              let nearestDeltaDeg = 180;
+              let nearestSpokeRad = 0;
+              for (let i = 0; i < geometry.count; i += 1) {
+                const spokeDeg = (i / geometry.count) * 360 + geometry.offsetDeg;
+                const deltaDeg = ((playerAngleDeg - spokeDeg + 540) % 360) - 180;
+                const absDeltaDeg = Math.abs(deltaDeg);
+                if (absDeltaDeg < nearestDeltaDeg) {
+                  nearestDeltaDeg = absDeltaDeg;
+                  nearestSpokeRad = (spokeDeg * Math.PI) / 180;
+                }
+              }
+              const laneHalfWidthDeg =
+                (Math.atan2(PROJECTILE_DODGE_CLEARANCE_FT, Math.max(radialDist, 1e-6)) * 180) /
+                Math.PI;
+              if (nearestDeltaDeg <= Math.min(stepDeg * 0.45, laneHalfWidthDeg)) {
+                const spokeDirX = Math.cos(nearestSpokeRad);
+                const spokeDirY = Math.sin(nearestSpokeRad);
+                const cross = spokeDirX * relY - spokeDirY * relX;
+                const side = cross >= 0 ? 1 : -1;
+                this.dodgeVecX = -spokeDirY * side * PROJECTILE_DODGE_VECTOR_SCALE;
+                this.dodgeVecY = spokeDirX * side * PROJECTILE_DODGE_VECTOR_SCALE;
+                return urgentDodge();
               }
             }
-            const laneHalfWidthDeg =
-              (Math.atan2(PROJECTILE_DODGE_CLEARANCE_FT, Math.max(radialDist, 1e-6)) * 180) /
-              Math.PI;
-            if (nearestDeltaDeg <= Math.min(stepDeg * 0.45, laneHalfWidthDeg)) {
-              const spokeDirX = Math.cos(nearestSpokeRad);
-              const spokeDirY = Math.sin(nearestSpokeRad);
-              const cross = relX * spokeDirY - relY * spokeDirX;
-              const side = cross >= 0 ? 1 : -1;
-              this.dodgeVecX = -spokeDirY * side * PROJECTILE_DODGE_VECTOR_SCALE;
-              this.dodgeVecY = spokeDirX * side * PROJECTILE_DODGE_VECTOR_SCALE;
-              return BTStatus.SUCCESS;
+            continue;
+          }
+          if (geometry.kind === 'lane') {
+            const segX = geometry.endX - geometry.originX;
+            const segY = geometry.endY - geometry.originY;
+            const segLenSq = segX * segX + segY * segY;
+            if (segLenSq <= Number.EPSILON) continue;
+            const relX = ctx.playerX - geometry.originX;
+            const relY = ctx.playerY - geometry.originY;
+            const t = Math.max(0, Math.min(1, (relX * segX + relY * segY) / segLenSq));
+            const closestX = geometry.originX + segX * t;
+            const closestY = geometry.originY + segY * t;
+            const offX = ctx.playerX - closestX;
+            const offY = ctx.playerY - closestY;
+            const laneHalfWidth = geometry.widthFt * 0.5;
+            const playerBodyRadius = Math.max(
+              getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+              getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+            );
+            const hitClearance = laneHalfWidth + playerBodyRadius;
+            const offDistSq = offX * offX + offY * offY;
+            if (offDistSq > hitClearance * hitClearance) continue;
+            const offDist = Math.sqrt(offDistSq);
+            if (offDist > Number.EPSILON) {
+              this.dodgeVecX = (offX / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = (offY / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
+            } else {
+              this.dodgeVecX = -geometry.dirY * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = geometry.dirX * PROJECTILE_DODGE_VECTOR_SCALE;
             }
+            this.urgentLaneDodge = geometry;
+            return urgentDodge();
           }
-          continue;
-        }
-        if (geometry.kind === 'lane') {
-          const segX = geometry.endX - geometry.originX;
-          const segY = geometry.endY - geometry.originY;
-          const segLenSq = segX * segX + segY * segY;
-          if (segLenSq <= Number.EPSILON) continue;
-          const relX = ctx.playerX - geometry.originX;
-          const relY = ctx.playerY - geometry.originY;
-          const t = Math.max(0, Math.min(1, (relX * segX + relY * segY) / segLenSq));
-          const closestX = geometry.originX + segX * t;
-          const closestY = geometry.originY + segY * t;
-          const offX = ctx.playerX - closestX;
-          const offY = ctx.playerY - closestY;
-          const laneHalfWidth = geometry.widthFt * 0.5;
-          const playerBodyRadius = Math.max(
-            getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
-            getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
-          );
-          const hitClearance = laneHalfWidth + playerBodyRadius;
-          const offDistSq = offX * offX + offY * offY;
-          if (offDistSq > hitClearance * hitClearance) continue;
-          const offDist = Math.sqrt(offDistSq);
-          if (offDist > Number.EPSILON) {
-            this.dodgeVecX = (offX / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
-            this.dodgeVecY = (offY / offDist) * PROJECTILE_DODGE_VECTOR_SCALE;
-          } else {
-            this.dodgeVecX = -geometry.dirY * PROJECTILE_DODGE_VECTOR_SCALE;
-            this.dodgeVecY = geometry.dirX * PROJECTILE_DODGE_VECTOR_SCALE;
+          if (geometry.kind === 'contracting-annulus') {
+            if (hazard.abilityId === 'gastropod-godfather-long-squeeze') {
+              // Unlike Floor 4's final-band strike, this ring damages along its
+              // whole announced inward journey. Clear the outer edge early.
+              if (
+                maybeDodgeCircle({
+                  x: geometry.x,
+                  y: geometry.y,
+                  radiusFt: geometry.startRadiusFt + geometry.ringWidthFt / 2,
+                })
+              )
+                return urgentDodge();
+              continue;
+            }
+            const dx = ctx.playerX - geometry.x;
+            const dy = ctx.playerY - geometry.y;
+            const distance = Math.hypot(dx, dy);
+            const bodyRadius = Math.max(
+              getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+              getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+            );
+            const halfWidth = geometry.ringWidthFt / 2 + bodyRadius;
+            if (Math.abs(distance - geometry.endRadiusFt) > halfWidth) continue;
+            // The stationary final band is public from telegraph start. Choose
+            // its nearest safe side, preserving the empty center as counterplay.
+            const direction = distance < geometry.endRadiusFt ? -1 : 1;
+            this.dodgeVecX =
+              (distance > Number.EPSILON ? dx / distance : this.kiteOrbitSign) *
+              direction *
+              PROJECTILE_DODGE_VECTOR_SCALE;
+            this.dodgeVecY =
+              (distance > Number.EPSILON ? dy / distance : 0) *
+              direction *
+              PROJECTILE_DODGE_VECTOR_SCALE;
+            return urgentDodge();
           }
-          return BTStatus.SUCCESS;
-        }
-        if (geometry.kind === 'contracting-annulus') {
-          const dx = ctx.playerX - geometry.x;
-          const dy = ctx.playerY - geometry.y;
-          const distance = Math.hypot(dx, dy);
-          const bodyRadius = Math.max(
-            getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
-            getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
-          );
-          const halfWidth = geometry.ringWidthFt / 2 + bodyRadius;
-          if (Math.abs(distance - geometry.endRadiusFt) > halfWidth) continue;
-          // The stationary final band is public from telegraph start. Choose
-          // its nearest safe side, preserving the empty center as counterplay.
-          const direction = distance < geometry.endRadiusFt ? -1 : 1;
-          this.dodgeVecX =
-            (distance > Number.EPSILON ? dx / distance : this.kiteOrbitSign) *
-            direction *
-            PROJECTILE_DODGE_VECTOR_SCALE;
-          this.dodgeVecY =
-            (distance > Number.EPSILON ? dy / distance : 0) *
-            direction *
-            PROJECTILE_DODGE_VECTOR_SCALE;
-          return BTStatus.SUCCESS;
-        }
-        if (geometry.kind === 'projectile-fan' || geometry.kind === 'cone') {
-          const dx = ctx.playerX - geometry.originX;
-          const dy = ctx.playerY - geometry.originY;
-          const distSq = dx * dx + dy * dy;
-          const bodyRadius =
-            geometry.kind === 'cone'
-              ? Math.max(
-                  getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
-                  getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
-                )
-              : 0;
-          const rangeSq = (geometry.rangeFt + bodyRadius) ** 2;
-          const targetAngle = Math.atan2(dy, dx);
-          const delta = Math.atan2(
-            Math.sin(targetAngle - geometry.facingRad),
-            Math.cos(targetAngle - geometry.facingRad),
-          );
-          const angleDeg = geometry.kind === 'cone' ? geometry.angleDeg : geometry.coneAngleDeg;
-          const halfRad =
-            (angleDeg * Math.PI) / 360 +
-            Math.asin(Math.min(1, bodyRadius / Math.max(Math.sqrt(distSq), Number.EPSILON)));
-          if (distSq <= rangeSq && Math.abs(delta) <= halfRad) {
-            const lateralSign =
-              Math.abs(delta) <= Number.EPSILON ? this.kiteOrbitSign : Math.sign(delta);
-            const lateralX = -Math.sin(geometry.facingRad) * lateralSign;
-            const lateralY = Math.cos(geometry.facingRad) * lateralSign;
-            this.dodgeVecX = lateralX * PROJECTILE_DODGE_VECTOR_SCALE;
-            this.dodgeVecY = lateralY * PROJECTILE_DODGE_VECTOR_SCALE;
-            return BTStatus.SUCCESS;
+          if (geometry.kind === 'projectile-fan' || geometry.kind === 'cone') {
+            const dx = ctx.playerX - geometry.originX;
+            const dy = ctx.playerY - geometry.originY;
+            const distSq = dx * dx + dy * dy;
+            const bodyRadius =
+              geometry.kind === 'cone' || ctx.world.floorId === 'floor2'
+                ? Math.max(
+                    getBodyHalfWidth(ctx.world, ctx.playerEid, 'btAiProvider'),
+                    getBodyHalfHeight(ctx.world, ctx.playerEid, 'btAiProvider'),
+                  )
+                : 0;
+            const rangeSq = (geometry.rangeFt + bodyRadius) ** 2;
+            const targetAngle = Math.atan2(dy, dx);
+            const delta = Math.atan2(
+              Math.sin(targetAngle - geometry.facingRad),
+              Math.cos(targetAngle - geometry.facingRad),
+            );
+            const angleDeg = geometry.kind === 'cone' ? geometry.angleDeg : geometry.coneAngleDeg;
+            const halfRad =
+              (angleDeg * Math.PI) / 360 +
+              Math.asin(Math.min(1, bodyRadius / Math.max(Math.sqrt(distSq), Number.EPSILON)));
+            if (distSq <= rangeSq && Math.abs(delta) <= halfRad) {
+              const lateralSign =
+                Math.abs(delta) <= Number.EPSILON ? this.kiteOrbitSign : Math.sign(delta);
+              const lateralX = -Math.sin(geometry.facingRad) * lateralSign;
+              const lateralY = Math.cos(geometry.facingRad) * lateralSign;
+              this.dodgeVecX = lateralX * PROJECTILE_DODGE_VECTOR_SCALE;
+              this.dodgeVecY = lateralY * PROJECTILE_DODGE_VECTOR_SCALE;
+              return urgentDodge();
+            }
+            continue;
           }
-          continue;
-        }
-        const cueCircles =
-          geometry.kind === 'circle'
-            ? [geometry]
-            : geometry.kind === 'spawn-circles' || geometry.kind === 'multi-circle'
-              ? geometry.circles
-              : [];
-        for (const circle of cueCircles) {
-          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
-        }
-      }
-      for (const zone of ctx.world.mobAbilities.ownedZones) {
-        const { geometry } = zone;
-        if (
-          geometry.kind === 'lane' ||
-          geometry.kind === 'radial-projectiles' ||
-          geometry.kind === 'projectile-fan'
-        ) {
-          continue;
-        }
-        const zoneCircles =
-          geometry.kind === 'circle'
-            ? [geometry]
-            : geometry.kind === 'spawn-circles' || geometry.kind === 'multi-circle'
-              ? geometry.circles
-              : [];
-        for (const circle of zoneCircles) {
-          if (maybeDodgeCircle(circle)) return BTStatus.SUCCESS;
+          const cueCircles =
+            geometry.kind === 'circle'
+              ? [geometry]
+              : geometry.kind === 'spawn-circles' || geometry.kind === 'multi-circle'
+                ? geometry.circles
+                : [];
+          for (const circle of cueCircles) {
+            if (maybeDodgeCircle(circle)) return urgentDodge();
+          }
         }
       }
       for (const zone of ctx.world.mobAbilities.activeZones) {
-        if (maybeDodgeCircle(zone.circle)) return BTStatus.SUCCESS;
+        if (maybeDodgeCircle(zone.circle)) return urgentDodge();
       }
 
       // Enemy-body dodging remains suspended during retreat and engagement:
@@ -4279,6 +4353,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.hasPerceptionData ||= world.floorMap?.hasVisibleTiles() ?? false;
 
     // Reset opportunistic vectors from Track B so stale data never carries over.
+    this.urgentDodge = false;
+    this.urgentCircleDodge = false;
+    this.urgentLaneDodge = null;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
     this.farmPullX = 0;
@@ -4494,7 +4571,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         // rather than walking through the slick after travel steering takes over.
         // Runtime-owned zones need the same protection so travel steering does
         // not wipe the outward cloud/surface dodge it just computed earlier.
-        if (!preserveMobAbilityDodge) {
+        if (!preserveMobAbilityDodge && !this.urgentDodge) {
           this.dodgeVecX = 0;
           this.dodgeVecY = 0;
         }
@@ -4522,7 +4599,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // values are passed directly to playerInputSystem; normalizeInputDirection
     // keeps them unchanged when their length is ≤ 1, so the player naturally
     // accelerates/decelerates through turns at sub-full speed.
-    if (travelEmergency) {
+    if (this.urgentDodge) {
+      const escape = this.chooseUrgentDodgeHeading(world, playerEid, playerX, playerY);
+      state.moveX = escape.x;
+      state.moveY = escape.y;
+    }
+    if (travelEmergency || this.urgentDodge) {
       // Imminent predicted contact / no safe lane: skip smoothing so the evasive
       // arc reaches playerInputSystem this frame instead of being averaged away.
       this.smoothMoveX = state.moveX;
@@ -4541,6 +4623,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Mirrors the enemyAISystem pathDirection.length ≤ EPSILON → direct
     // pursuit correction that fixed enemy "dancing" at tile-center distance.
     if (
+      !this.urgentDodge &&
       this.decision.state === AIState.ENGAGE &&
       this.decision.targetEid !== null &&
       Math.hypot(this.smoothMoveX, this.smoothMoveY) < ENGAGE_STALL_VELOCITY_THRESHOLD
@@ -4553,6 +4636,39 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.smoothMoveX = norm.moveX;
         this.smoothMoveY = norm.moveY;
       }
+    }
+
+    if (world.floorId === 'floor2' && !this.urgentDodge) {
+      // Final safety constraint: neither pursuit, loot attraction nor anti-stall
+      // may steer into a live enemy's physical body. Sprite size is irrelevant.
+      if (!this.isBodySafeStep(world, playerEid, playerX, playerY, state.moveX, state.moveY)) {
+        const base = Math.atan2(state.moveY, state.moveX);
+        state.moveX = 0;
+        state.moveY = 0;
+        const angles = [0, 1, -1, 2, -2, 3, -3, 4].map((offset) => base + (offset * Math.PI) / 4);
+        angles.push(0, Math.PI / 2, Math.PI, -Math.PI / 2);
+        for (const angle of angles) {
+          const dx = Math.cos(angle);
+          const dy = Math.sin(angle);
+          if (!this.isBodySafeStep(world, playerEid, playerX, playerY, dx, dy)) continue;
+          if (
+            world.floorMap &&
+            !hasClearLineOfSight(
+              world.floorMap,
+              playerX,
+              playerY,
+              playerX + dx * KITE_STEP_FT,
+              playerY + dy * KITE_STEP_FT,
+            )
+          )
+            continue;
+          state.moveX = dx;
+          state.moveY = dy;
+          break;
+        }
+      }
+      this.smoothMoveX = state.moveX;
+      this.smoothMoveY = state.moveY;
     }
 
     state.action = false;
@@ -4609,6 +4725,115 @@ export class BehaviorTreeAI implements AIInputProvider {
     const dist = Math.hypot(dx, dy);
     if (dist <= MIN_PLAYER_ENEMY_CONTACT_FT) return null;
     return { dx, dy, dist };
+  }
+
+  /** Prefer an open escape that improves the worst overlapping circle, rather
+   * than alternating between two individually-correct but opposing dodges. */
+  private chooseUrgentDodgeHeading(
+    world: GameWorld,
+    player: number,
+    x: number,
+    y: number,
+  ): { x: number; y: number } {
+    const radius = getBodyRadius(world, player, 'btAiProvider') + 0.5;
+    const circles: Array<{ x: number; y: number; radiusFt: number }> = [];
+    for (const geometry of [
+      ...world.mobAbilities.cues.filter((cue) => cue.dangerColor === 'hostile-red'),
+      ...world.mobAbilities.ownedZones,
+    ].flatMap((hazard) => flattenMobAbilityGeometry(hazard.geometry))) {
+      if (geometry.kind === 'circle') circles.push(geometry);
+      else if (geometry.kind === 'multi-circle' || geometry.kind === 'spawn-circles')
+        circles.push(...geometry.circles);
+    }
+    for (const zone of world.mobAbilities.activeZones) circles.push(zone.circle);
+    const nearby = circles.filter(
+      (circle) => Math.hypot(x - circle.x, y - circle.y) <= circle.radiusFt + radius + KITE_STEP_FT,
+    );
+    const base = Math.atan2(this.dodgeVecY, this.dodgeVecX);
+    let best = { x: 0, y: 0 };
+    let bestScore = -Infinity;
+    const angles = [0, 1, -1, 2, -2, 3, -3, 4].map((offset) => base + (offset * Math.PI) / 4);
+    angles.push(0, Math.PI / 2, Math.PI, -Math.PI / 2);
+    for (const angle of angles) {
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      const alignment = Math.cos(angle - base);
+      // A circle must never reverse the chosen escape from a projectile/lane.
+      if (!this.urgentCircleDodge && !this.urgentLaneDodge && alignment < 0.5) continue;
+      if (!this.isBodySafeStep(world, player, x, y, dx, dy)) continue;
+      const endX = x + dx * KITE_STEP_FT;
+      const endY = y + dy * KITE_STEP_FT;
+      if (world.floorMap && !hasClearLineOfSight(world.floorMap, x, y, endX, endY)) continue;
+      let clearance = Infinity;
+      for (const circle of nearby) {
+        clearance = Math.min(
+          clearance,
+          Math.hypot(endX - circle.x, endY - circle.y) - circle.radiusFt - radius,
+        );
+      }
+      let score =
+        this.urgentCircleDodge && nearby.length ? clearance + alignment * 0.01 : alignment;
+      if (this.urgentLaneDodge) {
+        const lane = this.urgentLaneDodge;
+        const lx = lane.endX - lane.originX;
+        const ly = lane.endY - lane.originY;
+        const t = Math.max(
+          0,
+          Math.min(
+            1,
+            ((endX - lane.originX) * lx + (endY - lane.originY) * ly) /
+              Math.max(Number.EPSILON, lx * lx + ly * ly),
+          ),
+        );
+        score =
+          Math.hypot(endX - lane.originX - lx * t, endY - lane.originY - ly * t) + alignment * 0.01;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = { x: dx, y: dy };
+      }
+    }
+    return best;
+  }
+
+  private isBodySafeStep(
+    world: GameWorld,
+    player: number,
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+  ): boolean {
+    const playerHalfWidth = getBodyHalfWidth(world, player, 'btAiProvider');
+    const playerHalfHeight = getBodyHalfHeight(world, player, 'btAiProvider');
+    const step = this.getPlayerSpeedFtPerFrame(world, player);
+    for (const enemy of query(world.ecs, [Enemy, Position, Health])) {
+      if ((world.stores.health.current[enemy] ?? 0) <= 0 || !isEnemyCombatEligible(world, enemy))
+        continue;
+      const ex = world.stores.position.x[enemy] ?? 0;
+      const ey = world.stores.position.y[enemy] ?? 0;
+      // Contact damage consumes the grid's AABB pairs, including for circle
+      // bodies. Match that actual footprint, not a smaller radial approximation.
+      const halfWidth = playerHalfWidth + getBodyHalfWidth(world, enemy, 'btAiProvider') + 0.25;
+      const halfHeight = playerHalfHeight + getBodyHalfHeight(world, enemy, 'btAiProvider') + 0.25;
+      const clearance = Math.max(Math.abs(x - ex) - halfWidth, Math.abs(y - ey) - halfHeight);
+      if (clearance > step) continue;
+      const next = Math.max(
+        Math.abs(x + dx * step - ex) - halfWidth,
+        Math.abs(y + dy * step - ey) - halfHeight,
+      );
+      // Permit tangential movement out of overlapping boxes, but never deepen
+      // penetration; zero input is not an escape from an existing overlap.
+      if (
+        clearance < 0
+          ? next < clearance - 1e-6 ||
+            Math.hypot(dx, dy) < 1e-6 ||
+            dx * (x - ex) + dy * (y - ey) < -1e-6
+          : next < 0
+      )
+        return false;
+    }
+    return true;
   }
 
   /**
@@ -8931,10 +9156,19 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     loot: LootTarget,
   ): boolean {
+    if (this.isUnusablePotion(world, loot.eid)) return false;
     if (loot.distance <= DIRECT_MOVE_EPSILON_FT) {
       return true;
     }
     return this.isTargetReachable(world, playerX, playerY, loot);
+  }
+
+  private isUnusablePotion(world: GameWorld, eid: number): boolean {
+    return (
+      hasComponent(world.ecs, eid, DroppedItem) &&
+      getItemByIndex(world.stores.droppedItem.itemIndex[eid] ?? 0)?.id === HEALING_POTION_ITEM_ID &&
+      this.getPlayerHealthFraction(world) >= 1
+    );
   }
 
   private resolveStickyLootTarget(
@@ -9240,7 +9474,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       };
     }
 
-    const reachFt = Math.max(weapon.range, weapon.aoeRadius);
+    const reachFt =
+      Math.max(weapon.range, weapon.aoeRadius) +
+      (world.floorId === 'floor2' && weapon.weaponType === WeaponType.MELEE
+        ? getBodyRadius(world, target.eid, 'btAiProvider')
+        : 0);
 
     // Every projectile-firing weapon (RANGED, MAGIC, THROWN, BEAM) kites at a
     // standoff instead of charging the enemy. Only TRAP — which has no projectile
@@ -9638,11 +9876,30 @@ export class BehaviorTreeAI implements AIInputProvider {
     const strikeGate = reachFt * ATTACK_GATE_MULTIPLIER;
     let innerOrbit: number;
     let outerOrbit: number;
-    if (CONTACT_SAFE_ORBIT_FT <= swingRadius) {
+    const player = query(world.ecs, [Player, Position])[0];
+    let contactOrbit = CONTACT_SAFE_ORBIT_FT;
+    if (world.floorId === 'floor2' && player !== undefined) {
+      const distance = Math.hypot(playerX - target.x, playerY - target.y);
+      const ux = distance > 0.001 ? Math.abs(playerX - target.x) / distance : 1;
+      const uy = distance > 0.001 ? Math.abs(playerY - target.y) / distance : 0;
+      const halfWidth =
+        getBodyHalfWidth(world, target.eid, 'btAiProvider') +
+        getBodyHalfWidth(world, player, 'btAiProvider') +
+        0.5;
+      const halfHeight =
+        getBodyHalfHeight(world, target.eid, 'btAiProvider') +
+        getBodyHalfHeight(world, player, 'btAiProvider') +
+        0.5;
+      contactOrbit = Math.min(
+        ux > 0 ? halfWidth / ux : Infinity,
+        uy > 0 ? halfHeight / uy : Infinity,
+      );
+    }
+    if (contactOrbit <= swingRadius) {
       // Weapon out-reaches swarm body contact: anchor the micro-spacing band JUST
       // outside contact (strike, hits still land within the swing radius) and poke a
       // modest amount further out on cooldown (dodge), capped at the strike gate.
-      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_FT);
+      innerOrbit = Math.min(swingRadius, contactOrbit);
       outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_FT);
     } else {
       // Very short weapon (e.g. knife, reach < contact): cannot poke from outside

@@ -38,19 +38,20 @@ import type {
   MobAbilityCuePhase,
   MobAbilityConeGeometry,
   MobAbilityContractingAnnulusGeometry,
+  MobAbilityGeometry,
 } from '../core/mob-abilities/types.js';
-import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import { ABILITY_TELEGRAPH_DEPTH, WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
 
 /** Prefix of every `sourceId` produced by `mobAbilitySourceId()` in core. */
 const MOB_ABILITY_SOURCE_PREFIX = 'mob-ability:';
 
-// Ground-plane depths: below living entities (0) but above terrain/trails so the
-// danger circle reads as painted on the floor beneath the fight.
-const TELEGRAPH_DEPTH = -14;
+// Danger footprints and live projectiles remain above darkness but below UI.
+// Cosmetic status auras retain their ground-plane placement.
+const TELEGRAPH_DEPTH = ABILITY_TELEGRAPH_DEPTH;
 const TARNISH_DEPTH = -13;
-const SLICK_DEPTH = -12;
-const PROJECTILE_DEPTH = -11;
+const SLICK_DEPTH = ABILITY_TELEGRAPH_DEPTH;
+const PROJECTILE_DEPTH = ABILITY_TELEGRAPH_DEPTH + 1;
 const BURST_DEPTH = WORLD_VFX_DEPTH.spellCast;
 
 const COLOR_HOSTILE_RED = 0xef4444;
@@ -1199,6 +1200,116 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     );
   }
 
+  /** Exact Floor 2 footprints, including safe ring interiors and ordered cues. */
+  function drawFloor2Geometry(
+    gfx: Phaser.GameObjects.Graphics,
+    geometry: MobAbilityGeometry,
+    progress: number,
+    inward = false,
+  ): void {
+    const p = Math.min(1, Math.max(0, progress));
+    if (geometry.kind === 'composite') {
+      geometry.shapes.forEach((shape, index) => {
+        const fill =
+          geometry.orderedIntervalMs === undefined
+            ? p
+            : Math.max(0, Math.min(1, p * geometry.shapes.length - index));
+        drawFloor2Geometry(gfx, shape, fill);
+      });
+      return;
+    }
+    if (geometry.kind === 'contracting-annulus' && inward) {
+      drawFloor2Geometry(
+        gfx,
+        {
+          kind: 'annulus',
+          x: geometry.x,
+          y: geometry.y,
+          innerRadiusFt: geometry.startRadiusFt - geometry.ringWidthFt / 2,
+          outerRadiusFt: geometry.startRadiusFt + geometry.ringWidthFt / 2,
+        },
+        p,
+      );
+      const cx = ftToPx(geometry.x);
+      const cy = ftToPx(geometry.y);
+      gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.9);
+      gfx.strokeCircle(cx, cy, ftToPx(geometry.endRadiusFt));
+      for (let i = 0; i < 8; i += 1) {
+        const angle = (i * Math.PI) / 4;
+        const radius = ftToPx(geometry.startRadiusFt - 3 - p * 3);
+        const tipX = cx + Math.cos(angle) * radius;
+        const tipY = cy + Math.sin(angle) * radius;
+        for (const side of [-1, 1]) {
+          gfx.lineBetween(
+            tipX,
+            tipY,
+            tipX + Math.cos(angle) * 7 - Math.sin(angle) * side * 5,
+            tipY + Math.sin(angle) * 7 + Math.cos(angle) * side * 5,
+          );
+        }
+      }
+      return;
+    }
+    if (geometry.kind === 'annulus') {
+      const cx = ftToPx(geometry.x);
+      const cy = ftToPx(geometry.y);
+      const inner = ftToPx(geometry.innerRadiusFt);
+      const outer = ftToPx(geometry.outerRadiusFt);
+      // Thick circumference, never a filled disk: the hole remains safe.
+      gfx.lineStyle(Math.max(1, outer - inner), COLOR_HOSTILE_RED, 0.1 + p * 0.25);
+      gfx.strokeCircle(cx, cy, (inner + outer) / 2);
+      gfx.lineStyle(2, COLOR_HOSTILE_RED, 0.9);
+      if (inner > 0) gfx.strokeCircle(cx, cy, inner);
+      gfx.strokeCircle(cx, cy, outer);
+      return;
+    }
+    if (geometry.kind === 'sweeping-arc') {
+      drawHeadlinerGeometry(gfx, { ...geometry, kind: 'cone' }, p);
+      const cx = ftToPx(geometry.originX);
+      const cy = ftToPx(geometry.originY);
+      const radius = ftToPx(geometry.rangeFt);
+      gfx.lineStyle(2, COLOR_CROWN_RUNE, 0.8);
+      gfx.strokeCircle(cx, cy, radius);
+      // Three tangential arrowheads expose the deterministic rotation direction.
+      for (let i = 0; i < 3; i += 1) {
+        const angle = geometry.facingRad + (i * Math.PI * 2) / 3;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        const tangentX = -Math.sin(angle) * geometry.direction;
+        const tangentY = Math.cos(angle) * geometry.direction;
+        for (const side of [-1, 1])
+          gfx.lineBetween(
+            x,
+            y,
+            x - tangentX * 9 + Math.cos(angle) * side * 5,
+            y - tangentY * 9 + Math.sin(angle) * side * 5,
+          );
+      }
+      return;
+    }
+    if (geometry.kind === 'cone' || geometry.kind === 'contracting-annulus') {
+      drawHeadlinerGeometry(gfx, geometry, p);
+    } else if (geometry.kind === 'lane') {
+      drawLaneTelegraph(
+        gfx,
+        ftToPx(geometry.originX),
+        ftToPx(geometry.originY),
+        ftToPx(geometry.endX),
+        ftToPx(geometry.endY),
+        ftToPx(geometry.widthFt),
+        p,
+        'hostile-red',
+      );
+    } else {
+      for (const circle of circlesForMobAbilityGeometry(geometry)) {
+        gfx.lineStyle(2, COLOR_HOSTILE_RED, 0.9);
+        gfx.strokeCircle(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+        gfx.fillStyle(COLOR_HOSTILE_RED, 0.1 + p * 0.25);
+        gfx.fillCircle(ftToPx(circle.x), ftToPx(circle.y), ftToPx(circle.radiusFt));
+      }
+    }
+  }
+
   function update(world: GameWorld): void {
     const runtime = world.mobAbilities;
     const liveCoronationProjectiles = new Set<number>();
@@ -1206,7 +1317,13 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     // ── Telegraph circles ──────────────────────────────────────────────────
     const liveCasters = new Set<number>();
     for (const cue of runtime.cues) {
-      if (cue.geometry.kind === 'cone' || cue.geometry.kind === 'contracting-annulus') {
+      if (
+        cue.geometry.kind === 'cone' ||
+        cue.geometry.kind === 'contracting-annulus' ||
+        cue.geometry.kind === 'annulus' ||
+        cue.geometry.kind === 'composite' ||
+        cue.geometry.kind === 'sweeping-arc'
+      ) {
         liveCasters.add(cue.casterEid);
         if (!enabled) continue;
         let gfx = telegraphGfx.get(cue.casterEid);
@@ -1218,7 +1335,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
           telegraphGfx.set(cue.casterEid, gfx);
         }
         gfx.clear();
-        drawHeadlinerGeometry(gfx, cue.geometry, cue.telegraphProgress);
+        drawFloor2Geometry(
+          gfx,
+          cue.geometry,
+          cue.telegraphProgress,
+          cue.abilityId === 'gastropod-godfather-long-squeeze',
+        );
         continue;
       }
       // ── Radial-projectile spokes (Roman Candle Coronation) ───────────────
@@ -1477,13 +1599,28 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         continue;
       }
       const geom = burst.geometry;
-      if (geom.kind === 'cone' || geom.kind === 'contracting-annulus') {
+      // Vesper emits each band's burst at its actual detonation, not all three
+      // at telegraph resolution. Moving sweeps/rings are shown by owned zones.
+      if (
+        (burst.abilityId === 'foreman-grubbs-undermine-the-union' && geom.kind === 'composite') ||
+        (geom.kind === 'composite' && geom.orderedIntervalMs !== undefined) ||
+        geom.kind === 'sweeping-arc' ||
+        (geom.kind === 'contracting-annulus' &&
+          burst.abilityId === 'gastropod-godfather-long-squeeze')
+      )
+        continue;
+      if (
+        geom.kind === 'cone' ||
+        geom.kind === 'contracting-annulus' ||
+        geom.kind === 'annulus' ||
+        geom.kind === 'composite'
+      ) {
         if (!enabled) continue;
         const gfx = scene.add.graphics();
         gfx.setDepth(BURST_DEPTH);
         gfx.setBlendMode('ADD');
         ignoreUi(gfx);
-        drawHeadlinerGeometry(gfx, geom, 1);
+        drawFloor2Geometry(gfx, geom, 1);
         transientCircles.add(gfx);
         const tween = scene.tweens.add({
           targets: gfx,
@@ -1552,6 +1689,13 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       }
       gfx.clear();
       const lifeProgress = Math.min(1, Math.max(0, zone.elapsedMs / zone.durationMs));
+      if (
+        zone.geometry.kind !== 'circle' &&
+        zone.geometry.kind !== 'multi-circle' &&
+        zone.geometry.kind !== 'spawn-circles'
+      ) {
+        drawFloor2Geometry(gfx, zone.geometry, 1);
+      }
       for (const circle of circlesForMobAbilityGeometry(zone.geometry)) {
         if (zone.abilityId === SOVEREIGN_SPORE_BLOOM_ABILITY_ID) {
           drawSporeCloudCircle(
