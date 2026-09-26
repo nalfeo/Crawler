@@ -739,6 +739,37 @@ function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState
   return `incoming from ${route?.entranceId ?? from.entranceId} route to Relay`;
 }
 
+/**
+ * One concise, state-owned next-action line for the HUD. Route markers retain
+ * their spatial labels; this answers the separate question of what the player
+ * should prepare for now without making the renderer inspect wave state.
+ */
+function floor6WaveStatusLabel(
+  state: Floor6DefenseState,
+  nextByRoute: ReadonlyMap<string, Floor6WaveManifestEntry>,
+): string {
+  if (state.phase.kind === 'BREAK') {
+    return 'Service break active: prepare for the next wave; build, sell, and upgrade safely.';
+  }
+  if (state.phase.kind === 'FINALE') {
+    return 'Final wave active: Broadcast Deadline pressure is advancing on the Relay.';
+  }
+  if (state.phase.kind === 'VICTORY') {
+    return 'All waves cleared: the Relay exit is open.';
+  }
+  if (state.phase.kind === 'DEFEAT') {
+    return 'Defense lost: the Broadcast Relay is offline.';
+  }
+  const next = [...nextByRoute.values()].sort(
+    (left, right) =>
+      left.releaseTick - right.releaseTick || left.manifestIndex - right.manifestIndex,
+  )[0];
+  if (!next) {
+    return 'Wave queue clear: hold the Relay while the next deployment is scheduled.';
+  }
+  return `Next wave ${next.waveIndex + 1} (${next.waveLabel}): ${directionLabel(next, state)}.`;
+}
+
 function buildFloor6PresentationSnapshot(
   world: GameWorld,
   state: Floor6DefenseState,
@@ -797,6 +828,7 @@ function buildFloor6PresentationSnapshot(
   return {
     objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
     phaseLabel: `${state.phase.kind} phase`,
+    waveStatusLabel: floor6WaveStatusLabel(state, nextByRoute),
     relayDangerLabel,
     questGoals: floor6QuestGoalFlagSnapshot(world),
     routes: state.geometry.routes.map((route) => {
