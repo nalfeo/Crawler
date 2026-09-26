@@ -9,6 +9,7 @@ import {
 } from '../../src/core/map/generators/SiegeCastleGenerator.js';
 import { findTilePath } from '../../src/core/map/pathfinding.js';
 import type { Floor5SiegeState } from '../../src/shared/floor-types.js';
+import { getFloor5HudSnapshot } from '../../src/game/floor5Presentation.js';
 import { requestFloor5ThroneCapture } from '../../src/game/floor5Scenario.js';
 import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' with { type: 'json' };
 import {
@@ -82,6 +83,8 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     let firstTelegraphFrame: number | null = null;
     let summonsReleasedAtFirstTelegraph: number | null = null;
     let firstSummonReleaseFrame: number | null = null;
+    let payoffHud: string | null = null;
+    let breachHud: string | null = null;
 
     const stats = await runHeadless(new Floor5ObjectiveInputProvider(), {
       floorId: 'floor5',
@@ -96,6 +99,16 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
             if (!state) return;
             const finale = state.finale;
             const tiles = throneTiles(world);
+
+            // The provider reaches components through movement and the normal
+            // interaction action. Its committed payoff must be visible at the
+            // Command Post before any direct post damage occurs.
+            if (payoffHud === null && state.hostileReinforcements.beats.includes('supplies')) {
+              payoffHud = getFloor5HudSnapshot(world)?.lines[1] ?? null;
+            }
+            if (breachHud === null && state.breach.latched) {
+              breachHud = getFloor5HudSnapshot(world)?.lines[1] ?? null;
+            }
 
             if (finale.courtyardEnteredFrame !== null && !finale.courtyardCleared) {
               // Spec FR7.2: the throne door is shut while the courtyard fight is live.
@@ -229,6 +242,9 @@ describe('Floor 5 courtyard → throne finale in the real headless pipeline', ()
     });
     expect(siege!.laneTelemetry.liveMinionPeak.enemy).toBeLessThanOrEqual(16);
     expect(siege!.liveMinions.enemy).toBe(0);
+    expect(payoffHud).toContain('Command Post 1000/1000 HP · secure');
+    expect(payoffHud).toContain('Escalation: siege payoff 1/6 — supplies applied');
+    expect(breachHud).toContain('Escalation: breach open — route to throne');
 
     // --- Winner's Balcony only opens as part of the capture ----------------
     expect(balconyReachableBeforeCapture).toBe(false);
