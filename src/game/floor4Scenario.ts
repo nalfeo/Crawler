@@ -239,6 +239,7 @@ function createFloor4HeadlinerTelemetry(): Floor4HeadlinerTelemetry {
     chestsForceResolved: 0,
     overtimeStarted: 0,
     overtimeStepsApplied: 0,
+    fights: [],
   };
 }
 
@@ -1317,6 +1318,12 @@ function spawnFloor4Headliner(
   setMobAbilitiesEnabled(world, true);
   activateMobAbilityEncounter(world);
   state.headlinerTelemetry.spawned += 1;
+  state.headlinerTelemetry.fights.push({
+    act,
+    archetypeId: archetype.id,
+    startedAtWorldElapsedMs: world.elapsedMs,
+    defeatedAtWorldElapsedMs: null,
+  });
   pushAnnouncement(world.announcements, {
     kind: 'bossAbilityCast',
     archetypeIndex: -1,
@@ -1374,6 +1381,8 @@ function resolveFloor4HeadlinerDefeat(world: GameWorld, state: Floor4ArenaState)
     encounter.defeated = true;
     encounter.bossEid = null;
     state.headlinerTelemetry.defeated += 1;
+    const fight = state.headlinerTelemetry.fights.find((entry) => entry.act === encounter.act);
+    if (fight) fight.defeatedAtWorldElapsedMs = world.elapsedMs;
     if (defeatedEid !== null && entityExists(world.ecs, defeatedEid)) {
       clearEntityStores(world, defeatedEid);
       removeEntity(world.ecs, defeatedEid);

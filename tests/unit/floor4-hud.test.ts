@@ -64,6 +64,7 @@ function arena(overrides: Partial<Floor4ArenaState> = {}): Floor4ArenaState {
       chestsForceResolved: 1,
       overtimeStarted: 0,
       overtimeStepsApplied: 0,
+      fights: [],
     },
     actBaseline: { playerGold: 20, dropGold: 20, enemiesSpawned: 12, enemiesCut: 1 },
     waves: {

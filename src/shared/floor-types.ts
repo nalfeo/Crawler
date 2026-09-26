@@ -537,6 +537,19 @@ export interface Floor4HeadlinerTelemetry {
   overtimeStarted: number;
   /** Deterministic overtime ramp steps applied. */
   overtimeStepsApplied: number;
+  /** Per-encounter lifetime observations required by the Floor 4 balance contract. */
+  fights: Floor4HeadlinerFightTelemetry[];
+}
+
+/**
+ * A physical Headliner encounter's production lifetime. World time is used so
+ * the value includes any bounded overtime but never a Green Room visit.
+ */
+export interface Floor4HeadlinerFightTelemetry {
+  readonly act: Floor4ActIndex;
+  readonly archetypeId: string;
+  readonly startedAtWorldElapsedMs: number;
+  defeatedAtWorldElapsedMs: number | null;
 }
 
 export type Floor4ArenaPhase =

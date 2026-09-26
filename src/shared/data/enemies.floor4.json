@@ -65,7 +65,7 @@
     {
       "id": "floor4-bellhop-brawler",
       "name": "Bellhop Brawler",
-      "hp": 130,
+      "hp": 1100,
       "speed": 0.13,
       "detectRange": 90.0,
       "spriteTexture": 1,
@@ -80,7 +80,7 @@
     {
       "id": "floor4-mascot-mauler",
       "name": "Mascot Mauler",
-      "hp": 145,
+      "hp": 750,
       "speed": 0.12,
       "detectRange": 90.0,
       "spriteTexture": 1,
@@ -95,7 +95,7 @@
     {
       "id": "floor4-pyro-principal",
       "name": "Pyro Principal",
-      "hp": 155,
+      "hp": 675,
       "speed": 0.1,
       "detectRange": 96.0,
       "spriteTexture": 1,
@@ -110,7 +110,7 @@
     {
       "id": "floor4-stunt-captain",
       "name": "Stunt Captain",
-      "hp": 175,
+      "hp": 800,
       "speed": 0.14,
       "detectRange": 96.0,
       "spriteTexture": 1,
@@ -125,7 +125,7 @@
     {
       "id": "floor4-ringmaster-proxy",
       "name": "Ringmaster Proxy",
-      "hp": 190,
+      "hp": 900,
       "speed": 0.11,
       "detectRange": 100.0,
       "spriteTexture": 1,
@@ -140,7 +140,7 @@
     {
       "id": "floor4-camera-kraken",
       "name": "Camera Kraken",
-      "hp": 205,
+      "hp": 2300,
       "speed": 0.1,
       "detectRange": 100.0,
       "spriteTexture": 1,
@@ -155,7 +155,7 @@
     {
       "id": "floor4-sponsor-sentinel",
       "name": "Sponsor Sentinel",
-      "hp": 220,
+      "hp": 2300,
       "speed": 0.105,
       "detectRange": 102.0,
       "spriteTexture": 1,
@@ -170,7 +170,7 @@
     {
       "id": "floor4-contract-collector",
       "name": "Contract Collector",
-      "hp": 235,
+      "hp": 2400,
       "speed": 0.115,
       "detectRange": 104.0,
       "spriteTexture": 1,
@@ -185,7 +185,7 @@
     {
       "id": "floor4-showrunner",
       "name": "The Showrunner",
-      "hp": 300,
+      "hp": 2050,
       "speed": 0.12,
       "detectRange": 110.0,
       "spriteTexture": 1,
