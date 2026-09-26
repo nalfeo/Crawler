@@ -119,6 +119,9 @@ describe('Floor 5 real scene siege combat and presentation', () => {
           expect(liveHud.text).toContain('under attack — defend the line');
           expect(liveHud.text).toContain('/16');
           expect(liveHud.text).toContain('Heroes');
+          expect(liveHud.text).toContain('Field Hero');
+          expect(liveHud.text).toContain('active');
+          expect(liveHud.cueLabels.some((label) => label.endsWith(' deployed'))).toBe(true);
           expect(liveHud.text).toContain('Objective: Escort the Ram to the wall');
           expect(liveHud.text).toContain('Ram: Advancing · 75/120 HP');
           expect(
