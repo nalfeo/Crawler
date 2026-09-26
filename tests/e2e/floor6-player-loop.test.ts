@@ -200,7 +200,9 @@ describe('Floor 6 ordinary player economy loop', () => {
       // No fixture priming, currency injection, sim stepping, or transaction calls.
       await walkToRelayCombat(page);
       let earned = await read(page);
-      for (let attempt = 0; attempt < 90; attempt += 1) {
+      // The first raider release is intentionally distant from the Relay; keep
+      // the observation window long enough for it to arrive and be defeated.
+      for (let attempt = 0; attempt < 180; attempt += 1) {
         earned = await read(page);
         if (earned.economy.balance >= 5 && earned.economy.pickupsCollected > 0) break;
         expect(earned.worldState).toBe('playing');
@@ -208,13 +210,20 @@ describe('Floor 6 ordinary player economy loop', () => {
         const pickup = earned.pickups[0];
         if (pickup) {
           await walk(page, pickup.positionFt.x, pickup.positionFt.y);
-          await walkToRelayCombat(page);
+          // Stay on the drop long enough for the regular collision frame to
+          // collect it. Retracing the full Relay route here made the pickup
+          // acceptance path outrun the first-wave combat that produces it.
+          await page.waitForTimeout(100);
         }
-        await page.waitForTimeout(500);
+        // Keep checking the real pickup / combat state while the autonomous
+        // battle runs. A half-second idle between pointer decisions lets the
+        // Relay lose to an unrelated wave before this economy acceptance path
+        // can respond on a loaded CI shard.
+        await page.waitForTimeout(100);
       }
       expect(
         earned.economy.pickupsCollected,
-        'Must collect a defeated raider requisition drop',
+        `Must collect a defeated raider requisition drop (phase=${earned.phase}, frame=${earned.frame}, enemies=${earned.enemies.length}, visiblePickups=${earned.pickups.length}, player=${earned.playerFt.x.toFixed(1)},${earned.playerFt.y.toFixed(1)})`,
       ).toBeGreaterThan(0);
       expect(earned.economy.balance).toBeGreaterThanOrEqual(5);
       expect(earned.economy.totalEarned).toBeGreaterThanOrEqual(5);

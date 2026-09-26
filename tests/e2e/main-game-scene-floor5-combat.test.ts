@@ -115,10 +115,17 @@ describe('Floor 5 real scene siege combat and presentation', () => {
           const liveHud = await mainSceneProbe.getScenarioHudState(page);
           expect(liveHud.text).toContain('Siege · Escort');
           expect(liveHud.text).toContain('Hostile pressure:');
+          expect(liveHud.text).toContain('under attack — defend the line');
           expect(liveHud.text).toContain('/16');
           expect(liveHud.text).toContain('Heroes');
           expect(liveHud.text).toContain('Objective: Escort the Ram to the wall');
           expect(liveHud.text).toContain('Ram: Advancing · 75/120 HP');
+          expect(
+            liveHud.cueLabels.some((label) => label === 'audio: Command Post under attack'),
+          ).toBe(true);
+          expect(
+            liveHud.cueLabels.some((label) => label === 'vfx: Command Post under attack'),
+          ).toBe(true);
           for (const viewport of [
             { width: 1280, height: 720 },
             { width: 960, height: 540 },

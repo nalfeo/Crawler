@@ -67,16 +67,44 @@ function ramProgress(state: Floor5SiegeState): string {
   return `route ${reached}/${routeSteps} · ${state.ram.protectionMet ? 'protected' : 'holding'}`;
 }
 
+function commandPostDanger(state: Floor5SiegeState): {
+  readonly label: string;
+  readonly cues: ScenarioHudSnapshot['cues'];
+} {
+  const post = state.structures['command-post'];
+  const healthFraction = post.maxHealth > 0 ? state.commandPostHealth / post.maxHealth : 0;
+  if (state.phase.kind === 'DEFEAT' || state.phase.kind === 'CAPTURED' || healthFraction >= 1) {
+    return { label: 'secure', cues: [] };
+  }
+  if (healthFraction <= 0.25) {
+    return {
+      label: 'critical — return to the line',
+      cues: [
+        { id: 'floor5-command-post-critical-audio', kind: 'audio', label: 'Command Post critical' },
+        { id: 'floor5-command-post-critical-vfx', kind: 'vfx', label: 'Command Post critical' },
+      ],
+    };
+  }
+  return {
+    label: 'under attack — defend the line',
+    cues: [
+      { id: 'floor5-command-post-danger-audio', kind: 'audio', label: 'Command Post under attack' },
+      { id: 'floor5-command-post-danger-vfx', kind: 'vfx', label: 'Command Post under attack' },
+    ],
+  };
+}
+
 /** Read-only projection of committed siege state; the scene owns layout and rendering. */
 export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
   const state = world.floorExtendedState?.floor5Siege;
   if (world.floorId !== 'floor5' || !state) return null;
   const post = state.structures['command-post'];
+  const danger = commandPostDanger(state);
   const lines = [
     `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
-    `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
+    `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP · ${danger.label} | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
     `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}${state.engineState === 'LOCKED' ? ` · prerequisites ${state.requisitionMilestones.length}/4` : ''}`,
     `Hostile pressure: ${state.liveMinions.enemy} minions · wave cap ${state.hostileReinforcements.cap}/16 · Heroes ${state.heroes.status === 'active' ? 1 : 0}/${state.hostileReinforcements.heroCap} max · ${state.hostileReinforcements.beats.length} escalation beats`,
   ];
-  return { id: `floor5:${lines.join('|')}`, lines, cues: [] };
+  return { id: `floor5:${lines.join('|')}`, lines, cues: danger.cues };
 }

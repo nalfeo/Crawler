@@ -9,6 +9,7 @@ import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scen
 import { resolveRenderKind } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { AIState, type AIDecision, type AIInputProvider } from '../../src/game/ai/types.js';
+import { getFloor5HudSnapshot } from '../../src/game/floor5Presentation.js';
 import {
   _completeFloor5FieldTask,
   getFloor5RunOutcome,
@@ -96,6 +97,57 @@ function completeFloor5RamPrerequisites(world: GameWorld): void {
 }
 
 describe('Floor 5 siege foundation real pipeline', () => {
+  it('projects a deterministic Command Post danger warning in the headless pipeline', async () => {
+    const observation: { warning: ReturnType<typeof getFloor5HudSnapshot> } = { warning: null };
+    await runHeadless(new IdleFloor5Provider(), {
+      floorId: 'floor5',
+      seed: 505,
+      maxFrames: 2,
+      questStallFrames: 0,
+      simulationOptions: {
+        postSystems: [
+          (world) => {
+            if (world.frameCount !== 1) return;
+            const state = world.floorExtendedState?.floor5Siege;
+            const post = state?.structures['command-post'];
+            if (!post || post.eid <= 0) return;
+            applyDamage(
+              world,
+              post.eid,
+              300,
+              world.stores.position.x[post.eid] ?? 0,
+              world.stores.position.y[post.eid] ?? 0,
+              {
+                origin: 'environment',
+                affinity: 'physical',
+                scaleWithPrimary: false,
+                canCrit: false,
+              },
+            );
+          },
+        ],
+      },
+      onFinish: (world) => {
+        observation.warning = getFloor5HudSnapshot(world);
+      },
+    });
+
+    expect(observation.warning?.lines[1]).toContain('Command Post 700/1000 HP');
+    expect(observation.warning?.lines[1]).toContain('under attack — defend the line');
+    expect(observation.warning?.cues).toEqual([
+      {
+        id: 'floor5-command-post-danger-audio',
+        kind: 'audio',
+        label: 'Command Post under attack',
+      },
+      {
+        id: 'floor5-command-post-danger-vfx',
+        kind: 'vfx',
+        label: 'Command Post under attack',
+      },
+    ]);
+  });
+
   it('releases bounded hostile pressure only from committed objective beats', () => {
     const world = createTestWorld({ seed: 505 });
     const player = spawnPlayer(world, 0, 0);
