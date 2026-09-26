@@ -260,6 +260,7 @@ describe('MainGameScene Floor 6 scenario HUD strip', () => {
       expect(labelText).toContain('Broadcast Relay');
       expect(labelText).toContain('Tap for upgrades');
       expect(initial.text).toContain('Tap a pad to build / inspect / sell');
+      expect(initial.text).toContain('Next wave 1 (opening-crew): incoming from west route');
       // Loot and upgrade/break-safety/Deadline presentation lines are always
       // present, independent of phase.
       expect(initial.text).toMatch(/Requisitions \d+ available/);

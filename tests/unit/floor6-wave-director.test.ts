@@ -233,6 +233,9 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
         ['south-loading-route', 'incoming from south route ↑ Relay'],
       ],
     );
+    expect(defendPresentation.waveStatusLabel).toBe(
+      'Next wave 1 (opening-crew): incoming from west route → Relay.',
+    );
     expect(defendPresentation.buildSites.some((site) => site.label.includes('VACANT'))).toBe(true);
     expect(defendPresentation.buildSites.some((site) => site.label.includes('OCCUPIED'))).toBe(
       true,
@@ -249,6 +252,7 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
     completeCurrentFloor6Act(world);
     const breakPresentation = getFloor6DefenseRunStats(world)!.presentation;
     expect(breakPresentation.breakSafetyLabel).toContain('Break safe: 0 live hostiles');
+    expect(breakPresentation.waveStatusLabel).toContain('Service break active');
     expect(breakPresentation.cues.some((cue) => cue.id === 'floor6-break-safe-0')).toBe(true);
 
     tickDirector(world, (floor6Manifest.floor6?.finale?.breakDurationFrames ?? 0) + 1);
@@ -263,6 +267,7 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
     completeCurrentFloor6Act(world);
     const finalePresentation = getFloor6DefenseRunStats(world)!.presentation;
     expect(finalePresentation.deadlineLabel).toContain('Deadline active');
+    expect(finalePresentation.waveStatusLabel).toContain('Final wave active');
     expect(finalePresentation.cues.some((cue) => cue.id === 'floor6-deadline-finale')).toBe(true);
 
     state.relayHp = 20;

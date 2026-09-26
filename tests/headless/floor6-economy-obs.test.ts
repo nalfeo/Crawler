@@ -114,6 +114,7 @@ describe('Floor 6 economy real headless pipeline', () => {
         expect.objectContaining({ directionLabel: expect.stringMatching(/route/) }),
       ]),
     );
+    expect(stats.floor6Defense?.presentation.waveStatusLabel).toContain('All waves cleared');
     expect(stats.floor6Defense?.presentation.buildSites).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: expect.stringMatching(/VACANT|OCCUPIED/) }),

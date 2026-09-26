@@ -801,7 +801,8 @@ function getFloor6HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
     id,
     lines: [
       presentation.objectiveLabel,
-      `${presentation.phaseLabel} · ${presentation.relayDangerLabel}`,
+      `${presentation.phaseLabel} · ${presentation.waveStatusLabel}`,
+      presentation.relayDangerLabel,
       `${presentation.buildCurrencyLabel} · ${presentation.lootLabel}`,
       `${presentation.upgradeChoiceLabel} · ${presentation.breakSafetyLabel}`,
       `${presentation.deadlineLabel} · Tap a pad to build / inspect / sell; tap the Relay for upgrades.`,
