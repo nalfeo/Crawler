@@ -1616,6 +1616,8 @@ export interface Floor6HudTowerSnapshot {
 export interface Floor6PresentationSnapshot {
   readonly objectiveLabel: string;
   readonly phaseLabel: string;
+  /** The immediate, authoritative wave action; not inferred by the renderer. */
+  readonly waveStatusLabel: string;
   readonly relayDangerLabel: string;
   readonly questGoals: Floor6QuestProjectionSnapshot;
   readonly routes: readonly Floor6HudRouteSnapshot[];
