@@ -99,6 +99,7 @@ describe('Floor 5 real scene siege combat and presentation', () => {
           await page.waitForFunction(() => window.__mainSceneProbe!.getScenarioHudState().visible);
           const initialHud = await mainSceneProbe.getScenarioHudState(page);
           expect(initialHud.text).toContain('Command Post 1000/1000 HP');
+          expect(initialHud.text).toContain('Escalation: holding line');
           expect(initialHud.text).toContain('Ram: Ready');
           expect(initialHud.text).toContain('Objective:');
           if (evidenceDir) {
