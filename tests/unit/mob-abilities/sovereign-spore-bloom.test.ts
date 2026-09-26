@@ -340,6 +340,8 @@ describe('Sovereign Spore Bloom canonical combat arena', () => {
     const spawned = spawnPresetAroundCenter(world, world.floorMap, preset, cx, cy, rng, 14);
     const sovereign = spawned[0];
     expect(sovereign).toBeDefined();
+    world.stores.health.current[sovereign!] = 1_000_000;
+    world.stores.health.max[sovereign!] = 1_000_000;
     const inputState = createInputState();
 
     const resolutionFrames: number[] = [];

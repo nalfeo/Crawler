@@ -73,7 +73,14 @@ async function walk(page: Page, x: number, y: number, toleranceFt = 2): Promise<
         stalledSteps = 0;
       }
       previousPosition = state.playerFt;
-      await page.mouse.move(origin.x + (dx / distance) * 65, origin.y + (dy / distance) * 65);
+      // Ease the ordinary joystick drag near the waypoint. Holding full speed
+      // through delayed browser commands can repeatedly overshoot the 2ft
+      // arrival radius, particularly at the small viewport on CI.
+      const dragPx = Math.min(65, distance * 3);
+      await page.mouse.move(
+        origin.x + (dx / distance) * dragPx,
+        origin.y + (dy / distance) * dragPx,
+      );
       await page.waitForTimeout(40);
     }
     throw new Error(

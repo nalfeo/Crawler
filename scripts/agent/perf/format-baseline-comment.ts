@@ -191,8 +191,9 @@ function isFunReport(value: unknown): value is ReleaseFunReport {
   return (
     typeof candidate.runs === 'number' &&
     Number.isFinite(candidate.runs) &&
-    typeof candidate.overall_fun_score === 'number' &&
-    Number.isFinite(candidate.overall_fun_score) &&
+    (candidate.overall_fun_score === null ||
+      (typeof candidate.overall_fun_score === 'number' &&
+        Number.isFinite(candidate.overall_fun_score))) &&
     typeof candidate.gate?.pass === 'boolean' &&
     typeof candidate.dimensions === 'object' &&
     candidate.dimensions !== null &&
@@ -232,7 +233,13 @@ function formatFunSection(
   const current = currentValue.report;
   const previous = isFunReport(previousValue) ? previousValue.report : undefined;
   let delta = '—';
-  if (previous) {
+  if (previous && (current.schema_version !== 2 || previous.schema_version !== 2)) {
+    delta = 'inconclusive (legacy evaluator)';
+  } else if (
+    previous &&
+    current.overall_fun_score !== null &&
+    previous.overall_fun_score !== null
+  ) {
     try {
       const comparison = compareFunReports(previous, current);
       delta =
@@ -246,9 +253,15 @@ function formatFunSection(
 
   return [
     '',
-    '### Fun evaluation',
+    '### Heuristic diagnostic',
     '',
-    `**${current.overall_fun_score.toFixed(1)}/100** · gate **${current.gate.pass ? 'pass' : 'attention'}** · ${current.runs} runs · Δ ${delta}`,
+    `**${current.overall_fun_score === null ? 'unmeasured' : `${current.overall_fun_score.toFixed(1)}/100`}** · gate **${current.gate.pass ? 'pass' : 'attention'}** · ${current.runs} runs · Δ ${delta}`,
+    current.schema_version === 2
+      ? 'Uncalibrated heuristic; gate thresholds are design assumptions, not evidence of enjoyment.'
+      : 'Legacy uncalibrated heuristic; scores are not comparable with evaluator v2.',
+    current.schema_version === 2 && current.observed_surveys?.enjoyment.responses > 0
+      ? `Human enjoyment: ${current.observed_surveys.enjoyment.mean}/5 (${current.observed_surveys.enjoyment.responses} responses).`
+      : 'Human enjoyment: unmeasured.',
   ];
 }
 

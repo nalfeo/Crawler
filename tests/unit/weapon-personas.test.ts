@@ -95,6 +95,7 @@ describe('weapon AI personas', () => {
     const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: 'persona-fallback' });
     const generated = generateEquipmentInstance(world, {
       baseId: 'plasma-pistol',
+      floor: 1,
       itemLevel: 2,
       rarity: 'common',
       enhancementLevel: 0,
@@ -106,6 +107,7 @@ describe('weapon AI personas', () => {
     // has the same type skill as a different fallback persona.
     const exact = generateEquipmentInstance(world, {
       baseId: 'fireball',
+      floor: 1,
       itemLevel: 2,
       rarity: 'common',
       enhancementLevel: 0,
@@ -118,6 +120,7 @@ describe('weapon AI personas', () => {
     const world = createTestWorld({ seed: 42, generatedEquipmentRunKey: 'persona-unarmed' });
     const generated = generateEquipmentInstance(world, {
       baseId: 'punch',
+      floor: 1,
       itemLevel: 2,
       rarity: 'common',
       enhancementLevel: 0,

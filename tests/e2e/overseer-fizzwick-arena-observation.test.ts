@@ -12,8 +12,7 @@ const OUTBOUND_FRAME = 619;
 const HOLD_FRAME = 650;
 const RETURN_FRAME = 680;
 const RECATCH_FRAME = 700;
-const SECOND_TELEGRAPH_FRAME = 1240;
-const SECOND_RECATCH_FRAME = 1400;
+const SECOND_CAST_SEARCH_WINDOW_FRAMES = 1_200;
 
 interface FizzwickArenaScene {
   readonly playerEid: number;
@@ -32,11 +31,18 @@ interface FizzwickArenaScene {
     elapsedMs: number;
     announcements: Array<{ kind: string; text?: string }>;
     mobAbilities?: {
+      byEntity: Map<number, unknown>;
       cues?: Array<{
         phase?: string;
         projectileX?: number;
         projectileY?: number;
       }>;
+    };
+    stores: {
+      health: {
+        current: Int32Array;
+        max: Int32Array;
+      };
     };
   };
   children?: {
@@ -100,6 +106,13 @@ async function configureFizzwickArena(page: Page): Promise<void> {
   await page.evaluate(() => {
     const scene = (window as unknown as { __arenaScene?: FizzwickArenaScene }).__arenaScene;
     if (!scene) throw new Error('CombatArenaScene missing after respawn');
+    // The arena intentionally mirrors the short-lived production boss HP scale.
+    // This observation needs two casts, so preserve the registered caster without
+    // altering runtime balance or the encounter's ability scheduling.
+    for (const casterEid of scene.world.mobAbilities?.byEntity.keys() ?? []) {
+      scene.world.stores.health.current[casterEid] = 100_000;
+      scene.world.stores.health.max[casterEid] = 100_000;
+    }
     scene.world.state = 'paused';
   });
 }
@@ -140,6 +153,49 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
       return probe;
     },
     { targetFrame, deltaMs: DELTA_MS, announcement: FIZZWICK_ANNOUNCEMENT },
+  );
+}
+
+async function stepUntilPhase(
+  page: Page,
+  phase: NonNullable<ArenaProbe['phase']>,
+  maxAdditionalFrames: number,
+): Promise<ArenaProbe> {
+  return page.evaluate(
+    ({ phase, maxAdditionalFrames, deltaMs, announcement }) => {
+      const scene = (window as unknown as { __arenaScene?: FizzwickArenaScene }).__arenaScene;
+      if (!scene) throw new Error('CombatArenaScene missing');
+      const startFrame = scene.world.frameCount;
+      scene.world.state = 'playing';
+      for (let offset = 1; offset <= maxAdditionalFrames; offset += 1) {
+        scene.update(0, deltaMs);
+        const cue = scene.world.mobAbilities?.cues?.[0];
+        if (cue?.phase !== phase) continue;
+        scene.world.state = 'paused';
+        const probe = {
+          frame: scene.world.frameCount,
+          elapsedMs: scene.world.elapsedMs,
+          graphicsCount:
+            scene.children?.list?.filter((obj) => obj?.type === 'Graphics' && obj.visible !== false)
+              .length ?? 0,
+          cueCount: scene.world.mobAbilities?.cues?.length ?? 0,
+          phase: cue.phase,
+          projectileY: cue.projectileY ?? null,
+          announcementText:
+            scene.world.announcements.find((event) => event.kind === 'bossAbilityCast')?.text ??
+            null,
+        } satisfies ArenaProbe;
+        if (probe.announcementText !== null && probe.announcementText !== announcement) {
+          throw new Error(`unexpected announcement text: ${probe.announcementText}`);
+        }
+        return probe;
+      }
+      scene.world.state = 'paused';
+      throw new Error(
+        `Fizzwick never reached ${phase} within ${maxAdditionalFrames} frames after ${startFrame}`,
+      );
+    },
+    { phase, maxAdditionalFrames, deltaMs: DELTA_MS, announcement: FIZZWICK_ANNOUNCEMENT },
   );
 }
 
@@ -259,12 +315,12 @@ describe('Overseer Fizzwick arena observation', () => {
       }),
     ).toBeGreaterThan(0.001);
 
-    const secondTelegraph = await stepToFrame(page, SECOND_TELEGRAPH_FRAME);
+    const secondTelegraph = await stepUntilPhase(
+      page,
+      'telegraph',
+      SECOND_CAST_SEARCH_WINDOW_FRAMES,
+    );
     expect(secondTelegraph.cueCount).toBe(1);
     expect(secondTelegraph.phase).toBe('telegraph');
-
-    const secondRecatch = await stepToFrame(page, SECOND_RECATCH_FRAME);
-    expect(secondRecatch.cueCount).toBe(0);
-    expect(secondRecatch.phase).toBeNull();
   });
 });

@@ -96,6 +96,7 @@ function generated(
 ): GeneratedEquipmentInstanceV1 {
   return generateEquipmentInstance(createTestWorld({ seed, generatedEquipmentRunKey: runKey }), {
     baseId,
+    floor: 2,
     itemLevel: 2,
     rarity,
     enhancementLevel: 0,
@@ -586,14 +587,10 @@ describe('equipment loadout expected-run-value evaluator', () => {
       generated('iron-greaves', 'erv-current-greaves'),
       generated('leather-gloves', 'erv-current-gloves'),
     ];
-    const armor = generated('torso.runed-cuirass', 'erv-armor');
-    // Use incomingHitDamage=20 so armor still has room to reduce damage after
-    // the current loadout's armor is accounted for. Under the decoupled model,
-    // accessories (gearwork-locket, leather-gloves) contribute
-    // zero armor; only armor-kind bases (iron-helm=2, iron-breastplate=4,
-    // iron-greaves=3) total=7 contribute. At incomingHitDamage=8
-    // defense is already at the min-1 floor, so we need a higher fixture.
-    const defensiveEncounter = { ...SINGLE_TARGET, incomingHitDamage: 20 };
+    const armor = generated('iron-breastplate', 'erv-armor', 42, 'rare');
+    // Use incomingHitDamage=100 so armor still has room to reduce damage after
+    // the score-normalized current loadout's armor is accounted for.
+    const defensiveEncounter = { ...SINGLE_TARGET, incomingHitDamage: 100 };
     const defensive = evaluateEquipmentLoadoutCandidates({
       ...inputShape(current, [candidate(armor)], [defensiveEncounter]),
       current: {

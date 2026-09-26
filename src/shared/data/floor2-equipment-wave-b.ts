@@ -3,6 +3,9 @@ import type { EquipmentSlotId } from '../equipment-slots.js';
 import type { EquipmentItemDef, ItemRarity } from '../equipment-types.js';
 import type { WeaponDef } from '../weaponDefs.js';
 import { WEAPON_DEF_DEFAULTS } from '../weapon-def-defaults.js';
+import { getGearScoreTargetRange } from '../gear-score-policy.js';
+import { calibrateWeaponBaseDamage } from '../weapon-gear-score.js';
+import { balanceNonWeaponDefinition } from '../gear-score-stats.js';
 import {
   FLOOR2_EQUIPMENT_ART_DEFINITIONS,
   type Floor2EquipmentArtDefinition,
@@ -309,10 +312,18 @@ function weaponDef(input: WaveBWeaponInput): WeaponDef {
   if (entry.category !== 'weapon' || !isWaveBWeaponFamily(entry.family)) {
     throw new Error(`Invalid Floor 2 Wave B weapon classification: ${input.stableId}`);
   }
-  return Object.freeze({
+  const weapon = {
     id: input.stableId,
     name: entry.briefInput.name,
     ...WEAPON_PROFILES[entry.family],
+  };
+  const slots: readonly EquipmentSlotId[] = input.twoHanded
+    ? ['mainHand', 'offHand']
+    : ['mainHand'];
+  const target = getGearScoreTargetRange(2, input.rarity, slots);
+  return Object.freeze({
+    ...weapon,
+    baseDamage: calibrateWeaponBaseDamage(weapon, (target.minimum + target.maximum) / 2),
   });
 }
 
@@ -485,15 +496,20 @@ export const FLOOR2_EQUIPMENT_WAVE_B_NON_WEAPON_DEFS: readonly EquipmentItemDef[
     if (entry.category === 'weapon') {
       throw new Error(`Invalid Floor 2 Wave B non-weapon classification: ${input.stableId}`);
     }
-    return Object.freeze({
-      id: input.stableId,
-      name: waveBDisplayName(input.stableId, entry.briefInput.name),
-      artKey: entry.runtimeKey,
-      slots: input.slots,
-      statBonuses: input.statBonuses,
-      rarity: input.rarity,
-      tags: ['floor2', 'wave-b', entry.category, `family:${entry.family}`],
-      weightLb: input.weightLb,
-    });
+    return Object.freeze(
+      balanceNonWeaponDefinition(
+        {
+          id: input.stableId,
+          name: waveBDisplayName(input.stableId, entry.briefInput.name),
+          artKey: entry.runtimeKey,
+          slots: input.slots,
+          statBonuses: input.statBonuses,
+          rarity: input.rarity,
+          tags: ['floor2', 'wave-b', entry.category, `family:${entry.family}`],
+          weightLb: input.weightLb,
+        },
+        2,
+      ),
+    );
   }),
 );

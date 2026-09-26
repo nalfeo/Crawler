@@ -12,7 +12,7 @@ const RESOLUTION_FRAME = 624;
 const IMPACT_FRAME = 654;
 const SLOW_FRAME = 655;
 const CLEANUP_FRAME = 894;
-const SECOND_IMPACT_FRAME = 1278;
+const SECOND_IMPACT_SEARCH_WINDOW_FRAMES = 1_200;
 
 interface DonPacoArenaScene {
   settings: {
@@ -33,9 +33,16 @@ interface DonPacoArenaScene {
     announcements: Array<{ kind: string; text?: string }>;
     statusEffectsByEntity?: Map<number, Array<{ sourceId: string }>>;
     mobAbilities: {
+      byEntity: Map<number, unknown>;
       cues: unknown[];
       activeProjectiles: unknown[];
       activeZones: Array<{ circle: { x: number; y: number; radiusFt: number } }>;
+    };
+    stores: {
+      health: {
+        current: Int32Array;
+        max: Int32Array;
+      };
     };
   };
 }
@@ -95,6 +102,13 @@ async function configureArena(page: Page): Promise<void> {
   await page.evaluate(() => {
     const scene = (window as unknown as { __arenaScene?: DonPacoArenaScene }).__arenaScene;
     if (!scene) throw new Error('CombatArenaScene missing after respawn');
+    // The arena deliberately uses the short-lived production boss HP scale.
+    // This observation needs a full second cast, so keep only its registered
+    // caster alive without changing runtime balance or ability scheduling.
+    for (const casterEid of scene.world.mobAbilities.byEntity.keys()) {
+      scene.world.stores.health.current[casterEid] = 100_000;
+      scene.world.stores.health.max[casterEid] = 100_000;
+    }
     scene.world.state = 'paused';
   });
 }
@@ -139,6 +153,48 @@ async function stepToFrame(page: Page, targetFrame: number): Promise<ArenaProbe>
       } satisfies ArenaProbe;
     },
     { targetFrame, deltaMs: DELTA_MS, announcement: ANNOUNCEMENT },
+  );
+}
+
+async function stepUntilSecondImpact(page: Page): Promise<ArenaProbe> {
+  return page.evaluate(
+    ({
+      deltaMs,
+      announcement,
+      searchWindow,
+    }: {
+      deltaMs: number;
+      announcement: string;
+      searchWindow: number;
+    }) => {
+      const scene = (window as unknown as { __arenaScene?: DonPacoArenaScene }).__arenaScene;
+      if (!scene) throw new Error('CombatArenaScene missing');
+      scene.world.state = 'playing';
+      for (let i = 0; i < searchWindow; i += 1) {
+        scene.update(0, deltaMs);
+        if (scene.world.mobAbilities.activeZones.length !== 5) continue;
+        scene.world.state = 'paused';
+        const announcementText =
+          scene.world.announcements.find((event) => event.kind === 'bossAbilityCast')?.text ?? null;
+        if (announcementText !== announcement)
+          throw new Error(`unexpected announcement text: ${announcementText}`);
+        return {
+          frame: scene.world.frameCount,
+          cueCount: scene.world.mobAbilities.cues.length,
+          projectileCount: scene.world.mobAbilities.activeProjectiles.length,
+          zoneCount: scene.world.mobAbilities.activeZones.length,
+          announcementText,
+          slickActive: true,
+        } satisfies ArenaProbe;
+      }
+      scene.world.state = 'paused';
+      throw new Error(`Don Paco never reached a second impact within ${searchWindow} frames`);
+    },
+    {
+      deltaMs: DELTA_MS,
+      announcement: ANNOUNCEMENT,
+      searchWindow: SECOND_IMPACT_SEARCH_WINDOW_FRAMES,
+    },
   );
 }
 
@@ -246,7 +302,7 @@ describe('Don Paco arena observation', () => {
     expect(cleanup.projectileCount).toBe(0);
     expect(cleanup.zoneCount).toBe(0);
 
-    const secondImpact = await stepToFrame(page, SECOND_IMPACT_FRAME);
+    const secondImpact = await stepUntilSecondImpact(page);
     expect(secondImpact.zoneCount).toBe(5);
 
     const finalCleanup = await clearEnemiesAndObserveCleanup(page);

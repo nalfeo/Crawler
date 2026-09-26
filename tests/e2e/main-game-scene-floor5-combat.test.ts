@@ -114,6 +114,9 @@ describe('Floor 5 real scene siege combat and presentation', () => {
           );
           const liveHud = await mainSceneProbe.getScenarioHudState(page);
           expect(liveHud.text).toContain('Siege · Escort');
+          expect(liveHud.text).toContain('Hostile pressure:');
+          expect(liveHud.text).toContain('/16');
+          expect(liveHud.text).toContain('Heroes');
           expect(liveHud.text).toContain('Objective: Escort the Ram to the wall');
           expect(liveHud.text).toContain('Ram: Advancing · 75/120 HP');
           for (const viewport of [

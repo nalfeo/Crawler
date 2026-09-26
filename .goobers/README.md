@@ -53,6 +53,22 @@ branch instead of creating a duplicate. Manual dispatches can set
 `issue_number` to select the issue, or `abandon_existing` to close the attached
 open PR and intentionally start over.
 
+`crawler-pr-remediation` is the local reconciliation lane for existing
+Goobers-authored PRs. On an hourly schedule, or when explicitly targeted with
+`goobers run --pr <number> crawler-pr-remediation`, it selects a PR with a merge
+conflict, failed required checks, or substantive review findings; claims it;
+rebases or repairs it with bounded per-cause budgets; runs
+`npm run verify:fast`; and force-pushes with lease before releasing the claim.
+Terminal reviewer failures, exhausted budgets, unresolved review threads, and
+infrastructure failures are parked with an auditable escalation instead of
+looping. Before its first mutation, the workflow reads the repository's
+`LIFECYCLE_OWNER_CI_RECOVERY`, `LIFECYCLE_OWNER_REVIEW_THREADS`, and
+`LIFECYCLE_OWNER_BRANCH_UPDATE` variables and exits without work unless all
+three are the literal `goobers`. The workflow is source configuration only
+until the local instance is materialized and Codex authentication is available;
+adding it does not re-enable the disabled GitHub Actions automation or change
+any lifecycle-owner selector.
+
 Shadow mode is a read-only parity path used during Goobers Phase 1. Its
 scheduled workflow reads only the resolved UTC report day's completed CI
 Recovery and Merge Train runs, then downloads the immutable PR/head decision
@@ -108,6 +124,11 @@ for the cutover, per-lane Phase 3 migration, and rollback procedure.
 Runtime journals remain outside this source tree; only retries within one
 Actions job share its throwaway instance.
 
+The checked-in goober definitions use Codex for the local replacement. The
+disabled-by-default hosted `goobers-run.yml` path applies a runtime-only Copilot
+overlay after materialization, preserving its existing pinned CLI and
+`COPILOT_GITHUB_TOKEN` contract if that workflow is deliberately re-enabled.
+
 Phase 3 migrates PR-lifecycle lanes one at a time behind their own selector.
 Lane A (review-thread reply/resolve) is now live for generic review-thread
 markers: `crawler-review-threads` deterministically decides which unresolved
@@ -123,9 +144,13 @@ legacy-owned for now because that path depends on the issue(s) reconcile.mjs
 just created or reused, and the Goobers contract intentionally does not carry
 that mapping yet. It conservatively passes an empty reachable-commit-SHA set
 rather than reproducing reconcile.mjs's full stale-marker lineage/near-typo
-logic — a documented limitation, not a silent gap. Lanes B (CI Recovery
-reconciliation), C (merge-train admission), and D (merge-train promotion)
-remain legacy-owned and move independently in later Phase 3 slices.
+logic — a documented limitation, not a silent gap. Lane B now has a staged
+local Goobers reconciliation definition, but ownership does not transfer merely
+because that source file exists. CI Recovery remains legacy-owned until the
+local runtime is materialized, observed safely, and
+`LIFECYCLE_OWNER_CI_RECOVERY` is deliberately cut over. Lanes C (merge-train
+admission) and D (merge-train promotion) remain legacy-owned and move
+independently in later Phase 3 slices.
 
 ## Contract Versions
 

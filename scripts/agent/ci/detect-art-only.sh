@@ -278,8 +278,8 @@ done <<<"$changed"
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
-# .github/** (workflows, actions, extensions, instructions) is safe: CI/workflow YAML
-# cannot affect the deterministic ECS sim the headless runner executes.
+# .github/** and .goobers/** are safe: CI/workflow YAML and local Goobers
+# orchestration config cannot affect the deterministic ECS sim the headless runner executes.
 # src/devtools/** is safe: browser-only devtools UI code; the headless runner never
 # imports it (layer rule: src/game/ai → never src/devtools).
 gameplay_safe=true
@@ -298,6 +298,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)
       if package_json_gameplay_safe; then
@@ -399,6 +400,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     .npmrc | .node-version | .python-version | eslint.config.js) ;;
@@ -444,6 +446,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     src/shared/data/sprite-catalog.json) ;;
@@ -487,7 +490,7 @@ while IFS= read -r file; do
         break
       fi
       ;;
-    tests/* | scripts/* | .github/* | docs/* | .specify/* | public/* | briefs/* | AGENTS.md | .npmrc | .node-version | .python-version | eslint.config.js | *.md | *.txt)
+    tests/* | scripts/* | .github/* | .goobers/* | docs/* | .specify/* | public/* | briefs/* | AGENTS.md | .npmrc | .node-version | .python-version | eslint.config.js | *.md | *.txt)
       ;;
     *)
       integration_touched=true
@@ -579,6 +582,7 @@ while IFS= read -r file; do
     public/*) ;;
     briefs/*) ;;
     .github/*) ;;
+    .goobers/*) ;;
     .specify/*) ;;
     scripts/*) ;;
     AGENTS.md) ;;
@@ -620,10 +624,13 @@ emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_tou
 #   visual_touched — union: any of the three surfaces above was touched
 #
 # Non-visual (never contribute to visual_touched):
-#   .github/**                   CI config / workflow / extensions / instructions
+#   .github/**, .goobers/**      CI and local orchestration configuration
 #   docs/**, .specify/**, *.md, *.txt, AGENTS.md   documentation
 #   scripts/agent/**             CI/automation helper scripts
 #   scripts/sprites/**           sprite GENERATION pipeline (not the generated output)
+#   Explicit telemetry/headless reporting modules below and the standalone
+#   release-baseline-report.html do not exercise the game UX. This exclusion is
+#   visual-only: simulation, coverage, integration, and security flags above stay intact.
 #   briefs/**                    sprite authoring inputs (no runtime/browser UI surface)
 #   tests/unit/**, tests/ecs/**, tests/game/**, tests/property/**,
 #   tests/determinism/**, tests/sensors/**, tests/balance/**,
@@ -639,6 +646,7 @@ while IFS= read -r file; do
   case "$file" in
     # ── Non-visual surfaces ──────────────────────────────────────────────────────
     .github/*) ;;
+    .goobers/*) ;;
     docs/*) ;;
     .specify/*) ;;
     AGENTS.md) ;;
@@ -659,6 +667,17 @@ while IFS= read -r file; do
     tests/helpers/*) ;;
     tests/bench/*) ;;
     tests/setup.ts) ;;
+    # Dedicated observations / headless execution, not rendered gameplay.
+    # Keep this explicit: AI policies and telemetry edits inside scene/gameplay
+    # files still route to game UX; do not exempt src/game/ai/** wholesale.
+    src/game/ai/headless-runner.ts | src/game/ai/types.ts | src/game/ai/run-stats-collector.ts | \
+    src/game/ai/den-boss-telemetry.ts | src/game/ai/boss-encounter-telemetry.ts | \
+    src/core/weapon-telemetry.ts | src/shared/weapon-telemetry-types.ts | \
+    src/shared/den-boss-telemetry-types.ts | src/shared/run-stats-collector.ts) ;;
+    # run-bundle-telemetry.ts stays visual: its live upload payload is covered
+    # by browser request/completion tests, including player-visible toasts.
+    # Standalone CI report, covered by its own consumer tests, not game UX.
+    public/release-baseline-report.html) ;;
     # ── Asset visual: generated art + sprite catalog ──────────────────────────────
     public/assets/generated/*)
       visual_touched=true; asset_visual_touched=true ;;

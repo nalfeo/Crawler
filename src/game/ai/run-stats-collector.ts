@@ -147,6 +147,24 @@ export function collectHumanRunStats(
   const finalHealthPercent = maxHealth > 0 ? currentHealth / maxHealth : 0;
   const totalKills = countPlayerAttributedEnemyDeaths(world, playerEid);
   const stats: RunStats = {
+    evaluationContext: {
+      source: 'human',
+      seed: world.seed,
+      // MainGameScene emits this floor's bundle before restarting with a new
+      // world for the next floor. A human run is scoped to this world/scenario.
+      startFloor: world.floorId,
+      available: {
+        combat: false, // Durations, damage, and engagement counts below are placeholders.
+        health:
+          recorderStats !== undefined &&
+          Number.isFinite(recorderStats.minHealthPercent) &&
+          Number.isFinite(recorderStats.closeCallCount) &&
+          Number.isFinite(recorderStats.lowHealthCount) &&
+          maxHealth > 0,
+        progression: false, // No level-up history is harvested here yet.
+        quests: false,
+      },
+    },
     totalFrames: world.frameCount,
     wallTimeMs: 0,
     gameTimeMs: world.elapsedMs,

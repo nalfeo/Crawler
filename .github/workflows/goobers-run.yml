@@ -1325,6 +1325,14 @@ jobs:
             slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
             cp "${slot_manifest}" "${slot_root}/instance.yaml"
             goobers config materialize "$slot_root"
+            # The checked-in source is Codex-first for the local replacement.
+            # This disabled-by-default hosted workflow retains its existing
+            # Copilot credential contract by applying an explicit runtime-only
+            # overlay after materialization; the source tree is never modified.
+            for goober in producer coder reviewer; do
+              goober_file="${slot_root}/config/gaggles/crawler/goobers/${goober}/goober.yaml"
+              perl -0pi -e 's/harness: codex/harness: copilot/; s/harnessOptions:\n    auth: ambient-chatgpt\n    allowFileBackedCredentials: true/harnessOptions: {}/; s/tools: \[\]/tools:\n    - shell/' "${goober_file}"
+            done
             goobers validate "$slot_root"
           done
 

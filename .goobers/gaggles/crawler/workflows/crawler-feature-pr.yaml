@@ -182,6 +182,7 @@ spec:
     - name: plan
       type: agentic
       goober: producer
+      workspace: repo-readonly
       contextFrom:
         - hydrate-requirements
       goal: Plan the claimed Crawler feature without modifying the repository.
@@ -292,6 +293,7 @@ spec:
           lines[0] = lines[0].replace(suffix, ' Session is fully complete.');
           fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
           NODE
+        workspace: scratch
       inputs:
         resultFile: 'terminal-summary-result.json'
       inputsFrom:
@@ -311,8 +313,10 @@ spec:
           const suffix = /\s+Session is (?:not )?fully complete\.\s*$/i;
           if (!suffix.test(lines[0] || '')) throw new Error('implement.summary is missing its completion declaration');
           lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
-          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
+          const question = 'What product decision should the next implementation attempt follow?';
+          fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: `${lines.join('\n')}\n\n${question}` }));
           NODE
+        workspace: scratch
       inputs:
         resultFile: 'terminal-summary-result.json'
       inputsFrom:
@@ -334,6 +338,7 @@ spec:
           lines[0] = lines[0].replace(suffix, ' Session is not fully complete.');
           fs.writeFileSync('terminal-summary-result.json', JSON.stringify({ summary: lines.join('\n') }));
           NODE
+        workspace: scratch
       inputs:
         resultFile: 'terminal-summary-result.json'
       inputsFrom:
@@ -380,7 +385,7 @@ spec:
         status: 'in-review'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: prepare-close-out-summary.summary
+        comment: prepare-close-out-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -401,7 +406,7 @@ spec:
         status: 'needs-human'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: prepare-park-needs-human-summary.summary
+        comment: prepare-park-needs-human-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -423,7 +428,7 @@ spec:
         status: 'needs-remediation'
         resultFile: 'issue-close-out-result.json'
       inputsFrom:
-        summary: prepare-needs-remediation-summary.summary
+        comment: prepare-needs-remediation-summary.summary
       capabilities:
         - github:issues:write
       policyActions:
@@ -434,6 +439,7 @@ spec:
       evaluator: agentic
       agentic:
         goober: reviewer
+        workspace: repo
         retry:
           maxAttempts: 2
           backoffSeconds: 30

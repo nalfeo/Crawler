@@ -313,6 +313,8 @@ describe('Clockwork Kill-Saw — canonical simulation pipeline', () => {
     const cy = world.floorMap.heightFt * 0.35;
     const spawned = spawnPresetAroundCenter(world, world.floorMap, preset, cx, cy, rng, 14);
     expect(spawned[0]).toBeDefined();
+    world.stores.health.current[spawned[0]!] = 1_000_000;
+    world.stores.health.max[spawned[0]!] = 1_000_000;
     const input = createInputState();
 
     const telegraphs: number[] = [];

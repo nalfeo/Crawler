@@ -97,7 +97,7 @@ describe('Floor 5 release gate headless telemetry', () => {
       expect(siege.releaseGate.terminalIntegrity.terminal).toBe(true);
       expect(siege.releaseGate.terminalIntegrity.terminalOutcomeCount).toBe(1);
       expect(siege.laneTelemetry.pathStalls).toBeLessThanOrEqual(gate.maxPathStalls);
-      expect(siege.laneTelemetry.activeCap).toBe(4);
+      expect(siege.laneTelemetry.activeCap).toBe(16);
       for (const [team, peak] of Object.entries(siege.laneTelemetry.liveMinionPeak)) {
         expect(peak, `seed ${seed} ${team} live peak stayed within cap`).toBeLessThanOrEqual(
           siege.laneTelemetry.activeCap,

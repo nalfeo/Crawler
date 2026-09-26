@@ -102,7 +102,7 @@ export interface BaselineIndexEntry {
   sweepRevision?: number;
   /** Diagnostic fun-evaluation summary, when the sibling report was published. */
   fun?: {
-    overallFunScore: number;
+    overallFunScore: number | null;
     gatePass: boolean;
     path: string;
   } | null;

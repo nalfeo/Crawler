@@ -765,6 +765,24 @@ export interface VendorDecisionEntry {
  * Run statistics for performance tracking.
  */
 export interface RunStats {
+  /**
+   * Provenance and measurement coverage for evaluation. Missing context means
+   * legacy/unknown coverage, not permission to treat placeholder zeros as data.
+   */
+  evaluationContext?: {
+    source: 'headless' | 'human';
+    seed: number;
+    /** Scenario at run start, independent of the final floor reached. */
+    startFloor: string;
+    /** Coverage of evaluator inputs; legacy counters may remain diagnostic only. */
+    available: {
+      /** Kill/damage counters only; legacy combat time/engagements are not validated. */
+      combat: boolean;
+      health: boolean;
+      progression: boolean;
+      quests: boolean;
+    };
+  };
   /** Total simulated frames */
   totalFrames: number;
   /** Wall-clock time elapsed (ms) */
@@ -811,6 +829,8 @@ export interface RunStats {
    * during the simulated run.
    */
   runStartXp?: number;
+  /** Actual level after scenario setup and carryover restoration, before frame 1. */
+  runStartLevel?: number;
   /** Gold held by the player at run end */
   totalGold: number;
   /** Durable player-attributed Floor 2 trash kills by family id. */

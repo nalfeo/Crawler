@@ -20,10 +20,13 @@ describe('Floor 5 HUD presentation', () => {
     const state = world.floorExtendedState!.floor5Siege!;
     const before = JSON.stringify(state);
     const initial = getFloor5HudSnapshot(world)!;
-    expect(initial.lines).toHaveLength(3);
+    expect(initial.lines).toHaveLength(4);
     expect(initial.lines[0]).toContain('Muster | Objective: Defend the Command Post');
     expect(initial.lines[1]).toContain(`Command Post ${state.commandPostHealth}/`);
     expect(initial.lines[2]).toContain('Ram: Locked');
+    expect(initial.lines[3]).toContain('Hostile pressure: 0 minions');
+    expect(initial.lines[3]).toContain('wave cap 4/16');
+    expect(initial.lines[3]).toContain('Heroes 0/2 max');
     expect(JSON.stringify(state)).toBe(before);
 
     state.commandPostHealth = 37;

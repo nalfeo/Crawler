@@ -1240,7 +1240,7 @@ describe('equipment decision gate (e2e)', () => {
     }
   });
 
-  it('shows per-replacement ring deltas and combined two-hand DPS deltas', async () => {
+  it('shows per-replacement ring deltas and targets both hands for a two-hand replacement', async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const comparisonPage = await context.newPage();
     try {
@@ -1259,24 +1259,33 @@ describe('equipment decision gate (e2e)', () => {
       });
       expect(ringRows).toEqual(expect.arrayContaining(['(+1)', '(-5%)', '(+2)', '(-1)', '(-3%)']));
 
-      const handRows = await comparisonPage.evaluate(() => {
+      const handPage = await context.newPage();
+      await loadUiProbeLab(handPage);
+      await hideLabChrome(handPage);
+      await handPage.evaluate(() => {
         const probe = window.__uiProbe!;
-        probe.closeOverlays();
         probe.openEquipmentOnly();
         if (!probe.seedMultiHandReplacement()) throw new Error('Unable to seed hand replacement.');
-        probe.previewEquipmentBagItem('bone-club');
-        return probe.getEquipmentTextRuns().map((run) => run.text);
       });
-      expect(handRows).toEqual(
-        expect.arrayContaining([
-          'DPS: 22.2',
-          '(-2.8)',
-          'Knockback: 5 ft',
-          'AoE Range: 5.5 ft',
-          'Armor',
-          '(-3)',
-        ]),
-      );
+      // Run the two-hand replacement against a fresh probe. The ring scenario
+      // above intentionally leaves a comparison active, which is unrelated to
+      // the Sword + Shield replacement visual contract.
+      await handPage.waitForTimeout(250);
+      const handPreview = await handPage.evaluate(() => {
+        const probe = window.__uiProbe!;
+        // Select the occupied primary hand before previewing the two-hand
+        // candidate, matching the player interaction that establishes the
+        // replacement target in the integrated Bag.
+        if (!probe.selectEquipmentSlot('mainHand')) throw new Error('Unable to select main hand.');
+        probe.previewEquipmentBagItem('bone-club');
+        return {
+          text: probe.getEquipmentTextRuns().map((run) => run.text),
+          targetSlots: probe.getEquipmentPreviewTargetSlots(),
+        };
+      });
+      expect(handPreview.targetSlots).toEqual(['mainHand', 'offHand']);
+      expect(handPreview.text).toContain('Main Hand');
+      expect(handPreview.text).toContain('Off Hand');
     } finally {
       await closeQuietly(context);
     }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry.js';
+import {
+  DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
+  listGeneratedEquipmentInstances,
+} from '../../src/core/generated-equipment-registry.js';
 import {
   _GeneratedEquipmentGeneratorError as GeneratedEquipmentGeneratorError,
   generateEquipmentInstance,
@@ -9,6 +12,11 @@ import { canonicalJson } from '../../src/shared/canonical-json.js';
 import { getEquipmentDefForItem } from '../../src/shared/equipmentDefs.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import {
+  scoreGearCandidate,
+  scoreGeneratedGear,
+  validateGeneratedGearScore,
+} from '../../src/shared/gear-score.js';
 import {
   GENERATED_ACCESSORY_REQUEST,
   GENERATED_ARMOR_REQUEST,
@@ -49,6 +57,77 @@ function accessoryInherentStatBonuses(): Record<string, number> {
 }
 
 describe('deterministic generated equipment', () => {
+  it('normalizes procedural rolls into their floor, rarity, and slot score band', () => {
+    for (const [index, rarity] of (['common', 'uncommon', 'rare'] as const).entries()) {
+      const world = createTestWorld({
+        seed: 700 + index,
+        generatedEquipmentRunKey: `score-band-${rarity}`,
+      });
+      const weapon = generateEquipmentInstance(world, { ...GENERATED_WEAPON_REQUEST, rarity });
+      const armor = generateEquipmentInstance(world, { ...GENERATED_ARMOR_REQUEST, rarity });
+      expect(validateGeneratedGearScore(weapon, 2), `${rarity} weapon`).toMatchObject({
+        withinRarityBand: true,
+      });
+      expect(validateGeneratedGearScore(armor, 2), `${rarity} armor`).toMatchObject({
+        withinRarityBand: true,
+      });
+    }
+  });
+
+  it('keeps enhancement progression monotonic inside the same rarity band', () => {
+    for (const baseId of ['plasma-pistol', 'iron-breastplate'] as const) {
+      const scores = Array.from({ length: 6 }, (_, enhancementLevel) => {
+        const world = createTestWorld({
+          seed: 808,
+          generatedEquipmentRunKey: `enhancement-progression-${baseId}`,
+        });
+        const instance = generateEquipmentInstance(world, {
+          baseId,
+          floor: 2,
+          itemLevel: 6,
+          rarity: 'rare',
+          enhancementLevel: enhancementLevel as 0 | 1 | 2 | 3 | 4 | 5,
+        });
+        expect(validateGeneratedGearScore(instance, 2).withinRarityBand).toBe(true);
+        return scoreGeneratedGear(instance);
+      });
+      for (let index = 1; index < scores.length; index += 1) {
+        expect(scores[index], `${baseId} +${index}`).toBeGreaterThan(scores[index - 1]!);
+      }
+    }
+  });
+
+  it('supports policies that disable enhancement', () => {
+    const world = createTestWorld({
+      seed: 810,
+      generatedEquipmentRunKey: 'enhancement-disabled',
+      generatedEquipmentGenerationPolicy: {
+        ...DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
+        maximumEnhancementLevel: 0,
+      },
+    });
+    const instance = generateEquipmentInstance(world, {
+      ...GENERATED_WEAPON_REQUEST,
+      enhancementLevel: 0,
+    });
+
+    expect(validateGeneratedGearScore(instance, 2).withinRarityBand).toBe(true);
+    expect(instance.frozen.activeWeaponSnapshot?.baseDamage).toBeGreaterThan(0);
+  });
+
+  it('includes equipped generated weapon snapshots in candidate comparisons', () => {
+    const world = createTestWorld({
+      seed: 909,
+      generatedEquipmentRunKey: 'generated-weapon-comparison',
+    });
+    const equipped = generateEquipmentInstance(world, GENERATED_WEAPON_REQUEST);
+    const candidate = getEquipmentDefForItem('iron-sword')!;
+    const comparison = scoreGearCandidate(candidate, [equipped]);
+
+    expect(comparison?.currentScore).toBeCloseTo(scoreGeneratedGear(equipped));
+    expect(comparison?.recommendation).toBe('downgrade');
+  });
+
   it('normalizes canonical weapon and equipment definitions without creating a second registry', () => {
     const weapon = getGeneratedEquipmentBaseV1('plasma-pistol');
     const armor = getGeneratedEquipmentBaseV1('iron-breastplate');
@@ -72,20 +151,18 @@ describe('deterministic generated equipment', () => {
     expect(Object.isFrozen(weapon.slots)).toBe(true);
   });
 
-  it('resolves level, rarity, and enhancement before one final weapon-damage normalization', () => {
+  it('calibrates the final weapon snapshot into its floor score band', () => {
     const world = createTestWorld({
       seed: 42,
       generatedEquipmentRunKey: 'generator-weapon',
     });
     const staticWeapon = getWeaponDef('pistol')!;
-    const expectedDamage = Math.floor(staticWeapon.baseDamage * 1.2 * 1.1 * 1.1 + 0.5);
-
     const instance = generateEquipmentInstance(world, GENERATED_WEAPON_REQUEST);
 
     expect(instance.itemLevel).toBe(3);
     expect(instance.rarity).toBe('rare');
     expect(instance.enhancementLevel).toBe(2);
-    expect(instance.frozen.activeWeaponSnapshot?.baseDamage).toBe(expectedDamage);
+    expect(validateGeneratedGearScore(instance, 2).withinRarityBand).toBe(true);
     expect(instance.frozen.activeWeaponSnapshot?.sourceWeaponDefId).toBe('pistol');
     expect(instance.frozen.activeWeaponSnapshot?.name).toBe(staticWeapon.name);
     expect(instance.frozen.displayName).toMatch(/Pistol \+2$/);
@@ -101,23 +178,13 @@ describe('deterministic generated equipment', () => {
     expect(Object.isFrozen(instance.frozen.activeWeaponSnapshot)).toBe(true);
   });
 
-  it('applies armor affixes before the single final armor normalization', () => {
+  it('preserves armor affixes while calibrating into the floor score band', () => {
     const world = createTestWorld({
       seed: 42,
       generatedEquipmentRunKey: 'generator-armor',
     });
     const staticArmor = getEquipmentDefForItem('iron-breastplate')!;
     const affixArmor = generateEquipmentInstance(world, GENERATED_ARMOR_REQUEST);
-    const effectArmor = affixArmor.resolvedEffects.reduce(
-      (sum, effect) =>
-        'kind' in effect && effect.kind === 'stat' && effect.stat === 'armor'
-          ? sum + effect.value
-          : sum,
-      0,
-    );
-    const expectedArmor = Math.floor(
-      (staticArmor.statBonuses.armor ?? 0) * 1.3 * 1.1 * 1.15 + effectArmor + 0.5,
-    );
     const effectConstitution = affixArmor.resolvedEffects.reduce(
       (sum, effect) =>
         'kind' in effect && effect.kind === 'stat' && effect.stat === 'constitution'
@@ -126,7 +193,7 @@ describe('deterministic generated equipment', () => {
       0,
     );
 
-    expect(affixArmor.frozen.statBonuses.armor).toBe(expectedArmor);
+    expect(validateGeneratedGearScore(affixArmor, 2).withinRarityBand).toBe(true);
     // Non-armor stats are the base's inherent line plus any affix-driven
     // contribution (ADR 2026-08-27-generated-equipment-inherent-stat-line): armor is the only inherent stat that scales.
     expect(affixArmor.frozen.statBonuses.constitution ?? 0).toBe(
@@ -160,9 +227,11 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(active.frozen.abilityGrants).toEqual(['fireball']);
     expect(active.frozen.passiveGrants).toEqual([]);
-    // Grant-only effects add no stats, so the frozen stat map is exactly the
-    // base's inherent non-armor line (ADR 2026-08-27-generated-equipment-inherent-stat-line).
-    expect(active.frozen.statBonuses).toEqual(accessoryInherentStatBonuses());
+    for (const [stat, value] of Object.entries(accessoryInherentStatBonuses())) {
+      if (stat === 'damageBonus') continue;
+      expect(active.frozen.statBonuses[stat as keyof typeof active.frozen.statBonuses]).toBe(value);
+    }
+    expect(validateGeneratedGearScore(active, 2).withinRarityBand).toBe(true);
     expect(passive.resolvedEffects).toEqual([
       expect.objectContaining({
         kind: 'passiveGrant',
@@ -172,7 +241,13 @@ describe('deterministic generated equipment', () => {
     ]);
     expect(passive.frozen.abilityGrants).toEqual([]);
     expect(passive.frozen.passiveGrants).toEqual(['veteran-instinct']);
-    expect(passive.frozen.statBonuses).toEqual(accessoryInherentStatBonuses());
+    for (const [stat, value] of Object.entries(accessoryInherentStatBonuses())) {
+      if (stat === 'damageBonus') continue;
+      expect(passive.frozen.statBonuses[stat as keyof typeof passive.frozen.statBonuses]).toBe(
+        value,
+      );
+    }
+    expect(validateGeneratedGearScore(passive, 2).withinRarityBand).toBe(true);
   });
 
   it('uses stable bounded draw counts for each exact rarity budget', () => {

@@ -762,6 +762,15 @@ const cases: Case[] = [
     files: ['.github/actions/setup-node/action.yml', '.github/instructions/core.instructions.md'],
     expected: F(false, false, true, false, false, false, false, false, false, false, false, true),
   },
+  {
+    name: 'local Goobers orchestration config',
+    files: [
+      '.goobers/gaggles/crawler/gaggle.yaml',
+      '.goobers/gaggles/crawler/goobers/coder/goober.yaml',
+      '.goobers/gaggles/crawler/workflows/crawler-pr-remediation.yaml',
+    ],
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+  },
   // Dependency change: unsafe for both sim, coverage, and deps.
   {
     name: 'dependency change (package.json, deps touched)',
@@ -1126,6 +1135,73 @@ const cases: Case[] = [
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {
+  const telemetryFiles = [
+    'src/game/ai/headless-runner.ts',
+    'src/game/ai/types.ts',
+    'src/game/ai/run-stats-collector.ts',
+    'src/game/ai/den-boss-telemetry.ts',
+    'src/game/ai/boss-encounter-telemetry.ts',
+    'src/core/weapon-telemetry.ts',
+    'src/shared/weapon-telemetry-types.ts',
+    'src/shared/den-boss-telemetry-types.ts',
+    'src/shared/run-stats-collector.ts',
+  ];
+
+  it.skipIf(!hasBash).each(telemetryFiles)(
+    'keeps %s out of UX suites while retaining simulation coverage',
+    (file) => {
+      expect(classify([file])).toMatchObject({
+        visual_touched: false,
+        game_visual_touched: false,
+        asset_visual_touched: false,
+        devtool_visual_touched: false,
+        sim_touched: true,
+        coverage_touched: true,
+        source_code_touched: true,
+      });
+    },
+  );
+
+  it.skipIf(!hasBash)(
+    'does not route the standalone release report or telemetry/report bundle to UX',
+    () => {
+      for (const files of [
+        ['public/release-baseline-report.html'],
+        [
+          ...telemetryFiles,
+          'public/release-baseline-report.html',
+          'scripts/agent/health/fun-score-lib.ts',
+        ],
+      ]) {
+        expect(classify(files)).toMatchObject({
+          visual_touched: false,
+          game_visual_touched: false,
+          asset_visual_touched: false,
+          devtool_visual_touched: false,
+        });
+      }
+    },
+  );
+
+  it
+    .skipIf(!hasBash)
+    .each([
+      'src/game/ai/bt-ai-provider.ts',
+      'src/engine/scenes/MainGameScene.ts',
+      'src/core/systems/playerInputSystem.ts',
+      'public/game.html',
+      'src/game/ai/new-telemetry.ts',
+      'src/shared/run-bundle-telemetry.ts',
+      'tests/e2e/floor6-player-loop.test.ts',
+    ])('still routes mixed telemetry/report changes plus %s to game UX', (file) => {
+    expect(
+      classify([...telemetryFiles, 'public/release-baseline-report.html', file]),
+    ).toMatchObject({
+      visual_touched: true,
+      game_visual_touched: true,
+    });
+  });
+
   it('resolves bash (required by the verify.sh harness)', () => {
     expect(hasBash).toBe(true);
   });

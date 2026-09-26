@@ -18,6 +18,8 @@ import {
   _requestFloor5RamConstruction,
   requestFloor5ObjectiveInteraction,
   siegeDirectorSystem,
+  siegeHeroSystem,
+  siegeMinionSystem,
   siegeRamSystem,
 } from '../../src/game/floor5Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -94,6 +96,55 @@ function completeFloor5RamPrerequisites(world: GameWorld): void {
 }
 
 describe('Floor 5 siege foundation real pipeline', () => {
+  it('releases bounded hostile pressure only from committed objective beats', () => {
+    const world = createTestWorld({ seed: 505 });
+    const player = spawnPlayer(world, 0, 0);
+    createFloorMainSceneOptions('floor5').configureWorld!(world, player);
+
+    // Startup waves are immediate; passive system ticks alone add no objective pressure.
+    siegeMinionSystem(world);
+    const opening = getFloor5SiegeRunStats(world)!;
+    expect(opening.hostileReinforcements).toEqual({
+      cap: 4,
+      heroCap: 2,
+      released: 0,
+      pending: 0,
+      beats: [],
+    });
+    for (let frame = 0; frame < 10; frame += 1) siegeMinionSystem(world);
+    expect(getFloor5SiegeRunStats(world)!.hostileReinforcements).toEqual(
+      opening.hostileReinforcements,
+    );
+
+    _completeFloor5FieldTask(world, 'openingPush');
+    _completeFloor5FieldTask(world, 'siegeYard');
+    for (const component of FLOOR5_RAM_COMPONENT_CLASSES)
+      _recoverFloor5RamComponent(world, component);
+    siegeMinionSystem(world);
+    siegeHeroSystem(world);
+    expect(getFloor5SiegeRunStats(world)!.hostileReinforcements).toEqual({
+      cap: 7,
+      heroCap: 2,
+      released: 3,
+      pending: 0,
+      beats: ['supplies'],
+    });
+    expect(query(world.ecs, [SiegeHero])).toHaveLength(1);
+    expect(getFloor5SiegeRunStats(world)!.heroes.spawnedFrame).toBe(world.frameCount);
+
+    _completeFloor5FieldTask(world, 'checkpoint');
+    siegeMinionSystem(world);
+    const reinforced = getFloor5SiegeRunStats(world)!;
+    expect(reinforced.hostileReinforcements).toEqual({
+      cap: 10,
+      heroCap: 2,
+      released: 6,
+      pending: 0,
+      beats: ['supplies', 'control-point'],
+    });
+    expect(reinforced.liveMinions.enemy).toBeLessThanOrEqual(16);
+  });
+
   it('binds Slice 3 quests to the canonical Floor 5 goal IDs', () => {
     const slice3GoalIds = [
       FLOOR5_SIEGE_GOAL_IDS.openingPushRepelled,

@@ -500,8 +500,17 @@ export interface Floor4WaveWindowState {
   debt: Floor4PendingWaveSpawn[];
   /** Gates currently lit for an imminent wave. */
   armedTelegraphs: Floor4GateTelegraph[];
-  /** Live wave-owned enemies: entity id → owning wave index. */
+  /** Live wave-owned enemies: entity id → spawn generation (safe under ID reuse). */
   ownedEnemies: Map<number, number>;
+  pressure?: {
+    readonly reserve: readonly { readonly archetypeId: string; readonly threatCost: number }[];
+    cursor: number;
+    nextArmAtMs: number;
+    batchIndex: number;
+    averageNearby: number;
+    lastObservedAtMs: number;
+    pending?: Floor4WaveManifest;
+  };
 }
 
 /**
@@ -1113,6 +1122,17 @@ export interface Floor5SiegeState {
   spawnDebt: Record<Floor5SiegeTeam, number>;
   spawnDebtManifestQueue: Record<Floor5SiegeTeam, number[]>;
   liveMinions: Record<Floor5SiegeTeam, number>;
+  /**
+   * Objective-owned hostile pressure. Starts at the authored opening cap and
+   * rises only when a player-driven siege beat completes.
+   */
+  hostileReinforcements: {
+    cap: number;
+    heroCap: number;
+    released: number;
+    pending: number;
+    beats: string[];
+  };
   checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
   combatEventCursor: number;
@@ -1237,6 +1257,7 @@ export interface Floor5SiegeRunStats {
   readonly waveManifest: readonly Floor5SiegeWaveManifestEntry[];
   readonly spawnDebt: Readonly<Record<Floor5SiegeTeam, number>>;
   readonly liveMinions: Readonly<Record<Floor5SiegeTeam, number>>;
+  readonly hostileReinforcements: Readonly<Floor5SiegeState['hostileReinforcements']>;
   readonly checkpointOwner: Floor5SiegeCheckpointOwner;
   readonly laneTelemetry: Floor5SiegeLaneTelemetry;
   readonly releaseGate: {

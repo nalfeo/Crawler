@@ -32,6 +32,7 @@ describe('generated equipment properties', () => {
           });
           const request = {
             baseId,
+            floor: 2,
             itemLevel,
             rarity,
             enhancementLevel: baseId === 'band-of-fortune' ? 0 : enhancementLevel,
@@ -63,6 +64,7 @@ describe('generated equipment properties', () => {
           });
           const instance = generateEquipmentInstance(world, {
             baseId,
+            floor: 2,
             itemLevel: 7,
             rarity,
             enhancementLevel: 0,
@@ -120,7 +122,13 @@ describe('effect catalog coverage invariants', () => {
       });
       // Should not throw — if it does, the catalog has a gap
       expect(() =>
-        generateEquipmentInstance(world, { baseId, itemLevel: 1, rarity, enhancementLevel: 0 }),
+        generateEquipmentInstance(world, {
+          baseId,
+          floor: 2,
+          itemLevel: 1,
+          rarity,
+          enhancementLevel: 0,
+        }),
       ).not.toThrow();
     }
   });

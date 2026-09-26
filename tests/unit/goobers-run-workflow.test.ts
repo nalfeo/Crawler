@@ -465,6 +465,9 @@ describe('Goobers automatic dispatch and recovery', () => {
     }
     expect(scaffold?.run).toContain('mkdir -p "${GOOBERS_LANE_ROOT}/slot-${slot}/config"');
     expect(materialize?.run).toContain('goobers config materialize "$slot_root"');
+    expect(materialize?.run).toContain('harness: copilot');
+    expect(materialize?.run).toContain('harnessOptions: {}');
+    expect(materialize?.run).toContain('tools:\\n    - shell');
     expect(materialize?.run).toContain('goobers validate "$slot_root"');
     // GOOBERS_INSTANCE has to reach each stage as THAT slot's root, because
     // query-backlog passes it to `goobers backlog-query --claim`.
@@ -1704,18 +1707,31 @@ ${queryScript}
     expect(instance.runner?.envPassthrough ?? []).not.toContain('GITHUB_TOKEN');
   });
 
-  it('keeps Goobers repository and model credentials separate', () => {
+  it('uses repository credentials separately from ambient Codex authentication', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
+    const loadCodexGoober = (name: 'coder' | 'producer' | 'reviewer') =>
+      loadYaml<{
+        spec: {
+          harness: string;
+          harnessOptions?: { auth?: string; allowFileBackedCredentials?: boolean };
+        };
+      }>('.goobers', 'gaggles', 'crawler', 'goobers', name, 'goober.yaml');
     const requireToken = workflow.jobs.run?.steps?.find(
       (step) => step.name === 'Require Goobers auth token',
     );
 
     expect(instance.repos[0]?.token?.env).toBe('GOOBERS_GITHUB_TOKEN');
-    expect(instance.credentials).toContainEqual({
-      capability: 'agent:model',
-      token: { env: 'COPILOT_GITHUB_TOKEN' },
-    });
+    expect(instance.credentials).toBeUndefined();
+    for (const name of ['coder', 'producer', 'reviewer'] as const) {
+      expect(loadCodexGoober(name).spec).toMatchObject({
+        harness: 'codex',
+        harnessOptions: {
+          auth: 'ambient-chatgpt',
+          allowFileBackedCredentials: true,
+        },
+      });
+    }
     expect(requireToken?.env?.GOOBERS_AUTH_TOKEN_SET).toBe(
       '${{ secrets.GOOBERS_GITHUB_TOKEN || secrets.CRAWLER_CI_PAT }}',
     );
@@ -1766,6 +1782,7 @@ ${queryScript}
     expect(
       definition.spec.gates.find((gate) => gate.name === 'pr-opened-gate')?.branches,
     ).toMatchObject({
+      pass: 'prepare-close-out-summary',
       fail: 'prepare-needs-remediation-summary',
     });
     expect(

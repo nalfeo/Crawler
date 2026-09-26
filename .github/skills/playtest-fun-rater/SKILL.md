@@ -1,83 +1,64 @@
 ---
 name: playtest-fun-rater
 description: >-
-  Rate gameplay sessions for "fun" using deterministic telemetry + optional
-  survey signals. Use when asked to "rate fun", "score playtests",
-  "compare branch fun", "run a playtest eval", "evaluate gameplay feel", or
-  "gate fun regression". Produces a structured scorecard with dimension scores,
-  confidence, hotspots, and pass/fail gates.
+  Evaluate gameplay telemetry with uncalibrated deterministic diagnostics and
+  separately report optional human surveys. Use to score playtests, compare
+  branches, inspect pacing, or investigate gameplay experience regressions.
 ---
 
 # Playtest Fun Rater
 
-Score gameplay sessions with a repeatable rubric that blends objective run
-telemetry with optional player survey data. This skill is for
-**evaluation/reporting**, not auto-tuning gameplay numbers.
+Produce evidence and hypotheses, not a claim that bots measure enjoyment.
+This skill is for evaluation/reporting; never auto-tune gameplay.
 
-## When to use
+## Workflow
 
-Use this skill when the request is about:
-
-- Rating one or more gameplay sessions for "fun"
-- Comparing fun between baseline and candidate branch runs
-- Building a fun scorecard for balance/playtest reviews
-- Detecting regressions in gameplay feel from deterministic runs
-
-## Workflow (required order)
-
-1. **Collect session data**
-   - Gather run JSON from headless/playtest output.
-   - Require at least 20 sessions for directional signal; 100+ for stronger confidence.
-2. **Run deterministic scoring**
-   - Execute:
-     `tsx scripts/agent/health/fun-score.ts --input <path-to-json>`
-   - Use explicit thresholds when gating:
-     `--min-overall <n> --min-dimension <n>`.
-3. **Review hotspots**
-   - Inspect low dimensions and outlier runs in the report.
-   - Confirm whether failures cluster by outcome/weapon/seed family.
-4. **Optional subjective blend**
-   - If survey responses are present in input (`survey` per session), include them.
-   - If absent, report objective-only scoring and lower confidence.
-5. **Publish structured findings**
-   - Report must include score table, gate verdict, confidence, and top recommendations.
+1. State the question, scenario coverage, and comparison plan. More than ten
+   runs default to GitHub workflow dispatch. Bot presets are behavior presets,
+   not validated human cohorts; sample counts do not establish confidence.
+2. Run `tsx scripts/agent/health/fun-score.ts --input <path-to-json>`.
+   Optional diagnostic thresholds are `--min-overall <n> --min-dimension <n>`;
+   these are design assumptions, not empirically validated enjoyment gates.
+3. Inspect per-run evidence, missing measurements, duplicate and unidentified
+   scenarios, coverage, preset/source breakdowns, and reproducible tails.
+4. Report raw survey means and response counts independently for enjoyment,
+   immersion, mastery, control, and tension. Never reverse-score tension or
+   blend surveys into the heuristic. Without enjoyment responses, explicitly
+   state **Human enjoyment: unmeasured**.
+   Accept observed responses only from `run.evaluationContext.source: 'human'`;
+   exclude headless/unattributed attachments. Survey coverage divides by human
+   sessions only.
+5. Compare only compatible v2 reports with matched scenario identities and
+   composition. Legacy reports remain viewable, explicitly uncalibrated, but
+   cannot establish a v2 improvement. A score delta is not an enjoyment claim.
+   Missing bot presets and any human-source sessions make comparisons
+   inconclusive; human comparisons need a participant-aware study design.
 
 ## Output contract
 
-Always report:
-
-1. `overall_fun_score` (0-100)
-2. Dimension scores (0-100):
-   - `engagement`
-   - `challenge_balance`
-   - `excitement`
-   - `pacing`
-   - `competence_growth`
-   - `choice_depth`
-   - `run_distinctness`
-3. `sameness_grade` (0-100):
-   - lower is better (0 = runs feel very distinct, 100 = runs feel highly samey)
-4. `gate` verdict:
-   - includes `gating_overall_score` (core dimensions only) and pass/fail vs `min_overall` + `min_dimension`
-5. `confidence` (0-1) with explanation
-6. `hotspots`: dimensions/runs dragging score down
-7. `recommendations`: prioritized, evidence-backed actions
+- Present `overall_fun_score` as **Heuristic diagnostic**, nullable, 0–100.
+- Report `schema_version`, `interpretation`, and `confidence_reason`;
+  `confidence` is null, never a numeric enjoyment confidence estimate.
+- Show nullable engagement, challenge_balance, excitement, pacing, progression,
+  choice_depth, and run_distinctness. Choice/build diversity is unmeasured until
+  actual choice evidence exists. Starter-weapon coverage is not choice depth.
+- Preserve nullable sameness grade, gate verdict and unmeasured dimensions,
+  criteria, evidence coverage, per-run IDs/identities/source, and hotspots.
+- Treat reward cadence and performance outliers as observations; they cannot
+  prove satisfying rewards or identify exploits. Descriptive metrics have no
+  calibrated target.
+- Provide prioritized hypotheses with exact input artifact/command provenance.
 
 ## Guardrails
 
-- Do not claim "fun improved" from a single run.
-- Do not replace deterministic telemetry with LLM-only judgment.
-- Do not auto-edit tuning/system code during this skill; produce findings first.
-- Do not hide low confidence; surface sample-size and survey-coverage limits.
-- Do not ignore sameness trends even when overall score is passing.
+Do not replace telemetry with LLM-only scores, infer human enjoyment from bot
+runs, or fabricate missing data as zero. Do not edit tuning. Preserve the
+independent 90% easy-win Floor-1 contract. Actual visual/readability claims need
+rendered evidence. Human preference prediction requires held-out human data.
 
-## Input shape accepted by scorer
+## Inputs
 
-The scoring script accepts JSON as:
-
-- `RunStats[]`
-- `{ "runs": RunStats[] }`
-- `{ "sessions": [{ "id": "...", "run": RunStats, "survey"?: {...} }] }`
-
-`survey` is optional and supports 1-5 scales:
-`enjoyment`, `immersion`, `mastery`, `control`, `tension` (reverse-scored).
+Accept `RunStats[]`, `{ "runs": RunStats[] }`, or
+`{ "sessions": [{ "id": "...", "run": RunStats, "survey": {} }] }`.
+Survey fields are optional 1–5 values. See
+`docs/knowledge/game-design/playtest-fun-eval-framework.md` for the v2 contract.

@@ -83,6 +83,7 @@ import {
 } from '../shared/floor4-headliners.js';
 import {
   buildFloor4ActWaveManifests,
+  buildFloor4PressureReserve,
   type Floor4WaveScheduleConfig,
 } from '../shared/floor4-waves.js';
 import { BiomeType, RoomRole, type ArenaFeedGate, type MapConfig } from '../shared/map-types.js';
@@ -465,6 +466,14 @@ function armFloor4ActWaves(
     debt: [],
     armedTelegraphs: usable ? [...usable.armedTelegraphs] : [],
     ownedEnemies: new Map(),
+    pressure: {
+      reserve: buildFloor4PressureReserve(getFloor4WaveConfig(), world.seed, act),
+      cursor: 0,
+      nextArmAtMs: 0,
+      batchIndex: 0,
+      averageNearby: getFloor4WaveConfig().pressure?.averageTarget ?? 0,
+      lastObservedAtMs: 0,
+    },
   };
 }
 
@@ -480,6 +489,7 @@ function armFloor4ActWaves(
  */
 function isLiveFloor4WaveEnemy(world: GameWorld, eid: number): boolean {
   return (
+    floor4ArenaState(world)?.waves?.ownedEnemies.get(eid) === world.entityRenderGeneration[eid] &&
     entityExists(world.ecs, eid) &&
     hasComponent(world.ecs, eid, Enemy) &&
     !hasComponent(world.ecs, eid, DeathTimer) &&
@@ -491,7 +501,11 @@ function isLiveFloor4WaveEnemy(world: GameWorld, eid: number): boolean {
 function pruneFloor4OwnedEnemies(world: GameWorld, waves: Floor4WaveWindowState): number {
   let live = 0;
   for (const eid of [...waves.ownedEnemies.keys()]) {
-    if (!entityExists(world.ecs, eid) || !hasComponent(world.ecs, eid, Enemy)) {
+    if (
+      !entityExists(world.ecs, eid) ||
+      !hasComponent(world.ecs, eid, Enemy) ||
+      waves.ownedEnemies.get(eid) !== world.entityRenderGeneration[eid]
+    ) {
       waves.ownedEnemies.delete(eid);
       continue;
     }
@@ -716,7 +730,7 @@ function spawnFloor4WaveEnemy(world: GameWorld, entry: Floor4WaveSpawnEntry, slo
     archetype.hp,
     floor4ArchetypeAiType(archetype),
     archetype.speed,
-    archetype.detectRange,
+    0, // Pursue from the gate throughout the arena; ranged attack reach stays authored.
     isRanged ? archetype.detectRange * 0.65 : 0,
   );
   markFloor4HostileForCoStarIfNeeded(world, eid);
@@ -871,9 +885,13 @@ function releaseFloor4WaveEntries(
   const concurrency = getFloor4WaveConfig().concurrency;
   let live = pruneFloor4OwnedEnemies(world, waves);
   for (const [slot, entry] of entries.entries()) {
-    if (waves.debt.length === 0 && live < concurrency.liveCap) {
+    if (
+      waves.debt.length === 0 &&
+      live < concurrency.liveCap &&
+      !isFloor4PressureSaturated(waves)
+    ) {
       const eid = spawnFloor4WaveEnemy(world, entry, slot);
-      waves.ownedEnemies.set(eid, waveIndex);
+      waves.ownedEnemies.set(eid, world.entityRenderGeneration[eid]!);
       state.waveTelemetry.enemiesSpawned += 1;
       live += 1;
       continue;
@@ -898,13 +916,19 @@ function drainFloor4SpawnDebt(
 ): void {
   const liveCap = getFloor4WaveConfig().concurrency.liveCap;
   let live = pruneFloor4OwnedEnemies(world, waves);
-  while (waves.debt.length > 0 && live < liveCap) {
+  while (waves.debt.length > 0 && live < liveCap && !isFloor4PressureSaturated(waves)) {
     const pending = waves.debt.shift() as Floor4PendingWaveSpawn;
     const eid = spawnFloor4WaveEnemy(world, pending.entry, pending.slot);
-    waves.ownedEnemies.set(eid, pending.waveIndex);
+    waves.ownedEnemies.set(eid, world.entityRenderGeneration[eid]!);
     state.waveTelemetry.enemiesSpawned += 1;
     live += 1;
   }
+}
+
+/** Scheduled waves retain FIFO priority, but may bank debt while combat is already dense. */
+function isFloor4PressureSaturated(waves: Floor4WaveWindowState): boolean {
+  const tuning = getFloor4WaveConfig().pressure;
+  return !!tuning && !!waves.pressure && waves.pressure.averageNearby > tuning.averageTarget;
 }
 
 /** Release every wave whose act-relative mark has arrived. */
@@ -941,6 +965,135 @@ function serviceFloor4WaveWindow(world: GameWorld, state: Floor4ArenaState): voi
   armFloor4GateTelegraphs(world, state, waves, actRelativeMs);
   releaseFloor4DueWaves(world, state, waves, actRelativeMs);
   drainFloor4SpawnDebt(world, state, waves);
+  serviceFloor4Pressure(world, state, waves, actRelativeMs);
+}
+
+/** A single telegraphed batch, never queued as authored wave debt or caught up in a loop. */
+function serviceFloor4Pressure(
+  world: GameWorld,
+  state: Floor4ArenaState,
+  waves: Floor4WaveWindowState,
+  actMs: number,
+): void {
+  const config = getFloor4WaveConfig();
+  const tuning = config.pressure;
+  const pressure = waves.pressure;
+  if (!tuning || !pressure) return;
+  const player = query(world.ecs, [Player, Position, Health])[0];
+  const map = world.floorMap;
+  const cancel = () => {
+    if (pressure.pending) {
+      waves.armedTelegraphs = waves.armedTelegraphs.filter(
+        (t) => t.waveIndex !== pressure.pending!.waveIndex,
+      );
+      pressure.pending = undefined;
+    }
+  };
+  const room = map?.roomGraph.getRoomsByRole(RoomRole.SPAWN)[0];
+  const px = player === undefined ? 0 : world.stores.position.x[player]!;
+  const py = player === undefined ? 0 : world.stores.position.y[player]!;
+  const tile = map?.worldToTile(px, py);
+  if (
+    player === undefined ||
+    world.stores.health.current[player]! <= 0 ||
+    world.playerInSafeRoom ||
+    !room ||
+    !tile ||
+    tile.x < room.bounds.x ||
+    tile.x >= room.bounds.x + room.bounds.width ||
+    tile.y < room.bounds.y ||
+    tile.y >= room.bounds.y + room.bounds.height
+  ) {
+    cancel();
+    return;
+  }
+  const live = pruneFloor4OwnedEnemies(world, waves);
+  let nearby = 0;
+  for (const eid of waves.ownedEnemies.keys()) {
+    if (
+      isLiveFloor4WaveEnemy(world, eid) &&
+      Math.hypot(world.stores.position.x[eid]! - px, world.stores.position.y[eid]! - py) <=
+        tuning.radiusFt
+    )
+      nearby++;
+  }
+  // Include non-wave hostiles in the hard cap; friendly companions never consume pressure.
+  const weight = Math.min(1, Math.max(0, actMs - pressure.lastObservedAtMs) / tuning.responseMs);
+  pressure.averageNearby += (nearby - pressure.averageNearby) * weight;
+  pressure.lastObservedAtMs = actMs;
+  // Travel needs a refill buffer; sustained oversupply does not. Proportional
+  // backoff preserves the initial buffer without filling slow-clearing arenas.
+  const refillTarget =
+    tuning.nearbyTarget - Math.max(0, pressure.averageNearby - tuning.averageTarget) * 2;
+  const hostiles = query(world.ecs, [Enemy, Health]).filter(
+    (eid) =>
+      !hasComponent(world.ecs, eid, DeathTimer) &&
+      world.stores.health.current[eid]! > 0 &&
+      (!hasComponent(world.ecs, eid, Team) || world.stores.team.id[eid] !== TeamId.PLAYER),
+  ).length;
+  const capacity =
+    waves.debt.length > 0
+      ? 0
+      : Math.max(
+          0,
+          Math.floor(
+            Math.min(
+              refillTarget - nearby,
+              tuning.incomingCap - live,
+              config.concurrency.liveCap - hostiles,
+            ),
+          ),
+        );
+  if (pressure.pending) {
+    if (actMs < pressure.pending.releaseAtActMs) return;
+    const pending = pressure.pending;
+    cancel();
+    for (let slot = 0; slot < Math.min(capacity, pending.entries.length); slot++) {
+      const eid = spawnFloor4WaveEnemy(world, pending.entries[slot]!, slot);
+      waves.ownedEnemies.set(eid, world.entityRenderGeneration[eid]!);
+      state.waveTelemetry.enemiesSpawned++;
+    }
+    return;
+  }
+  if (actMs < pressure.nextArmAtMs || capacity <= 0 || pressure.cursor >= pressure.reserve.length)
+    return;
+  pressure.nextArmAtMs = actMs + tuning.intervalMs;
+  const firesAt = actMs + config.gates.telegraphLeadMs;
+  if (firesAt >= getFloor4Config().phase.waveWindowMs) return;
+  // Gate is committed with its warning, never reselected as the player moves.
+  const gates = floor4FeedGates(world);
+  const nearestGates = gates
+    .map((gate, index) => {
+      const point = map!.tileToWorld(gate.x, gate.y);
+      return { index, distance: Math.hypot(point.x - px, point.y - py) };
+    })
+    .sort((a, b) => a.distance - b.distance || a.index - b.index)
+    .slice(0, 2);
+  const entries = pressure.reserve
+    .slice(pressure.cursor, pressure.cursor + Math.min(tuning.batchSize, capacity))
+    .map((entry, slot) =>
+      Object.freeze({
+        archetypeId: entry.archetypeId,
+        threatCost: entry.threatCost,
+        gateIndex: nearestGates[(pressure.batchIndex + slot) % nearestGates.length]!.index,
+      }),
+    );
+  pressure.cursor += entries.length;
+  const batch = Object.freeze({
+    act: waves.act,
+    waveIndex: config.cadence.wavesPerAct + pressure.batchIndex++,
+    releaseAtActMs: firesAt,
+    budget: entries.reduce((sum, entry) => sum + entry.threatCost, 0),
+    entries: Object.freeze(entries),
+  });
+  pressure.pending = batch;
+  armFloor4WaveTelegraph(
+    world,
+    state,
+    waves.armedTelegraphs,
+    batch,
+    floor4ActStartMs(waves.act) + firesAt,
+  );
 }
 
 /**
@@ -1375,6 +1528,12 @@ export function arenaDirectorSystem(world: GameWorld): void {
   }
   if (world.state !== 'playing') {
     if (world.mobAbilities.encounterActive) disableMobAbilityEncounter(world);
+    if (state.waves?.pressure) {
+      state.waves.pressure.pending = undefined;
+      state.waves.armedTelegraphs = state.waves.armedTelegraphs.filter(
+        (telegraph) => telegraph.waveIndex < getFloor4WaveConfig().cadence.wavesPerAct,
+      );
+    }
     return;
   }
   if (state.phase.kind !== 'INTERMISSION') {
