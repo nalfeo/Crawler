@@ -1417,6 +1417,8 @@ export interface Floor6DefenseState {
 
 export interface Floor6TowerDef {
   readonly id: string;
+  /** Authored player-facing role; presentation must not infer this from tuning values. */
+  readonly roleLabel: string;
   readonly footprintId: string;
   readonly cost: number;
   readonly sellRefund: number;
@@ -1570,6 +1572,7 @@ export interface Floor6HudBuildSiteSnapshot {
 export interface Floor6HudTowerSnapshot {
   readonly siteId: string;
   readonly towerId: string;
+  readonly roleLabel: string;
   readonly rangeFt: number;
   readonly tierLabel: string;
 }
@@ -1581,6 +1584,8 @@ export interface Floor6PresentationSnapshot {
   readonly questGoals: Floor6QuestProjectionSnapshot;
   readonly routes: readonly Floor6HudRouteSnapshot[];
   readonly buildSites: readonly Floor6HudBuildSiteSnapshot[];
+  /** Authored roles remain inspectable after terminal teardown removes live tower entities. */
+  readonly towerRoster: readonly Pick<Floor6TowerDef, 'id' | 'roleLabel'>[];
   readonly towers: readonly Floor6HudTowerSnapshot[];
   readonly buildCurrencyLabel: string;
   readonly lootLabel: string;
