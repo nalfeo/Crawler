@@ -149,10 +149,12 @@ function createFloor6DefenseState(world: GameWorld, mapConfig: MapConfig): Floor
     nextReleaseIndex: 0,
     spawnDebt: 0,
     relayHp: tuning?.relayMaxHp ?? 100,
+    minimumRelayHp: tuning?.relayMaxHp ?? 100,
     stallFrames: 0,
     totalReleased: 0,
     lastReleaseFrame: 0,
     economy: createFloor6EconomyState(),
+    terminalEconomyTelemetry: null,
     towerInstances: [],
     towersTornDown: 0,
     combatEventCursor: 0,
@@ -556,7 +558,16 @@ function clearFloor6EconomyForTerminal(world: GameWorld, state: Floor6DefenseSta
       clearEntityStores(world, eid);
     }
   }
-  const resetCount = state.economy.terminalResetCount + 1;
+  const previousEconomy = state.economy;
+  state.terminalEconomyTelemetry ??= {
+    totalEarned: previousEconomy.totalEarned,
+    totalSpent: previousEconomy.totalSpent,
+    earnedFromPickups: previousEconomy.earnedFromPickups,
+    earnedFromWaves: previousEconomy.earnedFromWaves,
+    pickupsSpawned: previousEconomy.pickupsSpawned,
+    pickupsCollected: previousEconomy.pickupsCollected,
+  };
+  const resetCount = previousEconomy.terminalResetCount + 1;
   state.economy = createFloor6EconomyState();
   state.economy.terminalResetCount = resetCount;
   state.upgradeOfferManifest = [];
@@ -1363,6 +1374,7 @@ export function floor6RaiderSystem(world: GameWorld): void {
       if (world.elapsedMs - lastAttack >= attackCooldownMs) {
         world.stores.broadcastRelayRaider.lastRelayAttackMs[eid] = world.elapsedMs;
         state.relayHp = Math.max(0, state.relayHp - relayDamage);
+        state.minimumRelayHp = Math.min(state.minimumRelayHp, state.relayHp);
       }
 
       // Stop moving
@@ -1769,10 +1781,12 @@ export function getFloor6DefenseRunStats(
   const relayMaxHp = floor6RelayMaxHp(state);
   const liveCount = countLiveFloor6Raiders(world);
   const stalledCount = state.stalledRaiderCount;
+  const economyTelemetry = state.terminalEconomyTelemetry ?? state.economy;
   return {
     phase: { ...state.phase },
     phaseTrace: state.phaseTrace.map((p) => ({ ...p })),
     relayHp: state.relayHp,
+    minimumRelayHp: state.minimumRelayHp,
     relayMaxHp,
     nextReleaseIndex: state.nextReleaseIndex,
     spawnDebt: state.spawnDebt,
@@ -1781,12 +1795,12 @@ export function getFloor6DefenseRunStats(
     stalledCount,
     waveManifestLength: state.waveManifest?.length ?? 0,
     buildCurrencyBalance: state.economy.balance,
-    buildCurrencyEarned: state.economy.totalEarned,
-    buildCurrencySpent: state.economy.totalSpent,
-    buildCurrencyEarnedFromPickups: state.economy.earnedFromPickups,
-    buildCurrencyEarnedFromWaves: state.economy.earnedFromWaves,
-    buildCurrencyPickupsSpawned: state.economy.pickupsSpawned,
-    buildCurrencyPickupsCollected: state.economy.pickupsCollected,
+    buildCurrencyEarned: economyTelemetry.totalEarned,
+    buildCurrencySpent: economyTelemetry.totalSpent,
+    buildCurrencyEarnedFromPickups: economyTelemetry.earnedFromPickups,
+    buildCurrencyEarnedFromWaves: economyTelemetry.earnedFromWaves,
+    buildCurrencyPickupsSpawned: economyTelemetry.pickupsSpawned,
+    buildCurrencyPickupsCollected: economyTelemetry.pickupsCollected,
     upgradeOffers: (state.upgradeOfferManifest ?? []).map((offer) => ({
       ...offer,
       effect: { ...offer.effect },
