@@ -1,13 +1,13 @@
 {
   "schemaVersion": "boss-ability-status/v1",
   "catalogSchemaVersion": "boss-abilities/v1",
-  "lastAuditedAt": "2026-07-25",
+  "lastAuditedAt": "2026-09-26",
   "gates": [
     {
       "id": "floor2-boss-difficulty-pr-1237",
       "kind": "external-dependency",
       "state": "closed-no-merge",
-      "reason": "PR #1237 was closed without merge on 2026-07-17T16:27:09Z. Floor 2 boss level-scaled difficulty tuning is no longer an active dependency \u2014 this gate is informational only. The arena slice runs on catalog-defined values and does not require level-scaled difficulty tuning.",
+      "reason": "PR #1237 was closed without merge on 2026-07-17T16:27:09Z. Floor 2 boss level-scaled difficulty tuning is no longer an active dependency — this gate is informational only. The arena slice runs on catalog-defined values and does not require level-scaled difficulty tuning.",
       "ref": {
         "kind": "pull-request",
         "number": 1237,
@@ -46,8 +46,8 @@
     {
       "id": "floor2-boss-production-enable",
       "kind": "delivery-milestone",
-      "state": "not-started",
-      "reason": "Enabling boss abilities in the real game requires a separate production activation and Floor 2 balance pass that is intentionally out of scope for the arena-only slice; it remains unresolved.",
+      "state": "verified",
+      "reason": "All 18 typed signatures enabled at real Floor 2 encounter start; five headless contract fixtures prove two casts and caster-local cleanup for the complete roster, and normal seeds 1–3 pass victory, actual-cast, and unchanged boss-duration bounds. Shared geometry is observed in the combat arena and MainGameScene.",
       "ref": null
     }
   ],
@@ -56,7 +56,7 @@
       "abilityId": "nana-snaggle-scrap-cart-stampede",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "goblin-boss",
         "approvedAssetId": "goblin-boss-var-0",
@@ -65,20 +65,20 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-goblins",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "don-paco-the-big-gob",
@@ -101,7 +101,7 @@
       "castAnimationAssetRequest": null,
       "arenaLabState": "verified",
       "arenaLabPresetId": "f2-don-paco",
-      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB \u2014 Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production remains blocked behind `floor2-boss-production-enable`.",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-don-paco` with deterministic observation: frame 539 (8983.33ms) has no cue/banner/projectiles/zones. Frame 540 (9000ms) starts the locked hostile-red cone telegraph with exact `THE BIG GOB — Don Paco's painting the whole block!` announcement and visible cone/path/landing-circle diff. Frame 624 (10400ms) resolves the cast and launches 5 committed projectiles. Frame 654 (10900ms) all 5 impacts resolve into 5 persistent slicks on the committed landing circles; frame 655 confirms the slick set persists after impact. Frame 894 (14900ms) the first slick set fully expires and cleans up. Frame 1278 (21300ms) the second cast's 5 impacts/slicks resolve at the same committed cadence. Headless cadence/impact proof is covered by `scripts/agent/don-paco-arena-evidence.ts`; deterministic runtime coverage in `tests/unit/mob-abilities/big-gob.test.ts` covers inside/outside damage plus while-inside-only slow + 4s expiry; browser observation is in `tests/e2e/don-paco-arena-observation.test.ts`. Production activation and all-roster repeated-cast/cleanup proof added 2026-09-26.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -118,7 +118,7 @@
         "title": "Implement Don Paco's THE BIG GOB on the typed mob-ability runtime",
         "url": "https://github.com/nalfeo/Crawler/pull/2016"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "big-panda-wei-bamboo-fed-berserk",
@@ -141,7 +141,7 @@
       "castAnimationAssetRequest": null,
       "arenaLabState": "verified",
       "arenaLabPresetId": "f2-big-panda-wei",
-      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-big-panda-wei` with deterministic observation: frame 599 (9983.33ms) no cue/banner; frame 600 (10000ms) first themed self-aura telegraph starts with exact `BAMBOO-FED BERSERK \u2014 Big Wei is collecting personally!` announcement. frame 690 (11500ms) first cast resolves and self-buff activates (+40% move, +40% melee, heavy knockback resistance). frame 930 (15500ms) first 4s buff expires and aura cleans up. frame 1290 (21500ms) second telegraph starts; frame 1380 (23000ms) second cast resolves. Cadence and modifier windows are covered by `tests/unit/mob-abilities/bamboo-fed-berserk.test.ts`, runtime script evidence in `scripts/agent/big-panda-wei-arena-evidence.ts`, and browser observation in `tests/e2e/big-panda-wei-arena-observation.test.ts`.",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-big-panda-wei` with deterministic observation: frame 599 (9983.33ms) no cue/banner; frame 600 (10000ms) first themed self-aura telegraph starts with exact `BAMBOO-FED BERSERK — Big Wei is collecting personally!` announcement. frame 690 (11500ms) first cast resolves and self-buff activates (+40% move, +40% melee, heavy knockback resistance). frame 930 (15500ms) first 4s buff expires and aura cleans up. frame 1290 (21500ms) second telegraph starts; frame 1380 (23000ms) second cast resolves. Cadence and modifier windows are covered by `tests/unit/mob-abilities/bamboo-fed-berserk.test.ts`, runtime script evidence in `scripts/agent/big-panda-wei-arena-evidence.ts`, and browser observation in `tests/e2e/big-panda-wei-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -152,7 +152,7 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1957"
       },
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "queen-mab-verdigris-glamour",
@@ -181,7 +181,7 @@
       "castAnimationAssetRequest": null,
       "arenaLabState": "verified",
       "arenaLabPresetId": "f2-queen-mab",
-      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-queen-mab` via deterministic headless Chromium observation (`tests/e2e/queen-mab-arena-observation.test.ts`): frame 539 (8983.33ms) shows no cue/banner; frame 540 (9000ms) shows the first telegraph, exact `VERDIGRIS GLAMOUR \u2014 All that glitters will corrode!` announcement, and a visible render diff in both the telegraph footprint and top-center HUD banner. Frame 630 (10500ms): first cast resolves, cueCount drops to 0, player is Tarnished (confirmed via statusEffectsByEntity), resolution burst changes pixels in the centre. Frame 870 (14500ms): Tarnished debuff expires, indicator Graphics cleaned up from scene display list (graphicsCount decreased). Frame 1170 (19500ms): second telegraph starts, cueCount=1, Tarnished still absent. Frame 1260 (21000ms): second cast resolves, cueCount drops to 0, player re-Tarnished. Full two-cast cadence with Tarnished apply/expiry/cleanup/re-apply confirmed. Headless canonical-runtime cadence also covered by scripts/agent/queen-mab-arena-evidence.ts and tests/unit/mob-abilities/verdigris-glamour.test.ts.",
+      "arenaLabEvidence": "Verified in the canonical combat arena preset `f2-queen-mab` via deterministic headless Chromium observation (`tests/e2e/queen-mab-arena-observation.test.ts`): frame 539 (8983.33ms) shows no cue/banner; frame 540 (9000ms) shows the first telegraph, exact `VERDIGRIS GLAMOUR — All that glitters will corrode!` announcement, and a visible render diff in both the telegraph footprint and top-center HUD banner. Frame 630 (10500ms): first cast resolves, cueCount drops to 0, player is Tarnished (confirmed via statusEffectsByEntity), resolution burst changes pixels in the centre. Frame 870 (14500ms): Tarnished debuff expires, indicator Graphics cleaned up from scene display list (graphicsCount decreased). Frame 1170 (19500ms): second telegraph starts, cueCount=1, Tarnished still absent. Frame 1260 (21000ms): second cast resolves, cueCount drops to 0, player re-Tarnished. Full two-cast cadence with Tarnished apply/expiry/cleanup/re-apply confirmed. Headless canonical-runtime cadence also covered by scripts/agent/queen-mab-arena-evidence.ts and tests/unit/mob-abilities/verdigris-glamour.test.ts.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -195,16 +195,16 @@
         "kind": "pull-request",
         "number": 1273,
         "state": "open",
-        "title": "feat(bosses): Queen Mab Verdigris Glamour \u2014 arena-only ability runtime slice (production-off)",
+        "title": "feat(bosses): Queen Mab Verdigris Glamour — arena-only ability runtime slice (production-off)",
         "url": "https://github.com/nalfeo/Crawler/pull/1273"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "king-skritt-roman-candle-coronation",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "in-progress",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
         "approvedAssetId": "kobold-boss-var-2",
@@ -213,15 +213,15 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "in-progress",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "in-progress",
+      "arenaLabState": "verified",
       "arenaLabPresetId": "f2-king-skritt",
-      "arenaLabEvidence": null,
+      "arenaLabEvidence": "Verified 2026-09-26 by tests/e2e/king-skritt-arena-observation.test.ts in the canonical arena, plus deterministic radial-projectile and alternating offset tests in tests/unit/mob-abilities/roman-candle-coronation.test.ts. Full-roster production repeated casts and cleanup pass tests/headless/floor2-signature-abilities.test.ts.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -232,7 +232,7 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1955"
       },
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "sovereign-cap-spore-bloom",
@@ -255,7 +255,7 @@
       "castAnimationAssetRequest": null,
       "arenaLabState": "verified",
       "arenaLabPresetId": "f2-sovereign-cap",
-      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-sovereign-cap` with deterministic runtime + browser evidence: frame 539 has no cue/zone; frame 540 starts the locked three-circle hostile-red telegraph with exact `SOVEREIGN SPORE BLOOM \u2014 The colony claims this ground!` announcement; frame 636 resolves impact and opens one runtime-owned persistent toxic cloud zone over the same committed three circles; frame 666 confirms repeated cloud damage inside the zone; frame 876 confirms exact 4s cloud expiry/visual cleanup; frame 1176 starts second telegraph and frame 1272 resolves second cast. Evidence is covered by `tests/unit/mob-abilities/sovereign-spore-bloom.test.ts`, `scripts/agent/sovereign-cap-arena-evidence.ts`, and `tests/e2e/sovereign-cap-arena-observation.test.ts`.",
+      "arenaLabEvidence": "Verified in canonical combat arena preset `f2-sovereign-cap` with deterministic runtime + browser evidence: frame 539 has no cue/zone; frame 540 starts the locked three-circle hostile-red telegraph with exact `SOVEREIGN SPORE BLOOM — The colony claims this ground!` announcement; frame 636 resolves impact and opens one runtime-owned persistent toxic cloud zone over the same committed three circles; frame 666 confirms repeated cloud damage inside the zone; frame 876 confirms exact 4s cloud expiry/visual cleanup; frame 1176 starts second telegraph and frame 1272 resolves second cast. Evidence is covered by `tests/unit/mob-abilities/sovereign-spore-bloom.test.ts`, `scripts/agent/sovereign-cap-arena-evidence.ts`, and `tests/e2e/sovereign-cap-arena-observation.test.ts`.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {
@@ -272,7 +272,7 @@
         "title": "Implement Sovereign Cap Spore Bloom in typed mob-ability runtime (multi-circle telegraph + persistent toxic zones)",
         "url": "https://github.com/nalfeo/Crawler/pull/2012"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
@@ -312,7 +312,7 @@
         "title": "Implement Overseer Fizzwick's CLOCKWORK KILL-SAW ability",
         "url": "https://github.com/nalfeo/Crawler/pull/2010"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "plague-boss-squick-undercity-mob-call",
@@ -352,13 +352,13 @@
         "title": "Implement Squick UNDERCITY MOB CALL on typed mob-ability runtime with deterministic cap/cadence enforcement",
         "url": "https://github.com/nalfeo/Crawler/pull/1962"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "abuela-saguaro-thorn-ring",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "cactusfolk-boss",
         "approvedAssetId": "cactusfolk-boss-var-2",
@@ -373,26 +373,26 @@
         },
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-cactusfolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "countess-vesper-midnight-resonance",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "batfolk-boss",
         "approvedAssetId": "batfolk-boss-var-3",
@@ -407,26 +407,26 @@
         },
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-batfolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "kingpin-molt-shell-company-lockdown",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "crabfolk-boss",
         "approvedAssetId": "crabfolk-boss-var-0",
@@ -435,26 +435,26 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-crabfolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "broodfather-chitin-turnover",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "beetlefolk-boss",
         "approvedAssetId": "beetlefolk-boss-var-1",
@@ -469,26 +469,26 @@
         },
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-beetlefolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "foreman-grubbs-undermine-the-union",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "molefolk-boss",
         "approvedAssetId": "molefolk-boss-var-0",
@@ -497,26 +497,26 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-molefolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "boss-bandit-rocco-highway-robbery",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "raccoons-boss",
         "approvedAssetId": "raccoons-boss-var-0",
@@ -525,26 +525,26 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-raccoons",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "don-honkrado-omerta-honk",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "geese-boss",
         "approvedAssetId": "geese-boss-var-0",
@@ -559,26 +559,26 @@
         },
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-geese",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "foreman-scorch-hellfire-shift-line",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "imps-boss",
         "approvedAssetId": "imps-boss-var-1",
@@ -587,26 +587,26 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-imps",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "gastropod-godfather-long-squeeze",
       "designState": "approved",
       "foundationState": "verified",
-      "runtimeState": "not-started",
+      "runtimeState": "verified",
       "bossArt": {
         "runtimeBriefId": "snailfolk-boss",
         "approvedAssetId": "snailfolk-boss-var-0",
@@ -615,20 +615,20 @@
         "assetRequest": null,
         "runtimeWiringState": "verified"
       },
-      "telegraphVfxState": "planned",
+      "telegraphVfxState": "verified",
       "telegraphVfxAssetRequest": null,
       "codexIconState": "not-requested",
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "blocked",
-      "arenaLabPresetId": null,
-      "arenaLabEvidence": null,
+      "arenaLabState": "verified",
+      "arenaLabPresetId": "f2-signature-snailfolk",
+      "arenaLabEvidence": "Canonical combat-arena preset registers the same production definition. Exact effect, timing, geometry, deterministic repeat and cleanup assertions: tests/ecs/floor2-lane-abilities.test.ts, floor2-ring-abilities.test.ts, floor2-utility-abilities.test.ts. Full roster repeated production casts and death cleanup: tests/headless/floor2-signature-abilities.test.ts. Shared new geometry families and real MainGameScene observation: tests/e2e/floor2-signature-geometry.deterministic.test.ts; screenshots in tmp/e2e-screenshots/floor2-*.png. Optional authored animation remains not required.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     },
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
@@ -662,7 +662,7 @@
         "url": "https://github.com/nalfeo/Crawler/issues/1950"
       },
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": []
     }
   ]
 }

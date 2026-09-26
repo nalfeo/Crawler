@@ -309,3 +309,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0108 | [Floor 5 hostile combat and siege presentation](0108-floor5-hostile-combat-presentation.md)                                                        | Accepted                 | 2026-09-20 |
 | 0109 | [Floor 5 objective interaction contract](0109-floor5-objective-interaction-contract.md)                                                            | Accepted                 | 2026-09-20 |
 | 0110 | [Floor 5 objective-driven siege escalation](0110-floor5-objective-driven-siege-escalation.md)                                                      | Accepted                 | 2026-09-25 |
+| 0112 | [Floor 2 dodge priority and recovery drops](0112-floor2-dodge-and-recovery.md)                                                                     | Accepted                 | 2026-09-26 |

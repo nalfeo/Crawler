@@ -75,6 +75,7 @@ const KIND_BY_STAT: Readonly<
 > = {
   speed: { weaker: 'slow', stronger: 'haste' },
   attackSpeed: { weaker: 'weakened', stronger: 'empowered' },
+  outgoingDamage: { weaker: 'weakened', stronger: 'empowered' },
   hpRegen: { weaker: 'wither', stronger: 'regen' },
 };
 

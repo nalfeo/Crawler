@@ -46,6 +46,13 @@ import {
   type GameWorld,
 } from '../core/index.js';
 import { createEntity } from '../core/spawners/entity-core.js';
+import {
+  activateMobAbilityEncounter,
+  clearMobAbility,
+  createFloor2BossAbilityDefinition,
+  registerMobAbility,
+  setMobAbilitiesEnabled,
+} from '../core/mob-abilities/index.js';
 import { setDoorLockConfig, setGoalFlag } from '../core/door-lock.js';
 import { SHAPE_CIRCLE } from '../core/physics-defs.js';
 import {
@@ -625,6 +632,7 @@ function latchFloor2FamilyDefeated(
   ensureDecapitatedSet(world).add(familyId);
   setGoalFlag(world, bossDefeatGoalId(familyId), true);
   if (encounter) {
+    if (encounter.bossEid !== null) clearMobAbility(world, encounter.bossEid);
     if (options.markStarted === true) {
       encounter.started = true;
     }
@@ -718,6 +726,11 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       encounter.started = true;
       removeComponent(world.ecs, bossEid, Invincible);
       world.stores.enemyBehavior.aggroedPermanently[bossEid] = 1;
+      // Dormant den bosses never register: the executor's active flag is global.
+      // Starting another den must not reset an existing caster or clear its zones.
+      registerMobAbility(world, bossEid, createFloor2BossAbilityDefinition(encounter.familyId));
+      setMobAbilitiesEnabled(world, true);
+      if (!world.mobAbilities.encounterActive) activateMobAbilityEncounter(world);
       setGoalFlag(world, encounter.activeGoalId, true);
     }
   }

@@ -28,6 +28,8 @@ import {
   setMobAbilitiesEnabled,
 } from '../../core/index.js';
 import { SHAPE_CIRCLE } from '../../core/physics-defs.js';
+import { createFloor2BossAbilityDefinition } from '../../core/mob-abilities/floor2-roster.js';
+import { FLOOR2_BOSS_ABILITY_CATALOG } from '../../shared/boss-abilities.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
@@ -823,6 +825,43 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
     customSpawnFn: spawnDonPacoArena,
   },
   // ── Custom / blank ───────────────────────────────────────────────────────
+  ...FLOOR2_BOSS_ABILITY_CATALOG.entries
+    .filter((ability) =>
+      [
+        'goblins',
+        'cactusfolk',
+        'batfolk',
+        'crabfolk',
+        'beetlefolk',
+        'molefolk',
+        'raccoons',
+        'geese',
+        'imps',
+        'snailfolk',
+      ].includes(ability.familyId),
+    )
+    .map(
+      (ability): ArenaEnemyPreset => ({
+        id: `f2-signature-${ability.familyId}`,
+        name: `F2: ${ability.bossName} (${ability.attackName})`,
+        floor: 'floor2',
+        description: `${ability.effect.description} Counterplay: ${ability.codex.counterplay}`,
+        entries: [],
+        customSpawnFn: (world, map, cx, cy, rng) => {
+          const archetype = floor2EnemyPack.archetypes.find(
+            (entry) => entry.id === ability.bossArchetypeId,
+          );
+          if (!archetype) throw new Error(`Missing arena boss ${ability.bossArchetypeId}`);
+          const position = findWalkablePosition(map, cx, cy, rng);
+          const eid = spawnFromArchetype(world, position.x, position.y, archetype);
+          world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+          setMobAbilitiesEnabled(world, true);
+          if (!world.mobAbilities.encounterActive) activateMobAbilityEncounter(world);
+          registerMobAbility(world, eid, createFloor2BossAbilityDefinition(ability.familyId));
+          return [eid];
+        },
+      }),
+    ),
   {
     id: 'custom',
     name: 'Custom (blank)',

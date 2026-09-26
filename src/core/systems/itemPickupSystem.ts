@@ -9,12 +9,24 @@
  * - DroppedItem: adds item to player's InventoryBag and removes the entity
  */
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
-import { BuildCurrencyPickup, DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';
+import {
+  BuildCurrencyPickup,
+  DroppedItem,
+  Gold,
+  Health,
+  Inventory,
+  Player,
+  XpGem,
+} from '../components.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { clearEntityStores } from '../helpers.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
+import {
+  HEALING_POTION_ITEM_ID,
+  HEALING_POTION_MAX_HEALTH_FRACTION,
+} from '../../shared/healing-potions.js';
 import { pushFloaterEvent } from '../../shared/floater-events.js';
 import {
   PICKUP_SPARKLE_COLORS,
@@ -62,8 +74,12 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
     if (hasComponent(world.ecs, otherEid, Gold)) {
       const goldValue = world.stores.gold.value[otherEid] ?? 0;
       world.playerGold += goldValue;
-      world.lootLedger.goldCollected += goldValue;
-      world.goldLedger.earnedFromDrops += goldValue;
+      if (world.stores.gold.restitution[otherEid] === 1) {
+        world.goldLedger.recoveredStolenGold += goldValue;
+      } else {
+        world.lootLedger.goldCollected += goldValue;
+        world.goldLedger.earnedFromDrops += goldValue;
+      }
       emitPickupSparkle(world, otherEid, 'gold', 'gold');
       removeEntity(world.ecs, otherEid);
       continue;
@@ -94,6 +110,31 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       world.lootLedger.xpCollected += gemValue;
       emitPickupSparkle(world, otherEid, 'gem', 'xp');
       removeEntity(world.ecs, otherEid);
+      continue;
+    }
+
+    // Potions are consumed on contact, not stored. Do not waste them at full HP
+    // or revive a player whose death has already been resolved by combat.
+    if (
+      hasComponent(world.ecs, otherEid, DroppedItem) &&
+      getItemByIndex(world.stores.droppedItem.itemIndex[otherEid] ?? 0)?.id ===
+        HEALING_POTION_ITEM_ID
+    ) {
+      if (!hasComponent(world.ecs, playerEid, Health)) continue;
+      const current = world.stores.health.current[playerEid] ?? 0;
+      const max = world.stores.health.max[playerEid] ?? 0;
+      if (current <= 0 || current >= max) continue;
+      const healed = Math.min(max - current, max * HEALING_POTION_MAX_HEALTH_FRACTION);
+      world.stores.health.current[playerEid] = current + healed;
+      pushFloaterEvent(world.floaterEvents, {
+        kind: 'materialGain',
+        x: world.stores.position.x[otherEid] ?? 0,
+        y: world.stores.position.y[otherEid] ?? 0,
+        label: `+${Math.round(healed)} HP`,
+      });
+      emitPickupSparkle(world, otherEid, 'item');
+      removeEntity(world.ecs, otherEid);
+      clearEntityStores(world, otherEid);
       continue;
     }
 

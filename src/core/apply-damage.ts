@@ -12,6 +12,7 @@ import {
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
+import { computeEffectiveValue, getStatusEffects } from './status-effects.js';
 import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 import { getBodyHalfWidth } from './physics-body.js';
 import type { DamageAffinity } from '../shared/stats.js';
@@ -265,6 +266,17 @@ export function applyDamage(
     finalAmount *= affinityMultiplier(options.attackerTemperament, options.defenderTemperament);
   }
 
+  // Player-owned delayed attacks do not always retain a live source entity.
+  // Resolve their offense from the same player singleton as normal scaling.
+  const offenseSource =
+    options.origin === 'player' ? query(world.ecs, [Player])[0] : options.sourceEid;
+  if (offenseSource !== undefined) {
+    finalAmount *= computeEffectiveValue(
+      1,
+      getStatusEffects(world, offenseSource),
+      'outgoingDamage',
+    );
+  }
   const defense = world.mobAbilities.activeBuffsByEntity.get(target);
   if (defense && defense.remainingMs > 0) {
     finalAmount *= defense.damageTakenMultiplier ?? 1;
