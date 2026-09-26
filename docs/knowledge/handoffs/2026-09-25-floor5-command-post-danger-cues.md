@@ -76,3 +76,7 @@ tests/e2e/main-game-scene-floor5-combat.test.ts -t sword` — passed (1 test).
   ahead 6 and behind 2. Fetch and reconcile those two remote commits without
   dropping `5251cd380`, rerun the focused E2E if HEAD changes, then push with
   force-with-lease and confirm a new CI run.
+
+## Continuation: reconciliation worktree
+
+2026-09-25: Remote tip 28f5f113a and local pre-repair 0d0f5fc90 have identical trees. Merged remote history into codex/pr4720-ci-reconcile, preserving 5251cd380 and 49ef3fb76 exactly. Resolved only the handoff add/add conflict by retaining the local superset. No push yet. Fresh worktree dependency bootstrap succeeded on elevated retry; preflight still running when continuation prepared. Next: finish preflight, verify merge tree against 49ef3fb76, run focused Floor 6 E2E, sync main, required checks and review, then explicit force-with-lease push to codex/floor5-command-post-danger-cues and verify fresh CI. Systems touched: git history and this handoff only.
