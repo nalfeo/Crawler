@@ -15,6 +15,7 @@ import {
   getFloor5SiegeRunStats,
 } from '../../src/game/floor5Scenario.js';
 import { FLOOR5_FIELD_HERO_ROSTER } from '../../src/shared/floor5-heroes.js';
+import { getFloor5HudSnapshot } from '../../src/game/floor5Presentation.js';
 import floor5Manifest from '../../src/shared/data/floors/floor5.manifest.json' with { type: 'json' };
 
 const HERO_CONFIG = floor5Manifest.floor5.heroes;
@@ -189,6 +190,10 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
     let spawnedFrameAfterRespawn = -1;
     let cursorAfterRespawn = -1;
     let cardIds: string[] = [];
+    let deployedHud = '';
+    let defeatedHud = '';
+    let deployedCueIds: string[] = [];
+    let defeatedCueIds: string[] = [];
 
     await runHeadless(new IdleFloor5Provider(), {
       floorId: 'floor5',
@@ -202,6 +207,9 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
         before: (world) => {
           const heroes = siegeState(world).heroes;
           if (heroes.status === 'active' && heroes.cursor === 0 && !killed) {
+            const snapshot = getFloor5HudSnapshot(world)!;
+            deployedHud = snapshot.lines[3]!;
+            deployedCueIds = snapshot.cues.map((cue) => cue.id);
             killed = true;
             killingBlowFrame = world.frameCount;
             executeActiveHero(world);
@@ -212,6 +220,9 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
         after: (world) => {
           const heroes = siegeState(world).heroes;
           if (killed && heroes.status === 'down' && defeatFrame < 0) {
+            const snapshot = getFloor5HudSnapshot(world)!;
+            defeatedHud = snapshot.lines[3]!;
+            defeatedCueIds = snapshot.cues.map((cue) => cue.id);
             defeatFrame = heroes.defeatedFrame ?? -1;
             respawnScheduledFor = heroes.respawnFrame ?? -1;
             statusAfterDefeat = heroes.status;
@@ -237,6 +248,12 @@ describe('Floor 5 field Heroes in the real headless pipeline', () => {
     expect(statusAfterDefeat).toBe('down');
     expect(respawnScheduledFor).toBe(defeatFrame + HERO_CONFIG.respawnDelayFrames);
     expect(spawnedFrameAfterRespawn).toBe(defeatFrame + HERO_CONFIG.respawnDelayFrames);
+    expect(deployedHud).toContain('Field Hero');
+    expect(deployedHud).toContain('active');
+    expect(deployedCueIds.some((id) => id.startsWith('floor5-hero-active-'))).toBe(true);
+    expect(defeatedHud).toContain('Field Hero');
+    expect(defeatedHud).toContain('defeated');
+    expect(defeatedCueIds.some((id) => id.startsWith('floor5-hero-defeated-'))).toBe(true);
   });
 
   it('retires the slot permanently once the without-replacement card is exhausted', async () => {

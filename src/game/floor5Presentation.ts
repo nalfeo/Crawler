@@ -94,17 +94,64 @@ function commandPostDanger(state: Floor5SiegeState): {
   };
 }
 
+function fieldHeroPresentation(state: Floor5SiegeState): {
+  readonly label: string;
+  readonly cues: ScenarioHudSnapshot['cues'];
+} {
+  const card = state.heroes.cursor >= 0 ? state.heroes.card[state.heroes.cursor] : undefined;
+  if (!card) return { label: 'Field Hero reserve awaiting escalation', cues: [] };
+  if (state.phase.kind === 'DEFEAT' || state.phase.kind === 'CAPTURED') {
+    return { label: 'Field Hero status cleared', cues: [] };
+  }
+  if (state.heroes.status === 'active') {
+    return {
+      label: `Field Hero ${card.displayName} · ${readable(card.role)} · active ${Math.ceil(state.heroes.health)}/${Math.ceil(state.heroes.maxHealth)} HP`,
+      cues: [
+        {
+          id: `floor5-hero-active-${card.heroId}-audio`,
+          kind: 'audio',
+          label: `${card.displayName} deployed`,
+        },
+        {
+          id: `floor5-hero-active-${card.heroId}-vfx`,
+          kind: 'vfx',
+          label: `${card.displayName} deployed`,
+        },
+      ],
+    };
+  }
+  if (state.heroes.status === 'down') {
+    return {
+      label: `Field Hero ${card.displayName} defeated · replacement pending`,
+      cues: [
+        {
+          id: `floor5-hero-defeated-${card.heroId}-audio`,
+          kind: 'audio',
+          label: `${card.displayName} defeated`,
+        },
+        {
+          id: `floor5-hero-defeated-${card.heroId}-vfx`,
+          kind: 'vfx',
+          label: `${card.displayName} defeated`,
+        },
+      ],
+    };
+  }
+  return { label: 'Field Hero roster exhausted', cues: [] };
+}
+
 /** Read-only projection of committed siege state; the scene owns layout and rendering. */
 export function getFloor5HudSnapshot(world: GameWorld): ScenarioHudSnapshot | null {
   const state = world.floorExtendedState?.floor5Siege;
   if (world.floorId !== 'floor5' || !state) return null;
   const post = state.structures['command-post'];
   const danger = commandPostDanger(state);
+  const hero = fieldHeroPresentation(state);
   const lines = [
     `Siege · ${readable(state.phase.kind)} | Objective: ${currentObjective(state)}`,
     `Command Post ${Math.ceil(Math.max(0, state.commandPostHealth))}/${Math.ceil(post.maxHealth)} HP · ${danger.label} | Checkpoint: ${readable(state.checkpointOwner)} | Minions: ally ${state.liveMinions.allied} / hostile ${state.liveMinions.enemy}`,
     `Ram: ${readable(state.engineState)} · ${Math.ceil(Math.max(0, state.ram.health))}/${Math.ceil(state.ram.maxHealth)} HP · ${ramProgress(state)}${state.engineState === 'LOCKED' ? ` · prerequisites ${state.requisitionMilestones.length}/4` : ''}`,
-    `Hostile pressure: ${state.liveMinions.enemy} minions · wave cap ${state.hostileReinforcements.cap}/16 · Heroes ${state.heroes.status === 'active' ? 1 : 0}/${state.hostileReinforcements.heroCap} max · ${state.hostileReinforcements.beats.length} escalation beats`,
+    `Hostile pressure: ${state.liveMinions.enemy} minions · wave cap ${state.hostileReinforcements.cap}/16 · Heroes ${state.heroes.status === 'active' ? 1 : 0}/${state.hostileReinforcements.heroCap} max · ${state.hostileReinforcements.beats.length} escalation beats · ${hero.label}`,
   ];
-  return { id: `floor5:${lines.join('|')}`, lines, cues: danger.cues };
+  return { id: `floor5:${lines.join('|')}`, lines, cues: [...danger.cues, ...hero.cues] };
 }
