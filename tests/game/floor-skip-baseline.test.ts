@@ -57,6 +57,11 @@ describe('floor skip direct-start baselines', () => {
       // Real progression bookkeeping (skill state, ability grants, milestone
       // log) must survive the synthetic seed.
       expect(world.milestoneGrantLog.length).toBeGreaterThan(0);
+      if (floorId === 'floor4') {
+        // Floor 4 is past Floor 1's drops tutorial. The shared XP HUD uses
+        // this progression flag, so a direct start must preserve it.
+        expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
+      }
       // But the seed is silent: it must not leave behind stale runtime-only
       // presentation events (level-up floaters, milestone VFX) or queue a
       // skill-triggered ability to auto-activate on the first real frame

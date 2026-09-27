@@ -659,6 +659,8 @@ export interface MainSceneState {
   readonly currentAnnouncement: { readonly kind: string; readonly text: string } | null;
   /** Active abilities currently equipped to the auto bar. */
   readonly equippedActiveAbilityIds: readonly string[];
+  /** Equipped automatic abilities that have fired in this real scene run. */
+  readonly activatedAutomaticAbilityIds: readonly string[];
   /** True when inventory is open. */
   readonly inventoryOpen: boolean;
   /** True when equipment is open. */
@@ -2236,6 +2238,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         eid >= 0
           ? [...(world?.abilityStatesByEntity.get(eid)?.equippedActiveAbilityIds ?? [])]
           : [];
+      const activatedAutomaticAbilityIds =
+        eid >= 0
+          ? equippedActiveAbilityIds.filter((abilityId) =>
+              world?.abilityStatesByEntity.get(eid)?.cooldownByAbilityId.has(abilityId),
+            )
+          : [];
       const inventoryOpen = scene?.inventoryUI?.isOpen() ?? false;
       const equipmentOpen = scene?.equipmentUI?.isOpen() ?? false;
       const achievementsOpen = scene?.achievementsUI?.isOpen() ?? false;
@@ -2260,6 +2268,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         abilityLoadoutSectionHeaderLabel,
         currentAnnouncement,
         equippedActiveAbilityIds,
+        activatedAutomaticAbilityIds,
         inventoryOpen,
         equipmentOpen,
         achievementsOpen,
