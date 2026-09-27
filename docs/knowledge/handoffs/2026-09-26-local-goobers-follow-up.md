@@ -36,8 +36,15 @@
   and zero warnings after the rebase.
 - Focused Goobers concurrency and hosted-slot tests passed after the rebase.
 - `npm run verify:fast` passed after the rebase; `git diff --check` passed.
-- Fresh full-branch Ducky review and `npm run verify:pr-prereqs` remain to be
-  rerun after this handoff is committed.
+- PR prerequisites passed after adding this single branch handoff. Ducky's
+  full-branch review found two follow-up issues: the backlog-claim test mock
+  did not emit its required result file, and the hosted Copilot overlay left
+  a Codex-only sandbox option behind. Both were repaired; targeted tests pass.
+- The full Goobers unit file still has two Windows Bash-path-sensitive failures
+  in unchanged hosted-runner test paths. The Linux CI environment is the
+  authoritative gate for those paths; do not weaken the assertions to make
+  this Windows run green. A second `npm run verify:fast` after the review fixes
+  reached these same two failures; its type/lint phase passed.
 
 ## Authorizations and constraints
 

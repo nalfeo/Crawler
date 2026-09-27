@@ -10,10 +10,13 @@ import {
   GOOBERS_RUN_RESULT_MARKER_PREFIX,
 } from '../../.github/scripts/ci-recovery/markers.mjs';
 import { bashEnv } from '../helpers/bash-script-path';
+import { resolveBashShell } from '../../scripts/agent/shell-resolver';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 const hasJq = hasBash && spawnSync('bash', ['-c', 'command -v jq >/dev/null 2>&1']).status === 0;
+const hasPerl =
+  hasBash && spawnSync('bash', ['-c', 'command -v perl >/dev/null 2>&1']).status === 0;
 // `goobers-contract-validation.yml` sets this on ubuntu-latest so a missing
 // bash/jq there is a failure rather than a silent skip, matching the gate
 // documented in "forces the executable Goobers suites to actually run in CI".
@@ -479,6 +482,33 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(hosted.runConditions?.maxParallelRuns).toBe(1);
   });
 
+  it.skipIf(!hasPerl)('removes every Codex-only option from hosted Copilot goobers', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into each slot instance',
+    );
+    const overlay = materialize?.run?.match(/perl -0pi -e '([^']+)' "\$\{goober_file\}"/);
+    expect(overlay?.[1]).toBeTruthy();
+
+    for (const name of ['producer', 'coder', 'reviewer']) {
+      const source = readFileSync(
+        path.join(REPO_ROOT, `.goobers/gaggles/crawler/goobers/${name}/goober.yaml`),
+        'utf8',
+      ).replace(/\r\n/g, '\n');
+      const transformed = spawnSync('bash', ['-c', `perl -0pe '${overlay![1]}'`], {
+        input: source,
+        encoding: 'utf8',
+      });
+      expect(transformed.status, transformed.stderr).toBe(0);
+      const hosted = parse(transformed.stdout) as {
+        spec: { harness: string; harnessOptions: Record<string, unknown>; tools: string[] };
+      };
+      expect(hosted.spec.harness).toBe('copilot');
+      expect(hosted.spec.harnessOptions).toEqual({});
+      expect(hosted.spec.tools).toContain('shell');
+    }
+  });
+
   it('isolates each slot in its own instance root and never shares a checkout', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
     const job = workflow.jobs.run;
@@ -535,28 +565,44 @@ describe('Goobers automatic dispatch and recovery', () => {
         .map((name) => [name, ambient[name]!]),
     );
     const harness = `
+unset GOOBERS_RECOVERY_ISSUE GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED
 goobers() {
   printf '%s\\n' "$@"
   [ "$#" -eq 3 ] &&
     [ "$1" = "backlog-query" ] &&
     [ "$2" = "--claim" ] &&
     [ "$3" = "${isolatedRoot}" ] &&
-    [ "$PWD" != "$3" ]
+    [ "$PWD" != "$3" ] || return 1
+  printf '%s\\n' '{"id":"4519","title":"Floor 4 boss health","body":"Bosses die too fast","url":"https://github.com/nalfeo/Crawler/issues/4519"}' > claimed-item.json
 }
 ${queryScript}
 `;
-    const result = spawnSync('bash', ['-c', harness], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      env: bashEnv({
-        GOOBERS_INSTANCE: stageEnv.GOOBERS_INSTANCE,
-        GOOBERS_INSTANCE_ROOT: undefined,
-        GOOBERS_RECOVERY_ISSUE: undefined,
-      }),
-    });
+    const stageCwd = mkdtempSync(path.join(tmpdir(), 'crawler-goobers-claim-'));
+    try {
+      const shell = resolveBashShell();
+      const result = spawnSync(shell.command, [...shell.argsPrefix, '-c', harness], {
+        cwd: stageCwd,
+        encoding: 'utf8',
+        env: bashEnv({
+          GOOBERS_INSTANCE: stageEnv.GOOBERS_INSTANCE,
+          GOOBERS_INSTANCE_ROOT: undefined,
+          GOOBERS_RECOVERY_ISSUE: '',
+          GOOBERS_EXPLICIT_ASSIGNMENT_REQUIRED: '',
+        }),
+      });
 
-    expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
-    expect(result.stdout.trim().split(/\r?\n/)).toEqual(['backlog-query', '--claim', isolatedRoot]);
+      expect(result.status, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+      expect(result.stdout.trim().split(/\r?\n/)).toEqual([
+        'backlog-query',
+        '--claim',
+        isolatedRoot,
+      ]);
+      expect(JSON.parse(readFileSync(path.join(stageCwd, 'claimed-item.json'), 'utf8'))).toEqual(
+        expect.objectContaining({ id: '4519', workspaceBranch: '' }),
+      );
+    } finally {
+      rmSync(stageCwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 
   it('bounds every slot inside the job timeout so cleanup and upload always run', () => {
