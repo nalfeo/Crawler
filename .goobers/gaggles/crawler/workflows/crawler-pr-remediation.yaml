@@ -5,10 +5,24 @@ metadata:
   name: crawler-pr-remediation
   annotations:
     # gather-sibling-context is conservatively modeled as a second PR
-    # selection, so explicitly assert that this later git-diff stage captures
-    # the already rebound subject worktree rather than a base checkout.
+    # selection, so capture-review-patch must explicitly record its patch.
     goobers.dev/safety: >-
-      {"version":1,"stages":{"capture-review-patch":{"evidence":"patch"}}}
+      {"version":1,"stages":{
+        "capture-review-patch":{"evidence":"patch"},
+        "verify-lifecycle-ownership":{"evidence":"none"},
+        "gather-ci-failures":{"evidence":"none"},
+        "remediation-checkpoint":{"evidence":"none"},
+        "gather-review-threads":{"evidence":"none"},
+        "gather-issue-context":{"evidence":"none"},
+        "validate-finding-responses":{"evidence":"none"},
+        "local-ci":{"evidence":"none"},
+        "respond-to-findings":{"evidence":"none"},
+        "resolve-review-threads":{"evidence":"none"},
+        "park-escalated":{"parks":true},
+        "park-infrastructure-failure":{"parks":true},
+        "park-invalid-finding-responses":{"parks":true},
+        "park-unresolved-review-threads":{"parks":true}
+      }}
 spec:
   gaggle: crawler
   displayName: Crawler PR reconciliation (conflicts + failing CI)

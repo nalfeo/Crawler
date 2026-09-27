@@ -3,6 +3,9 @@ kind: Workflow
 dslVersion: '2.0'
 metadata:
   name: crawler-review-threads
+  annotations:
+    goobers.dev/safety: >-
+      {"version":1,"stages":{"decide":{"evidence":"none"}}}
 spec:
   gaggle: crawler
   displayName: Crawler review-thread reply/resolve (Phase 3, Lane A)

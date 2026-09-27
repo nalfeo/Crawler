@@ -3,6 +3,9 @@ kind: Workflow
 dslVersion: '2.0'
 metadata:
   name: crawler-lifecycle-owner
+  annotations:
+    goobers.dev/safety: >-
+      {"version":1,"stages":{"decide-ownership":{"evidence":"none"}}}
 spec:
   gaggle: crawler
   displayName: Crawler implementation claim lease
