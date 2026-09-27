@@ -54,6 +54,18 @@ same authored manifest so the automatic player reaches every wave window while
 the Headliners retain their longer mechanics window. The seed-2 pressure probe
 again passes all five 8–12 nearby-enemy assertions.
 
+The replacement run then exposed a deterministic boundary miss: seed 1 Act 4
+averaged 7.989 nearby enemies against the 8.0 minimum. Raising the global
+refill target would have pushed seed 2 beyond the 12.0 maximum, so the scoped
+fix increases only Act 4's scheduled-wave multiplier from 2.40 to 2.42.
+The canonical Mascot Mauler also lasted 9.22 seconds after the prior contact
+tuning, just short of its 9.30-second opening mechanic; its health is 1,020 so
+the production headliner-survival gate observes that mechanic.
+
+After the pre-publication rebase onto current main, the Act 3 Pyro Principal
+lasted 8.67 seconds against its 9.90-second opening mechanic. Its health is
+850, which restores the authored opening window in the rebased canonical run.
+
 ## Recommended next steps
 
 Monitor the replacement CI run for PR #4743; do not auto-merge.

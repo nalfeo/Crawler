@@ -100,7 +100,7 @@
       },
       "budget": {
         "base": 6.0,
-        "actMultipliers": [1.0, 1.35, 1.8, 2.4, 3.2],
+        "actMultipliers": [1.0, 1.35, 1.8, 2.42, 3.2],
         "intraActRamp": 0.09,
         "openingWaveMultiplier": 0.34,
         "maxEntriesPerWave": 16

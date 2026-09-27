@@ -80,7 +80,7 @@
     {
       "id": "floor4-mascot-mauler",
       "name": "Mascot Mauler",
-      "hp": 750,
+      "hp": 1020,
       "speed": 0.12,
       "detectRange": 90.0,
       "spriteTexture": 1,
@@ -95,7 +95,7 @@
     {
       "id": "floor4-pyro-principal",
       "name": "Pyro Principal",
-      "hp": 675,
+      "hp": 850,
       "speed": 0.1,
       "detectRange": 96.0,
       "spriteTexture": 1,
