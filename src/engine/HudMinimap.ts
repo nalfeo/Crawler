@@ -24,6 +24,7 @@ import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 import { NAV_RADAR_DIAMETER, resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { getRenderScale } from './render-scale.js';
+import { companionMinimapColor } from './companion-minimap-color.js';
 import { GAME } from '../shared/constants.js';
 import {
   shouldDrawTerritoryOverlayBands,
@@ -62,7 +63,7 @@ const DOT_PLAYER_RING = 0xffd23f;
 const DOT_OUTLINE = 0x0b0b14;
 const DOT_OUTLINE_WIDTH = 0.32;
 const DOT_ENEMY = 0xef4444;
-const DOT_NPC = 0x4ade80;
+const DOT_NPC = 0x38bdf8; // Neutral blue; green is reserved for player Companions.
 const DOT_SAFE_ROOM = 0x2dd4bf;
 const DOT_BOSS_ROOM = 0xf59e0b;
 const DOT_SPAWN_ROOM = 0x60a5fa;
@@ -75,7 +76,7 @@ const FLOOR3_MARKER_COLORS: Readonly<Record<Floor3OverworldMarker['kind'], numbe
   'final-four-gate': 0xfacc15,
   'rally-point': 0x2dd4bf,
 };
-const FLOOR3_MARKER_CLEARED_COLOR = 0x4ade80;
+const FLOOR3_MARKER_CLEARED_COLOR = 0x94a3b8;
 const FLOOR3_MARKER_LOCKED_COLOR = 0x64748b;
 
 /** Shared marker styling so the overlay map and the docked radar never drift. */
@@ -742,6 +743,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     eid: number,
     baseRadius: number,
   ): { color: number; radius: number } {
+    const companionColor = companionMinimapColor(world, eid);
+    if (companionColor !== null) return { color: companionColor, radius: baseRadius };
     if (!hasComponent(world.ecs, eid, FamilyMembership)) {
       return { color: DOT_ENEMY, radius: baseRadius };
     }

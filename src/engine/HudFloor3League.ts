@@ -99,8 +99,13 @@ export function createHudFloor3League(
       round.defeated ? 'cleared' : index === state.activeRoundIndex ? 'active' : 'pending',
     );
   }
+  // Studio progression belongs to the canonical quest tracker. Keep this
+  // surface only for the championship bracket and season outcome.
+  function isVisible(): boolean {
+    return externallyVisible && state.visible && state.phase !== 'studios';
+  }
   function applyVisibility(): void {
-    const visible = externallyVisible && state.visible;
+    const visible = isVisible();
     root.setVisible(visible);
     panel.setVisible(visible);
   }
@@ -123,14 +128,12 @@ export function createHudFloor3League(
     },
     getState: () => ({
       ...state,
-      bounds:
-        externallyVisible && state.visible ? { x: X, y: Y, width: WIDTH, height: HEIGHT } : null,
+      visible: isVisible(),
+      bounds: isVisible() ? { x: X, y: Y, width: WIDTH, height: HEIGHT } : null,
       bracket: bracket(),
     }),
     getLayoutBounds: () =>
-      externallyVisible && state.visible
-        ? { panel: { x: X, y: Y, width: WIDTH, height: HEIGHT } }
-        : null,
+      isVisible() ? { panel: { x: X, y: Y, width: WIDTH, height: HEIGHT } } : null,
     destroy: () => {
       detachText();
       panel.destroy();

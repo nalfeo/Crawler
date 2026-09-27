@@ -76,134 +76,145 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
     await closeQuietly(browser);
   });
 
-  it('mounts the automatic party HUD with roster controls and no active command', async () => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    const page = await context.newPage();
-    try {
-      await loadMainSceneProbeLab(page, { floor: 'floor3' });
-      await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'loadout', {
-        timeoutMs: 20_000,
-        label: 'Floor 3 starter-companion loadout modal',
-      });
+  it.each([
+    { width: 1280, height: 720 },
+    { width: 1920, height: 1080 },
+    { width: 800, height: 450 },
+    { width: 844, height: 390 },
+  ])(
+    'keeps party controls clear at $width × $height',
+    async (viewport) => {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      try {
+        await loadMainSceneProbeLab(page, { floor: 'floor3' });
+        await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'loadout', {
+          timeoutMs: 20_000,
+          label: 'Floor 3 starter-companion loadout modal',
+        });
 
-      // BEFORE: no Companion recruited yet, so the party HUD stays hidden.
-      const beforeStarter = await mainSceneProbe.getFloor3PartyHudState(page);
-      expect(beforeStarter.hudVisible).toBe(false);
-      expect(beforeStarter.rowNames).toEqual([]);
+        // BEFORE: no Companion recruited yet, so the party HUD stays hidden.
+        const beforeStarter = await mainSceneProbe.getFloor3PartyHudState(page);
+        expect(beforeStarter.hudVisible).toBe(false);
+        expect(beforeStarter.rowNames).toEqual([]);
 
-      // Resolve the real Floor 3 intro, then the starter picker through the shipped modals.
-      await page.keyboard.press('Enter');
-      await waitForModalTitle(
-        page,
-        'Professor Thistle: Choose your starter Companion',
-        'Floor 3 starter-companion modal after intro',
-      );
+        // Resolve the real Floor 3 intro, then the starter picker through the shipped modals.
+        await page.keyboard.press('Enter');
+        await waitForModalTitle(
+          page,
+          'Professor Thistle: Choose your starter Companion',
+          'Floor 3 starter-companion modal after intro',
+        );
 
-      const starterContent = await mainSceneProbe.getModalPickerContent(page);
-      expect(starterContent?.kind).toBe('floor3-starter');
-      expect(starterContent?.options).toHaveLength(4);
-      for (const option of starterContent!.options) {
-        expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
-        expect(option.renderedSpriteId).toBe(option.spriteId);
+        const starterContent = await mainSceneProbe.getModalPickerContent(page);
+        expect(starterContent?.kind).toBe('floor3-starter');
+        expect(starterContent?.options).toHaveLength(4);
+        for (const option of starterContent!.options) {
+          expect(option.spriteId).toMatch(/^(goblin|llama|panda)-boss-var-0$/);
+          expect(option.renderedSpriteId).toBe(option.spriteId);
+        }
+
+        await page.keyboard.press('Enter');
+        await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'playing', {
+          timeoutMs: 10_000,
+          label: 'Floor 3 loadout confirmed',
+        });
+        await mainSceneProbe.setSimulationPaused(page, false);
+
+        // The first unlocked Studio announces itself with a blocking versus card
+        // (UX surface #10), which hides the HUD until it is acknowledged.
+        await waitForModalKind(page, 'floor3-studio-versus', 'Floor 3 Studio versus card');
+        await page.keyboard.press('Enter');
+
+        // AFTER: the mounted HUD shows the recruited starter.
+        const docked = await waitForPartyHud(
+          page,
+          (s) => s.hudVisible && s.rowNames.length > 0,
+          'mounted Floor 3 party HUD',
+        );
+        expect(docked.rowNames.every((name) => name.trim().length > 0)).toBe(true);
+        expect(docked.rowNames.some((name) => name.includes('f3.'))).toBe(false);
+        const controls = await mainSceneProbe.getCornerButtonLayout(page);
+        expect(controls.some((control) => /command/i.test(control.id))).toBe(false);
+        expect(docked.hudBounds).not.toBeNull();
+        const partyBounds = docked.hudBounds!;
+        for (const control of controls.filter((entry) => entry.visible)) {
+          const button = control.bounds;
+          const overlaps =
+            partyBounds.x < button.x + button.width &&
+            partyBounds.x + partyBounds.width > button.x &&
+            partyBounds.y < button.y + button.height &&
+            partyBounds.y + partyBounds.height > button.y;
+          expect(overlaps, `${control.id} covers the party HUD`).toBe(false);
+        }
+        const keys = await page.evaluate(() => window.__mainSceneProbe!.getBoundKeyboardKeyCodes());
+        expect(keys).toContain(82); // R retains its real binding.
+        expect(keys).not.toContain(67); // C has no binding.
+        expect(docked).not.toHaveProperty('commandCapacity');
+        expect(docked).not.toHaveProperty('commandsInUse');
+        expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
+          /command/i,
+        );
+
+        await waitForState(page, (state) => state.floor3RosterButtonVisible, {
+          label: 'Floor 3 roster touch button visible',
+        });
+        await page.screenshot({
+          path: `files/floor3-auto-party-${viewport.width}x${viewport.height}.png`,
+        });
+
+        // The on-canvas roster button opens the real roster overlay with a live detail column.
+        expect(await mainSceneProbe.tapFloor3RosterButton(page)).toBe(true);
+        const rosterOpen = await waitForPartyHud(
+          page,
+          (s) => s.rosterOpen,
+          'Floor 3 roster overlay opened by touch button',
+        );
+        expect(rosterOpen.rosterEntries.length).toBe(docked.rowNames.length);
+        expect(rosterOpen.rosterCursor).toBe(0);
+        expect(rosterOpen.rosterDetailLineCount).toBeGreaterThan(0);
+
+        const elapsedWhileOpen = await mainSceneProbe.getWorldElapsedMs(page);
+        await page.waitForTimeout(250);
+        expect(await mainSceneProbe.getWorldElapsedMs(page)).toBe(elapsedWhileOpen);
+
+        // Escape closes it through the scene's blocking-surface handling.
+        await page.keyboard.press('Escape');
+        await waitForPartyHud(
+          page,
+          (s) => !s.rosterOpen,
+          'Floor 3 roster overlay closed by [Escape]',
+        );
+
+        await page.waitForTimeout(250);
+        const elapsedAfterRosterClosed = await mainSceneProbe.getWorldElapsedMs(page);
+        expect(elapsedAfterRosterClosed).not.toBe(elapsedWhileOpen);
+
+        // The removed C input produces no party UI action or hint.
+        const beforeC = await mainSceneProbe.getFloor3PartyHudState(page);
+        await page.keyboard.press('c');
+        await page.waitForTimeout(100);
+        const afterC = await mainSceneProbe.getFloor3PartyHudState(page);
+        expect(afterC.rosterOpen).toBe(beforeC.rosterOpen);
+        expect(afterC.rowNames).toEqual(beforeC.rowNames);
+        expect(afterC).not.toHaveProperty('commandsInUse');
+        expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
+          /command/i,
+        );
+
+        await tapKeyUntil(
+          page,
+          'r',
+          async () => (await mainSceneProbe.getFloor3PartyHudState(page)).rosterOpen,
+          { label: 'Floor 3 roster overlay opened by [R]' },
+        );
+        await page.keyboard.press('Escape');
+        await waitForPartyHud(page, (s) => !s.rosterOpen, 'Floor 3 roster overlay closed again');
+      } finally {
+        await closeQuietly(page);
+        await closeQuietly(context);
       }
-
-      await page.keyboard.press('Enter');
-      await waitForState(page, (s) => s.floorId === 'floor3' && s.worldState === 'playing', {
-        timeoutMs: 10_000,
-        label: 'Floor 3 loadout confirmed',
-      });
-      await mainSceneProbe.setSimulationPaused(page, false);
-
-      // The first unlocked Studio announces itself with a blocking versus card
-      // (UX surface #10), which hides the HUD until it is acknowledged.
-      await waitForModalKind(page, 'floor3-studio-versus', 'Floor 3 Studio versus card');
-      await page.keyboard.press('Enter');
-
-      // AFTER: the mounted HUD shows the recruited starter.
-      const docked = await waitForPartyHud(
-        page,
-        (s) => s.hudVisible && s.rowNames.length > 0,
-        'mounted Floor 3 party HUD',
-      );
-      expect(docked.rowNames.every((name) => name.trim().length > 0)).toBe(true);
-      expect(docked.rowNames.some((name) => name.includes('f3.'))).toBe(false);
-      const controls = await mainSceneProbe.getCornerButtonLayout(page);
-      expect(controls.some((control) => /command/i.test(control.id))).toBe(false);
-      expect(docked.hudBounds).not.toBeNull();
-      const partyBounds = docked.hudBounds!;
-      for (const control of controls.filter((entry) => entry.visible)) {
-        const button = control.bounds;
-        const overlaps =
-          partyBounds.x < button.x + button.width &&
-          partyBounds.x + partyBounds.width > button.x &&
-          partyBounds.y < button.y + button.height &&
-          partyBounds.y + partyBounds.height > button.y;
-        expect(overlaps, `${control.id} covers the party HUD`).toBe(false);
-      }
-      const keys = await page.evaluate(() => window.__mainSceneProbe!.getBoundKeyboardKeyCodes());
-      expect(keys).toContain(82); // R retains its real binding.
-      expect(keys).not.toContain(67); // C has no binding.
-      expect(docked).not.toHaveProperty('commandCapacity');
-      expect(docked).not.toHaveProperty('commandsInUse');
-      expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
-        /command/i,
-      );
-
-      await waitForState(page, (state) => state.floor3RosterButtonVisible, {
-        label: 'Floor 3 roster touch button visible',
-      });
-      await page.screenshot({ path: 'files/floor3-auto-party-main-scene.png' });
-
-      // The on-canvas roster button opens the real roster overlay with a live detail column.
-      expect(await mainSceneProbe.tapFloor3RosterButton(page)).toBe(true);
-      const rosterOpen = await waitForPartyHud(
-        page,
-        (s) => s.rosterOpen,
-        'Floor 3 roster overlay opened by touch button',
-      );
-      expect(rosterOpen.rosterEntries.length).toBe(docked.rowNames.length);
-      expect(rosterOpen.rosterCursor).toBe(0);
-      expect(rosterOpen.rosterDetailLineCount).toBeGreaterThan(0);
-
-      const elapsedWhileOpen = await mainSceneProbe.getWorldElapsedMs(page);
-      await page.waitForTimeout(250);
-      expect(await mainSceneProbe.getWorldElapsedMs(page)).toBe(elapsedWhileOpen);
-
-      // Escape closes it through the scene's blocking-surface handling.
-      await page.keyboard.press('Escape');
-      await waitForPartyHud(
-        page,
-        (s) => !s.rosterOpen,
-        'Floor 3 roster overlay closed by [Escape]',
-      );
-
-      await page.waitForTimeout(250);
-      const elapsedAfterRosterClosed = await mainSceneProbe.getWorldElapsedMs(page);
-      expect(elapsedAfterRosterClosed).not.toBe(elapsedWhileOpen);
-
-      // The removed C input produces no party UI action or hint.
-      const beforeC = await mainSceneProbe.getFloor3PartyHudState(page);
-      await page.keyboard.press('c');
-      await page.waitForTimeout(100);
-      const afterC = await mainSceneProbe.getFloor3PartyHudState(page);
-      expect(afterC.rosterOpen).toBe(beforeC.rosterOpen);
-      expect(afterC.rowNames).toEqual(beforeC.rowNames);
-      expect(afterC).not.toHaveProperty('commandsInUse');
-      expect((await mainSceneProbe.getState(page)).interactionHintText ?? '').not.toMatch(
-        /command/i,
-      );
-
-      await tapKeyUntil(
-        page,
-        'r',
-        async () => (await mainSceneProbe.getFloor3PartyHudState(page)).rosterOpen,
-        { label: 'Floor 3 roster overlay opened by [R]' },
-      );
-      await page.keyboard.press('Escape');
-      await waitForPartyHud(page, (s) => !s.rosterOpen, 'Floor 3 roster overlay closed again');
-    } finally {
-      await closeQuietly(page);
-      await closeQuietly(context);
-    }
-  }, 90_000);
+    },
+    90_000,
+  );
 });
