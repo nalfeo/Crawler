@@ -83,4 +83,57 @@ describe('release sweep evaluation identity', () => {
       spy.mockRestore();
     }
   });
+  it('measures whole-chain evidence through the sweep boundary using real runner telemetry', async () => {
+    const config = {
+      maxFrames: 1,
+      maxFramesExplicit: true,
+      enemyDamageMultiplier: 1,
+      floorId: 'floor1',
+      skipEvents: true,
+      forceWeapon: true,
+      chain: false,
+    };
+    const { stats } = await runSweepTask({ weapon: 'sword', seed: 42 }, config);
+    const first = { ...stats, outcome: 'victory' as const };
+    const last = {
+      ...stats,
+      finalFloor: 2,
+      evaluationContext: { ...stats.evaluationContext!, startFloor: 'floor2' },
+    };
+    const spy = vi.spyOn(progressionRunner, 'runProgression').mockResolvedValueOnce({
+      legs: [
+        { floorId: 'floor1', stats: first },
+        { floorId: 'floor2', stats: last },
+      ],
+      clearedFloorIds: ['floor1'],
+      winnableFloorIds: ['floor1', 'floor2'],
+      exhibitionFloorIds: [],
+      finalFloorId: 'floor2',
+      reachedFinalVictory: false,
+      totalGameTimeMs: stats.gameTimeMs * 2,
+      totalSafeRoomMs: stats.safeRoomMs * 2,
+      totalActiveTimeMs: (stats.gameTimeMs - stats.safeRoomMs) * 2,
+      totalFrames: stats.totalFrames * 2,
+      totalWallTimeMs: stats.wallTimeMs * 2,
+      budgetMs: null,
+      officialWin: false,
+    });
+    try {
+      const result = await runSweepTask({ weapon: 'sword', seed: 42 }, { ...config, chain: true });
+      expect(result.stats.evaluationContext?.available).toEqual({
+        combat: true,
+        health: true,
+        progression: true,
+        quests: true,
+      });
+      expect(result.stats.rewardEvents?.activeDurationMs).toBe(
+        (stats.gameTimeMs - stats.safeRoomMs) * 2,
+      );
+      const report = scoreFunSessions(normalizeFunSessions([result.stats]));
+      expect(report.criteria.reward_cadence.status).not.toBe('unmeasured');
+      expect(result.officialWin).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
