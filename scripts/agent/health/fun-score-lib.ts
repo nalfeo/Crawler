@@ -932,7 +932,10 @@ export function scoreFunSessions(
         session.run.combatPressure,
         (session.run as RunStats & { chainedFloorIds?: unknown }).chainedFloorIds,
       ),
-      choice_build: choiceBuildDiagnostics(session.run.choiceBuildTelemetry),
+      choice_build: choiceBuildDiagnostics(
+        session.run.choiceBuildTelemetry,
+        (session.run as RunStats & { chainedFloorIds?: unknown }).chainedFloorIds,
+      ),
     };
   });
   const dimensions = {} as { -readonly [K in keyof FunDimensionScores]: FunDimensionScores[K] };

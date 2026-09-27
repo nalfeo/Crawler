@@ -49,3 +49,15 @@ independent choice opportunities or enjoyment.
 Producer coordination and QA validation continued the previously authorized
 implementation. Publish ready for review, then release immediately to CI Recovery;
 the merge train owns landing. Do not wait locally for CI or auto-merge.
+
+## Publication integration follow-up
+
+The user directly authorized push/publication in the coordinator. Rebased onto
+current main and preserved both combat-pressure and choice/build diagnostics.
+The shared test fixture exactly matches the removed duplicate. Post-sync review
+found two evidence issues: final-leg choices in flattened multi-floor records,
+and double-counted generated active weapons. Both were fixed with integration
+regressions. Multi-leg choice evidence remains unavailable pending aggregation;
+generated equipment uses one physical identity across bag/equip transitions.
+All 70 focused tests, verify:fast, and verify:pr-prereqs passed after corrections.
+Final review evidence is recorded in the PR description.

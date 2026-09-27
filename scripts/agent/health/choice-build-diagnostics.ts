@@ -69,6 +69,7 @@ function acquiredBuild(
 
 export function choiceBuildDiagnostics(
   data: ChoiceBuildTelemetry | undefined,
+  chainedFloorIds?: unknown,
 ): ChoiceBuildDiagnostics {
   const empty: ChoiceBuildDiagnostics = {
     availability: 'missing',
@@ -79,6 +80,18 @@ export function choiceBuildDiagnostics(
     pathIdentity: null,
     acquiredBuildIdentity: null,
   };
+  // Flattened chains spread the final leg's telemetry into a whole-run record.
+  // Until a producer aggregates choices/builds, never credit that partial leg
+  // under the chain's scenario identity.
+  if (chainedFloorIds !== undefined) {
+    if (
+      !Array.isArray(chainedFloorIds) ||
+      chainedFloorIds.length === 0 ||
+      !chainedFloorIds.every((id: unknown) => typeof id === 'string' && id.trim().length > 0)
+    )
+      return { ...empty, availability: 'invalid' };
+    if (chainedFloorIds.length > 1) return empty;
+  }
   if (data === undefined) return empty;
   if (
     !data ||

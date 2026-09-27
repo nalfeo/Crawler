@@ -1,6 +1,6 @@
 import type { GameWorld } from '../../core/world.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
-import { getActiveWeaponDef } from '../../core/active-weapon.js';
+import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../core/active-weapon.js';
 import { listGeneratedEquipmentInstances } from '../../core/generated-equipment-registry.js';
 import { findGeneratedPhysicalOwners } from '../../core/systems/equipmentSystem.js';
 import { getQuartermasterOfferViews } from '../../core/quartermaster-purchase.js';
@@ -31,7 +31,9 @@ export function readChoiceBuild(world: GameWorld, playerEid: number): BuildEntry
   for (const id of new Set(abilities?.passiveAbilityIds ?? []))
     build.push({ catalogKey: `passive:${id}`, location: 'passive' });
   const weapon = getActiveWeaponDef(world);
-  if (weapon) build.push({ catalogKey: `weapon:${weapon.id}`, location: 'equipped' });
+  // Generated active weapons already have their physical equipment identity below.
+  if (weapon && !getActiveWeaponSnapshot(world))
+    build.push({ catalogKey: `weapon:${weapon.id}`, location: 'equipped' });
   for (const instance of listGeneratedEquipmentInstances(world)) {
     const owners = findGeneratedPhysicalOwners(world, instance.instanceId).filter(
       (owner) => owner.entity === playerEid,

@@ -1,3 +1,14 @@
+import {
+  createActiveWeaponSnapshotV1,
+  createGeneratedEquipmentInstance,
+  generatedEquipmentInstanceKey,
+} from '../../src/core/generated-equipment-registry.js';
+import {
+  addGeneratedEquipmentToBag,
+  equipFromBag,
+} from '../../src/core/systems/equipmentSystem.js';
+import { FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION } from '../../src/shared/generated-equipment-types.js';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { describe, expect, it } from 'vitest';
 import {
   createChoiceBuildRecorder,
@@ -42,6 +53,61 @@ function example(selected = 'spell:heal') {
 }
 
 describe('choice/build evidence', () => {
+  it.each([true, false])(
+    'counts generated weapons once across bag/equip transitions (starter=%s)',
+    (starter) => {
+      const runKey = 'choice-generated-weapon';
+      const world = createTestWorld({ generatedEquipmentRunKey: runKey });
+      const player = spawnPlayer(world, 0, 0);
+      world.featureUnlocks.equipment = true;
+      const snapshot = createActiveWeaponSnapshotV1(
+        { instanceId: generatedEquipmentInstanceKey(runKey, 0) },
+        getWeaponDef('sword')!,
+        {},
+      );
+      const instance = createGeneratedEquipmentInstance(world, {
+        baseId: 'weapon.choice-test',
+        itemLevel: 1,
+        rarity: 'common',
+        enhancementLevel: 0,
+        resolvedEffects: [],
+        frozen: {
+          schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+          displayName: snapshot.name,
+          artKey: 'weapon.choice-test',
+          slots: ['mainHand'],
+          tags: ['weapon'],
+          weightLb: 1,
+          statBonuses: {},
+          abilityGrants: [],
+          passiveGrants: [],
+          activeWeaponSnapshot: snapshot,
+        },
+      });
+      const before = readChoiceBuild(world, player);
+      expect(addGeneratedEquipmentToBag(world, player, instance.instanceId).ok).toBe(true);
+      const bag = readChoiceBuild(world, player);
+      expect(bag).toHaveLength(1);
+      const recorder = createChoiceBuildRecorder(starter ? bag : before);
+      recordBuildSnapshot(recorder, bag, 1, 1);
+      expect(
+        equipFromBag(
+          world,
+          player,
+          { kind: 'generated-instance', instanceKey: instance.instanceId },
+          { force: true },
+        ).ok,
+      ).toBe(true);
+      const equipped = readChoiceBuild(world, player);
+      expect(equipped).toEqual([{ catalogKey: bag[0]!.catalogKey, location: 'equipped' }]);
+      recordBuildSnapshot(recorder, equipped, 2, 2);
+      const diagnostic = choiceBuildDiagnostics(finalizeChoiceBuildTelemetry(recorder));
+      expect(diagnostic.acquisitions).toBe(starter ? 0 : 1);
+      if (starter) expect(diagnostic.acquiredBuildIdentity).toBeNull();
+      else expect(JSON.parse(diagnostic.acquiredBuildIdentity!)).toHaveLength(1);
+    },
+  );
+
   it.each([
     null,
     {},

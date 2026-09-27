@@ -46,6 +46,41 @@ it('keeps telemetry diagnostic-only across wins, deaths, and duplicated evidence
   }
 });
 
+it.each([
+  { chain: ['floor1', 'floor2'], availability: 'missing', observed: 0 },
+  { chain: [], availability: 'invalid', observed: 0 },
+  { chain: 'floor1', availability: 'invalid', observed: 0 },
+  { chain: [''], availability: 'invalid', observed: 0 },
+  { chain: ['floor1'], availability: 'partial', observed: 1 },
+  { chain: undefined, availability: 'partial', observed: 1 },
+])(
+  'does not credit last-leg choices to a flattened chain: $chain',
+  ({ chain, availability, observed }) => {
+    const recorder = createChoiceBuildRecorder([]);
+    recordChoiceOffer(
+      recorder,
+      'boss-spell',
+      [{ catalogKey: 'spell:heal', selectable: true, constraints: [] }],
+      1,
+      1,
+    );
+    recordChoiceSelection(recorder, 'boss-spell', 'spell:heal', 2, 2);
+    const run = {
+      ...makeRun({ choiceBuildTelemetry: finalizeChoiceBuildTelemetry(recorder) }),
+      chainedFloorIds: chain,
+    };
+    const report = scoreFunSessions([{ id: 'chain', run }]);
+    expect(report.per_run[0]!.choice_build?.availability).toBe(availability);
+    expect(report.evidence.choice_build?.observedScenarios).toBe(observed);
+    if (observed === 0) {
+      expect(report.per_run[0]!.choice_build?.pathIdentity).toBeNull();
+      expect(report.per_run[0]!.choice_build?.acquiredBuildIdentity).toBeNull();
+      expect(report.evidence.choice_build?.distinctPaths).toBe(0);
+      expect(report.evidence.choice_build?.distinctAcquiredBuilds).toBe(0);
+    }
+  },
+);
+
 /** Clone a report with a forced `survivability_variance` observation. */
 function withVariance(report: FunScoreReport, observed: number): FunScoreReport {
   return {
