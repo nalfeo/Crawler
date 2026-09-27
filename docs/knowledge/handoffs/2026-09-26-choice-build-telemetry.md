@@ -61,3 +61,13 @@ regressions. Multi-leg choice evidence remains unavailable pending aggregation;
 generated equipment uses one physical identity across bag/equip transitions.
 All 70 focused tests, verify:fast, and verify:pr-prereqs passed after corrections.
 Final review evidence is recorded in the PR description.
+
+## CI recovery follow-up
+
+CI failed one Floor 3 wiring assertion because it required loadout dispatch to
+be the first statement in its branch. Choice telemetry correctly precedes it.
+Reproduced the failure locally, then replaced the whitespace regex with a
+TypeScript AST check requiring the same loadout guard and a direct, unconditional
+option-0 dispatch statement. No runtime behavior or CI gate changed. The failing
+suite and choice/build suite pass (44 tests). Publication checks and independent
+review are recorded in the PR description.
