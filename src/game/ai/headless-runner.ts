@@ -11,6 +11,18 @@ import { observeCombatPressure } from './combat-pressure-observation.js';
  */
 import { hasComponent, query } from 'bitecs';
 import {
+  createChoiceBuildRecorder,
+  finalizeChoiceBuildTelemetry,
+  recordChoiceOffer,
+  recordChoiceSelection,
+} from './choice-build-telemetry.js';
+import {
+  captureChoiceBuild,
+  readChoiceBuild,
+  readQuartermasterStock,
+  captureQuartermasterPurchases,
+} from './headless-choice-build.js';
+import {
   Player,
   Health,
   XpGem,
@@ -1081,6 +1093,8 @@ export async function runHeadless(
       : (world.floorScenario?.starterChoices ?? [startingWeapon]),
     startingWeapon,
   );
+  const choiceBuild = createChoiceBuildRecorder(readChoiceBuild(world, playerEid));
+  const choiceVendorBaseline = world.vendorLedger.decisions.length;
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -1566,6 +1580,31 @@ export async function runHeadless(
       // floor objective tick, which only runs while `'playing'`, would stall
       // for the rest of the run.
       if (readRunState(world) === 'loadout' && scenario.selectLoadoutOption) {
+        const poachOffer = world.floorExtendedState?.floor3PoachOffer;
+        if (poachOffer) {
+          const source = `floor3-poach:${poachOffer.encounterId}`;
+          recordChoiceOffer(
+            choiceBuild,
+            source,
+            poachOffer.candidates.map((candidate) => ({
+              catalogKey: `companion:${candidate.speciesId}:level=${candidate.level}`,
+              selectable: true,
+              constraints: [],
+            })),
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          );
+          const selected = poachOffer.candidates[0];
+          if (selected)
+            recordChoiceSelection(
+              choiceBuild,
+              source,
+              `companion:${selected.speciesId}:level=${selected.level}`,
+              world.elapsedMs,
+              currentActiveTimeMs(),
+              'submitted',
+            );
+        }
         scenario.selectLoadoutOption(world, 0);
         recordEvent?.(
           buildLoadoutControlEvent(
@@ -1621,7 +1660,27 @@ export async function runHeadless(
       captureFloor1BossTransitions();
       // Floor objective handling (including Floor 2 objective ticks) runs inside
       // runSimulationStep, so no second explicit objective call is needed here.
-      autoFloor1ProgressionSystem(world, playerEid, aiProvider, featureFlags.weaponPersonas);
+      captureChoiceBuild(
+        choiceBuild,
+        world,
+        playerEid,
+        currentActiveTimeMs(),
+        choiceVendorBaseline,
+      );
+      autoFloor1ProgressionSystem(
+        world,
+        playerEid,
+        aiProvider,
+        featureFlags.weaponPersonas,
+        (spellId) =>
+          recordChoiceSelection(
+            choiceBuild,
+            'boss-spell',
+            `spell:${spellId}`,
+            world.elapsedMs,
+            currentActiveTimeMs(),
+          ),
+      );
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
       autoFloor4ProgressionSystem(world, playerEid);
@@ -1645,10 +1704,19 @@ export async function runHeadless(
       });
       // Capture result type so `SettlementMaintenanceResult` has a production
       // src consumer; result is also accessible via getLastSettlementMaintenanceResult(world).
+      const choiceStockBefore = readQuartermasterStock(world, playerEid);
       const _settlementResult: SettlementMaintenanceResult = runSettlementMaintenancePlanner(world);
       void _settlementResult;
+      captureQuartermasterPurchases(choiceBuild, world, choiceStockBefore, currentActiveTimeMs());
       autoAllocateStatPoints(world, playerEid, featureFlags.weaponPersonas);
       updateEquipmentSpendTelemetry(world, equipmentSpendTelemetry);
+      captureChoiceBuild(
+        choiceBuild,
+        world,
+        playerEid,
+        currentActiveTimeMs(),
+        choiceVendorBaseline,
+      );
       captureHeadlessRunDataFrame(
         runData,
         world,
@@ -2227,6 +2295,7 @@ export async function runHeadless(
       goldEconomy: computeGoldEconomy(world),
       vendors: computeVendorInteractions(world),
       ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
+      choiceBuildTelemetry: finalizeChoiceBuildTelemetry(choiceBuild),
     });
     if (mergedConfig.onFinish) {
       try {
@@ -2357,6 +2426,7 @@ export async function runHeadless(
     goldEconomy: computeGoldEconomy(world),
     vendors: computeVendorInteractions(world),
     ...finalizeHeadlessRunData(runData, currentActiveTimeMs(), damageDealt, totalKills),
+    choiceBuildTelemetry: finalizeChoiceBuildTelemetry(choiceBuild),
   });
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {

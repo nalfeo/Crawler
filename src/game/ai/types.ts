@@ -768,6 +768,8 @@ export interface VendorDecisionEntry {
 export interface RunStats {
   /** Optional descriptive local-pressure evidence; absent means unmeasured. */
   combatPressure?: CombatPressureSummary;
+  /** Partial, timestamped headless observations; never a psychological score. */
+  readonly choiceBuildTelemetry?: import('./choice-build-telemetry.js').ChoiceBuildTelemetry;
   /**
    * Provenance and measurement coverage for evaluation. Missing context means
    * legacy/unknown coverage, not permission to treat placeholder zeros as data.

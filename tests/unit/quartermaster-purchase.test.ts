@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { createChoiceBuildRecorder } from '../../src/game/ai/choice-build-telemetry.js';
+import {
+  readChoiceBuild,
+  readQuartermasterStock,
+  captureQuartermasterPurchases,
+} from '../../src/game/ai/headless-choice-build.js';
 import {
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
@@ -101,6 +107,50 @@ function transactionSnapshot(world: TestWorld): object {
 }
 
 describe('Quartermaster atomic purchase', () => {
+  it('confirms telemetry only for the exact stock transition', () => {
+    const { world, playerEid, request } = setupPurchase();
+    const state = createChoiceBuildRecorder(readChoiceBuild(world, playerEid));
+    const before = readQuartermasterStock(world, playerEid);
+    captureQuartermasterPurchases(state, world, before, 0);
+    expect(state.events).toHaveLength(0);
+    purchaseQuartermasterOffer(world, playerEid, request);
+    captureQuartermasterPurchases(state, world, before, 10);
+    captureQuartermasterPurchases(state, world, before, 20);
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0]).toMatchObject({
+      kind: 'selection',
+      outcome: 'confirmed',
+      selected: before[0]!.catalogKey,
+      activeTimeMs: 10,
+    });
+    const wrongStock = createChoiceBuildRecorder([]);
+    captureQuartermasterPurchases(
+      wrongStock,
+      world,
+      before.map((offer) => ({ ...offer, stockId: `${offer.stockId}-other` })),
+      10,
+    );
+    expect(wrongStock.events).toHaveLength(0);
+  });
+
+  it('records purchases after maintenance makes a previously unaffordable offer eligible', () => {
+    const { world, playerEid, request } = setupPurchase();
+    world.playerGold = 0;
+    const before = readQuartermasterStock(world, playerEid);
+    expect(before[0]!.canPurchase).toBe(false);
+    const state = createChoiceBuildRecorder(readChoiceBuild(world, playerEid));
+    captureQuartermasterPurchases(state, world, before, 0);
+    expect(state.events).toHaveLength(0);
+    world.playerGold = 10_000;
+    purchaseQuartermasterOffer(world, playerEid, request);
+    captureQuartermasterPurchases(state, world, before, 10);
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0]).toMatchObject({
+      kind: 'selection',
+      outcome: 'confirmed',
+      selected: before[0]!.catalogKey,
+    });
+  });
   it('projects one shared UI/AI affordability, capacity, and utility read model', () => {
     const { world, playerEid } = setupPurchase();
     const stock = world.floorExtendedState!.settlement!.quartermasterStock!;

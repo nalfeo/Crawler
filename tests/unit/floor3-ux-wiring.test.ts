@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import ts from 'typescript';
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -45,9 +46,38 @@ describe('Floor 3 UX surface wiring', () => {
   });
 
   it('resolves mid-run loadout pauses in the headless runner so a poach cannot stall a run', () => {
-    expect(headlessRunnerSource).toMatch(
-      /if \(readRunState\(world\) === 'loadout' && scenario\.selectLoadoutOption\) \{\s*scenario\.selectLoadoutOption\(world, 0\);/,
+    const source = ts.createSourceFile(
+      'headless-runner.ts',
+      headlessRunnerSource,
+      ts.ScriptTarget.Latest,
+      true,
     );
+    const loadoutBranches: ts.IfStatement[] = [];
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isIfStatement(node) &&
+        node.expression.getText(source) ===
+          "readRunState(world) === 'loadout' && scenario.selectLoadoutOption"
+      ) {
+        loadoutBranches.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    expect(loadoutBranches).toHaveLength(1);
+    const branch = loadoutBranches[0]?.thenStatement;
+    if (!branch) throw new Error('Expected a loadout branch');
+    expect(ts.isBlock(branch)).toBe(true);
+    if (!ts.isBlock(branch)) throw new Error('Expected a loadout block');
+    // Telemetry may precede dispatch, but dispatch must remain a direct statement:
+    // nesting it inside an offer/telemetry guard would strand other loadout pauses.
+    expect(
+      branch.statements.some(
+        (statement) =>
+          ts.isExpressionStatement(statement) &&
+          statement.expression.getText(source) === 'scenario.selectLoadoutOption(world, 0)',
+      ),
+    ).toBe(true);
   });
 
   it('uses the shared Floor 3 progression system in the headless runner', () => {

@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import {
+  createChoiceBuildRecorder,
+  finalizeChoiceBuildTelemetry,
+  recordChoiceOffer,
+  recordChoiceSelection,
+} from '../../src/game/ai/choice-build-telemetry.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import type { FunScoreReport, FunSession } from '../../scripts/agent/health/fun-score-lib.js';
 import {
@@ -8,6 +14,72 @@ import {
 } from '../../scripts/agent/health/fun-score-lib.js';
 
 import { makeExperienceRun as makeRun } from '../fixtures/experience-evaluation.js';
+
+it('keeps telemetry diagnostic-only across wins, deaths, and duplicated evidence', () => {
+  const recorder = createChoiceBuildRecorder([]);
+  recordChoiceOffer(
+    recorder,
+    'boss-spell',
+    [{ catalogKey: 'spell:heal', selectable: true, constraints: [] }],
+    1,
+    1,
+  );
+  recordChoiceSelection(recorder, 'boss-spell', 'spell:heal', 2, 2);
+  const choiceBuildTelemetry = finalizeChoiceBuildTelemetry(recorder);
+  for (const outcome of ['victory', 'death'] as const) {
+    const baseline = scoreFunSessions([{ id: 'a', run: makeRun({ outcome }) }]);
+    const enriched = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome, choiceBuildTelemetry }) },
+    ]);
+    expect(enriched.dimensions).toEqual(baseline.dimensions);
+    expect(enriched.gate).toEqual(baseline.gate);
+    expect(enriched.overall_fun_score).toBe(baseline.overall_fun_score);
+    expect(enriched.dimensions.choice_depth).toBeNull();
+    expect(enriched.dimensions.run_distinctness).toBeNull();
+    expect(enriched.sameness_grade).toBeNull();
+    expect(enriched.evidence.choice_build?.observedScenarios).toBe(1);
+    const duplicate = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome, choiceBuildTelemetry }) },
+      { id: 'b', run: makeRun({ outcome, choiceBuildTelemetry }) },
+    ]);
+    expect(duplicate.evidence.choice_build).toEqual(enriched.evidence.choice_build);
+  }
+});
+
+it.each([
+  { chain: ['floor1', 'floor2'], availability: 'missing', observed: 0 },
+  { chain: [], availability: 'invalid', observed: 0 },
+  { chain: 'floor1', availability: 'invalid', observed: 0 },
+  { chain: [''], availability: 'invalid', observed: 0 },
+  { chain: ['floor1'], availability: 'partial', observed: 1 },
+  { chain: undefined, availability: 'partial', observed: 1 },
+])(
+  'does not credit last-leg choices to a flattened chain: $chain',
+  ({ chain, availability, observed }) => {
+    const recorder = createChoiceBuildRecorder([]);
+    recordChoiceOffer(
+      recorder,
+      'boss-spell',
+      [{ catalogKey: 'spell:heal', selectable: true, constraints: [] }],
+      1,
+      1,
+    );
+    recordChoiceSelection(recorder, 'boss-spell', 'spell:heal', 2, 2);
+    const run = {
+      ...makeRun({ choiceBuildTelemetry: finalizeChoiceBuildTelemetry(recorder) }),
+      chainedFloorIds: chain,
+    };
+    const report = scoreFunSessions([{ id: 'chain', run }]);
+    expect(report.per_run[0]!.choice_build?.availability).toBe(availability);
+    expect(report.evidence.choice_build?.observedScenarios).toBe(observed);
+    if (observed === 0) {
+      expect(report.per_run[0]!.choice_build?.pathIdentity).toBeNull();
+      expect(report.per_run[0]!.choice_build?.acquiredBuildIdentity).toBeNull();
+      expect(report.evidence.choice_build?.distinctPaths).toBe(0);
+      expect(report.evidence.choice_build?.distinctAcquiredBuilds).toBe(0);
+    }
+  },
+);
 
 /** Clone a report with a forced `survivability_variance` observation. */
 function withVariance(report: FunScoreReport, observed: number): FunScoreReport {

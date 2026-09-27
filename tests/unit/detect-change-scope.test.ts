@@ -1139,6 +1139,8 @@ describe('detect-art-only.sh change-scope classifier', () => {
     'src/game/ai/headless-runner.ts',
     'src/game/ai/types.ts',
     'src/game/ai/run-stats-collector.ts',
+    'src/game/ai/choice-build-telemetry.ts',
+    'src/game/ai/headless-choice-build.ts',
     'src/game/ai/den-boss-telemetry.ts',
     'src/game/ai/boss-encounter-telemetry.ts',
     'src/core/weapon-telemetry.ts',
