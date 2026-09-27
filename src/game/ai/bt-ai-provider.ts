@@ -89,6 +89,8 @@ import { getItemById, getItemByIndex } from '../../shared/items.js';
 import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../shared/npc-types.js';
 import type { Floor3EncounterState } from '../../shared/floor-types.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
+import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
+import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
   AIState,
   AIDecisionMode,
@@ -1307,6 +1309,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         // B's dodge vector blends into the heading regardless of which Track A
         // branch fired.
         this.buildBossChestBehavior(),
+        // Floor 5's authored quest chain ends when the Ratings Ram is built,
+        // but the visible siege continues through the breach, courtyard, and
+        // throne. Once there is no quest marker, keep pursuing a live,
+        // reachable hostile through the ordinary public Enemy observation
+        // surface. This is deliberately not a read of Floor 5's private siege
+        // state: it is the same combat perception used by Engage below.
+        this.buildFloor5FinaleCombatBehavior(),
         // Priority 3: Seek progression objectives.
         this.buildProgressBehavior(),
         // Priority 3.5: Leave a safe room when enemies are present.
@@ -2093,6 +2102,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Interact',
       condition('NPC Nearby', (ctx) => {
+        delete ctx.blackboard['scenarioInteraction'];
+        const scenarioInteraction = getScenarioDefinition(
+          ctx.world.floorId,
+        ).interaction?.getSnapshot(ctx.world, ctx.playerEid);
+        if (scenarioInteraction) {
+          ctx.blackboard['scenarioInteraction'] = scenarioInteraction;
+          return true;
+        }
         const nearest = this.findNearestRelevantNpc(
           ctx.world,
           ctx.playerEid,
@@ -2106,6 +2123,18 @@ export class BehaviorTreeAI implements AIInputProvider {
         return false;
       }),
       action('Set Interact State', (ctx) => {
+        const scenarioInteraction = ctx.blackboard['scenarioInteraction'] as
+          | { label: string; detail: string }
+          | undefined;
+        if (scenarioInteraction) {
+          this.decision.state = AIState.INTERACT;
+          this.decision.targetEid = null;
+          this.decision.targetX = ctx.playerX;
+          this.decision.targetY = ctx.playerY;
+          this.decision.reason = `Interacting with scenario prompt: ${scenarioInteraction.label}`;
+          this.decision.npcInteraction = null;
+          return BTStatus.SUCCESS;
+        }
         const nearest = ctx.blackboard['nearestNpc'] as NpcTarget;
         this.decision.state = AIState.INTERACT;
         this.decision.targetEid = nearest.eid;
@@ -2455,6 +2484,45 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = plan.targetX;
         this.decision.targetY = plan.targetY;
         this.decision.reason = `Defending Floor 6 relay from raider ${String(target.eid)} — ${plan.reason}`;
+        return BTStatus.SUCCESS;
+      }),
+    );
+  }
+
+  /**
+   * Continue Floor 5's visible combat finale after its last quest waypoint is
+   * complete. The player still uses normal movement and automatic weapons;
+   * this only supplies the missing navigation intention for a live enemy
+   * beyond the current scan radius.
+   */
+  private buildFloor5FinaleCombatBehavior(): BTNode {
+    return sequence(
+      'Floor5 Finale Combat',
+      condition('Floor5 Finale Hostile Visible', (ctx) => {
+        if (
+          ctx.world.floorId !== 'floor5' ||
+          getQuestWaypoints(ctx.world, ctx.playerEid).length > 0
+        ) {
+          return false;
+        }
+        const target = this.findNearestEnemy(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          Number.POSITIVE_INFINITY,
+        );
+        if (!target) return false;
+        ctx.blackboard['floor5FinaleEnemy'] = target;
+        return true;
+      }),
+      action('Set Floor5 Finale Combat State', (ctx) => {
+        const target = ctx.blackboard['floor5FinaleEnemy'] as WorldTarget;
+        const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, target);
+        this.decision.state = AIState.ENGAGE;
+        this.decision.targetEid = target.eid;
+        this.decision.targetX = plan.targetX;
+        this.decision.targetY = plan.targetY;
+        this.decision.reason = `Continuing Floor 5 finale combat — ${plan.reason}`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -8193,6 +8261,33 @@ export class BehaviorTreeAI implements AIInputProvider {
       const floor4Target = this.findFloor4ProgressObjective(world, playerX, playerY);
       if (floor4Target) {
         return floor4Target;
+      }
+    }
+    if (world.floorId === 'floor5') {
+      const waypoint = getQuestWaypoints(world, playerEid)[0];
+      if (waypoint) {
+        return this.createProgressTarget(
+          waypoint.x,
+          waypoint.y,
+          playerX,
+          playerY,
+          `Following objective marker: ${waypoint.label}`,
+        );
+      }
+      // The final throne claim is intentionally a separate, visible scenario
+      // marker after the authored quest chain ends. Route to that public
+      // presentation contract so the visual MainGameScene can perform its
+      // normal proximity interaction; do not infer coordinates from private
+      // siege state or invoke the capture authority here.
+      const captureMarker = getScenarioDefinition('floor5').getStairMarkerState?.(world);
+      if (captureMarker?.visible && !captureMarker.locked) {
+        return this.createProgressTarget(
+          captureMarker.positionFt.x,
+          captureMarker.positionFt.y,
+          playerX,
+          playerY,
+          'Following the throne capture marker',
+        );
       }
     }
     const objective = floorScenario?.objective;

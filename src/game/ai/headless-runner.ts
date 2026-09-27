@@ -94,7 +94,9 @@ import {
 import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
 import { capturePlayerCarryover, type PlayerCarryoverSnapshot } from '../playerCarryover.js';
 import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
+import { getActiveWeapon } from '../weaponSystem.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
+import { isPlayerWithinStairMarker } from '../../shared/scenario-presentation.js';
 import { configureAttackWaves } from '../attack-wave-system.js';
 import {
   autoAllocateStatPoints,
@@ -1082,6 +1084,7 @@ export async function runHeadless(
     forceWeaponId ??
     world.floorScenario?.selectedWeaponId ??
     world.floorScenario?.starterChoices[starterWeaponIndex] ??
+    getActiveWeapon(world)?.id ??
     'unknown';
   const forcedAbilityIds =
     config.forceAbilityIds === undefined
@@ -2054,14 +2057,22 @@ export async function runHeadless(
         scenario.onStairDescend?.(world, playerEid);
       }
       if (world.floorId === 'floor5') {
-        // Floor 5's terminal outcome is the throne capture, which is a SEPARATE
-        // interaction from defeating Regent Emeritus. The BT AI has no
-        // throne-marker navigation yet, so the runner requests the capture every
-        // frame: `requestFloor5ThroneCapture` is the state authority and counts
-        // every refusal, so this both proves "cannot capture early" in a real
-        // run and captures exactly once. Headless-only — real play still walks
-        // to the marker and confirms through its modal.
-        scenario.onStairDescend?.(world, playerEid);
+        // Floor 5 capture is a normal, marker-gated interaction. The production
+        // BT follows the scenario's public marker, then confirms only once it is
+        // visible, unlocked, and within the same proximity radius as the visual
+        // MainGameScene; no denied-attempt shortcut is permitted in headless.
+        const captureMarker = scenario.getStairMarkerState?.(world);
+        if (
+          captureMarker?.visible &&
+          !captureMarker.locked &&
+          isPlayerWithinStairMarker(
+            captureMarker,
+            world.stores.position.x[playerEid] ?? 0,
+            world.stores.position.y[playerEid] ?? 0,
+          )
+        ) {
+          scenario.onStairDescend?.(world, playerEid);
+        }
       }
       if (world.floorId === 'floor6') {
         // Floor 6's Relay exit also only reports `cleared_floor` once descent
