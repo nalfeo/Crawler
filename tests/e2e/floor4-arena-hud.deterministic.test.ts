@@ -286,4 +286,26 @@ describe('Floor 4 arena HUD real-scene wiring', () => {
     expect(state.hud?.title).toBe('THE MAIN EVENT');
     expect(state.hud?.bounds?.panel).not.toBeNull();
   });
+
+  it('gives a direct Floor 4 start automatic abilities and a visible XP bar', async () => {
+    const state = await page.evaluate(() => {
+      const probe = (window as { __mainSceneProbe?: MainSceneProbeApi }).__mainSceneProbe;
+      if (!probe) throw new Error('__mainSceneProbe not available');
+      probe.resolveLoadout();
+      // Advance the paused scene through its ordinary fixed-step pipeline;
+      // this does not grant stats, teleport, spawn a target, or inject damage.
+      // The Act 1 gate-fed enemies and the already-equipped direct-start
+      // abilities are left to interact under the shipped automatic systems.
+      probe.advanceSimulationFrames(1_800);
+      return {
+        scene: probe.getState(),
+        vitals: probe.getVitalsStackBounds(),
+      };
+    });
+
+    expect(state.scene.floorId).toBe('floor4');
+    expect(state.scene.equippedActiveAbilityIds).not.toHaveLength(0);
+    expect(state.scene.activatedAutomaticAbilityIds).not.toHaveLength(0);
+    expect(state.vitals.xp?.visible).toBe(true);
+  });
 });

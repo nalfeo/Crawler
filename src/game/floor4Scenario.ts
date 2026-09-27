@@ -1855,6 +1855,12 @@ export function initializeFloor4Scenario(
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
+  // A Floor 4 run begins after the Floor 1 drop/tutorial gate. The shared XP
+  // HUD deliberately uses that gate so Floor 1 can introduce it at the right
+  // time; direct Floor 4 starts must restore the earned progression affordance
+  // just as Floor 2 does, rather than leaving a fully progressed player with
+  // no visible XP feedback.
+  world.goalFlags.set('floor1-drops-unlocked', true);
   world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
   world.floor2EquipmentFlags.floor2EquipmentCatalog = true;
   world.floor2EquipmentFlags.floor2EquipmentEconomy = true;
