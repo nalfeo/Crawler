@@ -209,6 +209,9 @@ export function initializeFloor6Scenario(
   world.floorId = 'floor6';
   world.floorScenario = null;
   world.floorExtendedState = { floor6Defense: defenseState };
+  // Floor 6 has no generic floor-timeout terminal condition; its real countdown
+  // is the next-wave label in the defense presentation. Do not show the shared
+  // HUD's unrelated 60-minute fallback timer.
   world.hideFloorTimer = true;
   world.floorObjectiveTick = null;
 
@@ -758,6 +761,7 @@ function directionLabel(from: Floor6WaveManifestEntry, state: Floor6DefenseState
 function floor6WaveStatusLabel(
   state: Floor6DefenseState,
   nextByRoute: ReadonlyMap<string, Floor6WaveManifestEntry>,
+  frameCount: number,
 ): string {
   if (state.phase.kind === 'BREAK') {
     return 'Service break active: prepare for the next wave; build, sell, and upgrade safely.';
@@ -778,7 +782,10 @@ function floor6WaveStatusLabel(
   if (!next) {
     return 'Wave queue clear: hold the Relay while the next deployment is scheduled.';
   }
-  return `Next wave ${next.waveIndex + 1} (${next.waveLabel}): ${directionLabel(next, state)}.`;
+  const secondsUntilRelease = Math.max(0, Math.ceil((next.releaseTick - frameCount) / 60));
+  const countdown =
+    secondsUntilRelease > 0 ? ` deploys in ${secondsUntilRelease}s` : ' deploying now';
+  return `Next wave ${next.waveIndex + 1} (${next.waveLabel})${countdown}: ${directionLabel(next, state)}.`;
 }
 
 function buildFloor6PresentationSnapshot(
@@ -839,7 +846,7 @@ function buildFloor6PresentationSnapshot(
   return {
     objectiveLabel: 'Protect the Broadcast Relay; clear the Deadline to open the exit.',
     phaseLabel: `${state.phase.kind} phase`,
-    waveStatusLabel: floor6WaveStatusLabel(state, nextByRoute),
+    waveStatusLabel: floor6WaveStatusLabel(state, nextByRoute, world.frameCount),
     relayDangerLabel,
     questGoals: floor6QuestGoalFlagSnapshot(world),
     routes: state.geometry.routes.map((route) => {

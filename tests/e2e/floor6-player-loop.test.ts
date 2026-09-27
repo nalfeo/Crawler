@@ -9,13 +9,10 @@ import { loadMainSceneProbeLab } from './helpers/main-scene-probe.js';
 const read = (page: Page): Promise<Floor6PlayerLoopProbe> =>
   page.evaluate(() => window.__mainSceneProbe!.getFloor6PlayerLoop()!);
 
-// The player ingress reaches the Relay only through its north spur and then
-// the south-loading route. A direct diagonal crosses the surrounding walls.
+// Floor 6 starts beside the Relay so the first opening crew is observable and
+// collectible before it can erase the player's build opportunity. The nearby
+// relay plinth is still reached through this short, authored walkable spur.
 const RELAY_PLINTH_ACCESS_ROUTE = [
-  // The authored ingress coordinate is within the south edge of nearby
-  // scenery on the Linux renderer; target the adjacent walkable edge instead.
-  { x: 149, y: 136 },
-  { x: 192, y: 132 },
   // The corner at (192, 102) is inside the Relay's north-west collision
   // shell. Its walkable boundary is immediately south-east of that corner.
   { x: 195, y: 104 },

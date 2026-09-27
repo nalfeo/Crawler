@@ -234,8 +234,9 @@ describe('Floor 6 Slice 7 phase arc, finale, payout, and exit', () => {
       ],
     );
     expect(defendPresentation.waveStatusLabel).toBe(
-      'Next wave 1 (opening-crew): incoming from west route → Relay.',
+      'Next wave 1 (opening-crew) deploys in 2s: incoming from west route → Relay.',
     );
+    expect(world.hideFloorTimer).toBe(true);
     expect(defendPresentation.buildSites.some((site) => site.label.includes('VACANT'))).toBe(true);
     expect(defendPresentation.buildSites.some((site) => site.label.includes('OCCUPIED'))).toBe(
       true,
