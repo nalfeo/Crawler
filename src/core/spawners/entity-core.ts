@@ -27,6 +27,7 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
   }
   world.enemyAppearanceKeys.delete(eid);
   world.enemyProjectileArchetypeKeys.delete(eid);
+  world.familyAttackOwnerGeneration.delete(eid);
   world.entityWeaponAnchors.delete(eid);
   world.statusEffectsByEntity.delete(eid);
   world.attackWeaponSkillsByEntity.delete(eid);

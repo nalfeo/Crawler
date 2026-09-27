@@ -1,4 +1,5 @@
 import { addComponent, set } from 'bitecs';
+import { snapshotCombatFamily } from '../family-combat.js';
 import {
   AoeOnImpact,
   Bouncing,
@@ -63,6 +64,7 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   if (ownerEid !== undefined) {
     addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+    snapshotCombatFamily(world, eid, ownerEid);
   }
 
   tagAttackEntity(world, eid);
@@ -127,6 +129,7 @@ export function spawnAoeProjectile(
   const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, maxRange);
   addComponent(world.ecs, eid, set(AoeOnImpact, { radius: aoeRadius, damage: aoeDamage }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  snapshotCombatFamily(world, eid, ownerEid);
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   // Snapshot the owner's archetype key at spawn time so that if the owner is
   // reaped before impact, damageSystem can still correctly attribute the hit.
@@ -166,6 +169,7 @@ export function spawnReturningProjectile(
     }),
   );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  snapshotCombatFamily(world, eid, ownerEid);
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   return eid;
 }

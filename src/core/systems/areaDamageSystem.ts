@@ -1,5 +1,10 @@
 import { entityExists, hasComponent, query } from 'bitecs';
-import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../components.js';
+import {
+  familyDamagePermission,
+  getCombatFamilyIndex,
+  getCombatSourceEid,
+} from '../family-combat.js';
+import { AreaDamage, Enemy, Health, Player, Position, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
@@ -51,7 +56,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
     const damage = areaDamage.damage[eid] ?? 0;
     const isHitOnce = (areaDamage.hitOnce[eid] ?? 0) !== 0;
     const areaTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
-    const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? -1) : -1;
+    const ownerEid = getCombatSourceEid(world, eid) ?? -1;
     if (
       getWorldFloorBehavior(world).safeRoomWeaponImmunity &&
       ownerEid >= 0 &&
@@ -76,8 +81,19 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         continue;
       }
 
-      // Skip same-team entities
-      if (areaTeam >= 0 && hasComponent(world.ecs, target, Team)) {
+      const familyPermission = familyDamagePermission(
+        world,
+        ownerEid,
+        target,
+        getCombatFamilyIndex(world, eid),
+      );
+      if (familyPermission === false) continue;
+      // Family rivals override their shared generic enemy team.
+      if (
+        familyPermission === undefined &&
+        areaTeam >= 0 &&
+        hasComponent(world.ecs, target, Team)
+      ) {
         const targetTeam = team.id[target] ?? 0;
         if (targetTeam === areaTeam) {
           continue;
@@ -125,6 +141,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
           sourceX: x,
           sourceY: y,
           sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+          sourceFamilyIndex: getCombatFamilyIndex(world, eid),
           sourceArchetypeKey: world.enemyProjectileArchetypeKeys.get(eid),
         },
       );

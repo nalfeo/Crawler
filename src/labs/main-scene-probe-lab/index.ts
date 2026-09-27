@@ -28,6 +28,13 @@
 import { addComponent, entityExists, hasComponent, query, removeEntity, set } from 'bitecs';
 import Phaser from 'phaser';
 import {
+  stageFamilyCombat,
+  observeFamilyCombat,
+  readFamilyCombat,
+  type FamilyCombatCase,
+  type FamilyCombatObservation,
+} from './family-combat-probe.js';
+import {
   createFloor1GameConfig,
   createFloorGameConfig,
 } from '../../bootstrap/floor-game-config.js';
@@ -1216,6 +1223,8 @@ export interface Floor6PlayerLoopProbe {
 }
 
 export interface MainSceneProbeApi {
+  stageFamilyCombat(kind: FamilyCombatCase): boolean;
+  readFamilyCombat(): FamilyCombatObservation | null;
   /** Spawn actual scenario actors; only health/clock are staged for combat observation. */
   prepareFloor5Combat(): boolean;
   resetFloor5WeaponAttacks(): void;
@@ -1883,6 +1892,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   let autoDrivenForProbe = false;
   const sceneOptions = {
     ...baseOptions,
+    postSystems: [...(baseOptions.postSystems ?? []), observeFamilyCombat],
     worldSeed: readSeedOverride(),
     isAutoDriven: () => autoDrivenForProbe,
     ...(ambientOverride !== null
@@ -2072,6 +2082,18 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
   const probeWindow = window as unknown as { __mainSceneProbe?: MainSceneProbeApi };
 
   const api: MainSceneProbeApi = {
+    stageFamilyCombat: (kind) => {
+      const scene = getScene();
+      if (!scene?.world) return false;
+      api.resolveLoadout();
+      scene.setSimulationPaused(true);
+      stageFamilyCombat(scene.world, playerEidOf(scene), kind);
+      return true;
+    },
+    readFamilyCombat: () => {
+      const world = getScene()?.world;
+      return world ? readFamilyCombat(world) : null;
+    },
     prepareFloor5Combat: () => {
       const scene = getScene();
       const world = scene?.world;

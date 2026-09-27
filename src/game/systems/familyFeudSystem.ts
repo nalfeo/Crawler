@@ -44,6 +44,7 @@ import {
   type FamilyId,
 } from '../../core/faction-relations.js';
 import type { GameWorld } from '../../core/world.js';
+import { familyDamagePermission, getCombatFamilyIndex } from '../../core/family-combat.js';
 import tuning from '../../shared/data/tuning.json';
 
 /**
@@ -225,7 +226,12 @@ function updateRetaliationFromHitEvents(world: GameWorld): void {
   const windowMs = tuning.factionRelations.friendlyRetaliationMs;
   const hit = world.lastPlayerHit;
   let latch: { attackerEid: number; untilMs: number } | null = null;
-  if (hit !== undefined && hit.attackerEid >= 0) {
+  if (
+    hit !== undefined &&
+    hit.attackerEid >= 0 &&
+    (hit.attackerGeneration === undefined ||
+      hit.attackerGeneration === world.entityRenderGeneration[hit.attackerEid])
+  ) {
     const untilMs = hit.atMs + windowMs;
     // Arm only while the retaliation window (measured from the actual hit) is
     // still open; otherwise the latch expires and the ally reverts to follow.
@@ -244,6 +250,7 @@ export function resetFamilyFeudState(world: GameWorld): void {
   decisionsByWorld.delete(world);
   retaliationByWorld.delete(world);
   world.lastPlayerHit = undefined;
+  world.lastFamilyHit.clear();
 }
 
 /**
@@ -278,7 +285,7 @@ export function familyFeudSystem(world: GameWorld): void {
 
   const enemyList = query(world.ecs, [Enemy, Position]);
   const grid = rebuildFeudGrid(world, [...enemyList]);
-  const retaliation = retaliationByWorld.get(world) ?? null;
+  const playerRetaliation = retaliationByWorld.get(world) ?? null;
 
   for (const eid of enemyList) {
     if (hasComponent(world.ecs, eid, DeathTimer)) continue;
@@ -299,6 +306,31 @@ export function familyFeudSystem(world: GameWorld): void {
     let decision: FamilyAIDecision | null = null;
 
     if (band === 'friendly') {
+      const familyHit = world.lastFamilyHit.get(getCombatFamilyIndex(world, eid)!);
+      const familyRetaliation =
+        familyHit !== undefined &&
+        familyHit.attackerGeneration === world.entityRenderGeneration[familyHit.attackerEid] &&
+        familyHit.atMs + tuning.factionRelations.friendlyRetaliationMs > world.elapsedMs
+          ? {
+              attackerEid: familyHit.attackerEid,
+              untilMs: familyHit.atMs + tuning.factionRelations.friendlyRetaliationMs,
+            }
+          : null;
+      // Choose the newest valid signal. A player betrayal or dead/same-family
+      // source must not suppress a still-valid defense of the other recipient.
+      const retaliation =
+        [playerRetaliation, familyRetaliation]
+          .filter(
+            (hit): hit is { attackerEid: number; untilMs: number } =>
+              hit !== null &&
+              hit.attackerEid !== eid &&
+              hasComponent(world.ecs, hit.attackerEid, Enemy) &&
+              hasComponent(world.ecs, hit.attackerEid, Position) &&
+              !hasComponent(world.ecs, hit.attackerEid, DeathTimer) &&
+              (world.stores.health.current[hit.attackerEid] ?? 0) > 0 &&
+              familyDamagePermission(world, eid, hit.attackerEid) !== false,
+          )
+          .sort((a, b) => b.untilMs - a.untilMs)[0] ?? null;
       // Defend-attacker window (bounded by friendlyRetaliationMs). We only pick
       // the attacker when it's still alive; otherwise revert to follow.
       if (
