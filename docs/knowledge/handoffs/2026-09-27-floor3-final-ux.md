@@ -77,3 +77,30 @@ The user authorizes implementation of claimed issue #3539, focused checks,
 and a local commit. Do not push, open a PR, modify the issue, or merge.
 Deterministic workflow stages own those actions. This overrides the default
 publication contract and transfers unchanged to downstream stages.
+
+## Local-gate repass (2026-09-27)
+
+Recommended; 1 apple estimated. The attached review verdict passed the complete
+implementation. The sole local-gate finding was missing `tsx` in a different
+fresh worktree, before verification could start. No gameplay correction was
+requested or needed for that dependency-bootstrap failure.
+
+Repass plan: run preflight, rerun the failed fast gate and focused unit/real-scene
+checks, then commit this evidence locally. `npm run preflight` installed the
+worktree dependencies and passed; `npm run verify:fast` then passed unchanged.
+The five focused unit suites (companion minimap color, Floor 3 final UX, UX
+surfaces, UX wiring, and victory system) passed all 61 tests.
+All seven real MainGameScene tests passed across the league HUD, four party
+viewport cases, Studio quest waypoints, and AI-runner dialog/endgame autonomy.
+The browser suites used the worktree's own Vite server and production scene.
+`npm run scope` retained the implementation's game-visual and sim classification.
+`git diff --check` passed. Handoff lint reported three pre-existing missing
+retrospective subsections only in the unchanged
+`2026-09-26-merge-train-synchronize-reevaluation.md`; this handoff had no findings.
+
+Dependency installation is local to a worktree and is not transferred by a Git
+commit. Downstream validation in another fresh worktree must run
+`npm run preflight` before `npm run verify:fast`. The existing preflight already
+provides this bootstrap; this repass does not alter or weaken the verifier.
+Logs are in `.goobers/repass-{verify-fast,unit,e2e}.log` in this run's workspace.
+No guard telemetry file was present. Local-only authorization remains unchanged.
