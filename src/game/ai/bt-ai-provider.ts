@@ -90,6 +90,7 @@ import { FLOOR3_COMPANION_PROFESSOR_NPC_ID } from '../../shared/npc-types.js';
 import type { Floor3EncounterState } from '../../shared/floor-types.js';
 import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import { getQuestWaypoints } from '../../core/systems/questWaypoints.js';
+import { hasFloorManifest } from '../../shared/floor-registry.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
 import {
   AIState,
@@ -2103,9 +2104,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       'Interact',
       condition('NPC Nearby', (ctx) => {
         delete ctx.blackboard['scenarioInteraction'];
-        const scenarioInteraction = getScenarioDefinition(
-          ctx.world.floorId,
-        ).interaction?.getSnapshot(ctx.world, ctx.playerEid);
+        // Unit-level AI fixtures intentionally do not select a floor. Only
+        // query the scenario contract when this world belongs to a registered
+        // floor; normal gameplay worlds always meet that condition.
+        const scenarioInteraction =
+          ctx.world.floorId && hasFloorManifest(ctx.world.floorId)
+            ? getScenarioDefinition(ctx.world.floorId).interaction?.getSnapshot(
+                ctx.world,
+                ctx.playerEid,
+              )
+            : undefined;
         if (scenarioInteraction) {
           ctx.blackboard['scenarioInteraction'] = scenarioInteraction;
           return true;
