@@ -71,6 +71,41 @@ beyond these colors and viewport checks is not claimed. Existing production
 loss/keep-one rules remain covered by the Floor 3 victory-system tests.
 The deterministic runner owns subsequent review, publication, and issue updates.
 
+## Local-gate recovery — 2026-09-27
+
+Verdict: recommended; estimate and actual effort: 1 apple. DevOps Engineer
+persona for this validation-only repass. The attached review verdict passed;
+the only local-gate finding was missing `tsx` in a fresh worktree before
+`verify:fast` could start. The implementation remains in commit
+`ac4a36c26ea76dd94775951b79dd0b03215602bf` without further runtime edits.
+
+Recovery plan completed: run canonical preflight to install dependencies,
+rerun the failed gate and focused feature checks, inspect the captured real
+scene, and commit this evidence locally. `npm run preflight` installed 470
+packages and passed. `npm run verify:fast` then exited successfully. No gate
+or requirement was relaxed.
+
+Fresh focused validation also passed:
+
+- Unit: league view, victory system, and party HUD state — 38 tests.
+- Headless: Floor 3 completion and poach/loadout — 6 tests.
+- Browser: real MainGameScene party UX at all three supported viewports and
+  deterministic league tracker/marker synchronization — 4 tests.
+- `npm run scope`: gameplay-safe rendering change; visual coverage required.
+- Inspected `files/floor3-auto-party-main-scene.png`: the Roster control is
+  clear of the party panel, the standard tracker displays the Studio quest,
+  and the standalone Studio counter is absent.
+
+Logs are local runner artifacts at `.goobers/repass-verify-fast.log`,
+`.goobers/repass-unit.log`, `.goobers/repass-headless.log`, and
+`.goobers/repass-browser.log`. No guard telemetry file existed.
+
+Authorization remains local implementation, validation, and commit only;
+the runner owns pushing, PR creation, issue updates, and merging. If the
+next stage creates another fresh worktree, it must run `npm run preflight`
+before `npm run verify:fast`: installed dependencies do not transfer in Git.
+The recovery adds documentation only and introduces no new gameplay risk.
+
 ## Retrospective
 
 ### Lessons Learned
