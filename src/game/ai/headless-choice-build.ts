@@ -4,11 +4,7 @@ import { getActiveWeaponDef, getActiveWeaponSnapshot } from '../../core/active-w
 import { listGeneratedEquipmentInstances } from '../../core/generated-equipment-registry.js';
 import { findGeneratedPhysicalOwners } from '../../core/systems/equipmentSystem.js';
 import { getQuartermasterOfferViews } from '../../core/quartermaster-purchase.js';
-import {
-  canPurchaseSpellBrokerSpell,
-  getSpellBrokerOffers,
-  getOfferedBossRewardSpellIds,
-} from '../floorScenario.js';
+import { canPurchaseSpellBrokerSpell, getOfferedBossRewardSpellIds } from '../floorScenario.js';
 import { generatedEquipmentCatalogKey } from './headless-run-data.js';
 import {
   recordBuildSnapshot,
@@ -72,11 +68,13 @@ export function captureChoiceBuild(
     gameTimeMs,
     activeTimeMs,
   );
-  if (world.featureUnlocks.spells) {
+  // Later floors can unlock spells without having a Floor 1 broker rack.
+  const brokerStock = world.floorScenario?.spellBrokerOffers;
+  if (world.featureUnlocks.spells && brokerStock) {
     recordChoiceOffer(
       state,
       'spell-broker',
-      getSpellBrokerOffers(world).map((offer) => {
+      brokerStock.map((offer) => {
         const selectable = canPurchaseSpellBrokerSpell(world, playerEid, offer.spellId);
         return {
           catalogKey: `spell:${offer.spellId}`,

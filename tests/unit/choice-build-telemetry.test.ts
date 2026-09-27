@@ -1,3 +1,4 @@
+import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
 import {
   createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
@@ -53,6 +54,38 @@ function example(selected = 'spell:heal') {
 }
 
 describe('choice/build evidence', () => {
+  it.each([2, 3])('does not invent Floor 1 broker offers on floor %s', (floor) => {
+    const world = createTestWorld({ floor });
+    const player = spawnPlayer(world, 0, 0);
+    world.featureUnlocks.spells = true;
+    expect(world.floorScenario).toBeNull();
+    const recorder = createChoiceBuildRecorder(readChoiceBuild(world, player));
+    captureChoiceBuild(recorder, world, player, 1);
+    world.playerGold = 10000;
+    captureChoiceBuild(recorder, world, player, 2);
+    expect(recorder.events.filter((event) => event.source === 'spell-broker')).toEqual([]);
+    expect(choiceBuildDiagnostics(finalizeChoiceBuildTelemetry(recorder)).pathIdentity).toBeNull();
+  });
+
+  it('records the actual Floor 1 broker rack once spells are unlocked', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    world.featureUnlocks.spells = true;
+    const stock = world.floorScenario!.spellBrokerOffers!;
+    expect(stock.length).toBeGreaterThan(0);
+    const recorder = createChoiceBuildRecorder(readChoiceBuild(world, player));
+    captureChoiceBuild(recorder, world, player, 1);
+    const event = recorder.events.find(
+      (candidate) => candidate.kind === 'offer' && candidate.source === 'spell-broker',
+    );
+    expect(event?.kind).toBe('offer');
+    if (event?.kind !== 'offer' || !event.options) throw new Error('Expected broker offer');
+    expect(event.options.map((option) => option.catalogKey).sort()).toEqual(
+      stock.map((offer) => `spell:${offer.spellId}`).sort(),
+    );
+  });
+
   it.each([true, false])(
     'counts generated weapons once across bag/equip transitions (starter=%s)',
     (starter) => {
