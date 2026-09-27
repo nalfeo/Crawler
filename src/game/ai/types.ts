@@ -1,3 +1,4 @@
+import type { CombatPressureSummary } from '../../shared/combat-pressure-types.js';
 /**
  * AI player types and interfaces.
  *
@@ -765,6 +766,8 @@ export interface VendorDecisionEntry {
  * Run statistics for performance tracking.
  */
 export interface RunStats {
+  /** Optional descriptive local-pressure evidence; absent means unmeasured. */
+  combatPressure?: CombatPressureSummary;
   /**
    * Provenance and measurement coverage for evaluation. Missing context means
    * legacy/unknown coverage, not permission to treat placeholder zeros as data.

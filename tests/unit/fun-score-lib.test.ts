@@ -631,3 +631,89 @@ describe('scoreFunSessions', () => {
     expect(comparison.overall_fun_score.status).toBe('inconclusive');
   });
 });
+
+describe('descriptive combat pressure is independent of v2 scoring', () => {
+  it('adds per-run evidence without changing scores, criteria or gates', () => {
+    const original = scoreFunSessions([{ id: 'a', run: makeRun() }]);
+    const measured = scoreFunSessions([
+      {
+        id: 'a',
+        run: makeRun({
+          combatPressure: {
+            version: 1,
+            status: 'measured',
+            observedMs: 1000,
+            excludedSafeMs: 100,
+            excludedInvalidMs: 50,
+            threatenedMs: 250,
+            unthreatenedMs: 750,
+            peakLocalThreatCount: 1,
+            netHealthLoss: 10,
+            peakNetHealthLoss1s: 10,
+            recoveryWindows: 0,
+            recoveryWindowMs: 0,
+            meaningfulDowntimeWindows: 0,
+            meaningfulDowntimeMs: 0,
+          },
+        }),
+      },
+    ]);
+    expect(original.per_run[0]!.combat_pressure).toMatchObject({
+      status: 'unmeasured',
+      summary: null,
+    });
+    expect(measured.per_run[0]!.combat_pressure.status).toBe('measured');
+    expect(measured.dimensions).toEqual(original.dimensions);
+    expect(measured.criteria).toEqual(original.criteria);
+    expect(measured.gate).toEqual(original.gate);
+    expect(measured.overall_fun_score).toEqual(original.overall_fun_score);
+    expect(measured.confidence).toBeNull();
+  });
+});
+
+describe('combat pressure flattened chain integrity', () => {
+  function reportForChain(chainedFloorIds: unknown) {
+    const run = {
+      ...makeRun({
+        combatPressure: {
+          version: 1,
+          status: 'measured',
+          observedMs: 1000,
+          excludedSafeMs: 0,
+          excludedInvalidMs: 0,
+          threatenedMs: 1000,
+          unthreatenedMs: 0,
+          peakLocalThreatCount: 1,
+          netHealthLoss: 0,
+          peakNetHealthLoss1s: 0,
+          recoveryWindows: 0,
+          recoveryWindowMs: 0,
+          meaningfulDowntimeWindows: 0,
+          meaningfulDowntimeMs: 0,
+        },
+      }),
+      chainedFloorIds,
+    };
+    return scoreFunSessions([{ id: 'chain', run }]).per_run[0]!.combat_pressure;
+  }
+
+  it('does not attribute final-leg pressure to a two-leg run', () => {
+    expect(reportForChain(['floor1', 'floor2'])).toMatchObject({
+      status: 'unmeasured',
+      summary: null,
+      reason: expect.stringContaining('multi-leg'),
+    });
+  });
+
+  it.each([null, 'floor1', [], [null], [''], [1], ['floor1', undefined]])(
+    'rejects malformed chain metadata %j',
+    (chain) => {
+      expect(reportForChain(chain)).toMatchObject({ status: 'unmeasured', summary: null });
+    },
+  );
+
+  it('preserves measured single-leg evidence', () => {
+    expect(reportForChain(['floor1']).status).toBe('measured');
+    expect(reportForChain(undefined).status).toBe('measured');
+  });
+});

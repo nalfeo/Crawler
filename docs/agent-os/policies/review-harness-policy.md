@@ -4,9 +4,15 @@
 
 Apply independent review where failure would have meaningful consequences.
 Tests and deterministic CI remain the merge gates. Before opening every PR, run
-a fresh local Ducky review against the complete diff (`codex review
+a fresh Ducky review against the complete diff (`codex review
 --uncommitted`), fix every blocking and medium finding, and rerun affected
 checks. Human or model review happens after the diff exists.
+
+Ducky is an LLM service review, not local-only analysis. The CLI sends the diff
+and relevant context to the configured Codex review service. The maintainer
+authorizes LLM review of agent-generated changes and the context needed to review
+them. Do not ask for separate review or transmission permission merely because
+the review uses a remote LLM.
 
 No review stage is judged by CI. No review ledger, independent grade, or
 repository-local review record is required or permitted. A short Codex/Ducky
@@ -40,7 +46,7 @@ record the chosen decision in the applicable ADR or PR discussion.
 
 1. If the change is architectural, run the adversarial design review.
 2. Implement and run the deterministic tests appropriate to the diff.
-3. Run a fresh local Ducky review of the complete diff.
+3. Run a fresh Ducky review of the complete diff.
 4. Fix every blocking and medium Ducky finding, then rerun affected tests.
 5. Run `npm run verify:fast` and `npm run verify:pr-prereqs`.
 6. If the risk trigger applies, obtain one additional independent post-diff review.

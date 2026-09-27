@@ -16,7 +16,7 @@ Every implementation session (merge-intent code change) writes a handoff file be
 
 - Location: `docs/knowledge/handoffs/`
 - Naming: `YYYY-MM-DD-<slug>.md`
-- Minimum contents: summary of work completed, files touched, verification run, unresolved issues, and recommended next steps
+- Minimum contents: summary of work completed, files touched, verification run, inherited authorizations and constraints, unresolved issues, and recommended next steps
 - Rule: no implementation session ends silently; investigation/repro sessions without merge-intent fixes may skip handoff paperwork
 - A non-trivial implementation PR adds exactly one dated handoff file. Multi-turn
   work updates that handoff instead of adding another; `docs/knowledge/handoffs/INDEX.md`
@@ -25,6 +25,36 @@ Every implementation session (merge-intent code change) writes a handoff file be
 
 The PR preflight guard counts branch-added handoffs, so an edited existing
 handoff remains a valid continuation while a second added handoff is rejected.
+
+### Authorization continuity
+
+A handoff transfers the same user-granted authority that the outgoing session
+holds for the continuing task. A new session, agent, or continuation does not
+reset authorization. Receiving sessions must act on inherited grants without
+asking the user to repeat them.
+
+Every written handoff and continuation dispatch includes an explicit
+**Authorizations and Constraints** section. Preserve:
+
+- The authorized actions and their scope, including implementation, review,
+  publication, deployment, or coordination when the user granted them.
+- Exact relevant repositories, branches, worktrees, service destinations, and
+  task IDs so the next session can identify the authorized targets.
+- The source user instruction or an accurate quotation/reference to it.
+- Conditions, limits, explicit holds, and later changes or revocations.
+
+Carry this section forward through subsequent handoffs. Transfer existing grants
+without broadening them; an ungranted action remains ungranted. If provenance is
+incomplete, inspect the source conversation before asking the user to repeat an
+approval. Reconfirmation is only for genuinely new permission outside the
+inherited scope, not for the session transition itself. Record execution or
+approval-tool blocks separately from user authorization so the next session
+does not confuse a tooling limitation with a missing user grant.
+
+For generated continuations, pass this record through the required
+`npm run handoff:continue -- --authorizations TEXT` field, together with the
+other required state fields. The outgoing agent fills it from the conversation;
+it must not request fresh approval simply to populate the handoff.
 
 ## ADR Threshold
 
