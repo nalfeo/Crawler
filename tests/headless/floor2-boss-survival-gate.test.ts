@@ -21,12 +21,8 @@
  * the roster). The target is read from the catalog rather than hard-coded, so
  * re-timing an ability automatically re-times this gate.
  *
- * Note the scope: production Floor 2 does not yet *execute* these abilities
- * (`floor2-boss-production-enable` in
- * `scripts/agent/data/boss-abilities.floor2.status.json` is `not-started`).
- * This gate enforces the durability half of the acceptance criteria — the fight
- * window is long enough for the authored cycle — so the production activation
- * slice cannot silently land on bosses that die before their own telegraph.
+ * Production Floor 2 now executes all eighteen signatures. In addition to
+ * duration, observe at least one actual resolution for each defeated boss.
  *
  * ## Completion viability
  *
@@ -44,6 +40,21 @@ import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { FLOOR2_BOSS_ABILITY_CATALOG } from '../../src/shared/boss-abilities.js';
+import type { GameWorld } from '../../src/core/world.js';
+import type { InputState } from '../../src/shared/input.js';
+
+class SignatureAwareAI extends BehaviorTreeAI {
+  readonly casts = new Map<string, number>();
+  override poll(input: InputState, world: GameWorld): void {
+    for (const instance of world.mobAbilities.byEntity.values()) {
+      this.casts.set(
+        instance.definition.abilityId,
+        Math.max(this.casts.get(instance.definition.abilityId) ?? 0, instance.resolvedCasts),
+      );
+    }
+    super.poll(input, world);
+  }
+}
 
 /** Contiguous seed prefix — no cherry-picking. */
 const GATE_SEEDS = [1, 2, 3] as const;
@@ -84,7 +95,8 @@ describe('Floor 2 boss survival gate — bosses outlive one signature cycle', ()
     it(
       `seed ${seed}: every defeated den boss survives its signature cycle and Floor 2 still completes`,
       async () => {
-        const stats = await runHeadless(new BehaviorTreeAI({ seed }), {
+        const ai = new SignatureAwareAI({ seed });
+        const stats = await runHeadless(ai, {
           seed,
           floorId: 'floor2',
           maxFrames: MAX_FRAMES,
@@ -112,6 +124,13 @@ describe('Floor 2 boss survival gate — bosses outlive one signature cycle', ()
         ).toBeGreaterThan(0);
 
         for (const [familyId, fam] of startedFamilies) {
+          const ability = FLOOR2_BOSS_ABILITY_CATALOG.entries.find(
+            (entry) => entry.familyId === familyId,
+          )!;
+          expect(
+            ai.casts.get(ability.id) ?? 0,
+            `Seed ${seed}: ${familyId} never resolved its signature`,
+          ).toBeGreaterThanOrEqual(1);
           const requiredMs = SIGNATURE_CYCLE_MS_BY_FAMILY.get(familyId);
           if (requiredMs === undefined) {
             throw new Error(

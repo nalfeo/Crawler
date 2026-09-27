@@ -1,4 +1,4 @@
-import { addComponent, set, setComponent } from 'bitecs';
+import { addComponent, hasComponent, set, setComponent } from 'bitecs';
 import { Damage, FamilyMembership, Size, Sprite } from '../components.js';
 import { SHAPE_CIRCLE } from '../physics-defs.js';
 import { spawnBehaviorEnemy, setEnemyAppearanceKey } from '../spawners/combatants.js';
@@ -139,7 +139,12 @@ function makeResolveHandler(ability: BossAbilityDef) {
       addComponent(
         world.ecs,
         eid,
-        set(FamilyMembership, { familyId: RATFOLK_FAMILY_INDEX, isBoss: 0 }),
+        set(FamilyMembership, {
+          familyId: hasComponent(world.ecs, ctx.casterEid, FamilyMembership)
+            ? world.stores.familyMembership.familyId[ctx.casterEid]!
+            : RATFOLK_FAMILY_INDEX,
+          isBoss: 0,
+        }),
       );
       ctx.registerOwnedEntity?.(eid);
     }
@@ -165,6 +170,7 @@ export function createUndercityMobCallDefinition(): MobAbilityRuntimeDefinition 
     telegraphDurationMs: ability.telegraph.durationMs,
     dangerColor: ability.telegraph.dangerColor,
     announcementText: formatBossAbilityAnnouncement(ability),
+    cleanupOwnedEntities: true,
     geometry: {
       kind: 'spawn-circles',
       count: telegraphCount,

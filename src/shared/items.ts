@@ -281,7 +281,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('bowling-ball', 'Bowling Ball', 'Sponsored by the league. Rolls right through a lineup.', U),
 
   // ── Consumables (20) ────────────────────────────────────────────────
-  con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
+  con(
+    'health-vial',
+    'Health Vial',
+    'Restores 10% maximum health on pickup. Tastes like pennies and hope.',
+    C,
+  ),
   con('recharge-tonic', 'Recharge Tonic', 'Fizzy, electric, and rude to your cooldowns.', C),
   con('stim-shot', 'Stim Shot', 'Speed boost. Side effects undisclosed.', U),
   con('shield-scroll', 'Shield Scroll', 'Unfurl for instant protection.', U),
