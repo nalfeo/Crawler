@@ -15,7 +15,11 @@ interface WorkflowDefinition {
     gaggle: string;
     start: string;
     triggers: Array<{ type: string; events?: string[]; schedule?: string }>;
-    readiness: { maxConcurrentRuns: number; maxRunsPerHour: number };
+    readiness: {
+      maxConcurrentRuns: number;
+      desiredConcurrentRuns?: number;
+      maxRunsPerHour: number;
+    };
     tasks: Array<{
       name: string;
       goober?: string;
@@ -34,7 +38,7 @@ const loadWorkflow = (): WorkflowDefinition =>
   parse(readFileSync(WORKFLOW_PATH, 'utf8')) as WorkflowDefinition;
 
 describe('crawler-pr-remediation workflow', () => {
-  it('is an autonomous, serialized Crawler reconciliation lane', () => {
+  it('is an autonomous Crawler reconciliation lane with four local workers', () => {
     const workflow = loadWorkflow();
 
     expect(workflow.metadata.name).toBe('crawler-pr-remediation');
@@ -44,9 +48,13 @@ describe('crawler-pr-remediation workflow', () => {
       events: ['pull_request'],
     });
     expect(workflow.spec.triggers).toContainEqual(
-      expect.objectContaining({ type: 'schedule', schedule: '37 * * * *' }),
+      expect.objectContaining({ type: 'schedule', schedule: '*/10 * * * *' }),
     );
-    expect(workflow.spec.readiness).toEqual({ maxConcurrentRuns: 1, maxRunsPerHour: 2 });
+    expect(workflow.spec.readiness).toEqual({
+      maxConcurrentRuns: 4,
+      desiredConcurrentRuns: 4,
+      maxRunsPerHour: 24,
+    });
     expect(workflow.spec.start).toBe('verify-lifecycle-ownership');
   });
 

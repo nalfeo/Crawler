@@ -7,23 +7,14 @@ spec:
   gaggle: crawler
   displayName: Crawler feature (approved issue to reviewed PR)
   triggers:
-    - type: manual
-  # maxConcurrentRuns: 1, deliberately. goobers-run.yml gets its concurrency
-  # from four fully isolated instance roots (2 matrix lanes x 2 slots), not
-  # from letting one instance admit several runs, so the "at most four active
-  # issue workflows" ceiling is structural: each slot root is physically
-  # incapable of admitting a second run. Raising this would let a single slot
-  # exceed its share and turn a hard ceiling into arithmetic that can drift.
-  # `readiness.desiredConcurrentRuns` is deliberately absent for the same
-  # reason, and because it only has an effect when a `backlog-item` (or
-  # schedule + update-behind-pr) trigger wires a demand counter the scheduler
-  # polls for auto-refill (Goobers cmd/goobers/runnerwiring_counters.go's
-  # buildBacklogCounter); a `manual`-only trigger never gets one. `goobers run
-  # <workflow>` still dispatches this workflow manually regardless of its
-  # declared trigger type, so keeping `type: manual` does not affect
-  # recovery/manual dispatch.
+    # Local Goobers owns one implementation slot and polls the approved issue
+    # cohort every ten minutes. Manual dispatch remains available for recovery.
+    - type: schedule
+      schedule: '*/10 * * * *'
+      priority: 100
   readiness:
     maxConcurrentRuns: 1
+    maxRunsPerHour: 6
   runControls:
     maxRepasses: 6
   start: query-backlog

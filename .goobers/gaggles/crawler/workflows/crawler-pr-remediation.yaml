@@ -41,9 +41,8 @@ spec:
   # implement, and the reviewer gate's runner-computed `git diff base...HEAD`
   # evidence is the PR's real diff.
   #
-  # DOGFOOD GUARDRAIL: hourly, off a different minute than merge-review (#25
-  # past) so the two decider/executor cycles don't contend for the same PR
-  # mid-read; this instance's open-PR volume is low, so hourly is ample.
+  # Local Goobers polls every ten minutes. The scheduler maintains four
+  # independent eligible PR runs when work is available.
   triggers:
     # #3985: the operator gesture
     # `goobers run --pr <n> crawler-pr-remediation` is
@@ -60,11 +59,12 @@ spec:
     # A due tick is sized to the unclaimed PRs that pass update-behind-pr's
     # eligibility policy, then bounded by readiness below.
     - type: schedule
-      schedule: '37 * * * *'
+      schedule: '*/10 * * * *'
       priority: 100
   readiness:
-    maxConcurrentRuns: 1
-    maxRunsPerHour: 2
+    maxConcurrentRuns: 4
+    desiredConcurrentRuns: 4
+    maxRunsPerHour: 24
   start: verify-lifecycle-ownership
   tasks:
     # Fail closed before the first provider mutation. This local replacement is
