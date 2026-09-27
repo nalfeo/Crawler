@@ -289,6 +289,7 @@ export function autoFloor1ProgressionSystem(
   playerEid: number,
   aiProvider?: AIInputProvider,
   weaponPersonas = true,
+  onBossSpellSelected?: (spellId: string) => void,
 ): void {
   if (!world.floorScenario) {
     return;
@@ -310,7 +311,9 @@ export function autoFloor1ProgressionSystem(
     const offeredSpellId =
       offeredSpellIds.find((spellId) => spellId === 'heal') ?? offeredSpellIds[0];
     if (offeredSpellId !== undefined) {
-      selectSpellFromBossBattle(world, playerEid, offeredSpellId);
+      if (selectSpellFromBossBattle(world, playerEid, offeredSpellId)) {
+        onBossSpellSelected?.(offeredSpellId);
+      }
     }
   }
 

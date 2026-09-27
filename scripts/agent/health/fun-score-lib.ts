@@ -3,6 +3,11 @@ import {
   type CombatPressureDiagnostic,
 } from './combat-pressure-diagnostic.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
+import {
+  choiceBuildDiagnostics,
+  choiceBuildEvidence,
+  type ChoiceBuildDiagnostics,
+} from './choice-build-diagnostics.js';
 import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 import { FLOOR1_ACTIVE_TIME_BUDGET_MS } from '../../../src/game/ai/floor1-run-budget.js';
 
@@ -87,6 +92,7 @@ export interface FunScoreReport {
     readonly unidentified_runs: number;
     readonly starter_weapon_coverage: number;
     readonly dimension_coverage: Readonly<Record<keyof FunDimensionScores, number>>;
+    readonly choice_build?: ReturnType<typeof choiceBuildEvidence>;
   };
   readonly observed_surveys: Readonly<
     Record<
@@ -104,6 +110,7 @@ export interface FunScoreReport {
     readonly dimensions: FunDimensionScores;
     readonly heuristic_score: number | null;
     readonly combat_pressure: CombatPressureDiagnostic;
+    readonly choice_build?: ChoiceBuildDiagnostics;
   }>;
   readonly runs: number;
   readonly outcomes: Readonly<Record<RunStats['outcome'], number>>;
@@ -925,6 +932,7 @@ export function scoreFunSessions(
         session.run.combatPressure,
         (session.run as RunStats & { chainedFloorIds?: unknown }).chainedFloorIds,
       ),
+      choice_build: choiceBuildDiagnostics(session.run.choiceBuildTelemetry),
     };
   });
   const dimensions = {} as { -readonly [K in keyof FunDimensionScores]: FunDimensionScores[K] };
@@ -1096,6 +1104,7 @@ export function scoreFunSessions(
       unidentified_runs: perRun.length - identities.length,
       starter_weapon_coverage: starterWeaponCoverage(sessions),
       dimension_coverage: coverage,
+      choice_build: choiceBuildEvidence(perRun),
     },
     per_run: perRun,
     criteria,

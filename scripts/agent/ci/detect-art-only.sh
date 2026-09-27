@@ -671,6 +671,7 @@ while IFS= read -r file; do
     # Keep this explicit: AI policies and telemetry edits inside scene/gameplay
     # files still route to game UX; do not exempt src/game/ai/** wholesale.
     src/game/ai/headless-runner.ts | src/game/ai/types.ts | src/game/ai/run-stats-collector.ts | \
+    src/game/ai/choice-build-telemetry.ts | src/game/ai/headless-choice-build.ts | \
     src/game/ai/den-boss-telemetry.ts | src/game/ai/boss-encounter-telemetry.ts | \
     src/core/weapon-telemetry.ts | src/shared/weapon-telemetry-types.ts | \
     src/shared/den-boss-telemetry-types.ts | src/shared/run-stats-collector.ts) ;;

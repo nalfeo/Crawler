@@ -1,4 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import {
+  createChoiceBuildRecorder,
+  finalizeChoiceBuildTelemetry,
+  recordChoiceOffer,
+  recordChoiceSelection,
+} from '../../src/game/ai/choice-build-telemetry.js';
 import type { RunStats } from '../../src/game/ai/types.js';
 import type { FunScoreReport, FunSession } from '../../scripts/agent/health/fun-score-lib.js';
 import {
@@ -8,6 +14,37 @@ import {
 } from '../../scripts/agent/health/fun-score-lib.js';
 
 import { makeExperienceRun as makeRun } from '../fixtures/experience-evaluation.js';
+
+it('keeps telemetry diagnostic-only across wins, deaths, and duplicated evidence', () => {
+  const recorder = createChoiceBuildRecorder([]);
+  recordChoiceOffer(
+    recorder,
+    'boss-spell',
+    [{ catalogKey: 'spell:heal', selectable: true, constraints: [] }],
+    1,
+    1,
+  );
+  recordChoiceSelection(recorder, 'boss-spell', 'spell:heal', 2, 2);
+  const choiceBuildTelemetry = finalizeChoiceBuildTelemetry(recorder);
+  for (const outcome of ['victory', 'death'] as const) {
+    const baseline = scoreFunSessions([{ id: 'a', run: makeRun({ outcome }) }]);
+    const enriched = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome, choiceBuildTelemetry }) },
+    ]);
+    expect(enriched.dimensions).toEqual(baseline.dimensions);
+    expect(enriched.gate).toEqual(baseline.gate);
+    expect(enriched.overall_fun_score).toBe(baseline.overall_fun_score);
+    expect(enriched.dimensions.choice_depth).toBeNull();
+    expect(enriched.dimensions.run_distinctness).toBeNull();
+    expect(enriched.sameness_grade).toBeNull();
+    expect(enriched.evidence.choice_build?.observedScenarios).toBe(1);
+    const duplicate = scoreFunSessions([
+      { id: 'a', run: makeRun({ outcome, choiceBuildTelemetry }) },
+      { id: 'b', run: makeRun({ outcome, choiceBuildTelemetry }) },
+    ]);
+    expect(duplicate.evidence.choice_build).toEqual(enriched.evidence.choice_build);
+  }
+});
 
 /** Clone a report with a forced `survivability_variance` observation. */
 function withVariance(report: FunScoreReport, observed: number): FunScoreReport {
