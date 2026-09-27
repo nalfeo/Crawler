@@ -434,13 +434,49 @@ describe('Goobers automatic dispatch and recovery', () => {
     expect(definition.spec.readiness?.maxConcurrentRuns).toBe(1);
     expect(definition.spec.readiness?.desiredConcurrentRuns).toBeUndefined();
     const instance = loadYaml<GoobersInstance>('.goobers', 'instance.yaml.example');
-    expect(instance.runConditions?.maxParallelRuns).toBe(1);
+    // The persistent local daemon reserves capacity for one implementation
+    // alongside four remediation runs; hosted slots override this to one.
+    expect(instance.runConditions?.maxParallelRuns).toBe(5);
 
     const materialize = job?.steps?.find(
       (step) => step.name === 'Materialize checked-in source into each slot instance',
     );
     expect(materialize?.run).toContain('maxParallelRuns: 1');
     expect(materialize?.run).not.toContain('maxParallelRuns: 2');
+    const materializeIndex =
+      materialize?.run?.indexOf('goobers config materialize "$slot_root"') ?? -1;
+    const hostedCapIndex =
+      materialize?.run?.indexOf(
+        "sed -i -E 's/^  maxParallelRuns: [0-9]+$/  maxParallelRuns: 1/'",
+      ) ?? -1;
+    expect(materializeIndex).toBeGreaterThanOrEqual(0);
+    expect(hostedCapIndex).toBeGreaterThan(materializeIndex);
+    expect(materialize?.run).toContain("grep -qx '  maxParallelRuns: 1'");
+  });
+
+  it.skipIf(!hasBash)('restores a hosted slot to one run after local materialization', () => {
+    const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
+    const materialize = workflow.jobs.run?.steps?.find(
+      (step) => step.name === 'Materialize checked-in source into each slot instance',
+    );
+    const overlay = materialize?.run?.match(
+      /sed -i -E '([^']+)' "\$\{slot_root\}\/instance\.yaml"/,
+    );
+    expect(overlay?.[1]).toBeTruthy();
+
+    // Goobers serializes the materialized manifest with LF even when this
+    // Windows checkout has CRLF source files.
+    const source = readFileSync(
+      path.join(REPO_ROOT, '.goobers/instance.yaml.example'),
+      'utf8',
+    ).replace(/\r\n/g, '\n');
+    const transformed = spawnSync('bash', ['-c', `sed -E '${overlay![1]}'`], {
+      input: source,
+      encoding: 'utf8',
+    });
+    expect(transformed.status, transformed.stderr).toBe(0);
+    const hosted = parse(transformed.stdout) as GoobersInstance;
+    expect(hosted.runConditions?.maxParallelRuns).toBe(1);
   });
 
   it('isolates each slot in its own instance root and never shares a checkout', () => {

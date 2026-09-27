@@ -1325,6 +1325,12 @@ jobs:
             slot_root="${GOOBERS_LANE_ROOT}/slot-${slot}"
             cp "${slot_manifest}" "${slot_root}/instance.yaml"
             goobers config materialize "$slot_root"
+            # Materialization replaces instance.yaml from the local source,
+            # whose five-run budget serves one implementation plus four
+            # remediations. Hosted slots must remain single-capacity.
+            test "$(grep -Ec '^  maxParallelRuns: [0-9]+$' "${slot_root}/instance.yaml")" -eq 1
+            sed -i -E 's/^  maxParallelRuns: [0-9]+$/  maxParallelRuns: 1/' "${slot_root}/instance.yaml"
+            grep -qx '  maxParallelRuns: 1' "${slot_root}/instance.yaml"
             # The checked-in source is Codex-first for the local replacement.
             # This disabled-by-default hosted workflow retains its existing
             # Copilot credential contract by applying an explicit runtime-only

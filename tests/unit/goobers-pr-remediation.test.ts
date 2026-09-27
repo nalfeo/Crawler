@@ -38,6 +38,26 @@ const loadWorkflow = (): WorkflowDefinition =>
   parse(readFileSync(WORKFLOW_PATH, 'utf8')) as WorkflowDefinition;
 
 describe('crawler-pr-remediation workflow', () => {
+  it('reserves one local implementation slot alongside four remediation slots', () => {
+    const instance = parse(
+      readFileSync(path.join(ROOT, '.goobers/instance.yaml.example'), 'utf8'),
+    ) as { runConditions: { maxParallelRuns: number } };
+    const implementation = parse(
+      readFileSync(
+        path.join(ROOT, '.goobers/gaggles/crawler/workflows/crawler-feature-pr.yaml'),
+        'utf8',
+      ),
+    ) as { spec: { readiness: { maxConcurrentRuns: number } } };
+    const remediation = loadWorkflow();
+
+    expect(implementation.spec.readiness.maxConcurrentRuns).toBe(1);
+    expect(remediation.spec.readiness.maxConcurrentRuns).toBe(4);
+    expect(instance.runConditions.maxParallelRuns).toBe(
+      implementation.spec.readiness.maxConcurrentRuns +
+        remediation.spec.readiness.maxConcurrentRuns,
+    );
+  });
+
   it('is an autonomous Crawler reconciliation lane with four local workers', () => {
     const workflow = loadWorkflow();
 
