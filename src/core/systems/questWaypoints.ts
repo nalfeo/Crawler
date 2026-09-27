@@ -103,7 +103,7 @@ function resolveFloor5SiegeAnchor(world: GameWorld, goalId: string): Vec2 | null
           : goalId === 'floor5.siege.checkpointCleared'
             ? 'checkpoint-pocket'
             : goalId === 'floor5.siege.ramBuilt'
-              ? 'siege-yard'
+              ? 'command-post'
               : null;
   const room = roomLabel
     ? world.floorMap?.rooms.find((candidate) => candidate.label === roomLabel)

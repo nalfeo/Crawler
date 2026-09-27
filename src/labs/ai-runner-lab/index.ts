@@ -14,6 +14,7 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
+import { getFloor5SiegeRunStats } from '../../game/floor5Scenario.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
 import { isPlayerWithinStairMarker } from '../../shared/scenario-presentation.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
@@ -40,6 +41,7 @@ import {
   autoFloor1ProgressionSystem,
   autoFloor2ProgressionSystem,
   autoFloor3ProgressionSystem,
+  autoFloor5ProgressionSystem,
   computeAiStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import { applyStartPlayerLevel } from '../../game/scenarios/playerLevelProgression.js';
@@ -77,7 +79,7 @@ import {
   Companion,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
-import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
+import type { Floor4ArenaRunStats, Floor5SiegeRunStats } from '../../shared/floor-types.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
@@ -733,6 +735,8 @@ export interface AiRunnerDebugSnapshot {
    * the cumulative spawn counter is positive.
    */
   floor4LiveEnemyCount: number;
+  /** Read-only Floor 5 scenario telemetry for rendered-route verification. */
+  floor5Siege?: Floor5SiegeRunStats;
   /**
    * Per-companion decision + path telemetry (#4205), mirroring the player's
    * own `state`/`reason`/`targetX`/`targetY`/`targetDist` fields above so a
@@ -1231,6 +1235,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       allowDirectKeptCompanionSelection: false,
       allowDirectStairDescend: false,
     });
+    autoFloor5ProgressionSystem(world, playerEid, ai);
     runEagerMaintenanceTick(world, playerEid, {
       skipAchievementClaims: isSettlementReturnRoutingEnabled(world),
     });
@@ -3440,6 +3445,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       quests,
       floor4Arena: world ? getFloor4ArenaRunStats(world) : undefined,
       floor4LiveEnemyCount: world ? getFloor4LiveWaveEnemyCount(world) : 0,
+      floor5Siege: world ? getFloor5SiegeRunStats(world) : undefined,
       companions: world ? getCompanionTelemetry(world) : [],
       floor3LossReason: world ? getFloor3LossReason(world) : null,
     };

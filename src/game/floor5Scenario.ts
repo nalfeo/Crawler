@@ -1714,13 +1714,30 @@ function advanceFloor5FieldTasks(world: GameWorld, state: Floor5SiegeState): voi
   const playerEid = query(world.ecs, [Player, Position])[0];
   if (playerEid === undefined) return;
 
-  // The opening push is a player-owned combat result, not a clock latch. A
-  // death event carries the real weapon owner even after the target is reaped.
+  // The opening push resolves through the live siege skirmish, not a clock
+  // latch. Allied defenders can legitimately land the automatic-combat final
+  // blow while the player moves into the frontline, so do not turn it into a
+  // last-hit race.
   if (!state.tasks.openingPushRepelled) {
-    const repelled = world.combatEvents.some(
+    const spawn = world.floorMap?.tileToWorld(
+      world.floorMap.playerSpawn.x,
+      world.floorMap.playerSpawn.y,
+    );
+    const playerJoinedFrontline =
+      spawn !== undefined &&
+      Math.hypot(
+        (world.stores.position.x[playerEid] ?? spawn.x) - spawn.x,
+        (world.stores.position.y[playerEid] ?? spawn.y) - spawn.y,
+      ) >=
+        FLOOR5_FIELD_OBJECTIVE_RADIUS_FT * 2;
+    const playerKilledHostile = world.combatEvents.some(
       (event) =>
         event.type === 'death' && event.sourceEid === playerEid && event.siegeTeam === 'enemy',
     );
+    const repelled =
+      playerKilledHostile ||
+      (playerJoinedFrontline &&
+        world.combatEvents.some((event) => event.type === 'death' && event.siegeTeam === 'enemy'));
     if (repelled) _completeFloor5FieldTask(world, 'openingPush');
     return;
   }
