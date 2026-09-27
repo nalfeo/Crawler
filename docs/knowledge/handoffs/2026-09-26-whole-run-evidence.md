@@ -23,3 +23,7 @@ The production-boundary test uses real single-floor runner telemetry with mocked
 ## Remaining work
 
 After publication, CI Recovery owns CI/review follow-up. Broader combat-pressure, power-timeline, choice and crafting diagnostics remain separate scopes.
+
+## Review instruction follow-up
+
+At the user's request, active review instructions now delegate read-only review using the installed $review-agent skill instead of the former Ducky terminology and external review command. Updated AGENTS.md, the review-harness skill and policy, persona guidance, and the existing policy assertion. The review-agent inspection found one remaining line-wrapped reference; it was corrected. Historical handoffs remain records of the earlier workflow.

@@ -7,28 +7,25 @@ description: >-
 
 # Review Harness
 
-Every implementation PR receives a fresh Ducky review of the complete
-diff with `codex review --uncommitted`. Fix every blocking and medium finding
+Every implementation PR receives a fresh review-agent review of the complete
+diff using the installed `$review-agent` skill. Fix every blocking and medium finding
 before opening the PR, then rerun the affected checks. Use an additional independent review when a change is
 architectural or carries meaningful correctness, security, data-loss,
 determinism, or release risk. Routine, reversible changes otherwise rely on
 focused tests and CI.
 
-Ducky is an LLM service review, not local-only analysis. Running
-`codex review --uncommitted` invokes the configured Codex review service with
-the diff and relevant review context. The maintainer authorizes LLM review of
-agent-generated changes and the context needed to review them. Do not ask for
-separate review or transmission permission merely because the review uses a
-remote LLM. Proceed with the review as part of the authorized implementation.
+Delegate the complete diff to a read-only reviewer using `$review-agent`.
+The reviewer inspects the diff, relevant callers and tests, and returns actionable
+findings without modifying files, publishing comments, or delegating again.
 
 1. Run design review before an architectural change.
 2. Complete and verify the diff.
-3. Run Ducky review on the complete diff and fix all blocking and medium
+3. Delegate review of the complete diff using `$review-agent` and fix all blocking and medium
    findings.
 4. If the risk trigger applies, obtain one additional independent review of the
    current diff and relevant callers and tests.
 5. Fix valid findings and rerun affected checks.
-6. A Codex/Ducky pass may be recorded in the PR description, a commit message,
+6. A review-agent pass may be recorded in the PR description, a commit message,
    or a PR comment by stating that review passed and the change is okay to check in.
 
 Do not create repository paperwork solely to prove review occurred.

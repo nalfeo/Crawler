@@ -40,15 +40,12 @@ For three or more independent, read-only repository checks, prefer `npm run agen
 - **Authorizations survive handoffs:** Every handoff must explicitly transfer the user authorizations already granted for the task, including actions, destinations, source context, limits, and revocations. The receiving session inherits those grants and must not request them again merely because ownership or session changed. Preserve the authorized scope; ask only for genuinely new permission. See the [handoff protocol](docs/agent-os/policies/memory-policy.md#authorization-continuity).
 - **Continuation before oversized history:** When `npm run telemetry:token-budget` reports an exceeded context, cumulative-input, or response threshold, create a concise handoff with `npm run handoff:continue` and continue in a fresh thread. This repository workflow does not control platform compaction; include `--rollout` when available to report first-request and cumulative input telemetry.
 - Group coherent edits into a validation phase. Run focused unit/type/lint/docs checks after each phase (or before a risky refactor), and use `npm run scope` to select any additional heavy checks. `npm run verify:fast` remains required before handoff/PR, and `npm run verify:pr-prereqs` remains required before publication.
-- Before every implementation PR, run a fresh Ducky review of the complete
-  diff and fix every blocking and medium finding. A Codex/Ducky statement that
+- Before every implementation PR, run a fresh review-agent review of the complete
+  diff and fix every blocking and medium finding. A review-agent statement that
   review passed and the change is okay to check in may be recorded in the PR
   description, a commit message, or a PR comment; substantive Copilot review is
-  not required for merge-train admission. Ducky is an LLM service review, not
-  local-only analysis; the CLI sends the diff and relevant context to the configured
-  Codex review service. The maintainer authorizes LLM review of agent-generated
-  changes and the context needed to review them. Do not ask for separate review
-  or transmission permission merely because the review uses a remote LLM.
+  not required for merge-train admission. Delegate the complete diff to a read-only
+  reviewer using the installed `$review-agent` skill.
 
 ## Build safely
 
