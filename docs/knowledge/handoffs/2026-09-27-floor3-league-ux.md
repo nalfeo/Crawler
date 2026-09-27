@@ -78,6 +78,41 @@ The party and Best in Show captures were visually inspected as well.
 
 ## Authorization continuity and remaining ownership
 
+### Local-gate repass — 2026-09-27
+
+Recommended; estimate 1 apple. The attached independent review passed without
+findings. The local gate failed before verification started because its separate
+fresh worktree lacked `tsx`. This was a dependency-bootstrap failure, not a
+feature regression. The implementation remains commit
+`f998688cb4ae5f715041e44feed71fc644aff377`.
+
+Repass plan: bootstrap this worktree using the canonical preflight, rerun the
+failed gate and focused feature checks, then commit this recovery evidence.
+No source changes or gate relaxations were necessary.
+
+- `npm run preflight`: passed; installed 470 packages, resolved the pinned Node
+  22.23.2 runtime, checked types, and confirmed main synchronization.
+- `npm run verify:fast`: passed, including full-project typecheck, lint of eight
+  changed files, and data-contract/integrity checks. Its changed-test selection
+  found no uncommitted tests, so explicit focused tests were also run.
+- `npm run test:unit -- tests/unit/hud-minimap.test.ts`: 53 passed.
+- `npm run test:e2e -- tests/e2e/floor3-league-hud.deterministic.test.ts
+tests/e2e/main-game-scene-floor3-party-ux.test.ts`: all four real MainGameScene
+  tests passed, covering marker pixels, viewport layout, canonical Studio
+  tracking, versus, victory/keep-one, and defeat presentation.
+- Fresh `npm run scope` reports `gameplay_safe=false`, `sim_touched=true`, and
+  `game_visual_touched=true`; this supersedes the earlier scope observation.
+- No guard telemetry file exists. Local logs are
+  `.goobers/verify-fast-repass.log` and `.goobers/floor3-e2e-repass.log`.
+
+The downstream local-CI stage must run `npm run preflight` in any newly created
+worktree before `npm run verify:fast`: installed dependencies are local and do
+not transfer through a Git commit. This repass verifies the bootstrapped
+implementation checkout; it does not change the external runner configuration.
+The attached independent feature review remains applicable because this repass
+changes only handoff evidence. Publication and issue mutations remain owned by
+the deterministic workflow under the authorization limits below.
+
 The user authorized implementation of #3539, focused validation, and a local
 commit. Explicit limits: do not push, open a PR, modify the issue, or merge.
 The deterministic workflow owns those later mutations. These limits override
