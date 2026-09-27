@@ -29,7 +29,17 @@
  * no `Math.random()`.
  */
 import { recordVendorDecision, recordVendorVisit, type GameWorld } from '../core/world.js';
+import { getEquipmentState, resolveEquipmentInstance } from '../core/systems/equipmentSystem.js';
+import { getActiveWeaponDef } from '../core/active-weapon.js';
+import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import { generateShopInventory } from '../core/generateShopInventory.js';
+import { getEquipmentDefForItem, getEquipmentDefForWeaponId } from '../shared/equipmentDefs.js';
+import {
+  scoreGearCandidate,
+  type GearScoreExplanation,
+  type GearScoreItem,
+} from '../shared/gear-score.js';
+import { scoreWeaponDefinition } from '../shared/weapon-gear-score.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { getShopArchetype } from '../shared/data/shop-archetypes.js';
 import { addItem, cloneInventoryBag } from '../shared/inventory.js';
@@ -295,6 +305,116 @@ export type Floor4GreenRoomPurchaseResult =
         | 'unknown-table';
       readonly message: string;
     };
+
+/**
+ * A deterministic, player-meaningful Green Room choice.  The same score
+ * policy projects the sponsor-panel recommendation, so an AI never buys an
+ * arbitrary affordable item merely to consume currency.
+ */
+export interface Floor4GreenRoomUpgradeChoice {
+  readonly offerId: string;
+  readonly itemId: string;
+  readonly unitPrice: number;
+  readonly scoreDelta: number;
+}
+
+/** Compare a sponsor offer against the complete live combat build. */
+export function scoreFloor4GreenRoomOffer(
+  world: GameWorld,
+  playerEid: number,
+  itemId: string,
+): GearScoreExplanation | null {
+  const equipment = getEquipmentState(world, playerEid);
+  const equipped: GearScoreItem[] = [];
+  if (equipment) {
+    for (const id of new Set(Object.values(equipment.equipped))) {
+      if (id === null) continue;
+      if (typeof id === 'string') {
+        const generated = getGeneratedEquipmentInstance(world, id);
+        if (generated) {
+          equipped.push(generated);
+          continue;
+        }
+      }
+      const instance = resolveEquipmentInstance(world, equipment, id);
+      if (instance) equipped.push(instance.def);
+    }
+  }
+  const activeWeapon = getActiveWeaponDef(world);
+  const activeEquipment = activeWeapon ? getEquipmentDefForWeaponId(activeWeapon.id) : undefined;
+  if (activeEquipment && !equipped.some((item) => 'id' in item && item.id === activeEquipment.id)) {
+    equipped.push(activeEquipment);
+  }
+  const catalogItem = resolveShopCatalogItem(itemId);
+  const comparison = scoreGearCandidate(
+    catalogItem ? getEquipmentDefForItem(catalogItem.itemId) : undefined,
+    equipped,
+  );
+  if (!comparison || !activeWeapon) return comparison;
+  const withLiveWeaponReason: GearScoreExplanation = {
+    ...comparison,
+    reasons: [
+      `Current ${activeWeapon.name}: ${scoreWeaponDefinition(activeWeapon).sustainedDamage.toFixed(1)} DPS`,
+      ...comparison.reasons,
+    ],
+  };
+  if (activeEquipment) return withLiveWeaponReason;
+
+  // Direct-floor starts may wield a real WeaponDef which intentionally has no
+  // inventory wrapper (Floor 4's Knife is the current example).  It still
+  // occupies the live main-hand combat slot, so excluding it makes any
+  // positive-scoring stock look like a false upgrade.  Rebase the ordinary
+  // equipment comparison on that authoritative production weapon score.
+  const liveWeaponScore = scoreWeaponDefinition(activeWeapon).total;
+  const currentScore = comparison.currentScore + liveWeaponScore;
+  const delta = comparison.score - currentScore;
+  return {
+    ...withLiveWeaponReason,
+    currentScore,
+    delta,
+    recommendation: delta > 1 ? 'upgrade' : delta < -1 ? 'downgrade' : 'sidegrade',
+  };
+}
+
+/**
+ * Select the best affordable equippable upgrade from the open visit.
+ *
+ * This is deliberately a read-only decision: callers still execute the public
+ * purchase and Equipment-panel-equivalent equip actions separately.  Ties are
+ * stable by price then qualified offer identity, preserving replay parity.
+ */
+export function selectFloor4GreenRoomAffordableUpgrade(
+  world: GameWorld,
+  playerEid: number,
+): Floor4GreenRoomUpgradeChoice | null {
+  const visit = world.floorExtendedState?.floor4GreenRoom?.currentVisit;
+  if (!visit) return null;
+
+  const choices = visit.tables.flatMap((table) =>
+    table.offers.flatMap((offer) => {
+      if (offer.stock < 1 || offer.unitPrice > world.playerGold) return [];
+      const catalogItem = resolveShopCatalogItem(offer.itemId);
+      const comparison = scoreFloor4GreenRoomOffer(world, playerEid, offer.itemId);
+      if (!catalogItem || !comparison || comparison.recommendation !== 'upgrade') return [];
+      return [
+        {
+          offerId: `${table.tableId}:${offer.itemId}`,
+          itemId: catalogItem.itemId,
+          unitPrice: offer.unitPrice,
+          scoreDelta: comparison.delta,
+        },
+      ];
+    }),
+  );
+  return (
+    choices.sort(
+      (left, right) =>
+        right.scoreDelta - left.scoreDelta ||
+        left.unitPrice - right.unitPrice ||
+        left.offerId.localeCompare(right.offerId),
+    )[0] ?? null
+  );
+}
 
 /**
  * Purchase one unit from the currently open Green Room visit.

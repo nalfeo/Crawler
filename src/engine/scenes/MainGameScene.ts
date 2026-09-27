@@ -399,6 +399,12 @@ export interface MainGameSceneOptions {
     destroy?: () => void;
   };
   /**
+   * Allows an input-override host (the visual AI replay lab) to present the
+   * ordinary Green Room shop instead of auto-confirming the exit. Production
+   * scenes do not need this because they use hardware input.
+   */
+  allowFloor4GreenRoomShopWithInputOverride?: boolean;
+  /**
    * Seed for the simulation world RNG. When omitted, the world defaults to its
    * built-in seed (42). Exposed so labs/harnesses can replay or randomize runs.
    */
@@ -2531,6 +2537,42 @@ export class MainGameScene extends Phaser.Scene {
 
   public isInventoryOpen(): boolean {
     return this.inventoryUI?.isOpen() ?? false;
+  }
+
+  /** Whether the shared sponsor/settlement shop panel is visibly open. */
+  public isSettlementShopOpen(): boolean {
+    return this.shopPanelUI?.isOpen() ?? false;
+  }
+
+  /** Whether the integrated equipment panel is visibly open. */
+  public isEquipmentPanelOpen(): boolean {
+    return this.equipmentUI?.isOpen() ?? false;
+  }
+
+  /** Read-only canvas bounds for an integrated-equipment bag cell. */
+  public getEquipmentBagCellScreenBounds(index: number): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null {
+    return this.equipmentUI?.getBagCellScreenBounds(index) ?? null;
+  }
+
+  /** Equippable static item IDs in the same order as the canvas bag cells. */
+  public getEquipmentBagItemIds(): readonly string[] {
+    return this.equipmentUI?.getBagItemIds() ?? [];
+  }
+
+  /** Read-only bounds for the visible Gear canvas button. */
+  public getEquipmentButtonScreenBounds(): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null {
+    const bounds = this.equipButton?.getBounds();
+    return bounds ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } : null;
   }
 
   private closeMapOverlayIfOpen(): void {
@@ -6698,7 +6740,8 @@ export class MainGameScene extends Phaser.Scene {
         if (
           greenRoomVisit &&
           this.options.floor4GreenRoomShop?.isAvailable(this.world, this.playerEid) &&
-          !this.options.inputCaptureOverride &&
+          (!this.options.inputCaptureOverride ||
+            this.options.allowFloor4GreenRoomShopWithInputOverride === true) &&
           this.floor4GreenRoomShopVisitShown !== greenRoomVisit.visitIndex
         ) {
           this.floor4GreenRoomShopVisitShown = greenRoomVisit.visitIndex;

@@ -59,6 +59,8 @@ export {
   openFloor4GreenRoomVisit,
   purchaseFloor4GreenRoomOffer,
   retireFloor4GreenRoomVisit,
+  selectFloor4GreenRoomAffordableUpgrade,
+  scoreFloor4GreenRoomOffer,
 } from './floor4GreenRoom.js';
 export {
   initializeFloor5Scenario,

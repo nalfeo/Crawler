@@ -69,6 +69,10 @@ import {
 import { confirmFloor2StairDescend } from '../floor2Scenario.js';
 import { autoDefaultFloor3KeptCompanion, confirmFloor3StairDescend } from '../floor3Scenario.js';
 import { confirmFloor4GreenRoomInteraction } from '../floor4Scenario.js';
+import {
+  purchaseFloor4GreenRoomOffer,
+  selectFloor4GreenRoomAffordableUpgrade,
+} from '../floor4GreenRoom.js';
 import { requestFloor5ObjectiveInteraction } from '../floor5Scenario.js';
 import { confirmFloor6StairDescend, isFloor6ExitDescendable } from '../floor6Scenario.js';
 import { computeAutoStatAllocation } from '../scenarios/playerStatAllocationPolicy.js';
@@ -507,9 +511,35 @@ export function autoFloor3ProgressionSystem(
  * position the human prompt would have withheld, and cannot reach a phase the
  * human path cannot reach.
  */
-export function autoFloor4ProgressionSystem(world: GameWorld, playerEid: number): void {
+const floor4GreenRoomPurchaseAttempts = new WeakMap<GameWorld, Set<number>>();
+
+/**
+ * Drive Floor 4's public sponsor choice before the existing public exit.
+ *
+ * The `purchase` switch provides the deterministic skip control used by
+ * replay comparisons.  Both branches keep the identical player input and
+ * scenario path; only the normal public purchase decision differs.
+ */
+export function autoFloor4ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  options: { readonly purchase?: boolean } = {},
+): void {
   if (world.floorId !== 'floor4') {
     return;
+  }
+  const visit = world.floorExtendedState?.floor4GreenRoom?.currentVisit;
+  if (options.purchase !== false && visit && isInSafeContext(world)) {
+    const attempts = floor4GreenRoomPurchaseAttempts.get(world) ?? new Set<number>();
+    floor4GreenRoomPurchaseAttempts.set(world, attempts);
+    if (!attempts.has(visit.visitIndex)) {
+      attempts.add(visit.visitIndex);
+      const choice = selectFloor4GreenRoomAffordableUpgrade(world, playerEid);
+      if (choice) {
+        const bought = purchaseFloor4GreenRoomOffer(world, playerEid, choice.offerId);
+        if (bought.ok) equipFromBag(world, playerEid, choice.itemId);
+      }
+    }
   }
   confirmFloor4GreenRoomInteraction(world, playerEid);
 }

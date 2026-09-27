@@ -3,11 +3,14 @@ import { query } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory';
 import { Player } from '../../src/core/components';
 import { createInventoryBag } from '../../src/shared/inventory';
+import { spawnPlayer } from '../../src/core';
 import { listGeneratedEquipmentInstances } from '../../src/core/generated-equipment-registry';
 import {
   openFloor4GreenRoomVisit,
   purchaseFloor4GreenRoomOffer,
   retireFloor4GreenRoomVisit,
+  scoreFloor4GreenRoomOffer,
+  selectFloor4GreenRoomAffordableUpgrade,
 } from '../../src/game/floor4GreenRoom';
 import type { Floor4GreenRoomVisitStock } from '../../src/shared/floor-types';
 import { floor4Manifest } from '../../src/shared/floor-manifest';
@@ -229,6 +232,32 @@ describe('floor4 Green Room stock — visit lifecycle', () => {
         .flatMap((table) => table.offers)
         .find((offer) => offer.itemId === panelOffer!.itemId)?.stock,
     ).toBe(panelOffer!.quantity - 1);
+  });
+
+  it('explains an affordable sponsor upgrade against the live Floor 4 weapon build', () => {
+    const world = createTestWorld({ seed: 404 });
+    const playerEid = spawnPlayer(world, 0, 0);
+    world.floor = 4;
+    world.playerGold = 1_000;
+    world.inventories.set(playerEid, createInventoryBag());
+    createFloorMainSceneOptions('floor4').configureWorld?.(world, playerEid);
+    openVisit(world, 0);
+
+    const choice = selectFloor4GreenRoomAffordableUpgrade(world, playerEid);
+    expect(choice, 'stock should contain an affordable real upgrade').not.toBeNull();
+    const comparison = scoreFloor4GreenRoomOffer(world, playerEid, choice!.itemId);
+    expect(comparison).toMatchObject({ recommendation: 'upgrade' });
+    expect(comparison?.reasons[0]).toMatch(/^Current .+: .+ DPS$/);
+
+    const panelOffers = createFloorMainSceneOptions('floor4').floor4GreenRoomShop?.getOffers(
+      world,
+      playerEid,
+    );
+    const panelOffer = panelOffers?.find((offer) => offer.offerId === choice!.offerId);
+    expect(panelOffer).toMatchObject({
+      gearRecommendation: 'upgrade',
+      gearReasons: comparison?.reasons,
+    });
   });
 
   it('decrements only the selected table when the same item appears across multiple sponsor tables', () => {

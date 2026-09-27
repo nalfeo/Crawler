@@ -306,13 +306,27 @@ function resolveEntryMetadata(
   const def = catalog
     ? catalog.find((candidate) => candidate.id === entry.itemId)
     : getItemById(entry.itemId);
+  const equipment = getEquipmentDefForItem(entry.itemId);
+  if (!def && equipment) {
+    // Static weapon equipment deliberately lives in equipmentDefs instead of
+    // the generic consumable/material catalog.  It must still be discoverable
+    // by the integrated bag, otherwise a legitimate shop purchase can be
+    // charged to the player yet have no visible route to equip it.
+    return {
+      name: equipment.name,
+      description: equipment.weaponId ? `Equips ${equipment.name}.` : '',
+      tags: [],
+      rarity: equipment.rarity,
+      slots: equipment.slots,
+    };
+  }
   if (!def) return undefined;
   return {
     name: def.name,
     description: def.description,
     tags: def.tags,
     rarity: def.rarity,
-    slots: getEquipmentDefForItem(entry.itemId)?.slots ?? [],
+    slots: equipment?.slots ?? [],
   };
 }
 
