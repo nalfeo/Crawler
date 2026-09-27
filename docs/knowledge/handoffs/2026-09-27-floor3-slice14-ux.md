@@ -106,6 +106,50 @@ next stage creates another fresh worktree, it must run `npm run preflight`
 before `npm run verify:fast`: installed dependencies do not transfer in Git.
 The recovery adds documentation only and introduces no new gameplay risk.
 
+## Repeated local-gate recovery — 2026-09-27
+
+Verdict: recommended; estimate and actual effort: 1 apple. DevOps Engineer
+persona. Both attached reviews passed. The second local-gate artifact repeats
+the missing-tsx error in a different worktree: installing dependencies in the
+implementer worktree cannot repair the deterministic stage's environment.
+
+Completed plan: trace stage setup, repair the repository-owned omission, add
+failure-path regression coverage, execute the actual stage, rerun focused
+Floor 3 checks, review the complete diff, and commit locally.
+
+Additional system touched: workflow-automation. The feature workflow's
+`local-ci` stage now runs `npm ci --ignore-scripts` before `verify:fast`, matching
+the existing remediation stage. It preserves `syncBase`, the local gate, and
+fail-fast shell behavior. No gameplay code changed on this repass.
+`tests/unit/goobers-local-ci.test.ts` executes both stages' configured shell
+with stubbed npm effects to prove bootstrap ordering, installation failure
+short-circuiting, and propagation of verification failures.
+
+Validation:
+
+- Canonical preflight passed from this fresh worktree.
+- Executed the feature stage's actual YAML script: dependency installation and
+  `verify:fast` passed; log: `.goobers/repass-local-ci.log`.
+- Focused unit tests: 51 passed, including six new stage tests.
+- Production Floor 3 headless completion: one passed.
+- Browser: three supported party-control viewports and one league
+  tracker/marker synchronization check passed. Logs:
+  `.goobers/repass-browser.log`, `.goobers/repass-league-browser.log`.
+- Captured real-scene image: `files/floor3-ux-after.png`.
+- Scope, formatting, and diff whitespace checks ran. Independent read-only
+  complete-diff review passed with no blocking or medium findings.
+- Optional Goobers source-tree validation failed on unchanged coder config:
+  installed validator reports HARNESS002, unknown Codex harness option
+  `sandbox`. Artifact: `.goobers/repass-config-validation.json`. This is separate
+  from the repaired dependency failure; no config requirement was weakened.
+- No guard telemetry file existed.
+
+Authorization remains local implementation, validation, and commit only;
+do not push, publish a PR, change the issue, or merge. Runner stages retain
+those responsibilities. The runner must consume the corrected workflow
+definition; an active run may retain its original snapshot. This repass proves
+the checked-in stage script passes, not that a live daemon reloads definitions.
+
 ## Retrospective
 
 ### Lessons Learned
