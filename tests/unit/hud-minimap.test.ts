@@ -231,9 +231,14 @@ describe('HudMinimap small/docked radar architectural guards', () => {
     expect(enemyCircleIdx).toBeGreaterThan(styleIdx);
   });
 
-  it('draws NPC blips on radarScratch in green', () => {
-    expect(source).toContain('radarScratch.fillStyle(DOT_NPC, 1);');
-    const npcStyleIdx = source.indexOf('radarScratch.fillStyle(DOT_NPC, 1);');
+  it('draws NPC blips with a separate Floor 3 neutral color', () => {
+    expect(source).toContain(
+      "const color = world.floorId === 'floor3' ? DOT_FLOOR3_NPC : DOT_NPC;",
+    );
+    expect(source).toContain('const DOT_FLOOR3_NPC = 0x60a5fa;');
+    expect(source).toContain('const DOT_NPC = 0x4ade80;');
+    expect(source).toContain('radarScratch.fillStyle(color, 1);');
+    const npcStyleIdx = source.indexOf('radarScratch.fillStyle(color, 1);');
     const npcCircleIdx = source.indexOf('radarScratch.fillCircle(nx, ny, DOT_NPC_RADIUS * scale)');
     expect(npcCircleIdx).toBeGreaterThan(npcStyleIdx);
   });
@@ -334,8 +339,8 @@ describe('HudMinimap enlarged overlay architectural guards', () => {
     expect(source).toContain('dotGraphics.fillStyle(style.color, 1);');
   });
 
-  it('draws NPC blips on dotGraphics in green for the overlay', () => {
-    expect(source).toContain('dotGraphics.fillStyle(DOT_NPC, 1);');
+  it('draws NPC blips with the same floor-specific neutral color in the overlay', () => {
+    expect(source).toContain('dotGraphics.fillStyle(color, 1);');
   });
 
   it('draws the player marker with a gold ring on dotGraphics for the overlay', () => {

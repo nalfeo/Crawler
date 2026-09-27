@@ -18,20 +18,6 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 import type { Floor3LeagueHudProbeState } from '../../src/labs/main-scene-probe-lab/index.js';
 
-interface Bounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function overlaps(a: Bounds, b: Bounds, tolerance = 0.5): boolean {
-  return (
-    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > tolerance &&
-    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > tolerance
-  );
-}
-
 async function waitForModalKind(page: Page, kind: string, label: string): Promise<void> {
   const deadline = Date.now() + 15_000;
   for (;;) {
@@ -71,7 +57,7 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
     await closeQuietly(browser);
   });
 
-  it('mounts the league bracket clear of the floor timer and projects minimap markers', async () => {
+  it('uses the standard quest tracker instead of a Studio scoreboard and projects minimap markers', async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     try {
@@ -99,24 +85,15 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
 
       const mounted = await waitForLeagueHud(
         page,
-        (s) => s.visible && s.bounds !== null,
-        'mounted Floor 3 league bracket HUD',
+        (s) => s.phase === 'studios',
+        'Floor 3 Studio progression',
       );
-      expect(mounted.phase).toBe('studios');
-      expect(mounted.headline).toMatch(/^STUDIOS · \d+\/\d+$/);
-      expect(mounted.detail.length).toBeGreaterThan(0);
-      expect(mounted.bracket).toHaveLength(4);
+      expect(mounted.visible).toBe(false);
+      expect(mounted.bounds).toBeNull();
+      const ux = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      expect(ux.texts.some(({ text }) => /^STUDIOS/i.test(text))).toBe(false);
+      expect(ux.texts.find(({ name }) => name === 'quest-tracker-body')?.text).toContain('Studio');
       expect(mounted.bracket.every((pip) => pip === 'pending')).toBe(true);
-
-      // Floor 3 does NOT hide the floor timer, so the two top-center panels
-      // must be laid out one below the other, never stacked on each other.
-      expect(mounted.timerPanel).not.toBeNull();
-      const panel = mounted.bounds!;
-      const timer = mounted.timerPanel!;
-      expect(overlaps(panel, timer), 'league panel must not overlap the floor timer').toBe(false);
-      expect(panel.y).toBeGreaterThanOrEqual(timer.y + timer.height - 0.5);
-      expect(panel.x).toBeGreaterThanOrEqual(-0.5);
-      expect(panel.x + panel.width).toBeLessThanOrEqual(1280.5);
 
       // Overworld markers (surface 13) must reach the DOCKED radar, i.e.
       // without the player ever opening the full-map overlay.
@@ -129,6 +106,137 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
       expect(withMarkers.mapOverlayOpen).toBe(false);
       expect(withMarkers.markerKinds).toContain('studio');
       expect(withMarkers.markerKinds).toContain('final-four-gate');
+      await mainSceneProbe.setSimulationPaused(page, true);
+      const activeBefore = await mainSceneProbe.getActiveQuestIds(page);
+      const studioQuest = activeBefore.find((id) => id.startsWith('floor3-studio-'))!;
+      expect(studioQuest).toBeDefined();
+      await page.evaluate(() => {
+        window.__mainSceneProbe!.knockOutFloor3Encounter('studio');
+        window.__mainSceneProbe!.advanceSimulationFrames(1);
+      });
+      // Read the real pipeline after a KO: canonical defeat, quest completion
+      // and the docked marker must all agree, with no second progress counter.
+      await expect
+        .poll(async () => (await mainSceneProbe.getActiveQuestIds(page)).includes(studioQuest))
+        .toBe(false);
+      const completed = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      expect(completed.defeatedCount).toBe(1);
+      const studioId = studioQuest.slice('floor3-studio-'.length);
+      expect(completed.studios.find(({ id }) => id === studioId)?.defeated).toBe(true);
+      expect(completed.markers.find(({ id }) => id === `studio:${studioId}`)?.state).toBe(
+        'cleared',
+      );
+      expect(completed.texts.some(({ text }) => /^STUDIOS/i.test(text))).toBe(false);
+      await page.screenshot({ path: 'files/floor3-studio-tracker-completed.png' });
+    } finally {
+      await closeQuietly(context);
+    }
+  }, 120_000);
+
+  it('renders ordered Final Four intros, requires one kept Companion, and retains the bracket', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor3' });
+      await page.keyboard.press('Enter');
+      await waitForModalKind(page, 'floor3-starter', 'starter');
+      await page.keyboard.press('Enter');
+      await waitForState(page, (s) => s.worldState === 'playing');
+      await page.evaluate(() => {
+        window.__mainSceneProbe!.unlockFloor3LeagueProbe();
+        window.__mainSceneProbe!.advanceSimulationFrames(1);
+      });
+      const initial = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      // Acknowledge each newly unlocked Studio once through the shipped UI.
+      for (let index = 0; index < initial.studios.length; index++) {
+        await waitForModalKind(page, 'floor3-studio-versus', `Studio intro ${index + 1}`);
+        await page.keyboard.press('Enter');
+        await page.evaluate(() => window.__mainSceneProbe!.advanceSimulationFrames(1));
+      }
+      for (let index = 0; index < initial.studios.length; index++) {
+        await page.evaluate(() => {
+          window.__mainSceneProbe!.knockOutFloor3Encounter('studio');
+          window.__mainSceneProbe!.advanceSimulationFrames(1);
+        });
+        const state = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+        expect(state.defeatedCount).toBe(index + 1);
+        expect(state.studios.filter(({ defeated }) => defeated)).toHaveLength(index + 1);
+        // The last win opens a blocking Final Four intro and hides the map.
+        // Check its rendered markers once that intro is acknowledged below.
+        if (index + 1 < initial.studios.length) {
+          expect(
+            state.markers.filter(
+              (marker) => marker.kind === 'studio' && marker.state === 'cleared',
+            ),
+          ).toHaveLength(index + 1);
+        }
+      }
+      for (let round = 0; round < 4; round++) {
+        await waitForModalKind(page, 'floor3-final-four-versus', `Final Four round ${round + 1}`);
+        const intro = await mainSceneProbe.getModalPickerContent(page);
+        expect(intro?.title).toContain(`Round ${round + 1} of 4`);
+        await page.keyboard.press('Enter');
+        const bracket = await waitForLeagueHud(page, (s) => s.visible, 'Final Four bracket');
+        const completed = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+        expect(
+          completed.markers.filter(
+            (marker) => marker.kind === 'studio' && marker.state === 'cleared',
+          ),
+        ).toHaveLength(initial.studios.length);
+        expect(bracket.bracket[round]).toBe('active');
+        expect(bracket.bracket.filter((pip) => pip === 'cleared')).toHaveLength(round);
+        expect(bracket.bounds!.y).toBeGreaterThanOrEqual(
+          bracket.timerPanel!.y + bracket.timerPanel!.height,
+        );
+        await page.evaluate(() => {
+          window.__mainSceneProbe!.knockOutFloor3Encounter('final-four');
+          window.__mainSceneProbe!.advanceSimulationFrames(1);
+        });
+      }
+      await waitForModalKind(page, 'floor3-keep-companion', 'required champion choice');
+      expect(
+        (await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState())).keptEid,
+      ).toBeNull();
+      const picker = await mainSceneProbe.getModalPickerContent(page);
+      expect(picker?.title).toBe('Best in Show');
+      expect(picker?.options.length).toBeGreaterThan(0);
+      await page.keyboard.press('Escape');
+      expect((await mainSceneProbe.getModalPickerContent(page))?.kind).toBe(
+        'floor3-keep-companion',
+      );
+      await page.screenshot({ path: 'files/floor3-best-in-show-picker.png' });
+      await page.keyboard.press('Enter');
+      const kept = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      expect(kept.companions).toContain(kept.keptEid);
+      expect((await mainSceneProbe.getFloor3LeagueHudState(page)).phase).toBe('best-in-show');
+    } finally {
+      await closeQuietly(context);
+    }
+  }, 120_000);
+
+  it('renders the season-over screen after a real party wipe', async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await context.newPage();
+    try {
+      await loadMainSceneProbeLab(page, { floor: 'floor3' });
+      await page.keyboard.press('Enter');
+      await waitForModalKind(page, 'floor3-starter', 'starter');
+      await page.keyboard.press('Enter');
+      await waitForState(page, (s) => s.worldState === 'playing');
+      await page.evaluate(() => window.__mainSceneProbe!.advanceSimulationFrames(1));
+      await waitForModalKind(page, 'floor3-studio-versus', 'first Studio');
+      await page.keyboard.press('Enter');
+      await mainSceneProbe.setPlayerFeet(page, 10_000, 10_000); // away from Rally Points
+      await page.evaluate(() => {
+        window.__mainSceneProbe!.knockOutFloor3Encounter('party');
+        window.__mainSceneProbe!.advanceSimulationFrames(1);
+      });
+      await waitForState(page, (s) => s.worldState === 'game_over' && s.gameOverOpen);
+      const ux = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      expect(ux.texts.some(({ text }) => text === 'Season Over')).toBe(true);
+      expect(ux.texts.some(({ text }) => text.includes('Restart'))).toBe(true);
+      expect(ux.texts.some(({ text }) => text.includes('Quit'))).toBe(true);
+      await page.screenshot({ path: 'files/floor3-season-over.png' });
     } finally {
       await closeQuietly(context);
     }
