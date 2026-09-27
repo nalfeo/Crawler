@@ -198,3 +198,52 @@ PR publication, issue modification, or merge.
 | same-family-projectile |           0 | n/a                             | yes                   |
 | defend-player          |           1 | yes                             | yes                   |
 | defend-family          |           1 | yes                             | yes                   |
+
+## Third local-gate repass (2026-09-27)
+
+Verdict: recommended. Estimate: 1 apple. Persona: DevOps Engineer.
+All attached review verdicts pass. All three attached local-CI failures show the
+same missing-tsx error, including after the workflow bootstrap commit. A persisted
+orchestrator workflow still calls `npm run verify:fast` directly; the checked-out
+package command is therefore the recovery boundary this repass can repair.
+
+Plan: add missing-dependency bootstrap to that command using existing pinned
+Node/npm tooling, cover ordering and failures, reproduce the precise missing-tsx
+condition, rerun focused combat and required checks, obtain complete-diff review,
+and commit locally. No gameplay changes or verification exemptions are needed.
+
+Systems touched in this repass: fast verification entrypoint and deterministic
+bootstrap regressions. The command now installs with `npm ci --ignore-scripts
+--prefer-offline` only when the actual tsx payload is absent, checks that installation
+provided it, and invokes the unchanged fast verification script. Failed installation,
+missing payload, process launch failure, and verifier failure remain failures.
+Prepared worktrees do not reinstall. This reuses the repository runtime launcher
+instead of depending on ambient npm or introducing another dependency manager.
+
+Observed before: attached local-CI artifacts fail at run-tsx startup without running
+checks. Observed after: deliberately moved the local tsx package out of its expected
+path, ran the exact `npm run verify:fast` command, and observed dependency installation
+followed by all fast verification phases passing. Evidence:
+`files/verify-fast-bootstrap-repass.log`. The earlier workflow installation remains
+useful; this fix also works when that workflow definition is already snapshotted.
+
+Validation so far: preflight passed; scope selected simulation, coverage, integration,
+and visual checks; 94 focused combat/integration/workflow tests passed; nine Node
+bootstrap/runtime tests passed. Fresh read-only review of the complete diff found no
+blocking or medium findings and stated the change is okay to check in after required
+gates pass. The requested review-agent skill remains unavailable; the repository
+review-harness procedure supplied independent review. No guard telemetry file exists.
+
+Authorization transfers unchanged: local edits, checks, and commit only. No push,
+PR publication, issue modification, or merge. The deterministic runner owns those
+mutations. Residual risk: a cold gate needs registry/cache access for the locked
+install, and a runner must check out the new commit; no claim is made that this
+session altered an orchestrator's private snapshot or separate worktree.
+
+Final repass validation: `verify:pr-prereqs` passed (final PR-title validation stays
+with publication). The real MainGameScene test passed in 66.03 seconds, covering
+all 14 visual/headless matrix cases. Artifacts: `files/family-combat-repass-3/`;
+personally inspected `rival-contact.png`, showing the real Floor 2 HUD, family
+panel, and one -7 hit. Formatting and diff whitespace checks also passed.
+The local implementation session is complete; downstream publication remains
+with the deterministic workflow as authorized.
