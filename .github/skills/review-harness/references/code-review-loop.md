@@ -12,7 +12,7 @@ Each reviewer must read `.github/instructions/review.instructions.md` and
 `docs/agent-os/personas/reviewer.md`, inspect the complete diff plus relevant
 callers and tests, and return all high-confidence findings together.
 
-For model-selectable local reviews, use the `task` tool's `model` parameter and
+For model-selectable LLM reviews, use the `task` tool's `model` parameter and
 the same canonical review contract:
 
 ```text

@@ -74,3 +74,15 @@ The reconstruction now has a recovery patch stored outside that checkout.
 
 Future projectile/hazard observations and damage-event accounting could refine
 these diagnostics, with new evidence versions and deterministic boundary tests.
+
+## Maintainer instruction correction
+
+Ducky invokes an LLM review service; calling it local was misleading. Updated
+AGENTS, the review skill/reference, review policy, persona index and merge-train
+guide to describe that accurately. Standing maintainer authorization covers
+reviewing agent-generated changes and the relevant context through the configured
+LLM review service without a separate review/transmission permission prompt.
+Updated the existing policy contract assertions; both policy tests pass.
+
+The instruction correction passed required verify:fast and Ducky review with no
+actionable findings. The policy tests preserve the explicit authorization rule.
