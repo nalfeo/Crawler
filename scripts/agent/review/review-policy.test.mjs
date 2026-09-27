@@ -92,7 +92,7 @@ test('retired review artifact system is absent from active sources and wiring', 
   );
 });
 
-test('canonical review policy states the risk trigger and local Ducky workflow', () => {
+test('canonical review policy states the risk trigger and Ducky workflow', () => {
   const policyPath = 'docs/agent-os/policies/review-harness-policy.md';
   const policy = readFileSync(resolve(repoRoot, policyPath), 'utf8');
   const normalizedPolicy = policy.replace(/\s+/g, ' ');
@@ -100,7 +100,9 @@ test('canonical review policy states the risk trigger and local Ducky workflow',
     'meaningful correctness, security, data-loss, determinism, or release risk',
     'Routine, reversible changes use focused tests and CI.',
     'Adversarial design review is required **only when the change is architectural**',
-    'fresh local Ducky review against the complete diff',
+    'fresh Ducky review against the complete diff',
+    'Ducky is an LLM service review, not local-only analysis.',
+    'Do not ask for separate review or transmission permission',
     'PR description, a commit message, or a PR comment',
     'none is a merge-admission requirement',
     'The first 30 merged PRs governed by this policy form the pilot cohort.',

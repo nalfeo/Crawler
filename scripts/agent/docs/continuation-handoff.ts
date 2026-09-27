@@ -9,6 +9,7 @@ export const MAX_WORDS = 1_500;
 const REQUIRED = [
   'objective',
   'successGate',
+  'authorizations',
   'completed',
   'validation',
   'blockers',
@@ -43,7 +44,7 @@ export function buildContinuationHandoff(input: ContinuationInput): string {
   const telemetry = input.telemetry
     ? `\n## Rollout Telemetry\n\n- First request input: ${input.telemetry.firstRequestInputTokens ?? 'unavailable'} tokens\n- Cumulative input: ${input.telemetry.inputTokens} tokens\n`
     : '';
-  const output = `# Continuation Handoff\n\n## Objective / Success Gate\n\n${input.objective}\n\nSuccess gate: ${input.successGate}\n\n## Git State\n\n- Branch: \`${input.branch}\`\n- Base: \`${input.base}\`\n- Changed files:\n${files}\n\n## Completed Decisions\n\n${input.completed}\n\n## Validation Evidence\n\n${input.validation}\n\n## Unresolved Blockers\n\n${input.blockers}\n\n## Next Concrete Step\n\n${input.nextStep}\n${telemetry}`;
+  const output = `# Continuation Handoff\n\n## Objective / Success Gate\n\n${input.objective}\n\nSuccess gate: ${input.successGate}\n\n## Authorizations and Constraints\n\n${input.authorizations}\n\nThese user grants carry forward to the next session within the same scope and constraints. Do not request reauthorization merely because the session changed.\n\n## Git State\n\n- Branch: \`${input.branch}\`\n- Base: \`${input.base}\`\n- Changed files:\n${files}\n\n## Completed Decisions\n\n${input.completed}\n\n## Validation Evidence\n\n${input.validation}\n\n## Unresolved Blockers\n\n${input.blockers}\n\n## Next Concrete Step\n\n${input.nextStep}\n${telemetry}`;
   if (words(output) > MAX_WORDS)
     throw new Error(
       `Continuation handoff is ${words(output)} words; maximum is ${MAX_WORDS}. Shorten a supplied field.`,
@@ -75,6 +76,7 @@ export function main(argv = process.argv.slice(2)): number {
     const input: ContinuationInput = {
       objective: options.objective ?? '',
       successGate: options.successGate ?? '',
+      authorizations: options.authorizations ?? '',
       completed: options.completed ?? '',
       validation: options.validation ?? '',
       blockers: options.blockers ?? '',
@@ -97,7 +99,7 @@ export function main(argv = process.argv.slice(2)): number {
   } catch (error) {
     if (error instanceof Error && error.message === 'HELP') {
       process.stdout.write(
-        'Usage: npm run handoff:continue -- --objective TEXT --success-gate TEXT --completed TEXT --validation TEXT --blockers TEXT --next-step TEXT [--base main] [--branch NAME] [--changed-files FILES] [--rollout rollout.jsonl]\n',
+        'Usage: npm run handoff:continue -- --objective TEXT --success-gate TEXT --authorizations TEXT --completed TEXT --validation TEXT --blockers TEXT --next-step TEXT [--base main] [--branch NAME] [--changed-files FILES] [--rollout rollout.jsonl]\n',
       );
       return 0;
     }

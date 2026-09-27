@@ -1,3 +1,4 @@
+import type { CombatPressureSummary } from './combat-pressure-types.js';
 /**
  * Minimal session-recorder interface shared between the engine and game layers.
  *
@@ -25,6 +26,7 @@ export type SessionController = 'AI' | 'MANUAL';
 
 /** Quick stats without copying the full event array. */
 export interface SessionRecorderStats {
+  combatPressure?: CombatPressureSummary;
   totalEvents: number;
   totalSamples: number;
   totalKills: number;

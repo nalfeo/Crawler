@@ -45,7 +45,7 @@ link back to this section instead of restating it.
   cloud sessions have no comment credentials. Never block a session waiting for
   comment access. Do not hide plans in repo files unless the
   human explicitly asks for a file artifact.
-- **Run post-diff review.** Every implementation PR gets a fresh local Ducky
+- **Run post-diff review.** Every implementation PR gets a fresh Ducky
   review of the complete diff, with all blocking and medium findings fixed.
   Architectural changes and changes with meaningful correctness, security,
   data-loss, determinism, or release risk require one additional independent

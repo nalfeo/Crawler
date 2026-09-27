@@ -113,6 +113,13 @@ describe('headless runner AI telemetry', () => {
       forceWeaponId: 'sword',
     });
 
+    expect(stats.combatPressure).toBeDefined();
+    expect(stats.combatPressure!.version).toBe(1);
+    expect(
+      stats.combatPressure!.observedMs +
+        stats.combatPressure!.excludedSafeMs +
+        stats.combatPressure!.excludedInvalidMs,
+    ).toBeCloseTo(stats.gameTimeMs);
     expect(stats.aiTelemetry).toEqual({
       decisionStateCounts: {
         EXPLORE: 2,

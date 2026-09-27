@@ -1,3 +1,5 @@
+import { createCombatPressureCollector } from './combat-pressure.js';
+import { observeCombatPressure } from './combat-pressure-observation.js';
 /**
  * Player session recorder — captures real human-player telemetry at the same
  * fidelity as the headless AI runner's {@link SimEvent} stream.
@@ -155,6 +157,8 @@ export function createPlayerSessionRecorder(
     world.weaponTelemetry = createWeaponTelemetry();
   }
 
+  let combatPressure = createCombatPressureCollector();
+  combatPressure.observe(observeCombatPressure(world, playerEid));
   let frameCount = 0;
   let totalKills = 0;
   let lastLoggedState = '';
@@ -250,6 +254,7 @@ export function createPlayerSessionRecorder(
   // ---------------------------------------------------------------------------
 
   function tick(inputState: InputState): void {
+    combatPressure.observe(observeCombatPressure(world, playerEid));
     frameCount += 1;
 
     const healthMax = world.stores.health.max[playerEid] ?? 0;
@@ -429,6 +434,7 @@ export function createPlayerSessionRecorder(
     const firstMs = samples[0]?.gameMs ?? 0;
     const lastMs = samples[samples.length - 1]?.gameMs ?? firstMs;
     return {
+      combatPressure: combatPressure.summarize(),
       totalEvents: events.length,
       totalSamples: samples.length,
       totalKills: kills.length,
@@ -471,6 +477,8 @@ export function createPlayerSessionRecorder(
   }
 
   function reset(): void {
+    combatPressure = createCombatPressureCollector();
+    combatPressure.observe(observeCombatPressure(world, playerEid));
     events.length = 0;
     frameCount = 0;
     totalKills = 0;

@@ -165,6 +165,7 @@ export function collectHumanRunStats(
         quests: false,
       },
     },
+    ...(recorderStats?.combatPressure ? { combatPressure: recorderStats.combatPressure } : {}),
     totalFrames: world.frameCount,
     wallTimeMs: 0,
     gameTimeMs: world.elapsedMs,
