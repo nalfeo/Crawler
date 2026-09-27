@@ -104,3 +104,59 @@ commit. Downstream validation in another fresh worktree must run
 provides this bootstrap; this repass does not alter or weaken the verifier.
 Logs are in `.goobers/repass-{verify-fast,unit,e2e}.log` in this run's workspace.
 No guard telemetry file was present. Local-only authorization remains unchanged.
+
+## Fresh-worktree gate repair (2026-09-27)
+
+Recommended; 2 apples estimated. Persona: DevOps Engineer. The second attached
+local-gate failure again came from a separate worktree without `tsx`; the prior
+local-only dependency installation could not resolve it. This section supersedes
+the previous repass's instruction to rely on a downstream preflight invocation.
+
+Plan executed: trace the deterministic gate entrypoint, reuse the existing
+Node dependency bootstrap for `verify:fast`, cover cold/warm and failure paths,
+run an actual cold gate plus Floor 3 regressions, review, and commit locally.
+
+`npm run verify:fast` now enters the existing pinned-runtime preflight bootstrap
+with `--verify-fast`. It installs locked dependencies only if tsx is absent,
+then runs the unchanged `verify-fast.sh`. It does not run session-start sync or
+preflight's other Bash phases. Both installation and verifier failures remain
+nonzero. No workflow definition reload is required: the runner's existing
+`npm run verify:fast` command consumes the committed package entrypoint.
+
+Additional systems touched: agent-tooling, local verification bootstrap.
+
+Observed before: attached downstream logs fail before any checks with missing
+tsx. Observed after: moved this worktree's node_modules aside, ran the exact
+`npm run verify:fast` command, and observed dependency installation followed by
+all fast checks passing. Log: `.goobers/cold-verify-fast.log` (local artifact).
+The saved dependency tree remains ignored under `files/repass-saved/node_modules`.
+
+Bootstrap/runtime tests: 18 passed, including cold/warm dispatch, install failure,
+and propagation of gate failure. Focused Floor 3 unit tests: 61 passed. Explicit
+ESLint of both bootstrap modules passed. Scope inspection retained the original
+feature's visual/simulation coverage requirements. Read-only independent review
+of the complete diff found no blocking or medium findings and approved check-in.
+The installed review-agent skill remains unavailable; the reviewer used the
+repository review-harness procedure.
+
+Residual risk: the first verification in an empty worktree now needs registry
+access to install the lockfile, exactly as preflight already does. Warm runs skip
+installation. Gameplay and verification checks are unchanged in this repass.
+Authorization remains local implementation, checks, and commit only; downstream
+workflow stages retain push, PR, issue, and merge ownership.
+
+The real-scene rerun exposed a startup race in the existing endgame test: six
+checks passed, but endgame stayed at frame zero after intro/starter confirmation.
+Its fixed 300 ms delay allowed Resume before asynchronous startup completed.
+Replaced that delay with observed `playing` plus matching runner/scene paused
+state, then require frame advancement after Resume. All original progression
+assertions, seed 3540, and simulation polling limits remain intact. The same-seed
+endgame then passed in 38 seconds. Independent follow-up review traced the
+modal/pause wiring and approved this readiness fix without findings.
+Final fast verification passed after this test change. No guard telemetry exists.
+
+Final combined real-scene run: all 7 tests in 4 files passed in 74 seconds,
+including all four viewports, Studio tracker/markers, and complete endgame.
+Final PR prerequisites passed (publication owns final PR-title validation).
+Evidence logs: `.goobers/final-e2e.log`, `.goobers/final-verify-fast.log`, and
+`.goobers/final-pr-prereqs.log`. Session implementation is fully complete.

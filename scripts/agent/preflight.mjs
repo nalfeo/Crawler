@@ -73,6 +73,7 @@ export function main({
   log = console.log,
   exists = existsSync,
   runCommand = run,
+  verificationOnly = false,
 } = {}) {
   log(`Agent runtime: Node ${nodeVersion} (${nodeExecutable})`);
   const bash = resolveBootstrapBash(env, platform, exists);
@@ -84,7 +85,7 @@ export function main({
   }
   let installedDependencies = false;
   if (needsInstall(root, exists)) {
-    console.log('Fresh worktree: installing dependencies once before preflight…');
+    log('Fresh worktree: installing dependencies once before checks…');
     // Use npm belonging to the selected Node runtime.  npm.cmd on Windows
     // hard-links back to the system Node installation, bypassing PATH.
     const npm = env.CRAWLER_NPM_CLI ? nodeExecutable : platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -117,10 +118,13 @@ export function main({
     env.CRAWLER_NPM_CLI || (platform === 'win32' && !hasWindowsShim)
       ? nodeExecutable
       : join(root, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const bashScript = verificationOnly
+    ? 'scripts/agent/verify-fast.sh'
+    : 'scripts/agent/preflight.sh';
   const tsxArgs =
     env.CRAWLER_NPM_CLI || (platform === 'win32' && !hasWindowsShim)
-      ? [tsxEntrypoint, 'scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh']
-      : ['scripts/agent/run-bash-wrapper.ts', 'scripts/agent/preflight.sh'];
+      ? [tsxEntrypoint, 'scripts/agent/run-bash-wrapper.ts', bashScript]
+      : ['scripts/agent/run-bash-wrapper.ts', bashScript];
   return runCommand(tsx, tsxArgs, {
     cwd: root,
     // Reuse the bootstrap's answer so the wrapper does not depend on Codex
@@ -134,4 +138,4 @@ export function main({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  process.exitCode = main();
+  process.exitCode = main({ verificationOnly: process.argv.includes('--verify-fast') });
