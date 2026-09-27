@@ -1,3 +1,7 @@
+import {
+  combatPressureDiagnostic,
+  type CombatPressureDiagnostic,
+} from './combat-pressure-diagnostic.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
 import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 import { FLOOR1_ACTIVE_TIME_BUDGET_MS } from '../../../src/game/ai/floor1-run-budget.js';
@@ -99,6 +103,7 @@ export interface FunScoreReport {
     readonly source: 'headless' | 'human' | 'unknown';
     readonly dimensions: FunDimensionScores;
     readonly heuristic_score: number | null;
+    readonly combat_pressure: CombatPressureDiagnostic;
   }>;
   readonly runs: number;
   readonly outcomes: Readonly<Record<RunStats['outcome'], number>>;
@@ -916,6 +921,10 @@ export function scoreFunSessions(
       source: session.run.evaluationContext?.source ?? ('unknown' as const),
       dimensions,
       heuristic_score: weightedGatedObjectiveScore(dimensions),
+      combat_pressure: combatPressureDiagnostic(
+        session.run.combatPressure,
+        (session.run as RunStats & { chainedFloorIds?: unknown }).chainedFloorIds,
+      ),
     };
   });
   const dimensions = {} as { -readonly [K in keyof FunDimensionScores]: FunDimensionScores[K] };

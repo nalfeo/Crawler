@@ -116,3 +116,42 @@ versus frustrating tension, readability, and voluntary replay with target
 players. Rendered-agent observations can identify confusing moments with clips
 and timestamps, but do not replace those responses. Future predictors must be
 validated on held-out players and builds before making enjoyment claims.
+
+## Local combat-pressure diagnostics
+
+`RunStats.combatPressure` and available live recorder stats carry a separate v1
+mechanics diagnostic. The v2 evaluator exposes it per run without changing scores,
+criteria, comparisons, UX routing, or independent win gates. Missing or malformed
+records remain unmeasured. Live coverage requires an injected session recorder;
+this work does not collect human data or infer enjoyment. Flattened multi-floor
+records remain unmeasured because final-floor evidence cannot describe a chain.
+
+The spatial hypothesis counts living player-hostile mobs with direct line of
+sight within `max(12 ft, min(authored attack range, 32 ft))`, respecting delayed
+aggro, aggro range, faction targeting and inactive bosses. Twelve feet is a local
+reaction-neighborhood hypothesis; the 32-foot cap limits long-range authored
+attacks to local pressure. Neither distance is calibrated. A missing floor map
+uses the existing open-arena convention. This is an actionable-neighborhood
+proxy, not a prediction of an immediate hit: cooldowns, stun, support abilities,
+projectiles already in flight, hazards and indirect paths are not modeled.
+
+Only adjacent valid samples at most 250ms apart contribute measured time.
+`threatenedMs` is exposed time with at least one local threat;
+`unthreatenedMs` is valid outside-safe-space time without one. Safe rooms (including
+Floor4 countdown), invalid observations and gaps are excluded and break all
+rolling windows. Entering or leaving safety excludes the boundary interval.
+The first observation is only a baseline. Finite zero-health endpoints can record
+a fatal health decrease; a removed player cannot. These exclusions deliberately
+favor incomplete evidence over fabricated exposure.
+
+Burst evidence is explicitly **net health loss**, not combat-event damage:
+`peakNetHealthLoss1s` is the largest sum of observed decreases over a trailing
+one-second interval. Concurrent healing can hide damage, and max-health changes
+can confound it. A recovery window is at least two seconds without a local threat
+or net loss, below full health, after observed pressure; it is an opportunity,
+not evidence of actual healing. Meaningful downtime is at least three seconds
+without a local threat or net loss after pressure. Qualifying windows include
+their initial two/three seconds and ongoing tails. Initial exploration is not
+combat downtime. Damage, renewed pressure, safety and invalid gaps interrupt
+windows. These temporal thresholds are hypotheses, not preferred difficulty or
+pacing targets. No threat-free sample establishes safety from unmodeled hazards.

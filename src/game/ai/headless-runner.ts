@@ -1,3 +1,5 @@
+import { createCombatPressureCollector } from './combat-pressure.js';
+import { observeCombatPressure } from './combat-pressure-observation.js';
 /**
  * Headless game runner - runs pure ECS simulation at maximum speed.
  *
@@ -1115,6 +1117,8 @@ export async function runHeadless(
   let lastProcessedCombatEvent = world.combatEvents[combatEventCursor - 1];
   let closeCallCount = 0;
   let lowHealthCount = 0;
+  const combatPressure = createCombatPressureCollector();
+  combatPressure.observe(observeCombatPressure(world, playerEid));
   let combatTimeMs = 0;
   let engagementCount = 0;
   let inCombat = false;
@@ -1610,6 +1614,7 @@ export async function runHeadless(
       if (playerInTimeStoppingSafeRoom || floor4CountdownSafeFrame) {
         safeRoomFrames++;
       }
+      combatPressure.observe(observeCombatPressure(world, playerEid, floor4CountdownSafeFrame));
       // Latch Floor 1 boss lifecycle transitions before any early exit (death
       // guards) or auto-action helper can run. Capture after the safe-room
       // counter so active timestamps cannot exceed the finalized duration.
@@ -2140,6 +2145,7 @@ export async function runHeadless(
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
       safeRoomMs: safeRoomFrames * GAME.DELTA_MS,
+      combatPressure: combatPressure.summarize(),
       finalFloor: world.floor,
       finalScore,
       outcome: 'error',
@@ -2269,6 +2275,7 @@ export async function runHeadless(
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
     safeRoomMs: safeRoomFrames * GAME.DELTA_MS,
+    combatPressure: combatPressure.summarize(),
     finalFloor: world.floor,
     finalScore,
     outcome,
