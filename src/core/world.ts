@@ -594,7 +594,10 @@ export interface GameWorld {
    * never drains the queue). `attackerEid` can be stale a frame later, so
    * consumers must re-validate the entity before targeting it.
    */
-  lastPlayerHit?: { attackerEid: number; atMs: number };
+  lastPlayerHit?: { attackerEid: number; attackerGeneration?: number; atMs: number };
+  /** Durable defense signal, bounded by the number of family slots on this floor. */
+  familyAttackOwnerGeneration: Map<number, number>;
+  lastFamilyHit: Map<number, { attackerEid: number; attackerGeneration: number; atMs: number }>;
   /**
    * Optional, OFF-by-default per-run weapon telemetry (player swings, connecting
    * hits, accuracy, multi-hit rate). `undefined` = disabled → the shipping sim
@@ -1203,6 +1206,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
     enemyProjectileArchetypeKeys: new Map(),
+    lastFamilyHit: new Map(),
+    familyAttackOwnerGeneration: new Map(),
     generatedSpriteRegistry: options.generatedSpriteRegistry ?? null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),

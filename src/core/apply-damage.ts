@@ -1,4 +1,5 @@
 import { hasComponent, query } from 'bitecs';
+import { familyDamagePermission, getCombatFamilyIndex } from './family-combat.js';
 import {
   Player,
   Enemy,
@@ -45,6 +46,8 @@ export interface DamageOptions {
   readonly sourceX?: number;
   readonly sourceY?: number;
   readonly sourceEid?: number;
+  /** Spawn-time family slot for delayed attacks, authoritative over a recycled owner. */
+  readonly sourceFamilyIndex?: number;
   /**
    * Stable archetype identity of the attacker, pre-snapshotted before any
    * entity removal/EID-recycling can invalidate a live EID lookup. When
@@ -174,6 +177,8 @@ export function applyDamage(
   y: number,
   options: DamageOptions,
 ): number {
+  if (familyDamagePermission(world, options.sourceEid, target, options.sourceFamilyIndex) === false)
+    return 0;
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (hasComponent(world.ecs, target, Invincible)) return 0;
 
@@ -356,13 +361,32 @@ export function applyDamage(
       byCompanion.set(options.sourceEid, (byCompanion.get(options.sourceEid) ?? 0) + dealt);
     }
 
+    const targetFamily = getCombatFamilyIndex(world, target);
+    if (
+      targetFamily !== undefined &&
+      options.sourceEid !== undefined &&
+      hasComponent(world.ecs, options.sourceEid, Enemy) &&
+      !hasComponent(world.ecs, options.sourceEid, DeathTimer) &&
+      (world.stores.health.current[options.sourceEid] ?? 0) > 0
+    ) {
+      world.lastFamilyHit.set(targetFamily, {
+        attackerEid: options.sourceEid,
+        attackerGeneration: world.entityRenderGeneration[options.sourceEid] ?? 0,
+        atMs: world.elapsedMs,
+      });
+    }
+
     // Floor 2 Slice 3 ally-defend: record who last hit the player into a
     // DURABLE per-world signal. The transient `combatEvents` queue above is
     // drained by the VFX layer every rendered frame, so a friendly-band mob's
     // retaliation prepass (familyFeudSystem) would never see this hit in the
     // real game if it scanned the queue. This field survives the drain.
     if (isPlayerTarget && options.sourceEid !== undefined && options.sourceEid >= 0) {
-      world.lastPlayerHit = { attackerEid: options.sourceEid, atMs: world.elapsedMs };
+      world.lastPlayerHit = {
+        attackerEid: options.sourceEid,
+        attackerGeneration: world.entityRenderGeneration[options.sourceEid],
+        atMs: world.elapsedMs,
+      };
     }
   }
 

@@ -1,5 +1,6 @@
-import { entityExists, hasComponent, query } from 'bitecs';
-import { AoeOnImpact, Owner, Position, Team } from '../components.js';
+import { addComponent, entityExists, hasComponent, query, set } from 'bitecs';
+import { getCombatFamilyIndex, getCombatSourceEid } from '../family-combat.js';
+import { AoeOnImpact, FamilyMembership, Position, Team } from '../components.js';
 import { spawnAreaAttack } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
@@ -13,6 +14,8 @@ interface AoeSnapshot {
   radius: number;
   damage: number;
   ownerEid: number;
+  familyIndex: number | undefined;
+  ownerGeneration: number | undefined;
   teamId: number;
   /**
    * Weapon-telemetry activation id of the source projectile, captured while it
@@ -56,12 +59,12 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
   snapshots.length = 0;
 
   const entities = query(world.ecs, [AoeOnImpact, Position]);
-  const { position, aoeOnImpact, owner, team } = world.stores;
+  const { position, aoeOnImpact, team } = world.stores;
 
   for (const eid of entities) {
     if (eid === undefined) continue;
 
-    const ownerEid = hasComponent(world.ecs, eid, Owner) ? (owner.eid[eid] ?? 0) : -1;
+    const ownerEid = getCombatSourceEid(world, eid) ?? -1;
     snapshots.push({
       eid,
       x: position.x[eid] ?? 0,
@@ -69,6 +72,8 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
       radius: aoeOnImpact.radius[eid] ?? 0,
       damage: aoeOnImpact.damage[eid] ?? 0,
       ownerEid,
+      familyIndex: getCombatFamilyIndex(world, eid),
+      ownerGeneration: world.familyAttackOwnerGeneration.get(eid),
       teamId: hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : 0,
       activationId: getActivationForEntity(world, eid),
       skillIds:
@@ -106,6 +111,16 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
           50,
           snap.teamId,
         );
+        if (snap.familyIndex !== undefined) {
+          addComponent(
+            world.ecs,
+            explosionEid,
+            set(FamilyMembership, { familyId: snap.familyIndex, isBoss: 0 }),
+          );
+        }
+        if (snap.ownerGeneration !== undefined) {
+          world.familyAttackOwnerGeneration.set(explosionEid, snap.ownerGeneration);
+        }
         tagDamageMeta(world, explosionEid, snap.damageMeta);
         if (snap.skillIds !== undefined) {
           world.attackWeaponSkillsByEntity.set(explosionEid, snap.skillIds);

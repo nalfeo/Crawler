@@ -1,4 +1,5 @@
 import { addComponent, set } from 'bitecs';
+import { snapshotCombatFamily } from '../family-combat.js';
 import {
   AreaDamage,
   Lifetime,
@@ -49,6 +50,7 @@ export function spawnAreaAttack(
   clearAreaDamageHits(world, eid);
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  snapshotCombatFamily(world, eid, ownerEid);
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(
     world.ecs,

@@ -1,4 +1,9 @@
 import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
+import {
+  familyDamagePermission,
+  getCombatFamilyIndex,
+  getCombatSourceEid,
+} from '../family-combat.js';
 import type { CollisionResult } from './collisionSystem.js';
 import {
   Companion,
@@ -103,6 +108,8 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
 }
 
 function sameTeam(world: GameWorld, source: number, target: number): boolean {
+  const familyPermission = familyDamagePermission(world, source, target);
+  if (familyPermission !== undefined) return !familyPermission;
   return (
     hasComponent(world.ecs, source, Team) &&
     hasComponent(world.ecs, target, Team) &&
@@ -111,6 +118,7 @@ function sameTeam(world: GameWorld, source: number, target: number): boolean {
 }
 
 function projectileSource(world: GameWorld, projectile: number): number {
+  if (getCombatFamilyIndex(world, projectile) !== undefined) return projectile;
   return hasComponent(world.ecs, projectile, Owner)
     ? (world.stores.owner.eid[projectile] ?? projectile)
     : projectile;
@@ -145,9 +153,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-    const ownerEid = hasComponent(world.ecs, projectile, Owner)
-      ? (world.stores.owner.eid[projectile] ?? -1)
-      : -1;
+    const ownerEid = getCombatSourceEid(world, projectile) ?? -1;
     const dealt = applyDamage(
       world,
       enemy,
@@ -159,6 +165,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
         sourceX: world.stores.position.x[projectile] ?? 0,
         sourceY: world.stores.position.y[projectile] ?? 0,
         sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+        sourceFamilyIndex: getCombatFamilyIndex(world, projectile),
       },
     );
 
@@ -226,7 +233,10 @@ function applyPlayerEnemyHit(
   // Dead enemies keep their Enemy component during the death-linger window
   // (deathTimerSystem removes them once the corpse animation finishes). A
   // corpse must not deal contact damage just because the player walks over it.
-  if (hasComponent(world.ecs, enemy, DeathTimer)) {
+  if (
+    hasComponent(world.ecs, enemy, DeathTimer) ||
+    (world.stores.health.current[enemy] ?? 0) <= 0
+  ) {
     return;
   }
   if (isEntityInSafeSpace(world, player)) {
@@ -303,9 +313,7 @@ function applyEnemyProjectileHit(
     return;
   }
   const amount = applyArmorReduction(world, player, scaled);
-  const projectileOwner = hasComponent(world.ecs, projectile, Owner)
-    ? (world.stores.owner.eid[projectile] ?? -1)
-    : -1;
+  const projectileOwner = getCombatSourceEid(world, projectile);
   applyDamage(
     world,
     player,
@@ -320,7 +328,10 @@ function applyEnemyProjectileHit(
       delivery: 'projectile',
       sourceX: world.stores.position.x[projectile] ?? 0,
       sourceY: world.stores.position.y[projectile] ?? 0,
-      sourceEid: projectileOwner !== -1 ? projectileOwner : projectile,
+      sourceEid:
+        projectileOwner ??
+        (getCombatFamilyIndex(world, projectile) === undefined ? projectile : undefined),
+      sourceFamilyIndex: getCombatFamilyIndex(world, projectile),
       // Pass the archetype key snapshotted at projectile-spawn time so that
       // attribution in apply-damage is correct even if the shooter has been
       // reaped and its EID recycled before this hit occurs.
@@ -330,6 +341,53 @@ function applyEnemyProjectileHit(
   hitTimestamps[player] = world.elapsedMs;
 
   destroyEntity(world, projectile);
+}
+
+// One contact per living family attacker per contact interval, independent of
+// ranged fire clocks. Generation checks prevent a recycled EID inheriting delay.
+const familyContactTimes = new WeakMap<
+  GameWorld,
+  Map<number, { generation: number; atMs: number }>
+>();
+
+function applyFamilyContact(world: GameWorld, source: number, target: number): void {
+  if (getCombatFamilyIndex(world, source) === undefined || sameTeam(world, source, target)) return;
+  if (hasComponent(world.ecs, source, DeathTimer) || hasComponent(world.ecs, target, DeathTimer))
+    return;
+  if (
+    !hasComponent(world.ecs, target, Health) ||
+    (world.stores.health.current[source] ?? 0) <= 0 ||
+    (world.stores.health.current[target] ?? 0) <= 0
+  )
+    return;
+  const times = familyContactTimes.get(world) ?? new Map();
+  familyContactTimes.set(world, times);
+  const generation = world.entityRenderGeneration[source] ?? 0;
+  const previous = times.get(source);
+  if (
+    previous?.generation === generation &&
+    world.elapsedMs - previous.atMs < PLAYER_INVINCIBILITY_MS
+  )
+    return;
+  const dealt = applyDamage(
+    world,
+    target,
+    getDamageAmount(world, source, DEFAULT_CONTACT_DAMAGE) *
+      getMobAbilityMeleeDamageMultiplier(world, source),
+    world.stores.position.x[target] ?? 0,
+    world.stores.position.y[target] ?? 0,
+    {
+      origin: 'enemy',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+      delivery: 'contact',
+      sourceEid: source,
+      sourceX: world.stores.position.x[source] ?? 0,
+      sourceY: world.stores.position.y[source] ?? 0,
+    },
+  );
+  if (dealt > 0) times.set(source, { generation, atMs: world.elapsedMs });
 }
 
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {
@@ -413,14 +471,20 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       continue;
     }
 
+    if (hasComponent(world.ecs, a, Enemy) && hasComponent(world.ecs, b, Enemy)) {
+      applyFamilyContact(world, a, b);
+      applyFamilyContact(world, b, a);
+      continue;
+    }
+
     if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, Enemy)) {
-      if (sameTeam(world, a, b)) continue;
+      if (sameTeam(world, b, a)) continue;
       applyPlayerEnemyHit(world, a, b, hitTimestamps);
       continue;
     }
 
     if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
-      if (sameTeam(world, b, a)) continue;
+      if (sameTeam(world, a, b)) continue;
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
     }
   }
