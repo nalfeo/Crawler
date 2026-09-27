@@ -366,7 +366,12 @@ spec:
       type: deterministic
       goal: Run the configured Crawler local verification command.
       run:
-        command: ['npm', 'run', 'verify:fast']
+        # Review and local-ci can use separate fresh worktrees. Dependencies
+        # installed by the implementer are not carried by the Git commit.
+        script: |
+          set -eu
+          npm ci --ignore-scripts
+          npm run verify:fast
         syncBase: true
       next: local-gate
     - name: open-pr

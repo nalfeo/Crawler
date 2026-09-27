@@ -100,7 +100,9 @@ export function createHudFloor3League(
     );
   }
   function applyVisibility(): void {
-    const visible = externallyVisible && state.visible;
+    // Studio objectives belong to the standard quest tracker; keep this panel
+    // for the championship bracket and endgame only.
+    const visible = externallyVisible && state.visible && state.phase !== 'studios';
     root.setVisible(visible);
     panel.setVisible(visible);
   }
@@ -123,12 +125,15 @@ export function createHudFloor3League(
     },
     getState: () => ({
       ...state,
+      visible: root.visible,
       bounds:
-        externallyVisible && state.visible ? { x: X, y: Y, width: WIDTH, height: HEIGHT } : null,
+        externallyVisible && state.visible && state.phase !== 'studios'
+          ? { x: X, y: Y, width: WIDTH, height: HEIGHT }
+          : null,
       bracket: bracket(),
     }),
     getLayoutBounds: () =>
-      externallyVisible && state.visible
+      externallyVisible && state.visible && state.phase !== 'studios'
         ? { panel: { x: X, y: Y, width: WIDTH, height: HEIGHT } }
         : null,
     destroy: () => {

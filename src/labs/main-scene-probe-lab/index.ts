@@ -287,6 +287,7 @@ interface MainSceneInternals {
       notices: readonly string[];
     };
     getFloor4ArenaState?(): HudFloor4ArenaProbeState;
+    getQuestTrackerText?(): string;
     getFloor3LeagueState?(): {
       visible: boolean;
       phase: string;
@@ -295,7 +296,8 @@ interface MainSceneInternals {
       bracket: readonly string[];
       bounds: ScreenBounds | null;
     };
-    getFloor3OverworldMarkers?(): readonly { kind: string }[];
+    getMinimapEntityMarkerStates?(): readonly { eid: number; color: number; surface: string }[];
+    getFloor3OverworldMarkers?(): readonly { id: string; kind: string; state: string }[];
     /**
      * The currently-rendered announcement banner content (kind + exact
      * text), or `null` when no banner is showing. Real rendered projection,
@@ -817,6 +819,10 @@ export interface Floor3LeagueHudProbeState {
   readonly timerPanel: ScreenBounds | null;
   readonly mapOverlayOpen: boolean;
   readonly markerKinds: readonly string[];
+  readonly questTrackerText: string;
+  readonly studiosDefeated: number;
+  readonly markers: readonly { id: string; kind: string; state: string }[];
+  readonly entityMarkers: readonly { eid: number; color: number; surface: string; ally: boolean }[];
 }
 
 export interface FamilyHudProbeState {
@@ -1274,6 +1280,9 @@ export interface MainSceneProbeApi {
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
   getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
+  /** Knock out one active Studio roster; production objective/quest ticks own completion. */
+  knockOutFloor3Studio(): string | null;
+  separateFloor3AllyMarker(): void;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
@@ -2628,7 +2637,37 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    separateFloor3AllyMarker: (): void => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world?.floorMap) return;
+      const ally = [...query(world.ecs, [Companion, Team, Position])].find(
+        (eid) => world.stores.team.id[eid] === TeamId.PLAYER,
+      );
+      if (ally === undefined) return;
+      const player = playerEidOf(scene);
+      // Separate glyphs inside the discovered spawn room for pixel assertions.
+      world.stores.position.x[ally] =
+        (world.stores.position.x[player] ?? 0) + world.floorMap.config.tileSizeFt * 2;
+      world.stores.position.y[ally] = world.stores.position.y[player] ?? 0;
+    },
+
+    knockOutFloor3Studio: (): string | null => {
+      const world = getScene()?.world;
+      const studio = world?.floorExtendedState?.floor3Studios?.studios.find(
+        (entry) => entry.unlocked && !entry.defeated,
+      );
+      if (!world || !studio) return null;
+      for (const eid of query(world.ecs, [Companion, Team])) {
+        if (!studio.teamIds.includes(world.stores.team.id[eid] ?? -1)) continue;
+        world.stores.companion.knockedOut[eid] = 1;
+        world.stores.health.current[eid] = 0;
+      }
+      return studio.id;
+    },
+
     getFloor3LeagueHudState: (): Floor3LeagueHudProbeState => {
+      const world = getScene()?.world;
       const hud = getScene()?.hudUi;
       const league = hud?.getFloor3LeagueState?.();
       return {
@@ -2640,6 +2679,18 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         bounds: league?.bounds ?? null,
         timerPanel: hud?.getEncounterProbeBounds?.()?.timerPanel ?? null,
         mapOverlayOpen: hud?.isMapOverlayOpen() ?? false,
+        questTrackerText: hud?.getQuestTrackerText?.() ?? '',
+        studiosDefeated:
+          getScene()?.world?.floorExtendedState?.floor3Studios?.studiosDefeatedCount ?? 0,
+        markers: hud?.getFloor3OverworldMarkers?.() ?? [],
+        entityMarkers: (hud?.getMinimapEntityMarkerStates?.() ?? []).map((marker) => ({
+          ...marker,
+          ally:
+            !!world &&
+            hasComponent(world.ecs, marker.eid, Companion) &&
+            hasComponent(world.ecs, marker.eid, Team) &&
+            world.stores.team.id[marker.eid] === TeamId.PLAYER,
+        })),
         markerKinds: (hud?.getFloor3OverworldMarkers?.() ?? []).map((marker) => marker.kind),
       };
     },
