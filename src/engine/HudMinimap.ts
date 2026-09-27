@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { hasComponent, query } from 'bitecs';
-import { Enemy, FamilyMembership, Npc, Position } from '../core/components.js';
+import { Companion, Enemy, FamilyMembership, Npc, Position, Team } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
 import { getTrackedQuest } from '../core/systems/questSystem.js';
@@ -24,7 +24,7 @@ import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 import { NAV_RADAR_DIAMETER, resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { getRenderScale } from './render-scale.js';
-import { GAME } from '../shared/constants.js';
+import { GAME, TeamId } from '../shared/constants.js';
 import {
   shouldDrawTerritoryOverlayBands,
   shouldUseFamilyRoomTint,
@@ -62,7 +62,9 @@ const DOT_PLAYER_RING = 0xffd23f;
 const DOT_OUTLINE = 0x0b0b14;
 const DOT_OUTLINE_WIDTH = 0.32;
 const DOT_ENEMY = 0xef4444;
+const DOT_COMPANION = 0x4ade80;
 const DOT_NPC = 0x4ade80;
+const DOT_FLOOR3_NPC = 0x60a5fa;
 const DOT_SAFE_ROOM = 0x2dd4bf;
 const DOT_BOSS_ROOM = 0xf59e0b;
 const DOT_SPAWN_ROOM = 0x60a5fa;
@@ -75,7 +77,7 @@ const FLOOR3_MARKER_COLORS: Readonly<Record<Floor3OverworldMarker['kind'], numbe
   'final-four-gate': 0xfacc15,
   'rally-point': 0x2dd4bf,
 };
-const FLOOR3_MARKER_CLEARED_COLOR = 0x4ade80;
+const FLOOR3_MARKER_CLEARED_COLOR = 0x94a3b8;
 const FLOOR3_MARKER_LOCKED_COLOR = 0x64748b;
 
 /** Shared marker styling so the overlay map and the docked radar never drift. */
@@ -104,6 +106,12 @@ const RADAR_EDGE_ARROW_INSET = 10;
 const OVERLAY_EDGE_ARROW_SIZE = 6;
 /** Inset (screen pixels) from the viewport boundary for the overlay edge arrow. */
 const OVERLAY_EDGE_ARROW_INSET = 10;
+
+export interface MinimapEntityMarker {
+  readonly eid: number;
+  readonly color: number;
+  readonly surface: 'radar' | 'overlay';
+}
 
 export interface MinimapWaypointArrowBounds {
   readonly questId: string;
@@ -234,6 +242,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   /** Screen-space bounds of the docked radar waypoint edge arrow when drawn. */
   getRadarWaypointArrowBounds(): ScreenBounds | null;
   getRadarWaypointArrowStates(): readonly MinimapWaypointArrowBounds[];
+  getEntityMarkerStates(): readonly MinimapEntityMarker[];
   getFloor3MarkerStates(): readonly Floor3OverworldMarker[];
   destroy(): void;
 } {
@@ -732,6 +741,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
   }
 
+  let lastEntityMarkers: MinimapEntityMarker[] = [];
+
   /**
    * Pick the enemy-dot color + radius for a mob. Mobs with `FamilyMembership`
    * (Floor 2) draw in their family's color; bosses render larger. Trash mobs
@@ -742,6 +753,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     eid: number,
     baseRadius: number,
   ): { color: number; radius: number } {
+    if (
+      hasComponent(world.ecs, eid, Companion) &&
+      hasComponent(world.ecs, eid, Team) &&
+      world.stores.team.id[eid] === TeamId.PLAYER
+    ) {
+      return { color: DOT_COMPANION, radius: baseRadius };
+    }
     if (!hasComponent(world.ecs, eid, FamilyMembership)) {
       return { color: DOT_ENEMY, radius: baseRadius };
     }
@@ -816,6 +834,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     const tileFt = floorMap.config.tileSizeFt;
+    lastEntityMarkers = [];
     const enemies = query(world.ecs, [Enemy, Position]);
     for (const eid of enemies) {
       const wx = world.stores.position.x[eid] ?? 0;
@@ -828,6 +847,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);
       dotGraphics.fillStyle(DOT_OUTLINE, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, style.radius + DOT_OUTLINE_WIDTH);
+      lastEntityMarkers.push({ eid, color: style.color, surface: 'overlay' });
       dotGraphics.fillStyle(style.color, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, style.radius);
     }
@@ -843,7 +863,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       if (!visited[idx]) continue;
       dotGraphics.fillStyle(DOT_OUTLINE, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_NPC_RADIUS + DOT_OUTLINE_WIDTH);
-      dotGraphics.fillStyle(DOT_NPC, 1);
+      const color = world.floorId === 'floor3' ? DOT_FLOOR3_NPC : DOT_NPC;
+      lastEntityMarkers.push({ eid, color, surface: 'overlay' });
+      dotGraphics.fillStyle(color, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_NPC_RADIUS);
     }
 
@@ -1165,6 +1187,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     const outline = DOT_OUTLINE_WIDTH * scale;
+    lastEntityMarkers = [];
     const enemyEids = query(world.ecs, [Enemy, Position]);
     for (const eid of enemyEids) {
       const wx = world.stores.position.x[eid] ?? 0;
@@ -1179,6 +1202,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const style = resolveEnemyDotStyle(world, eid, DOT_ENEMY_RADIUS);
       radarScratch.fillStyle(DOT_OUTLINE, 1);
       radarScratch.fillCircle(ex, ey, style.radius * scale + outline);
+      lastEntityMarkers.push({ eid, color: style.color, surface: 'radar' });
       radarScratch.fillStyle(style.color, 1);
       radarScratch.fillCircle(ex, ey, style.radius * scale);
     }
@@ -1196,7 +1220,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       if (!inDial(nx, ny)) continue;
       radarScratch.fillStyle(DOT_OUTLINE, 1);
       radarScratch.fillCircle(nx, ny, DOT_NPC_RADIUS * scale + outline);
-      radarScratch.fillStyle(DOT_NPC, 1);
+      const color = world.floorId === 'floor3' ? DOT_FLOOR3_NPC : DOT_NPC;
+      lastEntityMarkers.push({ eid, color, surface: 'radar' });
+      radarScratch.fillStyle(color, 1);
       radarScratch.fillCircle(nx, ny, DOT_NPC_RADIUS * scale);
     }
 
@@ -1607,6 +1633,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       !masterHidden && hudMapBg.visible ? lastTrackedRadarWaypointArrowBounds : null,
     getRadarWaypointArrowStates: (): readonly MinimapWaypointArrowBounds[] =>
       !masterHidden && hudMapBg.visible ? lastRadarWaypointArrowBounds : [],
+    getEntityMarkerStates: () => (masterHidden ? [] : lastEntityMarkers),
     getFloor3MarkerStates: () => lastFloor3Markers,
     destroy,
   };

@@ -16,6 +16,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
+import { parsePng, regionContainsColor } from './helpers/pixels.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import {
   loadMainSceneProbeLab,
@@ -152,7 +153,77 @@ describe('MainGameScene Floor 3 party-combat UX wiring', () => {
       await waitForState(page, (state) => state.floor3RosterButtonVisible, {
         label: 'Floor 3 roster touch button visible',
       });
-      await page.screenshot({ path: 'files/floor3-auto-party-main-scene.png' });
+      await mainSceneProbe.setSimulationPaused(page, true);
+      await page.evaluate(() => window.__mainSceneProbe!.arrangeFloor3MarkerProbe());
+      await page.waitForTimeout(100);
+      const ux = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      expect(ux.dots.some(({ color }) => color === 0xef4444)).toBe(true);
+      expect(ux.dots.some(({ color }) => color === 0x60a5fa)).toBe(true);
+      const allies = ux.dots.filter(({ eid }) => ux.companions.includes(eid));
+      expect(allies.length).toBeGreaterThan(0);
+      expect(allies.every(({ color, surface }) => color === 0x4ade80 && surface === 'radar')).toBe(
+        true,
+      );
+      expect(
+        ux.dots
+          .filter(({ eid }) => !ux.companions.includes(eid))
+          .every(({ color }) => color !== 0x4ade80),
+      ).toBe(true);
+      const shot = await page
+        .locator('canvas')
+        .first()
+        .screenshot({ path: 'files/floor3-auto-party-main-scene.png' });
+      const png = parsePng(shot);
+      const sx = png.width / 1280;
+      const sy = png.height / 720;
+      const radar = ux.radar!;
+      expect(
+        regionContainsColor(
+          png,
+          { x: radar.x * sx, y: radar.y * sy, w: radar.width * sx, h: radar.height * sy },
+          { r: 74, g: 222, b: 128 },
+          15,
+        ),
+      ).toBe(true);
+
+      // The overlay and radar must share ally styling, including their real draw path.
+      await page.keyboard.press('m');
+      await expect
+        .poll(async () => (await mainSceneProbe.getFloor3LeagueHudState(page)).mapOverlayOpen)
+        .toBe(true);
+      const overlay = await page.evaluate(() => window.__mainSceneProbe!.getFloor3UxState());
+      const overlayAllies = overlay.dots.filter(({ eid }) => overlay.companions.includes(eid));
+      expect(overlayAllies.length).toBeGreaterThan(0);
+      expect(
+        overlayAllies.every(({ color, surface }) => color === 0x4ade80 && surface === 'overlay'),
+      ).toBe(true);
+      await page.keyboard.press('m');
+      await expect
+        .poll(async () => (await mainSceneProbe.getFloor3LeagueHudState(page)).mapOverlayOpen)
+        .toBe(false);
+
+      for (const viewport of [
+        { width: 960, height: 540 },
+        { width: 800, height: 450 },
+        { width: 1600, height: 900 },
+        { width: 1280, height: 720 },
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.waitForTimeout(150);
+        const party = (await mainSceneProbe.getFloor3PartyHudState(page)).hudBounds!;
+        expect(party).not.toBeNull();
+        const buttons = await mainSceneProbe.getCornerButtonLayout(page);
+        for (const { id, bounds: b } of buttons.filter(({ visible }) => visible)) {
+          expect(
+            party.x < b.x + b.width &&
+              party.x + party.width > b.x &&
+              party.y < b.y + b.height &&
+              party.y + party.height > b.y,
+            `${id} overlaps party at ${viewport.width}x${viewport.height}`,
+          ).toBe(false);
+        }
+      }
+      await mainSceneProbe.setSimulationPaused(page, false);
 
       // The on-canvas roster button opens the real roster overlay with a live detail column.
       expect(await mainSceneProbe.tapFloor3RosterButton(page)).toBe(true);

@@ -43,6 +43,7 @@ import {
   Homing,
   MeleeSwing,
   PartySlot,
+  Npc,
   Position,
   Projectile,
   Prop,
@@ -91,7 +92,7 @@ import {
   isBloodyFootprintSourceActive,
 } from '../../shared/blood-surfaces.js';
 import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
-import type { MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
+import type { MinimapEntityMarker, MinimapWaypointArrowBounds } from '../../engine/HudMinimap.js';
 import type { HudFloor4ArenaProbeState } from '../../engine/HudFloor4Arena.js';
 import {
   generatedBriefIdForHarvestable,
@@ -295,7 +296,8 @@ interface MainSceneInternals {
       bracket: readonly string[];
       bounds: ScreenBounds | null;
     };
-    getFloor3OverworldMarkers?(): readonly { kind: string }[];
+    getMinimapEntityMarkers?(): readonly MinimapEntityMarker[];
+    getFloor3OverworldMarkers?(): readonly { id: string; kind: string; state: string }[];
     /**
      * The currently-rendered announcement banner content (kind + exact
      * text), or `null` when no banner is showing. Real rendered projection,
@@ -809,6 +811,17 @@ export interface Floor3PartyHudProbeState {
  * bounds, so an e2e can prove the two top-center panels never overlap in the
  * shipped scene, and the semantic minimap markers the docked radar projects.
  */
+export interface Floor3UxProbeState {
+  readonly texts: readonly { name: string; text: string }[];
+  readonly companions: readonly number[];
+  readonly dots: readonly MinimapEntityMarker[];
+  readonly markers: readonly { id: string; kind: string; state: string }[];
+  readonly studios: readonly { id: string; defeated: boolean }[];
+  readonly defeatedCount: number;
+  readonly keptEid: number | null;
+  readonly radar: ScreenBounds | null;
+}
+
 export interface Floor3LeagueHudProbeState {
   readonly visible: boolean;
   readonly phase: string;
@@ -1276,6 +1289,10 @@ export interface MainSceneProbeApi {
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
   getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
+  getFloor3UxState(): Floor3UxProbeState;
+  knockOutFloor3Encounter(kind: 'studio' | 'final-four' | 'party'): void;
+  arrangeFloor3MarkerProbe(): void;
+  unlockFloor3LeagueProbe(): void;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
@@ -2635,6 +2652,88 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         rosterEntries: roster?.entries ?? [],
         rosterDetailLineCount: roster?.detailLines.length ?? 0,
       };
+    },
+
+    getFloor3UxState: (): Floor3UxProbeState => {
+      const scene = getScene();
+      const world = scene?.world;
+      const texts: { name: string; text: string }[] = [];
+      const visit = (node: Phaser.GameObjects.GameObject): void => {
+        if ('visible' in node && !node.visible) return;
+        if (node instanceof Phaser.GameObjects.Text)
+          texts.push({ name: node.name, text: node.text });
+        if (node instanceof Phaser.GameObjects.Container) node.list.forEach(visit);
+      };
+      getPhaserScene()?.children.list.forEach(visit);
+      const league = world?.floorExtendedState?.floor3Studios;
+      return {
+        texts,
+        companions: world
+          ? Array.from(query(world.ecs, [Companion, PartySlot, Team])).filter(
+              (eid) => world.stores.team.id[eid] === TeamId.PLAYER,
+            )
+          : [],
+        dots: scene?.hudUi?.getMinimapEntityMarkers?.() ?? [],
+        markers: scene?.hudUi?.getFloor3OverworldMarkers?.() ?? [],
+        studios: (league?.studios ?? []).map(({ id, defeated }) => ({ id, defeated })),
+        defeatedCount: league?.studiosDefeatedCount ?? 0,
+        keptEid: league?.keptCompanionEid ?? null,
+        radar: scene?.hudUi?.getMinimapBounds?.() ?? null,
+      };
+    },
+
+    arrangeFloor3MarkerProbe: (): void => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) return;
+      const player = playerEidOf(scene);
+      // Place a hostile and a neutral nearby too, so color-separation checks
+      // exercise non-empty categories rather than passing vacuously.
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      spawnBehaviorEnemy(world, px - 2, py + 2, 100, AI_TYPE.CHASE, 0, 0, 0);
+      const npc = query(world.ecs, [Npc, Position])[0];
+      if (npc !== undefined) {
+        world.stores.position.x[npc] = px - 2;
+        world.stores.position.y[npc] = py - 2;
+      }
+      let offset = 0;
+      for (const eid of query(world.ecs, [Companion, PartySlot, Team])) {
+        if (world.stores.team.id[eid] !== TeamId.PLAYER) continue;
+        world.stores.position.x[eid] = (world.stores.position.x[player] ?? 0) + 2 + offset++;
+        world.stores.position.y[eid] = (world.stores.position.y[player] ?? 0) + 2;
+      }
+    },
+
+    unlockFloor3LeagueProbe: (): void => {
+      const world = getScene()?.world;
+      if (!world) return;
+      // Seed a late-season roster so the endgame test skips XP grinding and
+      // poach prompts; encounter victories still go through the real pipeline.
+      world.playerLevel.level = 100;
+      for (const eid of query(world.ecs, [Companion, PartySlot, Team])) {
+        if (world.stores.team.id[eid] === TeamId.PLAYER) world.stores.partySlot.locked[eid] = 1;
+      }
+    },
+
+    knockOutFloor3Encounter: (kind: 'studio' | 'final-four' | 'party'): void => {
+      const world = getScene()?.world;
+      const league = world?.floorExtendedState?.floor3Studios;
+      if (!world || !league) return;
+      const encounter: { readonly teamIds: readonly number[] } | undefined =
+        kind === 'studio'
+          ? league.studios.find((studio) => studio.unlocked && !studio.defeated)
+          : kind === 'party'
+            ? { teamIds: [TeamId.PLAYER] }
+            : league.finalFour;
+      if (!encounter) return;
+      // Change combat inputs only; the ordinary scene pipeline owns defeat,
+      // goal flags, quest completion, marker transitions and the next modal.
+      for (const eid of query(world.ecs, [Companion, Team])) {
+        if (!encounter.teamIds.includes(world.stores.team.id[eid] ?? -1)) continue;
+        world.stores.health.current[eid] = 0;
+        world.stores.companion.knockedOut[eid] = 1;
+      }
     },
 
     getFloor3LeagueHudState: (): Floor3LeagueHudProbeState => {

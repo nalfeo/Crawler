@@ -79,6 +79,7 @@ export function createHudUI(scene: Phaser.Scene): {
   /** Floor-3 party HUD read-back (rows, notices). */
   getFloor3PartyState(): HudFloor3PartyState;
   getFloor3LeagueState(): HudFloor3LeagueState;
+  getMinimapEntityMarkers(): readonly import('./HudMinimap.js').MinimapEntityMarker[];
   getFloor3OverworldMarkers(): readonly Floor3OverworldMarker[];
   /** Floor-4 arena HUD read-back (clock, wave pips, Headliner, notices). */
   getFloor4ArenaState(): HudFloor4ArenaProbeState;
@@ -380,6 +381,7 @@ export function createHudUI(scene: Phaser.Scene): {
       // panels so overlap guards can compare them directly.
       return state.bounds ? { ...state, bounds: transformBounds(state.bounds, topCenter) } : state;
     },
+    getMinimapEntityMarkers: minimap.getEntityMarkerStates,
     getFloor3OverworldMarkers: () => (hidden ? [] : minimap.getFloor3MarkerStates()),
     getFloor4ArenaState: () => {
       const state = floor4Arena.getState();

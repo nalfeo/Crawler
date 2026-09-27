@@ -199,6 +199,7 @@ export function createHudQuestTracker(
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
+  body.setName('quest-tracker-body');
   root.add([titleStrip, titleText, chevron, body]);
   root.sort('depth');
   const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
