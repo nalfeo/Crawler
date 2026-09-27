@@ -998,6 +998,15 @@ const selfAdmission = await runBoundedSelfAdmission({
       return false;
     }
 
+    // `ci-already-landed` is a disposition hint, not a permanent merge-train
+    // exclusion. Admit it through the normal candidate build so the squash-diff
+    // check authoritatively distinguishes a true no-op from a stale marker.
+    // A real diff removes the obsolete hint as it enters the queue; a no-op is
+    // still isolated by buildCandidate() and receives merge-train-noop.
+    if (labels.some((label) => label.name === 'ci-already-landed')) {
+      await removeLabel(candidate.number, 'ci-already-landed');
+      process.stdout.write(`cleared stale ci-already-landed label pr=#${candidate.number}\n`);
+    }
     await setLabel(candidate.number, QUEUE_LABEL);
     candidate.labels = [...labels, { name: QUEUE_LABEL }];
     process.stdout.write(`self-admitted merge-train pr=#${candidate.number}\n`);

@@ -135,7 +135,6 @@ export function selfAdmissionCandidates(pullRequests, repository, capacity = MAX
         !labels.some(
           (label) =>
             excludedLabels.has(label.name) ||
-            label.name === 'ci-already-landed' ||
             label.name === 'ci-lifecycle-abandoned' ||
             label.name.startsWith(OWNER_LABEL_PREFIX),
         )

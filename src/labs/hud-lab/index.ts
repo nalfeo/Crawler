@@ -363,6 +363,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
             chestsForceResolved: 1,
             overtimeStarted: surface === 'overtime' ? 1 : 0,
             overtimeStepsApplied: surface === 'overtime' ? 2 : 0,
+            fights: [],
           },
           actBaseline: { playerGold: 100, dropGold: 100, enemiesSpawned: 20, enemiesCut: 1 },
           breakGoldSnapshot: 144,
