@@ -300,9 +300,10 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
     ledger.spentOnMerchantWeapon +
     ledger.spentOnSpell +
     ledger.spentOnGreenRoom;
-  const unspentAtExit = Math.max(0, earnedTotal - spentTotal);
+  const unrecoveredTheft = Math.max(0, ledger.stolenByEnemies - ledger.recoveredStolenGold);
+  const unspentAtExit = Math.max(0, earnedTotal - spentTotal - unrecoveredTheft);
   const spendableEarned = ledger.earnedBeforeExit ?? earnedTotal;
-  const unspentSpendable = Math.max(0, spendableEarned - spentTotal);
+  const unspentSpendable = Math.max(0, spendableEarned - spentTotal - unrecoveredTheft);
   return {
     earnedFromDrops: ledger.earnedFromDrops,
     earnedFromLootBoxes: ledger.earnedFromLootBoxes,
@@ -333,6 +334,9 @@ function computeGoldEconomy(world: GameWorld): GoldEconomyMetrics {
       (ledger.greenRoomPurchases > 0 ? 1 : 0),
   };
 }
+
+// Test-only access to the same reconstruction used by production run statistics.
+export { computeGoldEconomy as _computeGoldEconomy };
 
 interface EquipmentSpendTelemetry {
   readonly soldOfferKeys: Set<string>;

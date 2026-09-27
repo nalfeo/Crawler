@@ -47,6 +47,9 @@ export const PLAYER_DEPTH = 6;
  */
 export const LIGHTING_OVERLAY_DEPTH = 800;
 
+/** Gameplay danger is a lighting exception, unlike cosmetic world VFX. */
+export const ABILITY_TELEGRAPH_DEPTH = LIGHTING_OVERLAY_DEPTH + 1;
+
 /**
  * Depth buckets for static scene-dressing props. Keep the background band below
  * the entity plane so floor dressing never renders on top of companions while

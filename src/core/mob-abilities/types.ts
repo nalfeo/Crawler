@@ -123,6 +123,34 @@ export interface MobAbilityContractingAnnulusGeometry {
   readonly ringWidthFt: number;
 }
 
+/** An exact dangerous ring with a genuinely safe central hole. */
+export interface MobAbilityAnnulusGeometry {
+  readonly kind: 'annulus';
+  readonly x: number;
+  readonly y: number;
+  readonly innerRadiusFt: number;
+  readonly outerRadiusFt: number;
+}
+
+/** Ordered intervals describe the visible inner-to-outer warning sequence. */
+export interface MobAbilityCompositeGeometry {
+  readonly kind: 'composite';
+  readonly shapes: readonly MobAbilityGeometry[];
+  readonly orderedIntervalMs?: number;
+}
+
+/** Public sector and rotation arrow; active samples expose its current facing. */
+export interface MobAbilitySweepingArcGeometry {
+  readonly kind: 'sweeping-arc';
+  readonly originX: number;
+  readonly originY: number;
+  readonly facingRad: number;
+  readonly angleDeg: number;
+  readonly rangeFt: number;
+  readonly sweepAngleDeg: number;
+  readonly direction: -1 | 1;
+}
+
 export type MobAbilityGeometry =
   | MobAbilityCircleGeometry
   | MobAbilitySpawnCirclesGeometry
@@ -131,7 +159,18 @@ export type MobAbilityGeometry =
   | MobAbilityRadialProjectilesGeometry
   | MobAbilityProjectileFanGeometry
   | MobAbilityConeGeometry
-  | MobAbilityContractingAnnulusGeometry;
+  | MobAbilityContractingAnnulusGeometry
+  | MobAbilityAnnulusGeometry
+  | MobAbilityCompositeGeometry
+  | MobAbilitySweepingArcGeometry;
+
+export function flattenMobAbilityGeometry(
+  geometry: MobAbilityGeometry,
+): readonly Exclude<MobAbilityGeometry, MobAbilityCompositeGeometry>[] {
+  return geometry.kind === 'composite'
+    ? geometry.shapes.flatMap((shape) => flattenMobAbilityGeometry(shape))
+    : [geometry];
+}
 
 export type MobAbilityTargetingMode = 'player-direction' | 'player-position' | 'self';
 export type MobAbilityOriginMode = 'locked' | 'follows-caster';
@@ -334,14 +373,12 @@ export interface MobAbilityInstanceState {
 }
 
 /**
- * Root runtime state stored on the world. Default OFF: an empty, disabled
- * runtime is the production default so the real game registers no active
- * definitions and emits zero casts/events.
+ * Root runtime state stored on the world. Fresh worlds are empty and disabled;
+ * production scenarios and labs explicitly opt in at encounter boundaries.
  */
 export interface MobAbilityRuntime {
   /**
-   * Explicit feature gate. The real game leaves this `false`; only the combat
-   * arena lab (and future explicit production activation) sets it `true`.
+   * Explicit feature gate, enabled by participating production scenarios/labs.
    */
   enabled: boolean;
   /**
@@ -350,7 +387,7 @@ export interface MobAbilityRuntime {
    * never at initialization/spawn.
    */
   encounterActive: boolean;
-  /** Registered per-caster ability instances. Empty in production. */
+  /** Registered per-caster ability instances; dormant bosses are not registered. */
   readonly byEntity: Map<number, MobAbilityInstanceState>;
   /** Committed public cue state for the renderer and AI avoidance, rebuilt each tick. */
   readonly cues: MobAbilityCue[];
@@ -424,7 +461,9 @@ export interface MobAbilityOwnedZone {
   readonly abilityId: string;
   readonly casterEid: number;
   readonly sourceId: string;
-  readonly geometry: MobAbilityGeometry;
+  geometry: MobAbilityGeometry;
+  /** Pure time sampling: the runtime publishes this geometry before damage ticks. */
+  readonly sampleGeometry?: (elapsedMs: number) => MobAbilityGeometry;
   readonly durationMs: number;
   readonly tickIntervalMs: number;
   nextTickAtMs: number;
@@ -501,7 +540,11 @@ export function circlesForMobAbilityGeometry(
     case 'lane':
     case 'cone':
     case 'contracting-annulus':
+    case 'annulus':
+    case 'sweeping-arc':
       return [];
+    case 'composite':
+      return geometry.shapes.flatMap((shape) => circlesForMobAbilityGeometry(shape));
     case 'spawn-circles':
     case 'multi-circle':
       return geometry.circles;
