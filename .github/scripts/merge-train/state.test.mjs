@@ -102,7 +102,6 @@ test('self-admission excludes PRs reserved for recovery or already processed by 
     'merge-train-validation-failed',
     'merge-train-landed',
     'ci-conflict-order-wait',
-    'ci-already-landed',
     'ci-lifecycle-abandoned',
     'ci-owner-pr-17',
   ];
@@ -116,6 +115,18 @@ test('self-admission excludes PRs reserved for recovery or already processed by 
       (entry) => entry.number,
     ),
     [99],
+  );
+});
+
+test('self-admission revalidates ci-already-landed PRs instead of suppressing them', () => {
+  const alreadyLanded = pr(10, {
+    labels: [{ name: 'ci-already-landed' }],
+    created_at: '2026-06-01T00:00:00Z',
+  });
+
+  assert.deepEqual(
+    selfAdmissionCandidates([alreadyLanded], 'nalfeo/Crawler').map((entry) => entry.number),
+    [10],
   );
 });
 
