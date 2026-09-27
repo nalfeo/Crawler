@@ -2,6 +2,10 @@ apiVersion: goobers.dev/v1alpha1
 kind: Manifest
 metadata:
   name: crawler-goobers
+  annotations:
+    # Lifecycle and review-thread workflows are dispatched explicitly by
+    # GitHub Actions; they must not run on an autonomous local schedule.
+    goobers.dev/acknowledge-manual-only: 'true'
 spec:
   instance:
     name: crawler

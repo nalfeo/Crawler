@@ -19,10 +19,7 @@ runner:
     - GOOBERS_RESUME_FAILURE
     - GOOBERS_IMPLEMENTATION_TIMEOUT_MINUTES
 runConditions:
-  # 1 matches crawler-feature-pr's readiness.maxConcurrentRuns. Hosted CI does
-  # not raise this either: goobers-run.yml runs four SEPARATE single-capacity
-  # instance roots (2 matrix lanes x 2 slots) rather than one instance admitting
-  # several runs, so the four-workflow ceiling is a property of how many roots
-  # exist. Mirror that locally by starting a second instance root, not by
-  # raising this number.
-  maxParallelRuns: 1
+  # The local daemon shares this cap across workflows: one implementation run
+  # plus up to four simultaneous PR-remediation runs. The disabled hosted
+  # goobers-run.yml path overrides each throwaway slot root back to 1.
+  maxParallelRuns: 5
