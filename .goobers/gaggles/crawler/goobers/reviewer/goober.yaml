@@ -12,6 +12,8 @@ spec:
   harnessOptions:
     auth: ambient-chatgpt
     allowFileBackedCredentials: true
+    # Trusted local Goobers uses WSL; remediation checks may run repository validation tools.
+    sandbox: danger-full-access
   capabilities:
     - agent:model
   skills:
