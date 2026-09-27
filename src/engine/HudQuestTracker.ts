@@ -137,6 +137,7 @@ export function createHudQuestTracker(
 ): {
   sync(world: GameWorld, playerEid?: number): void;
   setVisible(visible: boolean): void;
+  getRenderedText(): string;
   getBounds(): ScreenBounds | null;
   getArrowToggleBounds(): readonly { questId: string; bounds: ScreenBounds }[];
   destroy(): void;
@@ -408,5 +409,12 @@ export function createHudQuestTracker(
     );
   }
 
-  return { sync, setVisible, getBounds, getArrowToggleBounds, destroy };
+  return {
+    sync,
+    setVisible,
+    getBounds,
+    getArrowToggleBounds,
+    getRenderedText: () => (root.visible && body.visible ? body.text : ''),
+    destroy,
+  };
 }

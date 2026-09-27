@@ -13,7 +13,7 @@ import { createHudFloorTimer } from './HudFloorTimer.js';
 import { createHudBossBar } from './HudBossBar.js';
 import { createHudAnnouncementBanner } from './HudAnnouncementBanner.js';
 import { createHudMinimap } from './HudMinimap.js';
-import type { MinimapWaypointArrowBounds } from './HudMinimap.js';
+import type { MinimapEntityMarkerState, MinimapWaypointArrowBounds } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
 import { ABILITY_BAR_LAYOUT, createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
@@ -78,7 +78,9 @@ export function createHudUI(scene: Phaser.Scene): {
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
   /** Floor-3 party HUD read-back (rows, notices). */
   getFloor3PartyState(): HudFloor3PartyState;
+  getQuestTrackerText(): string;
   getFloor3LeagueState(): HudFloor3LeagueState;
+  getMinimapEntityMarkerStates(): readonly MinimapEntityMarkerState[];
   getFloor3OverworldMarkers(): readonly Floor3OverworldMarker[];
   /** Floor-4 arena HUD read-back (clock, wave pips, Headliner, notices). */
   getFloor4ArenaState(): HudFloor4ArenaProbeState;
@@ -370,6 +372,7 @@ export function createHudUI(scene: Phaser.Scene): {
     },
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
+    getQuestTrackerText: questTracker.getRenderedText,
     getFloor3PartyState: floor3Party.getState,
     getFloor3LeagueState: () => {
       const state = floor3League.getState();
@@ -380,6 +383,7 @@ export function createHudUI(scene: Phaser.Scene): {
       // panels so overlap guards can compare them directly.
       return state.bounds ? { ...state, bounds: transformBounds(state.bounds, topCenter) } : state;
     },
+    getMinimapEntityMarkerStates: minimap.getEntityMarkerStates,
     getFloor3OverworldMarkers: () => (hidden ? [] : minimap.getFloor3MarkerStates()),
     getFloor4ArenaState: () => {
       const state = floor4Arena.getState();

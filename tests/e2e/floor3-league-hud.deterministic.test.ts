@@ -1,36 +1,15 @@
 /**
- * Real-artifact guard for the Floor 3 Companion League HUD (game-design §15
- * surfaces 10, 11 and 13).
- *
- * The unit tests cover the pure view-model builders only; a builder can never
- * prove the shipped `MainGameScene` mounts the panel, that the panel clears the
- * floor timer Floor 3 still shows (unlike Floor 4, whose scenario hides it), or
- * that the semantic minimap markers reach the docked radar without the player
- * ever opening the full map overlay.
- *
- * Determinism: the probe lab boots with a fixed world seed, every assertion
- * reads mounted-widget state (never wall-clock or RNG), and the only timing
- * dependence is bounded polling for the scene's next update tick.
+ * Real MainGameScene regression for Floor 3 slice 14: Studio objectives use
+ * the standard tracker, ally dots reach both minimap surfaces, and defeating
+ * a Studio updates the quest/waypoint and semantic marker together. A paused,
+ * fixed-seed pixel check proves the green ally glyph reaches the rendered radar.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
+import { parsePng, regionContainsColor } from './helpers/pixels.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { loadMainSceneProbeLab, mainSceneProbe, waitForState } from './helpers/main-scene-probe.js';
 import type { Floor3LeagueHudProbeState } from '../../src/labs/main-scene-probe-lab/index.js';
-
-interface Bounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function overlaps(a: Bounds, b: Bounds, tolerance = 0.5): boolean {
-  return (
-    Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x) > tolerance &&
-    Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) > tolerance
-  );
-}
 
 async function waitForModalKind(page: Page, kind: string, label: string): Promise<void> {
   const deadline = Date.now() + 15_000;
@@ -71,7 +50,7 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
     await closeQuietly(browser);
   });
 
-  it('mounts the league bracket clear of the floor timer and projects minimap markers', async () => {
+  it('uses the quest tracker instead of a Studios counter and draws distinct allies', async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     try {
@@ -99,24 +78,57 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
 
       const mounted = await waitForLeagueHud(
         page,
-        (s) => s.visible && s.bounds !== null,
+        (s) => s.phase === 'studios' && s.markerKinds.length > 0,
         'mounted Floor 3 league bracket HUD',
       );
       expect(mounted.phase).toBe('studios');
-      expect(mounted.headline).toMatch(/^STUDIOS · \d+\/\d+$/);
-      expect(mounted.detail.length).toBeGreaterThan(0);
-      expect(mounted.bracket).toHaveLength(4);
-      expect(mounted.bracket.every((pip) => pip === 'pending')).toBe(true);
-
-      // Floor 3 does NOT hide the floor timer, so the two top-center panels
-      // must be laid out one below the other, never stacked on each other.
+      expect(mounted.visible).toBe(false);
+      expect(mounted.bounds).toBeNull();
+      expect(mounted.questTrackerText).toMatch(/Defeat.*Studio/);
       expect(mounted.timerPanel).not.toBeNull();
-      const panel = mounted.bounds!;
-      const timer = mounted.timerPanel!;
-      expect(overlaps(panel, timer), 'league panel must not overlap the floor timer').toBe(false);
-      expect(panel.y).toBeGreaterThanOrEqual(timer.y + timer.height - 0.5);
-      expect(panel.x).toBeGreaterThanOrEqual(-0.5);
-      expect(panel.x + panel.width).toBeLessThanOrEqual(1280.5);
+      const quests = await mainSceneProbe.getActiveQuestIds(page);
+      expect(quests.some((id) => id.startsWith('floor3-studio-'))).toBe(true);
+      await expect
+        .poll(async () => {
+          const state = await mainSceneProbe.getFloor3LeagueHudState(page);
+          return state.entityMarkers.filter((marker) => marker.ally);
+        })
+        .not.toHaveLength(0);
+      const radar = await mainSceneProbe.getFloor3LeagueHudState(page);
+      for (const marker of radar.entityMarkers.filter((marker) => marker.ally)) {
+        expect(marker.color).toBe(0x4ade80);
+        expect(marker.surface).toBe('radar');
+      }
+      expect(
+        radar.entityMarkers
+          .filter((marker) => !marker.ally)
+          .every((marker) => marker.color !== 0x4ade80),
+      ).toBe(true);
+      await mainSceneProbe.setSimulationPaused(page, true);
+      await page.evaluate(() => window.__mainSceneProbe!.separateFloor3AllyMarker());
+      const radarBounds = (await mainSceneProbe.getSafeAreaLayout(page)).surfaces.find(
+        (surface) => surface.name === 'radar',
+      )!.bounds;
+      await expect
+        .poll(async () => {
+          const png = parsePng(await page.locator('#lab-canvas canvas').screenshot());
+          const sx = png.width / 1280;
+          const sy = png.height / 720;
+          return regionContainsColor(
+            png,
+            {
+              x: Math.floor(radarBounds.x * sx),
+              y: Math.floor(radarBounds.y * sy),
+              w: Math.ceil(radarBounds.width * sx),
+              h: Math.ceil(radarBounds.height * sy),
+            },
+            { r: 0x4a, g: 0xde, b: 0x80 },
+            5,
+          );
+        })
+        .toBe(true);
+      await page.screenshot({ path: 'files/floor3-ux-after.png' });
+      await mainSceneProbe.setSimulationPaused(page, false);
 
       // Overworld markers (surface 13) must reach the DOCKED radar, i.e.
       // without the player ever opening the full-map overlay.
@@ -129,6 +141,38 @@ describe('MainGameScene Floor 3 league HUD wiring', () => {
       expect(withMarkers.mapOverlayOpen).toBe(false);
       expect(withMarkers.markerKinds).toContain('studio');
       expect(withMarkers.markerKinds).toContain('final-four-gate');
+      const studioId = await page.evaluate(() => window.__mainSceneProbe!.knockOutFloor3Studio());
+      expect(studioId).not.toBeNull();
+      // A defeat can open the standard poach modal, which temporarily hides the HUD.
+      await waitForModalKind(page, 'floor3-poach', 'Studio defeat poach');
+      await page.keyboard.press('Enter');
+      const cleared = await waitForLeagueHud(
+        page,
+        (state) =>
+          state.markers.some(
+            (marker) => marker.id === `studio:${studioId}` && marker.state === 'cleared',
+          ),
+        'canonical Studio marker cleared',
+      );
+      expect(cleared.studiosDefeated).toBe(1);
+      expect(cleared.visible).toBe(false);
+      expect(await mainSceneProbe.getActiveQuestIds(page)).not.toContain(
+        `floor3-studio-${studioId}`,
+      );
+      expect(await mainSceneProbe.getQuestWaypointIds(page)).not.toContain(
+        `floor3-studio-${studioId}`,
+      );
+      // Both map surfaces share allegiance styling.
+      await page.keyboard.press('m');
+      await expect
+        .poll(async () => (await mainSceneProbe.getFloor3LeagueHudState(page)).mapOverlayOpen)
+        .toBe(true);
+      const overlay = await mainSceneProbe.getFloor3LeagueHudState(page);
+      const allies = overlay.entityMarkers.filter((marker) => marker.ally);
+      expect(allies.length).toBeGreaterThan(0);
+      expect(
+        allies.every((marker) => marker.color === 0x4ade80 && marker.surface === 'overlay'),
+      ).toBe(true);
     } finally {
       await closeQuietly(context);
     }
