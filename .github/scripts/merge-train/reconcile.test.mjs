@@ -2000,6 +2000,8 @@ test('the merge train self-admits live eligible PRs before constructing its queu
   assert.ok(admissionStart > 0 && admissionStart < queueConstruction);
   assert.match(block, /const admission = await eligible\(liveCandidate\)/);
   assert.match(block, /finalCandidate\.head\?\.sha !== liveCandidate\.head\?\.sha/);
+  assert.match(block, /await removeLabel\(candidate\.number, 'ci-already-landed'\)/);
+  assert.match(block, /cleared stale ci-already-landed label/);
   assert.match(block, /await setLabel\(candidate\.number, QUEUE_LABEL\)/);
   assert.match(block, /for \(const \{ candidate, error \} of selfAdmission\.failures\)/);
 });

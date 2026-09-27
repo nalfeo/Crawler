@@ -69,3 +69,14 @@ lasted 8.67 seconds against its 9.90-second opening mechanic. Its health is
 ## Recommended next steps
 
 Monitor the replacement CI run for PR #4743; do not auto-merge.
+
+## Merge-train follow-up
+
+The PR was later marked `ci-already-landed`, which the merge-train
+self-admission prefilter treated as a permanent exclusion. That bypassed the
+train's own authoritative squash-diff proof and could leave a stale label
+blocking a PR with remaining changes. The train now revalidates such PRs: it
+clears the label while queuing the candidate, then its existing candidate build
+marks only a genuinely empty squash diff as `merge-train-noop`. Merge-train
+state and reconciliation tests passed (146 total), and this preserves the
+no-op guard rather than weakening it.
