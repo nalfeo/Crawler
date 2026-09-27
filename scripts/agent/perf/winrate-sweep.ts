@@ -51,6 +51,7 @@ import {
 } from './worker-pool.js';
 import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
 import { classifySweepRun } from './winrate-sweep-classify.js';
+import { aggregateProgression, type ChainedRunStats } from './progression-aggregate.js';
 import { runProgression } from '../../../src/game/ai/progression-runner.js';
 import { attachReleaseBaselineRuns, serializeReleaseBaseline } from './release-baseline.js';
 import { runStatsToExperiment } from './experiment-result.js';
@@ -62,17 +63,6 @@ import { buildFailureSignature } from './baseline-regression-check.js';
  * never collide across the seed panels used by the sweep tiers.
  */
 const CHAINED_AI_SEED_STRIDE = 1_000_000;
-
-/**
- * A flattened chained-progression run: a normal `RunStats` for the final leg,
- * with chain-wide totals folded in and the chain provenance attached.
- */
-interface ChainedRunStats extends RunStats {
-  chainedBudgetMs: number | null;
-  chainedOfficialWin: boolean;
-  chainedFloorIds: string[];
-  chainedClearedFloorIds: string[];
-}
 
 interface SweepTask {
   weapon: string;
@@ -112,9 +102,9 @@ interface SweepTaskResult {
  *
  * The progression's aggregate totals replace the last leg's time/frame fields,
  * and the outcome becomes `victory` only when the whole chain was cleared —
- * otherwise it is the outcome of the leg that ended the run. Everything else
- * (combat, quests, health) is taken from the final attempted leg, which is
- * where the run actually terminated.
+ * otherwise it is the outcome of the leg that ended the run. Evidence is
+ * aggregated across attempted legs, retaining raw leg provenance
+ * and failing closed for telemetry without a valid aggregation contract.
  *
  * `chainedFloorIds` / `chainedClearedFloorIds` are attached so a consumer can
  * see how far a losing progression got without re-deriving it.
@@ -146,38 +136,7 @@ async function runChainedSweepTask(
       ...recordEventOption,
     },
   );
-  const finalLeg = progression.legs[progression.legs.length - 1];
-  if (finalLeg === undefined) {
-    throw new Error(`Progression run for seed ${task.seed} produced no legs.`);
-  }
-  return {
-    ...finalLeg.stats,
-    // The flattened record retains last-leg counters with chain-wide time.
-    // Those are not whole-chain measurements. Preserve identity but fail closed
-    // instead of scoring the last floor as though it described every floor.
-    ...(progression.legs.length > 1
-      ? {
-          evaluationContext: {
-            source: 'headless' as const,
-            seed: task.seed,
-            startFloor: config.floorId,
-            available: { combat: false, health: false, progression: false, quests: false },
-          },
-          rewardEvents: undefined,
-          itemInteractions: undefined,
-          runPerformance: undefined,
-        }
-      : {}),
-    outcome: progression.reachedFinalVictory ? 'victory' : finalLeg.stats.outcome,
-    gameTimeMs: progression.totalGameTimeMs,
-    safeRoomMs: progression.totalSafeRoomMs,
-    totalFrames: progression.totalFrames,
-    wallTimeMs: progression.totalWallTimeMs,
-    chainedBudgetMs: progression.budgetMs,
-    chainedOfficialWin: progression.officialWin,
-    chainedFloorIds: progression.legs.map((leg) => leg.floorId),
-    chainedClearedFloorIds: [...progression.clearedFloorIds],
-  };
+  return aggregateProgression(progression);
 }
 
 /**
