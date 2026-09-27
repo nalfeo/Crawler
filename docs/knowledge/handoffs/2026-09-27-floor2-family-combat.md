@@ -101,7 +101,42 @@ Preflight passed. The token-budget command could not read runner telemetry becau
 No `files/guard-telemetry.jsonl` was present to capture. Browser verification uses
 Playwright Chromium with its Linux runtime dependencies installed in this runner.
 
-## Committed runtime matrix
+## Local-gate repass (2026-09-27)
+
+Verdict: recommended. Estimate: 1 apple. Persona: DevOps Engineer.
+The attached complete-diff review passed; the only local-gate finding was
+missing `tsx` in a separate fresh worktree. This repass ran `npm run preflight`,
+which installed 470 packages and passed, without changing gameplay or gates.
+Plan: inspect the existing implementation and review evidence, bootstrap the
+worktree, rerun focused combat and required gates, and commit this handoff locally.
+
+Inspected implementation commit `5c33067ca46975aaee544d4eb1660814195a310d`,
+including shared damage permissions, contact dispatch, durable defense signals,
+and the deterministic and MainGameScene tests. Repass results:
+
+- Focused unit/integration combat tests: 36/36 passed.
+- `npm run scope`: simulation, coverage, integration, and visual checks selected.
+- `npm run verify:fast`: passed; its changed-test phase selected no tests in the
+  already-committed tree, so the explicit focused run supplies regression coverage.
+- `npm run verify:pr-prereqs`: passed, except final PR-title validation owned by
+  the publication stage.
+- Real MainGameScene parity test: passed in 65.58 seconds across all 14 cases.
+  Fresh observations and screenshots: `files/family-combat-repass/`. Personally
+  inspected `rival-contact.png`: real Floor 2 HUD, family panel, and a -7 hit.
+
+The failed gate previously stopped before verification; after bootstrap both
+required commands complete successfully. Dependencies are local to each worktree:
+the deterministic local-ci stage must run `npm run preflight` in any new worktree
+before invoking `verify:fast`. This repass does not alter the external runner.
+No guard telemetry file was present. The existing review pass still covers all
+gameplay code; this repass adds handoff evidence only. Authorization remains
+local commit only; no push, PR, issue mutation, or merge is authorized here.
+Residual risk remains encounter balance, as above; no new runtime code changed.
+An additional handoff-lint check reported three pre-existing missing retrospective
+subsections in `2026-09-26-merge-train-synchronize-reevaluation.md`; it reported
+no finding in this handoff. The unrelated document was left unchanged.
+
+## Runtime matrix results
 
 | Case                   | Victim hits | Ally moved and damaged attacker | Visual/headless match |
 | ---------------------- | ----------: | ------------------------------- | --------------------- |
