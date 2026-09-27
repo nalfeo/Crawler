@@ -11,6 +11,7 @@ import {
   weaponSystem,
   capturePlayerCarryover,
   purchaseFloor4GreenRoomOffer,
+  scoreFloor4GreenRoomOffer,
   type ScenarioInitializationOptions,
 } from '../game/index.js';
 import {
@@ -36,10 +37,6 @@ import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameSc
 import type { Floor4GreenRoomPanelOffer } from '../engine/shop/ShopPanelUI.js';
 import type { RunBundle } from '../shared/run-bundle.js';
 import { resolveShopCatalogItem } from '../shared/shop-catalog.js';
-import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
-import { scoreGearCandidate, type GearScoreItem } from '../shared/gear-score.js';
-import { getEquipmentState, resolveEquipmentInstance } from '../core/systems/equipmentSystem.js';
-import { getGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 
 export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
@@ -177,26 +174,7 @@ export function createFloorMainSceneOptions(
         return visit.tables.flatMap((table) =>
           table.offers.map((offer) => {
             const catalogItem = resolveShopCatalogItem(offer.itemId);
-            const equipment = getEquipmentState(world, playerEid);
-            const equipped: GearScoreItem[] = [];
-            if (equipment) {
-              for (const id of new Set(Object.values(equipment.equipped))) {
-                if (id === null) continue;
-                if (typeof id === 'string') {
-                  const generated = getGeneratedEquipmentInstance(world, id);
-                  if (generated) {
-                    equipped.push(generated);
-                    continue;
-                  }
-                }
-                const instance = resolveEquipmentInstance(world, equipment, id);
-                if (instance) equipped.push(instance.def);
-              }
-            }
-            const gear = scoreGearCandidate(
-              catalogItem ? getEquipmentDefForItem(catalogItem.itemId) : undefined,
-              equipped,
-            );
+            const gear = scoreFloor4GreenRoomOffer(world, playerEid, offer.itemId);
             const dev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
             const purchaseFailure = catalogItem
               ? bag === undefined

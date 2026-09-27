@@ -14,6 +14,8 @@ import { query } from 'bitecs';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { getAvailableFloorIds, hasFloorManifest } from '../../shared/floor-registry.js';
 import { getFloor4ArenaRunStats, getFloor4LiveWaveEnemyCount } from '../../game/floor4Scenario.js';
+import { scoreFloor4GreenRoomOffer } from '../../game/floor4GreenRoom.js';
+import { resolveShopCatalogItem } from '../../shared/shop-catalog.js';
 import { getScenarioDefinition } from '../../game/scenarioDefinitions.js';
 import { isPlayerWithinStairMarker } from '../../shared/scenario-presentation.js';
 import { FLOOR3_TIMEOUT_GOAL_ID } from '../../game/floor3Scenario.js';
@@ -77,6 +79,8 @@ import {
   Companion,
 } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
+import { getEquipmentState } from '../../core/systems/equipmentSystem.js';
 import type { Floor4ArenaRunStats } from '../../shared/floor-types.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
@@ -580,6 +584,12 @@ function startPlayerLevelFromUrl(): number {
   return 1;
 }
 
+/** Opt-in visual-replay switch; the live Floor 4 scenario remains unchanged. */
+function floor4ShopFromUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('floor4Shop') === '1';
+}
+
 interface AiRunnerLabState {
   showFlowField: boolean;
   lighting: LightingConfig;
@@ -705,6 +715,26 @@ export interface AiRunnerDebugSnapshot {
    * different floor). Debug-only; never asserted against by shipped code.
    */
   floor3LossReason: 'party-wiped' | 'timeout' | 'player-hp' | null;
+  shopOpen: boolean;
+  equipmentOpen: boolean;
+  equipmentButtonBounds: { x: number; y: number; width: number; height: number } | null;
+  equipmentBagItemIds: readonly string[];
+  equipmentBagCellBounds: ReadonlyArray<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>;
+  greenRoomPurchases: number;
+  spentOnGreenRoom: number;
+  activeWeaponId: string | null;
+  equippedMainHand: string | number | null;
+  greenRoomOffers: ReadonlyArray<{
+    itemId: string;
+    purchasedItemId: string | null;
+    recommendation: string | null;
+  }>;
+  lastGreenRoomPurchaseItem: string | null;
   /**
    * The floor the live world is actually on, or `'unknown'` before a world
    * exists / when the world reports a floor with no registered manifest.
@@ -785,6 +815,13 @@ interface RunnerSceneInternals {
   requestInventoryToggle(): void;
   requestEquipAction(): void;
   isInventoryOpen(): boolean;
+  isSettlementShopOpen(): boolean;
+  isEquipmentPanelOpen(): boolean;
+  getEquipmentBagItemIds(): readonly string[];
+  getEquipmentBagCellScreenBounds(
+    index: number,
+  ): { x: number; y: number; width: number; height: number } | null;
+  getEquipmentButtonScreenBounds(): { x: number; y: number; width: number; height: number } | null;
   setSimulationSpeed(speed: number): void;
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
@@ -858,6 +895,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const urlScenario = scenarioPresetIdFromUrl();
   const urlFloor = floorIdFromUrl();
   const urlSeed = seedFromUrl();
+  const allowFloor4Shop = floor4ShopFromUrl();
   let selectedScenarioPresetId =
     urlScenario ?? persisted?.scenarioPresetId ?? DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID;
   let currentSeed =
@@ -1260,6 +1298,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       scenarioPreset?.configureWorld?.(world, playerEid);
     },
     inputCaptureOverride: aiInputProvider,
+    allowFloor4GreenRoomShopWithInputOverride: allowFloor4Shop,
     worldSeed: currentSeed,
     postSystems: [...base.postSystems, aiAutoDriverSystem],
     autoLevelUpAllocator: (world: GameWorld, playerEid: number, available: number) =>
@@ -3442,6 +3481,35 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       floor4LiveEnemyCount: world ? getFloor4LiveWaveEnemyCount(world) : 0,
       companions: world ? getCompanionTelemetry(world) : [],
       floor3LossReason: world ? getFloor3LossReason(world) : null,
+      shopOpen: scene?.isSettlementShopOpen?.() ?? false,
+      equipmentOpen: scene?.isEquipmentPanelOpen?.() ?? false,
+      equipmentButtonBounds: scene?.getEquipmentButtonScreenBounds?.() ?? null,
+      equipmentBagItemIds: scene?.getEquipmentBagItemIds?.() ?? [],
+      equipmentBagCellBounds: (scene?.getEquipmentBagItemIds?.() ?? []).map(
+        (_, index) => scene?.getEquipmentBagCellScreenBounds?.(index) ?? null,
+      ),
+      greenRoomPurchases: world?.goldLedger.greenRoomPurchases ?? 0,
+      spentOnGreenRoom: world?.goldLedger.spentOnGreenRoom ?? 0,
+      activeWeaponId: world ? (getActiveWeaponDef(world)?.id ?? null) : null,
+      equippedMainHand:
+        world && typeof playerEid === 'number' && playerEid >= 0
+          ? (getEquipmentState(world, playerEid)?.equipped.mainHand ?? null)
+          : null,
+      greenRoomOffers:
+        world && typeof playerEid === 'number' && playerEid >= 0
+          ? (world.floorExtendedState?.floor4GreenRoom?.currentVisit?.tables.flatMap((table) =>
+              table.offers.map((offer) => ({
+                itemId: offer.itemId,
+                purchasedItemId: resolveShopCatalogItem(offer.itemId)?.itemId ?? null,
+                recommendation:
+                  scoreFloor4GreenRoomOffer(world, playerEid, offer.itemId)?.recommendation ?? null,
+              })),
+            ) ?? [])
+          : [],
+      lastGreenRoomPurchaseItem:
+        [...(world?.vendorLedger.decisions ?? [])]
+          .reverse()
+          .find((decision) => decision.vendorId === 'floor4-green-room')?.itemId ?? null,
     };
   };
   if (typeof window !== 'undefined') {

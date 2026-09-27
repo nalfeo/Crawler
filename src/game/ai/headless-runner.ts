@@ -442,6 +442,13 @@ export interface HeadlessRunnerConfig {
   /** Scenario floor id to run. */
   floorId?: string;
   /**
+   * Choose the best affordable Green Room upgrade through the standard public
+   * transaction and safe-context equip flow. Defaults to false so ordinary
+   * completion replays retain their historical player-input path; true is the
+   * explicit public purchase decision used by purchase-flow replays.
+   */
+  floor4GreenRoomPurchase?: boolean;
+  /**
    * Deterministic player construction intents for Floor 6. They use the same
    * transaction API as presentation code and are retried while unaffordable.
    */
@@ -621,6 +628,7 @@ const DEFAULT_CONFIG: Required<
   enemyDamageMultiplier: 1,
   enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
   floorId: 'floor1',
+  floor4GreenRoomPurchase: false,
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
   enforcePlayabilityInvariants: true,
@@ -1683,7 +1691,9 @@ export async function runHeadless(
       );
       autoFloor2ProgressionSystem(world, playerEid);
       autoFloor3ProgressionSystem(world, playerEid);
-      autoFloor4ProgressionSystem(world, playerEid);
+      autoFloor4ProgressionSystem(world, playerEid, {
+        purchase: mergedConfig.floor4GreenRoomPurchase,
+      });
       autoFloor5ProgressionSystem(world, playerEid, aiProvider);
       captureFloor3Progression();
       autoFloor6ProgressionSystem(world);
