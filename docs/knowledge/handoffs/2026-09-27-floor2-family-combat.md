@@ -136,7 +136,51 @@ An additional handoff-lint check reported three pre-existing missing retrospecti
 subsections in `2026-09-26-merge-train-synchronize-reevaluation.md`; it reported
 no finding in this handoff. The unrelated document was left unchanged.
 
-## Runtime matrix results
+## Second local-gate repass (2026-09-27)
+
+Verdict: recommended. Estimate: 1 apple. Persona: DevOps Engineer.
+The second attached failure repeats the same missing-tsx error in the local-CI
+worktree. Installing dependencies in an implementer or reviewer worktree cannot
+repair that separate stage. The workflow definition is owned by this repository:
+its local-ci task invoked verification directly, while push-branch and the
+remediation workflow already install their own dependencies.
+
+Plan: trace the failing stage, bootstrap its own worktree using the existing
+remediation pattern, add executable ordering/failure regressions, rerun combat
+and required gates, obtain complete-diff review, and commit locally.
+
+The feature workflow now runs `npm ci --ignore-scripts` before `verify:fast`,
+with `set -eu` preserving installation and verification failures. Base sync and
+gate routing are unchanged. No gameplay or verification requirement is weakened.
+The execution regression stubs npm to check fresh-stage installation ordering,
+installation failure stopping verification, and verification failure propagation.
+
+Systems touched in this repass: Goobers feature local-CI workflow and regression
+coverage. The existing gameplay implementation remains unchanged.
+
+Validation: preflight passed; 36 focused combat tests and 58 workflow tests passed;
+the real MainGameScene probe passed all 14 visual/headless cases in 73.38 seconds.
+Evidence is in `files/family-combat-repass-2/`; personally inspected the
+rival-contact screenshot showing Floor 2, the family panel, and a -7 hit.
+`npm run scope`, `npm run verify:fast`, and `npm run verify:pr-prereqs` passed
+(final PR-title validation remains the publication stage's responsibility).
+Repository contract validation passed all 9 workflow schemas and 39 fixtures.
+Executing the exact revised local-ci script also passed: it installed 470
+packages with lifecycle scripts disabled, then completed `verify:fast` successfully.
+Optional `goobers validate --source-tree .goobers` cannot validate this source
+with the installed CLI: it rejects the unchanged coder `codex.sandbox` option.
+That config has no diff against the base and is outside this repass.
+
+Fresh read-only complete-diff review found no blocking or medium findings and
+stated the change is okay to check in after required gates pass. No guard telemetry
+file was present. Remaining operational risk: the runner may retain the workflow
+snapshot loaded at run creation; recovery must load this revised local-ci task,
+or install dependencies in its own gate worktree before retrying. This session
+does not claim to have changed a running orchestrator's in-memory workflow.
+Authorization transfers unchanged: local edits, checks, and commit only; no push,
+PR publication, issue modification, or merge.
+
+## Runtime matrix results (reconfirmed on second repass)
 
 | Case                   | Victim hits | Ally moved and damaged attacker | Visual/headless match |
 | ---------------------- | ----------: | ------------------------------- | --------------------- |

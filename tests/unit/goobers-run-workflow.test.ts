@@ -292,6 +292,55 @@ function collectTransitiveRepoFiles(entryFiles: string[]): {
 }
 
 describe('Goobers automatic dispatch and recovery', () => {
+  it.skipIf(!hasBash)(
+    'bootstraps feature local CI and propagates install and gate failures',
+    () => {
+      const workflow = loadYaml<GoobersDefinition>(
+        '.goobers',
+        'gaggles',
+        'crawler',
+        'workflows',
+        'crawler-feature-pr.yaml',
+      );
+      const run = workflow.spec.tasks.find((task) => task.name === 'local-ci')?.run;
+      expect(run?.command).toBeUndefined();
+      expect(run?.script).toBeTypeOf('string');
+      // Execute the actual stage with npm stubbed: verification must see dependencies
+      // installed in this stage, and neither failure may be swallowed by the shell.
+      for (const [installStatus, gateStatus] of [
+        [0, 0],
+        [23, 0],
+        [0, 42],
+      ]) {
+        const result = spawnSync(
+          'bash',
+          [
+            '-c',
+            `
+        installed=0
+        npm() {
+          printf '%s\\n' "$*"
+          case "$*" in
+            'ci --ignore-scripts') installed=1; return ${installStatus} ;;
+            'run verify:fast')
+              [ "$installed" = 1 ] || return 99
+              return ${gateStatus} ;;
+            *) return 98 ;;
+          esac
+        }
+        ${run!.script}
+      `,
+          ],
+          { encoding: 'utf8' },
+        );
+        expect(result.status, result.stderr).toBe(installStatus || gateStatus);
+        expect(result.stdout.trim().split('\n')).toEqual(
+          installStatus ? ['ci --ignore-scripts'] : ['ci --ignore-scripts', 'run verify:fast'],
+        );
+      }
+    },
+  );
+
   it('dispatches immediately for eligible issue events and performs an hourly recovery sweep', () => {
     const workflow = loadYaml<GoobersActionsWorkflow>('.github', 'workflows', 'goobers-run.yml');
 
