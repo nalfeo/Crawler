@@ -279,12 +279,12 @@ export class BroadcastRelaySetGenerator implements MapGenerator {
     carve({ x: 63, y: 23, width: 4, height: 3 }, TerrainType.CORRIDOR);
 
     const roomGraph = new RoomGraph();
-    roomGraph.add(layout.playerIngress.bounds, [], [3], RoomRole.SPAWN, layout.playerIngress.id);
+    roomGraph.add(layout.playerIngress.bounds, [], [3], RoomRole.NORMAL, layout.playerIngress.id);
     roomGraph.add(
       layout.broadcastRelay.bounds,
       [],
       [2, 3, 4, 6],
-      RoomRole.NORMAL,
+      RoomRole.SPAWN,
       layout.broadcastRelay.id,
     );
     roomGraph.add(layout.entrances[0]!.bounds, [], [1], RoomRole.NORMAL, layout.entrances[0]!.id);
@@ -299,9 +299,15 @@ export class BroadcastRelaySetGenerator implements MapGenerator {
     roomGraph.add(layout.breakEnclosure.bounds, [], [4], RoomRole.NORMAL, layout.breakEnclosure.id);
     roomGraph.add(layout.victoryExit.bounds, [], [1], RoomRole.NORMAL, layout.victoryExit.id);
 
+    // Floor 6 opens under immediate Relay pressure. Starting at the distant
+    // ingress made the first three raiders reach the Relay before a player
+    // using ordinary movement could even see, kill, or collect one. Keep the
+    // ingress room authored for the south approach, but begin the live run in
+    // the Relay room beside the opening lane and the first build plinth.
+    const relay = layout.broadcastRelay.bounds;
     const spawn = {
-      x: layout.playerIngress.bounds.x + Math.floor(layout.playerIngress.bounds.width / 2),
-      y: layout.playerIngress.bounds.y + Math.floor(layout.playerIngress.bounds.height / 2),
+      x: relay.x + Math.floor(relay.width * 0.3),
+      y: relay.y + relay.height - 3,
     };
     return new FloorMap(config, tileMap, roomGraph, terrain, spawn);
   }

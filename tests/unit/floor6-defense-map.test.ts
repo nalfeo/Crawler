@@ -140,6 +140,19 @@ describe('Floor 6 authored defense map', () => {
     }
   });
 
+  it('starts the player in the Relay room so the opening crew is observable before it damages the Relay', () => {
+    const map = generate();
+    const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
+    const relay = layout.broadcastRelay.bounds;
+
+    expect(map.playerSpawn.x).toBeGreaterThanOrEqual(relay.x);
+    expect(map.playerSpawn.x).toBeLessThan(relay.x + relay.width);
+    expect(map.playerSpawn.y).toBeGreaterThanOrEqual(relay.y);
+    expect(map.playerSpawn.y).toBeLessThan(relay.y + relay.height);
+    expect(map.tileMap.isPassable(map.playerSpawn.x, map.playerSpawn.y)).toBe(true);
+    expect(map.spawnRoom?.label).toBe(layout.broadcastRelay.id);
+  });
+
   it('authors legal non-overlapping sites that cannot block any supported route', () => {
     const map = generate();
     const layout = computeBroadcastRelaySetLayout(_buildFloor6MapConfig().broadcastRelaySet ?? {});
