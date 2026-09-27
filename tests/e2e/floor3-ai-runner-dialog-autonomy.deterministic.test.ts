@@ -18,7 +18,6 @@ import type { AiRunnerDebugSnapshot } from '../../src/labs/ai-runner-lab/index.j
 // change.
 const FLOOR3_SEED = '3540';
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=ai-runner&floor=floor3&seed=${FLOOR3_SEED}&startPlayerLevel=20`;
-const FAST_RESTART_SETTLE_MS = 300;
 const POLL_INTERVAL_MS = 1_500;
 const MAX_POLLS = 240;
 
@@ -81,9 +80,30 @@ describe('Floor 3 AI runner modal autonomy (real scene)', () => {
 
     try {
       await loadAiRunner(page);
-      await page.waitForTimeout(FAST_RESTART_SETTLE_MS);
+      // The dock can mount before the asynchronous scene/bootstrap callbacks
+      // finish. Starting during loadout can have its pause state overwritten.
+      await page.waitForFunction(
+        () => {
+          const snapshot = (
+            window as { __aiRunnerDebug?: () => AiRunnerDebugSnapshot }
+          ).__aiRunnerDebug?.();
+          return snapshot?.worldState === 'playing' && snapshot.paused && snapshot.scenePaused;
+        },
+        undefined,
+        { timeout: 45_000 },
+      );
       await page.click('#ai-speed-16');
       await page.click('#ai-toggle-run');
+      await page.waitForFunction(
+        () => {
+          const snapshot = (
+            window as { __aiRunnerDebug?: () => AiRunnerDebugSnapshot }
+          ).__aiRunnerDebug?.();
+          return (snapshot?.frame ?? 0) > 0;
+        },
+        undefined,
+        { timeout: 15_000 },
+      );
 
       const snapshots: AiRunnerDebugSnapshot[] = [];
       let lastSnapshot: AiRunnerDebugSnapshot | null = null;

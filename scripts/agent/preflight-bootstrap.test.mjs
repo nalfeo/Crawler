@@ -203,3 +203,59 @@ test('stops with an actionable error if npm ci reports success without installin
     console.error = originalError;
   }
 });
+
+for (const cold of [true, false]) {
+  test(`verify:fast ${cold ? 'bootstraps a fresh' : 'reuses a warm'} worktree and preserves gate failure`, () => {
+    const calls = [];
+    let installed = !cold;
+    const status = main({
+      root: '/repo',
+      platform: 'linux',
+      nodeExecutable: '/runtime/node',
+      env: { CRAWLER_NPM_CLI: '/runtime/npm-cli.js' },
+      verificationOnly: true,
+      log: () => {},
+      exists: (path) =>
+        installed && path === join('/repo', 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+      runCommand: (command, args, options) => {
+        calls.push({ command, args, options });
+        if (args.includes('ci')) {
+          installed = true;
+          return 0;
+        }
+        return 17;
+      },
+    });
+    assert.equal(status, 17);
+    assert.equal(calls.length, cold ? 2 : 1);
+    if (cold) {
+      assert.deepEqual(calls[0].args, ['/runtime/npm-cli.js', 'ci', '--prefer-offline']);
+      assert.equal(calls[0].options.cwd, '/repo');
+    }
+    assert.deepEqual(calls.at(-1).args, [
+      join('/repo', 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+      'scripts/agent/run-bash-wrapper.ts',
+      'scripts/agent/verify-fast.sh',
+    ]);
+    assert.equal(calls.at(-1).command, '/runtime/node');
+    assert.ok(calls.every(({ args }) => !args.includes('scripts/agent/preflight.sh')));
+  });
+}
+
+test('verify:fast stops before verification when dependency installation fails', () => {
+  let calls = 0;
+  assert.equal(
+    main({
+      platform: 'linux',
+      verificationOnly: true,
+      log: () => {},
+      exists: () => false,
+      runCommand: () => {
+        calls++;
+        return 23;
+      },
+    }),
+    23,
+  );
+  assert.equal(calls, 1);
+});

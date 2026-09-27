@@ -43,6 +43,7 @@ import {
   Homing,
   MeleeSwing,
   PartySlot,
+  Npc,
   Position,
   Projectile,
   Prop,
@@ -295,7 +296,7 @@ interface MainSceneInternals {
       bracket: readonly string[];
       bounds: ScreenBounds | null;
     };
-    getFloor3OverworldMarkers?(): readonly { kind: string }[];
+    getFloor3OverworldMarkers?(): readonly { kind: string; id: string; state: string }[];
     /**
      * The currently-rendered announcement banner content (kind + exact
      * text), or `null` when no banner is showing. Real rendered projection,
@@ -819,6 +820,8 @@ export interface Floor3LeagueHudProbeState {
   readonly timerPanel: ScreenBounds | null;
   readonly mapOverlayOpen: boolean;
   readonly markerKinds: readonly string[];
+  readonly markers: readonly { id: string; state: string }[];
+  readonly studiosDefeated: number;
 }
 
 export interface FamilyHudProbeState {
@@ -1276,6 +1279,9 @@ export interface MainSceneProbeApi {
   getFloor3PartyHudState(): Floor3PartyHudProbeState;
   /** Mounted Floor-3 league bracket HUD plus the timer panel it must clear. */
   getFloor3LeagueHudState(): Floor3LeagueHudProbeState;
+  /** Knock out one unlocked Studio roster; production progression owns the result. */
+  knockOutFirstFloor3Studio(): string | null;
+  separateFloor3MinimapMarkers(): boolean;
   /** Mounted Floor-4 arena HUD state from the real HudUI facade. */
   getFloor4ArenaHudState(): HudFloor4ArenaProbeState | null;
   /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
@@ -2637,6 +2643,48 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       };
     },
 
+    separateFloor3MinimapMarkers: (): boolean => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) return false;
+      const player = playerEidOf(scene);
+      const ally = Array.from(query(world.ecs, [Companion, Team, Position])).find(
+        (eid) => world.stores.team.id[eid] === TeamId.PLAYER,
+      );
+      if (player < 0 || ally === undefined) return false;
+      const x = world.stores.position.x[player] ?? 0;
+      const y = world.stores.position.y[player] ?? 0;
+      world.stores.position.x[ally] = x + 12;
+      world.stores.position.y[ally] = y;
+      const studio = world.floorExtendedState?.floor3Studios?.studios.find(
+        (entry) => entry.unlocked && !entry.defeated,
+      );
+      const rival = Array.from(query(world.ecs, [Companion, Team, Position])).find((eid) =>
+        studio?.teamIds.includes(world.stores.team.id[eid] ?? -1),
+      );
+      const neutral = Array.from(query(world.ecs, [Npc, Position]))[0];
+      if (rival === undefined || neutral === undefined) return false;
+      world.stores.position.x[rival] = x - 12;
+      world.stores.position.y[rival] = y;
+      world.stores.position.x[neutral] = x;
+      world.stores.position.y[neutral] = y + 12;
+      return true;
+    },
+
+    knockOutFirstFloor3Studio: (): string | null => {
+      const world = getScene()?.world;
+      const studio = world?.floorExtendedState?.floor3Studios?.studios.find(
+        (entry) => entry.unlocked && !entry.defeated,
+      );
+      if (!world || !studio) return null;
+      for (const eid of query(world.ecs, [Companion, Team])) {
+        if (!studio.teamIds.includes(world.stores.team.id[eid] ?? -1)) continue;
+        world.stores.companion.knockedOut[eid] = 1;
+        world.stores.health.current[eid] = 0;
+      }
+      return studio.id;
+    },
+
     getFloor3LeagueHudState: (): Floor3LeagueHudProbeState => {
       const hud = getScene()?.hudUi;
       const league = hud?.getFloor3LeagueState?.();
@@ -2650,6 +2698,9 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         timerPanel: hud?.getEncounterProbeBounds?.()?.timerPanel ?? null,
         mapOverlayOpen: hud?.isMapOverlayOpen() ?? false,
         markerKinds: (hud?.getFloor3OverworldMarkers?.() ?? []).map((marker) => marker.kind),
+        markers: (hud?.getFloor3OverworldMarkers?.() ?? []).map(({ id, state }) => ({ id, state })),
+        studiosDefeated:
+          getScene()?.world?.floorExtendedState?.floor3Studios?.studiosDefeatedCount ?? 0,
       };
     },
 
