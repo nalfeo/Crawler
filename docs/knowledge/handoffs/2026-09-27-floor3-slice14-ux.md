@@ -150,6 +150,59 @@ those responsibilities. The runner must consume the corrected workflow
 definition; an active run may retain its original snapshot. This repass proves
 the checked-in stage script passes, not that a live daemon reloads definitions.
 
+## Frozen-stage command recovery — 2026-09-27
+
+Verdict: recommended; estimate and actual effort: 1 apple. DevOps Engineer
+persona. The third passing review is followed by the same missing-tsx artifact
+from the original local-ci worktree. Changing the workflow definition alone did
+not repair this active run's command. All supplied review and learning artifacts
+were read; no gameplay review findings remain.
+
+Completed plan: repair the npm command invoked by the frozen stage, cover cold
+and warm dependency states and failure propagation, execute that command with
+no node_modules, rerun focused feature checks, obtain a complete-diff review,
+and commit locally. Additional system touched: agent verification bootstrap.
+
+`npm run verify:fast` now enters a dependency-free Node wrapper through the
+existing pinned-runtime launcher. If the actual tsx entrypoint is missing, it
+installs lockfile dependencies with the pinned runtime's npm, without lifecycle
+scripts, before invoking the unchanged Bash verifier. Warm worktrees skip the
+install. Installation failures, missing payloads, spawn errors, and verifier
+failures cannot report success. This does not depend on a workflow reload.
+The native regression suite is also invoked from the existing unit gate.
+
+Validation and real pipeline observation:
+
+- Canonical preflight passed, including full-project typecheck.
+- Moved node_modules to an ignored worktree backup and ran the exact previously
+  failing command, `npm run verify:fast`. It installed 470 packages and passed
+  the unchanged static and integrity checks, including size/weight simulations.
+  The changed-test selector found no tests in that invocation; explicit focused
+  tests below supplied regression coverage. Log: `.goobers/repass-cold-verify.log`.
+- Native Node bootstrap/runtime tests: 23 passed, including eight new bootstrap
+  tests covering cold/warm states, error paths, and package-command wiring.
+- Focused unit tests: 45 passed, including stage ordering, the bootstrap suite
+  wrapper, league view, party state, and victory/keep-companion behavior.
+- Production Floor 3 headless completion: one passed.
+- Four real MainGameScene browser checks passed: all three supported viewports
+  and league tracker/marker synchronization. Inspected `files/floor3-ux-after.png`:
+  Roster clears the party panel and the standard tracker replaces the standalone
+  Studio counter. Log: `.goobers/repass-browser.log`.
+- Warm `npm run verify:fast` also passed without reinstalling dependencies; log:
+  `.goobers/repass-warm-verify.log`.
+- Scope ran; package-command changes conservatively select gameplay/visual
+  checks. Formatting, focused ESLint, and diff whitespace checks passed.
+- Independent read-only review of the complete diff passed with no findings;
+  the reviewer stated the change is okay to check in after validation.
+- No guard telemetry file existed.
+
+Authorization remains implementation, validation, and local commit only. Do
+not push, publish a PR, change the issue, or merge; deterministic stages own
+those actions. A fresh verification worktree now needs npm registry access or
+cached lockfile packages. Warm execution adds no installation cost. No game
+logic, acceptance criteria, or verification gates were relaxed. Live downstream
+runner execution remains the deterministic stage's responsibility.
+
 ## Retrospective
 
 ### Lessons Learned

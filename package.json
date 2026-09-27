@@ -111,7 +111,7 @@
     "setup:azure:github": "pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets",
     "sync:main": "node scripts/agent/sync-main.mjs",
     "preflight": "node scripts/agent/run-tsx.mjs --node scripts/agent/preflight.mjs",
-    "verify:fast": "node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/verify-fast.sh",
+    "verify:fast": "node scripts/agent/run-tsx.mjs --node scripts/agent/verify-fast.mjs",
     "verify:flash": "vitest run --changed --project unit --reporter=dot",
     "scope": "node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/ci/local-scope.sh",
     "verify": "node scripts/agent/run-tsx.mjs scripts/agent/run-bash-wrapper.ts scripts/agent/verify.sh",

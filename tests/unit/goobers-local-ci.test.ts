@@ -6,6 +6,16 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 
+it('keeps the dependency-free verify:fast bootstrap regressions in the unit gate', () => {
+  const result = spawnSync(
+    process.execPath,
+    ['--test', 'scripts/agent/verify-fast-bootstrap.test.mjs'],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+});
+
 describe.each(['crawler-feature-pr', 'crawler-pr-remediation'])('%s local-ci', (workflow) => {
   const definition = parse(
     readFileSync(path.join(ROOT, `.goobers/gaggles/crawler/workflows/${workflow}.yaml`), 'utf8'),
