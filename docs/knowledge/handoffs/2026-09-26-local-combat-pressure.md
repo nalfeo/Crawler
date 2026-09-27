@@ -86,3 +86,40 @@ Updated the existing policy contract assertions; both policy tests pass.
 
 The instruction correction passed required verify:fast and Ducky review with no
 actionable findings. The policy tests preserve the explicit authorization rule.
+
+## Authorizations and Constraints
+
+- Continue the combat-pressure task in
+  `C:/Users/nalfe/.codex/worktrees/d952/Crawler`, branch
+  `codex/local-combat-pressure`. The original continuation from task
+  `01a0dfbd-6805-7e00-8c3e-092379d6d20f` explicitly requested a ready-for-review
+  PR and stated: "User authorized continuations and all publication."
+  The verified repository remote is `https://github.com/nalfeo/Crawler.git`.
+- The user explicitly approved reconstruction in this session: "Yes, reconstruct."
+- The user explicitly authorized LLM review of generated changes without
+  repeated permission and requested the corresponding instruction correction.
+  Review uses the configured Codex LLM review service with the relevant diff/context.
+- The user explicitly requested that handoffs carry the same authorizations to
+  subsequent sessions without requiring repeated approval. Carry this section
+  forward verbatim or with accurate updates for later user instructions.
+- Preserve the original diagnostic-only scope: no gameplay tuning, enjoyment
+  calibration, human-data collection, or power/crafting/choice implementation.
+  No user-requested local-only publication hold was recorded.
+- Execution blocker, separate from user grants: automatic approval review
+  rejected a previous GitHub push for insufficient destination-specific
+  authorization evidence. The user subsequently made authorization inheritance
+  explicit. Do not silently erase inherited publication authority in a continuation.
+
+## Authorization continuity follow-up
+
+Updated AGENTS, memory policy, and the handoff template. The continuation CLI
+now requires `--authorizations` and emits the supplied grants, provenance,
+destinations, limits and holds under Authorizations and Constraints, with an
+explicit instruction against reauthorization solely due to session transition.
+Focused generator tests and the canonical session-instruction check pass.
+
+Authorization continuity passed required verify:fast and Ducky review with no
+actionable findings. A real continuation CLI smoke preserved both the test grant
+and its publication hold. GitHub read-only verification confirmed the configured
+`nalfeo/Crawler` destination is public and the authenticated account has ADMIN
+permission; this supplements the inherited publication authorization record.

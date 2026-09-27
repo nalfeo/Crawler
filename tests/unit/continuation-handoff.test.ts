@@ -4,6 +4,8 @@ import { buildContinuationHandoff, MAX_WORDS } from '../../scripts/agent/docs/co
 const input = {
   objective: 'Ship a small deterministic tool.',
   successGate: 'The tool has focused coverage.',
+  authorizations:
+    'User approved implementation and LLM review in task source-123; worktree C:/project. Publication is on hold.',
   completed: 'Selected the existing token telemetry parser.',
   validation: 'Focused tests pass.',
   blockers: 'None.',
@@ -19,6 +21,7 @@ describe('continuation handoff', () => {
     const output = buildContinuationHandoff(input);
     for (const heading of [
       'Objective / Success Gate',
+      'Authorizations and Constraints',
       'Git State',
       'Completed Decisions',
       'Validation Evidence',
@@ -27,11 +30,16 @@ describe('continuation handoff', () => {
       'Rollout Telemetry',
     ])
       expect(output).toContain(heading);
+    expect(output).toContain(input.authorizations);
+    expect(output).toContain('Do not request reauthorization merely because the session changed.');
     expect(output).toContain('First request input: 101 tokens');
     expect(output).toContain('Cumulative input: 303 tokens');
   });
 
   it('rejects missing required facts and output over the word cap', () => {
+    expect(() => buildContinuationHandoff({ ...input, authorizations: '' })).toThrow(
+      'Missing required --authorizations',
+    );
     expect(() => buildContinuationHandoff({ ...input, nextStep: '' })).toThrow(
       'Missing required --next-step',
     );

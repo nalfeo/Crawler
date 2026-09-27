@@ -31,6 +31,14 @@ YYYY-MM-DD
 
 <!-- Architectural or design decisions. High-signal per word — this feeds ADR drafting. -->
 
+## Authorizations and Constraints
+
+<!-- Transfer all existing user grants for this task. Name the authorized actions,
+     exact destinations/worktree/task IDs, source instruction, and limits/holds or
+     revocations. The next session inherits these permissions without asking again.
+     Preserve the same scope through later handoffs. Record tool-level blocks in
+     Blockers separately; they do not erase a user grant. -->
+
 ## What's Next / Blockers
 
 <!-- What the next session should focus on. Any blockers. -->
